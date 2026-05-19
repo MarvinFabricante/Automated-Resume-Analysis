@@ -10,7 +10,7 @@ const ViewCandidateDetailsModal = ({ isOpen, onClose, candidate }) => {
       <Helmet>
         <title>{candidate.name} | Application Review</title>
       </Helmet>
-      <div className="bg-white w-full max-w-4xl max-h-[90vh] rounded-3xl shadow-2xl overflow-hidden flex flex-col animate-in fade-in zoom-in duration-200">
+      <div className="bg-white w-full max-w-6xl max-h-[90vh] rounded-3xl shadow-2xl overflow-hidden flex flex-col animate-in fade-in zoom-in duration-200">
         
         <div className="px-8 py-5 border-b border-gray-100 flex justify-between items-center bg-white sticky top-0">
           <div className="flex items-center gap-2">
@@ -75,11 +75,11 @@ const ViewCandidateDetailsModal = ({ isOpen, onClose, candidate }) => {
                 </div>
                 <div className="flex items-center gap-3 text-gray-600">
                   <Mail size={16} className="text-gray-400" />
-                  <span className="text-sm">contact@{candidate.name.toLowerCase().split(' ')[0]}.com</span>
+                  <span className="text-sm">{candidate.email || "N/A"}</span>
                 </div>
                 <div className="flex items-center gap-3 text-gray-600">
                   <Phone size={16} className="text-gray-400" />
-                  <span className="text-sm">+1 (555) 012-3456</span>
+                  <span className="text-sm">{candidate.phone || "N/A"}</span>
                 </div>
               </div>
             </div>
@@ -119,17 +119,7 @@ const ViewCandidateDetailsModal = ({ isOpen, onClose, candidate }) => {
               </div>
             </section>
 
-            <section>
-              <h3 className="text-sm font-bold text-gray-900 uppercase tracking-tight mb-4 flex items-center gap-2">
-                <GraduationCap size={16} className="text-[#d81159]" /> Candidate Summary
-              </h3>
-              <p className="text-gray-600 text-sm leading-relaxed bg-gray-50/50 p-5 rounded-2xl italic border border-dashed border-gray-200">
-                "Experienced {candidate.preferredJob} with a strong background in {candidate.skills[0]} and {candidate.skills[1]}. 
-                Proven track record of delivering high-quality projects in {candidate.location} with a focus on user experience and scalable architecture."
-              </p>
-            </section>
-
-            <section className="mt-8">
+            <section className="mb-8">
               <h3 className="text-sm font-bold text-gray-900 uppercase tracking-tight mb-4 flex items-center gap-2">
                 <Star size={16} className="text-[#d81159]" /> Analysis Score Explanation
               </h3>
@@ -138,6 +128,16 @@ const ViewCandidateDetailsModal = ({ isOpen, onClose, candidate }) => {
                   We arrived at the final match score of <span className="font-black text-emerald-600">{candidate.matchScore}%</span> by evaluating the candidate across three weighted categories. This total consists of an <span className="font-bold">Education</span> contribution of <span className="font-black text-emerald-600">{Math.round((candidate.educationScore || 0) * 0.15)}%</span> (out of a possible 15%), a <span className="font-bold">Skills</span> contribution of <span className="font-black text-emerald-600">{Math.round((candidate.skillsScore || 0) * 0.35)}%</span> (out of a possible 35%), and an <span className="font-bold">Experience</span> contribution of <span className="font-black text-emerald-600">{Math.round((candidate.experienceScore || 0) * 0.50)}%</span> (out of a possible 50%).
                 </p>
               </div>
+            </section>
+
+            <section>
+              <h3 className="text-sm font-bold text-gray-900 uppercase tracking-tight mb-4 flex items-center gap-2">
+                <GraduationCap size={16} className="text-[#d81159]" /> Candidate Summary
+              </h3>
+              <p className="text-gray-600 text-sm leading-relaxed bg-gray-50/50 p-5 rounded-2xl italic border border-dashed border-gray-200">
+                "Experienced {candidate.preferredJob} with a strong background in {candidate.skills[0]} and {candidate.skills[1]}. 
+                Proven track record of delivering high-quality projects in {candidate.location} with a focus on user experience and scalable architecture."
+              </p>
             </section>
           </div>
         </div>

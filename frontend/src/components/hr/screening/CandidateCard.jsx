@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Calendar, MapPin, ChevronDown, CheckCircle2, XCircle, Clock, Search, Check } from 'lucide-react';
+import { Calendar, MapPin, ChevronDown, CheckCircle2, XCircle, Clock, Search, Check, Archive, Trash2 } from 'lucide-react';
 
-const CandidateCard = ({ candidate, onOpenDetails, onOpenInterview, onUpdateStatus }) => {
+const CandidateCard = ({ candidate, onOpenDetails, onOpenInterview, onUpdateStatus, onArchiveApplication, onDeleteApplication }) => {
   const [isUpdating, setIsUpdating] = useState(false);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const dropdownRef = useRef(null);
@@ -35,6 +35,7 @@ const CandidateCard = ({ candidate, onOpenDetails, onOpenInterview, onUpdateStat
       case 'reviewed': return { icon: <Search className="w-4 h-4" />, color: 'text-blue-600', bg: 'bg-blue-50', border: 'border-blue-100', label: 'Reviewed' };
       case 'technical interview': return { icon: <Clock className="w-4 h-4" />, color: 'text-purple-600', bg: 'bg-purple-50', border: 'border-purple-100', label: 'Technical Interview' };
       case 'final interview': return { icon: <Clock className="w-4 h-4" />, color: 'text-indigo-600', bg: 'bg-indigo-50', border: 'border-indigo-100', label: 'Final Interview' };
+      case 'archived': return { icon: <Archive className="w-4 h-4" />, color: 'text-gray-600', bg: 'bg-gray-50', border: 'border-gray-100', label: 'Archived' };
       default: return { icon: <Clock className="w-4 h-4" />, color: 'text-amber-600', bg: 'bg-amber-50', border: 'border-amber-100', label: 'Pending' };
     }
   };
@@ -104,7 +105,27 @@ const CandidateCard = ({ candidate, onOpenDetails, onOpenInterview, onUpdateStat
         </div>
 
         {/* Action Section */}
-        <div className="flex flex-row flex-wrap lg:flex-nowrap gap-3 w-full lg:w-auto shrink-0 mt-6 lg:mt-0 pt-6 lg:pt-0 border-t lg:border-t-0 border-gray-50">
+        <div className="flex flex-row items-center gap-3 w-full lg:w-auto shrink-0 mt-6 lg:mt-0 pt-6 lg:pt-0 border-t lg:border-t-0 border-gray-50">
+          {/* Archive Button */}
+          {candidate.status.toLowerCase() !== "archived" && (
+            <button
+              onClick={() => onArchiveApplication(candidate.id)}
+              title="Archive Candidate"
+              className="p-3 bg-gray-50 border border-gray-100 text-gray-400 hover:bg-amber-50 hover:border-amber-100 hover:text-amber-600 rounded-xl transition-all duration-300 hover:shadow-sm"
+            >
+              <Archive size={16} />
+            </button>
+          )}
+
+          {/* Remove Button */}
+          <button
+            onClick={() => onDeleteApplication(candidate.id)}
+            title="Remove Candidate"
+            className="p-3 bg-gray-50 border border-gray-100 text-gray-400 hover:bg-rose-50 hover:border-rose-100 hover:text-rose-600 rounded-xl transition-all duration-300 hover:shadow-sm"
+          >
+            <Trash2 size={16} />
+          </button>
+
           {/* Custom Status Dropdown as a Button */}
           <div className="relative flex-1 lg:flex-none lg:min-w-[140px]" ref={dropdownRef}>
             <button

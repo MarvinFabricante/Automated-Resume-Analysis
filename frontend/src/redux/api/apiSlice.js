@@ -92,7 +92,9 @@ export const apiSlice = createApi({
           educationScore: app.education_score || 0,
           skills_reason: app.skills_reason,
           experience_reason: app.experience_reason,
-          education_reason: app.education_reason
+          education_reason: app.education_reason,
+          email: app.candidate_email,
+          phone: app.phone || "N/A"
         }));
       },
     }),
@@ -143,6 +145,14 @@ export const apiSlice = createApi({
         url: `/applications/${id}/status`,
         method: 'PATCH',
         body: { status },
+      }),
+      invalidatesTags: ['Applications'],
+    }),
+
+    deleteApplication: builder.mutation({
+      query: (id) => ({
+        url: `/applications/${id}`,
+        method: 'DELETE',
       }),
       invalidatesTags: ['Applications'],
     }),
@@ -226,6 +236,7 @@ export const {
   useGetApplicationsQuery,
   useGetCandidateApplicationsQuery,
   useSubmitApplicationMutation,
+  useDeleteApplicationMutation,
   useCreateJobMutation,
   useUpdateJobMutation,
   useUpdateJobStatusMutation,
