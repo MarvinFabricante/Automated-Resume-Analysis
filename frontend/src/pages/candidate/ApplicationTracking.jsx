@@ -55,27 +55,27 @@ const ApplicationTracking = () => {
     },
     {
       label: "Initial Screening",
-      date: application.step >= 2 ? "Completed" : "Pending",
+      date: application.step > 1 ? "Completed" : "Pending",
       description: application.originalData?.match_score ? "Recruiter reviewed your profile and resume. Your skills were evaluated against our requirements." : "Recruiter is currently reviewing your profile and resume.",
-      status: application.step >= 2 ? "completed" : (application.step === 1 ? "current" : "upcoming")
+      status: application.step > 1 ? "completed" : (application.step === 1 ? "current" : "upcoming")
     },
     {
       label: "Technical Interview",
-      date: application.step >= 3 ? "Completed" : "Pending",
+      date: application.step > 2 ? "Completed" : "Pending",
       description: "Live coding and architectural discussion with the Engineering Lead.",
-      status: application.step >= 3 ? "completed" : (application.step === 2 ? "current" : "upcoming")
+      status: application.step > 2 ? "completed" : (application.step === 2 ? "current" : "upcoming")
     },
     {
       label: "Final Interview",
-      date: application.step >= 4 ? "Completed" : "Pending",
+      date: application.step > 3 ? "Completed" : "Pending",
       description: "Interview with the Head of Digital Transformation.",
-      status: application.step >= 4 ? "completed" : (application.step === 3 ? "current" : "upcoming")
+      status: application.step > 3 ? "completed" : (application.step === 3 ? "current" : "upcoming")
     },
     {
       label: "Job Offer",
       date: application.status === 'Accepted' ? "Completed" : application.status === 'Rejected' ? "Declined" : "Pending",
       description: application.status === 'Rejected' ? "We regret to inform you that we are not moving forward with your application at this time." : "Final decision and salary negotiation phase.",
-      status: application.status === 'Accepted' ? "completed" : application.status === 'Rejected' ? "failed" : "upcoming"
+      status: application.status === 'Accepted' ? "completed" : application.status === 'Rejected' ? "failed" : (application.step === 4 ? "current" : "upcoming")
     }
   ];
 

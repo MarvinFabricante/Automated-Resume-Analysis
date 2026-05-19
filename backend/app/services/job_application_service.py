@@ -109,6 +109,12 @@ async def update_application_status(db: AsyncSession, application_id: int, new_s
         elif status_upper == "REJECTED":
             title = "Application Update"
             message = f"Thank you for your interest. Unfortunately, your application for the position of {job_title} has been rejected."
+        elif status_upper == "TECHNICAL INTERVIEW":
+            title = "Technical Interview Scheduled 💻"
+            message = f"You have advanced to the Technical Interview stage for the {job_title} position!"
+        elif status_upper == "FINAL INTERVIEW":
+            title = "Final Interview Scheduled 🤝"
+            message = f"Great news! You have reached the Final Interview stage for the {job_title} position!"
         elif status_upper == "REVIEWED":
             title = "Application Under Review"
             message = f"Great news! Your application for the position of {job_title} has been reviewed."

@@ -33,6 +33,8 @@ const CandidateCard = ({ candidate, onOpenDetails, onOpenInterview, onUpdateStat
       case 'accepted': return { icon: <CheckCircle2 className="w-4 h-4" />, color: 'text-emerald-600', bg: 'bg-emerald-50', border: 'border-emerald-100', label: 'Accepted' };
       case 'rejected': return { icon: <XCircle className="w-4 h-4" />, color: 'text-rose-600', bg: 'bg-rose-50', border: 'border-rose-100', label: 'Rejected' };
       case 'reviewed': return { icon: <Search className="w-4 h-4" />, color: 'text-blue-600', bg: 'bg-blue-50', border: 'border-blue-100', label: 'Reviewed' };
+      case 'technical interview': return { icon: <Clock className="w-4 h-4" />, color: 'text-purple-600', bg: 'bg-purple-50', border: 'border-purple-100', label: 'Technical Interview' };
+      case 'final interview': return { icon: <Clock className="w-4 h-4" />, color: 'text-indigo-600', bg: 'bg-indigo-50', border: 'border-indigo-100', label: 'Final Interview' };
       default: return { icon: <Clock className="w-4 h-4" />, color: 'text-amber-600', bg: 'bg-amber-50', border: 'border-amber-100', label: 'Pending' };
     }
   };
@@ -117,7 +119,7 @@ const CandidateCard = ({ candidate, onOpenDetails, onOpenInterview, onUpdateStat
 
             {isDropdownOpen && (
               <div className="absolute top-full right-0 mt-2 w-48 bg-white border border-gray-100 rounded-2xl shadow-2xl z-50 py-2 animate-in fade-in slide-in-from-top-2 duration-200">
-                {['Pending', 'Reviewed', 'Accepted', 'Rejected'].map((s) => {
+                {['Pending', 'Reviewed', 'Technical Interview', 'Final Interview', 'Accepted', 'Rejected'].map((s) => {
                   const info = getStatusInfo(s);
                   return (
                     <button

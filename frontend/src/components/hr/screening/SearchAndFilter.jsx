@@ -60,6 +60,8 @@ const SearchAndFilter = ({
           <option value="All Status">All Statuses</option>
           <option value="Pending">Pending Review</option>
           <option value="Reviewed">Already Reviewed</option>
+          <option value="Technical Interview">Technical Interview</option>
+          <option value="Final Interview">Final Interview</option>
           <option value="Accepted">Accepted</option>
           <option value="Rejected">Rejected</option>
         </select>

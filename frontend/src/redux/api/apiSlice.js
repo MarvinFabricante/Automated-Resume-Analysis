@@ -100,19 +100,26 @@ export const apiSlice = createApi({
       transformResponse: (response) => {
         return response.map(app => {
           const uStatus = app.status ? app.status.toUpperCase() : 'PENDING';
+          const formattedStatus = uStatus.split(' ').map(word => word.charAt(0) + word.slice(1).toLowerCase()).join(' ');
           return {
             id: app.id,
             role: app.job_title || app.job?.job_title || "Unknown Position",
             company: app.company || "Mariwasa Siam Ceramics",
             appliedDate: new Date(app.created_at).toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }),
-            status: uStatus.charAt(0) + uStatus.slice(1).toLowerCase(),
+            status: formattedStatus,
             statusColor: uStatus === 'PENDING' ? "text-amber-600 bg-amber-50 border-amber-100" :
               uStatus === 'REVIEWED' ? "text-blue-600 bg-blue-50 border-blue-100" :
-                uStatus === 'ACCEPTED' ? "text-emerald-600 bg-emerald-50 border-emerald-100" :
-                  uStatus === 'REJECTED' ? "text-rose-600 bg-rose-50 border-rose-100" :
-                    "text-slate-600 bg-slate-50 border-slate-100",
-            step: uStatus === 'PENDING' ? 1 : uStatus === 'REVIEWED' ? 2 : uStatus === 'ACCEPTED' ? 4 : 4,
-            totalSteps: 4,
+                uStatus === 'TECHNICAL INTERVIEW' ? "text-purple-600 bg-purple-50 border-purple-100" :
+                  uStatus === 'FINAL INTERVIEW' ? "text-indigo-600 bg-indigo-50 border-indigo-100" :
+                    uStatus === 'ACCEPTED' ? "text-emerald-600 bg-emerald-50 border-emerald-100" :
+                      uStatus === 'REJECTED' ? "text-rose-600 bg-rose-50 border-rose-100" :
+                        "text-slate-600 bg-slate-50 border-slate-100",
+            step: uStatus === 'PENDING' ? 1 : 
+                  uStatus === 'REVIEWED' ? 2 : 
+                  uStatus === 'TECHNICAL INTERVIEW' ? 3 : 
+                  uStatus === 'FINAL INTERVIEW' ? 4 : 
+                  (uStatus === 'ACCEPTED' || uStatus === 'REJECTED') ? 5 : 1,
+            totalSteps: 5,
             originalData: app
           };
         });
