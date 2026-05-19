@@ -17,9 +17,10 @@ async def create_admin_profile(db: AsyncSession, admin_in: AdminCreate):
     Creates a new Admin profile. 
     SQLAlchemy handles the polymorphic 'users' table entry automatically.
     """
+    email_lower = admin_in.email.strip().lower()
     new_admin = Admin(
         fullname=admin_in.fullname,
-        email=admin_in.email,
+        email=email_lower,
         password=hash_password(admin_in.password),
         role="ADMIN",
         managed_region=admin_in.managed_region

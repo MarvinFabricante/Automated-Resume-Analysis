@@ -4,8 +4,18 @@ import Header from '../../components/layout/Header';
 import Sidebar from '../../components/layout/Sidebar';
 import ChatLayout from '../../components/chat/ChatLayout';
 import { MessageSquare, Shield, Clock } from 'lucide-react';
+import { useSelector } from 'react-redux';
+import { useGetActiveUsersCountQuery } from '../../redux/api/apiSlice';
 
 const MessagesPage = () => {
+    const { role } = useSelector((state) => state.auth);
+    const showActiveWidget = role === 'HR' || role === 'ADMIN';
+
+    const { data: activeData } = useGetActiveUsersCountQuery(undefined, {
+        skip: !showActiveWidget,
+    });
+    const activeCount = activeData?.count || 1;
+
     return (
         <div className="bg-[#FCFCFC] text-gray-800 antialiased min-h-screen font-['Inter'] flex flex-col">
             <Helmet>
@@ -31,20 +41,19 @@ const MessagesPage = () => {
                             </p>
                         </div>
                         
-                        <div className="hidden lg:flex items-center gap-6 px-6 py-3 bg-white border border-gray-100 rounded-2xl shadow-sm">
-                            <div className="text-center">
-                                <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Active Now</p>
-                                <div className="flex items-center justify-center gap-1.5">
-                                    <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></div>
-                                    <span className="text-sm font-black text-gray-900">12 Officers</span>
+                        {showActiveWidget && (
+                            <div className="hidden lg:flex items-center gap-6 px-6 py-3 bg-white border border-gray-100 rounded-2xl shadow-sm">
+                                <div className="text-center">
+                                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Active Users</p>
+                                    <div className="flex items-center justify-center gap-1.5">
+                                        <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></div>
+                                        <span className="text-sm font-black text-gray-900">
+                                            {activeCount} {activeCount === 1 ? 'User' : 'Users'} Online
+                                        </span>
+                                    </div>
                                 </div>
                             </div>
-                            <div className="w-px h-8 bg-gray-100"></div>
-                            <div className="text-center">
-                                <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Total Threads</p>
-                                <span className="text-sm font-black text-gray-900">1,204</span>
-                            </div>
-                        </div>
+                        )}
                     </div>
 
                     <div className="flex-1 min-h-[600px]">

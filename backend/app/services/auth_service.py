@@ -11,6 +11,7 @@ import uuid
 from datetime import datetime, timedelta
 
 async def register_user(db: AsyncSession, email: str, password: str, role: str, fullname: str = ""):
+    email = email.strip().lower()
     result = await db.execute(select(User).where(User.email == email))
     existing_user = result.scalar_one_or_none()
 
@@ -35,6 +36,7 @@ async def register_user(db: AsyncSession, email: str, password: str, role: str, 
 
 
 async def login_user(db: AsyncSession, email: str, password: str):
+    email = email.strip().lower()
     result = await db.execute(select(User).where(User.email == email))
     user = result.scalar_one_or_none()
 
@@ -83,6 +85,7 @@ async def login_user(db: AsyncSession, email: str, password: str):
     return {"token": token, "role": user.role, "fullname": user.fullname, "user_id": user.id, "profile_image_url": user.profile_image_url}
 
 async def request_password_reset(db: AsyncSession, email: str):
+    email = email.strip().lower()
     # Check if user exists
     result = await db.execute(select(User).where(User.email == email))
     user = result.scalar_one_or_none()

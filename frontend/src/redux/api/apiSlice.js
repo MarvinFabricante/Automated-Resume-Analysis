@@ -2,7 +2,16 @@ import { createApi, fetchBaseQuery } from '@reduxjs/toolkit/query/react';
 
 export const apiSlice = createApi({
   reducerPath: 'api',
-  baseQuery: fetchBaseQuery({ baseUrl: 'http://localhost:8000' }),
+  baseQuery: fetchBaseQuery({
+    baseUrl: 'http://localhost:8000',
+    prepareHeaders: (headers) => {
+      const token = localStorage.getItem('token');
+      if (token) {
+        headers.set('authorization', `Bearer ${token}`);
+      }
+      return headers;
+    },
+  }),
   // Added AuditLogs and Users to tagTypes so they are recognized
   tagTypes: ['Dashboard', 'Jobs', 'Candidates', 'Applications', 'AuditLogs', 'Users'],
   endpoints: (builder) => ({
@@ -89,19 +98,24 @@ export const apiSlice = createApi({
       query: (email) => `/applications/candidate/${email}`,
       providesTags: ['Applications'],
       transformResponse: (response) => {
-        return response.map(app => ({
-          id: app.id,
-          role: app.job_title || app.job?.job_title || "Unknown Position",
-          company: app.company || "Mariwasa Siam Ceramics",
-          appliedDate: new Date(app.created_at).toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }),
-          status: app.status.charAt(0).toUpperCase() + app.status.slice(1).toLowerCase(),
-          statusColor: app.status === 'PENDING' ? "text-orange-600 bg-orange-50 border-orange-100" :
-            app.status === 'REVIEWED' ? "text-blue-600 bg-blue-50 border-blue-100" :
-              app.status === 'ACCEPTED' ? "text-green-600 bg-green-50 border-green-100" :
-                "text-slate-600 bg-slate-50 border-slate-100",
-          step: app.status === 'PENDING' ? 1 : app.status === 'REVIEWED' ? 2 : 4,
-          totalSteps: 4
-        }));
+        return response.map(app => {
+          const uStatus = app.status ? app.status.toUpperCase() : 'PENDING';
+          return {
+            id: app.id,
+            role: app.job_title || app.job?.job_title || "Unknown Position",
+            company: app.company || "Mariwasa Siam Ceramics",
+            appliedDate: new Date(app.created_at).toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }),
+            status: uStatus.charAt(0) + uStatus.slice(1).toLowerCase(),
+            statusColor: uStatus === 'PENDING' ? "text-amber-600 bg-amber-50 border-amber-100" :
+              uStatus === 'REVIEWED' ? "text-blue-600 bg-blue-50 border-blue-100" :
+                uStatus === 'ACCEPTED' ? "text-emerald-600 bg-emerald-50 border-emerald-100" :
+                  uStatus === 'REJECTED' ? "text-rose-600 bg-rose-50 border-rose-100" :
+                    "text-slate-600 bg-slate-50 border-slate-100",
+            step: uStatus === 'PENDING' ? 1 : uStatus === 'REVIEWED' ? 2 : uStatus === 'ACCEPTED' ? 4 : 4,
+            totalSteps: 4,
+            originalData: app
+          };
+        });
       },
     }),
 
@@ -121,6 +135,12 @@ export const apiSlice = createApi({
         body: { status },
       }),
       invalidatesTags: ['Applications'],
+    }),
+
+    getActiveUsersCount: builder.query({
+      query: () => '/chat/active-count',
+      // Poll every 15 seconds to keep it fresh
+      pollingInterval: 15000,
     }),
 
     // --- ADMIN / HR TOOLS ---
@@ -206,4 +226,5 @@ export const {
   useUnarchiveUserMutation,
   useGetAdminSystemStatsQuery,
   useGetAuditLogsQuery,
+  useGetActiveUsersCountQuery,
 } = apiSlice;

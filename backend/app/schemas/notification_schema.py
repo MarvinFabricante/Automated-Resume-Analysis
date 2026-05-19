@@ -13,6 +13,7 @@ class NotificationResponse(NotificationBase):
     id: int
     is_read: bool
     target_role: str | None = None
+    target_email: str | None = None
     created_at: datetime
 
     class Config:

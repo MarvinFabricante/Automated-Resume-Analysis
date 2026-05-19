@@ -46,7 +46,7 @@ const Header = () => {
     const fetchNotifications = async () => {
       if (isAdminRole || isHRRole) {
         try {
-          const res = await axios.get(`http://localhost:8000/notifications/?role=${userRole}`);
+          const res = await axios.get(`http://localhost:8000/notifications/?role=${userRole}&email=${userEmail}`);
           const formatted = res.data.map(n => {
             let iconName = 'AlertCircle';
             let bgColor = 'bg-slate-50';
@@ -58,11 +58,11 @@ const Header = () => {
               iconName = 'UserPlus';
               bgColor = 'bg-blue-50';
               textColor = 'text-blue-600';
-            } else if (n.type === 'application') {
+            } else if (n.type === 'application' || n.type === 'application_update') {
               iconName = 'Briefcase';
               bgColor = 'bg-pink-50';
               textColor = 'text-[#D60041]';
-              tag = 'New';
+              tag = 'Update';
               tagColor = 'bg-pink-100 text-[#D60041]';
             } else if (n.type === 'upload') {
               iconName = 'FileText';
@@ -99,7 +99,7 @@ const Header = () => {
             let timeStr = 'just now';
             if (diffMins > 0 && diffMins < 60) timeStr = `${diffMins}m ago`;
             else if (diffMins >= 60 && diffMins < 1440) timeStr = `${Math.floor(diffMins / 60)}h ago`;
-            else if (diffMins >= 1440) timeStr = `${Math.floor(diffMins / 14440)}d ago`;
+            else if (diffMins >= 1440) timeStr = `${Math.floor(diffMins / 1440)}d ago`;
 
             return {
               id: n.id,
@@ -122,19 +122,86 @@ const Header = () => {
       }
 
       if (isCandidateRole) {
-        const candidateNotifs = [
-          { id: 1, title: 'Status Update', desc: 'Your application for Frontend Lead is now "Under Review".', time: '2m ago', type: 'application', icon: 'Briefcase', bgColor: 'bg-blue-50', textColor: 'text-blue-600', tag: 'Update', tagColor: 'bg-blue-100 text-blue-700', read: false },
-          { id: 2, title: 'Interview Invite', desc: 'Mariwasa HR sent you an interview invitation.', time: '1h ago', type: 'schedule', icon: 'MessageSquare', bgColor: 'bg-pink-50', textColor: 'text-[#D60041]', read: false },
-          { id: 3, title: 'Job Match', desc: 'New "UI Designer" role matches your profile.', time: '3h ago', type: 'job', icon: 'TrendingUp', bgColor: 'bg-green-50', textColor: 'text-green-600', read: false }
-        ];
-        dispatch(setNotifications(candidateNotifs));
+        try {
+          const res = await axios.get(`http://localhost:8000/notifications/?role=${userRole}&email=${userEmail}`);
+          const formatted = res.data.map(n => {
+            let iconName = 'Briefcase';
+            let bgColor = 'bg-blue-50';
+            let textColor = 'text-blue-600';
+            let tag = 'Update';
+            let tagColor = 'bg-blue-100 text-blue-700';
+
+            if (n.type === 'schedule') {
+              iconName = 'MessageSquare';
+              bgColor = 'bg-pink-50';
+              textColor = 'text-[#D60041]';
+              tag = 'Interview';
+              tagColor = 'bg-pink-100 text-[#D60041]';
+            } else if (n.type === 'job') {
+              iconName = 'TrendingUp';
+              bgColor = 'bg-green-50';
+              textColor = 'text-green-600';
+              tag = 'Match';
+              tagColor = 'bg-green-100 text-green-700';
+            } else if (n.type === 'application_update') {
+              if (n.title.includes('Accepted') || n.title.includes('🎉')) {
+                bgColor = 'bg-emerald-50';
+                textColor = 'text-emerald-600';
+                tag = 'Accepted';
+                tagColor = 'bg-emerald-100 text-emerald-700';
+              } else if (n.title.includes('Rejected') || n.message?.includes('regret') || n.message?.includes('other candidates') || n.desc?.includes('regret') || n.desc?.includes('other candidates')) {
+                bgColor = 'bg-rose-50';
+                textColor = 'text-rose-600';
+                tag = 'Rejected';
+                tagColor = 'bg-rose-100 text-rose-700';
+              } else {
+                bgColor = 'bg-pink-50';
+                textColor = 'text-[#D60041]';
+                tag = 'Update';
+                tagColor = 'bg-pink-100 text-[#D60041]';
+              }
+            }
+
+            const created = new Date(n.created_at);
+            const now = new Date();
+            const diffMs = now - created;
+            const diffMins = Math.floor(diffMs / 60000);
+            let timeStr = 'just now';
+            if (diffMins > 0 && diffMins < 60) timeStr = `${diffMins}m ago`;
+            else if (diffMins >= 60 && diffMins < 1440) timeStr = `${Math.floor(diffMins / 60)}h ago`;
+            else if (diffMins >= 1440) timeStr = `${Math.floor(diffMins / 1440)}d ago`;
+
+            return {
+              id: n.id,
+              title: n.title,
+              desc: n.message,
+              time: timeStr,
+              type: n.type,
+              icon: iconName,
+              bgColor,
+              textColor,
+              tag,
+              tagColor,
+              read: n.is_read
+            };
+          });
+
+          const defaultNotifs = [
+            { id: 'def-2', title: 'Interview Invite', desc: 'Mariwasa HR sent you an interview invitation.', time: '1h ago', type: 'schedule', icon: 'MessageSquare', bgColor: 'bg-pink-50', textColor: 'text-[#D60041]', tag: 'Interview', tagColor: 'bg-pink-100 text-[#D60041]', read: false },
+            { id: 'def-3', title: 'Job Match', desc: 'New "UI Designer" role matches your profile.', time: '3h ago', type: 'job', icon: 'TrendingUp', bgColor: 'bg-green-50', textColor: 'text-green-600', tag: 'Match', tagColor: 'bg-green-100 text-green-700', read: false }
+          ];
+
+          dispatch(setNotifications([...formatted, ...defaultNotifs]));
+        } catch (err) {
+          console.error("Failed to fetch candidate notifications:", err);
+        }
       }
     };
 
     fetchNotifications();
 
-    if (isAdminRole || isHRRole) {
-      ws = new WebSocket(`ws://localhost:8000/notifications/ws?role=${userRole}`);
+    if (isAdminRole || isHRRole || isCandidateRole) {
+      ws = new WebSocket(`ws://localhost:8000/notifications/ws?role=${userRole}&email=${userEmail}`);
       ws.onmessage = (event) => {
         try {
           const n = JSON.parse(event.data);
@@ -144,14 +211,54 @@ const Header = () => {
           let tag = null;
           let tagColor = null;
 
-          if (n.type === 'registration') { iconName = 'UserPlus'; bgColor = 'bg-blue-50'; textColor = 'text-blue-600'; }
-          else if (n.type === 'application') { iconName = 'Briefcase'; bgColor = 'bg-pink-50'; textColor = 'text-[#D60041]'; tag = 'New'; tagColor = 'bg-pink-100 text-[#D60041]'; }
-          else if (n.type === 'upload') { iconName = 'FileText'; bgColor = 'bg-orange-50'; textColor = 'text-orange-600'; }
-          else if (n.type === 'hr_registration') { iconName = 'ShieldCheck'; bgColor = 'bg-indigo-50'; textColor = 'text-indigo-600'; tag = 'System'; tagColor = 'bg-indigo-100 text-indigo-700'; }
-          else if (n.type === 'job_creation') { iconName = 'Zap'; bgColor = 'bg-green-50'; textColor = 'text-green-600'; }
-          else if (n.type === 'job_update') { iconName = 'Edit3'; bgColor = 'bg-amber-50'; textColor = 'text-amber-600'; }
-          else if (n.type === 'candidate_login') { iconName = 'Radio'; bgColor = 'bg-green-50'; textColor = 'text-green-600'; }
-          else if (n.type === 'hr_login') { iconName = 'Radio'; bgColor = 'bg-purple-50'; textColor = 'text-purple-600'; }
+          if (isCandidateRole) {
+            iconName = 'Briefcase';
+            bgColor = 'bg-blue-50';
+            textColor = 'text-blue-600';
+            tag = 'Update';
+            tagColor = 'bg-blue-100 text-blue-700';
+
+            if (n.type === 'schedule') {
+              iconName = 'MessageSquare';
+              bgColor = 'bg-pink-50';
+              textColor = 'text-[#D60041]';
+              tag = 'Interview';
+              tagColor = 'bg-pink-100 text-[#D60041]';
+            } else if (n.type === 'job') {
+              iconName = 'TrendingUp';
+              bgColor = 'bg-green-50';
+              textColor = 'text-green-600';
+              tag = 'Match';
+              tagColor = 'bg-green-100 text-green-700';
+            } else if (n.type === 'application_update') {
+              if (n.title.includes('Accepted') || n.title.includes('🎉')) {
+                bgColor = 'bg-emerald-50';
+                textColor = 'text-emerald-600';
+                tag = 'Accepted';
+                tagColor = 'bg-emerald-100 text-emerald-700';
+              } else if (n.title.includes('Rejected') || n.message?.includes('regret') || n.message?.includes('other candidates')) {
+                bgColor = 'bg-rose-50';
+                textColor = 'text-rose-600';
+                tag = 'Rejected';
+                tagColor = 'bg-rose-100 text-rose-700';
+              } else {
+                bgColor = 'bg-pink-50';
+                textColor = 'text-[#D60041]';
+                tag = 'Update';
+                tagColor = 'bg-pink-100 text-[#D60041]';
+              }
+            }
+          } else {
+            // HR / Admin
+            if (n.type === 'registration') { iconName = 'UserPlus'; bgColor = 'bg-blue-50'; textColor = 'text-blue-600'; }
+            else if (n.type === 'application' || n.type === 'application_update') { iconName = 'Briefcase'; bgColor = 'bg-pink-50'; textColor = 'text-[#D60041]'; tag = 'Update'; tagColor = 'bg-pink-100 text-[#D60041]'; }
+            else if (n.type === 'upload') { iconName = 'FileText'; bgColor = 'bg-orange-50'; textColor = 'text-orange-600'; }
+            else if (n.type === 'hr_registration') { iconName = 'ShieldCheck'; bgColor = 'bg-indigo-50'; textColor = 'text-indigo-600'; tag = 'System'; tagColor = 'bg-indigo-100 text-indigo-700'; }
+            else if (n.type === 'job_creation') { iconName = 'Zap'; bgColor = 'bg-green-50'; textColor = 'text-green-600'; }
+            else if (n.type === 'job_update') { iconName = 'Edit3'; bgColor = 'bg-amber-50'; textColor = 'text-amber-600'; }
+            else if (n.type === 'candidate_login') { iconName = 'Radio'; bgColor = 'bg-green-50'; textColor = 'text-green-600'; }
+            else if (n.type === 'hr_login') { iconName = 'Radio'; bgColor = 'bg-purple-50'; textColor = 'text-purple-600'; }
+          }
 
           const formattedNewNotif = {
             id: n.id, title: n.title, desc: n.message, time: 'just now', type: n.type, icon: iconName, bgColor, textColor, tag, tagColor, read: n.is_read

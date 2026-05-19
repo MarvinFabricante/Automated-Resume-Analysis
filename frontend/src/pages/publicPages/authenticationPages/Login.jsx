@@ -43,9 +43,11 @@ const Login = () => {
     e.preventDefault();
     setLoading(true);
 
+    const normalizedEmail = email.trim().toLowerCase();
+
     try {
       const response = await axios.post('http://localhost:8000/auth/login', {
-        email: email,
+        email: normalizedEmail,
         password: password,
       });
 
@@ -64,7 +66,7 @@ const Login = () => {
 
       // Update Redux state
       dispatch(setCredentials({
-        user: email,
+        user: normalizedEmail,
         role: verifiedRole,
         profileImageUrl: profile_image_url
       }));

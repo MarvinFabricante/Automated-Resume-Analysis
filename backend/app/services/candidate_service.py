@@ -36,9 +36,10 @@ async def create_candidate_profile(db: AsyncSession, candidate_in: CandidateCrea
     Creates a new Candidate profile. 
     SQLAlchemy handles the polymorphic 'users' table entry automatically.
     """
+    email_lower = candidate_in.email.strip().lower()
     new_candidate = Candidate(
         fullname=candidate_in.fullname,
-        email=candidate_in.email,
+        email=email_lower,
         password=hash_password(candidate_in.password),
         role="CANDIDATE",
         resume_url=candidate_in.resume_url,

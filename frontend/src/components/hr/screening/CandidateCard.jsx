@@ -128,13 +128,13 @@ const CandidateCard = ({ candidate, onOpenDetails, onOpenInterview, onUpdateStat
                         await onUpdateStatus(candidate.id, s);
                         setTimeout(() => setIsUpdating(false), 800);
                       }}
-                      className={`w-full flex items-center justify-between px-4 py-2.5 text-[10px] font-bold uppercase tracking-widest transition-colors ${candidate.status === s ? info.bg + ' ' + info.color : 'text-gray-500 hover:bg-gray-50'}`}
+                      className={`w-full flex items-center justify-between px-4 py-2.5 text-[10px] font-bold uppercase tracking-widest transition-colors ${candidate.status.toLowerCase() === s.toLowerCase() ? info.bg + ' ' + info.color : 'text-gray-500 hover:bg-gray-50'}`}
                     >
                       <div className="flex items-center gap-2">
                         <span className={info.color}>{info.icon}</span>
                         {s}
                       </div>
-                      {candidate.status === s && <Check className="w-3 h-3" />}
+                      {candidate.status.toLowerCase() === s.toLowerCase() && <Check className="w-3 h-3" />}
                     </button>
                   );
                 })}

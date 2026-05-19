@@ -73,9 +73,9 @@ const ApplicationTracking = () => {
     },
     {
       label: "Job Offer",
-      date: application.status === 'ACCEPTED' ? "Completed" : "Pending",
-      description: "Final decision and salary negotiation phase.",
-      status: application.status === 'ACCEPTED' ? "completed" : "upcoming"
+      date: application.status === 'Accepted' ? "Completed" : application.status === 'Rejected' ? "Declined" : "Pending",
+      description: application.status === 'Rejected' ? "We regret to inform you that we are not moving forward with your application at this time." : "Final decision and salary negotiation phase.",
+      status: application.status === 'Accepted' ? "completed" : application.status === 'Rejected' ? "failed" : "upcoming"
     }
   ];
 
@@ -130,7 +130,12 @@ const ApplicationTracking = () => {
                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Current Status</p>
                   <p className="text-sm font-black text-slate-900 tracking-tight">{jobDetails.status}</p>
                 </div>
-                <div className={`w-3 h-3 rounded-full animate-pulse ${jobDetails.status.includes('Interview') ? 'bg-blue-500' : 'bg-green-500'}`} />
+                <div className={`w-3 h-3 rounded-full ${
+                  jobDetails.status === 'Accepted' ? 'bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.5)]' :
+                  jobDetails.status === 'Rejected' ? 'bg-rose-500 shadow-[0_0_10px_rgba(244,63,94,0.5)]' :
+                  jobDetails.status === 'Reviewed' ? 'bg-blue-500 shadow-[0_0_10px_rgba(59,130,246,0.5)]' :
+                  'bg-amber-500 shadow-[0_0_10px_rgba(245,158,11,0.5)] animate-pulse'
+                }`} />
                 <button className="p-4 bg-white hover:bg-[#D10043] hover:text-white rounded-2xl shadow-sm border border-slate-100 transition-all active:scale-[0.95] text-slate-400">
                   <MessageSquare size={20} />
                 </button>
@@ -165,6 +170,10 @@ const ApplicationTracking = () => {
                       {step.status === 'completed' ? (
                         <div className="bg-pink-50 w-7 h-7 rounded-full flex items-center justify-center border-4 border-white shadow-sm">
                           <CheckCircle2 className="w-4 h-4 text-[#D10043]" />
+                        </div>
+                      ) : step.status === 'failed' ? (
+                        <div className="bg-rose-50 w-7 h-7 rounded-full flex items-center justify-center border-4 border-white shadow-sm">
+                          <XCircle className="w-4 h-4 text-rose-500" />
                         </div>
                       ) : step.status === 'current' ? (
                         <div className="bg-white border-2 border-[#D10043] w-7 h-7 rounded-full flex items-center justify-center shadow-lg shadow-pink-100">
@@ -245,10 +254,18 @@ const ApplicationTracking = () => {
                 </div>
                 
                 <p className="text-sm text-slate-400 leading-relaxed font-bold mb-8">
-                  {application.step === 1 && <span>Your application is currently <span className="text-white">under review</span>. Keep your profile updated to stand out.</span>}
-                  {application.step === 2 && <span>Great news! You passed the initial screening. <span className="text-white">Next steps</span> will be communicated soon.</span>}
-                  {application.step === 3 && <span>Your Technical Interview is confirmed. <span className="text-white">Please prepare</span> your environment for the session.</span>}
-                  {application.step >= 4 && <span>Your final stages are complete. We will reach out with a <span className="text-white">final decision</span> shortly.</span>}
+                  {application.status === 'Rejected' ? (
+                    <span>Thank you for applying. We appreciate the time you invested. While we cannot proceed at this time, we will keep your profile in our talent pool for <span className="text-white">future openings</span>.</span>
+                  ) : application.status === 'Accepted' ? (
+                    <span>Congratulations! You have been offered the position. Please review the <span className="text-white">Job Offer</span> details and reach out to the recruiter.</span>
+                  ) : (
+                    <>
+                      {application.step === 1 && <span>Your application is currently <span className="text-white">under review</span>. Keep your profile updated to stand out.</span>}
+                      {application.step === 2 && <span>Great news! You passed the initial screening. <span className="text-white">Next steps</span> will be communicated soon.</span>}
+                      {application.step === 3 && <span>Your Technical Interview is confirmed. <span className="text-white">Please prepare</span> your environment for the session.</span>}
+                      {application.step >= 4 && <span>Your final stages are complete. We will reach out with a <span className="text-white">final decision</span> shortly.</span>}
+                    </>
+                  )}
                 </p>
                 
                 <div className="space-y-3">

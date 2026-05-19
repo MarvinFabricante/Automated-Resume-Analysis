@@ -11,11 +11,11 @@ from app.utils.websocket_manager import manager
 router = APIRouter(prefix="/notifications", tags=["Notifications"])
 
 @router.get("/", response_model=List[NotificationResponse])
-async def get_notifications(role: str = None, db: AsyncSession = Depends(get_db)):
+async def get_notifications(role: str = None, email: str = None, db: AsyncSession = Depends(get_db)):
     """
-    Get recent notifications, filtered by role if provided.
+    Get recent notifications, filtered by role and email if provided.
     """
-    return await notification_service.get_all_notifications(db, role)
+    return await notification_service.get_all_notifications(db, role, email)
 
 @router.put("/mark-read", status_code=status.HTTP_200_OK)
 async def mark_all_read(db: AsyncSession = Depends(get_db)):
@@ -28,13 +28,14 @@ async def mark_all_read(db: AsyncSession = Depends(get_db)):
 @router.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     """
-    WebSocket endpoint for real-time notifications, partitioned by role.
+    WebSocket endpoint for real-time notifications, partitioned by role and email.
     """
     role = websocket.query_params.get("role", "Guest")
-    await manager.connect(websocket, role)
+    email = websocket.query_params.get("email")
+    await manager.connect(websocket, role, email)
     try:
         while True:
             # Keep connection open
             await websocket.receive_text()
     except WebSocketDisconnect:
-        manager.disconnect(websocket, role)
+        manager.disconnect(websocket, role, email)

@@ -7,9 +7,10 @@ from app.utils.auth import hash_password
 from app.services.notification_service import create_notification
 
 async def create_hr_profile(db: AsyncSession, hr_in: HRCreate):
+    email_lower = hr_in.email.strip().lower()
     new_hr = HR(
         fullname=hr_in.fullname,
-        email=hr_in.email,
+        email=email_lower,
         password=hash_password(hr_in.password),
         role="HR",
         company_name=hr_in.company_name,

@@ -65,7 +65,7 @@ const Register = () => {
 
     const payload = {
       fullname: formData.fullName,
-      email: formData.email,
+      email: formData.email.trim().toLowerCase(),
       password: formData.password,
     };
 

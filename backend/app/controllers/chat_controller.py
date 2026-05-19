@@ -12,6 +12,18 @@ from app.services import chat_service
 
 router = APIRouter(prefix="/chat", tags=["Chat"])
 
+@router.get("/active-count")
+async def get_active_count():
+    from app.utils.redis_client import redis_client
+    try:
+        redis = await redis_client.get_redis()
+        count = await redis.scard("online_users")
+        if count < 1:
+            count = 1
+    except Exception:
+        count = 1
+    return {"count": count}
+
 async def get_current_user_obj(payload: dict = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     email = payload.get("sub")
     result = await db.execute(select(User).where(User.email == email))

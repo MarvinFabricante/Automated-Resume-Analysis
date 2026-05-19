@@ -76,19 +76,55 @@ async def update_application_status(db: AsyncSession, application_id: int, new_s
     if not db_application:
         return None
         
-    db_application.status = new_status
+    status_upper = new_status.upper()
+    db_application.status = status_upper
     await db.commit()
     await db.refresh(db_application)
     
-    # Optional: Send notification about status change
+    # Send notifications about status change
     try:
+        # Notify HR
         await create_notification(
             db=db,
             title="Application Status Updated",
-            message=f"Application for {db_application.candidate_name} marked as {new_status}.",
-            type="application_update"
+            message=f"Application for {db_application.candidate_name} marked as {status_upper}.",
+            type="application_update",
+            target_role="HR"
         )
-    except:
-        pass
+        # Notify ADMIN
+        await create_notification(
+            db=db,
+            title="Application Status Updated",
+            message=f"Application for {db_application.candidate_name} marked as {status_upper}.",
+            type="application_update",
+            target_role="ADMIN"
+        )
+        
+        # Notify Candidate (Targeted to their email)
+        job_title = db_application.job.job_title if (db_application.job and db_application.job.job_title) else (db_application.job_title or "Position")
+        
+        if status_upper == "ACCEPTED":
+            title = "Application Accepted 🎉"
+            message = f"Congratulations! Your application for the position of {job_title} has been accepted."
+        elif status_upper == "REJECTED":
+            title = "Application Update"
+            message = f"Thank you for your interest. Unfortunately, your application for the position of {job_title} has been rejected."
+        elif status_upper == "REVIEWED":
+            title = "Application Under Review"
+            message = f"Great news! Your application for the position of {job_title} has been reviewed."
+        else:
+            title = "Application Status Update"
+            message = f"Your application for the position of {job_title} is currently pending review."
+            
+        await create_notification(
+            db=db,
+            title=title,
+            message=message,
+            type="application_update",
+            target_role="CANDIDATE",
+            target_email=db_application.candidate_email
+        )
+    except Exception as e:
+        print(f"Error creating status update notifications: {e}")
         
     return db_application

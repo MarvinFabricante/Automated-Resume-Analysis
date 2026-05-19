@@ -11,5 +11,6 @@ class Notification(Base):
     type = Column(String, nullable=False) # e.g., 'registration', 'application', 'upload', 'system'
     is_read = Column(Boolean, default=False)
     target_role = Column(String, nullable=True) # e.g., 'HR', 'ADMIN'
+    target_email = Column(String, nullable=True)
     
     created_at = Column(DateTime, default=datetime.utcnow)
