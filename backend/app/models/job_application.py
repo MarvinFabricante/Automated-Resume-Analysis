@@ -28,6 +28,9 @@ class JobApplication(Base):
     college = Column(String, nullable=True)
     skills = Column(JSON, nullable=True)
     match_score = Column(DOUBLE_PRECISION, nullable=True) # Percentage score 0-100
+    skills_score = Column(DOUBLE_PRECISION, nullable=True)
+    experience_score = Column(DOUBLE_PRECISION, nullable=True)
+    education_score = Column(DOUBLE_PRECISION, nullable=True)
     profile_image_url = Column(String, nullable=True)
     
     # Interpretation / Reasoning

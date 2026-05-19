@@ -46,15 +46,24 @@ const ViewCandidateDetailsModal = ({ isOpen, onClose, candidate }) => {
 
               <div className="space-y-2">
                 <div className="p-3 bg-blue-50 rounded-xl border border-blue-100">
-                  <p className="text-[9px] font-bold text-blue-400 uppercase mb-0.5">Skills Match</p>
+                  <div className="flex justify-between items-center mb-0.5">
+                    <p className="text-[9px] font-bold text-blue-400 uppercase">Skills Match</p>
+                    <span className="text-[10px] font-black text-blue-600">{candidate.skillsScore || 0}%</span>
+                  </div>
                   <p className="text-xs font-medium text-blue-700 leading-tight">{candidate.skills_reason || "Analyzed against job requirements."}</p>
                 </div>
                 <div className="p-3 bg-purple-50 rounded-xl border border-purple-100">
-                  <p className="text-[9px] font-bold text-purple-400 uppercase mb-0.5">Experience Match</p>
+                  <div className="flex justify-between items-center mb-0.5">
+                    <p className="text-[9px] font-bold text-purple-400 uppercase">Experience Match</p>
+                    <span className="text-[10px] font-black text-purple-600">{candidate.experienceScore || 0}%</span>
+                  </div>
                   <p className="text-xs font-medium text-purple-700 leading-tight">{candidate.experience_reason || "Analyzed based on extracted years."}</p>
                 </div>
                 <div className="p-3 bg-amber-50 rounded-xl border border-amber-100">
-                  <p className="text-[9px] font-bold text-amber-400 uppercase mb-0.5">Education Match</p>
+                  <div className="flex justify-between items-center mb-0.5">
+                    <p className="text-[9px] font-bold text-amber-400 uppercase">Education Match</p>
+                    <span className="text-[10px] font-black text-amber-600">{candidate.educationScore || 0}%</span>
+                  </div>
                   <p className="text-xs font-medium text-amber-700 leading-tight">{candidate.education_reason || "Analyzed based on highest degree."}</p>
                 </div>
               </div>
@@ -118,6 +127,17 @@ const ViewCandidateDetailsModal = ({ isOpen, onClose, candidate }) => {
                 "Experienced {candidate.preferredJob} with a strong background in {candidate.skills[0]} and {candidate.skills[1]}. 
                 Proven track record of delivering high-quality projects in {candidate.location} with a focus on user experience and scalable architecture."
               </p>
+            </section>
+
+            <section className="mt-8">
+              <h3 className="text-sm font-bold text-gray-900 uppercase tracking-tight mb-4 flex items-center gap-2">
+                <Star size={16} className="text-[#d81159]" /> Analysis Score Explanation
+              </h3>
+              <div className="bg-emerald-50/50 p-5 rounded-2xl border border-emerald-100">
+                <p className="text-emerald-800 text-sm leading-relaxed font-medium">
+                  We arrived at the final match score of <span className="font-black text-emerald-600">{candidate.matchScore}%</span> by evaluating the candidate across three weighted categories. This total consists of an <span className="font-bold">Education</span> contribution of <span className="font-black text-emerald-600">{Math.round((candidate.educationScore || 0) * 0.15)}%</span> (out of a possible 15%), a <span className="font-bold">Skills</span> contribution of <span className="font-black text-emerald-600">{Math.round((candidate.skillsScore || 0) * 0.35)}%</span> (out of a possible 35%), and an <span className="font-bold">Experience</span> contribution of <span className="font-black text-emerald-600">{Math.round((candidate.experienceScore || 0) * 0.50)}%</span> (out of a possible 50%).
+                </p>
+              </div>
             </section>
           </div>
         </div>

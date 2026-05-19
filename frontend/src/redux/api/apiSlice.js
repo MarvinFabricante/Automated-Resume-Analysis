@@ -87,6 +87,9 @@ export const apiSlice = createApi({
           date: app.created_at,
           location: app.job?.location || "N/A",
           matchScore: app.match_score || 0,
+          skillsScore: app.skills_score || 0,
+          experienceScore: app.experience_score || 0,
+          educationScore: app.education_score || 0,
           skills_reason: app.skills_reason,
           experience_reason: app.experience_reason,
           education_reason: app.education_reason

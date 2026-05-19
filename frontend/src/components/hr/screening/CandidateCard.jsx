@@ -5,10 +5,10 @@ const CandidateCard = ({ candidate, onOpenDetails, onOpenInterview, onUpdateStat
   const [isUpdating, setIsUpdating] = useState(false);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const dropdownRef = useRef(null);
-  
+
   const status = candidate.status.toLowerCase();
-  
-  const avatarUrl = candidate.profileImage 
+
+  const avatarUrl = candidate.profileImage
     ? (candidate.profileImage.startsWith('http') ? candidate.profileImage : `http://localhost:8000/${candidate.profileImage}`)
     : `https://ui-avatars.com/api/?name=${encodeURIComponent(candidate.name)}&background=fdf2f8&color=d81159&bold=true`;
 
@@ -29,7 +29,7 @@ const CandidateCard = ({ candidate, onOpenDetails, onOpenInterview, onUpdateStat
   }, []);
 
   const getStatusInfo = (status) => {
-    switch(status.toLowerCase()) {
+    switch (status.toLowerCase()) {
       case 'accepted': return { icon: <CheckCircle2 className="w-4 h-4" />, color: 'text-emerald-600', bg: 'bg-emerald-50', border: 'border-emerald-100', label: 'Accepted' };
       case 'rejected': return { icon: <XCircle className="w-4 h-4" />, color: 'text-rose-600', bg: 'bg-rose-50', border: 'border-rose-100', label: 'Rejected' };
       case 'reviewed': return { icon: <Search className="w-4 h-4" />, color: 'text-blue-600', bg: 'bg-blue-50', border: 'border-blue-100', label: 'Reviewed' };
@@ -47,9 +47,9 @@ const CandidateCard = ({ candidate, onOpenDetails, onOpenInterview, onUpdateStat
         {/* Profile Section */}
         <div className="relative shrink-0">
           <div className="w-20 h-20 rounded-2xl overflow-hidden border-2 border-white shadow-xl group-hover:scale-105 transition-transform duration-500">
-            <img 
-              src={avatarUrl} 
-              alt={candidate.name} 
+            <img
+              src={avatarUrl}
+              alt={candidate.name}
               className="w-full h-full object-cover"
               onError={(e) => {
                 e.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(candidate.name)}&background=fdf2f8&color=d81159&bold=true`;
@@ -107,7 +107,7 @@ const CandidateCard = ({ candidate, onOpenDetails, onOpenInterview, onUpdateStat
         <div className="flex flex-row flex-wrap lg:flex-nowrap gap-3 w-full lg:w-auto shrink-0 mt-6 lg:mt-0 pt-6 lg:pt-0 border-t lg:border-t-0 border-gray-50">
           {/* Custom Status Dropdown as a Button */}
           <div className="relative flex-1 lg:flex-none lg:min-w-[140px]" ref={dropdownRef}>
-            <button 
+            <button
               onClick={() => setIsDropdownOpen(!isDropdownOpen)}
               disabled={isUpdating}
               className={`w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl border-2 text-[10px] font-bold uppercase tracking-widest transition-all duration-300 ${statusInfo.bg} ${statusInfo.color} ${statusInfo.border} ${isUpdating ? 'opacity-50 animate-pulse' : 'hover:shadow-md hover:scale-[1.02] active:scale-95'}`}

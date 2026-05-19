@@ -209,29 +209,29 @@ def calculate_match_score(resume_data: dict, job) -> dict:
     Calculate the overall match score between a parsed resume and a job.
     
     Weights:
-    - Skills: 50%
-    - Experience: 30%
-    - Education: 20%
+    - Experience: 50%
+    - Skills: 35%
+    - Education: 15%
     """
-    # Skills matching (50%)
+    # Skills matching (35%)
     resume_skills = resume_data.get("skills", "")
     job_skills = job.skills_requirements or ""
     skills_result = calculate_skills_match(resume_skills, job_skills)
     
-    # Experience matching (30%)
+    # Experience matching (50%)
     resume_years = resume_data.get("years_experience", 0) or 0
     job_desc = (job.description or "") + " " + (job.skills_requirements or "")
     experience_result = calculate_experience_match(resume_years, job_desc, getattr(job, 'experience_requirements', None))
     
-    # Education matching (20%)
+    # Education matching (15%)
     resume_degree = resume_data.get("highest_degree", "")
     education_result = calculate_education_match(resume_degree, job_desc, getattr(job, 'education_requirements', None))
     
     # Weighted composite
     match_percentage = round(
-        (skills_result["score"] * 0.50 +
-         experience_result["score"] * 0.30 +
-         education_result["score"] * 0.20) * 100,
+        (skills_result["score"] * 0.35 +
+         experience_result["score"] * 0.50 +
+         education_result["score"] * 0.15) * 100,
         1
     )
     

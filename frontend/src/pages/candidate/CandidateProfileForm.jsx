@@ -56,6 +56,12 @@ const CandidateProfileForm = () => {
   const [currentSkill, setCurrentSkill] = useState("");
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [matchScore, setMatchScore] = useState(location.state?.matchData?.match_percentage || 0);
+  const [skillsScore, setSkillsScore] = useState(location.state?.matchData?.skills_score || 0);
+  const [experienceScore, setExperienceScore] = useState(location.state?.matchData?.experience_score || 0);
+  const [educationScore, setEducationScore] = useState(location.state?.matchData?.education_score || 0);
+  const [skillsReason, setSkillsReason] = useState(location.state?.matchData?.skills_reason || "");
+  const [experienceReason, setExperienceReason] = useState(location.state?.matchData?.experience_reason || "");
+  const [educationReason, setEducationReason] = useState(location.state?.matchData?.education_reason || "");
   const [isCalculating, setIsCalculating] = useState(false);
 
   React.useEffect(() => {
@@ -74,6 +80,12 @@ const CandidateProfileForm = () => {
         const response = await axios.post(`http://localhost:8000/matching/match-data/${jobId}`, payload);
         if (response.data?.match_percentage !== undefined) {
           setMatchScore(response.data.match_percentage);
+          setSkillsScore(response.data.skills_score);
+          setExperienceScore(response.data.experience_score);
+          setEducationScore(response.data.education_score);
+          setSkillsReason(response.data.skills_reason);
+          setExperienceReason(response.data.experience_reason);
+          setEducationReason(response.data.education_reason);
         }
       } catch (err) {
         console.error("Failed to recalculate match score:", err);
@@ -136,6 +148,12 @@ const CandidateProfileForm = () => {
       college: formData.college,
       skills: formData.skills,
       match_score: matchScore,
+      skills_score: skillsScore,
+      experience_score: experienceScore,
+      education_score: educationScore,
+      skills_reason: skillsReason,
+      experience_reason: experienceReason,
+      education_reason: educationReason,
       profile_image_url: localStorage.getItem('profile_image_url'),
     };
 

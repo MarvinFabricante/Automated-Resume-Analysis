@@ -20,6 +20,9 @@ class JobApplicationBase(BaseModel):
     college: Optional[str] = None
     skills: Optional[List[str]] = None
     match_score: Optional[float] = None
+    skills_score: Optional[float] = None
+    experience_score: Optional[float] = None
+    education_score: Optional[float] = None
     profile_image_url: Optional[str] = None
     skills_reason: Optional[str] = None
     experience_reason: Optional[str] = None
