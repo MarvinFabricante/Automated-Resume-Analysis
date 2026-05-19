@@ -3,7 +3,7 @@ import { Helmet } from 'react-helmet-async';
 import {
   X, Briefcase, MapPin, Building2, DollarSign,
   ListChecks, FileText, Clock, CheckCircle2,
-  AlertCircle, Globe, Wallet
+  AlertCircle, Globe, Wallet, GraduationCap, Trophy
 } from 'lucide-react';
 
 const ViewJobDetailsModal = ({ isOpen, onClose, job }) => {
@@ -120,6 +120,30 @@ const ViewJobDetailsModal = ({ isOpen, onClose, job }) => {
                   <p className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] mb-2">Internal Reference</p>
                   <code className="text-sm font-mono font-bold text-gray-800">{job.job_id}</code>
                 </div>
+
+                {job.education_requirements && (
+                  <div className="p-6 rounded-3xl bg-blue-50/50 border border-blue-100/50">
+                    <div className="flex items-center gap-2.5 mb-2.5 text-blue-600">
+                      <GraduationCap size={18} />
+                      <span className="text-[10px] font-black uppercase tracking-widest">Education Needed</span>
+                    </div>
+                    <p className="text-sm text-gray-800 font-bold leading-normal">
+                      {job.education_requirements}
+                    </p>
+                  </div>
+                )}
+
+                {job.experience_requirements && (
+                  <div className="p-6 rounded-3xl bg-orange-50/50 border border-orange-100/50">
+                    <div className="flex items-center gap-2.5 mb-2.5 text-orange-600">
+                      <Trophy size={18} />
+                      <span className="text-[10px] font-black uppercase tracking-widest">Experience Needed</span>
+                    </div>
+                    <p className="text-sm text-gray-800 font-bold leading-normal">
+                      {job.experience_requirements}
+                    </p>
+                  </div>
+                )}
 
                 <div className="p-6 rounded-3xl bg-pink-50 border border-pink-100/50">
                   <div className="flex items-center gap-2 mb-3 text-[#d81159]">

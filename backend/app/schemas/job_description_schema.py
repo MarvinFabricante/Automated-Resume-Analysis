@@ -11,6 +11,8 @@ class JobBase(BaseModel):
     salary_range: Optional[str] = None
     description: str
     skills_requirements: str
+    education_requirements: Optional[str] = None
+    experience_requirements: Optional[str] = None
     is_active: bool = True
 
 class JobCreate(JobBase):
@@ -30,6 +32,8 @@ class JobUpdate(BaseModel):
     salary_range: Optional[str] = None
     description: Optional[str] = None
     skills_requirements: Optional[str] = None
+    education_requirements: Optional[str] = None
+    experience_requirements: Optional[str] = None
     is_active: Optional[bool] = None
 
     class Config:

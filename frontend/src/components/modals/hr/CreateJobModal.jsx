@@ -4,7 +4,7 @@ import {
   X, Briefcase, MapPin, Building2, DollarSign, 
   ListChecks, FileText, Loader2, CheckCircle2, 
   AlertCircle, ChevronRight, ChevronLeft, Info,
-  Trophy, Target, Sparkles
+  Trophy, Target, Sparkles, GraduationCap
 } from 'lucide-react';
 
 import { useCreateJobMutation } from '../../../redux/api/apiSlice';
@@ -22,6 +22,8 @@ const CreateJobModal = ({ isOpen, onClose, onSuccess }) => {
     salary_range: '',
     description: '',
     skills_requirements: '',
+    education_requirements: '',
+    experience_requirements: '',
     is_active: true
   });
 
@@ -107,7 +109,9 @@ const CreateJobModal = ({ isOpen, onClose, onSuccess }) => {
         setFormData({
           job_id: '', job_title: '', department: 'Human Resources',
           location: '', job_type: 'Full-Time', salary_range: '',
-          description: '', skills_requirements: '', is_active: true
+          description: '', skills_requirements: '', 
+          education_requirements: '', experience_requirements: '',
+          is_active: true
         });
       }, 2000);
 
@@ -394,6 +398,30 @@ const CreateJobModal = ({ isOpen, onClose, onSuccess }) => {
                         +{formData.skills_requirements.split(',').filter(s => s.trim()).length - 5} more
                       </span>
                     )}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div>
+                    <label className={labelClasses}><GraduationCap size={12} /> Education Requirements</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Bachelor's Degree in Computer Science"
+                      className={inputClasses()}
+                      value={formData.education_requirements}
+                      onChange={(e) => setFormData({ ...formData, education_requirements: e.target.value })}
+                    />
+                  </div>
+
+                  <div>
+                    <label className={labelClasses}><Trophy size={12} /> Experience Requirements</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. 3+ years of experience"
+                      className={inputClasses()}
+                      value={formData.experience_requirements}
+                      onChange={(e) => setFormData({ ...formData, experience_requirements: e.target.value })}
+                    />
                   </div>
                 </div>
               </div>

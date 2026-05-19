@@ -112,26 +112,7 @@ const AccountSettings = () => {
     }
   };
 
-  const handleImageUpload = async () => {
-    if (!selectedImage || !userId) return;
-    const formDataImage = new FormData();
-    formDataImage.append('file', selectedImage);
 
-    try {
-      let endpoint = `http://localhost:8000/candidate/upload-profile-image/${userId}`;
-      if (userRole === 'HR') endpoint = `http://localhost:8000/hr/upload-profile-image/${userId}`;
-      if (userRole === 'ADMIN') endpoint = `http://localhost:8000/admins/upload-profile-image/${userId}`;
-
-      const response = await axios.post(endpoint, formDataImage);
-      const imageUrl = response.data.image_url;
-      setFormData(prev => ({ ...prev, profile_image_url: imageUrl }));
-      dispatch(updateProfileImage(imageUrl));
-      alert("Profile image uploaded!");
-    } catch (err) {
-      console.error("Failed to upload image:", err);
-      alert("Failed to upload image.");
-    }
-  };
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -330,12 +311,9 @@ const AccountSettings = () => {
                           {userRole === 'CANDIDATE' ? 'Visible to HR and hiring managers.' : 'Used in internal communications and screening.'}
                         </p>
                         {selectedImage && (
-                          <button 
-                            onClick={handleImageUpload}
-                            className="bg-[#D10043] text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-900 transition-all"
-                          >
-                            Upload New Image
-                          </button>
+                          <p className="text-[10px] text-[#D10043] font-black uppercase tracking-widest mt-2 animate-pulse">
+                            Click "Save Changes" to upload image
+                          </p>
                         )}
                       </div>
                     </div>

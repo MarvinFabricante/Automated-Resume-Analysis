@@ -69,7 +69,7 @@ async def get_admin_profile_details(admin_id: int, db: AsyncSession = Depends(ge
 async def update_admin_profile_details(admin_id: int, admin_update: AdminUpdate, db: AsyncSession = Depends(get_db)):
     updated_profile = await admin_service.update_admin_profile(db, admin_id, admin_update)
     if updated_profile:
-        await clear_cache_pattern(f"admin_profile:*admin_id\":{admin_id}*")
+        await clear_cache_pattern(f"admin_profile:*\"admin_id\": {admin_id}*")
     if not updated_profile:
         raise HTTPException(status_code=404, detail="Admin profile not found")
     return updated_profile
@@ -90,6 +90,6 @@ async def upload_admin_profile_image(admin_id: int, file: UploadFile = File(...)
     import time
     image_url = f"http://localhost:8000/{file_path}?t={int(time.time())}"
     await admin_service.update_admin_profile(db, admin_id, AdminUpdate(profile_image_url=image_url))
-    await clear_cache_pattern(f"admin_profile:*admin_id\":{admin_id}*")
+    await clear_cache_pattern(f"admin_profile:*\"admin_id\": {admin_id}*")
     
     return {"image_url": image_url}

@@ -105,12 +105,22 @@ def _extract_years_from_text(text: str) -> int:
     return max_years
 
 
-def calculate_experience_match(resume_years: int, job_description: str) -> dict:
+def calculate_experience_match(resume_years: int, job_description: str, experience_req: str = None) -> dict:
     """
     Compare resume years of experience against job requirements.
     Returns a dict with score and details.
     """
-    required_years = _extract_years_from_text(job_description)
+    required_years = 0
+    if experience_req:
+        # Check if experience_req is a pure number or text with number
+        try:
+            required_years = int(re.sub(r'[^\d]', '', experience_req))
+        except ValueError:
+            required_years = _extract_years_from_text(experience_req)
+            
+    if required_years == 0:
+        required_years = _extract_years_from_text(job_description)
+        
     resume_years = resume_years or 0
     
     if required_years == 0:
@@ -155,12 +165,23 @@ def _extract_education_requirement(text: str) -> str:
     return ""
 
 
-def calculate_education_match(resume_degree: str, job_description: str) -> dict:
+def calculate_education_match(resume_degree: str, job_description: str, education_req: str = None) -> dict:
     """
     Compare resume education against job requirements.
     Returns a dict with score and details.
     """
-    required_degree = _extract_education_requirement(job_description)
+    required_degree = ""
+    if education_req:
+        required_degree = _extract_education_requirement(education_req)
+        # If user typed something custom but we couldn't parse it as standard degree, check in DEGREE_HIERARCHY
+        if not required_degree:
+            for k in DEGREE_HIERARCHY.keys():
+                if k in education_req.upper():
+                    required_degree = k
+                    break
+                    
+    if not required_degree:
+        required_degree = _extract_education_requirement(job_description)
     
     if not required_degree:
         # No explicit requirement — give full marks
@@ -200,11 +221,11 @@ def calculate_match_score(resume_data: dict, job) -> dict:
     # Experience matching (30%)
     resume_years = resume_data.get("years_experience", 0) or 0
     job_desc = (job.description or "") + " " + (job.skills_requirements or "")
-    experience_result = calculate_experience_match(resume_years, job_desc)
+    experience_result = calculate_experience_match(resume_years, job_desc, getattr(job, 'experience_requirements', None))
     
     # Education matching (20%)
     resume_degree = resume_data.get("highest_degree", "")
-    education_result = calculate_education_match(resume_degree, job_desc)
+    education_result = calculate_education_match(resume_degree, job_desc, getattr(job, 'education_requirements', None))
     
     # Weighted composite
     match_percentage = round(

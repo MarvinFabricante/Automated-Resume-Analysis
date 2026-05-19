@@ -52,6 +52,12 @@ const CandidatePreviewAndVerify = () => {
     return '#ef4444';
   };
 
+  const getMatchTier = (pct) => {
+    if (pct >= 70) return 'Strong Match';
+    if (pct >= 40) return 'Good Match';
+    return 'Potential Match';
+  };
+
   return (
     <div className="min-h-screen bg-[#F8FAFC] text-slate-900 antialiased font-['Inter',_sans-serif]">
       <Helmet>
@@ -118,7 +124,7 @@ const CandidatePreviewAndVerify = () => {
                   <h2 className="font-bold uppercase tracking-widest text-xs">AI Match Analysis</h2>
                 </div>
                 <div className="bg-[#D60041] text-white px-5 py-2 rounded-2xl text-sm font-black shadow-lg shadow-pink-100">
-                  {matchData.match_percentage}% Overall Match
+                  {getMatchTier(matchData.match_percentage)}
                 </div>
               </div>
               
@@ -132,13 +138,13 @@ const CandidatePreviewAndVerify = () => {
                         cx="50" cy="50" r="42" fill="none"
                         stroke={getMatchColor(matchData.match_percentage)}
                         strokeWidth="10"
-                        strokeDasharray={`${matchData.match_percentage * 2.64} 264`}
+                        strokeDasharray="264 264"
                         strokeLinecap="round"
                         className="transition-all duration-1000 ease-out"
                       />
                     </svg>
                     <div className="absolute inset-0 flex flex-col items-center justify-center">
-                      <span className="text-3xl font-black text-slate-900 leading-none">{matchData.match_percentage}%</span>
+                      <span className="text-sm font-black text-slate-900 leading-none uppercase tracking-wider text-center px-2">Analyzed</span>
                     </div>
                   </div>
                   <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 mt-3">Overall Match</span>
@@ -156,7 +162,9 @@ const CandidatePreviewAndVerify = () => {
                         {item.icon}
                         <span className="text-[9px] font-black uppercase tracking-widest opacity-70 group-hover:opacity-100 transition-opacity">{item.label}</span>
                       </div>
-                      <p className="text-2xl font-black">{item.score}%</p>
+                      <p className="text-lg font-black uppercase tracking-wider">
+                        {item.score >= 70 ? 'High' : item.score >= 40 ? 'Medium' : 'Basic'}
+                      </p>
                     </div>
                   ))}
                 </div>

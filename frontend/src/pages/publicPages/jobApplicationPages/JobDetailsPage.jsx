@@ -14,7 +14,9 @@ import {
   CheckCircle2,
   Calendar,
   Building2,
-  ArrowRight
+  ArrowRight,
+  GraduationCap,
+  Trophy
 } from 'lucide-react';
 import Header from '../../../components/layout/Header';
 import Footer from '../../../components/layout/Footer';
@@ -168,6 +170,30 @@ const JobDetailsPage = () => {
               </div>
 
               <div className="space-y-6">
+                {job.education_requirements && (
+                  <div className="bg-white p-6 rounded-[24px] border border-slate-100 shadow-sm">
+                    <div className="flex items-center gap-2.5 mb-2.5 text-blue-600">
+                      <GraduationCap size={18} />
+                      <span className="text-[10px] font-black uppercase tracking-widest">Education Needed</span>
+                    </div>
+                    <p className="text-sm text-slate-800 font-bold leading-normal">
+                      {job.education_requirements}
+                    </p>
+                  </div>
+                )}
+
+                {job.experience_requirements && (
+                  <div className="bg-white p-6 rounded-[24px] border border-slate-100 shadow-sm">
+                    <div className="flex items-center gap-2.5 mb-2.5 text-orange-600">
+                      <Trophy size={18} />
+                      <span className="text-[10px] font-black uppercase tracking-widest">Experience Needed</span>
+                    </div>
+                    <p className="text-sm text-slate-800 font-bold leading-normal">
+                      {job.experience_requirements}
+                    </p>
+                  </div>
+                )}
+
                 <div className="bg-slate-900 text-white p-8 rounded-[40px] shadow-xl overflow-hidden relative">
                   <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full -mr-16 -mt-16"></div>
                   <h4 className="text-xl font-black mb-4 relative z-10">Join Mariwasa</h4>

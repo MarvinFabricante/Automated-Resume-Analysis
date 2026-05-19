@@ -22,6 +22,8 @@ class JobDescription(Base):
     salary_range = Column(String)
     description = Column(String, nullable=False)
     skills_requirements = Column(String)
+    education_requirements = Column(String, nullable=True)
+    experience_requirements = Column(String, nullable=True)
     is_active = Column(Boolean, default=True)
 
     # Relationships

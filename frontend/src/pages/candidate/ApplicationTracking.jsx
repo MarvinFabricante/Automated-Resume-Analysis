@@ -56,7 +56,7 @@ const ApplicationTracking = () => {
     {
       label: "Initial Screening",
       date: application.step >= 2 ? "Completed" : "Pending",
-      description: application.originalData?.match_score ? `Recruiter reviewed your profile and resume. Your skills matched ${application.originalData.match_score}% of our requirements.` : "Recruiter is currently reviewing your profile and resume.",
+      description: application.originalData?.match_score ? "Recruiter reviewed your profile and resume. Your skills were evaluated against our requirements." : "Recruiter is currently reviewing your profile and resume.",
       status: application.step >= 2 ? "completed" : (application.step === 1 ? "current" : "upcoming")
     },
     {

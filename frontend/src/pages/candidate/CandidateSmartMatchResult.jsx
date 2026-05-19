@@ -94,13 +94,15 @@ const CandidateSmartMatchResult = () => {
                             cx="50" cy="50" r="42" fill="none"
                             stroke={getMatchColor(match.match_percentage)}
                             strokeWidth="12"
-                            strokeDasharray={`${match.match_percentage * 2.64} 264`}
+                            strokeDasharray="264 264"
                             strokeLinecap="round"
                             className="transition-all duration-1000 ease-out"
                           />
                         </svg>
                         <div className="absolute inset-0 flex flex-col items-center justify-center">
-                          <span className="text-lg font-black text-slate-900 leading-none">{match.match_percentage}%</span>
+                          <span className="text-[10px] font-black text-slate-900 leading-none uppercase tracking-wider text-center">
+                            {match.match_percentage >= 70 ? 'Strong' : match.match_percentage >= 40 ? 'Good' : 'Potential'}
+                          </span>
                         </div>
                       </div>
                     </div>
@@ -114,7 +116,9 @@ const CandidateSmartMatchResult = () => {
                     ].map((item, idx) => (
                       <div key={idx} className={`${item.bg} p-4 rounded-2xl flex flex-col items-center text-center group-hover:shadow-inner transition-all`}>
                         <div className={`${item.color} mb-1.5`}>{item.icon}</div>
-                        <p className={`text-xl font-black ${item.color}`}>{item.score}%</p>
+                        <p className={`text-xs font-black uppercase tracking-wider ${item.color}`}>
+                          {item.score >= 70 ? 'High' : item.score >= 40 ? 'Medium' : 'Basic'}
+                        </p>
                         <span className="text-[8px] font-black uppercase tracking-widest text-slate-400 mb-2">{item.label}</span>
                         <p className="text-[7px] font-semibold leading-relaxed text-slate-500 line-clamp-3">{item.reason}</p>
                       </div>
