@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
 import axios from 'axios';
-import { Users, Briefcase, ShieldCheck, Eye, EyeOff, Loader2, CheckCircle2, XCircle, ArrowLeft } from 'lucide-react';
+import { Users, Eye, EyeOff, Loader2, CheckCircle2, XCircle, ArrowLeft } from 'lucide-react';
 import { Helmet } from 'react-helmet-async';
 
 const Register = () => {
-  const [role, setRole] = useState('CANDIDATE');
+  const [role] = useState('CANDIDATE');
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
@@ -236,30 +236,6 @@ const Register = () => {
 
         <div className="w-full md:w-[55%] p-10 md:p-14 flex flex-col justify-center">
           <form onSubmit={handleSubmit} className="w-full max-w-[420px] mx-auto md:mx-0 md:ml-auto">
-
-            <div className="mb-8">
-              <label className="block text-xs font-medium text-gray-600 mb-3 ml-1">I am registering as:</label>
-              <div className="flex flex-wrap gap-2">
-                {[
-                  { id: 'CANDIDATE', label: 'Candidate', icon: Users },
-                  { id: 'HR', label: 'HR Staff', icon: Briefcase },
-                  { id: 'ADMIN', label: 'Admin', icon: ShieldCheck }
-                ].map((r) => (
-                  <button
-                    key={r.id}
-                    type="button"
-                    onClick={() => setRole(r.id)}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-colors border ${role === r.id
-                        ? 'border-[#D60041] bg-red-50 text-[#D60041]'
-                        : 'border-gray-300 text-gray-700 hover:bg-gray-50'
-                      }`}
-                  >
-                    <r.icon size={16} className={role === r.id ? 'text-[#D60041]' : 'text-gray-500'} />
-                    {r.label}
-                  </button>
-                ))}
-              </div>
-            </div>
 
             <div className="space-y-4 mb-6">
 
