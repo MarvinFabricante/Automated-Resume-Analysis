@@ -291,7 +291,7 @@ def _merge_unique(primary: list[str], secondary: list[str]) -> list[str]:
     return merged
 
 
-def calculate_match_score(resume_data: dict, job) -> dict:
+def calculate_match_score(resume_data: dict, job, use_ai: bool = False) -> dict:
     """
     Calculate the overall match score between a parsed resume and a job.
 
@@ -300,7 +300,7 @@ def calculate_match_score(resume_data: dict, job) -> dict:
     Rule-based component (weights: Skills 40% + Experience 40% + Education 20%):
       Precision keyword/fuzzy matching for verifiable fields.
 
-    Gemini AI component (when available):
+    Gemini AI component (when available and requested):
       Semantic understanding of context, transferable skills, and nuance.
 
     Final blended score = Gemini-dominant when available, or 100% rule-based as fallback.
@@ -327,22 +327,24 @@ def calculate_match_score(resume_data: dict, job) -> dict:
     # ── Gemini AI scoring ─────────────────────────────────────────────────────
     ai_result = None
     ai_available = False
-    try:
-        from app.services.gemini_service import gemini_analyze_match
-        job_data = {
-            "job_title": job.job_title,
-            "department": getattr(job, "department", ""),
-            "description": job.description or "",
-            "skills_requirements": job.skills_requirements or "",
-            "experience_requirements": getattr(job, "experience_requirements", ""),
-            "education_requirements": getattr(job, "education_requirements", ""),
-        }
-        ai_result = gemini_analyze_match(resume_data, job_data)
-        if ai_result:
-            ai_available = True
-            logger.info(f"Gemini AI score for job '{job.job_title}': {ai_result['ai_match_score']}%")
-    except Exception as e:
-        logger.warning(f"Gemini match analysis skipped: {e}")
+    
+    if use_ai:
+        try:
+            from app.services.gemini_service import gemini_analyze_match
+            job_data = {
+                "job_title": job.job_title,
+                "department": getattr(job, "department", ""),
+                "description": job.description or "",
+                "skills_requirements": job.skills_requirements or "",
+                "experience_requirements": getattr(job, "experience_requirements", ""),
+                "education_requirements": getattr(job, "education_requirements", ""),
+            }
+            ai_result = gemini_analyze_match(resume_data, job_data)
+            if ai_result:
+                ai_available = True
+                logger.info(f"Gemini AI score for job '{job.job_title}': {ai_result['ai_match_score']}%")
+        except Exception as e:
+            logger.warning(f"Gemini match analysis skipped: {e}")
 
     # ── Blend scores ──────────────────────────────────────────────────────────
     if ai_available and ai_result:
@@ -445,7 +447,7 @@ def calculate_match_score(resume_data: dict, job) -> dict:
     }
 
 
-async def match_resume_to_all_jobs(db, resume_data: dict) -> list[dict]:
+async def match_resume_to_all_jobs(db, resume_data: dict, use_ai: bool = False) -> list[dict]:
     """
     Match parsed resume data against all active jobs in the database.
     Returns a list of match results sorted by match_percentage descending.
@@ -460,7 +462,7 @@ async def match_resume_to_all_jobs(db, resume_data: dict) -> list[dict]:
     
     matches = []
     for job in jobs:
-        match_result = calculate_match_score(resume_data, job)
+        match_result = calculate_match_score(resume_data, job, use_ai=use_ai)
         matches.append(match_result)
     
     # Sort by match percentage descending
@@ -469,7 +471,7 @@ async def match_resume_to_all_jobs(db, resume_data: dict) -> list[dict]:
     return matches
 
 
-async def match_resume_to_job(db, resume_data: dict, job_id: str) -> dict | None:
+async def match_resume_to_job(db, resume_data: dict, job_id: str, use_ai: bool = False) -> dict | None:
     """
     Match parsed resume data against a single specific job.
     """
@@ -484,4 +486,4 @@ async def match_resume_to_job(db, resume_data: dict, job_id: str) -> dict | None
     if not job:
         return None
     
-    return calculate_match_score(resume_data, job)
+    return calculate_match_score(resume_data, job, use_ai=use_ai)
