@@ -14,9 +14,14 @@ class JobMatchResult(BaseModel):
     education_score: float
     matched_skills: list[str]
     missing_skills: list[str]
+    skills_reason: Optional[str] = None
     experience_reason: Optional[str] = None
     education_reason: Optional[str] = None
-    skills_reason: Optional[str] = None
+    relevant_experience: Optional[str] = None
+    experience_gaps: Optional[str] = None
+    required_degree: Optional[str] = None
+    candidate_degree: Optional[str] = None
+    recommendations: Optional[list[str]] = None
 
 
 class MatchResponse(BaseModel):

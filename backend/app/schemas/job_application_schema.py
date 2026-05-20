@@ -27,6 +27,13 @@ class JobApplicationBase(BaseModel):
     skills_reason: Optional[str] = None
     experience_reason: Optional[str] = None
     education_reason: Optional[str] = None
+    matched_skills: Optional[List[str]] = None
+    missing_skills: Optional[List[str]] = None
+    relevant_experience: Optional[str] = None
+    experience_gaps: Optional[str] = None
+    required_degree: Optional[str] = None
+    candidate_degree: Optional[str] = None
+    recommendations: Optional[List[str]] = None
 
 class JobApplicationCreate(JobApplicationBase):
     job_id: str

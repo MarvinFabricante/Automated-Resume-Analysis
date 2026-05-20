@@ -38,6 +38,15 @@ class JobApplication(Base):
     experience_reason = Column(String, nullable=True)
     education_reason = Column(String, nullable=True)
     
+    # Detailed ATS Breakdown
+    matched_skills = Column(JSON, nullable=True)
+    missing_skills = Column(JSON, nullable=True)
+    relevant_experience = Column(String, nullable=True)
+    experience_gaps = Column(String, nullable=True)
+    required_degree = Column(String, nullable=True)
+    candidate_degree = Column(String, nullable=True)
+    recommendations = Column(JSON, nullable=True)
+    
     status = Column(String, default="PENDING") # PENDING, REVIEWED, REJECTED, ACCEPTED
     
     created_at = Column(DateTime, default=datetime.utcnow)

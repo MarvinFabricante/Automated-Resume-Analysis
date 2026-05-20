@@ -204,39 +204,112 @@ def calculate_education_match(resume_degree: str, job_description: str, educatio
     return {"score": score, "required_degree": required_degree, "candidate_degree": resume_degree, "reason": f"Your {resume_degree} is below the required {required_degree} level."}
 
 
+def _generate_recommendations(skills_result: dict, experience_result: dict, education_result: dict, job_title: str) -> list[str]:
+    """
+    Generate actionable optimization recommendations based on gap analysis.
+    Returns a list of 2-3 bullet-point suggestions.
+    """
+    recommendations = []
+
+    # Skills gap recommendation
+    if skills_result["missing"] and len(skills_result["missing"]) > 0:
+        missing_list = ", ".join([s.title() for s in skills_result["missing"][:5]])
+        recommendations.append(
+            f"Add the following in-demand skills to your resume: {missing_list}. "
+            f"Consider taking online courses or certifications to demonstrate proficiency."
+        )
+
+    # Experience gap recommendation
+    req_years = experience_result.get("required_years", 0)
+    cand_years = experience_result.get("candidate_years", 0)
+    if req_years > 0 and cand_years < req_years:
+        gap = req_years - cand_years
+        recommendations.append(
+            f"The role requires {req_years} years of experience, but your resume reflects {cand_years}. "
+            f"Highlight freelance projects, internships, or open-source contributions to bridge the {gap}-year gap."
+        )
+    elif cand_years == 0:
+        recommendations.append(
+            f"Quantify your work experience with specific durations (e.g., 'Jan 2022 – Present') "
+            f"so the ATS can accurately calculate your tenure for the {job_title} role."
+        )
+
+    # Education recommendation
+    req_degree = education_result.get("required_degree", "")
+    cand_degree = education_result.get("candidate_degree", "")
+    if req_degree and req_degree != "Any" and cand_degree:
+        req_level = DEGREE_HIERARCHY.get(req_degree.upper(), 0)
+        cand_level = DEGREE_HIERARCHY.get(cand_degree.upper(), 0)
+        if cand_level < req_level:
+            recommendations.append(
+                f"The position prefers a {req_degree}-level degree. Consider pursuing a higher credential "
+                f"or listing relevant certifications and professional development courses to compensate."
+            )
+    elif not cand_degree or cand_degree == "Not provided":
+        recommendations.append(
+            "Ensure your education section clearly states your degree, field of study, and institution "
+            "so the ATS can properly evaluate your qualifications."
+        )
+
+    # Generic improvement if we haven't found enough specific gaps
+    if len(recommendations) < 2:
+        recommendations.append(
+            f"Tailor your resume summary to mirror the language used in the {job_title} job description. "
+            f"Use exact keywords and phrases to maximize ATS compatibility."
+        )
+
+    return recommendations[:3]
+
+
 def calculate_match_score(resume_data: dict, job) -> dict:
     """
     Calculate the overall match score between a parsed resume and a job.
     
     Weights:
-    - Experience: 50%
-    - Skills: 35%
-    - Education: 15%
+    - Skills: 40%
+    - Experience: 40%
+    - Education: 20%
     """
-    # Skills matching (35%)
+    # Skills matching (40%)
     resume_skills = resume_data.get("skills", "")
     job_skills = job.skills_requirements or ""
     skills_result = calculate_skills_match(resume_skills, job_skills)
     
-    # Experience matching (50%)
+    # Experience matching (40%)
     resume_years = resume_data.get("years_experience", 0) or 0
     job_desc = (job.description or "") + " " + (job.skills_requirements or "")
     experience_result = calculate_experience_match(resume_years, job_desc, getattr(job, 'experience_requirements', None))
     
-    # Education matching (15%)
+    # Education matching (20%)
     resume_degree = resume_data.get("highest_degree", "")
     education_result = calculate_education_match(resume_degree, job_desc, getattr(job, 'education_requirements', None))
     
-    # Weighted composite
+    # Weighted composite: (Skills% × 0.40) + (Experience% × 0.40) + (Education% × 0.20)
     match_percentage = round(
-        (skills_result["score"] * 0.35 +
-         experience_result["score"] * 0.50 +
-         education_result["score"] * 0.15) * 100,
+        (skills_result["score"] * 0.40 +
+         experience_result["score"] * 0.40 +
+         education_result["score"] * 0.20) * 100,
         1
     )
     
     # Cap at 100
     match_percentage = min(match_percentage, 100.0)
+
+    # Build detailed reason strings
+    total_job_skills = len(skills_result["matched"]) + len(skills_result["missing"])
+    skills_reason = (
+        f"Matched {len(skills_result['matched'])} out of {total_job_skills} required skills. "
+        f"{'Strong alignment with the technical requirements.' if skills_result['score'] >= 0.7 else 'Several critical skills from the job description are missing from the resume.'}"
+    )
+
+    # Build experience reason with more detail
+    experience_text = resume_data.get("experience", "")
+    exp_entries = [e.strip() for e in experience_text.split("|") if e.strip()] if experience_text else []
+    experience_reason = experience_result["reason"]
+    relevant_experience = " | ".join(exp_entries[:3]) if exp_entries else "No specific roles extracted."
+
+    # Generate optimization recommendations
+    recommendations = _generate_recommendations(skills_result, experience_result, education_result, job.job_title)
     
     return {
         "job_id": job.job_id,
@@ -250,9 +323,14 @@ def calculate_match_score(resume_data: dict, job) -> dict:
         "education_score": round(education_result["score"] * 100, 1),
         "matched_skills": [s.title() for s in skills_result["matched"]],
         "missing_skills": [s.title() for s in skills_result["missing"]],
-        "experience_reason": experience_result["reason"],
+        "skills_reason": skills_reason,
+        "experience_reason": experience_reason,
         "education_reason": education_result["reason"],
-        "skills_reason": f"Matched {len(skills_result['matched'])} out of {len(skills_result['matched']) + len(skills_result['missing'])} required skills."
+        "relevant_experience": relevant_experience,
+        "experience_gaps": f"Required: {experience_result.get('required_years', 0)} yrs | Candidate: {experience_result.get('candidate_years', 0)} yrs",
+        "required_degree": education_result.get("required_degree", "Any"),
+        "candidate_degree": education_result.get("candidate_degree", "Not provided"),
+        "recommendations": recommendations
     }
 
 
