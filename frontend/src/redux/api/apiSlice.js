@@ -100,7 +100,7 @@ export const apiSlice = createApi({
           id: app.id,
           name: app.candidate_name,
           status: app.status,
-          preferredJob: app.job_title || app.job?.job_title || "Unknown",
+          preferredJob: app.job?.job_title || "Unknown",
           skills: app.skills || [],
           profileImage: app.profile_image_url || null,
           date: app.created_at,
@@ -144,7 +144,7 @@ export const apiSlice = createApi({
           const formattedStatus = uStatus.split(' ').map(word => word.charAt(0) + word.slice(1).toLowerCase()).join(' ');
           return {
             id: app.id,
-            role: app.job_title || app.job?.job_title || "Unknown Position",
+            role: app.job?.job_title || "Unknown Position",
             company: app.company || "Mariwasa Siam Ceramics",
             appliedDate: new Date(app.created_at).toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }),
             status: formattedStatus,
