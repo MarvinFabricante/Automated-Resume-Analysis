@@ -112,7 +112,7 @@ const Login = () => {
         <title>Sign in - Mariwasa Portal</title>
       </Helmet>
 
-      <button 
+      <button
         onClick={() => window.location.href = '/'}
         className="fixed top-8 left-8 flex items-center gap-2 text-gray-600 hover:text-[#D60041] transition-all group font-bold text-xs uppercase tracking-widest bg-white/50 backdrop-blur-sm py-3 px-5 rounded-2xl border border-gray-200 hover:border-pink-100 hover:shadow-lg active:scale-95 z-50"
       >
@@ -146,8 +146,8 @@ const Login = () => {
                   }
                 }}
                 className={`w-full font-medium py-2.5 px-4 rounded-full transition-all duration-200 text-sm ${modalState.type === 'success'
-                    ? 'bg-[#D60041] hover:bg-[#b50037] text-white'
-                    : 'bg-gray-100 hover:bg-gray-200 text-gray-800'
+                  ? 'bg-[#D60041] hover:bg-[#b50037] text-white'
+                  : 'bg-gray-100 hover:bg-gray-200 text-gray-800'
                   }`}
               >
                 {modalState.type === 'success' ? 'Continue' : 'Try Again'}
@@ -187,8 +187,8 @@ const Login = () => {
                     type="button"
                     onClick={() => setRole(r.id)}
                     className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-colors border ${role === r.id
-                        ? 'border-[#D60041] bg-red-50 text-[#D60041]'
-                        : 'border-gray-300 text-gray-700 hover:bg-gray-50'
+                      ? 'border-[#D60041] bg-red-50 text-[#D60041]'
+                      : 'border-gray-300 text-gray-700 hover:bg-gray-50'
                       }`}
                   >
                     <r.icon size={16} className={role === r.id ? 'text-[#D60041]' : 'text-gray-500'} />
