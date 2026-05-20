@@ -1,6 +1,8 @@
 import asyncio
 import os
 import logging
+import hashlib
+import json
 from dotenv import load_dotenv
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker
@@ -53,8 +55,25 @@ async def async_analyze_application(application_id: int):
             "education_requirements": getattr(job, "education_requirements", ""),
         }
         
-        logger.info(f"Starting Gemini analysis for application {application_id}...")
-        ai_result = gemini_analyze_match(resume_data, job_data)
+        from app.utils.cache import get_cache, set_cache
+        
+        # Compute a unique hash of the resume and job data
+        hash_payload = json.dumps({"resume": resume_data, "job": job_data}, sort_keys=True).encode("utf-8")
+        content_hash = hashlib.sha256(hash_payload).hexdigest()
+        cache_key = f"ai_analysis:{content_hash}"
+        
+        cached_result = await get_cache(cache_key)
+        
+        if cached_result:
+            logger.info(f"Found cached AI analysis for application {application_id}.")
+            ai_result = cached_result
+        else:
+            logger.info(f"Starting Gemini analysis for application {application_id}...")
+            ai_result = gemini_analyze_match(resume_data, job_data)
+            
+            if ai_result:
+                # Store the result in Redis cache (e.g., 30 days TTL)
+                await set_cache(cache_key, ai_result, ttl=2592000)
         
         if ai_result:
             app.match_score = ai_result.get("ai_match_score")
