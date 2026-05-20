@@ -46,8 +46,8 @@ async def parse_resume_file(db: AsyncSession, file: UploadFile) -> dict:
         name = extracted_data.get("fullname", "A candidate")
         await create_notification(
             db=db,
-            title="Resume Analyzed",
-            message=f"{name}'s resume has been uploaded and analyzed.",
+            title="Resume Parsed",
+            message=f"{name}'s resume has been uploaded and parsed.",
             type="upload"
         )
         

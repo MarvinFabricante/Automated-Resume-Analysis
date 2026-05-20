@@ -26,6 +26,7 @@ const CandidateSmartUpload = () => {
   const [showTermsModal, setShowTermsModal] = useState(false);
   const [extractedData, setExtractedData] = useState(null);
   const [matchData, setMatchData] = useState(null);
+  const [isMatching, setIsMatching] = useState(false);
   const [cooldown, setCooldown] = useState(0);
   const { jobId } = useParams();
   const fileInputRef = useRef(null);
@@ -107,23 +108,26 @@ const CandidateSmartUpload = () => {
       
       const extracted = response.data;
       setExtractedData(extracted);
-      setUploadProgress(90);
-      
-      let finalMatchData = null;
-      if (jobId) {
-        const matchRes = await axios.post(`http://localhost:8000/matching/match-data/${jobId}`, extracted);
-        finalMatchData = matchRes.data;
-      } else {
-        const matchRes = await axios.post('http://localhost:8000/matching/match-data', extracted);
-        finalMatchData = matchRes.data.results;
-      }
-      setMatchData(finalMatchData);
       setUploadProgress(100);
-
-      setTimeout(() => {
-        setIsUploading(false);
-        setIsComplete(true);
-      }, 800);
+      setIsUploading(false);
+      setIsComplete(true);
+      
+      setIsMatching(true);
+      try {
+        let finalMatchData = null;
+        if (jobId) {
+          const matchRes = await axios.post(`http://localhost:8000/matching/match-data/${jobId}`, extracted);
+          finalMatchData = matchRes.data;
+        } else {
+          const matchRes = await axios.post('http://localhost:8000/matching/match-data', extracted);
+          finalMatchData = matchRes.data.results;
+        }
+        setMatchData(finalMatchData);
+      } catch (matchErr) {
+        console.error("Post-upload match analysis failed:", matchErr);
+      } finally {
+        setIsMatching(false);
+      }
       
     } catch (error) {
       console.error("Error analyzing resume:", error);
@@ -241,7 +245,7 @@ const CandidateSmartUpload = () => {
                         <span className="block text-[10px] font-black uppercase tracking-[0.2em] text-[#D60041] mb-1">Processing Profile</span>
                         <h4 className="text-lg font-black text-slate-900 flex items-center gap-3">
                           <span className="w-2.5 h-2.5 bg-[#D60041] rounded-full animate-ping" />
-                          AI Extraction in Progress...
+                          Extracting Resume Details...
                         </h4>
                       </div>
                       <span className="text-2xl font-black text-slate-900">{uploadProgress}%</span>
@@ -264,8 +268,11 @@ const CandidateSmartUpload = () => {
                         <CheckCircle2 size={32} />
                       </div>
                       <div>
-                        <h4 className="text-xl font-black text-slate-900">Profile Analyzed</h4>
-                        <p className="text-slate-600 font-medium">Your resume has been successfully parsed. Review the information for your <span className="font-bold text-slate-900">{jobTitle}</span> application next.</p>
+                        <h4 className="text-xl font-black text-slate-900">Resume Parsed</h4>
+                        <p className="text-slate-600 font-medium">
+                          Your credentials are ready to review for your <span className="font-bold text-slate-900">{jobTitle}</span> application.
+                          {isMatching ? " Match analysis is running in the background." : ""}
+                        </p>
                       </div>
                     </div>
 

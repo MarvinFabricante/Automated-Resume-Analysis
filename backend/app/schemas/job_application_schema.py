@@ -34,6 +34,10 @@ class JobApplicationBase(BaseModel):
     required_degree: Optional[str] = None
     candidate_degree: Optional[str] = None
     recommendations: Optional[List[str]] = None
+    ai_summary: Optional[str] = None
+    strengths: Optional[List[str]] = None
+    weaknesses: Optional[List[str]] = None
+    ai_powered: Optional[bool] = False
 
 class JobApplicationCreate(JobApplicationBase):
     job_id: str

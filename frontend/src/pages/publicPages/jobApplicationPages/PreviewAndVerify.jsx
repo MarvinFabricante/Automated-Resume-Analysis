@@ -1,6 +1,7 @@
 import React from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
+import axios from 'axios';
 import {
   User, Mail, Phone, MapPin,
   Cpu, Briefcase, GraduationCap,
@@ -16,6 +17,37 @@ const PreviewAndVerifyPage = () => {
 
   const data = state?.extractedData;
   const matchData = state?.matchData;
+  const [smartMatches, setSmartMatches] = React.useState(state?.matches || null);
+  const [isLoadingSmartMatches, setIsLoadingSmartMatches] = React.useState(false);
+
+  React.useEffect(() => {
+    if (jobId !== 'smart' || !data || smartMatches) return;
+
+    let cancelled = false;
+    const runPostParseAnalysis = async () => {
+      setIsLoadingSmartMatches(true);
+      try {
+        const matchRes = await axios.post('http://localhost:8000/matching/match-data', data);
+        if (!cancelled) {
+          setSmartMatches(matchRes.data.results || []);
+        }
+      } catch (error) {
+        console.error("Post-parse match analysis failed:", error);
+        if (!cancelled) {
+          setSmartMatches([]);
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoadingSmartMatches(false);
+        }
+      }
+    };
+
+    runPostParseAnalysis();
+    return () => {
+      cancelled = true;
+    };
+  }, [jobId, data, smartMatches]);
 
   const extractedData = {
     personal: {
@@ -155,11 +187,16 @@ const PreviewAndVerifyPage = () => {
             </button>
             {jobId === 'smart' ? (
               <button
-                onClick={() => navigate(`/smart-matches`, { state: { matches: state?.matches, extractedData, fileName: state?.fileName } })}
-                className="flex-[2] bg-[#D60041] hover:bg-slate-900 text-white py-5 rounded-[24px] font-bold flex items-center justify-center gap-3 transition-all shadow-xl shadow-pink-100 active:scale-95"
+                disabled={isLoadingSmartMatches || !smartMatches}
+                onClick={() => navigate(`/smart-matches`, { state: { matches: smartMatches, extractedData, fileName: state?.fileName } })}
+                className={`flex-[2] py-5 rounded-[24px] font-bold flex items-center justify-center gap-3 transition-all shadow-xl active:scale-95 ${
+                  isLoadingSmartMatches || !smartMatches
+                    ? "bg-slate-200 text-slate-400 cursor-not-allowed shadow-none"
+                    : "bg-[#D60041] hover:bg-slate-900 text-white shadow-pink-100"
+                }`}
               >
                 <Target size={22} />
-                View Recommended Jobs
+                {isLoadingSmartMatches ? "Analyzing Matches..." : "View Recommended Jobs"}
               </button>
             ) : (
               <button

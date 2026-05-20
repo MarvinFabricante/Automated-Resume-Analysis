@@ -34,6 +34,7 @@ const ApplicationForm = () => {
   const [currentSkill, setCurrentSkill] = useState("");
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [matchScore, setMatchScore] = useState(location.state?.matchData?.match_percentage || 0);
+  const [matchData, setMatchData] = useState(location.state?.matchData || null);
   const [isCalculating, setIsCalculating] = useState(false);
 
   useEffect(() => {
@@ -67,6 +68,7 @@ const ApplicationForm = () => {
         const response = await axios.post(`http://localhost:8000/matching/match-data/${jobId}`, payload);
         if (response.data?.match_percentage !== undefined) {
           setMatchScore(response.data.match_percentage);
+          setMatchData(response.data);
         }
       } catch (err) {
         console.error("Failed to recalculate match score:", err);
@@ -127,10 +129,24 @@ const ApplicationForm = () => {
         college: formData.college,
         skills: formData.skills,
         match_score: matchScore,
+        skills_score: matchData?.skills_score || 0,
+        experience_score: matchData?.experience_score || 0,
+        education_score: matchData?.education_score || 0,
         profile_image_url: location.state?.profile_image_url || null,
-        skills_reason: location.state?.matchData?.skills_reason || "",
-        experience_reason: location.state?.matchData?.experience_reason || "",
-        education_reason: location.state?.matchData?.education_reason || ""
+        skills_reason: matchData?.skills_reason || "",
+        experience_reason: matchData?.experience_reason || "",
+        education_reason: matchData?.education_reason || "",
+        matched_skills: matchData?.matched_skills || [],
+        missing_skills: matchData?.missing_skills || [],
+        relevant_experience: matchData?.relevant_experience || "",
+        experience_gaps: matchData?.experience_gaps || "",
+        required_degree: matchData?.required_degree || "",
+        candidate_degree: matchData?.candidate_degree || "",
+        recommendations: matchData?.recommendations || [],
+        ai_summary: matchData?.ai_summary || "",
+        strengths: matchData?.strengths || [],
+        weaknesses: matchData?.weaknesses || [],
+        ai_powered: Boolean(matchData?.ai_powered)
       });
       setShowSuccessModal(true);
     } catch (error) {

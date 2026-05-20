@@ -10,7 +10,10 @@ from sqlalchemy import text
 
 load_dotenv()
 
-DATABASE_URL = f"postgresql+asyncpg://{os.getenv('DB_USER')}:{os.getenv('DB_PASSWORD')}@{os.getenv('DB_HOST')}:{os.getenv('DB_PORT')}/{os.getenv('DB_NAME')}"
+DATABASE_URL = os.getenv("DATABASE_URL") or (
+    f"postgresql+asyncpg://{os.getenv('DB_USER')}:{os.getenv('DB_PASSWORD')}"
+    f"@{os.getenv('DB_HOST')}:{os.getenv('DB_PORT')}/{os.getenv('DB_NAME')}"
+)
 engine = create_async_engine(DATABASE_URL, echo=True)
 
 NEW_COLUMNS = [
@@ -21,6 +24,10 @@ NEW_COLUMNS = [
     ("required_degree", "VARCHAR"),
     ("candidate_degree", "VARCHAR"),
     ("recommendations", "JSON"),
+    ("ai_summary", "VARCHAR"),
+    ("strengths", "JSON"),
+    ("weaknesses", "JSON"),
+    ("ai_powered", "BOOLEAN DEFAULT FALSE"),
 ]
 
 async def migrate():

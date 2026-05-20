@@ -1,6 +1,12 @@
 import re
+import logging
 from difflib import SequenceMatcher
 from app.models.job_description import JobDescription
+
+logger = logging.getLogger(__name__)
+
+AI_SCORE_WEIGHT = 0.80
+RULE_SCORE_WEIGHT = 1.0 - AI_SCORE_WEIGHT
 
 # Degree hierarchy for education matching
 DEGREE_HIERARCHY = {
@@ -261,76 +267,181 @@ def _generate_recommendations(skills_result: dict, experience_result: dict, educ
     return recommendations[:3]
 
 
+def _blend_scores(rule_score: float, ai_score: float, ai_available: bool) -> float:
+    """
+    Blend rule-based and AI scores.
+    When AI is available: Gemini is dominant while rule-based checks stay as a guardrail.
+    When AI is not available: 100% rule-based.
+    """
+    if not ai_available:
+        return rule_score
+    return round(rule_score * RULE_SCORE_WEIGHT + ai_score * AI_SCORE_WEIGHT, 4)
+
+
+def _merge_unique(primary: list[str], secondary: list[str]) -> list[str]:
+    """Merge skill lists without duplicating the same normalized skill."""
+    merged = []
+    seen = set()
+    for skill in primary + secondary:
+        clean = str(skill).strip()
+        key = _normalize_skill(clean)
+        if clean and key and key not in seen:
+            merged.append(clean)
+            seen.add(key)
+    return merged
+
+
 def calculate_match_score(resume_data: dict, job) -> dict:
     """
     Calculate the overall match score between a parsed resume and a job.
-    
-    Weights:
-    - Skills: 40%
-    - Experience: 40%
-    - Education: 20%
+
+    Scoring Strategy:
+    ─────────────────
+    Rule-based component (weights: Skills 40% + Experience 40% + Education 20%):
+      Precision keyword/fuzzy matching for verifiable fields.
+
+    Gemini AI component (when available):
+      Semantic understanding of context, transferable skills, and nuance.
+
+    Final blended score = Gemini-dominant when available, or 100% rule-based as fallback.
     """
-    # Skills matching (40%)
+    # ── Rule-based scoring ────────────────────────────────────────────────────
     resume_skills = resume_data.get("skills", "")
     job_skills = job.skills_requirements or ""
     skills_result = calculate_skills_match(resume_skills, job_skills)
-    
-    # Experience matching (40%)
+
     resume_years = resume_data.get("years_experience", 0) or 0
     job_desc = (job.description or "") + " " + (job.skills_requirements or "")
     experience_result = calculate_experience_match(resume_years, job_desc, getattr(job, 'experience_requirements', None))
-    
-    # Education matching (20%)
+
     resume_degree = resume_data.get("highest_degree", "")
     education_result = calculate_education_match(resume_degree, job_desc, getattr(job, 'education_requirements', None))
-    
-    # Weighted composite: (Skills% × 0.40) + (Experience% × 0.40) + (Education% × 0.20)
-    match_percentage = round(
-        (skills_result["score"] * 0.40 +
-         experience_result["score"] * 0.40 +
-         education_result["score"] * 0.20) * 100,
-        1
-    )
-    
-    # Cap at 100
-    match_percentage = min(match_percentage, 100.0)
 
-    # Build detailed reason strings
+    # Weighted rule-based composite: Skills 40% + Experience 40% + Education 20%
+    rule_match_pct = (
+        skills_result["score"] * 0.40 +
+        experience_result["score"] * 0.40 +
+        education_result["score"] * 0.20
+    ) * 100
+
+    # ── Gemini AI scoring ─────────────────────────────────────────────────────
+    ai_result = None
+    ai_available = False
+    try:
+        from app.services.gemini_service import gemini_analyze_match
+        job_data = {
+            "job_title": job.job_title,
+            "department": getattr(job, "department", ""),
+            "description": job.description or "",
+            "skills_requirements": job.skills_requirements or "",
+            "experience_requirements": getattr(job, "experience_requirements", ""),
+            "education_requirements": getattr(job, "education_requirements", ""),
+        }
+        ai_result = gemini_analyze_match(resume_data, job_data)
+        if ai_result:
+            ai_available = True
+            logger.info(f"Gemini AI score for job '{job.job_title}': {ai_result['ai_match_score']}%")
+    except Exception as e:
+        logger.warning(f"Gemini match analysis skipped: {e}")
+
+    # ── Blend scores ──────────────────────────────────────────────────────────
+    if ai_available and ai_result:
+        ai_match_pct = ai_result["ai_match_score"]  # already 0-100
+
+        # Blend individual dimension scores too
+        blended_skills_score = _blend_scores(
+            skills_result["score"] * 100,
+            ai_result.get("ai_skills_score", skills_result["score"] * 100),
+            ai_available
+        )
+        blended_exp_score = _blend_scores(
+            experience_result["score"] * 100,
+            ai_result.get("ai_experience_score", experience_result["score"] * 100),
+            ai_available
+        )
+        blended_edu_score = _blend_scores(
+            education_result["score"] * 100,
+            ai_result.get("ai_education_score", education_result["score"] * 100),
+            ai_available
+        )
+
+        # Final match: Gemini-dominant score with deterministic rule checks retained.
+        final_match_pct = min(100.0, round(rule_match_pct * RULE_SCORE_WEIGHT + ai_match_pct * AI_SCORE_WEIGHT, 1))
+
+        # Merge matched/missing skills: union of both sources
+        rule_matched = [s.title() for s in skills_result["matched"]]
+        all_matched = _merge_unique(rule_matched, ai_result.get("matched_skills", []))
+
+        rule_missing = [s.title() for s in skills_result["missing"]]
+        all_missing = [
+            skill for skill in _merge_unique(rule_missing, ai_result.get("missing_skills", []))
+            if _normalize_skill(skill) not in {_normalize_skill(matched) for matched in all_matched}
+        ]
+
+        # Use AI recommendations if available, otherwise rule-based
+        final_recommendations = (
+            ai_result.get("recommendations") or
+            _generate_recommendations(skills_result, experience_result, education_result, job.job_title)
+        )
+
+        ai_summary = ai_result.get("ai_summary", "")
+        strengths = ai_result.get("strengths", [])
+        weaknesses = ai_result.get("weaknesses", [])
+
+    else:
+        # Fallback: pure rule-based
+        blended_skills_score = round(skills_result["score"] * 100, 1)
+        blended_exp_score = round(experience_result["score"] * 100, 1)
+        blended_edu_score = round(education_result["score"] * 100, 1)
+        final_match_pct = min(100.0, round(rule_match_pct, 1))
+        all_matched = [s.title() for s in skills_result["matched"]]
+        all_missing = [s.title() for s in skills_result["missing"]]
+        final_recommendations = _generate_recommendations(skills_result, experience_result, education_result, job.job_title)
+        ai_summary = ""
+        strengths = []
+        weaknesses = []
+
+    # ── Build reason strings ──────────────────────────────────────────────────
     total_job_skills = len(skills_result["matched"]) + len(skills_result["missing"])
     skills_reason = (
-        f"Matched {len(skills_result['matched'])} out of {total_job_skills} required skills. "
-        f"{'Strong alignment with the technical requirements.' if skills_result['score'] >= 0.7 else 'Several critical skills from the job description are missing from the resume.'}"
+        f"Matched {len(all_matched)} out of {total_job_skills} required skills. "
+        f"{'Strong alignment with the technical requirements.' if blended_skills_score >= 70 else 'Several critical skills from the job description are missing from the resume.'}"
     )
 
-    # Build experience reason with more detail
     experience_text = resume_data.get("experience", "")
     exp_entries = [e.strip() for e in experience_text.split("|") if e.strip()] if experience_text else []
-    experience_reason = experience_result["reason"]
     relevant_experience = " | ".join(exp_entries[:3]) if exp_entries else "No specific roles extracted."
 
-    # Generate optimization recommendations
-    recommendations = _generate_recommendations(skills_result, experience_result, education_result, job.job_title)
-    
     return {
         "job_id": job.job_id,
         "job_title": job.job_title,
         "department": job.department,
         "location": job.location,
         "job_type": job.job_type.value if job.job_type else None,
-        "match_percentage": match_percentage,
-        "skills_score": round(skills_result["score"] * 100, 1),
-        "experience_score": round(experience_result["score"] * 100, 1),
-        "education_score": round(education_result["score"] * 100, 1),
-        "matched_skills": [s.title() for s in skills_result["matched"]],
-        "missing_skills": [s.title() for s in skills_result["missing"]],
+        # ── Scores ──
+        "match_percentage": final_match_pct,
+        "skills_score": round(blended_skills_score, 1),
+        "experience_score": round(blended_exp_score, 1),
+        "education_score": round(blended_edu_score, 1),
+        # ── Skills ──
+        "matched_skills": all_matched,
+        "missing_skills": all_missing,
+        # ── Reasons ──
         "skills_reason": skills_reason,
-        "experience_reason": experience_reason,
+        "experience_reason": experience_result["reason"],
         "education_reason": education_result["reason"],
+        # ── Experience ──
         "relevant_experience": relevant_experience,
         "experience_gaps": f"Required: {experience_result.get('required_years', 0)} yrs | Candidate: {experience_result.get('candidate_years', 0)} yrs",
+        # ── Education ──
         "required_degree": education_result.get("required_degree", "Any"),
         "candidate_degree": education_result.get("candidate_degree", "Not provided"),
-        "recommendations": recommendations
+        # ── AI Insights ──
+        "recommendations": final_recommendations,
+        "ai_summary": ai_summary,
+        "strengths": strengths,
+        "weaknesses": weaknesses,
+        "ai_powered": ai_available,
     }
 
 

@@ -5,6 +5,7 @@ from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from app.utils.limiter import limiter
 from app.utils.database import engine, Base 
+from sqlalchemy import text
 from app.models import *
 from app.controllers.auth_controller import router as auth_router
 from app.controllers.admin_controller import router as admin_router
@@ -91,6 +92,50 @@ async def create_tables():
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        await ensure_application_analysis_columns(conn)
+
+
+async def ensure_application_analysis_columns(conn):
+    """
+    Existing deployments already have job_applications, and create_all() will not
+    add new columns. Keep this narrow so the HR applications view does not 500
+    before the manual migration has been run.
+    """
+    columns = {
+        "skills_score": "DOUBLE PRECISION",
+        "experience_score": "DOUBLE PRECISION",
+        "education_score": "DOUBLE PRECISION",
+        "skills_reason": "VARCHAR",
+        "experience_reason": "VARCHAR",
+        "education_reason": "VARCHAR",
+        "matched_skills": "JSON",
+        "missing_skills": "JSON",
+        "relevant_experience": "VARCHAR",
+        "experience_gaps": "VARCHAR",
+        "required_degree": "VARCHAR",
+        "candidate_degree": "VARCHAR",
+        "recommendations": "JSON",
+        "ai_summary": "VARCHAR",
+        "strengths": "JSON",
+        "weaknesses": "JSON",
+        "ai_powered": "BOOLEAN DEFAULT FALSE",
+    }
+
+    dialect = conn.dialect.name
+    for column_name, column_type in columns.items():
+        try:
+            if dialect == "sqlite":
+                existing = await conn.execute(text("PRAGMA table_info(job_applications)"))
+                existing_names = {row[1] for row in existing.fetchall()}
+                if column_name not in existing_names:
+                    sqlite_type = "TEXT" if column_type in ("VARCHAR", "JSON") else column_type
+                    await conn.execute(text(f"ALTER TABLE job_applications ADD COLUMN {column_name} {sqlite_type}"))
+            else:
+                await conn.execute(text(
+                    f"ALTER TABLE job_applications ADD COLUMN IF NOT EXISTS {column_name} {column_type}"
+                ))
+        except Exception as e:
+            logger.warning(f"Could not ensure job_applications.{column_name}: {e}")
 
 @app.on_event("startup")
 async def startup():

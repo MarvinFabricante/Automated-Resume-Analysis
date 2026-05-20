@@ -85,11 +85,7 @@ const SmartUploadPage = () => {
       });
       
       const extracted = response.data;
-      setUploadProgress(90);
-      
-      const matchRes = await axios.post('http://localhost:8000/matching/match-data', extracted);
       setUploadProgress(100);
-
       setIsComplete(true);
 
       setTimeout(() => {
@@ -98,18 +94,18 @@ const SmartUploadPage = () => {
             fileName: file.name, 
             isSmart: true,
             extractedData: extracted,
-            matches: matchRes.data.results
+            matches: null
           } 
         });
-      }, 1500); // Give user a moment to see the success state
+      }, 500);
       
     } catch (error) {
-      console.error("Error analyzing resume:", error);
+      console.error("Error parsing resume:", error);
       if (error.response?.status === 429) {
         alert("Too many requests! Please wait a moment before trying again.");
         setCooldown(30);
       } else {
-        const detail = error.response?.data?.detail || "Failed to analyze resume. Please ensure you uploaded a valid PDF or Word document.";
+        const detail = error.response?.data?.detail || "Failed to parse resume. Please ensure you uploaded a valid PDF or Word document.";
         alert(detail);
       }
       setIsUploading(false);
@@ -211,7 +207,7 @@ const SmartUploadPage = () => {
                         <span className="block text-[10px] font-black uppercase tracking-[0.2em] text-[#D60041] mb-1">Processing</span>
                         <h4 className="text-lg font-black text-slate-900 flex items-center gap-3">
                           <span className="w-2.5 h-2.5 bg-[#D60041] rounded-full animate-ping" />
-                          AI Engine Analyzing...
+                          Extracting Resume Details...
                         </h4>
                       </div>
                       <span className="text-2xl font-black text-slate-900">{uploadProgress}%</span>
@@ -233,8 +229,8 @@ const SmartUploadPage = () => {
                         <CheckCircle2 size={32} />
                       </div>
                       <div>
-                        <h4 className="text-xl font-black text-slate-900">Analysis Successful</h4>
-                        <p className="text-slate-600 font-medium">Our AI has extracted your profile information and matched you with roles. Redirecting...</p>
+                        <h4 className="text-xl font-black text-slate-900">Resume Parsed</h4>
+                        <p className="text-slate-600 font-medium">Your credentials are ready. Match analysis will run after this review step.</p>
                       </div>
                     </div>
                   </div>

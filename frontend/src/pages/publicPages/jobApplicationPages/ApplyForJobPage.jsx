@@ -276,7 +276,7 @@ const ApplyForJobPage = () => {
                     <div className="flex justify-between text-sm font-bold text-slate-700 mb-3">
                       <span className="flex items-center gap-2">
                         <span className="w-2 h-2 bg-[#D60041] rounded-full animate-pulse" />
-                        Analyzing with AI...
+                        Extracting resume details...
                       </span>
                       <span>{uploadProgress}%</span>
                     </div>

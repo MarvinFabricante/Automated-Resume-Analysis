@@ -22,6 +22,11 @@ class JobMatchResult(BaseModel):
     required_degree: Optional[str] = None
     candidate_degree: Optional[str] = None
     recommendations: Optional[list[str]] = None
+    # ── Gemini AI Insights (populated when AI is available) ──────────────────
+    ai_summary: Optional[str] = None
+    strengths: Optional[list[str]] = None
+    weaknesses: Optional[list[str]] = None
+    ai_powered: Optional[bool] = False
 
 
 class MatchResponse(BaseModel):
@@ -40,3 +45,4 @@ class ResumeMatchRequest(BaseModel):
     experience: Optional[str] = ""
     education: Optional[str] = ""
     profile_image_url: Optional[str] = None
+    ai_summary: Optional[str] = None

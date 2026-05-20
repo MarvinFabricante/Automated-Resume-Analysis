@@ -14,6 +14,7 @@ const ChatWidget = () => {
     const [inputMessage, setInputMessage] = useState('');
     const [loading, setLoading] = useState(false);
     const wsRef = useRef(null);
+    const reconnectTimeoutRef = useRef(null);
     const messagesEndRef = useRef(null);
     const activeContactRef = useRef(null);
 
@@ -43,8 +44,13 @@ const ChatWidget = () => {
     useEffect(() => {
         if (!token) return;
 
+        let shouldReconnect = true;
+
         const connectWebSocket = () => {
+            if (!shouldReconnect) return;
+
             const ws = new WebSocket(`ws://localhost:8000/chat/ws?token=${encodeURIComponent(token)}`);
+            wsRef.current = ws;
             
             ws.onmessage = (event) => {
                 const data = JSON.parse(event.data);
@@ -88,18 +94,33 @@ const ChatWidget = () => {
             };
 
             ws.onclose = () => {
-                setTimeout(connectWebSocket, 5000);
+                if (shouldReconnect) {
+                    reconnectTimeoutRef.current = setTimeout(connectWebSocket, 5000);
+                }
             };
-
-            wsRef.current = ws;
         };
 
         connectWebSocket();
 
         return () => {
-            if (wsRef.current) {
-                wsRef.current.close();
+            shouldReconnect = false;
+            if (reconnectTimeoutRef.current) {
+                clearTimeout(reconnectTimeoutRef.current);
+                reconnectTimeoutRef.current = null;
             }
+            if (wsRef.current) {
+                const socket = wsRef.current;
+                socket.onmessage = null;
+                socket.onclose = null;
+                socket.onerror = null;
+
+                if (socket.readyState === WebSocket.CONNECTING) {
+                    socket.onopen = () => socket.close();
+                } else if (socket.readyState === WebSocket.OPEN) {
+                    socket.close();
+                }
+            }
+            wsRef.current = null;
         };
     }, [token, currentUserId]);
 

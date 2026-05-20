@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, ForeignKey, DateTime
+from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, Boolean
 from sqlalchemy.dialects.postgresql import JSON, DOUBLE_PRECISION
 from sqlalchemy.orm import relationship
 from datetime import datetime
@@ -46,6 +46,10 @@ class JobApplication(Base):
     required_degree = Column(String, nullable=True)
     candidate_degree = Column(String, nullable=True)
     recommendations = Column(JSON, nullable=True)
+    ai_summary = Column(String, nullable=True)
+    strengths = Column(JSON, nullable=True)
+    weaknesses = Column(JSON, nullable=True)
+    ai_powered = Column(Boolean, default=False)
     
     status = Column(String, default="PENDING") # PENDING, REVIEWED, REJECTED, ACCEPTED
     

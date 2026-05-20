@@ -62,6 +62,7 @@ const CandidateProfileForm = () => {
   const [skillsReason, setSkillsReason] = useState(location.state?.matchData?.skills_reason || "");
   const [experienceReason, setExperienceReason] = useState(location.state?.matchData?.experience_reason || "");
   const [educationReason, setEducationReason] = useState(location.state?.matchData?.education_reason || "");
+  const [matchData, setMatchData] = useState(location.state?.matchData || null);
   const [isCalculating, setIsCalculating] = useState(false);
 
   React.useEffect(() => {
@@ -86,6 +87,7 @@ const CandidateProfileForm = () => {
           setSkillsReason(response.data.skills_reason);
           setExperienceReason(response.data.experience_reason);
           setEducationReason(response.data.education_reason);
+          setMatchData(response.data);
         }
       } catch (err) {
         console.error("Failed to recalculate match score:", err);
@@ -154,6 +156,17 @@ const CandidateProfileForm = () => {
       skills_reason: skillsReason,
       experience_reason: experienceReason,
       education_reason: educationReason,
+      matched_skills: matchData?.matched_skills || [],
+      missing_skills: matchData?.missing_skills || [],
+      relevant_experience: matchData?.relevant_experience || "",
+      experience_gaps: matchData?.experience_gaps || "",
+      required_degree: matchData?.required_degree || "",
+      candidate_degree: matchData?.candidate_degree || "",
+      recommendations: matchData?.recommendations || [],
+      ai_summary: matchData?.ai_summary || "",
+      strengths: matchData?.strengths || [],
+      weaknesses: matchData?.weaknesses || [],
+      ai_powered: Boolean(matchData?.ai_powered),
       profile_image_url: localStorage.getItem('profile_image_url'),
     };
 
