@@ -2,7 +2,7 @@ import React from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Users, Database, Building2, User, Settings, Search, FileText, Info, Briefcase,
-  HelpCircle, BookOpen, ChevronRight, X, MessageSquare, Menu, ChevronLeft
+  HelpCircle, BookOpen, ChevronRight, X, MessageSquare, Menu, ChevronLeft, Scale
 } from 'lucide-react';
 import { useSelector, useDispatch } from 'react-redux';
 import { toggleSidebar, closeSidebar } from '../../redux/slices/uiSlice';
@@ -31,6 +31,7 @@ const Sidebar = () => {
       items.push(
         { label: 'Dashboard', path: '/hr/dashboard', icon: <Building2 size={22} /> },
         { label: 'Screening', path: '/hr/screeningportal', icon: <User size={22} /> },
+        { label: 'Compare Candidates', path: '/hr/comparecandidates', icon: <Scale size={22} /> },
         { label: 'Jobs', path: '/hr/jobmanagement', icon: <Settings size={22} /> },
         { label: 'Messages', path: '/hr/messages', icon: <MessageSquare size={22} /> }
       );

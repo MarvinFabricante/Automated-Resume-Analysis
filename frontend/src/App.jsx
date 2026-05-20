@@ -32,6 +32,7 @@ import CandidateSmartMatchResult from './pages/candidate/CandidateSmartMatchResu
 import HRDashboard from './pages/hr/HRDashboard';
 import JobManagement from './pages/hr/JobManagement';
 import ScreeningPortal from './pages/hr/ScreeningPortal';
+import CompareCandidates from './pages/hr/CompareCandidates';
 
 import AdminDashboard from './pages/admin/AdminDashboard';
 import AuditLogPage from './pages/admin/AuditLog';
@@ -77,6 +78,7 @@ const App = () => {
           <Route path="/hr">
             <Route path="dashboard" element={<HRDashboard />} />
             <Route path="screeningportal" element={<ScreeningPortal />} />
+            <Route path="comparecandidates" element={<CompareCandidates />} />
             <Route path="jobmanagement" element={<JobManagement />} />
             <Route path="messages" element={<MessagesPage />} />
             <Route path="settings" element={<AccountSettings />} />
