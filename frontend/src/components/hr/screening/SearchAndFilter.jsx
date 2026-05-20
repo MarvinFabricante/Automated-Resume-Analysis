@@ -5,7 +5,10 @@ const SearchAndFilter = ({
   searchQuery, 
   setSearchQuery, 
   statusFilter, 
-  setStatusFilter, 
+  setStatusFilter,
+  jobFilter,
+  setJobFilter,
+  uniqueJobs = [],
   showSuggestions, 
   setShowSuggestions, 
   suggestions 
@@ -48,8 +51,29 @@ const SearchAndFilter = ({
         )}
       </div>
 
-      <div className="relative w-full md:w-56 shrink-0">
-        <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+      <div className="flex gap-5 w-full md:w-auto shrink-0 flex-col md:flex-row">
+        {/* Job Filter */}
+        <div className="relative w-full md:w-56">
+          <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+            <Filter className="h-4 w-4 text-gray-400" />
+          </div>
+          <select
+            className="w-full bg-gray-50/50 border-2 border-gray-100 pl-11 pr-10 py-3.5 rounded-2xl text-sm font-bold text-gray-700 focus:outline-none focus:border-pink-100 focus:bg-white focus:ring-4 focus:ring-pink-50 transition-all duration-300 cursor-pointer appearance-none truncate"
+            value={jobFilter}
+            onChange={(e) => setJobFilter(e.target.value)}
+          >
+            {uniqueJobs.map((job, idx) => (
+              <option key={idx} value={job}>{job}</option>
+            ))}
+          </select>
+          <div className="absolute inset-y-0 right-0 pr-4 flex items-center pointer-events-none">
+            <svg className="h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
+          </div>
+        </div>
+
+        {/* Status Filter */}
+        <div className="relative w-full md:w-56">
+          <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
           <Filter className="h-4 w-4 text-gray-400" />
         </div>
         <select
@@ -68,6 +92,7 @@ const SearchAndFilter = ({
         </select>
         <div className="absolute inset-y-0 right-0 pr-4 flex items-center pointer-events-none">
           <svg className="h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
+        </div>
         </div>
       </div>
     </div>

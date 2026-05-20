@@ -27,14 +27,11 @@ async def get_job(db: AsyncSession, job_id: str):
 
 
 # retrieving all jobs in descending order, bali mauuna ung newly created which is nasa pinaka dulo ng record.
-async def get_all_active_jobs(db: AsyncSession, skip: int = 0, limit: int = 100):
-    query = (
-        select(JobDescription)
-        .filter(JobDescription.is_active == True)
-        .order_by(desc(JobDescription.id))
-        .offset(skip)
-        .limit(limit)
-    )
+async def get_all_active_jobs(db: AsyncSession, skip: int = 0, limit: int = 100, include_inactive: bool = False):
+    query = select(JobDescription)
+    if not include_inactive:
+        query = query.filter(JobDescription.is_active == True)
+    query = query.order_by(desc(JobDescription.id)).offset(skip).limit(limit)
     
     result = await db.execute(query)
     return result.scalars().all()
@@ -105,5 +102,15 @@ async def set_job_status(db: AsyncSession, job_id: str, active_status: bool):
         db_job.is_active = active_status
         await db.commit()
         await db.refresh(db_job)
+        
+    return db_job
+
+async def delete_job(db: AsyncSession, job_id: str):
+    result = await db.execute(select(JobDescription).filter(JobDescription.job_id == job_id))
+    db_job = result.scalars().first()
+    
+    if db_job:
+        await db.delete(db_job)
+        await db.commit()
         
     return db_job

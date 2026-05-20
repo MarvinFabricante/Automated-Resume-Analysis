@@ -2,7 +2,7 @@ import React from 'react';
 import { Search } from 'lucide-react';
 import JobCard from './JobCard';
 
-const JobList = ({ jobs, onEdit, onView }) => {
+const JobList = ({ jobs, onEdit, onView, onArchive, onUnarchive, onDelete }) => {
   if (jobs.length === 0) {
     return (
       <div className="text-center py-24 bg-white rounded-[32px] border-2 border-dashed border-gray-200 text-gray-400 shadow-sm">
@@ -21,6 +21,9 @@ const JobList = ({ jobs, onEdit, onView }) => {
           job={job}
           onEdit={onEdit}
           onView={onView}
+          onArchive={onArchive}
+          onUnarchive={onUnarchive}
+          onDelete={onDelete}
         />
       ))}
     </div>

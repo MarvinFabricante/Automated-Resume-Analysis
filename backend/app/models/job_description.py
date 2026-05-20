@@ -27,4 +27,4 @@ class JobDescription(Base):
     is_active = Column(Boolean, default=True)
 
     # Relationships
-    applications = relationship("JobApplication", back_populates="job")
+    applications = relationship("JobApplication", back_populates="job", cascade="all, delete-orphan")

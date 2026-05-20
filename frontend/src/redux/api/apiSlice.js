@@ -32,7 +32,10 @@ export const apiSlice = createApi({
 
     // --- JOBS ---
     getJobs: builder.query({
-      query: () => '/hr/read-jobs',
+      query: (params) => {
+        const includeInactive = params?.include_inactive ?? false;
+        return `/hr/read-jobs?include_inactive=${includeInactive}`;
+      },
       providesTags: ['Jobs'],
       transformResponse: (response) => {
         const rawData = Array.isArray(response) ? response : [];
@@ -65,12 +68,28 @@ export const apiSlice = createApi({
       invalidatesTags: ['Jobs', 'Applications', 'Dashboard'],
     }),
 
-    updateJobStatus: builder.mutation({
-      query: ({ jobId, status }) => ({
-        url: `/hr/set-job-status/${jobId}?active_status=${status}`,
+    archiveJob: builder.mutation({
+      query: (jobId) => ({
+        url: `/hr/archive-job/${jobId}`,
         method: 'PATCH',
       }),
-      invalidatesTags: ['Jobs'],
+      invalidatesTags: ['Jobs', 'Dashboard'],
+    }),
+
+    unarchiveJob: builder.mutation({
+      query: (jobId) => ({
+        url: `/hr/unarchive-job/${jobId}`,
+        method: 'PATCH',
+      }),
+      invalidatesTags: ['Jobs', 'Dashboard'],
+    }),
+
+    deleteJob: builder.mutation({
+      query: (jobId) => ({
+        url: `/hr/delete-job/${jobId}`,
+        method: 'DELETE',
+      }),
+      invalidatesTags: ['Jobs', 'Dashboard', 'Applications'],
     }),
 
     getApplications: builder.query({
@@ -256,7 +275,9 @@ export const {
   useDeleteApplicationMutation,
   useCreateJobMutation,
   useUpdateJobMutation,
-  useUpdateJobStatusMutation,
+  useArchiveJobMutation,
+  useUnarchiveJobMutation,
+  useDeleteJobMutation,
   useUpdateApplicationStatusMutation,
   useGetHRActivitiesQuery,
   useGetUsersQuery,

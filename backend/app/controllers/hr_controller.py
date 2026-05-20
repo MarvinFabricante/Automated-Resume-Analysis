@@ -8,7 +8,7 @@ from app.utils.database import get_db
 from app.schemas.hr_schema import HRCreate, HRResponse, HRUpdate
 from app.schemas.job_description_schema import JobCreate, JobResponse, JobUpdate
 from app.services import hr_service
-from app.services.job_description_service import create_job, get_all_active_jobs, get_job, set_job_status, update_job
+from app.services.job_description_service import create_job, get_all_active_jobs, get_job, set_job_status, update_job, delete_job
 from app.services.audit_service import record_activity
 from app.utils.cache import cache_response, clear_cache_pattern
 from app.utils.auth import get_current_user
@@ -101,9 +101,10 @@ async def create_job_description(
 async def read_active_jobs(
     skip: int = 0, 
     limit: int = 100, 
+    include_inactive: bool = False,
     db: AsyncSession = Depends(get_db)
 ):
-    return await get_all_active_jobs(db, skip=skip, limit=limit)
+    return await get_all_active_jobs(db, skip=skip, limit=limit, include_inactive=include_inactive)
 
 @router.get("/read-job/{job_id}", response_model=JobResponse)
 @cache_response("job_detail", ttl=600)
@@ -153,6 +154,32 @@ async def unarchive_job(job_id: str, db: AsyncSession = Depends(get_db)):
     if not db_job:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, 
+            detail=f"Job {job_id} not found"
+        )
+    return db_job
+
+@router.delete("/delete-job/{job_id}", response_model=JobResponse)
+async def delete_job_endpoint(
+    job_id: str, 
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    db_job = await delete_job(db=db, job_id=job_id)
+    if db_job:
+        await clear_cache_pattern("active_jobs:*")
+        await clear_cache_pattern(f"job_detail:*job_id\":\"{job_id}\"*")
+        
+        # Record in audit log
+        await record_activity(
+            db=db,
+            user_id=current_user.get("id"),
+            action="DELETE_JOB",
+            target=f"Job: {db_job.job_title}",
+            details=f"HR deleted the job position: {db_job.job_title}"
+        )
+    if not db_job:
+        raise HTTPException(
+            status_code=status.HTTP_442_UNPROCESSABLE_ENTITY if not db_job else status.HTTP_404_NOT_FOUND,
             detail=f"Job {job_id} not found"
         )
     return db_job

@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Helmet } from 'react-helmet-async';
-import { ArrowRight } from 'lucide-react';
+import { ArrowRight, AlertCircle, CheckCircle2, X } from 'lucide-react';
 
 // Layout components
 import Header from '../../components/layout/Header';
@@ -14,12 +14,78 @@ import CreateJobModal from '../../components/modals/hr/CreateJobModal';
 import EditJobModal from '../../components/modals/hr/EditJobModal';
 import ViewJobDetailsModal from '../../components/modals/hr/ViewJobDetailsModal';
 
-import { useGetJobsQuery } from '../../redux/api/apiSlice';
+import { useGetJobsQuery, useArchiveJobMutation, useUnarchiveJobMutation, useDeleteJobMutation } from '../../redux/api/apiSlice';
 
 const JobManagementPage = () => {
   // RTK Query hook handles fetching, loading, error, and caching!
-  const { data: jobs = [], isLoading, error: queryError, refetch } = useGetJobsQuery();
+  const { data: jobs = [], isLoading, error: queryError, refetch } = useGetJobsQuery({ include_inactive: true });
   const error = queryError ? "Failed to sync with database. Please try again later." : null;
+
+  const [archiveJob] = useArchiveJobMutation();
+  const [unarchiveJob] = useUnarchiveJobMutation();
+  const [deleteJob] = useDeleteJobMutation();
+
+  // Custom Toast Notification State
+  const [toast, setToast] = useState(null);
+
+  // Custom Confirmation Modal State
+  const [confirmModal, setConfirmModal] = useState({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: null
+  });
+
+  const showToastMessage = (message, type = 'success') => {
+    setToast({ message, type });
+    setTimeout(() => {
+      setToast(null);
+    }, 4000);
+  };
+
+  const handleArchiveJob = async (jobId, jobTitle) => {
+    setConfirmModal({
+      isOpen: true,
+      title: 'Archive Job',
+      message: `Are you sure you want to archive "${jobTitle}"? This will close applications on the careers portal.`,
+      onConfirm: async () => {
+        try {
+          await archiveJob(jobId).unwrap();
+          showToastMessage(`Job "${jobTitle}" archived successfully!`, 'success');
+        } catch (error) {
+          console.error("Failed to archive job:", error);
+          showToastMessage("Failed to archive job. Please try again.", 'error');
+        }
+      }
+    });
+  };
+
+  const handleUnarchiveJob = async (jobId, jobTitle) => {
+    try {
+      await unarchiveJob(jobId).unwrap();
+      showToastMessage(`Job "${jobTitle}" unarchived successfully!`, 'success');
+    } catch (error) {
+      console.error("Failed to unarchive job:", error);
+      showToastMessage("Failed to unarchive job. Please try again.", 'error');
+    }
+  };
+
+  const handleDeleteJob = async (jobId, jobTitle) => {
+    setConfirmModal({
+      isOpen: true,
+      title: 'Remove Job',
+      message: `Are you sure you want to permanently remove "${jobTitle}"? This action cannot be undone and will delete all associated applications.`,
+      onConfirm: async () => {
+        try {
+          await deleteJob(jobId).unwrap();
+          showToastMessage(`Job "${jobTitle}" removed successfully!`, 'success');
+        } catch (error) {
+          console.error("Failed to delete job:", error);
+          showToastMessage("Failed to delete job. Please try again.", 'error');
+        }
+      }
+    });
+  };
 
   // Filter States
   const [searchQuery, setSearchQuery] = useState("");
@@ -123,6 +189,9 @@ const JobManagementPage = () => {
               jobs={paginatedJobs}
               onEdit={(job) => setModalState({ type: 'edit', selectedJob: job })}
               onView={(job) => setModalState({ type: 'view', selectedJob: job })}
+              onArchive={handleArchiveJob}
+              onUnarchive={handleUnarchiveJob}
+              onDelete={handleDeleteJob}
             />
             
             {/* Pagination Controls */}
@@ -184,6 +253,61 @@ const JobManagementPage = () => {
         job={modalState.selectedJob}
         onClose={closeModal}
       />
+
+      {/* Confirm Modal */}
+      {confirmModal.isOpen && (
+        <div className="fixed inset-0 bg-[#0c0d12]/60 backdrop-blur-md flex items-center justify-center z-50 p-4 animate-in fade-in duration-300">
+          <div className="bg-white w-full max-w-md rounded-[32px] border border-gray-100 shadow-2xl overflow-hidden p-8 animate-in zoom-in-95 duration-300">
+            <div className="flex items-center justify-center w-14 h-14 bg-rose-50 border-2 border-rose-100 rounded-2xl text-rose-600 mb-6 mx-auto">
+              <AlertCircle className="w-6 h-6" />
+            </div>
+            
+            <h3 className="text-lg font-bold text-gray-900 text-center uppercase tracking-wider mb-2">
+              {confirmModal.title}
+            </h3>
+            <p className="text-sm text-gray-500 text-center font-medium leading-relaxed mb-8">
+              {confirmModal.message}
+            </p>
+            
+            <div className="flex gap-4">
+              <button
+                onClick={() => setConfirmModal({ ...confirmModal, isOpen: false })}
+                className="flex-1 py-3 px-5 border-2 border-gray-100 text-gray-500 rounded-xl text-xs font-bold uppercase tracking-wider hover:bg-gray-50 transition-all duration-300"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  confirmModal.onConfirm();
+                  setConfirmModal({ ...confirmModal, isOpen: false });
+                }}
+                className="flex-1 py-3 px-5 bg-rose-600 text-white rounded-xl text-xs font-bold uppercase tracking-wider hover:bg-rose-700 hover:shadow-lg hover:shadow-rose-100 transition-all duration-300"
+              >
+                Confirm
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Toast Notification */}
+      {toast && (
+        <div className={`fixed bottom-6 right-6 flex items-center gap-3 px-5 py-4 rounded-2xl shadow-2xl border animate-in slide-in-from-bottom-5 duration-300 z-50 ${
+          toast.type === 'success' 
+            ? 'bg-emerald-50 border-emerald-100 text-emerald-800' 
+            : 'bg-rose-50 border-rose-100 text-rose-800'
+        }`}>
+          {toast.type === 'success' ? (
+            <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+          ) : (
+            <AlertCircle className="w-5 h-5 text-rose-600 shrink-0" />
+          )}
+          <span className="text-xs font-bold uppercase tracking-wider">{toast.message}</span>
+          <button onClick={() => setToast(null)} className="ml-2 hover:opacity-75">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
     </div>
   );
 };

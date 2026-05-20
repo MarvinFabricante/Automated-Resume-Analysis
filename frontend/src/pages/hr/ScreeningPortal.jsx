@@ -79,6 +79,7 @@ const ScreeningPortal = () => {
   
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("All Status");
+  const [jobFilter, setJobFilter] = useState("All Jobs");
   const [showSuggestions, setShowSuggestions] = useState(false);
 
   const [interviewModalOpen, setInterviewModalOpen] = useState(false);
@@ -163,16 +164,22 @@ const ScreeningPortal = () => {
     const matchesStatus =
       statusFilter === "All Status" ||
       c.status.toLowerCase() === statusFilter.toLowerCase();
+      
+    const matchesJob = 
+      jobFilter === "All Jobs" || 
+      c.preferredJob === jobFilter;
 
     const q = searchQuery.toLowerCase();
     const matchesSearch =
       !searchQuery ||
       c.name.toLowerCase().includes(q) ||
-      c.preferredJob.toLowerCase().includes(q) ||
+      (c.preferredJob && c.preferredJob.toLowerCase().includes(q)) ||
       (c.skills && c.skills.some(s => s.toLowerCase().includes(q)));
 
-    return matchesStatus && matchesSearch;
-  });
+    return matchesStatus && matchesJob && matchesSearch;
+  }).sort((a, b) => (b.matchScore || 0) - (a.matchScore || 0));
+
+  const uniqueJobs = ["All Jobs", ...new Set(candidates.map(c => c.preferredJob).filter(Boolean))];
 
   const suggestions = searchQuery.length > 0
     ? candidates.filter(c => c.name.toLowerCase().includes(searchQuery.toLowerCase())).map(c => c.name)
@@ -196,10 +203,27 @@ const ScreeningPortal = () => {
           setSearchQuery={setSearchQuery}
           statusFilter={statusFilter}
           setStatusFilter={setStatusFilter}
+          jobFilter={jobFilter}
+          setJobFilter={setJobFilter}
+          uniqueJobs={uniqueJobs}
           showSuggestions={showSuggestions}
           setShowSuggestions={setShowSuggestions}
           suggestions={suggestions}
         />
+
+        {jobFilter !== "All Jobs" && (
+          <div className="mb-6 bg-pink-50 border border-pink-100 rounded-2xl p-4 flex items-center justify-between shadow-sm">
+            <div>
+              <h3 className="text-lg font-bold text-gray-800">Showing applicants for: <span className="text-[#D60041]">{jobFilter}</span></h3>
+              <p className="text-sm text-gray-500 font-medium mt-1">
+                Total Applicants: {filteredCandidates.length}
+              </p>
+            </div>
+            <div className="px-4 py-2 bg-white rounded-xl text-xs font-bold text-[#D60041] border border-pink-100 shadow-sm uppercase tracking-wide">
+              Ranked by AI Score
+            </div>
+          </div>
+        )}
 
         {isLoading ? (
           <div className="flex flex-col items-center justify-center py-20">

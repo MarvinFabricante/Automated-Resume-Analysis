@@ -1,7 +1,7 @@
 import React from 'react';
 import { Briefcase } from 'lucide-react';
 
-const JobCard = ({ job, onEdit, onView }) => {
+const JobCard = ({ job, onEdit, onView, onArchive, onUnarchive, onDelete }) => {
   const skillsArray = typeof job.skills_requirements === 'string'
     ? job.skills_requirements.split(',').map(s => s.trim())
     : [];
@@ -18,7 +18,7 @@ const JobCard = ({ job, onEdit, onView }) => {
             <h3 className="text-xl font-bold text-gray-900 group-hover:text-[#D60041] transition-colors">{job.title}</h3>
             <span className={`text-[10px] font-bold px-3 py-1 rounded-full border uppercase tracking-wide shadow-sm ${job.is_active ? "bg-emerald-50 text-emerald-600 border-emerald-100" : "bg-gray-50 text-gray-500 border-gray-200"
               }`}>
-              {job.is_active ? "Active" : "Inactive"}
+              {job.is_active ? "Active" : "Archived"}
             </span>
           </div>
 
@@ -42,18 +42,39 @@ const JobCard = ({ job, onEdit, onView }) => {
         </div>
       </div>
 
-      <div className="flex flex-row lg:flex-col xl:flex-row gap-3 w-full lg:w-auto shrink-0 mt-4 lg:mt-0 pt-4 lg:pt-0 border-t lg:border-t-0 border-gray-100">
+      <div className="flex flex-wrap flex-row lg:flex-col xl:flex-row gap-3 w-full lg:w-auto shrink-0 mt-4 lg:mt-0 pt-4 lg:pt-0 border-t lg:border-t-0 border-gray-100">
+        <button
+          onClick={() => onView(job)}
+          className="flex-grow lg:flex-grow-0 px-5 py-3 bg-[#D60041] border border-[#D60041] text-white rounded-xl text-xs font-bold hover:bg-[#b50037] hover:border-[#b50037] transition-all duration-300 shadow-sm text-center"
+        >
+          View Details
+        </button>
         <button
           onClick={() => onEdit(job)}
-          className="flex-1 lg:flex-none px-6 py-3 bg-white border border-gray-200 rounded-xl text-xs font-bold text-gray-700 hover:bg-[#D60041] hover:text-white hover:border-[#D60041] transition-all duration-300 shadow-sm text-center"
+          className="flex-grow lg:flex-grow-0 px-5 py-3 bg-white border border-gray-200 rounded-xl text-xs font-bold text-gray-700 hover:bg-gray-50 transition-all duration-300 shadow-sm text-center"
         >
           Edit Job
         </button>
+        {job.is_active ? (
+          <button
+            onClick={() => onArchive(job.job_id, job.title)}
+            className="flex-grow lg:flex-grow-0 px-5 py-3 bg-amber-50 border border-amber-200 rounded-xl text-xs font-bold text-amber-600 hover:bg-amber-600 hover:text-white hover:border-amber-600 transition-all duration-300 shadow-sm text-center"
+          >
+            Archive
+          </button>
+        ) : (
+          <button
+            onClick={() => onUnarchive(job.job_id, job.title)}
+            className="flex-grow lg:flex-grow-0 px-5 py-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs font-bold text-emerald-600 hover:bg-emerald-600 hover:text-white hover:border-emerald-600 transition-all duration-300 shadow-sm text-center"
+          >
+            Unarchive
+          </button>
+        )}
         <button
-          onClick={() => onView(job)}
-          className="flex-1 lg:flex-none px-6 py-3 bg-[#D60041] border border-[#D60041] text-white rounded-xl text-xs font-bold hover:bg-[#b50037] hover:border-[#b50037] transition-all duration-300 shadow-sm text-center"
+          onClick={() => onDelete(job.job_id, job.title)}
+          className="flex-grow lg:flex-grow-0 px-5 py-3 bg-rose-50 border border-rose-200 rounded-xl text-xs font-bold text-rose-600 hover:bg-rose-600 hover:text-white hover:border-rose-600 transition-all duration-300 shadow-sm text-center"
         >
-          View Details
+          Remove
         </button>
       </div>
     </div>
