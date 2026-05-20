@@ -104,7 +104,7 @@ const Header = () => {
             return {
               id: n.id,
               title: n.title,
-              desc: n.message,
+              desc: isAdminRole && n.sender_role ? `[Sender: ${n.sender_role}] ${n.message}` : n.message,
               time: timeStr,
               type: n.type,
               icon: iconName,
@@ -174,7 +174,7 @@ const Header = () => {
             return {
               id: n.id,
               title: n.title,
-              desc: n.message,
+              desc: isAdminRole && n.sender_role ? `[Sender: ${n.sender_role}] ${n.message}` : n.message,
               time: timeStr,
               type: n.type,
               icon: iconName,
@@ -186,12 +186,7 @@ const Header = () => {
             };
           });
 
-          const defaultNotifs = [
-            { id: 'def-2', title: 'Interview Invite', desc: 'Mariwasa HR sent you an interview invitation.', time: '1h ago', type: 'schedule', icon: 'MessageSquare', bgColor: 'bg-pink-50', textColor: 'text-[#D60041]', tag: 'Interview', tagColor: 'bg-pink-100 text-[#D60041]', read: false },
-            { id: 'def-3', title: 'Job Match', desc: 'New "UI Designer" role matches your profile.', time: '3h ago', type: 'job', icon: 'TrendingUp', bgColor: 'bg-green-50', textColor: 'text-green-600', tag: 'Match', tagColor: 'bg-green-100 text-green-700', read: false }
-          ];
-
-          dispatch(setNotifications([...formatted, ...defaultNotifs]));
+          dispatch(setNotifications(formatted));
         } catch (err) {
           console.error("Failed to fetch candidate notifications:", err);
         }
@@ -260,8 +255,9 @@ const Header = () => {
             else if (n.type === 'hr_login') { iconName = 'Radio'; bgColor = 'bg-purple-50'; textColor = 'text-purple-600'; }
           }
 
+          const desc = isAdminRole && n.sender_role ? `[Sender: ${n.sender_role}] ${n.message}` : n.message;
           const formattedNewNotif = {
-            id: n.id, title: n.title, desc: n.message, time: 'just now', type: n.type, icon: iconName, bgColor, textColor, tag, tagColor, read: n.is_read
+            id: n.id, title: n.title, desc, time: 'just now', type: n.type, icon: iconName, bgColor, textColor, tag, tagColor, read: n.is_read
           };
 
           dispatch(addNotification(formattedNewNotif));
@@ -301,8 +297,8 @@ const Header = () => {
   }, [isAdminRole, isHRRole, isGuest, dispatch]);
 
   const handleMarkAllRead = async () => {
-    if (isHRRole || isAdminRole) {
-      try { await axios.put('http://localhost:8000/notifications/mark-all-read'); }
+    if (!isGuest) {
+      try { await axios.put(`http://localhost:8000/notifications/mark-read?role=${userRole}&email=${userEmail}`); }
       catch (err) { console.error("Failed to mark all read:", err); }
     }
     dispatch(markAllReadAction());

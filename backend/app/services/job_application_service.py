@@ -131,7 +131,8 @@ async def create_job_application(db: AsyncSession, application_in: JobApplicatio
             db=db,
             title="New Application Submitted",
             message=f"{application_in.candidate_name} applied for {job_title}.",
-            type="application"
+            type="application",
+            sender_role="CANDIDATE"
         )
     except Exception as notif_err:
         print(f"WARNING: Notification failed but application saved: {notif_err}")
@@ -196,7 +197,8 @@ async def update_application_status(db: AsyncSession, application_id: int, new_s
             title="Application Status Updated",
             message=f"Application for {db_application.candidate_name} marked as {status_upper}.",
             type="application_update",
-            target_role="HR"
+            target_role="HR",
+            sender_role="HR"
         )
         # Notify ADMIN
         await create_notification(
@@ -204,7 +206,8 @@ async def update_application_status(db: AsyncSession, application_id: int, new_s
             title="Application Status Updated",
             message=f"Application for {db_application.candidate_name} marked as {status_upper}.",
             type="application_update",
-            target_role="ADMIN"
+            target_role="ADMIN",
+            sender_role="HR"
         )
         
         # Notify Candidate (Targeted to their email)
@@ -235,7 +238,8 @@ async def update_application_status(db: AsyncSession, application_id: int, new_s
             message=message,
             type="application_update",
             target_role="CANDIDATE",
-            target_email=db_application.candidate_email
+            target_email=db_application.candidate_email,
+            sender_role="HR"
         )
     except Exception as e:
         print(f"Error creating status update notifications: {e}")

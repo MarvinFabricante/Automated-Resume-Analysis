@@ -14,6 +14,7 @@ class NotificationResponse(NotificationBase):
     is_read: bool
     target_role: str | None = None
     target_email: str | None = None
+    sender_role: str | None = None
     created_at: datetime
 
     class Config:

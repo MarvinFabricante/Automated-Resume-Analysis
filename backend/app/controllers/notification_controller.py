@@ -18,11 +18,11 @@ async def get_notifications(role: str = None, email: str = None, db: AsyncSessio
     return await notification_service.get_all_notifications(db, role, email)
 
 @router.put("/mark-read", status_code=status.HTTP_200_OK)
-async def mark_all_read(db: AsyncSession = Depends(get_db)):
+async def mark_all_read(role: str = None, email: str = None, db: AsyncSession = Depends(get_db)):
     """
     Mark all unread notifications as read.
     """
-    await notification_service.mark_all_as_read(db)
+    await notification_service.mark_all_as_read(db, role, email)
     return {"message": "All notifications marked as read"}
 
 @router.websocket("/ws")
