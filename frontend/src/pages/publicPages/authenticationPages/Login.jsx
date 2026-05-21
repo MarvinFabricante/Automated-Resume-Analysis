@@ -4,9 +4,6 @@ import { useDispatch } from 'react-redux';
 import { setCredentials } from '../../../redux/slices/authSlice';
 import { Helmet } from 'react-helmet-async';
 import {
-  Users,
-  Briefcase,
-  ShieldCheck,
   Eye,
   EyeOff,
   Loader2,
@@ -20,7 +17,6 @@ const Login = () => {
     return localStorage.getItem('saved_email') || '';
   });
   const [password, setPassword] = useState('');
-  const [role, setRole] = useState('CANDIDATE');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const dispatch = useDispatch();
@@ -52,17 +48,6 @@ const Login = () => {
       });
 
       const { access_token, role: verifiedRole, fullname, user_id, profile_image_url } = response.data;
-
-      if (role.toUpperCase() !== verifiedRole.toUpperCase()) {
-        setModalState({
-          isOpen: true,
-          type: 'error',
-          title: 'Login Failed',
-          message: `Account mismatch: This email is registered as ${verifiedRole}.`
-        });
-        setLoading(false);
-        return;
-      }
 
       // Update Redux state
       dispatch(setCredentials({
@@ -167,36 +152,12 @@ const Login = () => {
             Sign in
           </h1>
           <p className="text-base font-normal text-gray-800 mb-8 md:mb-0">
-            to Mariwasa Resume Analysis System. Select your portal role to continue.
+            to Mariwasa Resume Analysis System. Please enter your credentials to continue.
           </p>
         </div>
 
         <div className="w-full md:w-[55%] p-10 md:p-14 flex flex-col justify-center">
           <form onSubmit={handleSubmit} className="w-full max-w-[400px] mx-auto md:mx-0 md:ml-auto">
-
-            <div className="mb-8">
-              <label className="block text-xs font-medium text-gray-600 mb-3 ml-1">Portal Access Level</label>
-              <div className="flex flex-wrap gap-2">
-                {[
-                  { id: 'CANDIDATE', label: 'Candidate', icon: Users },
-                  { id: 'HR', label: 'HR Staff', icon: Briefcase },
-                  { id: 'ADMIN', label: 'Admin', icon: ShieldCheck }
-                ].map((r) => (
-                  <button
-                    key={r.id}
-                    type="button"
-                    onClick={() => setRole(r.id)}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-colors border ${role === r.id
-                      ? 'border-[#D60041] bg-red-50 text-[#D60041]'
-                      : 'border-gray-300 text-gray-700 hover:bg-gray-50'
-                      }`}
-                  >
-                    <r.icon size={16} className={role === r.id ? 'text-[#D60041]' : 'text-gray-500'} />
-                    {r.label}
-                  </button>
-                ))}
-              </div>
-            </div>
 
             <div className="space-y-4 mb-2">
               <div className="relative">

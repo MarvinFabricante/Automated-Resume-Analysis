@@ -95,9 +95,45 @@ def _apply_transient_analysis(app: JobApplication):
     app.ai_powered = app.ai_powered or scores.get("ai_powered", False)
 
 
+def _enrich_resume_url(app: JobApplication):
+    if app.resume_url:
+        return
+        
+    import os
+    import re
+    upload_dir = "uploads/resumes"
+    if not os.path.exists(upload_dir):
+        return
+        
+    name_parts = [p.lower() for p in re.split(r'\W+', app.candidate_name) if p]
+    if not name_parts:
+        return
+        
+    best_match = None
+    best_time = -1
+    
+    try:
+        for filename in os.listdir(upload_dir):
+            filename_lower = filename.lower()
+            if all(part in filename_lower for part in name_parts):
+                match = re.match(r'^(\d+)_', filename)
+                if match:
+                    ts = int(match.group(1))
+                    if ts > best_time:
+                        best_time = ts
+                        best_match = filename
+                elif not best_match:
+                    best_match = filename
+    except Exception as e:
+        print(f"WARNING: Error while trying to auto-resolve resume url: {e}")
+        
+    if best_match:
+        app.resume_url = f"http://localhost:8000/{upload_dir}/{best_match}"
+
 def _enrich_applications(apps: list[JobApplication]) -> list[JobApplication]:
     for app in apps:
         _apply_transient_analysis(app)
+        _enrich_resume_url(app)
     return apps
 
 async def create_job_application(db: AsyncSession, application_in: JobApplicationCreate, db_job_id: int) -> JobApplication:
