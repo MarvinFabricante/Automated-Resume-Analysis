@@ -8,6 +8,14 @@ import Header from '../../components/layout/Header';
 import Sidebar from '../../components/layout/Sidebar';
 import { useGetApplicationsQuery, useGetJobsQuery } from '../../redux/api/apiSlice';
 
+const getAvatarUrl = (candidate) => {
+  if (!candidate) return "";
+  const profileImage = candidate.profileImage;
+  return profileImage
+    ? (profileImage.startsWith('http') ? profileImage : `http://localhost:8000/${profileImage}`)
+    : `https://ui-avatars.com/api/?name=${encodeURIComponent(candidate.name)}&background=fdf2f8&color=d81159&bold=true`;
+};
+
 const calculateRuleBasedScore = (candidate, job, filters) => {
   let skillsScore = 0;
   let expScore = 0;
@@ -329,8 +337,15 @@ const CompareCandidates = () => {
                         <div className="absolute top-0 left-0 right-0 h-1 bg-[#D60041]" />
                       )}
                       <div className="flex items-center gap-3">
-                        <div className="w-12 h-12 bg-gradient-to-br from-pink-50 to-rose-50 border border-pink-100 rounded-xl flex items-center justify-center text-[#D60041] font-black text-lg shadow-sm shrink-0">
-                          {candidate.name.charAt(0)}
+                        <div className="w-12 h-12 rounded-xl overflow-hidden border border-pink-100 shadow-sm shrink-0 bg-pink-50">
+                          <img
+                            src={getAvatarUrl(candidate)}
+                            alt={candidate.name}
+                            className="w-full h-full object-cover"
+                            onError={(e) => {
+                              e.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(candidate.name)}&background=fdf2f8&color=d81159&bold=true`;
+                            }}
+                          />
                         </div>
                         <div>
                           <div className="flex items-center gap-1.5">
@@ -791,8 +806,15 @@ const CompareCandidates = () => {
               {/* Profile Card Header */}
               <div className="p-6 sm:p-8 border-b border-gray-50 bg-gray-50/15 flex flex-col sm:flex-row sm:items-center justify-between gap-6 shrink-0">
                 <div className="flex items-center gap-4">
-                  <div className="w-16 h-16 bg-gradient-to-br from-pink-100 to-pink-50 border border-pink-100 rounded-2xl flex items-center justify-center text-[#D60041] font-black text-2xl shadow-sm shrink-0">
-                    {activeCandidate.name.charAt(0)}
+                  <div className="w-16 h-16 rounded-xl overflow-hidden border border-pink-100 shadow-sm shrink-0 bg-pink-50">
+                    <img
+                      src={getAvatarUrl(activeCandidate)}
+                      alt={activeCandidate.name}
+                      className="w-full h-full object-cover"
+                      onError={(e) => {
+                        e.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(activeCandidate.name)}&background=fdf2f8&color=d81159&bold=true`;
+                      }}
+                    />
                   </div>
                   <div>
                     <h2 className="text-xl sm:text-2xl font-black text-gray-900 tracking-tight leading-tight">{activeCandidate.name}</h2>
