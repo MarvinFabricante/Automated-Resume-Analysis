@@ -108,6 +108,7 @@ export const apiSlice = createApi({
           preferredJob: app.job?.job_title || "Unknown",
           skills: app.skills || [],
           profileImage: app.profile_image_url || null,
+          resumeUrl: app.resume_url || null,
           date: app.created_at,
           location: app.location || "N/A",
           jobLocation: app.job?.location || "N/A",

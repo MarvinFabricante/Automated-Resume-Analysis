@@ -105,6 +105,7 @@ async def ensure_application_analysis_columns(conn):
         "skills_score": "DOUBLE PRECISION",
         "experience_score": "DOUBLE PRECISION",
         "education_score": "DOUBLE PRECISION",
+        "resume_url": "VARCHAR",
         "skills_reason": "VARCHAR",
         "experience_reason": "VARCHAR",
         "education_reason": "VARCHAR",

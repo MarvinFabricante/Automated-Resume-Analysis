@@ -168,6 +168,7 @@ const CandidateProfileForm = () => {
       weaknesses: matchData?.weaknesses || [],
       ai_powered: Boolean(matchData?.ai_powered),
       profile_image_url: localStorage.getItem('profile_image_url'),
+      resume_url: location.state?.resumeUrl || null,
     };
 
     try {

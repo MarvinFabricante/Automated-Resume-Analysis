@@ -570,9 +570,30 @@ const ViewCandidateDetailsModal = ({ isOpen, onClose, candidate }) => {
           <button onClick={onClose} className="px-6 py-2.5 bg-white border border-gray-200 text-gray-600 rounded-xl text-sm font-bold hover:bg-gray-50 transition-all">
             Close Preview
           </button>
-          <button className="px-6 py-2.5 bg-[#d81159] text-white rounded-xl text-sm font-bold hover:shadow-lg hover:shadow-pink-200 transition-all">
-            Download Resume
-          </button>
+          {candidate.resumeUrl ? (
+            <button 
+              onClick={() => {
+                const link = document.createElement('a');
+                link.href = candidate.resumeUrl;
+                link.download = `${candidate.name.replace(/\s+/g, '_')}_Resume`;
+                link.target = '_blank';
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+              }}
+              className="px-6 py-2.5 bg-[#d81159] text-white rounded-xl text-sm font-bold hover:shadow-lg hover:shadow-pink-200 transition-all inline-flex items-center"
+            >
+              Download Resume
+            </button>
+          ) : (
+            <button 
+              disabled
+              className="px-6 py-2.5 bg-gray-300 text-gray-500 rounded-xl text-sm font-bold cursor-not-allowed inline-flex items-center"
+              title="Resume file not available"
+            >
+              Resume Unavailable
+            </button>
+          )}
         </div>
       </div>
     </div>

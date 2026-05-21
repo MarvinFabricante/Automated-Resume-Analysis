@@ -34,6 +34,7 @@ class JobApplication(Base):
     education_score = Column(DOUBLE_PRECISION, nullable=True)
     certifications_score = Column(DOUBLE_PRECISION, nullable=True)
     profile_image_url = Column(String, nullable=True)
+    resume_url = Column(String, nullable=True)
     
     # Interpretation / Reasoning
     skills_reason = Column(String, nullable=True)

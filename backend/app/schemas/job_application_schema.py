@@ -26,6 +26,7 @@ class JobApplicationBase(BaseModel):
     education_score: Optional[float] = None
     certifications_score: Optional[float] = None
     profile_image_url: Optional[str] = None
+    resume_url: Optional[str] = None
     skills_reason: Optional[str] = None
     experience_reason: Optional[str] = None
     education_reason: Optional[str] = None

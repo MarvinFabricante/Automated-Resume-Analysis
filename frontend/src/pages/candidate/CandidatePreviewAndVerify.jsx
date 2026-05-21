@@ -43,7 +43,8 @@ const CandidatePreviewAndVerify = () => {
     education: {
       degree: data?.highest_degree || "B.S. in Industrial Engineering",
       college: data?.education ? data.education.split('|')[0] : "University of Illinois"
-    }
+    },
+    resumeUrl: data?.file_url
   };
 
   const getMatchColor = (pct) => {
