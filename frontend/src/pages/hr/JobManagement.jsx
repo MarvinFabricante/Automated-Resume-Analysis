@@ -158,7 +158,7 @@ const JobManagementPage = () => {
       
       <div className="flex flex-1">
         <Sidebar />
-        <main className="flex-1 max-w-[1400px] mx-auto px-4 sm:px-6 md:px-10 py-6 md:py-8">
+        <main className="flex-1 w-full max-w-full px-4 sm:px-6 md:px-10 py-6 md:py-8 animate-in fade-in duration-500">
         <JobManagementHeader onCreateJob={() => setModalState({ type: 'create', selectedJob: null })} />
 
         <JobSearchAndFilter

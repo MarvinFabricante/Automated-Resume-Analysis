@@ -23,6 +23,7 @@ class JobDescription(Base):
     description = Column(String, nullable=False)
     skills_requirements = Column(String)
     education_requirements = Column(String, nullable=True)
+    certifications_requirements = Column(String, nullable=True)
     experience_requirements = Column(String, nullable=True)
     is_active = Column(Boolean, default=True)
 

@@ -58,7 +58,7 @@ const HRDashboard = () => {
             </div>
           )}
 
-          <main className="max-w-[1400px] mx-auto px-4 sm:px-6 md:px-10 py-6 md:py-8">
+          <main className="w-full max-w-full px-4 sm:px-6 md:px-10 py-6 md:py-8">
 
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8 md:mb-10 gap-6">
               <div>

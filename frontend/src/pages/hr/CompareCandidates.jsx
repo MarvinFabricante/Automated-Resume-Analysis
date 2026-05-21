@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { Helmet } from 'react-helmet-async';
-import { 
+import {
   Search, CheckCircle2, XCircle, Users, ArrowLeft, Award, TrendingUp, AlertTriangle,
   Mail, Phone, MapPin, Briefcase, GraduationCap, Star, Zap, BarChart3, Trophy, Sparkles, Check, Plus, Trash2
 } from 'lucide-react';
@@ -8,87 +8,107 @@ import Header from '../../components/layout/Header';
 import Sidebar from '../../components/layout/Sidebar';
 import { useGetApplicationsQuery, useGetJobsQuery } from '../../redux/api/apiSlice';
 
-const calculateRuleBasedScore = (candidate, job) => {
-  if (!job) return candidate; // Fallback to original if no job selected
-
-  // 1. Skills Matching (50%)
+const calculateRuleBasedScore = (candidate, job, filters) => {
   let skillsScore = 0;
-  let jobSkills = [];
-  if (job.skills_requirements) {
-    jobSkills = job.skills_requirements.split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
-  } else {
-    jobSkills = job.title.toLowerCase().split(' ').filter(w => w.length > 2); 
-  }
-  
-  const candidateSkills = (candidate.skills || []).map(s => s.toLowerCase());
-  let matchedSkills = [];
-  let missingSkills = [];
-  
-  if (jobSkills.length > 0) {
-    let matchCount = 0;
-    jobSkills.forEach(reqSkill => {
-      const hasSkill = candidateSkills.some(cs => cs.includes(reqSkill) || reqSkill.includes(cs));
-      if (hasSkill) {
-        matchCount++;
-        matchedSkills.push(reqSkill);
-      } else {
-        missingSkills.push(reqSkill);
-      }
-    });
-    skillsScore = Math.round((matchCount / jobSkills.length) * 100);
-  } else {
-    skillsScore = 100;
-  }
-
-  // 2. Experience Matching (30%)
   let expScore = 0;
-  const jobExp = (job.experience_requirements || '').toLowerCase();
-  const candExp = ((candidate.relevance || '') + ' ' + (candidate.experience_reason || '')).toLowerCase();
-  
-  if (jobExp) {
-    const expKeywords = jobExp.split(/[\s,]+/).filter(w => w.length > 3);
-    if (expKeywords.length > 0) {
-      const matchCount = expKeywords.filter(kw => candExp.includes(kw)).length;
-      expScore = Math.round((matchCount / expKeywords.length) * 100);
+  let certScore = 0;
+  let matchedSkills = candidate.matched_skills || [];
+  let missingSkills = candidate.missing_skills || [];
+
+  if (job) {
+    // 1. Skills Matching
+    let jobSkills = [];
+    if (job.skills_requirements) {
+      jobSkills = job.skills_requirements.split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
     } else {
-      expScore = 80; 
+      jobSkills = job.title.toLowerCase().split(' ').filter(w => w.length > 2);
+    }
+
+    const candidateSkills = (candidate.skills || []).map(s => s.toLowerCase());
+    matchedSkills = [];
+    missingSkills = [];
+
+    if (jobSkills.length > 0) {
+      let matchCount = 0;
+      jobSkills.forEach(reqSkill => {
+        const hasSkill = candidateSkills.some(cs => cs.includes(reqSkill) || reqSkill.includes(cs));
+        if (hasSkill) {
+          matchCount++;
+          matchedSkills.push(reqSkill);
+        } else {
+          missingSkills.push(reqSkill);
+        }
+      });
+      skillsScore = Math.round((matchCount / jobSkills.length) * 100);
+    } else {
+      skillsScore = 100;
+    }
+
+    // 2. Experience Matching
+    const jobExp = (job.experience_requirements || '').toLowerCase();
+    const candExp = ((candidate.relevance || '') + ' ' + (candidate.experience_reason || '')).toLowerCase();
+
+    if (jobExp) {
+      const expKeywords = jobExp.split(/[\s,]+/).filter(w => w.length > 3);
+      if (expKeywords.length > 0) {
+        const matchCount = expKeywords.filter(kw => candExp.includes(kw)).length;
+        expScore = Math.round((matchCount / expKeywords.length) * 100);
+      } else {
+        expScore = 80;
+      }
+    } else {
+      expScore = candidate.experienceScore || 0;
+    }
+
+    // 3. Certifications Matching
+    const jobCert = (job.certifications_requirements || '').toLowerCase();
+    const candCert = ((candidate.candidate_certifications || '') + ' ' + (candidate.certifications || '') + ' ' + (candidate.skills || '')).toLowerCase();
+
+    if (jobCert) {
+      const certKeywords = jobCert.split(/[\s,]+/).filter(w => w.length > 3 && !['certification', 'certified'].includes(w));
+      if (certKeywords.length > 0) {
+        const matchCount = certKeywords.filter(kw => candCert.includes(kw)).length;
+        certScore = Math.round((matchCount / certKeywords.length) * 100);
+      } else {
+        certScore = 80;
+      }
+    } else {
+      certScore = candidate.certifications_score || candidate.certificationsScore || 0;
     }
   } else {
+    // AI Scores
+    skillsScore = candidate.skillsScore || 0;
     expScore = candidate.experienceScore || 0;
+    certScore = candidate.certifications_score || candidate.certificationsScore || 0;
   }
 
-  // 3. Education Matching (20%)
-  let eduScore = 0;
-  const jobEdu = (job.education_requirements || '').toLowerCase();
-  const candEdu = ((candidate.degree || '') + ' ' + (candidate.college || '')).toLowerCase();
-  
-  if (jobEdu) {
-    if (jobEdu.includes('bachelor') && candEdu.includes('bachelor')) eduScore = 100;
-    else if (jobEdu.includes('master') && candEdu.includes('master')) eduScore = 100;
-    else {
-       const eduKeywords = jobEdu.split(/[\s,]+/).filter(w => w.length > 3);
-       if (eduKeywords.length > 0) {
-         const matchCount = eduKeywords.filter(kw => candEdu.includes(kw)).length;
-         eduScore = Math.round((matchCount / eduKeywords.length) * 100);
-       } else {
-         eduScore = 80;
-       }
-    }
-  } else {
-    eduScore = candidate.educationScore || 0;
+  let totalWeight = 0;
+  let rawScore = 0;
+
+  if (filters?.skills) {
+    totalWeight += 50;
+    rawScore += skillsScore * 50;
   }
-  
-  const matchScore = Math.round((skillsScore * 0.5) + (expScore * 0.3) + (eduScore * 0.2));
-  
+  if (filters?.experience) {
+    totalWeight += 30;
+    rawScore += expScore * 30;
+  }
+  if (filters?.certifications) {
+    totalWeight += 20;
+    rawScore += certScore * 20;
+  }
+
+  const matchScore = totalWeight > 0 ? Math.round(rawScore / totalWeight) : 0;
+
   return {
     ...candidate,
     matchScore,
     skillsScore,
     experienceScore: expScore,
-    educationScore: eduScore,
+    certificationsScore: certScore,
     matched_skills: matchedSkills.length > 0 ? matchedSkills : candidate.matched_skills,
     missing_skills: missingSkills.length > 0 ? missingSkills : candidate.missing_skills,
-    isRuleBased: true
+    isRuleBased: !!job
   };
 };
 
@@ -100,6 +120,11 @@ const CompareCandidates = () => {
   const [activeCandidateId, setActiveCandidateId] = useState(null);
   const [isComparing, setIsComparing] = useState(false);
   const [selectedJobId, setSelectedJobId] = useState("");
+  const [evaluationFilters, setEvaluationFilters] = useState({
+    skills: true,
+    experience: true,
+    certifications: true
+  });
 
   // Filter candidates based on search
   const filteredCandidates = useMemo(() => {
@@ -140,15 +165,35 @@ const CompareCandidates = () => {
   const selectedCandidatesData = useMemo(() => {
     const selected = candidates.filter(c => selectedCandidateIds.includes(c.id));
     const selectedJob = jobs.find(j => j.id === parseInt(selectedJobId) || j.id === selectedJobId);
-    
-    let scoredCandidates = selected;
-    if (selectedJob) {
-      scoredCandidates = selected.map(c => calculateRuleBasedScore(c, selectedJob));
-    }
-    
+
+    // We always calculate score to reflect filter preferences even if job isn't selected
+    const scoredCandidates = selected.map(c => calculateRuleBasedScore(c, selectedJob, evaluationFilters));
+
     // Sort by match score descending to automatically rank them
     return [...scoredCandidates].sort((a, b) => (b.matchScore || 0) - (a.matchScore || 0));
-  }, [candidates, selectedCandidateIds, jobs, selectedJobId]);
+  }, [candidates, selectedCandidateIds, jobs, selectedJobId, evaluationFilters]);
+
+  const categoryWinners = useMemo(() => {
+    if (selectedCandidatesData.length === 0) return {};
+
+    const getWinner = (key) => {
+      let maxScore = -1;
+      let winner = null;
+      selectedCandidatesData.forEach(c => {
+        if ((c[key] || 0) > maxScore) {
+          maxScore = c[key] || 0;
+          winner = c;
+        }
+      });
+      return winner;
+    };
+
+    return {
+      skills: getWinner('skillsScore'),
+      experience: getWinner('experienceScore'),
+      certifications: getWinner('certificationsScore')
+    };
+  }, [selectedCandidatesData]);
 
   const winner = useMemo(() => {
     if (selectedCandidatesData.length === 0) return null;
@@ -162,22 +207,22 @@ const CompareCandidates = () => {
       <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 pb-20">
         {/* Navigation / Header */}
         <div className="mb-8">
-          <button 
+          <button
             onClick={() => setIsComparing(false)}
             className="flex items-center text-sm font-bold text-gray-500 hover:text-[#D60041] transition-colors mb-4 group"
           >
             <div className="p-1.5 bg-gray-100 rounded-lg group-hover:bg-pink-100 mr-2 transition-colors">
               <ArrowLeft className="w-4 h-4" />
             </div>
-             Back to Candidate Selection
+            Back to Candidate Selection
           </button>
-          
+
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>
               <h1 className="text-3xl font-black text-gray-900 tracking-tight">Side-by-Side Comparison</h1>
               <p className="text-gray-500 font-medium mt-1">Comparing {selectedCandidatesData.length} selected candidates for the role suitability.</p>
             </div>
-            
+
             <div className="flex items-center gap-2">
               <div className="px-4 py-2 bg-pink-50 border border-pink-100 rounded-xl text-xs font-bold text-[#D60041] flex items-center gap-1.5 shadow-sm">
                 <Sparkles className="w-3.5 h-3.5" />
@@ -191,7 +236,7 @@ const CompareCandidates = () => {
         <div className="bg-gradient-to-r from-gray-900 via-slate-800 to-gray-950 text-white rounded-[32px] p-8 mb-8 shadow-xl relative overflow-hidden border border-gray-800">
           <div className="absolute -right-10 -top-10 w-40 h-40 bg-[#D60041]/10 rounded-full blur-3xl"></div>
           <div className="absolute -left-10 -bottom-10 w-40 h-40 bg-blue-500/10 rounded-full blur-3xl"></div>
-          
+
           <div className="relative flex flex-col lg:flex-row items-start lg:items-center justify-between gap-8">
             <div className="flex-1">
               <div className="inline-flex items-center gap-2 px-3.5 py-1.5 bg-[#D60041]/20 border border-[#D60041]/40 rounded-full text-xs font-bold text-[#FF3E74] uppercase tracking-wider mb-4">
@@ -202,11 +247,11 @@ const CompareCandidates = () => {
                 {winner.name} is the most qualified candidate!
               </h2>
               <p className="text-gray-300 font-medium mt-2 max-w-3xl leading-relaxed text-sm sm:text-base">
-                Based on our {winner.isRuleBased ? 'rule-based analysis' : 'semantic AI analysis'} of skills, experience, and educational background, <span className="text-white font-bold">{winner.name}</span> has the highest matching index of <span className="text-[#FF3E74] font-black">{winner.matchScore}%</span>. 
+                Based on our {winner.isRuleBased ? 'rule-based analysis' : 'semantic AI analysis'} of skills, experience, and educational background, <span className="text-white font-bold">{winner.name}</span> has the highest matching index of <span className="text-[#FF3E74] font-black">{winner.matchScore}%</span>.
                 {winner.ai_summary ? ` ${winner.ai_summary}` : ` They demonstrate strong alignment with the requirements for the position of ${winner.preferredJob}.`}
               </p>
             </div>
-            
+
             <div className="flex items-center gap-4 bg-white/5 border border-white/10 p-5 rounded-[24px] shrink-0">
               <div className="text-center">
                 <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Top Score</p>
@@ -219,10 +264,54 @@ const CompareCandidates = () => {
                 <div className="flex gap-1.5 mt-2">
                   <span className="px-2 py-0.5 bg-blue-500/20 text-blue-300 rounded text-[9px] font-bold border border-blue-500/30">Skills: {winner.skillsScore}%</span>
                   <span className="px-2 py-0.5 bg-purple-500/20 text-purple-300 rounded text-[9px] font-bold border border-purple-500/30">Exp: {winner.experienceScore}%</span>
+                  <span className="px-2 py-0.5 bg-amber-500/20 text-amber-300 rounded text-[9px] font-bold border border-amber-500/30">Certs: {winner.certificationsScore}%</span>
                 </div>
               </div>
             </div>
           </div>
+        </div>
+
+        {/* Category Winners Filter Display */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+          {evaluationFilters.skills && categoryWinners.skills && (
+            <div className="bg-blue-50/50 border border-blue-100 rounded-[24px] p-5 flex items-start gap-4">
+              <div className="p-2.5 bg-blue-100 text-blue-600 rounded-xl shrink-0 mt-0.5">
+                <Zap className="w-5 h-5" />
+              </div>
+              <div>
+                <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-1">Top Skills</p>
+                <p className="text-sm font-semibold text-gray-800 leading-snug">
+                  The candidate with the most matching skills for this job is <span className="font-black text-blue-600">'{categoryWinners.skills.name}'</span>
+                </p>
+              </div>
+            </div>
+          )}
+          {evaluationFilters.experience && categoryWinners.experience && (
+            <div className="bg-purple-50/50 border border-purple-100 rounded-[24px] p-5 flex items-start gap-4">
+              <div className="p-2.5 bg-purple-100 text-purple-600 rounded-xl shrink-0 mt-0.5">
+                <Briefcase className="w-5 h-5" />
+              </div>
+              <div>
+                <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-1">Top Experience</p>
+                <p className="text-sm font-semibold text-gray-800 leading-snug">
+                  The candidate with the most relevant experience is <span className="font-black text-purple-600">'{categoryWinners.experience.name}'</span>
+                </p>
+              </div>
+            </div>
+          )}
+          {evaluationFilters.certifications && categoryWinners.certifications && (
+            <div className="bg-amber-50/50 border border-amber-100 rounded-[24px] p-5 flex items-start gap-4">
+              <div className="p-2.5 bg-amber-100 text-amber-600 rounded-xl shrink-0 mt-0.5">
+                <Award className="w-5 h-5" />
+              </div>
+              <div>
+                <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-1">Top Certifications</p>
+                <p className="text-sm font-semibold text-gray-800 leading-snug">
+                  The candidate with the most relevant certifications is <span className="font-black text-amber-600">'{categoryWinners.certifications.name}'</span>
+                </p>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Side-by-Side Comparison Matrix */}
@@ -255,7 +344,7 @@ const CompareCandidates = () => {
                   ))}
                 </tr>
               </thead>
-              
+
               <tbody className="divide-y divide-gray-100">
                 {/* Overall Suitability */}
                 <tr className="hover:bg-gray-50/30">
@@ -269,8 +358,8 @@ const CompareCandidates = () => {
                           {candidate.matchScore}%
                         </span>
                         <div className="flex-1 max-w-[120px] bg-gray-100 rounded-full h-2">
-                          <div 
-                            className={`h-2 rounded-full ${idx === 0 ? 'bg-[#D60041]' : 'bg-gray-700'}`} 
+                          <div
+                            className={`h-2 rounded-full ${idx === 0 ? 'bg-[#D60041]' : 'bg-gray-700'}`}
                             style={{ width: `${candidate.matchScore}%` }}
                           />
                         </div>
@@ -291,26 +380,26 @@ const CompareCandidates = () => {
                     <td key={candidate.id} className={`p-6 space-y-3.5 ${idx === 0 ? 'bg-pink-50/10' : ''}`}>
                       <div>
                         <div className="flex justify-between text-[11px] font-bold mb-1">
-                          <span className="text-gray-500 uppercase">Skills ({candidate.skillsScore}%)</span>
+                          <span className={`uppercase ${evaluationFilters.skills ? 'text-gray-500' : 'text-gray-300 line-through'}`}>Skills ({candidate.skillsScore}%)</span>
                         </div>
-                        <div className="w-full bg-gray-100 rounded-full h-1.5">
-                          <div className="bg-blue-500 h-1.5 rounded-full" style={{ width: `${candidate.skillsScore}%` }} />
-                        </div>
-                      </div>
-                      <div>
-                        <div className="flex justify-between text-[11px] font-bold mb-1">
-                          <span className="text-gray-500 uppercase">Experience ({candidate.experienceScore}%)</span>
-                        </div>
-                        <div className="w-full bg-gray-100 rounded-full h-1.5">
-                          <div className="bg-purple-500 h-1.5 rounded-full" style={{ width: `${candidate.experienceScore}%` }} />
+                        <div className={`w-full rounded-full h-1.5 ${evaluationFilters.skills ? 'bg-gray-100' : 'bg-gray-50'}`}>
+                          <div className={`h-1.5 rounded-full transition-all ${evaluationFilters.skills ? 'bg-blue-500' : 'bg-gray-200'}`} style={{ width: `${candidate.skillsScore}%` }} />
                         </div>
                       </div>
                       <div>
                         <div className="flex justify-between text-[11px] font-bold mb-1">
-                          <span className="text-gray-500 uppercase">Education ({candidate.educationScore}%)</span>
+                          <span className={`uppercase ${evaluationFilters.experience ? 'text-gray-500' : 'text-gray-300 line-through'}`}>Experience ({candidate.experienceScore}%)</span>
                         </div>
-                        <div className="w-full bg-gray-100 rounded-full h-1.5">
-                          <div className="bg-amber-500 h-1.5 rounded-full" style={{ width: `${candidate.educationScore}%` }} />
+                        <div className={`w-full rounded-full h-1.5 ${evaluationFilters.experience ? 'bg-gray-100' : 'bg-gray-50'}`}>
+                          <div className={`h-1.5 rounded-full transition-all ${evaluationFilters.experience ? 'bg-purple-500' : 'bg-gray-200'}`} style={{ width: `${candidate.experienceScore}%` }} />
+                        </div>
+                      </div>
+                      <div>
+                        <div className="flex justify-between text-[11px] font-bold mb-1">
+                          <span className={`uppercase ${evaluationFilters.certifications ? 'text-gray-500' : 'text-gray-300 line-through'}`}>Certifications ({candidate.certificationsScore || 0}%)</span>
+                        </div>
+                        <div className={`w-full rounded-full h-1.5 ${evaluationFilters.certifications ? 'bg-gray-100' : 'bg-gray-50'}`}>
+                          <div className={`h-1.5 rounded-full transition-all ${evaluationFilters.certifications ? 'bg-amber-500' : 'bg-gray-200'}`} style={{ width: `${candidate.certificationsScore || 0}%` }} />
                         </div>
                       </div>
                     </td>
@@ -370,10 +459,10 @@ const CompareCandidates = () => {
                   </td>
                   {selectedCandidatesData.map((candidate, idx) => (
                     <td key={candidate.id} className={`p-6 ${idx === 0 ? 'bg-pink-50/10' : ''}`}>
-                      <ul className="space-y-1.5 text-xs text-gray-700 font-medium">
+                      <ul className="space-y-2 text-xs text-gray-700 font-medium">
                         {candidate.strengths && candidate.strengths.slice(0, 3).map((strength, i) => (
-                          <li key={i} className="flex items-start gap-2">
-                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 mt-1.5 shrink-0" />
+                          <li key={i} className="flex items-start gap-2 animate-in fade-in duration-300">
+                            <Check className="w-3.5 h-3.5 text-emerald-600 mt-0.5 shrink-0 stroke-[3px]" />
                             <span>{strength}</span>
                           </li>
                         )) || <span className="italic text-gray-400">N/A</span>}
@@ -389,10 +478,10 @@ const CompareCandidates = () => {
                   </td>
                   {selectedCandidatesData.map((candidate, idx) => (
                     <td key={candidate.id} className={`p-6 ${idx === 0 ? 'bg-pink-50/10' : ''}`}>
-                      <ul className="space-y-1.5 text-xs text-gray-700 font-medium">
+                      <ul className="space-y-2 text-xs text-gray-700 font-medium">
                         {candidate.weaknesses && candidate.weaknesses.slice(0, 3).map((weakness, i) => (
-                          <li key={i} className="flex items-start gap-2">
-                            <span className="w-1.5 h-1.5 rounded-full bg-amber-500 mt-1.5 shrink-0" />
+                          <li key={i} className="flex items-start gap-2 animate-in fade-in duration-300">
+                            <AlertTriangle className="w-3.5 h-3.5 text-amber-500 mt-0.5 shrink-0" />
                             <span>{weakness}</span>
                           </li>
                         )) || <span className="italic text-gray-400">N/A</span>}
@@ -417,16 +506,15 @@ const CompareCandidates = () => {
                   ))}
                 </tr>
 
-                {/* Education */}
+                {/* Certifications */}
                 <tr className="hover:bg-gray-50/30">
                   <td className="p-6 font-bold text-xs text-gray-500 uppercase tracking-wider bg-gray-50/10">
-                    Education & Credentials
+                    Certifications
                   </td>
                   {selectedCandidatesData.map((candidate, idx) => (
                     <td key={candidate.id} className={`p-6 text-xs text-gray-700 font-medium ${idx === 0 ? 'bg-pink-50/10' : ''}`}>
-                      <p className="font-bold text-gray-900">{candidate.degree || "Degree not specified"}</p>
-                      <p className="text-gray-500 mt-0.5">{candidate.college || "Institution not specified"}</p>
-                      <p className="text-[10px] text-gray-400 mt-2 font-semibold italic">{candidate.education_reason}</p>
+                      <p className="font-bold text-gray-900">{candidate.candidate_certifications || candidate.certifications || "None specified"}</p>
+                      <p className="text-[10px] text-gray-400 mt-2 font-semibold italic">{candidate.certifications_reason}</p>
                     </td>
                   ))}
                 </tr>
@@ -438,10 +526,10 @@ const CompareCandidates = () => {
                   </td>
                   {selectedCandidatesData.map((candidate, idx) => (
                     <td key={candidate.id} className={`p-6 text-xs text-gray-600 font-medium ${idx === 0 ? 'bg-pink-50/10' : ''}`}>
-                      <ul className="space-y-1">
+                      <ul className="space-y-2">
                         {candidate.recommendations && candidate.recommendations.slice(0, 2).map((rec, i) => (
-                          <li key={i} className="flex gap-1.5 items-start">
-                            <span className="text-emerald-600 font-bold shrink-0">✓</span>
+                          <li key={i} className="flex gap-2 items-start animate-in fade-in duration-300">
+                            <Check className="w-3.5 h-3.5 text-emerald-600 mt-0.5 shrink-0 stroke-[3px]" />
                             <span>{rec}</span>
                           </li>
                         )) || <span className="italic text-gray-400">None available</span>}
@@ -488,7 +576,7 @@ const CompareCandidates = () => {
           <h1 className="text-3xl font-black text-gray-900 tracking-tight">Compare Candidates</h1>
           <p className="text-gray-500 font-medium mt-1">Select candidates on the list to view their full resume details, then compare side-by-side.</p>
         </div>
-        
+
         {/* Floating / Active Compare Stats */}
         <div className="flex items-center gap-3">
           <div className="bg-white border border-gray-100 rounded-2xl px-5 py-3 shadow-sm flex items-center gap-3">
@@ -500,7 +588,7 @@ const CompareCandidates = () => {
               <p className="text-xs font-bold text-gray-900">Candidates Selected</p>
             </div>
             {selectedCandidateIds.length > 0 && (
-              <button 
+              <button
                 onClick={clearSelected}
                 className="p-1.5 hover:bg-rose-50 text-rose-500 rounded-lg hover:text-rose-600 transition-colors ml-2"
                 title="Clear Selection"
@@ -513,11 +601,10 @@ const CompareCandidates = () => {
           <button
             disabled={selectedCandidateIds.length < 2}
             onClick={() => setIsComparing(true)}
-            className={`flex items-center gap-2 px-6 py-3.5 rounded-2xl font-bold text-sm transition-all shadow-sm ${
-              selectedCandidateIds.length >= 2 
-                ? 'bg-gray-900 hover:bg-black text-white cursor-pointer hover:scale-[1.02] active:scale-[0.98]'
-                : 'bg-gray-100 text-gray-400 cursor-not-allowed border border-gray-100'
-            }`}
+            className={`flex items-center gap-2 px-6 py-3.5 rounded-2xl font-bold text-sm transition-all shadow-sm ${selectedCandidateIds.length >= 2
+              ? 'bg-gray-900 hover:bg-black text-white cursor-pointer hover:scale-[1.02] active:scale-[0.98]'
+              : 'bg-gray-100 text-gray-400 cursor-not-allowed border border-gray-100'
+              }`}
           >
             <TrendingUp className="w-4 h-4 text-[#D60041]" />
             Compare Now
@@ -527,14 +614,14 @@ const CompareCandidates = () => {
 
       {/* Split-Screen Selection Area */}
       <div className="flex flex-col lg:flex-row flex-1 gap-6 overflow-hidden min-h-0 mb-6">
-        
+
         {/* LEFT COLUMN: Candidate Search and List */}
         <div className="w-full lg:w-[380px] bg-white border border-gray-100 rounded-[28px] shadow-sm flex flex-col overflow-hidden shrink-0">
-          
+
           <div className="p-4 border-b border-gray-50 bg-gray-50/40 shrink-0 space-y-3">
             <div>
               <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 mb-1.5 block">Compare Against Job Profile</label>
-              <select 
+              <select
                 value={selectedJobId}
                 onChange={(e) => setSelectedJobId(e.target.value)}
                 className="w-full px-3 py-2 bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-pink-500/20 focus:border-[#D60041] transition-all font-medium text-sm text-gray-700"
@@ -545,11 +632,71 @@ const CompareCandidates = () => {
                 ))}
               </select>
             </div>
-            
+
+            <div>
+              <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 mb-2.5 block">Evaluation Criteria</label>
+              <div className="flex flex-wrap gap-3">
+                <button
+                  type="button"
+                  onClick={() => setEvaluationFilters(prev => ({ ...prev, skills: !prev.skills }))}
+                  className={`flex items-center gap-2 px-3.5 py-2 rounded-xl border text-xs font-bold transition-all duration-300 cursor-pointer ${
+                    evaluationFilters.skills
+                      ? 'bg-blue-50/70 text-blue-700 border-blue-200 shadow-sm shadow-blue-100/30'
+                      : 'bg-white text-gray-400 border-gray-200 hover:border-gray-300 hover:text-gray-500'
+                  }`}
+                >
+                  <div className={`w-4 h-4 rounded-md border flex items-center justify-center transition-all duration-300 ${
+                    evaluationFilters.skills
+                      ? 'bg-blue-500 border-blue-500 scale-105 shadow-sm shadow-blue-500/20'
+                      : 'border-gray-300 bg-white'
+                  }`}>
+                    {evaluationFilters.skills && <Check className="w-2.5 h-2.5 text-white stroke-[3px]" />}
+                  </div>
+                  <span>Skills</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEvaluationFilters(prev => ({ ...prev, experience: !prev.experience }))}
+                  className={`flex items-center gap-2 px-3.5 py-2 rounded-xl border text-xs font-bold transition-all duration-300 cursor-pointer ${
+                    evaluationFilters.experience
+                      ? 'bg-purple-50/70 text-purple-700 border-purple-200 shadow-sm shadow-purple-100/30'
+                      : 'bg-white text-gray-400 border-gray-200 hover:border-gray-300 hover:text-gray-500'
+                  }`}
+                >
+                  <div className={`w-4 h-4 rounded-md border flex items-center justify-center transition-all duration-300 ${
+                    evaluationFilters.experience
+                      ? 'bg-purple-500 border-purple-500 scale-105 shadow-sm shadow-purple-500/20'
+                      : 'border-gray-300 bg-white'
+                  }`}>
+                    {evaluationFilters.experience && <Check className="w-2.5 h-2.5 text-white stroke-[3px]" />}
+                  </div>
+                  <span>Experience</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEvaluationFilters(prev => ({ ...prev, certifications: !prev.certifications }))}
+                  className={`flex items-center gap-2 px-3.5 py-2 rounded-xl border text-xs font-bold transition-all duration-300 cursor-pointer ${
+                    evaluationFilters.certifications
+                      ? 'bg-amber-50/70 text-amber-700 border-amber-200 shadow-sm shadow-amber-100/30'
+                      : 'bg-white text-gray-400 border-gray-200 hover:border-gray-300 hover:text-gray-500'
+                  }`}
+                >
+                  <div className={`w-4 h-4 rounded-md border flex items-center justify-center transition-all duration-300 ${
+                    evaluationFilters.certifications
+                      ? 'bg-amber-500 border-amber-500 scale-105 shadow-sm shadow-amber-500/20'
+                      : 'border-gray-300 bg-white'
+                  }`}>
+                    {evaluationFilters.certifications && <Check className="w-2.5 h-2.5 text-white stroke-[3px]" />}
+                  </div>
+                  <span>Certifications</span>
+                </button>
+              </div>
+            </div>
+
             <div className="relative">
               <Search className="w-4 h-4 absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
-              <input 
-                type="text" 
+              <input
+                type="text"
                 placeholder="Search candidates or skills..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
@@ -578,35 +725,33 @@ const CompareCandidates = () => {
                 const isActive = activeCandidateId === candidate.id;
 
                 return (
-                  <div 
+                  <div
                     key={candidate.id}
                     onClick={() => setActiveCandidateId(candidate.id)}
-                    className={`p-3.5 rounded-2xl border transition-all duration-300 cursor-pointer flex items-center gap-3 relative group ${
-                      isActive 
-                        ? 'bg-pink-50/20 border-[#D60041]/30 shadow-sm'
-                        : 'bg-white border-transparent hover:bg-gray-50/60'
-                    }`}
+                    className={`p-3.5 rounded-2xl border transition-all duration-300 cursor-pointer flex items-center gap-3 relative group ${isActive
+                      ? 'bg-pink-50/20 border-[#D60041]/30 shadow-sm'
+                      : 'bg-white border-transparent hover:bg-gray-50/60'
+                      }`}
                   >
-                    <div 
-                      className="shrink-0"
+                    <div
+                      className="shrink-0 cursor-pointer"
                       onClick={(e) => {
                         e.stopPropagation();
                         toggleSelection(candidate.id);
                       }}
                     >
-                      <div className={`w-5.5 h-5.5 rounded-lg border flex items-center justify-center transition-all ${
-                        isSelected 
-                          ? 'bg-[#D60041] border-[#D60041] scale-105 shadow-md shadow-pink-500/10' 
-                          : 'border-gray-300 bg-white group-hover:border-[#D60041]'
-                      }`}>
-                        {isSelected && <Check className="w-3.5 h-3.5 text-white stroke-[3px]" />}
+                      <div className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all duration-300 hover:scale-110 active:scale-95 ${isSelected
+                        ? 'bg-[#D60041] border-[#D60041] shadow-lg shadow-pink-500/20'
+                        : 'border-gray-200 bg-white group-hover:border-[#D60041]'
+                        }`}>
+                        {isSelected && <Check className="w-3.5 h-3.5 text-white stroke-[3.5px] animate-in zoom-in-75 duration-200" />}
                       </div>
                     </div>
 
                     <div className="flex-1 min-w-0">
                       <h4 className="text-sm font-bold text-gray-900 truncate tracking-tight">{candidate.name}</h4>
                       <p className="text-xs text-gray-500 font-semibold truncate mt-0.5">{candidate.preferredJob}</p>
-                      
+
                       {candidate.skills && candidate.skills.length > 0 && (
                         <div className="flex gap-1 overflow-hidden mt-1.5">
                           {candidate.skills.slice(0, 3).map((skill, idx) => (
@@ -619,14 +764,13 @@ const CompareCandidates = () => {
                     </div>
 
                     <div className="text-right shrink-0">
-                      <span className={`text-xs font-black px-2 py-1 rounded-lg ${
-                        candidate.matchScore >= 85 
-                          ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' 
-                          : candidate.matchScore >= 70 
-                            ? 'bg-amber-50 text-amber-600 border border-amber-100' 
-                            : 'bg-gray-50 text-gray-500 border border-gray-100'
-                      }`}>
-                        {candidate.matchScore || 0}%
+                      <span className={`text-xs font-black px-2 py-1 rounded-lg ${candidate.matchScore >= 85
+                        ? 'bg-emerald-50 text-emerald-700 border border-emerald-100'
+                        : candidate.matchScore >= 70
+                          ? 'bg-amber-50 text-amber-600 border border-amber-100'
+                          : 'bg-gray-50 text-gray-500 border border-gray-100'
+                        }`}>
+                        {calculateRuleBasedScore(candidate, jobs.find(j => j.id === parseInt(selectedJobId) || j.id === selectedJobId), evaluationFilters).matchScore || 0}%
                       </span>
                     </div>
 
@@ -670,16 +814,17 @@ const CompareCandidates = () => {
                 <div className="flex items-center gap-3">
                   <div className="text-right">
                     <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Suitability</p>
-                    <p className="text-2xl font-black text-[#D60041]">{activeCandidate.matchScore}%</p>
+                    <p className="text-2xl font-black text-[#D60041]">
+                      {calculateRuleBasedScore(activeCandidate, jobs.find(j => j.id === parseInt(selectedJobId) || j.id === selectedJobId), evaluationFilters).matchScore || 0}%
+                    </p>
                   </div>
-                  
+
                   <button
                     onClick={() => toggleSelection(activeCandidate.id)}
-                    className={`flex items-center gap-2 px-5 py-3 rounded-xl text-xs font-black uppercase tracking-wider transition-all border ${
-                      selectedCandidateIds.includes(activeCandidate.id)
-                        ? 'bg-rose-50 text-rose-600 border-rose-100 hover:bg-rose-100/70'
-                        : 'bg-[#D60041] text-white border-[#D60041] hover:bg-rose-700 shadow-sm hover:shadow-rose-100'
-                    }`}
+                    className={`flex items-center gap-2 px-5 py-3 rounded-xl text-xs font-black uppercase tracking-wider transition-all border ${selectedCandidateIds.includes(activeCandidate.id)
+                      ? 'bg-rose-50 text-rose-600 border-rose-100 hover:bg-rose-100/70'
+                      : 'bg-[#D60041] text-white border-[#D60041] hover:bg-rose-700 shadow-sm hover:shadow-rose-100'
+                      }`}
                   >
                     {selectedCandidateIds.includes(activeCandidate.id) ? (
                       <>
@@ -702,20 +847,20 @@ const CompareCandidates = () => {
                 <div>
                   <h4 className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-3.5">Score Breakdown</h4>
                   <div className="grid grid-cols-3 gap-4">
-                    <div className="p-4 bg-blue-50/50 border border-blue-100/50 rounded-2xl text-center">
-                      <div className="flex justify-center mb-1"><Zap className="w-4 h-4 text-blue-500" /></div>
-                      <p className="text-lg font-black text-blue-600">{activeCandidate.skillsScore || 0}%</p>
+                    <div className={`p-4 border rounded-2xl text-center transition-all ${evaluationFilters.skills ? 'bg-blue-50/50 border-blue-100/50' : 'bg-gray-50/50 border-gray-100/50 grayscale opacity-50'}`}>
+                      <div className="flex justify-center mb-1"><Zap className={`w-4 h-4 ${evaluationFilters.skills ? 'text-blue-500' : 'text-gray-400'}`} /></div>
+                      <p className={`text-lg font-black ${evaluationFilters.skills ? 'text-blue-600' : 'text-gray-500'}`}>{activeCandidate.skillsScore || 0}%</p>
                       <p className="text-[9px] font-black text-gray-400 uppercase tracking-wide mt-0.5">Skills</p>
                     </div>
-                    <div className="p-4 bg-purple-50/50 border border-purple-100/50 rounded-2xl text-center">
-                      <div className="flex justify-center mb-1"><Briefcase className="w-4 h-4 text-purple-500" /></div>
-                      <p className="text-lg font-black text-purple-600">{activeCandidate.experienceScore || 0}%</p>
+                    <div className={`p-4 border rounded-2xl text-center transition-all ${evaluationFilters.experience ? 'bg-purple-50/50 border-purple-100/50' : 'bg-gray-50/50 border-gray-100/50 grayscale opacity-50'}`}>
+                      <div className="flex justify-center mb-1"><Briefcase className={`w-4 h-4 ${evaluationFilters.experience ? 'text-purple-500' : 'text-gray-400'}`} /></div>
+                      <p className={`text-lg font-black ${evaluationFilters.experience ? 'text-purple-600' : 'text-gray-500'}`}>{activeCandidate.experienceScore || 0}%</p>
                       <p className="text-[9px] font-black text-gray-400 uppercase tracking-wide mt-0.5">Experience</p>
                     </div>
-                    <div className="p-4 bg-amber-50/50 border border-amber-100/50 rounded-2xl text-center">
-                      <div className="flex justify-center mb-1"><GraduationCap className="w-4 h-4 text-amber-500" /></div>
-                      <p className="text-lg font-black text-amber-600">{activeCandidate.educationScore || 0}%</p>
-                      <p className="text-[9px] font-black text-gray-400 uppercase tracking-wide mt-0.5">Education</p>
+                    <div className={`p-4 border rounded-2xl text-center transition-all ${evaluationFilters.certifications ? 'bg-amber-50/50 border-amber-100/50' : 'bg-gray-50/50 border-gray-100/50 grayscale opacity-50'}`}>
+                      <div className="flex justify-center mb-1"><Award className={`w-4 h-4 ${evaluationFilters.certifications ? 'text-amber-500' : 'text-gray-400'}`} /></div>
+                      <p className={`text-lg font-black ${evaluationFilters.certifications ? 'text-amber-600' : 'text-gray-500'}`}>{activeCandidate.certificationsScore || 0}%</p>
+                      <p className="text-[9px] font-black text-gray-400 uppercase tracking-wide mt-0.5">Certifications</p>
                     </div>
                   </div>
                 </div>
@@ -756,20 +901,16 @@ const CompareCandidates = () => {
                   </div>
 
                   <div>
-                    <h4 className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-3">Education</h4>
+                    <h4 className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-3">Certifications</h4>
                     <div className="bg-gray-50/50 border border-gray-100 rounded-2xl p-4.5 space-y-4">
                       <div>
-                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Degree</p>
-                        <p className="text-sm font-bold text-gray-800">{activeCandidate.degree || "Not Specified"}</p>
+                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Certifications Held</p>
+                        <p className="text-sm font-bold text-gray-800">{activeCandidate.candidate_certifications || activeCandidate.certifications || "None Specified"}</p>
                       </div>
-                      <div>
-                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">College / University</p>
-                        <p className="text-xs font-bold text-gray-600">{activeCandidate.college || "Not Specified"}</p>
-                      </div>
-                      {activeCandidate.education_reason && (
+                      {activeCandidate.certifications_reason && (
                         <div className="pt-3 border-t border-gray-200/50">
-                          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Education Analysis</p>
-                          <p className="text-xs text-gray-600 leading-relaxed">{activeCandidate.education_reason}</p>
+                          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Certifications Analysis</p>
+                          <p className="text-xs text-gray-600 leading-relaxed">{activeCandidate.certifications_reason}</p>
                         </div>
                       )}
                     </div>
@@ -779,7 +920,7 @@ const CompareCandidates = () => {
                 {/* Skills Analysis */}
                 <div className="space-y-4">
                   <h4 className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-2">Skills Evaluation</h4>
-                  
+
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="bg-emerald-50/30 border border-emerald-100/50 rounded-2xl p-4">
                       <h5 className="flex items-center gap-1.5 text-[10px] font-black text-emerald-800 uppercase tracking-wider mb-3">
@@ -899,10 +1040,10 @@ const CompareCandidates = () => {
       </Helmet>
 
       <Header />
-      
-      <div className="flex flex-1 pt-[81px]">
+
+      <div className="flex flex-1">
         <Sidebar />
-        <main className="flex-1 w-full max-w-[1400px] mx-auto px-4 sm:px-6 md:px-8 py-6 lg:ml-64 flex flex-col overflow-hidden">
+        <main className="flex-1 w-full max-w-full px-4 sm:px-6 md:px-10 py-6 flex flex-col overflow-hidden">
           {isComparing ? renderComparisonView() : renderSelectionView()}
         </main>
       </div>

@@ -3,24 +3,70 @@ import {
   MoreHorizontal, TrendingUp, Calendar, Zap,
   PieChart as PieIcon, Briefcase, Filter, ChevronRight
 } from 'lucide-react';
+import { useGetDashboardTrendsQuery } from '../../../redux/api/apiSlice';
 
 const ApplicationTrends = () => {
-  const chartData = [
-    { day: 'Mon', date: 'Jan 09', applications: 25, height: '30%', growth: '+12%' },
-    { day: 'Tue', date: 'Jan 10', applications: 45, height: '55%', growth: '+24%' },
-    { day: 'Wed', date: 'Jan 11', applications: 30, height: '40%', growth: '-5%' },
-    { day: 'Thu', date: 'Jan 12', applications: 65, height: '80%', growth: '+38%' },
-    { day: 'Fri', date: 'Jan 13', applications: 50, height: '60%', growth: '+15%' },
-    { day: 'Sat', date: 'Jan 14', applications: 75, height: '90%', growth: '+42%', isPeak: true },
-    { day: 'Sun', date: 'Jan 15', applications: 55, height: '70%', growth: '+18%' },
-  ];
+  const { data, isLoading, error } = useGetDashboardTrendsQuery();
 
-  const distributionData = [
-    { label: 'Engineering', value: 45, color: '#D60041', percentage: '45%' },
-    { label: 'Production', value: 25, color: '#F43F5E', percentage: '25%' },
-    { label: 'Marketing', value: 15, color: '#FDA4AF', percentage: '15%' },
-    { label: 'Admin', value: 15, color: '#E2E8F0', percentage: '15%' },
-  ];
+  const weeklyTrends = data?.weekly_trends || [];
+  const distributionData = data?.department_distribution || [];
+  const totalApps = data?.total_applications || 0;
+
+  // Find max applications to calculate relative heights
+  const maxApps = Math.max(...weeklyTrends.map(d => d.applications), 0);
+  const peakDay = weeklyTrends.find(d => d.applications === maxApps && maxApps > 0);
+
+  const chartData = weeklyTrends.map(d => {
+    const pct = maxApps > 0 ? (d.applications / maxApps) * 90 : 0;
+    return {
+      ...d,
+      height: `${Math.max(pct, d.applications > 0 ? 5 : 0)}%`,
+      isPeak: peakDay && d.date === peakDay.date
+    };
+  });
+
+  const displayMax = maxApps > 0 ? maxApps : 100;
+  const label75 = Math.round(displayMax * 0.75);
+  const label50 = Math.round(displayMax * 0.5);
+  const label25 = Math.round(displayMax * 0.25);
+
+  let currentPercentage = 0;
+  const conicParts = [];
+  distributionData.forEach(item => {
+    const pct = parseFloat(item.percentage) || 0;
+    if (pct > 0) {
+      const nextPercentage = currentPercentage + pct;
+      conicParts.push(`${item.color} ${currentPercentage}% ${nextPercentage}%`);
+      currentPercentage = nextPercentage;
+    }
+  });
+  if (currentPercentage < 100) {
+    conicParts.push(`#E2E8F0 ${currentPercentage}% 100%`);
+  }
+  const conicGradientString = `conic-gradient(${conicParts.join(', ')})`;
+
+  if (isLoading) {
+    return (
+      <div className="space-y-8 mb-8">
+        <div className="bg-white border border-gray-100 rounded-[32px] p-6 sm:p-8 lg:p-10 shadow-sm h-[400px] flex flex-col justify-between animate-pulse">
+          <div className="space-y-2">
+            <div className="h-6 bg-gray-100 rounded w-1/4"></div>
+            <div className="h-4 bg-gray-50 rounded w-1/3"></div>
+          </div>
+          <div className="h-48 bg-gray-50 rounded-2xl w-full"></div>
+          <div className="h-8 bg-gray-100 rounded w-1/2"></div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="bg-red-50 border border-red-100 text-red-700 p-6 rounded-[32px] mb-8 text-center font-medium">
+        Failed to load application trends data. Please try again later.
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-8 mb-8">
@@ -33,7 +79,7 @@ const ApplicationTrends = () => {
             <div className="flex items-center gap-2 mb-1">
               <h3 className="text-xl md:text-2xl font-black tracking-tight text-gray-900">Application Trends</h3>
               <span className="bg-green-50 text-green-600 text-[10px] font-bold px-2 py-0.5 rounded-md flex items-center gap-1 border border-green-100">
-                <TrendingUp size={10} /> +12.5%
+                <TrendingUp size={10} /> Live Data
               </span>
             </div>
             <p className="text-xs md:text-sm text-gray-500 font-bold tracking-tight">Submission volume analysis for the past 7 days</p>
@@ -43,7 +89,7 @@ const ApplicationTrends = () => {
             <div className="hidden lg:flex items-center gap-4 mr-4 pr-4 border-r border-gray-100">
               <div className="text-right">
                 <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Weekly Peak</p>
-                <p className="text-sm font-black text-gray-900">75 Applications</p>
+                <p className="text-sm font-black text-gray-900">{maxApps} Applications</p>
               </div>
               <div className="w-10 h-10 bg-pink-50 rounded-xl flex items-center justify-center">
                 <Zap className="text-[#D60041] h-5 w-5" />
@@ -62,7 +108,7 @@ const ApplicationTrends = () => {
           <div className="min-w-[700px] h-[320px] relative mt-6 pl-10">
             {/* Y-Axis Labels */}
             <div className="absolute left-0 top-0 h-full flex flex-col justify-between text-[11px] text-gray-400 font-black tracking-widest py-0 pr-4">
-              <span>100</span><span>75</span><span>50</span><span>25</span><span className="text-gray-300">0</span>
+              <span>{displayMax}</span><span>{label75}</span><span>{label50}</span><span>{label25}</span><span className="text-gray-300">0</span>
             </div>
 
             {/* Grid Lines */}
@@ -118,12 +164,8 @@ const ApplicationTrends = () => {
             <div className="w-3 h-3 rounded-full bg-gradient-to-br from-pink-400 to-[#D60041]"></div>
             <span className="text-xs font-bold text-gray-500 uppercase tracking-wide">Total Submissions</span>
           </div>
-          <div className="flex items-center gap-3">
-            <div className="w-3 h-3 rounded-full bg-gray-200"></div>
-            <span className="text-xs font-bold text-gray-500 uppercase tracking-wide">Pending Reviews</span>
-          </div>
           <div className="ml-auto flex items-center gap-2 text-xs font-bold text-gray-400">
-            <Calendar size={14} /> Last Updated: 16:50 PM
+            <Calendar size={14} /> Last Updated: {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
           </div>
         </div>
       </div>
@@ -141,30 +183,26 @@ const ApplicationTrends = () => {
               </h3>
               <p className="text-xs text-gray-400 font-bold uppercase tracking-widest mt-1">By Department</p>
             </div>
-            <button className="flex items-center gap-2 text-xs font-black text-gray-400 hover:text-[#D60041] transition-colors">
-              <Filter size={14} /> Filter Dept
-            </button>
           </div>
 
           <div className="flex flex-col md:flex-row items-center justify-around gap-12 relative z-10">
             {/* Visual Pie Representation (CSS Based) */}
             <div className="relative w-48 h-48 md:w-56 md:h-56 shrink-0">
               <div className="absolute inset-0 rounded-full border-[18px] border-gray-50"></div>
-              {/* This is a simplified visual representation using conic-gradient to match your data */}
               <div
                 className="absolute inset-0 rounded-full border-[18px] transition-transform duration-1000 group-hover/pie:scale-105"
                 style={{
-                  borderImageSource: `conic-gradient(#D60041 0% 45%, #F43F5E 45% 70%, #FDA4AF 70% 85%, #E2E8F0 85% 100%)`,
+                  borderImageSource: conicGradientString,
                   borderImageSlice: 1,
                   borderRadius: '50%',
-                  background: `conic-gradient(#D60041 0% 45%, #F43F5E 45% 70%, #FDA4AF 70% 85%, #E2E8F0 85% 100%)`,
+                  background: conicGradientString,
                   WebkitMask: 'linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0)',
                   WebkitMaskComposite: 'xor',
                   padding: '18px'
                 }}
               ></div>
               <div className="absolute inset-0 flex flex-col items-center justify-center">
-                <span className="text-2xl font-black text-gray-900">345</span>
+                <span className="text-2xl font-black text-gray-900">{totalApps}</span>
                 <span className="text-[10px] font-bold text-gray-400 uppercase tracking-tighter">Total Apps</span>
               </div>
             </div>
@@ -178,7 +216,7 @@ const ApplicationTrends = () => {
                       <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: item.color }}></div>
                       <span className="text-sm font-bold text-gray-700 group-hover/item:text-[#D60041] transition-colors">{item.label}</span>
                     </div>
-                    <span className="text-sm font-black text-gray-900">{item.percentage}</span>
+                    <span className="text-sm font-black text-gray-900">{item.percentage} ({item.value})</span>
                   </div>
                   <div className="w-full h-1.5 bg-gray-50 rounded-full overflow-hidden">
                     <div
@@ -201,12 +239,12 @@ const ApplicationTrends = () => {
             <div className="bg-white/20 w-12 h-12 rounded-2xl flex items-center justify-center mb-6">
               <TrendingUp size={24} />
             </div>
-            <h4 className="text-xl font-black mb-2">Hiring Velocity</h4>
+            <h4 className="text-xl font-black mb-2">Hiring Insights</h4>
             <p className="text-white/80 text-sm font-medium leading-relaxed mb-8">
-              Engineering roles are seeing a <span className="text-white font-bold underline underline-offset-4">45% increase</span> in qualified leads this week.
+              Keep tracking live application submissions across all departments to optimize your HR pipelines dynamically.
             </p>
             <button className="mt-auto w-full bg-white text-[#D60041] py-4 rounded-2xl font-black text-sm flex items-center justify-center gap-2 hover:bg-pink-50 transition-colors">
-              Deep Analytics <ChevronRight size={16} />
+              Live Feed Active
             </button>
           </div>
         </div>

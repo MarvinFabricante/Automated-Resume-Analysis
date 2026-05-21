@@ -29,6 +29,11 @@ export const apiSlice = createApi({
       query: () => '/hr/resume-count',
       providesTags: ['Dashboard'],
     }),
+    getDashboardTrends: builder.query({
+      query: () => '/hr/dashboard-trends',
+      providesTags: ['Dashboard'],
+      keepUnusedDataFor: 60,
+    }),
 
     // --- JOBS ---
     getJobs: builder.query({
@@ -268,6 +273,7 @@ export const {
   useGetDashboardStatsQuery,
   useGetCandidateCountQuery,
   useGetResumeCountQuery,
+  useGetDashboardTrendsQuery,
   useGetJobsQuery,
   useGetApplicationsQuery,
   useGetCandidateApplicationsQuery,

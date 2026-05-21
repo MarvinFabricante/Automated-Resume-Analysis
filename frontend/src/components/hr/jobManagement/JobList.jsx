@@ -5,10 +5,12 @@ import JobCard from './JobCard';
 const JobList = ({ jobs, onEdit, onView, onArchive, onUnarchive, onDelete }) => {
   if (jobs.length === 0) {
     return (
-      <div className="text-center py-24 bg-white rounded-[32px] border-2 border-dashed border-gray-200 text-gray-400 shadow-sm">
-        <Search className="h-10 w-10 mx-auto text-gray-300 mb-4" />
-        <p className="text-lg font-bold text-gray-500">No jobs found</p>
-        <p className="text-sm mt-1">Try adjusting your filters or search query</p>
+      <div className="text-center py-16 px-4 bg-white rounded-[32px] border border-gray-100 shadow-sm">
+        <div className="w-14 h-14 bg-gray-50 rounded-2xl flex items-center justify-center mx-auto mb-3 border border-gray-100">
+          <Search className="w-6 h-6 text-gray-300" />
+        </div>
+        <h4 className="text-sm font-bold text-gray-900">No jobs found</h4>
+        <p className="text-xs text-gray-400 mt-1">Try adjusting your filters or search query.</p>
       </div>
     );
   }

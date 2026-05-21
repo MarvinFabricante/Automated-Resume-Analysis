@@ -12,6 +12,7 @@ class JobBase(BaseModel):
     description: str
     skills_requirements: str
     education_requirements: Optional[str] = None
+    certifications_requirements: Optional[str] = None
     experience_requirements: Optional[str] = None
     is_active: bool = True
 
@@ -33,6 +34,7 @@ class JobUpdate(BaseModel):
     description: Optional[str] = None
     skills_requirements: Optional[str] = None
     education_requirements: Optional[str] = None
+    certifications_requirements: Optional[str] = None
     experience_requirements: Optional[str] = None
     is_active: Optional[bool] = None
 

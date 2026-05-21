@@ -26,17 +26,17 @@ const MessagesPage = () => {
             
             <div className="flex flex-1">
                 <Sidebar />
-                <main className="flex-1 max-w-[1600px] mx-auto px-6 sm:px-10 py-6 sm:py-10 flex flex-col">
+                <main className="flex-1 w-full max-w-full px-4 sm:px-6 md:px-10 py-6 sm:py-10 flex flex-col animate-in fade-in duration-500">
                     
                     <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-8 gap-4">
                         <div>
-                            <div className="flex items-center gap-2 text-[10px] font-black text-[#D60041] uppercase tracking-[0.2em] mb-3">
+                            <div className="flex items-center gap-2 text-[10px] font-black text-[#D60041] uppercase tracking-[0.2em] mb-2">
                                 <Shield size={12} />
                                 <span>End-to-End Encrypted</span>
                             </div>
-                            <h2 className="text-3xl font-black tracking-tight text-gray-900">Communication Center</h2>
-                            <p className="text-sm text-gray-400 font-bold tracking-wide mt-1.5 flex items-center gap-2">
-                                <Clock size={14} className="text-gray-300" />
+                            <h1 className="text-3xl font-black text-gray-900 tracking-tight">Communication Center</h1>
+                            <p className="text-gray-500 font-medium mt-1 flex items-center gap-2">
+                                <Clock size={14} className="text-gray-400" />
                                 Real-time messaging with candidates and team members.
                             </p>
                         </div>
