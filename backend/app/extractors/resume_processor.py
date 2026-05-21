@@ -26,11 +26,17 @@ def process_resume(file_path: str, file_extension: str) -> dict:
     extracted_data = extract_content(text)
     print(f"DEBUG: Fast extraction complete for: {extracted_data.get('fullname', 'unknown')}")
 
-    # ── 3. Extract profile image if PDF ──────────────────────────────────────
-    if file_extension.lower().strip('.') == 'pdf':
+    # ── 3. Extract profile image if PDF or DOCX ──────────────────────────────
+    ext = file_extension.lower().strip('.')
+    image_path = None
+    if ext == 'pdf':
         from .file.pdf_extractor import extract_image_from_pdf
         image_path = extract_image_from_pdf(file_path)
-        if image_path:
-            extracted_data['profile_image_url'] = f"http://localhost:8000/{image_path}"
+    elif ext in ('docx', 'doc'):
+        from .file.docx_extractor import extract_image_from_docx
+        image_path = extract_image_from_docx(file_path)
+
+    if image_path:
+        extracted_data['profile_image_url'] = f"http://localhost:8000/{image_path}"
 
     return extracted_data
