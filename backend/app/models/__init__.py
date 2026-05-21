@@ -8,6 +8,7 @@ from app.models.job_application import JobApplication
 from app.models.notification import Notification
 from app.models.message import Message
 from app.models.audit_log import AuditLog
+from app.models.interview import Interview, InterviewPanelist, InterviewLog
 
 __all__ = [
     "User",
@@ -19,5 +20,8 @@ __all__ = [
     "JobApplication",
     "Notification",
     "Message",
-    "AuditLog"
+    "AuditLog",
+    "Interview",
+    "InterviewPanelist",
+    "InterviewLog"
 ]
