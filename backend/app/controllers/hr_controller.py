@@ -183,3 +183,7 @@ async def delete_job_endpoint(
             detail=f"Job {job_id} not found"
         )
     return db_job
+
+@router.get("/dashboard-trends")
+async def get_dashboard_trends_endpoint(db: AsyncSession = Depends(get_db)):
+    return await hr_service.get_dashboard_trends(db)
