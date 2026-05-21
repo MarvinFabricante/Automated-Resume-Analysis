@@ -171,43 +171,43 @@ def _extract_education_requirement(text: str) -> str:
     return ""
 
 
-def calculate_education_match(resume_degree: str, job_description: str, education_req: str = None) -> dict:
+def calculate_certifications_match(resume_certs: str, job_description: str, certifications_req: str = None) -> dict:
     """
-    Compare resume education against job requirements.
+    Compare resume certifications against job requirements.
     Returns a dict with score and details.
     """
-    required_degree = ""
-    if education_req:
-        required_degree = _extract_education_requirement(education_req)
-        # If user typed something custom but we couldn't parse it as standard degree, check in DEGREE_HIERARCHY
-        if not required_degree:
-            for k in DEGREE_HIERARCHY.keys():
-                if k in education_req.upper():
-                    required_degree = k
-                    break
-                    
-    if not required_degree:
-        required_degree = _extract_education_requirement(job_description)
-    
-    if not required_degree:
-        # No explicit requirement — give full marks
-        return {"score": 1.0, "required_degree": "Any", "candidate_degree": resume_degree or "Not provided", "reason": "No specific education requirement found."}
-    
-    if not resume_degree:
-        return {"score": 0.3, "required_degree": required_degree, "candidate_degree": "Not provided", "reason": f"Job requires {required_degree}, but no degree was extracted."}
-    
-    resume_level = DEGREE_HIERARCHY.get(resume_degree.upper(), 0)
-    required_level = DEGREE_HIERARCHY.get(required_degree.upper(), 0)
-    
-    if resume_level == 0 or required_level == 0:
-        return {"score": 0.5, "required_degree": required_degree, "candidate_degree": resume_degree, "reason": f"Could not determine level for {resume_degree} compared to {required_degree}."}
-    
-    if resume_level >= required_level:
-        return {"score": 1.0, "required_degree": required_degree, "candidate_degree": resume_degree, "reason": f"Your {resume_degree} degree meets or exceeds the required {required_degree} level."}
-    
-    # Proportional score
-    score = round(resume_level / required_level, 2)
-    return {"score": score, "required_degree": required_degree, "candidate_degree": resume_degree, "reason": f"Your {resume_degree} is below the required {required_degree} level."}
+    required_certs = certifications_req or ""
+    if not required_certs:
+        if re.search(r'\b(certification|certified|certificate)\b', job_description, re.IGNORECASE):
+            required_certs = "Relevant Certification"
+            
+    if not required_certs:
+        return {"score": 1.0, "required_certifications": "None", "candidate_certifications": resume_certs or "None", "reason": "No specific certification requirement found."}
+        
+    if not resume_certs:
+        return {"score": 0.3, "required_certifications": required_certs, "candidate_certifications": "None", "reason": f"Job requires {required_certs}, but no certifications were found."}
+        
+    req_tokens = _tokenize_skills(required_certs)
+    if not req_tokens:
+        return {"score": 1.0, "required_certifications": "None", "candidate_certifications": resume_certs, "reason": "No specific certification requirement found."}
+        
+    resume_tokens = _tokenize_skills(resume_certs)
+    matched = []
+    for req in req_tokens:
+        if req in ['certification', 'certified', 'certificate']:
+            continue
+        for res in resume_tokens:
+            if _fuzzy_match(res, req):
+                matched.append(req)
+                break
+                
+    if not matched:
+        return {"score": 0.5, "required_certifications": required_certs, "candidate_certifications": "Unrelated", "reason": f"Your certifications do not match the required {required_certs}."}
+        
+    valid_reqs = [t for t in req_tokens if t not in ['certification', 'certified', 'certificate']]
+    score = len(matched) / len(valid_reqs) if valid_reqs else 1.0
+    score = min(1.0, score + 0.2)
+    return {"score": score, "required_certifications": required_certs, "candidate_certifications": ", ".join(matched), "reason": f"Your certifications match {int(score*100)}% of the requirement."}
 
 
 def _generate_recommendations(skills_result: dict, experience_result: dict, education_result: dict, job_title: str) -> list[str]:
@@ -240,21 +240,16 @@ def _generate_recommendations(skills_result: dict, experience_result: dict, educ
             f"so the ATS can accurately calculate your tenure for the {job_title} role."
         )
 
-    # Education recommendation
-    req_degree = education_result.get("required_degree", "")
-    cand_degree = education_result.get("candidate_degree", "")
-    if req_degree and req_degree != "Any" and cand_degree:
-        req_level = DEGREE_HIERARCHY.get(req_degree.upper(), 0)
-        cand_level = DEGREE_HIERARCHY.get(cand_degree.upper(), 0)
-        if cand_level < req_level:
-            recommendations.append(
-                f"The position prefers a {req_degree}-level degree. Consider pursuing a higher credential "
-                f"or listing relevant certifications and professional development courses to compensate."
-            )
-    elif not cand_degree or cand_degree == "Not provided":
+    # Certifications recommendation
+    req_certs = education_result.get("required_certifications", "")
+    cand_certs = education_result.get("candidate_certifications", "")
+    if req_certs and req_certs != "None" and not cand_certs:
         recommendations.append(
-            "Ensure your education section clearly states your degree, field of study, and institution "
-            "so the ATS can properly evaluate your qualifications."
+            f"The position requires {req_certs}. Consider pursuing these certifications to improve your candidacy."
+        )
+    elif not cand_certs or cand_certs == "None":
+        recommendations.append(
+            "Ensure your certifications section is clear and up-to-date so the ATS can evaluate your qualifications."
         )
 
     # Generic improvement if we haven't found enough specific gaps
@@ -314,10 +309,10 @@ def calculate_match_score(resume_data: dict, job, use_ai: bool = False) -> dict:
     job_desc = (job.description or "") + " " + (job.skills_requirements or "")
     experience_result = calculate_experience_match(resume_years, job_desc, getattr(job, 'experience_requirements', None))
 
-    resume_degree = resume_data.get("highest_degree", "")
-    education_result = calculate_education_match(resume_degree, job_desc, getattr(job, 'education_requirements', None))
+    resume_certs = resume_data.get("certifications", "") or resume_data.get("skills", "")
+    education_result = calculate_certifications_match(resume_certs, job_desc, getattr(job, 'certifications_requirements', None))
 
-    # Weighted rule-based composite: Skills 40% + Experience 40% + Education 20%
+    # Weighted rule-based composite: Skills 40% + Experience 40% + Certifications 20%
     rule_match_pct = (
         skills_result["score"] * 0.40 +
         experience_result["score"] * 0.40 +
@@ -337,7 +332,7 @@ def calculate_match_score(resume_data: dict, job, use_ai: bool = False) -> dict:
                 "description": job.description or "",
                 "skills_requirements": job.skills_requirements or "",
                 "experience_requirements": getattr(job, "experience_requirements", ""),
-                "education_requirements": getattr(job, "education_requirements", ""),
+                "certifications_requirements": getattr(job, "certifications_requirements", ""),
             }
             ai_result = gemini_analyze_match(resume_data, job_data)
             if ai_result:
@@ -363,7 +358,7 @@ def calculate_match_score(resume_data: dict, job, use_ai: bool = False) -> dict:
         )
         blended_edu_score = _blend_scores(
             education_result["score"] * 100,
-            ai_result.get("ai_education_score", education_result["score"] * 100),
+            ai_result.get("ai_certifications_score", education_result["score"] * 100),
             ai_available
         )
 
@@ -424,20 +419,20 @@ def calculate_match_score(resume_data: dict, job, use_ai: bool = False) -> dict:
         "match_percentage": final_match_pct,
         "skills_score": round(blended_skills_score, 1),
         "experience_score": round(blended_exp_score, 1),
-        "education_score": round(blended_edu_score, 1),
+        "certifications_score": round(blended_edu_score, 1),
         # ── Skills ──
         "matched_skills": all_matched,
         "missing_skills": all_missing,
         # ── Reasons ──
         "skills_reason": skills_reason,
         "experience_reason": experience_result["reason"],
-        "education_reason": education_result["reason"],
+        "certifications_reason": education_result["reason"],
         # ── Experience ──
         "relevant_experience": relevant_experience,
         "experience_gaps": f"Required: {experience_result.get('required_years', 0)} yrs | Candidate: {experience_result.get('candidate_years', 0)} yrs",
-        # ── Education ──
-        "required_degree": education_result.get("required_degree", "Any"),
-        "candidate_degree": education_result.get("candidate_degree", "Not provided"),
+        # ── Certifications ──
+        "required_certifications": education_result.get("required_certifications", "None"),
+        "candidate_certifications": education_result.get("candidate_certifications", "None"),
         # ── AI Insights ──
         "recommendations": final_recommendations,
         "ai_summary": ai_summary,
