@@ -14,7 +14,7 @@ from twilio.rest import Client as TwilioClient
 from app.models.interview import Interview, InterviewPanelist, InterviewLog
 from app.models.job_application import JobApplication
 from app.models.user import User
-from app.schemas.interview import InterviewCreateSchema
+from app.schemas.interview_schema import InterviewCreateSchema
 
 # If modifying these scopes, delete the file token.json.
 SCOPES = ['https://www.googleapis.com/auth/calendar']

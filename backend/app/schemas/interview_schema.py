@@ -4,6 +4,12 @@ from datetime import datetime
 
 class InterviewPanelistSchema(BaseModel):
     user_id: int
+
+class AvailableSlotsRequest(BaseModel):
+    panelist_ids: List[int]
+    start_date: datetime
+    end_date: datetime
+
     
 class InterviewCreateSchema(BaseModel):
     job_application_id: int

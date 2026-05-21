@@ -206,6 +206,24 @@ export const apiSlice = createApi({
       pollingInterval: 15000,
     }),
 
+    // --- INTERVIEWS ---
+    getAvailableSlots: builder.mutation({
+      query: (body) => ({
+        url: '/interviews/available-slots',
+        method: 'POST',
+        body,
+      }),
+    }),
+
+    scheduleInterview: builder.mutation({
+      query: (body) => ({
+        url: '/interviews/schedule',
+        method: 'POST',
+        body,
+      }),
+      invalidatesTags: ['Applications', 'Dashboard'],
+    }),
+
     // --- ADMIN / HR TOOLS ---
     getHRActivities: builder.query({
       query: () => '/admins/hr-activities',
@@ -287,6 +305,8 @@ export const {
   useUnarchiveJobMutation,
   useDeleteJobMutation,
   useUpdateApplicationStatusMutation,
+  useGetAvailableSlotsMutation,
+  useScheduleInterviewMutation,
   useGetHRActivitiesQuery,
   useGetUsersQuery,
   useArchiveUserMutation,
