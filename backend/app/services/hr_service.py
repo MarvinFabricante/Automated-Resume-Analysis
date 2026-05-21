@@ -76,3 +76,106 @@ async def get_application_stats(db: AsyncSession):
         "accepted": stats.get("ACCEPTED", 0),
         "rejected": stats.get("REJECTED", 0)
     }
+
+async def get_dashboard_trends(db: AsyncSession):
+    from app.models.job_application import JobApplication
+    from app.models.job_description import JobDescription
+    from sqlalchemy import func, cast, Date
+    from datetime import datetime, timedelta
+
+    # 1. Weekly Trends (past 7 days)
+    today = datetime.utcnow().date()
+    dates = [today - timedelta(days=i) for i in range(6, -1, -1)]
+    
+    # Initialize dictionary with 0 counts
+    daily_counts = {d: 0 for d in dates}
+    
+    # Query database
+    start_date = datetime.combine(dates[0], datetime.min.time())
+    result = await db.execute(
+        select(
+            cast(JobApplication.created_at, Date),
+            func.count(JobApplication.id)
+        )
+        .where(JobApplication.created_at >= start_date)
+        .group_by(cast(JobApplication.created_at, Date))
+    )
+    
+    for row in result.all():
+        row_date = row[0]
+        if row_date in daily_counts:
+            daily_counts[row_date] = row[1]
+            
+    weekly_trends = []
+    prev_count = None
+    for d in dates:
+        count = daily_counts[d]
+        
+        # Calculate growth compared to previous day
+        if prev_count is None or prev_count == 0:
+            growth = f"+{count * 100}%" if count > 0 else "+0%"
+        else:
+            diff = count - prev_count
+            pct = int((diff / prev_count) * 100)
+            growth = f"+{pct}%" if pct >= 0 else f"{pct}%"
+            
+        prev_count = count
+        
+        weekly_trends.append({
+            "day": d.strftime("%a"),
+            "date": d.strftime("%b %d"),
+            "applications": count,
+            "growth": growth
+        })
+        
+    # 2. Department Distribution
+    dept_result = await db.execute(
+        select(
+            JobDescription.department,
+            func.count(JobApplication.id)
+        )
+        .join(JobApplication, JobApplication.job_id == JobDescription.id)
+        .group_by(JobDescription.department)
+    )
+    
+    dept_data = dept_result.all()
+    total_apps = sum(row[1] for row in dept_data)
+    
+    # Premium colors list
+    colors = ['#D60041', '#F43F5E', '#FDA4AF', '#3B82F6', '#8B5CF6', '#10B981']
+    
+    department_distribution = []
+    for idx, row in enumerate(dept_data):
+        dept_name = row[0]
+        count = row[1]
+        pct_val = int((count / total_apps) * 100) if total_apps > 0 else 0
+        
+        department_distribution.append({
+            "label": dept_name,
+            "value": count,
+            "color": colors[idx % len(colors)],
+            "percentage": f"{pct_val}%"
+        })
+        
+    if not department_distribution:
+        # If no real data, try to query all active jobs to populate some default departments with 0 counts
+        active_jobs_result = await db.execute(select(JobDescription.department).distinct())
+        distinct_depts = [r[0] for r in active_jobs_result.all()]
+        if distinct_depts:
+            for idx, dept in enumerate(distinct_depts):
+                department_distribution.append({
+                    "label": dept,
+                    "value": 0,
+                    "color": colors[idx % len(colors)],
+                    "percentage": "0%"
+                })
+        else:
+            department_distribution = [
+                { "label": "No Data", "value": 0, "color": "#E2E8F0", "percentage": "0%" }
+            ]
+        
+    return {
+        "weekly_trends": weekly_trends,
+        "department_distribution": department_distribution,
+        "total_applications": total_apps
+    }
