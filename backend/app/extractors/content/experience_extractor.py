@@ -1,5 +1,6 @@
 import re
 from datetime import datetime
+from app.extractors.nlp.nlp_engine import get_doc, extract_advanced_experience
 
 
 # ─── Section Headers ─────────────────────────────────────────────────────────
@@ -198,8 +199,18 @@ def extract_experience(text: str) -> str:
                         formatted += f" at {entry['company']}"
                     if entry["dates"]:
                         formatted += f" ({entry['dates']})"
+                    if entry["descriptions"]:
+                        formatted += " - Responsibilities: " + "; ".join(entry["descriptions"])
                     entries.append(formatted)
             i += 1
+    
+    # ── Step 3: spaCy-based Advanced Extraction ───────────────────────────────
+    doc = get_doc(text)
+    nlp_entries = extract_advanced_experience(doc)
+    for nlp_entry in nlp_entries:
+        # Avoid duplicate roles if already extracted via section parsing
+        if not any(nlp_entry.lower()[:20] in e.lower() for e in entries):
+            entries.append(nlp_entry)
     
     # ── Step 3: Fallback — scan full document for date-range lines ────────────
     if not entries:

@@ -191,26 +191,9 @@ def extract_content(text: str) -> dict:
     # ── Run unified NLP engine: preprocessing, NER, and rule-based matching ──
     try:
         nlp_out = nlp_extract_all(text)
-        # Prefer NLP-detected skills (list) and merge with existing KB
-        nlp_skills = nlp_out.get("skills", []) or []
-        if nlp_skills:
-            existing = [s.strip() for s in (data.get("skills") or "").split("|") if s.strip()]
-            merged = nlp_skills + [e for e in existing if e not in nlp_skills]
-            data["skills"] = " | ".join(merged[:50])
+        doc = nlp_out.get("doc")
 
-        nlp_exp = nlp_out.get("experience", []) or []
-        if nlp_exp:
-            data["experience"] = " | ".join(nlp_exp)
-
-        nlp_edu = nlp_out.get("education", []) or []
-        if nlp_edu:
-            data["education"] = " | ".join(nlp_edu)
-
-        nlp_certs = nlp_out.get("certifications", []) or []
-        if nlp_certs:
-            data["certifications"] = " | ".join(nlp_certs)
-
-        # Optional: expose entities into data for downstream use
+        # Expose entities into data for downstream use
         ents = nlp_out.get("entities")
         if ents:
             data["nlp_entities"] = ents

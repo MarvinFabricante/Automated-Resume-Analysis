@@ -1,4 +1,5 @@
 import re
+from app.extractors.nlp.nlp_engine import get_doc, extract_advanced_education
 
 # ─── Section Headers ─────────────────────────────────────────────────────────
 
@@ -137,6 +138,13 @@ def extract_education(text: str) -> str:
 
     if education_lines:
         entries = _parse_education_entries(education_lines)
+
+    # ── Step 2.5: spaCy-based Advanced Extraction ─────────────────────────────
+    doc = get_doc(text)
+    nlp_entries = extract_advanced_education(doc)
+    for nlp_entry in nlp_entries:
+        if not any(nlp_entry.lower()[:15] in e.lower() for e in entries):
+            entries.append(nlp_entry)
 
     # ── Step 3: Fallback — scan entire document ───────────────────────────────
     if not entries:

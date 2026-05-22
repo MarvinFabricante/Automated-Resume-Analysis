@@ -1,4 +1,5 @@
 import re
+from app.extractors.nlp.nlp_engine import get_doc, get_skills_matcher, find_phrase_matches, get_verb_object_pairs
 
 # ─── Comprehensive Skills Knowledge Base ─────────────────────────────────────
 # All values UPPER-CASE for O(1) lookup.
@@ -442,6 +443,7 @@ def extract_skills(text: str) -> str:
     No LLM/AI is used. Returns a pipe-separated string of identified skills
     (deduplicated, properly cased).
     """
+    doc = get_doc(text)
     lines = text.split('\n')
 
     # ── Pass 1: Section-based extraction ──────────────────────────────────────
@@ -477,25 +479,21 @@ def extract_skills(text: str) -> str:
     # ── Pass 2: Contextual extraction from experience/project text ────────────
     contextual_skills = _extract_contextual_skills(text)
 
-    # ── Pass 3: Knowledge-base scan across entire document ────────────────────
-    kb_skills: list[str] = []
-    text_upper = text.upper()
+    # ── Pass 3: Knowledge-base scan using spaCy PhraseMatcher ─────────────────
+    matcher = get_skills_matcher()
+    spacy_matches = find_phrase_matches(doc, matcher)
+    kb_skills = [s.upper() for s in spacy_matches]
 
-    sorted_skills = sorted(COMMON_SKILLS, key=len, reverse=True)
-    matched_positions: list[tuple[int, int]] = []
-
-    for skill in sorted_skills:
-        pattern = r'\b' + re.escape(skill) + r'\b'
-        for m in re.finditer(pattern, text_upper):
-            start, end = m.start(), m.end()
-            overlaps = any(
-                not (end <= es or start >= ee)
-                for es, ee in matched_positions
-            )
-            if not overlaps:
-                matched_positions.append((start, end))
-                kb_skills.append(skill)
-                break
+    # ── Pass 3b: Contextual NLP extraction (Dependency Parsing) ───────────────
+    target_verbs = {'develop', 'build', 'implement', 'create', 'use', 'utilize', 'program', 'deploy', 'integrate', 'configure'}
+    pairs = get_verb_object_pairs(doc)
+    for v, obj in pairs:
+        if v.lower() in target_verbs:
+            # Check if the object contains a known skill
+            for token in re.split(r'[,;|]|\band\b|\bor\b', obj):
+                token_clean = re.sub(r'^[^A-Z0-9a-z]+|[^A-Z0-9a-z]+$', '', token.strip()).upper()
+                if token_clean in COMMON_SKILLS:
+                    kb_skills.append(token_clean)
 
     # ── Pass 4: Inline category:value patterns ────────────────────────────────
     inline_skills = _extract_inline_category_skills(text)

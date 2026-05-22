@@ -1,4 +1,5 @@
 import re
+from app.extractors.nlp.nlp_engine import get_doc, extract_advanced_certifications
 
 # ─── Section Headers ─────────────────────────────────────────────────────────
 
@@ -151,6 +152,12 @@ def extract_certifications(text: str) -> str:
             cert = m.group(0).strip()
             if cert and len(cert) > 2:
                 pattern_certs.append(cert)
+
+    # ── Step 2.5: spaCy-based Advanced Extraction ─────────────────────────────
+    doc = get_doc(text)
+    nlp_certs = extract_advanced_certifications(doc)
+    for c in nlp_certs:
+        pattern_certs.append(c)
 
     # ── Step 3: Merge and deduplicate ─────────────────────────────────────────
     seen_lower = set()
