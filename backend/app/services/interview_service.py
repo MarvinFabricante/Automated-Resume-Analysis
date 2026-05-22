@@ -32,13 +32,30 @@ def get_google_calendar_service():
         if creds and creds.expired and creds.refresh_token:
             creds.refresh(Request())
         else:
-            if os.path.exists('credentials.json'):
+            client_id = os.getenv('GOOGLE_CLIENT_ID')
+            client_secret = os.getenv('GOOGLE_CLIENT_SECRET')
+
+            if client_id and client_secret:
+                client_config = {
+                    "installed": {
+                        "client_id": client_id,
+                        "project_id": "fastapi-google-calendar",
+                        "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                        "token_uri": "https://oauth2.googleapis.com/token",
+                        "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+                        "client_secret": client_secret,
+                        "redirect_uris": ["http://localhost"]
+                    }
+                }
+                flow = InstalledAppFlow.from_client_config(client_config, SCOPES)
+                creds = flow.run_local_server(port=0)
+            elif os.path.exists('credentials.json'):
                 flow = InstalledAppFlow.from_client_secrets_file(
                     'credentials.json', SCOPES)
                 creds = flow.run_local_server(port=0)
             else:
-                # In production, we'd handle OAuth differently. Mocking for now if missing.
-                pass
+                print("Missing Google Calendar credentials (GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET) in .env")
+                return None
         if creds:
             # Save the credentials for the next run
             with open('token.json', 'w') as token:

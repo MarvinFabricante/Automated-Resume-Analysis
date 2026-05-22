@@ -8,9 +8,16 @@ logger = logging.getLogger(__name__)
 def process_resume(file_path: str, file_extension: str) -> dict:
     """
     Main entry point for resume processing.
-    1. Extracts raw text from file.
-    2. Uses fast rule-based extractors for immediate credential display.
-    3. Leaves LLM/Gemini work to post-processing analysis endpoints after parsing.
+
+    Pipeline:
+    1. Extract raw text from file (PDF/DOCX/TXT).
+    2. Run rule-based extractors (regex, NLP, keyword matching,
+       structured parsing) for immediate structured data.
+    3. Extract profile image if available.
+
+    NOTE: Gemini AI is NOT used during extraction.
+          It is reserved exclusively for the analysis / candidate-job
+          matching stage (see gemini_analyze_match in gemini_service.py).
     """
     print(f"DEBUG: Processing file at {file_path}")
     text = extract_file_content(file_path, file_extension)
@@ -20,13 +27,16 @@ def process_resume(file_path: str, file_extension: str) -> dict:
 
     print(f"DEBUG: Successfully extracted {len(text)} characters of text")
 
-    # Fast extraction only. Do not call Gemini here; upload should return
-    # credentials immediately. Gemini remains available for match/analysis after
-    # the parsed resume data has already been returned to the frontend.
+    # ── Step 2: Rule-based extraction (no LLM) ───────────────────────────────
     extracted_data = extract_content(text)
-    print(f"DEBUG: Fast extraction complete for: {extracted_data.get('fullname', 'unknown')}")
+    print(f"DEBUG: Rule-based extraction complete for: {extracted_data.get('fullname', 'unknown')}")
+    print(f"DEBUG: Skills found: {len(extracted_data.get('skills', '').split('|'))} items")
+    print(f"DEBUG: Experience entries: {len(extracted_data.get('experience', '').split('|'))} items")
+    print(f"DEBUG: Education: {extracted_data.get('education', 'none')[:80]}")
+    print(f"DEBUG: Certifications found: {extracted_data.get('certifications', 'none')[:80]}")
+    print(f"DEBUG: Years of experience: {extracted_data.get('years_experience', 0)}")
 
-    # ── 3. Extract profile image if PDF or DOCX ──────────────────────────────
+    # ── Step 3: Extract profile image if PDF or DOCX ──────────────────────────
     ext = file_extension.lower().strip('.')
     image_path = None
     if ext == 'pdf':

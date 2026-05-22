@@ -2,6 +2,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
 from app.models.user import User
+from app.models.candidate import Candidate
+from app.models.hr import HR
+from app.models.admin import Admin
 from app.models.password_reset import PasswordReset
 from app.utils.auth import hash_password, verify_password, create_access_token
 from app.services.notification_service import create_notification
@@ -12,21 +15,32 @@ from datetime import datetime, timedelta
 
 async def register_user(db: AsyncSession, email: str, password: str, role: str, fullname: str = ""):
     email = email.strip().lower()
-    result = await db.execute(select(User).where(User.email == email))
-    existing_user = result.scalar_one_or_none()
 
-    if existing_user:
+    # Check existence using raw text to avoid polymorphic JOIN issues
+    from sqlalchemy import text
+    existing = await db.execute(
+        text("SELECT id FROM users WHERE email = :email"), {"email": email}
+    )
+    if existing.fetchone():
         raise Exception("Email already registered")
 
     if role not in ["CANDIDATE", "HR", "ADMIN"]:
         raise Exception("Invalid role")
 
-    new_user = User(
+    # Create the correct subclass so both users + subclass table rows are inserted
+    common_fields = dict(
         email=email,
         password=hash_password(password),
         role=role,
-        fullname=fullname
+        fullname=fullname,
     )
+
+    if role == "CANDIDATE":
+        new_user = Candidate(**common_fields)
+    elif role == "HR":
+        new_user = HR(**common_fields, company_name="")
+    else:  # ADMIN
+        new_user = Admin(**common_fields)
 
     db.add(new_user)
     await db.commit()
@@ -37,22 +51,69 @@ async def register_user(db: AsyncSession, email: str, password: str, role: str, 
 
 async def login_user(db: AsyncSession, email: str, password: str):
     email = email.strip().lower()
-    result = await db.execute(select(User).where(User.email == email))
-    user = result.scalar_one_or_none()
+
+    # Query the base User table directly (no polymorphic JOIN) to avoid
+    # missing subclass rows causing scalar_one_or_none() to return None.
+    from sqlalchemy import text
+    raw = await db.execute(
+        text("SELECT id, email, password, role, fullname, profile_image_url, is_archived, is_online FROM users WHERE email = :email"),
+        {"email": email}
+    )
+    row = raw.fetchone()
+    if not row:
+        raise Exception("Invalid credentials")
+
+    # Load the proper ORM object based on role for downstream use
+    role = row.role
+    if role == "CANDIDATE":
+        result = await db.execute(select(Candidate).where(Candidate.email == email))
+        user = result.scalar_one_or_none()
+    elif role == "HR":
+        result = await db.execute(select(HR).where(HR.email == email))
+        user = result.scalar_one_or_none()
+    elif role == "ADMIN":
+        result = await db.execute(select(Admin).where(Admin.email == email))
+        user = result.scalar_one_or_none()
+    else:
+        result = await db.execute(select(User).where(User.email == email))
+        user = result.scalar_one_or_none()
+
+    # Fallback: use raw row data if subclass row is missing (orphaned user)
+    _is_fallback = user is None
+    if _is_fallback:
+        class _FallbackUser:
+            pass
+        user = _FallbackUser()
+        user.id = row.id
+        user.email = row.email
+        user.password = row.password
+        user.role = row.role
+        user.fullname = row.fullname
+        user.profile_image_url = row.profile_image_url
+        user.is_archived = row.is_archived
+        user.is_online = row.is_online
 
     if not user:
         raise Exception("Invalid credentials")
 
     if not verify_password(password, user.password):
         raise Exception("Invalid credentials")
-    
+
     if user.is_archived:
         raise Exception("Account has been archived. Please contact administration.")
 
-    # Update online status
-    user.is_online = True
-    user.last_active = datetime.utcnow()
-    await db.commit()
+    # Update online status — use raw SQL for orphaned users (no ORM row in subclass table)
+    now = datetime.utcnow()
+    if _is_fallback:
+        await db.execute(
+            text("UPDATE users SET is_online = true, last_active = :now WHERE id = :uid"),
+            {"now": now, "uid": user.id}
+        )
+        await db.commit()
+    else:
+        user.is_online = True
+        user.last_active = now
+        await db.commit()
 
     token = create_access_token({
         "sub": user.email,

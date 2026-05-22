@@ -1,9 +1,13 @@
 """
 Gemini AI Service
 -----------------
-Provides two core AI-powered functions:
-  1. gemini_parse_resume(text) — structured extraction from raw resume text
-  2. gemini_analyze_match(resume_data, job_data) — semantic job-match scoring
+Provides AI-powered job-match analysis:
+  gemini_analyze_match(resume_data, job_data) — semantic job-match scoring
+
+NOTE: Resume extraction (skills, experience, education, certifications) is
+handled entirely by rule-based extractors in extractors/content/.
+Gemini is used ONLY for the analysis/matching stage to reduce API usage
+and prevent hitting request limits.
 
 Uses a rotating pool of API keys to avoid rate-limit exhaustion.
 Falls back gracefully if all keys are exhausted or an error occurs.
@@ -155,88 +159,31 @@ def _extract_json(text: str) -> Optional[dict]:
 
 
 # ---------------------------------------------------------------------------
-# 1. Resume Parsing via Gemini
+# 1. Resume Parsing — DEPRECATED
 # ---------------------------------------------------------------------------
-
-RESUME_PARSE_PROMPT = """
-You are an expert resume parser. Extract structured information from the resume text below.
-
-Return ONLY a valid JSON object with exactly these fields (no extra text, no markdown):
-{{
-  "fullname": "Full name of the candidate",
-  "email": "Email address or empty string",
-  "phone": "Phone number or empty string",
-  "location": "City, Country or empty string",
-  "skills": "Pipe-separated list of ALL skills found (e.g. Python | React | SQL)",
-  "experience": "Pipe-separated list of work experience entries (Role at Company, dates)",
-  "years_experience": <integer: total years of professional experience>,
-  "education": "Highest degree and institution (e.g. Bachelor of Science in Computer Science - MIT 2020)",
-  "highest_degree": "One of: SENIOR HIGH SCHOOL, DIPLOMA/VOCATIONAL, ASSOCIATE, BACHELOR, MASTER, DOCTORATE. Empty string if unknown.",
-  "summary": "2-3 sentence professional summary of the candidate"
-}}
-
-Rules:
-- Extract ALL skills mentioned anywhere in the resume, not just from the skills section.
-- For years_experience: calculate from date ranges if present, otherwise estimate from job history.
-- For highest_degree: pick the highest level attained from the enum values only.
-- Return empty string "" for any field you cannot determine.
-- Do NOT include any explanation. Return ONLY the JSON.
-
-Resume Text:
----
-{resume_text}
----
-"""
+# Resume extraction is now handled entirely by rule-based extractors
+# (regex, NLP, keyword matching, structured parsing) in the
+# extractors/content/ modules. This eliminates Gemini API calls during
+# the extraction phase, reducing API usage and preventing rate limits.
+#
+# Gemini AI is reserved ONLY for analysis/matching (see Section 2 below).
+# ---------------------------------------------------------------------------
 
 
 def gemini_parse_resume(resume_text: str) -> Optional[dict]:
     """
-    Use Gemini to extract structured data from raw resume text.
+    DEPRECATED — Resume extraction no longer uses Gemini AI.
 
-    Returns a dict matching the expected schema, or None if parsing fails.
-    The caller should fall back to rule-based extraction if None is returned.
+    All extraction is now performed by rule-based extractors:
+      - skills_extractor.py  (4-pass keyword/regex/KB matching)
+      - experience_extractor.py  (section + date-range parsing)
+      - education_extractor.py  (degree hierarchy + institution matching)
+      - certifications_extractor.py  (section + known-cert pattern scan)
+
+    This stub returns None so any legacy callers degrade gracefully.
     """
-    if not _api_keys:
-        return None
-
-    if not resume_text or len(resume_text.strip()) < 50:
-        return None
-
-    # Truncate very long resumes to avoid token limits (keep first 8000 chars)
-    truncated_text = resume_text[:8000]
-
-    prompt = RESUME_PARSE_PROMPT.format(resume_text=truncated_text)
-
-    try:
-        raw_response = _call_with_retry(prompt, max_output_tokens=4096)
-        if not raw_response:
-            return None
-
-        parsed = _extract_json(raw_response)
-        if not parsed:
-            logger.warning("Gemini resume parse: could not extract JSON from response.")
-            return None
-
-        # Normalize and validate the response
-        result = {
-            "fullname": str(parsed.get("fullname", "")).strip(),
-            "email": str(parsed.get("email", "")).strip(),
-            "phone": str(parsed.get("phone", "")).strip(),
-            "location": str(parsed.get("location", "")).strip(),
-            "skills": str(parsed.get("skills", "")).strip(),
-            "experience": str(parsed.get("experience", "")).strip(),
-            "years_experience": int(parsed.get("years_experience", 0) or 0),
-            "education": str(parsed.get("education", "")).strip(),
-            "highest_degree": str(parsed.get("highest_degree", "")).strip().upper(),
-            "summary": str(parsed.get("summary", "")).strip(),
-        }
-
-        logger.info(f"Gemini parsed resume for: {result.get('fullname', 'Unknown')}")
-        return result
-
-    except Exception as e:
-        logger.error(f"gemini_parse_resume error: {e}")
-        return None
+    logger.info("gemini_parse_resume is DEPRECATED. Using rule-based extraction only.")
+    return None
 
 
 # ---------------------------------------------------------------------------
