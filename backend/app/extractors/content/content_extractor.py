@@ -8,6 +8,7 @@ from .education_extractor import extract_education, extract_highest_degree
 from .skills_extractor import extract_skills
 from .certifications_extractor import extract_certifications
 from .section_parser import split_into_sections
+from ..nlp.nlp_engine import extract_all as nlp_extract_all
 
 
 def _generate_summary(data: dict) -> str:
@@ -186,6 +187,36 @@ def extract_content(text: str) -> dict:
         "skills": extract_skills(text),
         "certifications": extract_certifications(text),
     }
+
+    # ── Run unified NLP engine: preprocessing, NER, and rule-based matching ──
+    try:
+        nlp_out = nlp_extract_all(text)
+        # Prefer NLP-detected skills (list) and merge with existing KB
+        nlp_skills = nlp_out.get("skills", []) or []
+        if nlp_skills:
+            existing = [s.strip() for s in (data.get("skills") or "").split("|") if s.strip()]
+            merged = nlp_skills + [e for e in existing if e not in nlp_skills]
+            data["skills"] = " | ".join(merged[:50])
+
+        nlp_exp = nlp_out.get("experience", []) or []
+        if nlp_exp:
+            data["experience"] = " | ".join(nlp_exp)
+
+        nlp_edu = nlp_out.get("education", []) or []
+        if nlp_edu:
+            data["education"] = " | ".join(nlp_edu)
+
+        nlp_certs = nlp_out.get("certifications", []) or []
+        if nlp_certs:
+            data["certifications"] = " | ".join(nlp_certs)
+
+        # Optional: expose entities into data for downstream use
+        ents = nlp_out.get("entities")
+        if ents:
+            data["nlp_entities"] = ents
+    except Exception:
+        # If NLP engine fails, keep rule-based outputs
+        pass
 
     # Cross-validate using section boundaries
     data = _cross_validate(data, sections)

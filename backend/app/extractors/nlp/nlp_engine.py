@@ -1,3 +1,185 @@
+"""Central NLP engine for resume preprocessing and extraction.
+
+This module is the single entry point for spaCy-based preprocessing,
+NER, and rule-based extraction used by the resume pipeline. All resume
+text should be passed through `extract_all()` to obtain normalized
+text, named entities, and extracted structured fields.
+
+No LLMs are used here; all processing is spaCy + rule-based.
+"""
+import logging
+import re
+from functools import lru_cache
+from typing import Dict, Any, List, Optional
+
+import spacy
+from spacy.language import Language
+from spacy.matcher import PhraseMatcher, Matcher
+from spacy.tokens import Doc
+
+
+def _normalize_text(text: str) -> str:
+    # Basic normalization: collapse whitespace, remove excessive punctuation noise
+    t = text or ""
+    t = t.replace('\r', '\n')
+    t = re.sub(r"\u2013|\u2014", '-', t)  # normalize dashes
+    t = re.sub(r"\t+", ' ', t)
+    t = re.sub(r"[^\S\n]+", ' ', t)
+    # Collapse multiple newlines into single newline
+    t = re.sub(r"\n+", '\n', t)
+    t = t.strip()
+    return t
+
+
+def extract_advanced_skills(doc: Doc) -> list[str]:
+    from app.extractors.content.skills_extractor import _format_skill
+    skills_matcher = get_skills_matcher()
+    skills = find_phrase_matches(doc, skills_matcher)
+    
+    formatted_skills = []
+    seen = set()
+    for s in skills:
+        f = _format_skill(s)
+        if f and f.upper() not in seen:
+            seen.add(f.upper())
+            formatted_skills.append(f)
+    return formatted_skills
+
+
+def extract_advanced_experience(doc: Doc) -> list[str]:
+    entries = []
+    job_matcher = get_job_title_matcher()
+    
+    matches = job_matcher(doc)
+    match_spans = spacy.util.filter_spans([doc[start:end] for match_id, start, end in matches])
+    
+    # Filter out common section headers from ORGs
+    bad_orgs = {"EXPERIENCE", "EDUCATION", "CERTIFICATIONS", "SKILLS", "SUMMARY", "PROJECTS", "CONTACT", "AWARDS", "LANGUAGES", "PROFILE", "ABOUT", "ABOUT ME", "REFERENCES", "EMPLOYMENT", "WORK EXPERIENCE"}
+    orgs = [(ent.text.strip(), ent.start_char, ent.end_char) for ent in doc.ents if ent.label_ == 'ORG' and ent.text.strip().upper() not in bad_orgs]
+    dates = [(ent.text.strip(), ent.start_char, ent.end_char) for ent in doc.ents if ent.label_ == 'DATE']
+    
+    for m in re.finditer(r'\b(?:\d{4}|present|current|\w{3,9}\s+\d{4}|\d{1,2}/\d{4})\b', doc.text, re.I):
+        dates.append((m.group(0), m.start(), m.end()))
+        
+    for span in match_spans:
+        title = span.text.strip().replace('\n', ' ')
+        
+        closest_org = None
+        min_dist_org = 120
+        for org_text, start, end in orgs:
+            dist = min(abs(start - span.end_char), abs(span.start_char - end))
+            if dist < min_dist_org:
+                min_dist_org = dist
+                closest_org = org_text.replace('\n', ' ')
+                
+        closest_date = None
+        min_dist_date = 120
+        for date_text, start, end in dates:
+            dist = min(abs(start - span.end_char), abs(span.start_char - end))
+            if dist < min_dist_date:
+                min_dist_date = dist
+                closest_date = date_text.replace('\n', ' ')
+                
+        entry_parts = [title]
+        if closest_org:
+            entry_parts.append(f"at {closest_org}")
+        if closest_date:
+            entry_parts.append(f"({closest_date})")
+            
+        entry = " ".join(entry_parts).strip()
+        if entry and entry not in entries:
+            entries.append(entry)
+            
+    return entries[:10]
+
+
+def extract_advanced_education(doc: Doc) -> list[str]:
+    entries = []
+    degree_matcher = get_degree_matcher()
+    
+    matches = degree_matcher(doc)
+    match_spans = spacy.util.filter_spans([doc[start:end] for match_id, start, end in matches])
+    
+    bad_orgs = {"EXPERIENCE", "EDUCATION", "CERTIFICATIONS", "SKILLS", "SUMMARY", "PROJECTS", "CONTACT", "AWARDS", "LANGUAGES", "PROFILE", "ABOUT", "ABOUT ME", "REFERENCES", "EMPLOYMENT", "WORK EXPERIENCE"}
+    orgs = [(ent.text.strip(), ent.start_char, ent.end_char) for ent in doc.ents if ent.label_ == 'ORG' and ent.text.strip().upper() not in bad_orgs]
+    
+    for m in re.finditer(r'\b((?:[A-Z][a-z]+\s+)+(?:University|College|Institute)(?:\s+of\s+[A-Z][a-z]+)?)\b', doc.text):
+        org = m.group(1).strip()
+        if org.upper() not in bad_orgs:
+            orgs.append((org, m.start(), m.end()))
+        
+    dates = [(ent.text.strip(), ent.start_char, ent.end_char) for ent in doc.ents if ent.label_ == 'DATE']
+    for m in re.finditer(r'\b(?:\d{4})\b', doc.text):
+        dates.append((m.group(0), m.start(), m.end()))
+    
+    for span in match_spans:
+        degree = span.text.strip().replace('\n', ' ')
+        
+        closest_org = None
+        min_dist_org = 150
+        for org_text, start, end in orgs:
+            dist = min(abs(start - span.end_char), abs(span.start_char - end))
+            if dist < min_dist_org:
+                min_dist_org = dist
+                closest_org = org_text.replace('\n', ' ')
+                
+        closest_date = None
+        min_dist_date = 100
+        for date_text, start, end in dates:
+            dist = min(abs(start - span.end_char), abs(span.start_char - end))
+            if dist < min_dist_date:
+                min_dist_date = dist
+                closest_date = date_text.replace('\n', ' ')
+                
+        entry_parts = [degree]
+        if closest_org:
+            entry_parts.append(f"from {closest_org}")
+        if closest_date:
+            entry_parts.append(f"({closest_date})")
+            
+        entry = " ".join(entry_parts).strip()
+        if entry and entry not in entries:
+            entries.append(entry)
+            
+    return entries[:5]
+
+
+def extract_advanced_certifications(doc: Doc) -> list[str]:
+    cert_matcher = get_cert_matcher()
+    certs = find_phrase_matches(doc, cert_matcher)
+    
+    for sent in doc.sents:
+        s = sent.text.strip()
+        if re.search(r'\b(certified|certificate|certification)\b', s, re.I):
+            m = re.search(r'(?i)(?:certified in|certificate in|certification for)\s+([A-Z][a-z0-9\s]+(?:[A-Z][a-z0-9\s]+)?)', s)
+            if m:
+                cand = m.group(1).strip()
+                if cand.lower() not in [c.lower() for c in certs] and len(cand) > 3:
+                    certs.append(cand)
+    return list(set(certs))
+
+
+def extract_all(text: str) -> Dict[str, Any]:
+    """Preprocess text with spaCy, run extractors, and return structured output."""
+    clean = _normalize_text(text)
+    doc = get_doc(clean)
+
+    skills = extract_advanced_skills(doc)
+    experience = extract_advanced_experience(doc)
+    education = extract_advanced_education(doc)
+    certifications = extract_advanced_certifications(doc)
+
+    entities = [(ent.text, ent.label_) for ent in doc.ents]
+
+    return {
+        "clean_text": clean,
+        "doc": doc,
+        "skills": skills,
+        "experience": experience,
+        "education": education,
+        "certifications": certifications,
+        "entities": entities,
+    }
 """
 spaCy NLP Engine — Singleton Loader & Shared Utilities
 ──────────────────────────────────────────────────────
@@ -14,16 +196,6 @@ Loads the spaCy model ONCE and exposes:
 
 All matchers use the LOWER attribute so matching is case-insensitive.
 """
-
-import logging
-import re
-from functools import lru_cache
-from typing import Optional
-
-import spacy
-from spacy.language import Language
-from spacy.matcher import PhraseMatcher, Matcher
-from spacy.tokens import Doc
 
 logger = logging.getLogger(__name__)
 
