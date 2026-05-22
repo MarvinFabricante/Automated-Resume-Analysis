@@ -100,10 +100,30 @@ def extract_advanced_education(doc: Doc) -> list[str]:
     matches = degree_matcher(doc)
     match_spans = spacy.util.filter_spans([doc[start:end] for match_id, start, end in matches])
     
+    # regex fallback for some strict degree patterns that might be missed by simple phrasing
+    extra_degrees = []
+    degree_regex = r"\b(?:BSCS|B\.S\.C\.S\.|BSIT|B\.S\.I\.T\.|BSCPE|B\.S\.C\.P\.E\.|BSCE|BSIS|B\.S\.I\.S\.|ACT|STEM|ABM|HUMSS|GAS|TVL)\b"
+    for m in re.finditer(degree_regex, doc.text, re.IGNORECASE):
+        start, end = m.span()
+        overlap = False
+        for span in match_spans:
+            if not (end <= span.start_char or start >= span.end_char):
+                overlap = True
+                break
+        if not overlap:
+            extra_degrees.append((m.group(0), start, end))
+
     bad_orgs = {"EXPERIENCE", "EDUCATION", "CERTIFICATIONS", "SKILLS", "SUMMARY", "PROJECTS", "CONTACT", "AWARDS", "LANGUAGES", "PROFILE", "ABOUT", "ABOUT ME", "REFERENCES", "EMPLOYMENT", "WORK EXPERIENCE"}
     orgs = [(ent.text.strip(), ent.start_char, ent.end_char) for ent in doc.ents if ent.label_ == 'ORG' and ent.text.strip().upper() not in bad_orgs]
     
-    for m in re.finditer(r'\b((?:[A-Z][a-z]+\s+)+(?:University|College|Institute)(?:\s+of\s+[A-Z][a-z]+)?)\b', doc.text):
+    for m in re.finditer(r'\b((?:[A-Z][a-z]+\s+)+(?:University|College|Institute|School|Academy)(?:\s+of\s+[A-Z][a-z]+)?)\b', doc.text):
+        org = m.group(1).strip()
+        if org.upper() not in bad_orgs:
+            orgs.append((org, m.start(), m.end()))
+            
+    # Add common Philippine school abbreviations explicitly if missed by NER
+    ph_schools = r'\b(UP|U\.P\.|PUP|P\.U\.P\.|DLSU|De La Salle University|ADMU|Ateneo|ATENEO DE MANILA UNIVERSITY|FEU|FEU TECH|FEU INSTITUTE OF TECHNOLOGY|UST|U\.S\.T\.|MAPUA|MAPÚA|UE|NU|TIP)\b'
+    for m in re.finditer(ph_schools, doc.text, re.IGNORECASE):
         org = m.group(1).strip()
         if org.upper() not in bad_orgs:
             orgs.append((org, m.start(), m.end()))
@@ -111,22 +131,50 @@ def extract_advanced_education(doc: Doc) -> list[str]:
     dates = [(ent.text.strip(), ent.start_char, ent.end_char) for ent in doc.ents if ent.label_ == 'DATE']
     for m in re.finditer(r'\b(?:\d{4})\b', doc.text):
         dates.append((m.group(0), m.start(), m.end()))
+
+    all_degrees = [(span.text.strip().replace('\n', ' '), span.start_char, span.end_char) for span in match_spans] + \
+                  [(deg[0].strip().replace('\n', ' '), deg[1], deg[2]) for deg in extra_degrees]
+
+    def normalize_degree(text: str) -> str:
+        t_upper = text.upper()
+        if re.search(r'\b(?:BSCS|B\.S\.C\.S\.|BS IN COMPUTER SCIENCE|BACHELOR OF SCIENCE IN COMPUTER SCIENCE)\b', t_upper): return "Bachelor of Science in Computer Science"
+        if re.search(r'\b(?:BSIT|B\.S\.I\.T\.|BS IN INFORMATION TECHNOLOGY|BS INFORMATION TECHNOLOGY|BACHELOR OF SCIENCE IN INFORMATION TECHNOLOGY)\b', t_upper): return "Bachelor of Science in Information Technology"
+        if re.search(r'\b(?:BSCPE|B\.S\.C\.P\.E\.|BSCE|BS IN COMPUTER ENGINEERING|BACHELOR OF SCIENCE IN COMPUTER ENGINEERING)\b', t_upper): return "Bachelor of Science in Computer Engineering"
+        if re.search(r'\b(?:BSIS|B\.S\.I\.S\.|BS IN INFORMATION SYSTEMS|BACHELOR OF SCIENCE IN INFORMATION SYSTEMS)\b', t_upper): return "Bachelor of Science in Information Systems"
+        if re.search(r'\b(?:ASSOCIATE IN COMPUTER TECHNOLOGY|ACT)\b', t_upper): return "Associate in Computer Technology"
+        if re.search(r'\bSTEM\b', t_upper): return "STEM Strand"
+        if re.search(r'\bABM\b', t_upper): return "ABM Strand"
+        if re.search(r'\bHUMSS\b', t_upper): return "HUMSS Strand"
+        if re.search(r'\bGAS\b', t_upper): return "GAS Strand"
+        if re.search(r'\bTVL\b', t_upper): return "TVL Strand"
+        return text
+
+    def normalize_org(text: str) -> str:
+        t_upper = text.upper()
+        if re.search(r'\b(?:UP|U\.P\.|UNIVERSITY OF THE PHILIPPINES)\b', t_upper): return "University of the Philippines"
+        if re.search(r'\b(?:DLSU|DE LA SALLE UNIVERSITY|LA SALLE)\b', t_upper): return "De La Salle University"
+        if re.search(r'\b(?:PUP|P\.U\.P\.|POLYTECHNIC UNIVERSITY OF THE PHILIPPINES)\b', t_upper): return "Polytechnic University of the Philippines"
+        if re.search(r'\b(?:ADMU|ATENEO DE MANILA UNIVERSITY|ATENEO)\b', t_upper): return "Ateneo de Manila University"
+        if re.search(r'\b(?:FEU TECH|FEU INSTITUTE OF TECHNOLOGY)\b', t_upper): return "FEU Institute of Technology"
+        if re.search(r'\b(?:MAPUA|MAPUA UNIVERSITY|MAPÚA UNIVERSITY|MAPÚA)\b', t_upper): return "Mapúa University"
+        if re.search(r'\b(?:UST|U\.S\.T\.|UNIVERSITY OF SANTO TOMAS|UNIVERSITY OF ST\. TOMAS)\b', t_upper): return "University of Santo Tomas"
+        return text
     
-    for span in match_spans:
-        degree = span.text.strip().replace('\n', ' ')
+    for degree_text, start_char, end_char in all_degrees:
+        degree = normalize_degree(degree_text)
         
         closest_org = None
         min_dist_org = 150
         for org_text, start, end in orgs:
-            dist = min(abs(start - span.end_char), abs(span.start_char - end))
+            dist = min(abs(start - end_char), abs(start_char - end))
             if dist < min_dist_org:
                 min_dist_org = dist
-                closest_org = org_text.replace('\n', ' ')
+                closest_org = normalize_org(org_text.replace('\n', ' '))
                 
         closest_date = None
         min_dist_date = 100
         for date_text, start, end in dates:
-            dist = min(abs(start - span.end_char), abs(span.start_char - end))
+            dist = min(abs(start - end_char), abs(start_char - end))
             if dist < min_dist_date:
                 min_dist_date = dist
                 closest_date = date_text.replace('\n', ' ')
@@ -138,10 +186,10 @@ def extract_advanced_education(doc: Doc) -> list[str]:
             entry_parts.append(f"({closest_date})")
             
         entry = " ".join(entry_parts).strip()
-        if entry and entry not in entries:
+        if entry and not any(e.lower() == entry.lower() for e in entries):
             entries.append(entry)
             
-    return entries[:5]
+    return entries[:8]
 
 
 def extract_advanced_certifications(doc: Doc) -> list[str]:
@@ -455,6 +503,14 @@ _DEGREE_PHRASES = [
     "Master's Degree", "Masters Degree",
     "Undergraduate Degree", "Graduate Studies",
     "Diploma", "National Certificate", "Senior High School",
+    # Specific IT / CS Degrees
+    "Bachelor of Science in Computer Science", "BS in Computer Science", "BSCS", "B.S.C.S.",
+    "Bachelor of Science in Information Technology", "BS in Information Technology", "BSIT", "B.S.I.T.", "BS Information Technology",
+    "Bachelor of Science in Computer Engineering", "BS in Computer Engineering", "BSCpE", "BSCE",
+    "Bachelor of Science in Information Systems", "BS in Information Systems", "BSIS",
+    "Associate in Computer Technology", "ACT",
+    # SHS Strands
+    "STEM", "ABM", "HUMSS", "GAS", "TVL"
 ]
 
 

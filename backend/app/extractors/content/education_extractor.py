@@ -38,13 +38,13 @@ _DEGREE_HIERARCHY = [
         r"\bAB\b", r"A\.B\.?", r"\bBSE\b", r"B\.S\.E\.?", r"\bBFA\b",
         r"\bBBM\b", r"\bBBA\b", r"B\.B\.A\.?", r"\bBCOM\b", r"B\.COM\.?",
         r"\bBENG\b", r"B\.ENG\.?", r"\bBIT\b", r"B\.I\.T\.?",
-        r"\bBSIT\b", r"\bBSCS\b", r"\bBSCE\b", r"\bBSN\b",
+        r"\bBSIT\b", r"\bBSCS\b", r"\bBSCE\b", r"\bBSCPE\b", r"\bBSIS\b", r"\bBSN\b",
         r"BACHELOR\s+OF", r"UNDERGRADUATE\s+DEGREE",
     ]),
     ("ASSOCIATE", [
         r"ASSOCIATE(?:'?S)?", r"\bAS\b(?=\s+(?:IN|OF))", r"A\.S\.?",
-        r"\bAA\b(?=\s+(?:IN|OF))", r"A\.A\.?",
-        r"2[\s-]?YEAR\s+DEGREE",
+        r"\bAA\b(?=\s+(?:IN|OF))", r"A\.A\.?", r"\bACT\b(?=\s)",
+        r"2[\s-]?YEAR\s+DEGREE", r"ASSOCIATE\s+IN\s+COMPUTER\s+TECHNOLOGY"
     ]),
     ("DIPLOMA/VOCATIONAL", [
         r"DIPLOMA", r"VOCATIONAL", r"\bTESDA\b",
@@ -55,6 +55,7 @@ _DEGREE_HIERARCHY = [
     ("SENIOR HIGH SCHOOL", [
         r"SENIOR\s+HIGH", r"S\.?H\.?S\.?", r"\bSHS\b",
         r"K[\s-]?12", r"GRADE\s+12", r"12TH\s+GRADE",
+        r"\bSTEM\b", r"\bABM\b", r"\bHUMSS\b", r"\bGAS\b", r"\bTVL\b"
     ]),
 ]
 
@@ -63,7 +64,7 @@ _INSTITUTION_PATTERNS = [
     r"University", r"College", r"Institute", r"Polytechnic", r"School",
     r"Academy", r"Lyceum", r"Lycée",
     # Philippine universities
-    r"\bUP\s", r"\bPUP\b", r"\bUST\b", r"\bDLSU\b", r"\bADMU\b",
+    r"\bUP\b", r"\bPUP\b", r"\bUST\b", r"\bDLSU\b", r"\bADMU\b",
     r"\bFEU\b", r"\bUE\b", r"\bNU\b", r"\bAUF\b", r"\bTIP\b",
     r"\bMAPUA\b", r"\bATENEO\b", r"\bLA\s+SALLE\b", r"\bSAN\s+BEDA\b",
     r"\bSILLIMAN\b", r"\bADAMSON\b", r"\bLETRAN\b",
@@ -72,6 +73,43 @@ _INSTITUTION_PATTERNS = [
     r"\bMIT\b", r"\bSTANFORD\b", r"\bHARVARD\b", r"\bOXFORD\b",
     r"\bCAMBRIDGE\b", r"\bYALE\b", r"\bPRINCETON\b",
 ]
+
+def _normalize_education_text(text: str) -> str:
+    """Normalize degrees, strands, and school names in the text."""
+    normalized = text
+    t_upper = text.upper()
+
+    # Degree Normalizations (Order matters: longest match first, but since we use exact sub-replacements, we can just replace the specific part)
+    # Actually, it's safer to just replace the abbreviations safely using regex.
+    degree_replacements = [
+        (r'\b(?:BSCS|B\.S\.C\.S\.|BS IN COMPUTER SCIENCE|BACHELOR OF SCIENCE IN COMPUTER SCIENCE)\b', "Bachelor of Science in Computer Science"),
+        (r'\b(?:BSIT|B\.S\.I\.T\.|BS IN INFORMATION TECHNOLOGY|BS INFORMATION TECHNOLOGY|BACHELOR OF SCIENCE IN INFORMATION TECHNOLOGY)\b', "Bachelor of Science in Information Technology"),
+        (r'\b(?:BSCPE|B\.S\.C\.P\.E\.|BSCE|BS IN COMPUTER ENGINEERING|BACHELOR OF SCIENCE IN COMPUTER ENGINEERING)\b', "Bachelor of Science in Computer Engineering"),
+        (r'\b(?:BSIS|B\.S\.I\.S\.|BS IN INFORMATION SYSTEMS|BACHELOR OF SCIENCE IN INFORMATION SYSTEMS)\b', "Bachelor of Science in Information Systems"),
+        (r'\b(?:ASSOCIATE IN COMPUTER TECHNOLOGY|ACT)\b', "Associate in Computer Technology"),
+        (r'\bSTEM(?:\s+STRAND)?\b', "STEM Strand"),
+        (r'\bABM(?:\s+STRAND)?\b', "ABM Strand"),
+        (r'\bHUMSS(?:\s+STRAND)?\b', "HUMSS Strand"),
+        (r'\bGAS(?:\s+STRAND)?\b', "GAS Strand"),
+        (r'\bTVL(?:\s+STRAND)?\b', "TVL Strand"),
+    ]
+    for pat, rep in degree_replacements:
+        normalized = re.sub(pat, rep, normalized, flags=re.IGNORECASE)
+
+    # School Normalizations
+    school_replacements = [
+        (r'\b(?:UP|U\.P\.|UNIVERSITY OF THE PHILIPPINES)\b', "University of the Philippines"),
+        (r'\b(?:DLSU|DE LA SALLE UNIVERSITY|LA SALLE)\b', "De La Salle University"),
+        (r'\b(?:PUP|P\.U\.P\.|POLYTECHNIC UNIVERSITY OF THE PHILIPPINES)\b', "Polytechnic University of the Philippines"),
+        (r'\b(?:ADMU|ATENEO DE MANILA UNIVERSITY|ATENEO(?:\s+DE\s+MANILA)?)\b', "Ateneo de Manila University"),
+        (r'\b(?:FEU TECH|FEU INSTITUTE OF TECHNOLOGY)\b', "FEU Institute of Technology"),
+        (r'\b(?:MAPUA(?: UNIVERSITY)?|MAPÚA(?: UNIVERSITY)?)\b', "Mapúa University"),
+        (r'\b(?:UST|U\.S\.T\.|UNIVERSITY OF SANTO TOMAS|UNIVERSITY OF ST\. TOMAS)\b', "University of Santo Tomas"),
+    ]
+    for pat, rep in school_replacements:
+        normalized = re.sub(pat, rep, normalized, flags=re.IGNORECASE)
+
+    return normalized
 
 
 def _is_header(line: str, keywords: list[str]) -> bool:
@@ -158,14 +196,15 @@ def extract_education(text: str) -> str:
                     if len(entries) >= 6:
                         break
 
-    # Deduplicate
+    # Deduplicate and format
     seen = set()
     unique = []
     for entry in entries:
-        key = entry.lower().strip()
+        norm_entry = _normalize_education_text(entry)
+        key = norm_entry.lower().strip()
         if key not in seen and len(key) > 3:
             seen.add(key)
-            unique.append(entry)
+            unique.append(norm_entry)
 
     return " | ".join(unique[:6]) if unique else ""
 
