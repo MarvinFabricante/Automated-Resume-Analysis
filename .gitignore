@@ -62,19 +62,19 @@ desktop.ini
 
 # mga kalat:
 
-backend/mariwasa.db
+git rm --cached backend/mariwasa.db
+git rm --cached backend/resume_analysis.db
 
-backend/migrate_ats_columns.py
+git rm --cached backend/migrate_ats_columns.py
+git rm --cached backend/recalc.py
+git rm --cached backend/recalc2.py
+git rm --cached backend/recalc_ats.py
 
-backend/recalc_ats.py
-backend/recalc.py
-backend/recalc2.py
+git rm --cached backend/scratch_candidate_test.py
+git rm --cached backend/scratch_check_passwords.py
+git rm --cached backend/scratch_db_test.py
+git rm --cached backend/scratch_login_test.py
+git rm --cached backend/scratch_test.py
 
-backend/scratch_candidate_test.py
-backend/scratch_check_passwords.py
-backend/scratch_db_test.py
-backend/scratch_login_test.py
-backend/scratch_test.py
-
-backend/test_api.py
-backend/test_db.py
+git rm --cached backend/test_api.py
+git rm --cached backend/test_db.py
