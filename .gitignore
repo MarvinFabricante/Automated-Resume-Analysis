@@ -58,3 +58,23 @@ desktop.ini
 .idea/
 *.swp
 *.swo
+
+
+# mga kalat:
+
+mariwasa.db
+
+migrate_ats_columns.py
+
+recalc_ats.py
+recalc.py
+recalc2.py
+
+scratch_candidate_test.py
+scratch_check_passwords.py
+scratch_db_test.py
+scratch_login_test.py
+scratch_test.py
+
+test_api.py
+test_db.py
