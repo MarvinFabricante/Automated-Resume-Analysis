@@ -419,6 +419,7 @@ def calculate_match_score(resume_data: dict, job, use_ai: bool = False) -> dict:
         "match_percentage": final_match_pct,
         "skills_score": round(blended_skills_score, 1),
         "experience_score": round(blended_exp_score, 1),
+        "education_score": round(blended_edu_score, 1),
         "certifications_score": round(blended_edu_score, 1),
         # ── Skills ──
         "matched_skills": all_matched,
@@ -426,11 +427,14 @@ def calculate_match_score(resume_data: dict, job, use_ai: bool = False) -> dict:
         # ── Reasons ──
         "skills_reason": skills_reason,
         "experience_reason": experience_result["reason"],
+        "education_reason": education_result.get("reason", ""),
         "certifications_reason": education_result["reason"],
         # ── Experience ──
         "relevant_experience": relevant_experience,
         "experience_gaps": f"Required: {experience_result.get('required_years', 0)} yrs | Candidate: {experience_result.get('candidate_years', 0)} yrs",
-        # ── Certifications ──
+        # ── Education / Certifications ──
+        "required_degree": education_result.get("required_certifications", "None"),
+        "candidate_degree": education_result.get("candidate_certifications", "None"),
         "required_certifications": education_result.get("required_certifications", "None"),
         "candidate_certifications": education_result.get("candidate_certifications", "None"),
         # ── AI Insights ──

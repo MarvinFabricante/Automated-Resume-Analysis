@@ -12,15 +12,19 @@ class JobMatchResult(BaseModel):
     skills_score: float
     experience_score: float
     education_score: float
+    certifications_score: Optional[float] = None
     matched_skills: list[str]
     missing_skills: list[str]
     skills_reason: Optional[str] = None
     experience_reason: Optional[str] = None
     education_reason: Optional[str] = None
+    certifications_reason: Optional[str] = None
     relevant_experience: Optional[str] = None
     experience_gaps: Optional[str] = None
     required_degree: Optional[str] = None
     candidate_degree: Optional[str] = None
+    required_certifications: Optional[str] = None
+    candidate_certifications: Optional[str] = None
     recommendations: Optional[list[str]] = None
     # ── Gemini AI Insights (populated when AI is available) ──────────────────
     ai_summary: Optional[str] = None
