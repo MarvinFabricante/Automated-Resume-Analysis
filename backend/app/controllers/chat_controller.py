@@ -10,20 +10,6 @@ from app.utils.websocket import manager
 from app.services import chat_service
 from app.repositories.auth_repository import AuthRepository
 
-router = APIRouter(prefix="/chat", tags=["Chat"])
-
-@router.get("/active-count")
-async def get_active_count():
-    from app.utils.redis_client import redis_client
-    try:
-        redis = await redis_client.get_redis()
-        count = await redis.scard("online_users")
-        if count < 1:
-            count = 1
-    except Exception:
-        count = 1
-    return {"count": count}
-
 async def get_current_user_obj(payload: dict = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     email = payload.get("sub")
     user = await AuthRepository.get_user_by_email(db, email)
@@ -31,74 +17,97 @@ async def get_current_user_obj(payload: dict = Depends(get_current_user), db: As
         raise HTTPException(status_code=401, detail="User not found")
     return user
 
-@router.get("/contacts", response_model=ChatContactResponse)
-async def get_contacts(
-    search: Optional[str] = None,
-    current_user: User = Depends(get_current_user_obj),
-    db: AsyncSession = Depends(get_db)
-):
-    chat_users = await chat_service.get_contacts(db, current_user, search)
-    return ChatContactResponse(users=chat_users)
+class ChatController:
+    def __init__(self):
+        self.router = APIRouter(prefix="/chat", tags=["Chat"])
+        self.register_routes()
 
+    def register_routes(self):
+        self.router.get("/active-count")(self.get_active_count)
+        self.router.get("/contacts", response_model=ChatContactResponse)(self.get_contacts)
+        self.router.get("/messages/{other_user_id}", response_model=List[MessageResponse])(self.get_messages)
+        self.router.post("/messages/{other_user_id}", response_model=MessageResponse)(self.send_message)
+        self.router.websocket("/ws")(self.websocket_endpoint)
 
-@router.get("/messages/{other_user_id}", response_model=List[MessageResponse])
-async def get_messages(
-    other_user_id: int,
-    current_user: User = Depends(get_current_user_obj),
-    db: AsyncSession = Depends(get_db)
-):
-    return await chat_service.get_messages(db, current_user, other_user_id)
+    async def get_active_count(self):
+        from app.utils.redis_client import redis_client
+        try:
+            redis = await redis_client.get_redis()
+            count = await redis.scard("online_users")
+            if count < 1:
+                count = 1
+        except Exception:
+            count = 1
+        return {"count": count}
 
+    async def get_contacts(
+        self,
+        search: Optional[str] = None,
+        current_user: User = Depends(get_current_user_obj),
+        db: AsyncSession = Depends(get_db)
+    ):
+        chat_users = await chat_service.get_contacts(db, current_user, search)
+        return ChatContactResponse(users=chat_users)
 
-@router.post("/messages/{other_user_id}", response_model=MessageResponse)
-async def send_message(
-    other_user_id: int,
-    msg_in: MessageCreate,
-    current_user: User = Depends(get_current_user_obj),
-    db: AsyncSession = Depends(get_db)
-):
-    new_msg = await chat_service.send_message(db, current_user, other_user_id, msg_in.content)
-    if not new_msg:
-        raise HTTPException(status_code=403, detail="You cannot message this user.")
-    return new_msg
+    async def get_messages(
+        self,
+        other_user_id: int,
+        current_user: User = Depends(get_current_user_obj),
+        db: AsyncSession = Depends(get_db)
+    ):
+        return await chat_service.get_messages(db, current_user, other_user_id)
 
+    async def send_message(
+        self,
+        other_user_id: int,
+        msg_in: MessageCreate,
+        current_user: User = Depends(get_current_user_obj),
+        db: AsyncSession = Depends(get_db)
+    ):
+        new_msg = await chat_service.send_message(db, current_user, other_user_id, msg_in.content)
+        if not new_msg:
+            raise HTTPException(status_code=403, detail="You cannot message this user.")
+        return new_msg
 
-@router.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket, token: str = Query(...)):
-    from app.utils.database import AsyncSessionLocal
-    import logging
-    logger = logging.getLogger(__name__)
-    
-    try:
-        # Use a short-lived session for verification to avoid holding a connection from the pool
-        async with AsyncSessionLocal() as db:
-            user = await chat_service.verify_token(token, db)
-            if not user:
-                logger.warning(f"WebSocket connection rejected: Invalid token")
-                await websocket.close(code=1008)
-                return
-            user_id = user.id
-
-        await manager.connect(websocket, user_id)
-        logger.info(f"WebSocket connected: User {user_id}")
+    async def websocket_endpoint(self, websocket: WebSocket, token: str = Query(...)):
+        from app.utils.database import AsyncSessionLocal
+        import logging
+        logger = logging.getLogger(__name__)
         
         try:
-            while True:
-                data_str = await websocket.receive_text()
-                try:
-                    import json
-                    data = json.loads(data_str)
-                    if data.get("type") == "send_message":
-                        await chat_service.handle_websocket_message(AsyncSessionLocal, user_id, data)
-                except json.JSONDecodeError:
-                    continue
-        except WebSocketDisconnect:
-            logger.info(f"WebSocket disconnected: User {user_id}")
-            await manager.disconnect(websocket, user_id)
-        except Exception as e:
-            logger.error(f"WebSocket error for user {user_id}: {e}")
-            await manager.disconnect(websocket, user_id)
+            # Use a short-lived session for verification to avoid holding a connection from the pool
+            async with AsyncSessionLocal() as db:
+                user = await chat_service.verify_token(token, db)
+                if not user:
+                    logger.warning(f"WebSocket connection rejected: Invalid token")
+                    await websocket.close(code=1008)
+                    return
+                user_id = user.id
+
+            await manager.connect(websocket, user_id)
+            logger.info(f"WebSocket connected: User {user_id}")
             
-    except Exception as e:
-        logger.error(f"WebSocket handshake failed: {e}")
-        # Cannot use websocket.close() if not accepted yet, but Starlette handles it
+            try:
+                while True:
+                    data_str = await websocket.receive_text()
+                    try:
+                        import json
+                        data = json.loads(data_str)
+                        if data.get("type") == "send_message":
+                            await chat_service.handle_websocket_message(AsyncSessionLocal, user_id, data)
+                    except json.JSONDecodeError:
+                        continue
+            except WebSocketDisconnect:
+                logger.info(f"WebSocket disconnected: User {user_id}")
+                await manager.disconnect(websocket, user_id)
+            except Exception as e:
+                logger.error(f"WebSocket error for user {user_id}: {e}")
+                await manager.disconnect(websocket, user_id)
+                
+        except Exception as e:
+            logger.error(f"WebSocket handshake failed: {e}")
+            # Cannot use websocket.close() if not accepted yet, but Starlette handles it
+
+
+chat_controller = ChatController()
+router = chat_controller.router
