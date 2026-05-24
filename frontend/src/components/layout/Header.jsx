@@ -7,7 +7,8 @@ import {
   TrendingUp, Zap, Radio, Edit3, Sun, Moon, Monitor
 } from 'lucide-react';
 import NotificationDropdown from './NotificationDropdown';
-import axios from 'axios';
+import notificationService from '../../services/notificationService';
+import profileService from '../../services/profileService';
 import { useSelector, useDispatch } from 'react-redux';
 import { logout as logoutAction, updateProfileImage } from '../../redux/slices/authSlice';
 import { setNotifications, addNotification, markAllRead as markAllReadAction } from '../../redux/slices/notificationSlice';
@@ -50,7 +51,7 @@ const Header = () => {
     const fetchNotifications = async () => {
       if (isAdminRole || isHRRole) {
         try {
-          const res = await axios.get(`http://localhost:8000/notifications/?role=${userRole}&email=${userEmail}`);
+          const res = await notificationService.getNotifications(userRole, userEmail);
           const formatted = res.data.map(n => {
             let iconName = 'AlertCircle';
             let bgColor = 'bg-slate-50';
@@ -127,7 +128,7 @@ const Header = () => {
 
       if (isCandidateRole) {
         try {
-          const res = await axios.get(`http://localhost:8000/notifications/?role=${userRole}&email=${userEmail}`);
+          const res = await notificationService.getNotifications(userRole, userEmail);
           const formatted = res.data.map(n => {
             let iconName = 'Briefcase';
             let bgColor = 'bg-blue-50';
@@ -283,11 +284,7 @@ const Header = () => {
       if (!userId || isGuest) return;
 
       try {
-        let endpoint = `http://localhost:8000/candidate/profile/${userId}`;
-        if (isAdminRole) endpoint = `http://localhost:8000/admins/profile/${userId}`;
-        if (isHRRole) endpoint = `http://localhost:8000/hr/profile/${userId}`;
-
-        const response = await axios.get(endpoint);
+        const response = await profileService.getProfile(userRole, userId);
         const data = response.data;
         if (data.profile_image_url && data.profile_image_url !== profileImageUrl) {
           dispatch(updateProfileImage(data.profile_image_url));
@@ -302,7 +299,7 @@ const Header = () => {
 
   const handleMarkAllRead = async () => {
     if (!isGuest) {
-      try { await axios.put(`http://localhost:8000/notifications/mark-read?role=${userRole}&email=${userEmail}`); }
+      try { await notificationService.markAllRead(userRole, userEmail); }
       catch (err) { console.error("Failed to mark all read:", err); }
     }
     dispatch(markAllReadAction());

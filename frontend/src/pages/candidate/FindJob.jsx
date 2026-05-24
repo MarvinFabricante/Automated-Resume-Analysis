@@ -19,7 +19,7 @@ import {
   List,
   Loader2
 } from 'lucide-react';
-import axios from 'axios';
+import jobService from '../../services/jobService';
 import Header from '../../components/layout/Header';
 import Sidebar from '../../components/layout/Sidebar';
 
@@ -39,7 +39,7 @@ const FindJob = () => {
     const fetchJobs = async () => {
       try {
         setIsLoading(true);
-        const response = await axios.get('http://localhost:8000/hr/read-jobs');
+        const response = await jobService.getAllJobs();
         const transformedData = response.data.map(job => ({
           id: job.job_id || job.id,
           title: job.job_title || job.title,

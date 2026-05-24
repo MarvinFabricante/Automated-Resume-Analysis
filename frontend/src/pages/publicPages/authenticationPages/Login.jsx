@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import axios from 'axios';
+import authService from '../../../services/authService';
 import { useDispatch } from 'react-redux';
 import { setCredentials } from '../../../redux/slices/authSlice';
 import { Helmet } from 'react-helmet-async';
@@ -42,10 +42,7 @@ const Login = () => {
     const normalizedEmail = email.trim().toLowerCase();
 
     try {
-      const response = await axios.post('http://localhost:8000/auth/login', {
-        email: normalizedEmail,
-        password: password,
-      });
+      const response = await authService.login(normalizedEmail, password);
 
       const { access_token, role: verifiedRole, fullname, user_id, profile_image_url } = response.data;
 

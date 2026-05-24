@@ -1,6 +1,6 @@
 import React from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
-import axios from 'axios';
+import jobService from '../../../services/jobService';
 import { Helmet } from 'react-helmet-async';
 import {
   CheckCircle,
@@ -23,7 +23,7 @@ const SubmissionSuccessPage = () => {
     const fetchJobTitle = async () => {
       if (state?.jobTitle) return;
       try {
-        const response = await axios.get(`http://localhost:8000/hr/read-job/${jobId}`);
+        const response = await jobService.getJobById(jobId);
         if (response.data?.job_title) {
           setJobTitle(response.data.job_title);
         }

@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
-import axios from 'axios';
+import jobService from '../../../services/jobService';
 import {
   ChevronDown,
   Briefcase,
@@ -30,7 +30,7 @@ const CareersPage = () => {
     const fetchPublicJobs = async () => {
       try {
         setIsLoading(true);
-        const response = await axios.get('http://localhost:8000/hr/read-jobs');
+        const response = await jobService.getAllJobs();
 
         const rawData = Array.isArray(response.data) ? response.data : [];
 

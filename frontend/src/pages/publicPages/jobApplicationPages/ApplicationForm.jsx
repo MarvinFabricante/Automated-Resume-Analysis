@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
-import axios from 'axios';
+import jobService from '../../../services/jobService';
+import candidateService from '../../../services/candidateService';
 import { Helmet } from 'react-helmet-async';
 import {
   User, Mail, Phone, MapPin,
@@ -41,7 +42,7 @@ const ApplicationForm = () => {
     const fetchJobTitle = async () => {
       if (location.state?.job?.title) return;
       try {
-        const response = await axios.get(`http://localhost:8000/hr/read-job/${jobId}`);
+        const response = await jobService.getJobById(jobId);
         if (response.data?.job_title) {
           setJobTitle(response.data.job_title);
         }
@@ -65,7 +66,7 @@ const ApplicationForm = () => {
           fullname: formData.fullName,
           location: formData.location
         };
-        const response = await axios.post(`http://localhost:8000/matching/match-data/${jobId}`, payload);
+        const response = await candidateService.matchData(jobId, payload);
         if (response.data?.match_percentage !== undefined) {
           setMatchScore(response.data.match_percentage);
           setMatchData(response.data);
@@ -116,7 +117,7 @@ const ApplicationForm = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
-      await axios.post('http://localhost:8000/applications/', {
+      await candidateService.submitApplication({
         job_id: jobId,
         candidate_name: formData.fullName,
         candidate_email: formData.email,

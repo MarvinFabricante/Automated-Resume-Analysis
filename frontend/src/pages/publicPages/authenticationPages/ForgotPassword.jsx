@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import axios from 'axios';
+import authService from '../../../services/authService';
 import { Helmet } from 'react-helmet-async';
 import {
   Mail,
@@ -26,7 +26,7 @@ const ForgotPassword = () => {
     setLoading(true);
 
     try {
-      await axios.post('http://localhost:8000/auth/forgot-password', { email });
+      await authService.forgotPassword(email);
 
       setModalState({
         isOpen: true,

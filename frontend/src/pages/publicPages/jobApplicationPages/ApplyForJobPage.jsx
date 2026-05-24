@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Helmet } from 'react-helmet-async';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
-import axios from 'axios';
+import jobService from '../../../services/jobService';
+import candidateService from '../../../services/candidateService';
 import {
   FileUp,
   X,
@@ -69,7 +70,7 @@ const ApplyForJobPage = () => {
       // 3. Fetch from API (Direct access/Refresh)
       try {
         setIsLoadingJob(true);
-        const response = await axios.get(`http://localhost:8000/hr/read-job/${jobId}`);
+        const response = await jobService.getJobById(jobId);
         if (response.data) {
           const fetchedJob = response.data;
           setJob({
@@ -139,11 +140,8 @@ const ApplyForJobPage = () => {
     setIsUploading(true);
     setUploadProgress(20); // Initial progress
 
-    const formData = new FormData();
-    formData.append('file', file);
-
     try {
-      const response = await axios.post('http://localhost:8000/candidate/parse-resume', formData, {
+      const response = await candidateService.parseResume(file, {
         onUploadProgress: (progressEvent) => {
           const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
           setUploadProgress(Math.max(20, percentCompleted));
@@ -157,10 +155,7 @@ const ApplyForJobPage = () => {
       if (job?.job_id) {
         setIsMatching(true);
         try {
-          const matchRes = await axios.post(
-            `http://localhost:8000/matching/match-data/${job.job_id}`,
-            response.data
-          );
+          const matchRes = await candidateService.matchData(job.job_id, response.data);
           setMatchData(matchRes.data);
         } catch (matchErr) {
           console.error("Match scoring failed:", matchErr);

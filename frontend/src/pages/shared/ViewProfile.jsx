@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+import profileService from '../../services/profileService';
 import { Helmet } from 'react-helmet-async';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -47,11 +47,7 @@ const ViewProfile = () => {
         return;
       }
       try {
-        let endpoint = `http://localhost:8000/candidate/profile/${userId}`;
-        if (userRole === 'HR') endpoint = `http://localhost:8000/hr/profile/${userId}`;
-        if (userRole === 'ADMIN') endpoint = `http://localhost:8000/admins/profile/${userId}`;
-
-        const response = await axios.get(endpoint);
+        const response = await profileService.getProfile(userRole, userId);
         const data = response.data;
         // If it's the current user, sync with Redux
         if (data.id === parseInt(userId) && data.profile_image_url) {

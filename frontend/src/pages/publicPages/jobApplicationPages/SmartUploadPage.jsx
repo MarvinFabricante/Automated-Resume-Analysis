@@ -1,7 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { Helmet } from 'react-helmet-async';
 import { useNavigate } from 'react-router-dom';
-import axios from 'axios';
+import candidateService from '../../../services/candidateService';
 import {
   FileUp,
   X,
@@ -73,11 +73,8 @@ const SmartUploadPage = () => {
     setIsUploading(true);
     setUploadProgress(20);
 
-    const formData = new FormData();
-    formData.append('file', file);
-
     try {
-      const response = await axios.post('http://localhost:8000/candidate/parse-resume', formData, {
+      const response = await candidateService.parseResume(file, {
         onUploadProgress: (progressEvent) => {
           const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
           setUploadProgress(Math.max(20, Math.min(80, percentCompleted))); // Save last 20% for matching

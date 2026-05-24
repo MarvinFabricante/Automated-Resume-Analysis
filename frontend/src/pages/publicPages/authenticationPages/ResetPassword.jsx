@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import axios from 'axios';
+import authService from '../../../services/authService';
 import { Helmet } from 'react-helmet-async';
 import {
   Lock,
@@ -56,10 +56,7 @@ const ResetPassword = () => {
     setLoading(true);
 
     try {
-      await axios.post('http://localhost:8000/auth/reset-password', {
-        token,
-        new_password: password
-      });
+      await authService.resetPassword(token, password);
 
       setModalState({
         isOpen: true,

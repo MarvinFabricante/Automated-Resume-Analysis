@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import axios from 'axios';
+import authService from '../../../services/authService';
 import { Users, Eye, EyeOff, Loader2, CheckCircle2, XCircle, ArrowLeft } from 'lucide-react';
 import { Helmet } from 'react-helmet-async';
 
@@ -56,12 +56,6 @@ const Register = () => {
 
     setLoading(true);
 
-    let endpoint = 'http://localhost:8000/candidate/register';
-    if (role === 'HR') {
-      endpoint = 'http://localhost:8000/hr/register';
-    } else if (role === 'ADMIN') {
-      endpoint = 'http://localhost:8000/admins/register';
-    }
 
     const payload = {
       fullname: formData.fullName,
@@ -80,7 +74,7 @@ const Register = () => {
     }
 
     try {
-      const response = await axios.post(endpoint, payload);
+      const response = await authService.register(role, payload);
 
       if (response.status === 200 || response.status === 201) {
         setModalState({

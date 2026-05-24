@@ -1,7 +1,7 @@
 import React from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
-import axios from 'axios';
+import candidateService from '../../../services/candidateService';
 import {
   User, Mail, Phone, MapPin,
   Cpu, Briefcase, GraduationCap,
@@ -27,7 +27,7 @@ const PreviewAndVerifyPage = () => {
     const runPostParseAnalysis = async () => {
       setIsLoadingSmartMatches(true);
       try {
-        const matchRes = await axios.post('http://localhost:8000/matching/match-data', data);
+        const matchRes = await candidateService.matchData(null, data);
         if (!cancelled) {
           setSmartMatches(matchRes.data.results || []);
         }

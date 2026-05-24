@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+import profileService from '../../services/profileService';
 import { Helmet } from 'react-helmet-async';
 import {
   User,
@@ -67,11 +67,7 @@ const AccountSettings = () => {
       if (!userId) return;
       setFetching(true);
       try {
-        let endpoint = `http://localhost:8000/candidate/profile/${userId}`;
-        if (userRole === 'HR') endpoint = `http://localhost:8000/hr/profile/${userId}`;
-        if (userRole === 'ADMIN') endpoint = `http://localhost:8000/admins/profile/${userId}`;
-
-        const response = await axios.get(endpoint);
+        const response = await profileService.getProfile(userRole, userId);
         const data = response.data;
         setFormData({
           fullname: data.fullname || '',
@@ -130,29 +126,13 @@ const AccountSettings = () => {
 
       // 1. If an image is selected but not uploaded, upload it first
       if (selectedImage) {
-        const formDataImage = new FormData();
-        formDataImage.append('file', selectedImage);
-        let uploadEndpoint = `http://localhost:8000/candidate/upload-profile-image/${userId}`;
-        if (userRole === 'HR') uploadEndpoint = `http://localhost:8000/hr/upload-profile-image/${userId}`;
-        if (userRole === 'ADMIN') uploadEndpoint = `http://localhost:8000/admins/upload-profile-image/${userId}`;
-
-        const uploadResponse = await axios.post(uploadEndpoint, formDataImage);
+        const uploadResponse = await profileService.uploadProfileImage(userRole, userId, selectedImage);
         currentImageUrl = uploadResponse.data.image_url;
         setSelectedImage(null); // Clear selected image after successful upload
       }
 
       // 2. Update the rest of the profile
-      let endpoint = `http://localhost:8000/candidate/profile/${userId}`;
-      if (userRole === 'HR') endpoint = `http://localhost:8000/hr/profile/${userId}`;
-      if (userRole === 'ADMIN') endpoint = `http://localhost:8000/admins/profile/${userId}`;
-
-      const updateData = { ...formData, profile_image_url: currentImageUrl };
-      if (userRole === 'HR') {
-        updateData.company_name = formData.current_company;
-        updateData.position = formData.current_job_title;
-      }
-
-      const response = await axios.put(endpoint, updateData);
+      const response = await profileService.updateProfile(userRole, userId, updateData);
       const updatedData = response.data;
       
       // Update local state with fresh data from server

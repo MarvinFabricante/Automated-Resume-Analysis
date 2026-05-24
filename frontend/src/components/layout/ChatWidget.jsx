@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { MessageSquare, Send, Minus, Search, ArrowLeft, Circle } from 'lucide-react';
-import axios from 'axios';
+import chatService from '../../services/chatService';
 import { useSelector } from 'react-redux';
 
 const ChatWidget = () => {
@@ -126,10 +126,7 @@ const ChatWidget = () => {
 
     const fetchContacts = async () => {
         try {
-            const res = await axios.get(`http://localhost:8000/chat/contacts`, {
-                params: { search },
-                headers: { Authorization: `Bearer ${token}` }
-            });
+            const res = await chatService.getContacts(token, search);
             setContacts(res.data.users || []);
         } catch (error) {
             console.error("Failed to fetch contacts", error);
@@ -147,9 +144,7 @@ const ChatWidget = () => {
         setView('chat');
         setLoading(true);
         try {
-            const res = await axios.get(`http://localhost:8000/chat/messages/${contact.id}`, {
-                headers: { Authorization: `Bearer ${token}` }
-            });
+            const res = await chatService.getMessages(contact.id, token);
             setMessages(res.data);
             
             // Mark as read locally in contacts list
@@ -197,10 +192,7 @@ const ChatWidget = () => {
         } else {
             // Fallback to HTTP if WebSocket is not connected
             try {
-                const res = await axios.post(`http://localhost:8000/chat/messages/${activeContact.id}`, 
-                    { content: content },
-                    { headers: { Authorization: `Bearer ${token}` }}
-                );
+                const res = await chatService.sendMessage(activeContact.id, content, token);
                 
                 // Replace optimistic message with real one
                 setMessages(prev => prev.map(m => 

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
-import axios from 'axios';
+import jobService from '../../services/jobService';
+import candidateService from '../../services/candidateService';
 import { useSelector } from 'react-redux';
 import { Helmet } from 'react-helmet-async';
 import {
@@ -25,7 +26,7 @@ const CandidateProfileForm = () => {
     const fetchJobTitle = async () => {
       if (location.state?.job?.title) return;
       try {
-        const response = await axios.get(`http://localhost:8000/hr/read-job/${jobId}`);
+        const response = await jobService.getJobById(jobId);
         if (response.data?.job_title) {
           setJobTitle(response.data.job_title);
         }
@@ -78,7 +79,7 @@ const CandidateProfileForm = () => {
           fullname: formData.fullName,
           location: formData.location
         };
-        const response = await axios.post(`http://localhost:8000/matching/match-data/${jobId}`, payload);
+        const response = await candidateService.matchData(jobId, payload);
         if (response.data?.match_percentage !== undefined) {
           setMatchScore(response.data.match_percentage);
           setSkillsScore(response.data.skills_score);

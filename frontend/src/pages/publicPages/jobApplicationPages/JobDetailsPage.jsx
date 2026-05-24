@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Helmet } from 'react-helmet-async';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
-import axios from 'axios';
+import jobService from '../../../services/jobService';
 import {
   ArrowLeft,
   X,
@@ -52,7 +52,7 @@ const JobDetailsPage = () => {
 
       try {
         setIsLoading(true);
-        const response = await axios.get(`http://localhost:8000/hr/read-job/${jobId}`);
+        const response = await jobService.getJobById(jobId);
         if (response.data) {
           const fetchedJob = response.data;
           setJob({

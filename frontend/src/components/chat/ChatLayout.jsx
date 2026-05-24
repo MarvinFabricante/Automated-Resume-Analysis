@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Search, Send, ArrowLeft, MoreVertical, Paperclip, Smile, Phone, Video } from 'lucide-react';
-import axios from 'axios';
+import chatService from '../../services/chatService';
 import { useSelector } from 'react-redux';
 
 const ChatLayout = ({ isFullPage = true }) => {
@@ -98,10 +98,7 @@ const ChatLayout = ({ isFullPage = true }) => {
 
     const fetchContacts = async () => {
         try {
-            const res = await axios.get(`http://localhost:8000/chat/contacts`, {
-                params: { search },
-                headers: { Authorization: `Bearer ${token}` }
-            });
+            const res = await chatService.getContacts(token, search);
             setContacts(res.data.users || []);
         } catch (error) {
             console.error("Failed to fetch contacts", error);
@@ -117,9 +114,7 @@ const ChatLayout = ({ isFullPage = true }) => {
         setView('chat');
         setLoading(true);
         try {
-            const res = await axios.get(`http://localhost:8000/chat/messages/${contact.id}`, {
-                headers: { Authorization: `Bearer ${token}` }
-            });
+            const res = await chatService.getMessages(contact.id, token);
             setMessages(res.data);
             
             // Mark as read locally
@@ -163,10 +158,7 @@ const ChatLayout = ({ isFullPage = true }) => {
             wsRef.current.send(JSON.stringify(messageData));
         } else {
             try {
-                const res = await axios.post(`http://localhost:8000/chat/messages/${activeContact.id}`, 
-                    { content: content },
-                    { headers: { Authorization: `Bearer ${token}` }}
-                );
+                const res = await chatService.sendMessage(activeContact.id, content, token);
                 
                 setMessages(prev => prev.map(m => 
                     m.client_id === clientId ? { ...res.data, is_optimistic: false } : m

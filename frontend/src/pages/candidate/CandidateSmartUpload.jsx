@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Helmet } from 'react-helmet-async';
 import { useNavigate, useParams } from 'react-router-dom';
-import axios from 'axios';
+import jobService from '../../services/jobService';
+import candidateService from '../../services/candidateService';
 import {
   FileUp,
   X,
@@ -36,7 +37,7 @@ const CandidateSmartUpload = () => {
   useEffect(() => {
     const fetchJobDetails = async () => {
       try {
-        const response = await axios.get(`http://localhost:8000/hr/read-job/${jobId}`);
+        const response = await jobService.getJobById(jobId);
         if (response.data?.job_title) {
           setJobTitle(response.data.job_title);
           // Store for dashboard "Continue Application" feature
@@ -95,11 +96,8 @@ const CandidateSmartUpload = () => {
     setIsUploading(true);
     setUploadProgress(20);
 
-    const formData = new FormData();
-    formData.append('file', file);
-
     try {
-      const response = await axios.post('http://localhost:8000/candidate/parse-resume', formData, {
+      const response = await candidateService.parseResume(file, {
         onUploadProgress: (progressEvent) => {
           const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
           setUploadProgress(Math.max(20, Math.min(80, percentCompleted))); // Save last 20% for matching
@@ -116,10 +114,10 @@ const CandidateSmartUpload = () => {
       try {
         let finalMatchData = null;
         if (jobId) {
-          const matchRes = await axios.post(`http://localhost:8000/matching/match-data/${jobId}`, extracted);
+          const matchRes = await candidateService.matchData(jobId, extracted);
           finalMatchData = matchRes.data;
         } else {
-          const matchRes = await axios.post('http://localhost:8000/matching/match-data', extracted);
+          const matchRes = await candidateService.matchData(null, extracted);
           finalMatchData = matchRes.data.results;
         }
         setMatchData(finalMatchData);
