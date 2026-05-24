@@ -14,3 +14,5 @@ git rm --cached backend/scratch_test.py
 
 git rm --cached backend/test_api.py
 git rm --cached backend/test_db.py
+git rm --cached backend/resume_analysis.db
+git rm --cached backend/pytest.ini
