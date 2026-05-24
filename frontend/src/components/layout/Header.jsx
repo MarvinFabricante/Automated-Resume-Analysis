@@ -4,7 +4,7 @@ import {
   ChevronDown, LayoutDashboard, Users, Database, ShieldCheck, LogOut,
   Settings, Menu, X, FileText, Search, User, Building2, Info, Briefcase, LogIn, UserPlus,
   Bell, Clock, CheckCircle2, AlertCircle, MessageSquare, ChevronRight,
-  TrendingUp, Zap, Radio, Edit3
+  TrendingUp, Zap, Radio, Edit3, Sun, Moon, Monitor
 } from 'lucide-react';
 import NotificationDropdown from './NotificationDropdown';
 import axios from 'axios';
@@ -12,6 +12,7 @@ import { useSelector, useDispatch } from 'react-redux';
 import { logout as logoutAction, updateProfileImage } from '../../redux/slices/authSlice';
 import { setNotifications, addNotification, markAllRead as markAllReadAction } from '../../redux/slices/notificationSlice';
 import { closeSidebar } from '../../redux/slices/uiSlice';
+import { setTheme } from '../../redux/slices/themeSlice';
 
 const BRAND_RED = "#D60041";
 
@@ -21,14 +22,17 @@ const Header = () => {
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isThemeOpen, setIsThemeOpen] = useState(false);
   const [pulse, setPulse] = useState(false);
   const dropdownRef = useRef(null);
   const notificationsRef = useRef(null);
+  const themeRef = useRef(null);
 
   const dispatch = useDispatch();
   const { user: userEmail, role: userRole, profileImageUrl } = useSelector(state => state.auth);
   const { notifications, unreadCount } = useSelector(state => state.notifications);
   const { isSidebarOpen } = useSelector(state => state.ui);
+  const currentTheme = useSelector(state => state.theme?.theme || 'system');
 
   const isCandidateRole = userRole === 'CANDIDATE';
   const isHRRole = userRole === 'HR';
@@ -327,6 +331,7 @@ const Header = () => {
     const handleClickOutside = (event) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target)) setIsProfileOpen(false);
       if (notificationsRef.current && !notificationsRef.current.contains(event.target)) setIsNotificationsOpen(false);
+      if (themeRef.current && !themeRef.current.contains(event.target)) setIsThemeOpen(false);
     };
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
@@ -403,6 +408,46 @@ const Header = () => {
         </div>
 
         <div className="flex items-center space-x-4 relative shrink-0" ref={dropdownRef}>
+          {/* Theme Toggle - Always Visible */}
+          <div className="relative mr-2" ref={themeRef}>
+            <button
+              onClick={() => setIsThemeOpen(!isThemeOpen)}
+              className={`w-11 h-11 rounded-2xl flex items-center justify-center transition-all duration-300 border ${isThemeOpen ? 'bg-slate-900 border-slate-900 shadow-xl' : 'bg-gray-50/50 border-gray-100 hover:bg-white hover:border-pink-100 hover:shadow-md hover:scale-105 active:scale-95'}`}
+              aria-label="Toggle theme"
+            >
+              {currentTheme === 'light' ? (
+                <Sun size={20} className={isThemeOpen ? 'text-white' : 'text-gray-500'} />
+              ) : currentTheme === 'dark' ? (
+                <Moon size={20} className={isThemeOpen ? 'text-white' : 'text-gray-500'} />
+              ) : (
+                <Monitor size={20} className={isThemeOpen ? 'text-white' : 'text-gray-500'} />
+              )}
+            </button>
+            
+            {isThemeOpen && (
+              <div className="absolute right-0 mt-3 w-40 bg-white border border-gray-100 rounded-2xl shadow-xl py-2 z-[60] animate-in fade-in slide-in-from-top-2 duration-200">
+                <button 
+                  onClick={() => { dispatch(setTheme('light')); setIsThemeOpen(false); }}
+                  className={`w-full flex items-center space-x-3 px-4 py-2 text-sm font-bold transition-colors ${currentTheme === 'light' ? 'text-[#D60041] bg-pink-50' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'}`}
+                >
+                  <Sun size={16} /> <span>Light</span>
+                </button>
+                <button 
+                  onClick={() => { dispatch(setTheme('dark')); setIsThemeOpen(false); }}
+                  className={`w-full flex items-center space-x-3 px-4 py-2 text-sm font-bold transition-colors ${currentTheme === 'dark' ? 'text-[#D60041] bg-pink-50' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'}`}
+                >
+                  <Moon size={16} /> <span>Dark</span>
+                </button>
+                <button 
+                  onClick={() => { dispatch(setTheme('system')); setIsThemeOpen(false); }}
+                  className={`w-full flex items-center space-x-3 px-4 py-2 text-sm font-bold transition-colors ${currentTheme === 'system' ? 'text-[#D60041] bg-pink-50' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'}`}
+                >
+                  <Monitor size={16} /> <span>System</span>
+                </button>
+              </div>
+            )}
+          </div>
+
           {isApplicationPage ? (
             <button
               onClick={() => navigate('/careerspage')}
