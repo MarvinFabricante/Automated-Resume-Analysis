@@ -49,6 +49,18 @@ async def get_applications_for_job(job_id: int, db: AsyncSession = Depends(get_d
     """
     return await job_application_service.get_applications_by_job(db, job_id)
 
+@router.get("/job/{job_id}/compare")
+async def get_candidate_comparison(job_id: int):
+    """
+    Get the AI candidate comparison summary for a specific job.
+    """
+    from app.utils.cache import get_cache
+    comparison_cache_key = f"job_comparison:{job_id}"
+    cached_result = await get_cache(comparison_cache_key)
+    if not cached_result:
+        raise HTTPException(status_code=404, detail="Comparison not found or still processing.")
+    return cached_result
+
 @router.get("/candidate/{email}", response_model=List[JobApplicationResponse])
 async def get_applications_for_candidate(email: str, db: AsyncSession = Depends(get_db)):
     """

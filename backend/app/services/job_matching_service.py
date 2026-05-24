@@ -325,7 +325,7 @@ def calculate_match_score(resume_data: dict, job, use_ai: bool = False) -> dict:
     
     if use_ai:
         try:
-            from app.services.gemini_service import gemini_analyze_match
+            from app.services.ai_analysis_service import analyze_match_with_fallback
             job_data = {
                 "job_title": job.job_title,
                 "department": getattr(job, "department", ""),
@@ -334,10 +334,11 @@ def calculate_match_score(resume_data: dict, job, use_ai: bool = False) -> dict:
                 "experience_requirements": getattr(job, "experience_requirements", ""),
                 "certifications_requirements": getattr(job, "certifications_requirements", ""),
             }
-            ai_result = gemini_analyze_match(resume_data, job_data)
+            ai_result = analyze_match_with_fallback(resume_data, job_data)
             if ai_result:
                 ai_available = True
-                logger.info(f"Gemini AI score for job '{job.job_title}': {ai_result['ai_match_score']}%")
+                model_used = ai_result.get("model_used", "ai")
+                logger.info(f"{model_used.capitalize()} AI score for job '{job.job_title}': {ai_result['ai_match_score']}%")
         except Exception as e:
             logger.warning(f"Gemini match analysis skipped: {e}")
 

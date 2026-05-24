@@ -4,7 +4,7 @@ from typing import List
 from datetime import datetime
 
 from app.utils.database import get_db
-from app.schemas.interview_schema import InterviewCreateSchema, InterviewResponseSchema, TimeSlotSchema
+from app.schemas.interview_schema import InterviewCreateSchema, InterviewResponseSchema, TimeSlotSchema, AvailableSlotsRequest
 from app.utils.auth import get_current_user
 from app.services import interview_service
 from app.models.user import User
@@ -14,9 +14,7 @@ router = APIRouter(prefix="/interviews", tags=["Interviews"])
 
 @router.post("/available-slots", response_model=List[TimeSlotSchema])
 async def get_available_slots(
-    panelist_ids: List[int],
-    start_date: datetime,
-    end_date: datetime,
+    request: AvailableSlotsRequest,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
@@ -24,7 +22,7 @@ async def get_available_slots(
     Automatically view available time slots by syncing HR and panel calendars using Google Calendar API.
     """
     try:
-        slots = await interview_service.get_available_slots(db, panelist_ids, start_date, end_date)
+        slots = await interview_service.get_available_slots(db, request.panelist_ids, request.start_date, request.end_date)
         return slots
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

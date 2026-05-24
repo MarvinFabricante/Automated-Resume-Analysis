@@ -11,7 +11,7 @@ from sqlalchemy.future import select
 from app.celery_app import celery_app
 from app.models.job_application import JobApplication
 from app.models.job_description import JobDescription
-from app.services.gemini_service import gemini_analyze_match
+from app.services.ai_analysis_service import analyze_match_with_fallback
 from app.services.job_application_service import _resume_data_from_application
 
 load_dotenv()
@@ -68,8 +68,8 @@ async def async_analyze_application(application_id: int):
             logger.info(f"Found cached AI analysis for application {application_id}.")
             ai_result = cached_result
         else:
-            logger.info(f"Starting Gemini analysis for application {application_id}...")
-            ai_result = gemini_analyze_match(resume_data, job_data)
+            logger.info(f"Starting AI analysis for application {application_id}...")
+            ai_result = analyze_match_with_fallback(resume_data, job_data)
             
             if ai_result:
                 # Store the result in Redis cache (e.g., 30 days TTL)
@@ -90,6 +90,10 @@ async def async_analyze_application(application_id: int):
             
             await db.commit()
             logger.info(f"Successfully saved AI analysis for application {application_id}.")
+            
+            # Trigger candidate comparison if multiple candidates are available
+            from app.tasks import compare_candidates_task
+            compare_candidates_task.delay(app.job_id)
             
             # Optionally clear cache
             from app.utils.cache import delete_cache
@@ -112,3 +116,56 @@ def analyze_application_task(application_id: int):
         loop.create_task(async_analyze_application(application_id))
     else:
         asyncio.run(async_analyze_application(application_id))
+
+async def async_compare_candidates(job_id: int):
+    async with async_session() as db:
+        try:
+            job_result = await db.execute(select(JobDescription).filter(JobDescription.job_id == str(job_id)))
+            job = job_result.scalars().first()
+            if not job:
+                try:
+                    numeric_id = int(job_id)
+                    job_result = await db.execute(select(JobDescription).filter(JobDescription.id == numeric_id))
+                    job = job_result.scalars().first()
+                except ValueError:
+                    pass
+            if not job:
+                logger.error(f"Job not found for comparison task. Job ID: {job_id}")
+                return
+
+            all_apps_result = await db.execute(select(JobApplication).filter(JobApplication.job_id == str(job_id)))
+            all_apps = all_apps_result.scalars().all()
+            if len(all_apps) > 1:
+                logger.info(f"Multiple candidates ({len(all_apps)}) found for job {job_id}. Running comparison analysis...")
+                from app.services.ai_analysis_service import compare_candidates_with_fallback
+                from app.utils.cache import set_cache
+                
+                job_data = {
+                    "job_title": job.job_title,
+                    "department": getattr(job, "department", ""),
+                    "description": job.description or "",
+                    "skills_requirements": job.skills_requirements or "",
+                    "experience_requirements": getattr(job, "experience_requirements", ""),
+                    "education_requirements": getattr(job, "education_requirements", ""),
+                }
+                candidates_data = [_resume_data_from_application(a) for a in all_apps]
+                comparison_result = compare_candidates_with_fallback(job_data, candidates_data)
+                
+                if comparison_result:
+                    comparison_cache_key = f"job_comparison:{job_id}"
+                    await set_cache(comparison_cache_key, comparison_result, ttl=2592000)
+                    logger.info(f"Successfully saved candidate comparison for job {job_id}.")
+        except Exception as e:
+            logger.error(f"Error during candidate comparison task for job {job_id}: {e}")
+
+@celery_app.task(name="compare_candidates_task")
+def compare_candidates_task(job_id: int):
+    """
+    Celery task to run candidate comparison in the background.
+    """
+    loop = asyncio.get_event_loop()
+    if loop.is_running():
+        loop.create_task(async_compare_candidates(job_id))
+    else:
+        asyncio.run(async_compare_candidates(job_id))
+
