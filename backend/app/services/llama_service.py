@@ -168,3 +168,11 @@ def llama_compare_candidates(job_data: dict, candidates_data: list[dict]) -> Opt
     except Exception as e:
         logger.error(f"llama_compare_candidates error: {e}")
         return None
+
+
+class LlamaService:
+    llama_analyze_match = staticmethod(llama_analyze_match)
+    llama_compare_candidates = staticmethod(llama_compare_candidates)
+
+
+llama_service = LlamaService()

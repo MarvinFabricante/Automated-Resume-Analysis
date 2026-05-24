@@ -304,3 +304,16 @@ def gemini_analyze_match(resume_data: dict, job_data: dict) -> Optional[dict]:
     except Exception as e:
         logger.error(f"gemini_analyze_match error: {e}")
         return None
+
+
+class GeminiService:
+    _load_api_keys = staticmethod(_load_api_keys)
+    _model_candidates = staticmethod(_model_candidates)
+    _get_model = staticmethod(_get_model)
+    _call_with_retry = staticmethod(_call_with_retry)
+    _extract_json = staticmethod(_extract_json)
+    gemini_parse_resume = staticmethod(gemini_parse_resume)
+    gemini_analyze_match = staticmethod(gemini_analyze_match)
+
+
+gemini_service = GeminiService()

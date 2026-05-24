@@ -479,3 +479,27 @@ async def match_resume_to_job(db, resume_data: dict, job_id: str, use_ai: bool =
         return None
     
     return calculate_match_score(resume_data, job, use_ai=use_ai)
+
+
+class JobMatchingService:
+    _normalize_skill = staticmethod(_normalize_skill)
+    _tokenize_skills = staticmethod(_tokenize_skills)
+    _fuzzy_match = staticmethod(_fuzzy_match)
+    calculate_skills_match = staticmethod(calculate_skills_match)
+    _extract_years_from_text = staticmethod(_extract_years_from_text)
+    calculate_experience_match = staticmethod(calculate_experience_match)
+    _extract_education_requirement = staticmethod(_extract_education_requirement)
+    calculate_certifications_match = staticmethod(calculate_certifications_match)
+    _generate_recommendations = staticmethod(_generate_recommendations)
+    _blend_scores = staticmethod(_blend_scores)
+    _merge_unique = staticmethod(_merge_unique)
+    calculate_match_score = staticmethod(calculate_match_score)
+
+    async def match_resume_to_all_jobs(self, db, resume_data: dict, use_ai: bool = False) -> list[dict]:
+        return await match_resume_to_all_jobs(db, resume_data, use_ai)
+
+    async def match_resume_to_job(self, db, resume_data: dict, job_id: str, use_ai: bool = False) -> dict | None:
+        return await match_resume_to_job(db, resume_data, job_id, use_ai)
+
+
+job_matching_service = JobMatchingService()

@@ -3,7 +3,6 @@ import asyncio
 from datetime import datetime, timedelta
 from typing import List
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.future import select
 
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
@@ -11,9 +10,6 @@ from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
 from twilio.rest import Client as TwilioClient
 
-from app.models.interview import Interview, InterviewPanelist, InterviewLog
-from app.models.job_application import JobApplication
-from app.models.user import User
 from app.schemas.interview_schema import InterviewCreateSchema
 from app.repositories.interview_repository import InterviewRepository
 
@@ -77,171 +73,191 @@ def send_sms_notification_sync(to_phone: str, message: str):
             return False
     return False
 
-async def get_available_slots(db: AsyncSession, panelist_ids: List[int], start_date: datetime, end_date: datetime):
-    """Finds available time slots based on panelists' Google Calendars."""
-    service = await asyncio.to_thread(get_google_calendar_service)
-    
-    # MOCK GOOGLE CALENDAR SLOTS if service is not configured
-    if not service:
-        slots = []
-        current_time = start_date
-        while current_time < end_date:
-            slot_end = current_time + timedelta(hours=1)
-            # Only mock slots between 9 AM and 5 PM
-            if current_time.hour >= 9 and current_time.hour < 17:
-                slots.append({
-                    "start_time": current_time,
-                    "end_time": slot_end
-                })
-            current_time += timedelta(minutes=30)
-        return slots
-        
-    panelists = await InterviewRepository.get_panelists(db, panelist_ids)
-    emails = [{"id": p.email} for p in panelists if p.email]
-    
-    if not emails:
-        return []
+class InterviewService:
+    async def get_available_slots(self, db: AsyncSession, panelist_ids: List[int], start_date: datetime, end_date: datetime):
+        """Finds available time slots based on panelists' Google Calendars."""
+        service = await asyncio.to_thread(get_google_calendar_service)
 
-    body = {
-        "timeMin": start_date.isoformat() + 'Z',
-        "timeMax": end_date.isoformat() + 'Z',
-        "items": emails
-    }
+        # MOCK GOOGLE CALENDAR SLOTS if service is not configured
+        if not service:
+            slots = []
+            current_time = start_date
+            while current_time < end_date:
+                slot_end = current_time + timedelta(hours=1)
+                # Only mock slots between 9 AM and 5 PM
+                if current_time.hour >= 9 and current_time.hour < 17:
+                    slots.append({
+                        "start_time": current_time,
+                        "end_time": slot_end
+                    })
+                current_time += timedelta(minutes=30)
+            return slots
 
-    try:
-        eventsResult = await asyncio.to_thread(
-            lambda: service.freebusy().query(body=body).execute()
-        )
-        calendars = eventsResult.get('calendars', {})
-        
-        # Simple logic: assume working hours 9 to 5, split by 1 hour slots, check if any panelist is busy
-        slots = []
-        current_time = start_date
-        while current_time < end_date:
-            slot_end = current_time + timedelta(hours=1)
-            is_free = True
-            
-            for email, data in calendars.items():
-                busy_times = data.get('busy', [])
-                for busy in busy_times:
-                    busy_start = datetime.fromisoformat(busy['start'].replace('Z', '+00:00')).replace(tzinfo=None)
-                    busy_end = datetime.fromisoformat(busy['end'].replace('Z', '+00:00')).replace(tzinfo=None)
-                    if (current_time < busy_end and slot_end > busy_start):
-                        is_free = False
+        panelists = await InterviewRepository.get_panelists(db, panelist_ids)
+        emails = [{"id": p.email} for p in panelists if p.email]
+
+        if not emails:
+            return []
+
+        body = {
+            "timeMin": start_date.isoformat() + 'Z',
+            "timeMax": end_date.isoformat() + 'Z',
+            "items": emails
+        }
+
+        try:
+            eventsResult = await asyncio.to_thread(
+                lambda: service.freebusy().query(body=body).execute()
+            )
+            calendars = eventsResult.get('calendars', {})
+
+            # Simple logic: assume working hours 9 to 5, split by 1 hour slots, check if any panelist is busy
+            slots = []
+            current_time = start_date
+            while current_time < end_date:
+                slot_end = current_time + timedelta(hours=1)
+                is_free = True
+
+                for email, data in calendars.items():
+                    busy_times = data.get('busy', [])
+                    for busy in busy_times:
+                        busy_start = datetime.fromisoformat(busy['start'].replace('Z', '+00:00')).replace(tzinfo=None)
+                        busy_end = datetime.fromisoformat(busy['end'].replace('Z', '+00:00')).replace(tzinfo=None)
+                        if (current_time < busy_end and slot_end > busy_start):
+                            is_free = False
+                            break
+                    if not is_free:
                         break
-                if not is_free:
-                    break
-            
-            if is_free and current_time.hour >= 9 and current_time.hour < 17:
-                slots.append({
-                    "start_time": current_time,
-                    "end_time": slot_end
-                })
-            
-            current_time += timedelta(minutes=30) # 30 min intervals
-            
-        return slots
-    except Exception as e:
-        print(f"Calendar API error: {e}")
-        return []
 
-async def schedule_interview(db: AsyncSession, data: InterviewCreateSchema):
-    # 1. Fetch Candidate and Panelists
-    application = await InterviewRepository.get_job_application(db, data.job_application_id)
-    if not application:
-        raise ValueError("Application not found")
-        
-    panelists = await InterviewRepository.get_panelists(db, data.panelist_ids)
-    
-    # 2. Create Interview Record
-    interview_data = {
-        "job_application_id": data.job_application_id,
-        "title": data.title,
-        "description": data.description,
-        "start_time": data.start_time,
-        "end_time": data.end_time
-    }
-    interview = await InterviewRepository.create_interview(db, interview_data)
-    
-    for panelist in panelists:
-        await InterviewRepository.add_panelist_to_interview(db, interview.id, panelist.id)
-        
-    interview = await InterviewRepository.update_interview(db, interview)
-    
-    # 3. Create Google Calendar Event
-    service = await asyncio.to_thread(get_google_calendar_service)
-    if service:
-        attendees = [{"email": p.email} for p in panelists if p.email]
-        if application.candidate_email:
-            attendees.append({"email": application.candidate_email})
-            
-        event_body = {
-            'summary': data.title,
-            'description': data.description,
-            'start': {
-                'dateTime': data.start_time.isoformat() + 'Z',
-                'timeZone': 'UTC',
-            },
-            'end': {
-                'dateTime': data.end_time.isoformat() + 'Z',
-                'timeZone': 'UTC',
-            },
-            'attendees': attendees,
-            'conferenceData': {
-                'createRequest': {
-                    'requestId': f"interview_{interview.id}_{datetime.now().timestamp()}",
-                    'conferenceSolutionKey': {'type': 'hangoutsMeet'}
+                if is_free and current_time.hour >= 9 and current_time.hour < 17:
+                    slots.append({
+                        "start_time": current_time,
+                        "end_time": slot_end
+                    })
+
+                current_time += timedelta(minutes=30) # 30 min intervals
+
+            return slots
+        except Exception as e:
+            print(f"Calendar API error: {e}")
+            return []
+
+    async def schedule_interview(self, db: AsyncSession, data: InterviewCreateSchema):
+        # 1. Fetch Candidate and Panelists
+        application = await InterviewRepository.get_job_application(db, data.job_application_id)
+        if not application:
+            raise ValueError("Application not found")
+
+        panelists = await InterviewRepository.get_panelists(db, data.panelist_ids)
+
+        # 2. Create Interview Record
+        interview_data = {
+            "job_application_id": data.job_application_id,
+            "title": data.title,
+            "description": data.description,
+            "start_time": data.start_time,
+            "end_time": data.end_time
+        }
+        interview = await InterviewRepository.create_interview(db, interview_data)
+
+        for panelist in panelists:
+            await InterviewRepository.add_panelist_to_interview(db, interview.id, panelist.id)
+
+        interview = await InterviewRepository.update_interview(db, interview)
+
+        # 3. Create Google Calendar Event
+        service = await asyncio.to_thread(get_google_calendar_service)
+        if service:
+            attendees = [{"email": p.email} for p in panelists if p.email]
+            if application.candidate_email:
+                attendees.append({"email": application.candidate_email})
+
+            event_body = {
+                'summary': data.title,
+                'description': data.description,
+                'start': {
+                    'dateTime': data.start_time.isoformat() + 'Z',
+                    'timeZone': 'UTC',
+                },
+                'end': {
+                    'dateTime': data.end_time.isoformat() + 'Z',
+                    'timeZone': 'UTC',
+                },
+                'attendees': attendees,
+                'conferenceData': {
+                    'createRequest': {
+                        'requestId': f"interview_{interview.id}_{datetime.now().timestamp()}",
+                        'conferenceSolutionKey': {'type': 'hangoutsMeet'}
+                    }
                 }
             }
-        }
-        
-        try:
-            event = await asyncio.to_thread(
-                lambda: service.events().insert(
-                    calendarId='primary', 
-                    body=event_body, 
-                    conferenceDataVersion=1,
-                    sendUpdates='all'
-                ).execute()
-            )
-            
-            interview.google_event_id = event.get('id')
-            # Extract Google Meet link
-            conference_data = event.get('conferenceData', {})
-            entry_points = conference_data.get('entryPoints', [])
-            for ep in entry_points:
-                if ep.get('entryPointType') == 'video':
-                    interview.meeting_link = ep.get('uri')
-                    break
-                    
-            await InterviewRepository.commit_changes(db)
-        except Exception as e:
-            print(f"Error creating calendar event: {e}")
-    else:
-        # Mock Google Calendar Integration
-        interview.google_event_id = f"mock_event_{interview.id}"
-        interview.meeting_link = "https://meet.google.com/mock-link-123"
-        await InterviewRepository.commit_changes(db)
-    
-    # 4. Send SMS Notification
-    if application.phone:
-        message = f"Hi {application.candidate_name}, your interview for {application.job_title} is scheduled on {data.start_time.strftime('%Y-%m-%d %H:%M')}. Link: {interview.meeting_link or 'Sent to email'}."
-        sent = await asyncio.to_thread(send_sms_notification_sync, application.phone, message)
-        if sent:
-            await InterviewRepository.add_interview_log(db, interview.id, "SMS_SENT", "Notification sent to candidate")
+
+            try:
+                event = await asyncio.to_thread(
+                    lambda: service.events().insert(
+                        calendarId='primary',
+                        body=event_body,
+                        conferenceDataVersion=1,
+                        sendUpdates='all'
+                    ).execute()
+                )
+
+                interview.google_event_id = event.get('id')
+                # Extract Google Meet link
+                conference_data = event.get('conferenceData', {})
+                entry_points = conference_data.get('entryPoints', [])
+                for ep in entry_points:
+                    if ep.get('entryPointType') == 'video':
+                        interview.meeting_link = ep.get('uri')
+                        break
+
+                await InterviewRepository.commit_changes(db)
+            except Exception as e:
+                print(f"Error creating calendar event: {e}")
+        else:
+            # Mock Google Calendar Integration
+            interview.google_event_id = f"mock_event_{interview.id}"
+            interview.meeting_link = "https://meet.google.com/mock-link-123"
             await InterviewRepository.commit_changes(db)
 
-    return interview
+        # 4. Send SMS Notification
+        if application.phone:
+            message = f"Hi {application.candidate_name}, your interview for {application.job_title} is scheduled on {data.start_time.strftime('%Y-%m-%d %H:%M')}. Link: {interview.meeting_link or 'Sent to email'}."
+            sent = await asyncio.to_thread(send_sms_notification_sync, application.phone, message)
+            if sent:
+                await InterviewRepository.add_interview_log(db, interview.id, "SMS_SENT", "Notification sent to candidate")
+                await InterviewRepository.commit_changes(db)
+
+        return interview
+
+    async def update_interview_status(self, db: AsyncSession, interview_id: int, status: str):
+        interview = await InterviewRepository.get_interview_by_id(db, interview_id)
+        if not interview:
+            raise ValueError("Interview not found")
+
+        interview.status = status
+        await InterviewRepository.add_interview_log(db, interview.id, "STATUS_CHANGE", f"Status changed to {status}")
+        return await InterviewRepository.update_interview(db, interview)
+        return interview
+
+    async def get_interviews_for_application(self, db: AsyncSession, application_id: int):
+        return await InterviewRepository.get_interviews_for_application(db, application_id)
+
+
+interview_service = InterviewService()
+
+
+async def get_available_slots(db: AsyncSession, panelist_ids: List[int], start_date: datetime, end_date: datetime):
+    return await interview_service.get_available_slots(db, panelist_ids, start_date, end_date)
+
+
+async def schedule_interview(db: AsyncSession, data: InterviewCreateSchema):
+    return await interview_service.schedule_interview(db, data)
+
 
 async def update_interview_status(db: AsyncSession, interview_id: int, status: str):
-    interview = await InterviewRepository.get_interview_by_id(db, interview_id)
-    if not interview:
-        raise ValueError("Interview not found")
-        
-    interview.status = status
-    await InterviewRepository.add_interview_log(db, interview.id, "STATUS_CHANGE", f"Status changed to {status}")
-    return await InterviewRepository.update_interview(db, interview)
-    return interview
+    return await interview_service.update_interview_status(db, interview_id, status)
+
 
 async def get_interviews_for_application(db: AsyncSession, application_id: int):
-    return await InterviewRepository.get_interviews_for_application(db, application_id)
+    return await interview_service.get_interviews_for_application(db, application_id)
