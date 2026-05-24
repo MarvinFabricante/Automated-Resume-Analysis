@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect, Query
+from fastapi import Depends, HTTPException, WebSocket, WebSocketDisconnect, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List, Optional
 
@@ -9,6 +9,8 @@ from app.schemas.message_schema import MessageCreate, MessageResponse, ChatConta
 from app.utils.websocket import manager
 from app.services import chat_service
 from app.repositories.auth_repository import AuthRepository
+from app.controllers.base_controller import BaseController, Get, Post, WebSocketRoute
+
 
 async def get_current_user_obj(payload: dict = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     email = payload.get("sub")
@@ -17,18 +19,12 @@ async def get_current_user_obj(payload: dict = Depends(get_current_user), db: As
         raise HTTPException(status_code=401, detail="User not found")
     return user
 
-class ChatController:
-    def __init__(self):
-        self.router = APIRouter(prefix="/chat", tags=["Chat"])
-        self.register_routes()
 
-    def register_routes(self):
-        self.router.get("/active-count")(self.get_active_count)
-        self.router.get("/contacts", response_model=ChatContactResponse)(self.get_contacts)
-        self.router.get("/messages/{other_user_id}", response_model=List[MessageResponse])(self.get_messages)
-        self.router.post("/messages/{other_user_id}", response_model=MessageResponse)(self.send_message)
-        self.router.websocket("/ws")(self.websocket_endpoint)
+class ChatController(BaseController):
+    prefix = "/chat"
+    tags = ["Chat"]
 
+    @Get("/active-count")
     async def get_active_count(self):
         from app.utils.redis_client import redis_client
         try:
@@ -40,6 +36,7 @@ class ChatController:
             count = 1
         return {"count": count}
 
+    @Get("/contacts", response_model=ChatContactResponse)
     async def get_contacts(
         self,
         search: Optional[str] = None,
@@ -49,6 +46,7 @@ class ChatController:
         chat_users = await chat_service.get_contacts(db, current_user, search)
         return ChatContactResponse(users=chat_users)
 
+    @Get("/messages/{other_user_id}", response_model=List[MessageResponse])
     async def get_messages(
         self,
         other_user_id: int,
@@ -57,6 +55,7 @@ class ChatController:
     ):
         return await chat_service.get_messages(db, current_user, other_user_id)
 
+    @Post("/messages/{other_user_id}", response_model=MessageResponse)
     async def send_message(
         self,
         other_user_id: int,
@@ -69,6 +68,7 @@ class ChatController:
             raise HTTPException(status_code=403, detail="You cannot message this user.")
         return new_msg
 
+    @WebSocketRoute("/ws")
     async def websocket_endpoint(self, websocket: WebSocket, token: str = Query(...)):
         from app.utils.database import AsyncSessionLocal
         import logging

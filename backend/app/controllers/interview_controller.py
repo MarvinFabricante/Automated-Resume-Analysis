@@ -1,24 +1,25 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List
 
 from app.utils.database import get_db
-from app.schemas.interview_schema import InterviewCreateSchema, InterviewResponseSchema, TimeSlotSchema, AvailableSlotsRequest
+from app.schemas.interview_schema import (
+    AvailableSlotsRequest,
+    InterviewCreateSchema,
+    InterviewResponseSchema,
+    TimeSlotSchema,
+)
 from app.utils.auth import get_current_user
 from app.services import interview_service
 from app.models.user import User
+from app.controllers.base_controller import BaseController, Get, Post, Put
 
-class InterviewController:
-    def __init__(self):
-        self.router = APIRouter(prefix="/interviews", tags=["Interviews"])
-        self.register_routes()
 
-    def register_routes(self):
-        self.router.post("/available-slots", response_model=List[TimeSlotSchema])(self.get_available_slots)
-        self.router.post("/schedule", response_model=InterviewResponseSchema)(self.schedule_interview)
-        self.router.put("/{interview_id}/status", response_model=InterviewResponseSchema)(self.update_interview_status)
-        self.router.get("/application/{application_id}", response_model=List[InterviewResponseSchema])(self.get_application_interviews)
+class InterviewController(BaseController):
+    prefix = "/interviews"
+    tags = ["Interviews"]
 
+    @Post("/available-slots", response_model=List[TimeSlotSchema])
     async def get_available_slots(
         self,
         request: AvailableSlotsRequest,
@@ -29,11 +30,17 @@ class InterviewController:
         Automatically view available time slots by syncing HR and panel calendars using Google Calendar API.
         """
         try:
-            slots = await interview_service.get_available_slots(db, request.panelist_ids, request.start_date, request.end_date)
+            slots = await interview_service.get_available_slots(
+                db,
+                request.panelist_ids,
+                request.start_date,
+                request.end_date,
+            )
             return slots
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
 
+    @Post("/schedule", response_model=InterviewResponseSchema)
     async def schedule_interview(
         self,
         data: InterviewCreateSchema,
@@ -52,6 +59,7 @@ class InterviewController:
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
 
+    @Put("/{interview_id}/status", response_model=InterviewResponseSchema)
     async def update_interview_status(
         self,
         interview_id: int,
@@ -70,6 +78,7 @@ class InterviewController:
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
 
+    @Get("/application/{application_id}", response_model=List[InterviewResponseSchema])
     async def get_application_interviews(
         self,
         application_id: int,

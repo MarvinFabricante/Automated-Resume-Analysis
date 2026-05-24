@@ -1,22 +1,17 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.utils.database import get_db
 
 from app.schemas.user_schema import Token, UserCreate, UserLogin, ForgotPasswordRequest, ResetPasswordRequest
 from app.services import auth_service
+from app.controllers.base_controller import BaseController, Get, Post
 
 
-class AuthController:
-    def __init__(self):
-        self.router = APIRouter(prefix="/auth", tags=["Authentication"])
-        self.register_routes()
+class AuthController(BaseController):
+    prefix = "/auth"
+    tags = ["Authentication"]
 
-    def register_routes(self):
-        self.router.post("/register")(self.register)
-        self.router.post("/login", response_model=Token)(self.login)
-        self.router.post("/forgot-password")(self.forgot_password)
-        self.router.post("/reset-password")(self.reset_password)
-
+    @Post("/register")
     async def register(self, user: UserCreate, db: AsyncSession = Depends(get_db)):
         try:
             new_user = await auth_service.register_user(
@@ -26,6 +21,7 @@ class AuthController:
         except Exception as e:
             raise HTTPException(status_code=400, detail=str(e))
 
+    @Post("/login", response_model=Token)
     async def login(self, user: UserLogin, db: AsyncSession = Depends(get_db)):
         try:
             data = await auth_service.login_user(
@@ -42,6 +38,7 @@ class AuthController:
         except Exception as e:
             raise HTTPException(status_code=401, detail=str(e))
 
+    @Post("/forgot-password")
     async def forgot_password(self, request: ForgotPasswordRequest, db: AsyncSession = Depends(get_db)):
         try:
             await auth_service.request_password_reset(db, request.email)
@@ -49,6 +46,7 @@ class AuthController:
         except Exception as e:
             raise HTTPException(status_code=400, detail=str(e))
 
+    @Post("/reset-password")
     async def reset_password(self, request: ResetPasswordRequest, db: AsyncSession = Depends(get_db)):
         try:
             await auth_service.reset_user_password(db, request.token, request.new_password)

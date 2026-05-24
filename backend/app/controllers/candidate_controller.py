@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status, File, UploadFile, Request
+from fastapi import Depends, HTTPException, status, File, UploadFile, Request
 import shutil
 import os
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -9,19 +9,15 @@ from app.schemas.candidate_schema import CandidateCreate, CandidateResponse, Can
 from app.services import candidate_service, resume_service
 from app.utils.limiter import limiter
 from app.utils.cache import cache_response, clear_cache_pattern, delete_cache
+from app.controllers.base_controller import BaseController, Get, Post, Put
 
-class CandidateController:
-    def __init__(self):
-        self.router = APIRouter(prefix="/candidate", tags=["Candidates"])
-        self.register_routes()
 
-    def register_routes(self):
-        self.router.post("/parse-resume")(limiter.limit("5/minute")(self.parse_resume))
-        self.router.get("/profile/{candidate_id}", response_model=CandidateResponse)(cache_response("candidate_profile", ttl=1800)(self.get_profile))
-        self.router.put("/profile/{candidate_id}", response_model=CandidateResponse)(self.update_profile)
-        self.router.post("/upload-profile-image/{candidate_id}")(self.upload_profile_image)
-        self.router.post("/register", response_model=CandidateResponse, status_code=status.HTTP_200_OK)(self.register_candidate)
+class CandidateController(BaseController):
+    prefix = "/candidate"
+    tags = ["Candidates"]
 
+    @Post("/parse-resume")
+    @limiter.limit("5/minute")
     async def parse_resume(self, request: Request, file: UploadFile = File(...), db: AsyncSession = Depends(get_db)):
         """
         Test endpoint to parse an uploaded resume and return extracted data.
@@ -36,12 +32,15 @@ class CandidateController:
         
         return extracted_data
 
+    @Get("/profile/{candidate_id}", response_model=CandidateResponse)
+    @cache_response("candidate_profile", ttl=1800)
     async def get_profile(self, candidate_id: int, db: AsyncSession = Depends(get_db)):
         profile = await candidate_service.get_candidate_profile(db, candidate_id)
         if not profile:
             raise HTTPException(status_code=404, detail="Candidate not found")
         return profile
 
+    @Put("/profile/{candidate_id}", response_model=CandidateResponse)
     async def update_profile(self, candidate_id: int, profile_in: CandidateUpdate, db: AsyncSession = Depends(get_db)):
         updated_profile = await candidate_service.update_candidate_profile(db, candidate_id, profile_in)
         if updated_profile:
@@ -50,7 +49,13 @@ class CandidateController:
             raise HTTPException(status_code=404, detail="Candidate not found")
         return updated_profile
 
-    async def upload_profile_image(self, candidate_id: int, file: UploadFile = File(...), db: AsyncSession = Depends(get_db)):
+    @Post("/upload-profile-image/{candidate_id}")
+    async def upload_profile_image(
+        self,
+        candidate_id: int,
+        file: UploadFile = File(...),
+        db: AsyncSession = Depends(get_db),
+    ):
         # Create directory if it doesn't exist
         upload_dir = "uploads/profile_images"
         if not os.path.exists(upload_dir):
@@ -77,6 +82,7 @@ class CandidateController:
         
         return {"image_url": image_url}
 
+    @Post("/register", response_model=CandidateResponse, status_code=status.HTTP_200_OK)
     async def register_candidate(
         self,
         candidate_in: CandidateCreate, 

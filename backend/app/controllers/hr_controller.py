@@ -1,40 +1,32 @@
 import os
 import shutil
 from typing import List
-from fastapi import APIRouter, Depends, HTTPException, status, File, UploadFile
+from fastapi import Depends, HTTPException, status, File, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.utils.database import get_db
 from app.schemas.hr_schema import HRCreate, HRResponse, HRUpdate
 from app.schemas.job_description_schema import JobCreate, JobResponse, JobUpdate
 from app.services import hr_service
-from app.services.job_description_service import create_job, get_all_active_jobs, get_job, set_job_status, update_job, delete_job
+from app.services.job_description_service import (
+    create_job,
+    delete_job,
+    get_all_active_jobs,
+    get_job,
+    set_job_status,
+    update_job,
+)
 from app.services.audit_service import record_activity
 from app.utils.cache import cache_response, clear_cache_pattern
 from app.utils.auth import get_current_user
+from app.controllers.base_controller import BaseController, Delete, Get, Patch, Post, Put
 
-class HRController:
-    def __init__(self):
-        self.router = APIRouter(prefix="/hr", tags=["HR Management"])
-        self.register_routes()
 
-    def register_routes(self):
-        self.router.post("/register", response_model=HRResponse)(self.register_hr)
-        self.router.get("/candidate-count")(cache_response("candidate_count", ttl=300)(self.get_candidates_count))
-        self.router.get("/resume-count")(cache_response("resume_count", ttl=300)(self.get_resumes_count))
-        self.router.get("/application-stats")(cache_response("app_stats", ttl=300)(self.get_app_stats))
-        self.router.get("/profile/{hr_id}", response_model=HRResponse)(self.get_hr_profile_details)
-        self.router.put("/profile/{hr_id}", response_model=HRResponse)(self.update_hr_profile_details)
-        self.router.post("/upload-profile-image/{hr_id}")(self.upload_hr_profile_image)
-        self.router.post("/createjob", response_model=JobResponse, status_code=status.HTTP_201_CREATED)(self.create_job_description)
-        self.router.get("/read-jobs", response_model=List[JobResponse])(cache_response("active_jobs", ttl=600)(self.read_active_jobs))
-        self.router.get("/read-job/{job_id}", response_model=JobResponse)(cache_response("job_detail", ttl=600)(self.read_job))
-        self.router.patch("/update-job/{job_id}", response_model=JobResponse)(self.update_job_details)
-        self.router.patch("/archive-job/{job_id}", response_model=JobResponse)(self.archive_job)
-        self.router.patch("/unarchive-job/{job_id}", response_model=JobResponse)(self.unarchive_job)
-        self.router.delete("/delete-job/{job_id}", response_model=JobResponse)(self.delete_job_endpoint)
-        self.router.get("/dashboard-trends")(self.get_dashboard_trends_endpoint)
+class HRController(BaseController):
+    prefix = "/hr"
+    tags = ["HR Management"]
 
+    @Post("/register", response_model=HRResponse)
     async def register_hr(self, hr_in: HRCreate, db: AsyncSession = Depends(get_db)):
         try:
             return await hr_service.create_hr_profile(db, hr_in)
@@ -42,31 +34,45 @@ class HRController:
             await db.rollback()
             raise HTTPException(status_code=400, detail=f"Registration failed: {str(e)}")
 
+    @Get("/candidate-count")
+    @cache_response("candidate_count", ttl=300)
     async def get_candidates_count(self, db: AsyncSession = Depends(get_db)):
         count = await hr_service.get_total_candidates_count(db)
         return {"count": count}
 
+    @Get("/resume-count")
+    @cache_response("resume_count", ttl=300)
     async def get_resumes_count(self, db: AsyncSession = Depends(get_db)):
         count = await hr_service.get_total_resumes_count(db)
         return {"count": count}
 
+    @Get("/application-stats")
+    @cache_response("app_stats", ttl=300)
     async def get_app_stats(self, db: AsyncSession = Depends(get_db)):
         stats = await hr_service.get_application_stats(db)
         return stats
 
+    @Get("/profile/{hr_id}", response_model=HRResponse)
     async def get_hr_profile_details(self, hr_id: int, db: AsyncSession = Depends(get_db)):
         profile = await hr_service.get_hr_profile(db, hr_id)
         if not profile:
             raise HTTPException(status_code=404, detail="HR profile not found")
         return profile
 
+    @Put("/profile/{hr_id}", response_model=HRResponse)
     async def update_hr_profile_details(self, hr_id: int, hr_update: HRUpdate, db: AsyncSession = Depends(get_db)):
         updated_profile = await hr_service.update_hr_profile(db, hr_id, hr_update)
         if not updated_profile:
             raise HTTPException(status_code=404, detail="HR profile not found")
         return updated_profile
 
-    async def upload_hr_profile_image(self, hr_id: int, file: UploadFile = File(...), db: AsyncSession = Depends(get_db)):
+    @Post("/upload-profile-image/{hr_id}")
+    async def upload_hr_profile_image(
+        self,
+        hr_id: int,
+        file: UploadFile = File(...),
+        db: AsyncSession = Depends(get_db),
+    ):
         upload_dir = "uploads/profile_images"
         if not os.path.exists(upload_dir):
             os.makedirs(upload_dir)
@@ -86,6 +92,7 @@ class HRController:
         
     # ===================== For Job Management Section
 
+    @Post("/createjob", response_model=JobResponse, status_code=status.HTTP_201_CREATED)
     async def create_job_description(
         self,
         job: JobCreate, 
@@ -106,6 +113,8 @@ class HRController:
         
         return result
 
+    @Get("/read-jobs", response_model=List[JobResponse])
+    @cache_response("active_jobs", ttl=600)
     async def read_active_jobs(
         self,
         skip: int = 0, 
@@ -115,12 +124,15 @@ class HRController:
     ):
         return await get_all_active_jobs(db, skip=skip, limit=limit, include_inactive=include_inactive)
 
+    @Get("/read-job/{job_id}", response_model=JobResponse)
+    @cache_response("job_detail", ttl=600)
     async def read_job(self, job_id: str, db: AsyncSession = Depends(get_db)):
         db_job = await get_job(db, job_id=job_id)
         if not db_job:
             raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
         return db_job
 
+    @Patch("/update-job/{job_id}", response_model=JobResponse)
     async def update_job_details(
         self,
         job_id: str, 
@@ -138,6 +150,7 @@ class HRController:
             )
         return db_job
 
+    @Patch("/archive-job/{job_id}", response_model=JobResponse)
     async def archive_job(self, job_id: str, db: AsyncSession = Depends(get_db)):
         db_job = await set_job_status(db=db, job_id=job_id, active_status=False)
         if db_job:
@@ -150,6 +163,7 @@ class HRController:
             )
         return db_job
 
+    @Patch("/unarchive-job/{job_id}", response_model=JobResponse)
     async def unarchive_job(self, job_id: str, db: AsyncSession = Depends(get_db)):
         db_job = await set_job_status(db=db, job_id=job_id, active_status=True)
         if db_job:
@@ -162,6 +176,7 @@ class HRController:
             )
         return db_job
 
+    @Delete("/delete-job/{job_id}", response_model=JobResponse)
     async def delete_job_endpoint(
         self,
         job_id: str, 
@@ -188,6 +203,7 @@ class HRController:
             )
         return db_job
 
+    @Get("/dashboard-trends")
     async def get_dashboard_trends_endpoint(self, db: AsyncSession = Depends(get_db)):
         return await hr_service.get_dashboard_trends(db)
 

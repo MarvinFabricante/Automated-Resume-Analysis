@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List
 
@@ -7,21 +7,14 @@ from app.schemas.job_application_schema import JobApplicationCreate, JobApplicat
 from app.services import job_application_service
 from app.services.audit_service import record_activity
 from app.utils.auth import get_current_user
+from app.controllers.base_controller import BaseController, Delete, Get, Patch, Post
 
-class JobApplicationController:
-    def __init__(self):
-        self.router = APIRouter(prefix="/applications", tags=["Job Applications"])
-        self.register_routes()
 
-    def register_routes(self):
-        self.router.post("/", response_model=JobApplicationResponse, status_code=status.HTTP_201_CREATED)(self.create_job_application)
-        self.router.get("/", response_model=List[JobApplicationResponse])(self.get_all_applications)
-        self.router.get("/job/{job_id}", response_model=List[JobApplicationResponse])(self.get_applications_for_job)
-        self.router.get("/job/{job_id}/compare")(self.get_candidate_comparison)
-        self.router.get("/candidate/{email}", response_model=List[JobApplicationResponse])(self.get_applications_for_candidate)
-        self.router.patch("/{application_id}/status", response_model=JobApplicationResponse)(self.update_application_status)
-        self.router.delete("/{application_id}", status_code=status.HTTP_204_NO_CONTENT)(self.delete_application)
+class JobApplicationController(BaseController):
+    prefix = "/applications"
+    tags = ["Job Applications"]
 
+    @Post("/", response_model=JobApplicationResponse, status_code=status.HTTP_201_CREATED)
     async def create_job_application(self, application_in: JobApplicationCreate, db: AsyncSession = Depends(get_db)):
         """
         Submit a new job application.
@@ -34,18 +27,21 @@ class JobApplicationController:
             
         return await job_application_service.create_job_application(db, application_in, job.id)
 
+    @Get("/", response_model=List[JobApplicationResponse])
     async def get_all_applications(self, db: AsyncSession = Depends(get_db)):
         """
         Get all job applications from all jobs.
         """
         return await job_application_service.get_all_applications(db)
 
+    @Get("/job/{job_id}", response_model=List[JobApplicationResponse])
     async def get_applications_for_job(self, job_id: int, db: AsyncSession = Depends(get_db)):
         """
         Get all applications for a specific job.
         """
         return await job_application_service.get_applications_by_job(db, job_id)
 
+    @Get("/job/{job_id}/compare")
     async def get_candidate_comparison(self, job_id: int):
         """
         Get the AI candidate comparison summary for a specific job.
@@ -57,12 +53,14 @@ class JobApplicationController:
             raise HTTPException(status_code=404, detail="Comparison not found or still processing.")
         return cached_result
 
+    @Get("/candidate/{email}", response_model=List[JobApplicationResponse])
     async def get_applications_for_candidate(self, email: str, db: AsyncSession = Depends(get_db)):
         """
         Get all applications for a specific candidate by email.
         """
         return await job_application_service.get_applications_by_email(db, email)
 
+    @Patch("/{application_id}/status", response_model=JobApplicationResponse)
     async def update_application_status(
         self,
         application_id: int, 
@@ -93,6 +91,7 @@ class JobApplicationController:
         
         return db_application
 
+    @Delete("/{application_id}", status_code=status.HTTP_204_NO_CONTENT)
     async def delete_application(
         self,
         application_id: int,

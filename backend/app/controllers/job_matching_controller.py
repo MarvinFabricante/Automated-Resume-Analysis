@@ -1,20 +1,17 @@
-from fastapi import APIRouter, Depends, File, UploadFile, HTTPException
+from fastapi import Depends, File, UploadFile, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.utils.database import get_db
 from app.schemas.job_matching_schema import MatchResponse, ResumeMatchRequest, JobMatchResult
 from app.services import job_matching_service, resume_service
+from app.controllers.base_controller import BaseController, Post
 
-class JobMatchingController:
-    def __init__(self):
-        self.router = APIRouter(prefix="/matching", tags=["Job Matching"])
-        self.register_routes()
 
-    def register_routes(self):
-        self.router.post("/match-resume", response_model=MatchResponse)(self.match_resume_file)
-        self.router.post("/match-data", response_model=MatchResponse)(self.match_resume_data)
-        self.router.post("/match-data/{job_id}", response_model=JobMatchResult)(self.match_resume_to_single_job)
+class JobMatchingController(BaseController):
+    prefix = "/matching"
+    tags = ["Job Matching"]
 
+    @Post("/match-resume", response_model=MatchResponse)
     async def match_resume_file(
         self,
         file: UploadFile = File(...),
@@ -30,6 +27,7 @@ class JobMatchingController:
         results = await job_matching_service.match_resume_to_all_jobs(db, extracted_data)
         return MatchResponse(results=results)
 
+    @Post("/match-data", response_model=MatchResponse)
     async def match_resume_data(
         self,
         resume_data: ResumeMatchRequest,
@@ -42,6 +40,7 @@ class JobMatchingController:
         results = await job_matching_service.match_resume_to_all_jobs(db, data_dict)
         return MatchResponse(results=results)
 
+    @Post("/match-data/{job_id}", response_model=JobMatchResult)
     async def match_resume_to_single_job(
         self,
         job_id: str,
