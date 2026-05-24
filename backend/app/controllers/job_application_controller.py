@@ -5,8 +5,6 @@ from typing import List
 from app.utils.database import get_db
 from app.schemas.job_application_schema import JobApplicationCreate, JobApplicationResponse, JobApplicationStatusUpdate
 from app.services import job_application_service
-from app.models.job_description import JobDescription
-from sqlalchemy.future import select
 from app.services.audit_service import record_activity
 from app.utils.auth import get_current_user
 
@@ -17,19 +15,9 @@ async def create_job_application(application_in: JobApplicationCreate, db: Async
     """
     Submit a new job application.
     """
-    # Verify job exists
-    result = await db.execute(select(JobDescription).filter(JobDescription.job_id == application_in.job_id))
-    job = result.scalars().first()
+    # Verify job exists via service
+    job = await job_application_service.get_and_validate_job(db, application_in.job_id)
     
-    if not job:
-        # Fallback for static jobs or numeric IDs just in case
-        try:
-            numeric_id = int(application_in.job_id)
-            result = await db.execute(select(JobDescription).filter(JobDescription.id == numeric_id))
-            job = result.scalars().first()
-        except ValueError:
-            pass
-            
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
         
@@ -106,14 +94,9 @@ async def delete_application(
     """
     Remove/delete a job application.
     """
-    from app.models.job_application import JobApplication
-    result = await db.execute(select(JobApplication).filter(JobApplication.id == application_id))
-    db_application = result.scalars().first()
+    db_application = await job_application_service.delete_application(db, application_id)
     if not db_application:
         raise HTTPException(status_code=404, detail="Application not found")
-        
-    await db.delete(db_application)
-    await db.commit()
     
     # Record in audit log
     await record_activity(

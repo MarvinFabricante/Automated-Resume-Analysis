@@ -452,13 +452,9 @@ async def match_resume_to_all_jobs(db, resume_data: dict, use_ai: bool = False) 
     Match parsed resume data against all active jobs in the database.
     Returns a list of match results sorted by match_percentage descending.
     """
-    from sqlalchemy.future import select
-    from app.models.job_description import JobDescription
+    from app.repositories.job_description_repository import JobDescriptionRepository
     
-    result = await db.execute(
-        select(JobDescription).filter(JobDescription.is_active == True)
-    )
-    jobs = result.scalars().all()
+    jobs = await JobDescriptionRepository.get_all_active(db, include_inactive=False)
     
     matches = []
     for job in jobs:
@@ -475,13 +471,9 @@ async def match_resume_to_job(db, resume_data: dict, job_id: str, use_ai: bool =
     """
     Match parsed resume data against a single specific job.
     """
-    from sqlalchemy.future import select
-    from app.models.job_description import JobDescription
+    from app.repositories.job_description_repository import JobDescriptionRepository
     
-    result = await db.execute(
-        select(JobDescription).filter(JobDescription.job_id == job_id)
-    )
-    job = result.scalars().first()
+    job = await JobDescriptionRepository.get_by_job_id(db, job_id)
     
     if not job:
         return None

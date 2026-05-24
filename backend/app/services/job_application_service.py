@@ -1,9 +1,9 @@
 from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.future import select
 from app.models.job_application import JobApplication
 from app.schemas.job_application_schema import JobApplicationCreate
 from app.services.notification_service import create_notification
+from app.repositories.job_application_repository import JobApplicationRepository
 
 
 def _resume_data_from_application(app: JobApplication) -> dict:
@@ -136,29 +136,19 @@ def _enrich_applications(apps: list[JobApplication]) -> list[JobApplication]:
         _enrich_resume_url(app)
     return apps
 
-async def create_job_application(db: AsyncSession, application_in: JobApplicationCreate, db_job_id: int) -> JobApplication:
+async def create_job_application(db: AsyncSession, application_in: JobApplicationCreate, db_job_id: int):
+    """Create a new job application and trigger AI analysis."""
     data = application_in.model_dump()
     
     # Remove job_id from data as we'll pass the internal ID
     if 'job_id' in data:
         del data['job_id']
         
-    new_application = JobApplication(
-        job_id=db_job_id,
+    # Create the application via repository
+    new_application = await JobApplicationRepository.create(db, {
+        "job_id": db_job_id,
         **data
-    )
-    
-    db.add(new_application)
-    await db.commit()
-    
-    # Refresh with job relationship loaded for serialization
-    from sqlalchemy.orm import selectinload
-    result = await db.execute(
-        select(JobApplication)
-        .options(selectinload(JobApplication.job))
-        .filter(JobApplication.id == new_application.id)
-    )
-    new_application = result.scalars().first()
+    })
     
     # Trigger notification
     try:
@@ -182,48 +172,31 @@ async def create_job_application(db: AsyncSession, application_in: JobApplicatio
         
     return new_application
 
-async def get_applications_by_job(db: AsyncSession, job_id: int) -> list[JobApplication]:
-    from sqlalchemy.orm import selectinload
-    result = await db.execute(
-        select(JobApplication)
-        .options(selectinload(JobApplication.job))
-        .filter(JobApplication.job_id == job_id)
-    )
-    return _enrich_applications(result.scalars().all())
+async def get_applications_by_job(db: AsyncSession, job_id: int):
+    """Get all applications for a specific job."""
+    applications = await JobApplicationRepository.get_by_job_id(db, job_id)
+    return _enrich_applications(applications)
 
-async def get_applications_by_email(db: AsyncSession, email: str) -> list[JobApplication]:
-    from sqlalchemy.orm import selectinload
-    result = await db.execute(
-        select(JobApplication)
-        .options(selectinload(JobApplication.job))
-        .filter(JobApplication.candidate_email == email)
-        .order_by(JobApplication.created_at.desc())
-    )
-    return _enrich_applications(result.scalars().all())
+async def get_applications_by_email(db: AsyncSession, email: str):
+    """Get all applications for a specific candidate email."""
+    applications = await JobApplicationRepository.get_by_email(db, email)
+    return _enrich_applications(applications)
 
-async def get_all_applications(db: AsyncSession) -> list[JobApplication]:
-    from sqlalchemy.orm import selectinload
-    result = await db.execute(
-        select(JobApplication).options(selectinload(JobApplication.job)).order_by(JobApplication.created_at.desc())
-    )
-    return _enrich_applications(result.scalars().all())
+async def get_all_applications(db: AsyncSession):
+    """Get all job applications."""
+    applications = await JobApplicationRepository.get_all(db)
+    return _enrich_applications(applications)
 
 async def update_application_status(db: AsyncSession, application_id: int, new_status: str) -> Optional[JobApplication]:
-    from sqlalchemy.orm import selectinload
-    result = await db.execute(
-        select(JobApplication)
-        .options(selectinload(JobApplication.job))
-        .filter(JobApplication.id == application_id)
-    )
-    db_application = result.scalars().first()
+    """Update application status and send notifications."""
+    db_application = await JobApplicationRepository.get_by_id(db, application_id)
     
     if not db_application:
         return None
         
     status_upper = new_status.upper()
     db_application.status = status_upper
-    await db.commit()
-    await db.refresh(db_application)
+    db_application = await JobApplicationRepository.update(db, db_application)
     
     # Send notifications about status change
     try:
@@ -281,3 +254,31 @@ async def update_application_status(db: AsyncSession, application_id: int, new_s
         print(f"Error creating status update notifications: {e}")
         
     return db_application
+
+
+async def delete_application(db: AsyncSession, application_id: int) -> Optional[JobApplication]:
+    """Delete a job application."""
+    db_application = await JobApplicationRepository.get_by_id(db, application_id)
+    if not db_application:
+        return None
+    
+    await JobApplicationRepository.delete(db, db_application)
+    return db_application
+
+
+async def get_and_validate_job(db: AsyncSession, job_id: str):
+    """Get and validate a job by job_id, with fallback to numeric ID lookup."""
+    from app.repositories.job_description_repository import JobDescriptionRepository
+    
+    # Try to get by job_id first
+    job = await JobDescriptionRepository.get_by_job_id(db, job_id)
+    
+    if not job:
+        # Fallback for static jobs or numeric IDs
+        try:
+            numeric_id = int(job_id)
+            job = await JobDescriptionRepository.get_by_id(db, numeric_id)
+        except (ValueError, TypeError):
+            pass
+    
+    return job

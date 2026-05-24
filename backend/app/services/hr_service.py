@@ -1,26 +1,23 @@
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.future import select
-
 from app.models.hr import HR
 from app.schemas.hr_schema import HRCreate, HRUpdate
 from app.utils.auth import hash_password
 from app.services.notification_service import create_notification
+from app.repositories.hr_repository import HRRepository
 
 async def create_hr_profile(db: AsyncSession, hr_in: HRCreate):
     email_lower = hr_in.email.strip().lower()
-    new_hr = HR(
-        fullname=hr_in.fullname,
-        email=email_lower,
-        password=hash_password(hr_in.password),
-        role="HR",
-        company_name=hr_in.company_name,
-        department=hr_in.department
-    )
+    hr_data = {
+        "fullname": hr_in.fullname,
+        "email": email_lower,
+        "password": hash_password(hr_in.password),
+        "role": "HR",
+        "company_name": hr_in.company_name,
+        "department": hr_in.department
+    }
     
-    db.add(new_hr)
-    await db.commit()
-    await db.refresh(new_hr)
-    
+    new_hr = await HRRepository.create_hr(db, hr_data)
+
     # Trigger notification for Admin
     await create_notification(
         db=db,
@@ -33,42 +30,26 @@ async def create_hr_profile(db: AsyncSession, hr_in: HRCreate):
     return new_hr
 
 async def get_hr_profile(db: AsyncSession, hr_id: int):
-    result = await db.execute(select(HR).where(HR.id == hr_id))
-    return result.scalar_one_or_none()
+    return await HRRepository.get_hr_by_id(db, hr_id)
 
 async def update_hr_profile(db: AsyncSession, hr_id: int, hr_update: HRUpdate):
-    result = await db.execute(select(HR).where(HR.id == hr_id))
-    hr = result.scalar_one_or_none()
+    hr = await HRRepository.get_hr_by_id(db, hr_id)
     if not hr:
         return None
     
     update_data = hr_update.dict(exclude_unset=True)
-    for key, value in update_data.items():
-        setattr(hr, key, value)
-    
-    await db.commit()
-    await db.refresh(hr)
-    return hr
+    return await HRRepository.update_hr(db, hr, update_data)
 
 async def get_total_candidates_count(db: AsyncSession):
-    from app.models.candidate import Candidate
-    from sqlalchemy import func
-    result = await db.execute(select(func.count(Candidate.id)))
-    return result.scalar()
+    return await HRRepository.get_total_candidates_count(db)
 
 async def get_total_resumes_count(db: AsyncSession):
-    from app.models.job_application import JobApplication
-    from sqlalchemy import func
-    result = await db.execute(select(func.count(JobApplication.id)))
-    return result.scalar()
+    return await HRRepository.get_total_resumes_count(db)
 
 async def get_application_stats(db: AsyncSession):
-    from app.models.job_application import JobApplication
-    from sqlalchemy import func
-    
     # Get counts grouped by status
-    result = await db.execute(select(JobApplication.status, func.count(JobApplication.id)).group_by(JobApplication.status))
-    stats = {row[0]: row[1] for row in result.all()}
+    db_stats = await HRRepository.get_application_stats_by_status(db)
+    stats = {row[0]: row[1] for row in db_stats}
     
     return {
         "pending": stats.get("PENDING", 0),
@@ -78,9 +59,6 @@ async def get_application_stats(db: AsyncSession):
     }
 
 async def get_dashboard_trends(db: AsyncSession):
-    from app.models.job_application import JobApplication
-    from app.models.job_description import JobDescription
-    from sqlalchemy import func, cast, Date
     from datetime import datetime, timedelta
 
     # 1. Weekly Trends (past 7 days)
@@ -92,16 +70,9 @@ async def get_dashboard_trends(db: AsyncSession):
     
     # Query database
     start_date = datetime.combine(dates[0], datetime.min.time())
-    result = await db.execute(
-        select(
-            cast(JobApplication.created_at, Date),
-            func.count(JobApplication.id)
-        )
-        .where(JobApplication.created_at >= start_date)
-        .group_by(cast(JobApplication.created_at, Date))
-    )
+    db_result = await HRRepository.get_daily_application_counts(db, start_date)
     
-    for row in result.all():
+    for row in db_result:
         row_date = row[0]
         if row_date in daily_counts:
             daily_counts[row_date] = row[1]
@@ -129,16 +100,7 @@ async def get_dashboard_trends(db: AsyncSession):
         })
         
     # 2. Department Distribution
-    dept_result = await db.execute(
-        select(
-            JobDescription.department,
-            func.count(JobApplication.id)
-        )
-        .join(JobApplication, JobApplication.job_id == JobDescription.id)
-        .group_by(JobDescription.department)
-    )
-    
-    dept_data = dept_result.all()
+    dept_data = await HRRepository.get_department_application_counts(db)
     total_apps = sum(row[1] for row in dept_data)
     
     # Premium colors list
@@ -159,8 +121,7 @@ async def get_dashboard_trends(db: AsyncSession):
         
     if not department_distribution:
         # If no real data, try to query all active jobs to populate some default departments with 0 counts
-        active_jobs_result = await db.execute(select(JobDescription.department).distinct())
-        distinct_depts = [r[0] for r in active_jobs_result.all()]
+        distinct_depts = await HRRepository.get_distinct_departments(db)
         if distinct_depts:
             for idx, dept in enumerate(distinct_depts):
                 department_distribution.append({

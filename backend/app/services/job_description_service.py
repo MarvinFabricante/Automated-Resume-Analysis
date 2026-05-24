@@ -1,15 +1,13 @@
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.future import select
-from sqlalchemy import desc
-from app.models.job_description import JobDescription
 from app.schemas.job_description_schema import JobCreate, JobUpdate
 from app.services.notification_service import create_notification
+from app.repositories.job_description_repository import JobDescriptionRepository
+
 
 async def create_job(db: AsyncSession, job: JobCreate):
-    db_job = JobDescription(**job.dict())
-    db.add(db_job)
-    await db.commit()
-    await db.refresh(db_job)
+    """Create a new job and trigger notification."""
+    job_data = job.dict()
+    db_job = await JobDescriptionRepository.create(db, job_data)
     
     # Trigger notification
     await create_notification(
@@ -21,48 +19,34 @@ async def create_job(db: AsyncSession, job: JobCreate):
     
     return db_job
 
+
 async def get_job(db: AsyncSession, job_id: str):
-    result = await db.execute(select(JobDescription).filter(JobDescription.job_id == job_id))
-    return result.scalars().first()
+    """Get a job by job_id."""
+    return await JobDescriptionRepository.get_by_job_id(db, job_id)
 
 
-# retrieving all jobs in descending order, bali mauuna ung newly created which is nasa pinaka dulo ng record.
 async def get_all_active_jobs(db: AsyncSession, skip: int = 0, limit: int = 100, include_inactive: bool = False):
-    query = select(JobDescription)
-    if not include_inactive:
-        query = query.filter(JobDescription.is_active == True)
-    query = query.order_by(desc(JobDescription.id)).offset(skip).limit(limit)
-    
-    result = await db.execute(query)
-    return result.scalars().all()
+    """Get all active jobs with pagination."""
+    return await JobDescriptionRepository.get_all_active(db, skip, limit, include_inactive)
+
 
 async def update_job(db: AsyncSession, job_id: str, job_data: JobUpdate):
-    # fetcH all existing records
-    result = await db.execute(select(JobDescription).filter(JobDescription.job_id == job_id))
-    db_job = result.scalars().first()
+    """Update job and re-calculate match scores for all existing applications."""
+    # Fetch the job
+    db_job = await JobDescriptionRepository.get_by_job_id(db, job_id)
     
     if not db_job:
         return None
 
-    # Update only the fields that were provided (using model_dump for Pydantic v2)
-    # exclude_unset=True ensures we don't overwrite values with None if they weren't in the request
-    update_data = job_data.model_dump(exclude_unset=True) 
-    
-    for key, value in update_data.items():
-        setattr(db_job, key, value)
-
-    await db.commit()
-    await db.refresh(db_job)
+    # Update job with provided data
+    update_data = job_data.model_dump(exclude_unset=True)
+    db_job = await JobDescriptionRepository.update(db, db_job, update_data)
     
     # Re-calculate match scores for all existing applications of this job to sync them
     try:
-        from app.models.job_application import JobApplication
         from app.services.job_matching_service import calculate_match_score, _extract_years_from_text
         
-        apps_result = await db.execute(
-            select(JobApplication).filter(JobApplication.job_id == db_job.id)
-        )
-        applications = apps_result.scalars().all()
+        applications = await JobDescriptionRepository.get_applications_for_job(db, db_job.id)
         
         for app in applications:
             skills_str = ", ".join(app.skills) if isinstance(app.skills, list) else (app.skills or "")
@@ -80,7 +64,7 @@ async def update_job(db: AsyncSession, job_id: str, job_data: JobUpdate):
             app.experience_reason = match_res["experience_reason"]
             app.education_reason = match_res["education_reason"]
             
-        await db.commit()
+        await JobDescriptionRepository.bulk_update_applications(db, applications)
     except Exception as match_sync_err:
         print(f"WARNING: Failed to sync application scores: {match_sync_err}")
         
@@ -94,23 +78,22 @@ async def update_job(db: AsyncSession, job_id: str, job_data: JobUpdate):
     
     return db_job
 
+
 async def set_job_status(db: AsyncSession, job_id: str, active_status: bool):
-    result = await db.execute(select(JobDescription).filter(JobDescription.job_id == job_id))
-    db_job = result.scalars().first()
+    """Set job status (active/inactive)."""
+    db_job = await JobDescriptionRepository.get_by_job_id(db, job_id)
     
     if db_job:
-        db_job.is_active = active_status
-        await db.commit()
-        await db.refresh(db_job)
+        db_job = await JobDescriptionRepository.set_status(db, db_job, active_status)
         
     return db_job
 
+
 async def delete_job(db: AsyncSession, job_id: str):
-    result = await db.execute(select(JobDescription).filter(JobDescription.job_id == job_id))
-    db_job = result.scalars().first()
+    """Delete a job."""
+    db_job = await JobDescriptionRepository.get_by_job_id(db, job_id)
     
     if db_job:
-        await db.delete(db_job)
-        await db.commit()
+        await JobDescriptionRepository.delete(db, db_job)
         
     return db_job

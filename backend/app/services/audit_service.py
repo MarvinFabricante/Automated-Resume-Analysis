@@ -1,7 +1,7 @@
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.models.audit_log import AuditLog
-from sqlalchemy import select
 from typing import List
+from app.models.audit_log import AuditLog
+from app.repositories.audit_repository import AuditRepository
 
 async def record_activity(
     db: AsyncSession, 
@@ -11,37 +11,17 @@ async def record_activity(
     details: str = None, 
     ip_address: str = None
 ):
-    new_log = AuditLog(
-        user_id=user_id,
-        action=action,
-        target=target,
-        details=details,
-        ip_address=ip_address
-    )
-    db.add(new_log)
-    await db.commit()
-    return new_log
+    log_data = {
+        "user_id": user_id,
+        "action": action,
+        "target": target,
+        "details": details,
+        "ip_address": ip_address
+    }
+    return await AuditRepository.create_audit_log(db, log_data)
 
 async def get_recent_hr_activities(db: AsyncSession, limit: int = 10) -> List[AuditLog]:
-    from sqlalchemy.orm import selectinload
-    from app.models.user import User
-    
-    # Filter for users who are NOT ADMINS (or just get all and filter by role if needed)
-    # For now, let's just get all audit logs and load user info
-    result = await db.execute(
-        select(AuditLog)
-        .options(selectinload(AuditLog.user))
-        .order_by(AuditLog.created_at.desc())
-        .limit(limit)
-    )
-    return result.scalars().all()
+    return await AuditRepository.get_recent_activities(db, limit)
 
 async def get_all_audit_logs(db: AsyncSession) -> List[AuditLog]:
-    from sqlalchemy.orm import selectinload
-    
-    result = await db.execute(
-        select(AuditLog)
-        .options(selectinload(AuditLog.user))
-        .order_by(AuditLog.created_at.desc())
-    )
-    return result.scalars().all()
+    return await AuditRepository.get_all_activities(db)

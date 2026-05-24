@@ -15,6 +15,7 @@ from app.models.interview import Interview, InterviewPanelist, InterviewLog
 from app.models.job_application import JobApplication
 from app.models.user import User
 from app.schemas.interview_schema import InterviewCreateSchema
+from app.repositories.interview_repository import InterviewRepository
 
 # If modifying these scopes, delete the file token.json.
 SCOPES = ['https://www.googleapis.com/auth/calendar']
@@ -95,8 +96,7 @@ async def get_available_slots(db: AsyncSession, panelist_ids: List[int], start_d
             current_time += timedelta(minutes=30)
         return slots
         
-    result = await db.execute(select(User).filter(User.id.in_(panelist_ids)))
-    panelists = result.scalars().all()
+    panelists = await InterviewRepository.get_panelists(db, panelist_ids)
     emails = [{"id": p.email} for p in panelists if p.email]
     
     if not emails:
@@ -147,30 +147,26 @@ async def get_available_slots(db: AsyncSession, panelist_ids: List[int], start_d
 
 async def schedule_interview(db: AsyncSession, data: InterviewCreateSchema):
     # 1. Fetch Candidate and Panelists
-    result = await db.execute(select(JobApplication).filter(JobApplication.id == data.job_application_id))
-    application = result.scalars().first()
+    application = await InterviewRepository.get_job_application(db, data.job_application_id)
     if not application:
         raise ValueError("Application not found")
         
-    p_result = await db.execute(select(User).filter(User.id.in_(data.panelist_ids)))
-    panelists = p_result.scalars().all()
+    panelists = await InterviewRepository.get_panelists(db, data.panelist_ids)
     
     # 2. Create Interview Record
-    interview = Interview(
-        job_application_id=data.job_application_id,
-        title=data.title,
-        description=data.description,
-        start_time=data.start_time,
-        end_time=data.end_time
-    )
-    db.add(interview)
-    await db.flush() # flush to get interview.id
+    interview_data = {
+        "job_application_id": data.job_application_id,
+        "title": data.title,
+        "description": data.description,
+        "start_time": data.start_time,
+        "end_time": data.end_time
+    }
+    interview = await InterviewRepository.create_interview(db, interview_data)
     
     for panelist in panelists:
-        db.add(InterviewPanelist(interview_id=interview.id, user_id=panelist.id))
+        await InterviewRepository.add_panelist_to_interview(db, interview.id, panelist.id)
         
-    await db.commit()
-    await db.refresh(interview)
+    interview = await InterviewRepository.update_interview(db, interview)
     
     # 3. Create Google Calendar Event
     service = await asyncio.to_thread(get_google_calendar_service)
@@ -218,37 +214,34 @@ async def schedule_interview(db: AsyncSession, data: InterviewCreateSchema):
                     interview.meeting_link = ep.get('uri')
                     break
                     
-            await db.commit()
+            await InterviewRepository.commit_changes(db)
         except Exception as e:
             print(f"Error creating calendar event: {e}")
     else:
         # Mock Google Calendar Integration
         interview.google_event_id = f"mock_event_{interview.id}"
         interview.meeting_link = "https://meet.google.com/mock-link-123"
-        await db.commit()
+        await InterviewRepository.commit_changes(db)
     
     # 4. Send SMS Notification
     if application.phone:
         message = f"Hi {application.candidate_name}, your interview for {application.job_title} is scheduled on {data.start_time.strftime('%Y-%m-%d %H:%M')}. Link: {interview.meeting_link or 'Sent to email'}."
         sent = await asyncio.to_thread(send_sms_notification_sync, application.phone, message)
         if sent:
-            db.add(InterviewLog(interview_id=interview.id, log_type="SMS_SENT", details="Notification sent to candidate"))
-            await db.commit()
+            await InterviewRepository.add_interview_log(db, interview.id, "SMS_SENT", "Notification sent to candidate")
+            await InterviewRepository.commit_changes(db)
 
     return interview
 
 async def update_interview_status(db: AsyncSession, interview_id: int, status: str):
-    result = await db.execute(select(Interview).filter(Interview.id == interview_id))
-    interview = result.scalars().first()
+    interview = await InterviewRepository.get_interview_by_id(db, interview_id)
     if not interview:
         raise ValueError("Interview not found")
         
     interview.status = status
-    db.add(InterviewLog(interview_id=interview.id, log_type="STATUS_CHANGE", details=f"Status changed to {status}"))
-    await db.commit()
-    await db.refresh(interview)
+    await InterviewRepository.add_interview_log(db, interview.id, "STATUS_CHANGE", f"Status changed to {status}")
+    return await InterviewRepository.update_interview(db, interview)
     return interview
 
 async def get_interviews_for_application(db: AsyncSession, application_id: int):
-    result = await db.execute(select(Interview).filter(Interview.job_application_id == application_id))
-    return result.scalars().all()
+    return await InterviewRepository.get_interviews_for_application(db, application_id)

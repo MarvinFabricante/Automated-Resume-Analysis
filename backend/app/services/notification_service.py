@@ -1,16 +1,20 @@
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.future import select
-from sqlalchemy import update
 import json
 from app.models.notification import Notification
 from app.schemas.notification_schema import NotificationCreate
 from app.utils.websocket_manager import manager
+from app.repositories.notification_repository import NotificationRepository
 
 async def create_notification(db: AsyncSession, title: str, message: str, type: str, target_role: str = None, target_email: str = None, sender_role: str = None) -> Notification:
-    new_notification = Notification(title=title, message=message, type=type, target_role=target_role, target_email=target_email, sender_role=sender_role)
-    db.add(new_notification)
-    await db.commit()
-    await db.refresh(new_notification)
+    notification_data = {
+        "title": title,
+        "message": message,
+        "type": type,
+        "target_role": target_role,
+        "target_email": target_email,
+        "sender_role": sender_role
+    }
+    new_notification = await NotificationRepository.create(db, notification_data)
     
     # Broadcast to connected clients
     try:
@@ -32,54 +36,7 @@ async def create_notification(db: AsyncSession, title: str, message: str, type: 
     return new_notification
 
 async def get_all_notifications(db: AsyncSession, role: str = None, email: str = None) -> list[Notification]:
-    from sqlalchemy import or_, and_
-    query = select(Notification).order_by(Notification.created_at.desc())
-    
-    if role:
-        if role == 'CANDIDATE':
-            # Candidates see notifications targeting 'CANDIDATE' and their specific email (or no email)
-            # and sender is HR or ADMIN (or System which is None)
-            email_condition = or_(Notification.target_email == None, Notification.target_email == email) if email else Notification.target_email == None
-            query = query.where(
-                and_(
-                    Notification.target_role == 'CANDIDATE',
-                    email_condition,
-                    or_(Notification.sender_role == 'HR', Notification.sender_role == 'ADMIN', Notification.sender_role == None)
-                )
-            )
-        elif role == 'HR':
-            # HR sees notifications from Candidate and Admin
-            query = query.where(
-                and_(
-                    or_(Notification.target_role == None, Notification.target_role == 'HR'),
-                    or_(Notification.sender_role == 'CANDIDATE', Notification.sender_role == 'ADMIN', Notification.sender_role == None)
-                )
-            )
-        elif role == 'ADMIN':
-            # Admin sees all notifications from both HR and Candidate
-            query = query.where(
-                and_(
-                    or_(Notification.target_role == None, Notification.target_role == 'ADMIN', Notification.target_role == 'HR'),
-                    or_(Notification.sender_role == 'HR', Notification.sender_role == 'CANDIDATE', Notification.sender_role == None)
-                )
-            )
-    
-    result = await db.execute(query.limit(50))
-    return result.scalars().all()
+    return await NotificationRepository.get_all_by_criteria(db, role=role, email=email)
 
 async def mark_all_as_read(db: AsyncSession, role: str = None, email: str = None) -> bool:
-    from sqlalchemy import update, or_, and_
-    query = update(Notification).where(Notification.is_read == False)
-    
-    if role:
-        if role == 'CANDIDATE':
-            email_condition = or_(Notification.target_email == None, Notification.target_email == email) if email else Notification.target_email == None
-            query = query.where(and_(Notification.target_role == 'CANDIDATE', email_condition))
-        elif role == 'HR':
-            query = query.where(or_(Notification.target_role == None, Notification.target_role == 'HR'))
-        elif role == 'ADMIN':
-            query = query.where(or_(Notification.target_role == None, Notification.target_role == 'ADMIN', Notification.target_role == 'HR'))
-
-    await db.execute(query.values(is_read=True))
-    await db.commit()
-    return True
+    return await NotificationRepository.mark_all_as_read(db, role=role, email=email)

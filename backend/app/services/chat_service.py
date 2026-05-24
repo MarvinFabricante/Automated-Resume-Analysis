@@ -1,5 +1,4 @@
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, or_, and_, desc
 from typing import List, Optional
 from jose import jwt, JWTError
 from app.utils.auth import SECRET_KEY, ALGORITHM
@@ -10,6 +9,7 @@ from app.utils.websocket import manager
 from app.utils.redis_client import redis_client
 import json
 from datetime import datetime
+from app.repositories.chat_repository import ChatRepository
 
 async def get_allowed_roles(user_role: str) -> List[str]:
     """
@@ -33,8 +33,7 @@ async def verify_token(token: str, db: AsyncSession):
         email = payload.get("sub")
         if not email:
             return None
-        result = await db.execute(select(User).where(User.email == email))
-        return result.scalar_one_or_none()
+        return await ChatRepository.get_user_by_email(db, email)
     except JWTError:
         return None
 
@@ -66,34 +65,15 @@ async def get_contacts(db: AsyncSession, current_user: User, search: Optional[st
     if not allowed_roles:
         return []
 
-    query = select(User).where(User.role.in_(allowed_roles), User.id != current_user.id)
-    if search:
-        query = query.where(User.fullname.ilike(f"%{search}%"))
-
-    result = await db.execute(query)
-    users = result.scalars().all()
+    users = await ChatRepository.get_contact_users(db, allowed_roles, current_user.id, search)
 
     chat_users = []
     for u in users:
         # Get last message
-        last_msg_query = select(Message).where(
-            or_(
-                and_(Message.sender_id == current_user.id, Message.receiver_id == u.id),
-                and_(Message.sender_id == u.id, Message.receiver_id == current_user.id)
-            )
-        ).order_by(desc(Message.timestamp)).limit(1)
-        
-        last_msg_result = await db.execute(last_msg_query)
-        last_msg = last_msg_result.scalar_one_or_none()
+        last_msg = await ChatRepository.get_last_message_between(db, current_user.id, u.id)
 
         # Unread count
-        unread_query = select(Message).where(
-            Message.sender_id == u.id,
-            Message.receiver_id == current_user.id,
-            Message.is_read == False
-        )
-        unread_result = await db.execute(unread_query)
-        unread_count = len(unread_result.scalars().all())
+        unread_count = await ChatRepository.get_unread_count(db, u.id, current_user.id)
 
         chat_users.append(ChatUser(
             id=u.id,
@@ -136,30 +116,14 @@ async def get_messages(db: AsyncSession, current_user: User, other_user_id: int)
     and marks all incoming messages as read.
     """
     # Mark messages as read
-    unread_query = select(Message).where(
-        Message.sender_id == other_user_id,
-        Message.receiver_id == current_user.id,
-        Message.is_read == False
-    )
-    result = await db.execute(unread_query)
-    unreads = result.scalars().all()
-    for msg in unreads:
-        msg.is_read = True
+    unreads = await ChatRepository.get_unread_messages(db, other_user_id, current_user.id)
     if unreads:
-        await db.commit()
+        await ChatRepository.mark_messages_as_read(db, unreads)
         # Invalidate cache for current user since unread counts changed
         await invalidate_contacts_cache(current_user.id)
 
     # Get history
-    query = select(Message).where(
-        or_(
-            and_(Message.sender_id == current_user.id, Message.receiver_id == other_user_id),
-            and_(Message.sender_id == other_user_id, Message.receiver_id == current_user.id)
-        )
-    ).order_by(Message.timestamp)
-    
-    result = await db.execute(query)
-    return result.scalars().all()
+    return await ChatRepository.get_chat_history(db, current_user.id, other_user_id)
 
 async def send_message(db: AsyncSession, current_user: User, other_user_id: int, content: str, client_id: Optional[str] = None) -> Message:
     """
@@ -168,21 +132,12 @@ async def send_message(db: AsyncSession, current_user: User, other_user_id: int,
     """
     # Verify allowed to message
     allowed_roles = await get_allowed_roles(current_user.role)
-    user_query = select(User).where(User.id == other_user_id)
-    result = await db.execute(user_query)
-    receiver = result.scalar_one_or_none()
+    receiver = await ChatRepository.get_user_by_id(db, other_user_id)
     
     if not receiver or receiver.role not in allowed_roles:
         return None
 
-    new_msg = Message(
-        sender_id=current_user.id,
-        receiver_id=other_user_id,
-        content=content
-    )
-    db.add(new_msg)
-    await db.commit()
-    await db.refresh(new_msg)
+    new_msg = await ChatRepository.create_message(db, current_user.id, other_user_id, content)
 
     msg_data = {
         "type": "new_message",
@@ -221,8 +176,7 @@ async def handle_websocket_message(db_factory, sender_id: int, data: dict):
 
         async with db_factory() as db:
             # Get sender object
-            result = await db.execute(select(User).where(User.id == sender_id))
-            sender = result.scalar_one_or_none()
+            sender = await ChatRepository.get_user_by_id(db, sender_id)
             if not sender:
                 return
 

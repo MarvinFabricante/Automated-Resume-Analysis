@@ -6,13 +6,12 @@ import json
 from dotenv import load_dotenv
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker
-from sqlalchemy.future import select
 
 from app.celery_app import celery_app
-from app.models.job_application import JobApplication
-from app.models.job_description import JobDescription
 from app.services.ai_analysis_service import analyze_match_with_fallback
 from app.services.job_application_service import _resume_data_from_application
+from app.repositories.job_application_repository import JobApplicationRepository
+from app.repositories.job_description_repository import JobDescriptionRepository
 
 load_dotenv()
 logger = logging.getLogger(__name__)
@@ -23,22 +22,19 @@ async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False
 
 async def async_analyze_application(application_id: int):
     async with async_session() as db:
-        result = await db.execute(select(JobApplication).filter(JobApplication.id == application_id))
-        app = result.scalars().first()
+        app = await JobApplicationRepository.get_by_id(db, application_id)
         if not app:
             logger.error(f"Application {application_id} not found.")
             return
             
-        job_result = await db.execute(select(JobDescription).filter(JobDescription.job_id == app.job_id))
-        job = job_result.scalars().first()
+        job = await JobDescriptionRepository.get_by_job_id(db, str(app.job_id))
         
         # Fallback if app.job_id is numeric (foreign key id)
         if not job:
             try:
                 numeric_id = int(app.job_id)
-                job_result = await db.execute(select(JobDescription).filter(JobDescription.id == numeric_id))
-                job = job_result.scalars().first()
-            except ValueError:
+                job = await JobDescriptionRepository.get_by_id(db, numeric_id)
+            except (ValueError, TypeError):
                 pass
                 
         if not job:
@@ -88,7 +84,7 @@ async def async_analyze_application(application_id: int):
             app.weaknesses = ai_result.get("weaknesses")
             app.ai_powered = True
             
-            await db.commit()
+            await JobApplicationRepository.update(db, app)
             logger.info(f"Successfully saved AI analysis for application {application_id}.")
             
             # Trigger candidate comparison if multiple candidates are available
@@ -120,21 +116,21 @@ def analyze_application_task(application_id: int):
 async def async_compare_candidates(job_id: int):
     async with async_session() as db:
         try:
-            job_result = await db.execute(select(JobDescription).filter(JobDescription.job_id == str(job_id)))
-            job = job_result.scalars().first()
+            # Try to get job by job_id string first
+            job = await JobDescriptionRepository.get_by_job_id(db, str(job_id))
             if not job:
+                # Try by numeric ID
                 try:
                     numeric_id = int(job_id)
-                    job_result = await db.execute(select(JobDescription).filter(JobDescription.id == numeric_id))
-                    job = job_result.scalars().first()
-                except ValueError:
+                    job = await JobDescriptionRepository.get_by_id(db, numeric_id)
+                except (ValueError, TypeError):
                     pass
+            
             if not job:
                 logger.error(f"Job not found for comparison task. Job ID: {job_id}")
                 return
 
-            all_apps_result = await db.execute(select(JobApplication).filter(JobApplication.job_id == str(job_id)))
-            all_apps = all_apps_result.scalars().all()
+            all_apps = await JobApplicationRepository.get_by_job_id(db, job_id)
             if len(all_apps) > 1:
                 logger.info(f"Multiple candidates ({len(all_apps)}) found for job {job_id}. Running comparison analysis...")
                 from app.services.ai_analysis_service import compare_candidates_with_fallback

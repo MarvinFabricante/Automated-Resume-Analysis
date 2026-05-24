@@ -1,6 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
 from typing import List, Optional
 
 from app.utils.database import get_db
@@ -9,6 +8,7 @@ from app.models.user import User
 from app.schemas.message_schema import MessageCreate, MessageResponse, ChatContactResponse
 from app.utils.websocket import manager
 from app.services import chat_service
+from app.repositories.auth_repository import AuthRepository
 
 router = APIRouter(prefix="/chat", tags=["Chat"])
 
@@ -26,8 +26,7 @@ async def get_active_count():
 
 async def get_current_user_obj(payload: dict = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     email = payload.get("sub")
-    result = await db.execute(select(User).where(User.email == email))
-    user = result.scalar_one_or_none()
+    user = await AuthRepository.get_user_by_email(db, email)
     if not user:
         raise HTTPException(status_code=401, detail="User not found")
     return user
