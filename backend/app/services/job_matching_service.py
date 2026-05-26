@@ -112,28 +112,106 @@ def _identify_transferable_skills(experience_text: str) -> list[str]:
 def calculate_experience_relevance(resume_experience: str, resume_skills: str, job_title: str, job_description: str) -> dict:
     """
     Evaluate how RELEVANT the candidate's work experience is to the target job.
-    Does NOT just count years — checks whether previous roles are related.
+    Uses a hybrid approach (NLP, spaCy, rule-based) to analyze each entry individually
+    for explainable and transparent scoring.
     """
-    target_family = _detect_role_family(job_title + " " + (job_description or ""))
-    resume_text = (resume_experience or "") + " " + (resume_skills or "")
-    candidate_family = _detect_role_family(resume_text)
-    transferable = _identify_transferable_skills(resume_text)
-    job_kw = set(_tokenize_skills(job_title))
-    exp_kw = set(_tokenize_skills(resume_experience or ""))
-    direct_overlap = job_kw & exp_kw
+    try:
+        from app.extractors.nlp.nlp_engine import get_doc, get_verb_object_pairs
+        nlp_available = True
+    except ImportError:
+        nlp_available = False
 
-    if not resume_experience or not resume_experience.strip():
-        return {"relevance_level": "Irrelevant", "relevance_score": 0.1, "transferable_skills": transferable, "reason": "No work experience provided to evaluate relevance."}
-    if target_family and candidate_family and target_family == candidate_family:
-        return {"relevance_level": "Highly Relevant", "relevance_score": 0.9, "transferable_skills": transferable, "reason": f"Previous work experience is directly related to the {job_title} role."}
-    if direct_overlap and len(direct_overlap) >= 2:
-        return {"relevance_level": "Highly Relevant", "relevance_score": 0.85, "transferable_skills": transferable, "reason": f"Resume shares key terms with the target role: {', '.join(w.title() for w in list(direct_overlap)[:5])}."}
-    if target_family and candidate_family and target_family != candidate_family and transferable:
-        score = min(0.6, 0.25 + len(transferable) * 0.07)
-        return {"relevance_level": "Partially Relevant", "relevance_score": round(score, 2), "transferable_skills": transferable, "reason": f"Different field but demonstrates transferable skills: {', '.join(transferable[:5])}."}
-    if transferable:
-        return {"relevance_level": "Partially Relevant", "relevance_score": 0.3, "transferable_skills": transferable, "reason": f"Limited relevance but transferable skills identified: {', '.join(transferable[:4])}."}
-    return {"relevance_level": "Irrelevant", "relevance_score": 0.1, "transferable_skills": [], "reason": f"Previous work experience has little connection to the {job_title} role."}
+    job_text = job_title + " " + (job_description or "")
+    target_family = _detect_role_family(job_text)
+    job_kw = set(_tokenize_skills(job_text))
+
+    exp_entries = [e.strip() for e in (resume_experience or "").split("|") if e.strip()]
+    if not exp_entries:
+        return {
+            "relevance_level": "Irrelevant", 
+            "relevance_score": 0.1, 
+            "transferable_skills": [], 
+            "reason": "No work experience provided to evaluate relevance.",
+            "detailed_breakdown": "No work experience provided."
+        }
+
+    total_score = 0
+    max_possible_score = len(exp_entries) * 10
+    all_transferable = set()
+    breakdown_texts = []
+
+    for i, entry in enumerate(exp_entries):
+        candidate_family = _detect_role_family(entry)
+        entry_kw = set(_tokenize_skills(entry))
+        direct_overlap = job_kw & entry_kw
+        transferable = _identify_transferable_skills(entry)
+        all_transferable.update(transferable)
+
+        verbs_objs = []
+        if nlp_available:
+            entry_doc = get_doc(entry)
+            verbs_objs = get_verb_object_pairs(entry_doc)
+
+        score_contrib = 0
+        relevance = "Irrelevant"
+        reasons = []
+
+        # Scoring logic
+        if target_family and candidate_family and target_family == candidate_family:
+            relevance = "Highly Relevant"
+            score_contrib += 8
+            reasons.append(f"Domain alignment: Role is in the '{candidate_family.title()}' family, matching the target job.")
+        elif direct_overlap and len(direct_overlap) >= 2:
+            relevance = "Highly Relevant"
+            score_contrib += 7
+            reasons.append(f"Technical alignment: Strong overlap in technologies/skills ({', '.join(list(direct_overlap)[:3])}).")
+        elif target_family and candidate_family and target_family != candidate_family and transferable:
+            relevance = "Partially Relevant"
+            score_contrib += 4
+            reasons.append(f"Domain mismatch: Role is in '{candidate_family.title()}', but demonstrates transferable skills.")
+        elif transferable:
+            relevance = "Partially Relevant"
+            score_contrib += 3
+            reasons.append("Limited technical relevance but valuable transferable skills identified.")
+        else:
+            relevance = "Irrelevant"
+            score_contrib += 1
+            reasons.append("No technical tools or development technologies detected.")
+            reasons.append("Experience is not aligned with the target position.")
+
+        if transferable:
+            reasons.append(f"Transferable skills detected: {', '.join(transferable)}.")
+
+        if verbs_objs:
+            vo_text = ", ".join([f"{v} {o}" for v, o in verbs_objs[:3]])
+            reasons.append(f"Matched responsibilities (NLP): {vo_text}.")
+        elif not direct_overlap:
+            reasons.append("No specific aligned responsibilities found.")
+
+        total_score += score_contrib
+
+        breakdown_texts.append(
+            f"{i+1}. {entry}\n"
+            f"Relevance Level: {relevance}\n"
+            f"Score Contribution: +{score_contrib}/10\n"
+            f"Reason:\n- " + "\n- ".join(reasons) + "\n"
+        )
+
+    final_score = min(1.0, total_score / max_possible_score) if max_possible_score > 0 else 0.1
+
+    overall_level = "Irrelevant"
+    if final_score >= 0.7:
+        overall_level = "Highly Relevant"
+    elif final_score >= 0.4:
+        overall_level = "Partially Relevant"
+
+    return {
+        "relevance_level": overall_level,
+        "relevance_score": round(final_score, 2),
+        "transferable_skills": list(all_transferable),
+        "reason": f"Evaluated {len(exp_entries)} experiences using Hybrid NLP analysis.",
+        "detailed_breakdown": "Work Experience Breakdown (Hybrid Evaluation):\n\n" + "\n".join(breakdown_texts)
+    }
 
 
 def calculate_education_match(resume_education: str, job_description: str, education_req: str = None) -> dict:
@@ -518,7 +596,15 @@ def calculate_match_score(resume_data: dict, job, use_ai: bool = False) -> dict:
         score_explanation = ai_result.get("score_explanation", "") # Backwards compatibility if needed
         match_level = ai_result.get("match_level", "Unknown")
         skills_explanation = ai_result.get("skills_explanation", "")
-        experience_explanation = ai_result.get("experience_explanation", "")
+        
+        # Blended Experience Explanation: Use hybrid NLP detailed breakdown + LLM insights
+        hybrid_breakdown = relevance_result.get("detailed_breakdown", "")
+        llm_exp_reason = ai_result.get("experience_explanation", "")
+        if hybrid_breakdown and llm_exp_reason:
+            experience_explanation = f"{hybrid_breakdown}\n\n--- AI Reasoning ---\n{llm_exp_reason}"
+        else:
+            experience_explanation = hybrid_breakdown or llm_exp_reason
+
         education_explanation = ai_result.get("education_explanation", "")
         certification_explanation = ai_result.get("certification_explanation", "")
         projects_explanation = ai_result.get("projects_explanation", "")
@@ -545,11 +631,11 @@ def calculate_match_score(resume_data: dict, job, use_ai: bool = False) -> dict:
         score_explanation = ""
         match_level = "Unknown"
         skills_explanation = ""
-        experience_explanation = ""
+        experience_explanation = relevance_result.get("detailed_breakdown", "")
         education_explanation = ""
         certification_explanation = ""
         projects_explanation = ""
-        transferable_skills = []
+        transferable_skills = relevance_result.get("transferable_skills", [])
         blended_projects_score = round(projects_score * 100, 1)
 
     # ── Build reason strings ──────────────────────────────────────────────────

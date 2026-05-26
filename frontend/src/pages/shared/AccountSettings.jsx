@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import profileService from '../../services/profileService';
+import authService from '../../services/authService';
 import { Helmet } from 'react-helmet-async';
 import {
   User,
@@ -38,6 +39,12 @@ const AccountSettings = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [fetching, setFetching] = useState(false);
+  const [passwordLoading, setPasswordLoading] = useState(false);
+  const [passwordData, setPasswordData] = useState({
+    currentPassword: '',
+    newPassword: '',
+    confirmPassword: ''
+  });
 
   const userRole = localStorage.getItem('role') || 'Guest';
   const userId = localStorage.getItem('user_id');
@@ -155,6 +162,39 @@ const AccountSettings = () => {
       alert("Failed to update profile. Please try again.");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handlePasswordChange = (e) => {
+    const { name, value } = e.target;
+    setPasswordData(prev => ({ ...prev, [name]: value }));
+  };
+
+  const handleUpdatePassword = async () => {
+    if (!passwordData.currentPassword || !passwordData.newPassword || !passwordData.confirmPassword) {
+      alert("All password fields are required.");
+      return;
+    }
+    if (passwordData.newPassword !== passwordData.confirmPassword) {
+      alert("New password and confirm password do not match.");
+      return;
+    }
+    if (passwordData.newPassword.length < 8) {
+      alert("New password must be at least 8 characters long.");
+      return;
+    }
+
+    setPasswordLoading(true);
+    try {
+      await authService.changePassword(passwordData.currentPassword, passwordData.newPassword);
+      alert("Password successfully updated.");
+      setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' });
+    } catch (err) {
+      console.error("Failed to update password:", err);
+      const errorMessage = err.response?.data?.detail || "Failed to update password. Please try again.";
+      alert(errorMessage);
+    } finally {
+      setPasswordLoading(false);
     }
   };
 
@@ -431,6 +471,9 @@ const AccountSettings = () => {
                         <div className="relative group">
                           <input
                             type={showPassword ? 'text' : 'password'}
+                            name="currentPassword"
+                            value={passwordData.currentPassword}
+                            onChange={handlePasswordChange}
                             className="w-full px-6 py-4 bg-slate-50 border border-slate-100 rounded-[20px] text-sm font-bold text-slate-900 focus:outline-none focus:ring-4 focus:ring-[#D10043]/10 focus:border-[#D10043] transition-all"
                             placeholder="••••••••••••"
                           />
@@ -452,6 +495,9 @@ const AccountSettings = () => {
                         <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">New Password</label>
                         <input
                           type="password"
+                          name="newPassword"
+                          value={passwordData.newPassword}
+                          onChange={handlePasswordChange}
                           className="w-full px-6 py-4 bg-slate-50 border border-slate-100 rounded-[20px] text-sm font-bold text-slate-900 focus:outline-none focus:ring-4 focus:ring-[#D10043]/10 focus:border-[#D10043] transition-all"
                           placeholder="••••••••••••"
                         />
@@ -460,14 +506,21 @@ const AccountSettings = () => {
                         <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Confirm New Password</label>
                         <input
                           type="password"
+                          name="confirmPassword"
+                          value={passwordData.confirmPassword}
+                          onChange={handlePasswordChange}
                           className="w-full px-6 py-4 bg-slate-50 border border-slate-100 rounded-[20px] text-sm font-bold text-slate-900 focus:outline-none focus:ring-4 focus:ring-[#D10043]/10 focus:border-[#D10043] transition-all"
                           placeholder="••••••••••••"
                         />
                       </div>
                     </div>
                     <div className="flex justify-end pt-4 border-t border-slate-50">
-                      <button className="px-10 py-4 bg-slate-900 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-[#D10043] transition-all shadow-xl active:scale-[0.95] flex items-center gap-3">
-                        <ShieldCheck size={16} /> Update Security Key
+                      <button 
+                        onClick={handleUpdatePassword}
+                        disabled={passwordLoading}
+                        className="px-10 py-4 bg-slate-900 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-[#D10043] transition-all shadow-xl active:scale-[0.95] flex items-center gap-3 disabled:opacity-50"
+                      >
+                        <ShieldCheck size={16} /> {passwordLoading ? 'Updating...' : 'Update Security Key'}
                       </button>
                     </div>
                   </div>

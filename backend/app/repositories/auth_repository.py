@@ -70,6 +70,11 @@ class AuthRepository:
         return result.scalar_one_or_none()
 
     @staticmethod
+    async def get_user_by_id(db: AsyncSession, user_id: int) -> Optional[User]:
+        result = await db.execute(select(User).where(User.id == user_id))
+        return result.scalar_one_or_none()
+
+    @staticmethod
     async def create_password_reset(db: AsyncSession, reset_entry: PasswordReset) -> PasswordReset:
         db.add(reset_entry)
         await db.commit()

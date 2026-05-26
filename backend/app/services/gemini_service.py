@@ -192,65 +192,113 @@ def gemini_parse_resume(resume_text: str) -> Optional[dict]:
 
 MATCH_ANALYSIS_PROMPT = """You are an advanced AI Resume Analyzer and Job Relevance Evaluation System.
 
-Your main responsibility is to STRICTLY evaluate whether a candidate’s work experience is truly relevant to the target job position.
+Your task is to evaluate how well a candidate matches a target job position based on:
+- skills
+- work experience relevance
+- education
+- certifications
+- projects
+- overall alignment to the role
 
-CRITICAL RULE:
-Do NOT give high scores simply because the candidate has work experience.
+CRITICAL WORK EXPERIENCE RULES:
 
-Having work experience does NOT automatically mean the experience is relevant.
+The system must STRICTLY evaluate work experience relevance.
 
-The system must carefully analyze:
-- Job titles
-- Responsibilities
-- Daily tasks
-- Industry relevance
-- Technologies used
-- Technical alignment
-- Role similarity
-- Transferable skills
+Do NOT assign high scores simply because the candidate has previous jobs or many years of employment.
 
-STRICT EXPERIENCE EVALUATION:
-Work experience must be evaluated very strictly.
+Having work experience does NOT automatically mean the experience is relevant to the target job position.
 
-If the candidate’s previous jobs are unrelated to the target role, assign a LOW work experience score even if:
-- the candidate has many years of experience
-- the candidate has multiple previous jobs
-- the candidate has long employment history
+The system must prioritize:
+- relevance of responsibilities
+- similarity of tasks
+- technical alignment
+- industry alignment
+- tools and technologies used
+- domain relevance
+- actual job function alignment
+
+over simply detecting employment history.
 
 IMPORTANT:
-A resume full of unrelated jobs must NOT receive a high work experience score.
+If the candidate’s previous jobs are unrelated to the target role, the Work Experience score must remain LOW even if:
+- the candidate has many years of experience
+- the candidate has multiple previous jobs
+- the resume contains a long employment history
 
-Example:
+The system must analyze each experience individually before assigning a score.
+
+EXAMPLE:
 
 Target Job:
 Software Engineer
 
-Previous Experience:
+Resume Experience:
 - Service Crew
 - Cashier
-- Fast Food Crew
+- Fast Food Staff
 - Sales Clerk
 
 Evaluation:
-These experiences are considered irrelevant to software engineering because they do not involve programming, software development, system design, debugging, databases, or engineering-related responsibilities.
+These jobs are considered irrelevant to software engineering because they do not demonstrate:
+- programming
+- software development
+- debugging
+- databases
+- backend/frontend development
+- engineering responsibilities
+- technical system design
 
-Transferable skills such as teamwork, communication, customer service, adaptability, and multitasking may still be acknowledged.
+The system may still acknowledge transferable skills such as:
+- communication
+- teamwork
+- customer service
+- multitasking
+- adaptability
+- working under pressure
 
 However:
-Transferable skills alone must NOT produce a high work experience score.
+Transferable skills alone must NOT generate a high Work Experience score.
 
-STRICT SCORING POLICY:
-- Relevant experience = high score
-- Partially related experience = moderate or low score
-- Unrelated experience = very low score
+STRICT EXPERIENCE SCORING POLICY:
+- Highly Relevant experience = high score
+- Partially Relevant experience = moderate score
+- Irrelevant experience = low score
 
 Do NOT:
 - reward experience simply because it exists
-- inflate scores because of unrelated years of work
-- treat all job experiences equally
-- assume any employment automatically contributes to the target role
+- inflate scores due to unrelated jobs
+- assume all jobs contribute equally to the target role
+- treat unrelated experience as professional alignment
 
-Prioritize actual relevance over quantity of experience.
+The system must clearly explain WHY a score was given.
+
+The output must include:
+- relevance level of each experience
+- score contribution of each experience
+- explanation for why the experience affected the score
+- missing relevant qualifications or responsibilities
+
+The scoring explanation must be transparent and understandable in the frontend UI. Format the experience breakdown in the "experience_explanation" field of the JSON output.
+
+Example output style for experience_explanation:
+
+Work Experience Score: 8/30
+
+Experience Breakdown:
+
+1. Service Crew at McDonald's
+Relevance Level: Irrelevant
+Score Contribution: +2
+Reason:
+Demonstrated teamwork, communication, and customer service skills, but no software engineering or programming-related responsibilities were found.
+
+2. IT Support Intern
+Relevance Level: Partially Relevant
+Score Contribution: +6
+Reason:
+Demonstrated troubleshooting, technical support, and basic system knowledge relevant to technical environments.
+
+The system must provide explainable scoring and avoid black-box percentage generation.
 
 SCORING DISTRIBUTION:
 - Skills Match = 40%
@@ -259,17 +307,12 @@ SCORING DISTRIBUTION:
 - Certifications = 10%
 - Projects/Portfolio = 5%
 
-WORK EXPERIENCE RELEVANCE LEVELS:
-- Highly Relevant
-- Partially Relevant
-- Irrelevant
-
 MATCH LEVELS:
-- High Match = 80 to 100
-- Medium Match = 50 to 79
-- Low Match = 0 to 49
+- High Match = 80–100
+- Medium Match = 50–79
+- Low Match = 0–49
 
-Return the analysis in a clean structured format.
+The analysis must be fair, realistic, strict, and professionally reasoned.
 
 Return ONLY a valid JSON object (no extra text, no markdown):
 {{
@@ -278,7 +321,7 @@ Return ONLY a valid JSON object (no extra text, no markdown):
   "skills_score": <integer>,
   "skills_explanation": "<string>",
   "experience_score": <integer>,
-  "experience_explanation": "<string>",
+  "experience_explanation": "<string containing the detailed experience breakdown>",
   "relevance_level": "<string>",
   "transferable_skills": ["list", "of", "skills"],
   "education_score": <integer>,

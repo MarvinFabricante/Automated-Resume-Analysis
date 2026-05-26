@@ -146,6 +146,36 @@ class AuthService:
 
         return True
 
+    async def change_password(self, db: AsyncSession, user_id: int, current_password: str, new_password: str):
+        user = await AuthRepository.get_user_by_id(db, user_id)
+        
+        if not user:
+            raise Exception("User not found")
+            
+        if not verify_password(current_password, user.password):
+            raise Exception("Incorrect current password")
+            
+        await AuthRepository.update_user_password(db, user, hash_password(new_password))
+        
+        # Trigger notification
+        await create_notification(
+            db=db,
+            title="Password Updated",
+            message="Your account password has been successfully changed.",
+            type="system_alert",
+            target_role=user.role
+        )
+        
+        # Record in audit log
+        await record_activity(
+            db=db,
+            user_id=user.id,
+            action="CHANGE_PASSWORD",
+            details=f"User {user.email} changed their password"
+        )
+        
+        return True
+
 
 auth_service = AuthService()
 
@@ -164,3 +194,6 @@ async def request_password_reset(db: AsyncSession, email: str):
 
 async def reset_user_password(db: AsyncSession, token: str, new_password: str):
     return await auth_service.reset_user_password(db, token, new_password)
+
+async def change_password(db: AsyncSession, user_id: int, current_password: str, new_password: str):
+    return await auth_service.change_password(db, user_id, current_password, new_password)
