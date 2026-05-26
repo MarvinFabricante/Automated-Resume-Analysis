@@ -70,6 +70,8 @@ def llama_analyze_match(resume_data: dict, job_data: dict) -> Optional[dict]:
             "weaknesses": [str(s) for s in (parsed.get("weaknesses") or [])],
             "recommendations": [str(s) for s in (parsed.get("recommendations") or [])],
             "ai_summary": str(parsed.get("ai_summary", "")).strip(),
+            "relevance_level": str(parsed.get("relevance_level", "Unknown")).strip(),
+            "score_explanation": str(parsed.get("score_explanation", "")).strip(),
         }
 
         logger.info(f"Llama 3 match score for {resume_data.get('fullname')}: {result['ai_match_score']}%")

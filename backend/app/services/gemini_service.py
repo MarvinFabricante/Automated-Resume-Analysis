@@ -206,7 +206,9 @@ Return ONLY a valid JSON object (no extra text, no markdown):
   "strengths": ["2-3 specific strengths relevant to this job"],
   "weaknesses": ["2-3 specific gaps or weaknesses for this job"],
   "recommendations": ["2-3 actionable recommendations to improve candidacy"],
-  "ai_summary": "3-4 sentence overall assessment of the candidate for this specific role"
+  "ai_summary": "3-4 sentence overall assessment of the candidate for this specific role",
+  "relevance_level": "<Highly Relevant | Partially Relevant | Irrelevant>",
+  "score_explanation": "Detailed transparent explanation for how the score was distributed. Explain why previous jobs are considered relevant or irrelevant. Analyze transferable skills gained from those jobs if not directly related. Give fair scoring and avoid degrading or insulting unrelated professions."
 }}
 
 Scoring guidelines:
@@ -220,6 +222,9 @@ Scoring guidelines:
 - Penalize missing hard requirements more than missing optional skills.
 - Keep matched_skills limited to skills that are relevant to this specific job.
 - Keep missing_skills limited to important requirements that would materially affect fit.
+- For work experience, detect whether previous jobs are relevant, partially relevant, or irrelevant to the target position.
+- If experience is from a completely different industry (e.g., Service Crew applying for Software Engineer), recognize it as unrelated, but STILL evaluate transferable skills like communication, teamwork, time management, multitasking, or problem-solving under pressure. Give fair credit for these transferable traits.
+- Be transparent in the `score_explanation`. Elaborate on exactly how the percentage breakdown was calculated. Avoid degrading or insulting unrelated professions.
 
 CANDIDATE RESUME DATA:
 Name: {name}
@@ -296,6 +301,8 @@ def gemini_analyze_match(resume_data: dict, job_data: dict) -> Optional[dict]:
             "weaknesses": [str(s) for s in (parsed.get("weaknesses") or [])],
             "recommendations": [str(s) for s in (parsed.get("recommendations") or [])],
             "ai_summary": str(parsed.get("ai_summary", "")).strip(),
+            "relevance_level": str(parsed.get("relevance_level", "Unknown")).strip(),
+            "score_explanation": str(parsed.get("score_explanation", "")).strip(),
         }
 
         logger.info(f"Gemini match score for {resume_data.get('fullname')}: {result['ai_match_score']}%")

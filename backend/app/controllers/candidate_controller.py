@@ -16,21 +16,7 @@ class CandidateController(BaseController):
     prefix = "/candidate"
     tags = ["Candidates"]
 
-    @Post("/parse-resume")
-    @limiter.limit("5/minute")
-    async def parse_resume(self, request: Request, file: UploadFile = File(...), db: AsyncSession = Depends(get_db)):
-        """
-        Test endpoint to parse an uploaded resume and return extracted data.
-        """
-        extracted_data = await resume_service.parse_resume_file(db, file)
-        if not extracted_data:
-            raise HTTPException(status_code=400, detail="Failed to parse resume or unsupported file type.")
-        
-        # Invalidate HR stats cache
-        await delete_cache("resume_count:{}")
-        await delete_cache("app_stats:{}")
-        
-        return extracted_data
+
 
     @Get("/profile/{candidate_id}", response_model=CandidateResponse)
     @cache_response("candidate_profile", ttl=1800)
@@ -109,3 +95,19 @@ class CandidateController(BaseController):
 
 candidate_controller = CandidateController()
 router = candidate_controller.router
+
+@router.post("/parse-resume", tags=["Candidates"])
+@limiter.limit("5/minute")
+async def parse_resume(request: Request, file: UploadFile = File(...), db: AsyncSession = Depends(get_db)):
+    """
+    Test endpoint to parse an uploaded resume and return extracted data.
+    """
+    extracted_data = await resume_service.parse_resume_file(db, file)
+    if not extracted_data:
+        raise HTTPException(status_code=400, detail="Failed to parse resume or unsupported file type.")
+    
+    # Invalidate HR stats cache
+    await delete_cache("resume_count:{}")
+    await delete_cache("app_stats:{}")
+    
+    return extracted_data

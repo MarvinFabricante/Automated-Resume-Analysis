@@ -58,11 +58,112 @@ def _fuzzy_match(a: str, b: str, threshold: float = 0.75) -> bool:
     return ratio >= threshold
 
 
+# ── Experience Relevance Analysis ─────────────────────────────────────────
+ROLE_FAMILY_KEYWORDS = {
+    "software": ["developer", "engineer", "programmer", "coding", "software", "backend", "frontend", "fullstack", "devops", "sre", "qa", "testing", "automation"],
+    "data": ["data", "analyst", "scientist", "machine learning", "ai", "analytics", "business intelligence", "statistics", "etl"],
+    "design": ["designer", "ui", "ux", "graphic", "creative", "visual", "figma", "adobe", "illustration"],
+    "marketing": ["marketing", "seo", "content", "social media", "digital marketing", "advertising", "brand", "copywriter"],
+    "finance": ["accountant", "finance", "auditor", "bookkeeper", "financial", "cpa", "banking", "investment"],
+    "hr": ["human resources", "hr", "recruiter", "talent", "hiring", "payroll", "compensation"],
+    "sales": ["sales", "account executive", "business development", "relationship manager", "account manager"],
+    "operations": ["operations", "logistics", "supply chain", "warehouse", "inventory", "procurement"],
+    "healthcare": ["nurse", "doctor", "medical", "healthcare", "clinical", "pharmacy", "patient"],
+    "education": ["teacher", "instructor", "professor", "tutor", "education", "training", "curriculum"],
+    "service": ["cashier", "service crew", "barista", "waiter", "waitress", "food", "retail", "customer service", "fast food", "restaurant"],
+    "admin": ["administrative", "secretary", "clerk", "receptionist", "office", "assistant"],
+    "engineering": ["civil engineer", "mechanical engineer", "electrical engineer", "structural", "construction"],
+    "legal": ["lawyer", "attorney", "paralegal", "legal", "compliance"],
+    "management": ["manager", "director", "supervisor", "team lead", "head of", "vp", "chief"],
+}
+
+TRANSFERABLE_SKILLS = {
+    "teamwork": ["team", "collaborate", "coordination", "group"],
+    "communication": ["communication", "interpersonal", "presentation", "public speaking"],
+    "customer service": ["customer", "client", "service", "support", "helpdesk"],
+    "leadership": ["leader", "lead", "manage", "supervise", "mentor"],
+    "problem solving": ["problem solving", "troubleshoot", "analytical", "critical thinking"],
+    "time management": ["time management", "deadline", "prioritize", "multitask"],
+    "adaptability": ["adaptable", "flexible", "versatile", "fast-paced"],
+    "attention to detail": ["detail", "accuracy", "precise", "quality"],
+}
+
+
+def _detect_role_family(text: str) -> str:
+    if not text:
+        return ""
+    text_lower = text.lower()
+    best_family, best_count = "", 0
+    for family, keywords in ROLE_FAMILY_KEYWORDS.items():
+        count = sum(1 for kw in keywords if kw in text_lower)
+        if count > best_count:
+            best_count = count
+            best_family = family
+    return best_family
+
+
+def _identify_transferable_skills(experience_text: str) -> list[str]:
+    if not experience_text:
+        return []
+    text_lower = experience_text.lower()
+    return [name for name, indicators in TRANSFERABLE_SKILLS.items() if any(ind in text_lower for ind in indicators)]
+
+
+def calculate_experience_relevance(resume_experience: str, resume_skills: str, job_title: str, job_description: str) -> dict:
+    """
+    Evaluate how RELEVANT the candidate's work experience is to the target job.
+    Does NOT just count years — checks whether previous roles are related.
+    """
+    target_family = _detect_role_family(job_title + " " + (job_description or ""))
+    resume_text = (resume_experience or "") + " " + (resume_skills or "")
+    candidate_family = _detect_role_family(resume_text)
+    transferable = _identify_transferable_skills(resume_text)
+    job_kw = set(_tokenize_skills(job_title))
+    exp_kw = set(_tokenize_skills(resume_experience or ""))
+    direct_overlap = job_kw & exp_kw
+
+    if not resume_experience or not resume_experience.strip():
+        return {"relevance_level": "Irrelevant", "relevance_score": 0.1, "transferable_skills": transferable, "reason": "No work experience provided to evaluate relevance."}
+    if target_family and candidate_family and target_family == candidate_family:
+        return {"relevance_level": "Highly Relevant", "relevance_score": 0.9, "transferable_skills": transferable, "reason": f"Previous work experience is directly related to the {job_title} role."}
+    if direct_overlap and len(direct_overlap) >= 2:
+        return {"relevance_level": "Highly Relevant", "relevance_score": 0.85, "transferable_skills": transferable, "reason": f"Resume shares key terms with the target role: {', '.join(w.title() for w in list(direct_overlap)[:5])}."}
+    if target_family and candidate_family and target_family != candidate_family and transferable:
+        score = min(0.6, 0.25 + len(transferable) * 0.07)
+        return {"relevance_level": "Partially Relevant", "relevance_score": round(score, 2), "transferable_skills": transferable, "reason": f"Different field but demonstrates transferable skills: {', '.join(transferable[:5])}."}
+    if transferable:
+        return {"relevance_level": "Partially Relevant", "relevance_score": 0.3, "transferable_skills": transferable, "reason": f"Limited relevance but transferable skills identified: {', '.join(transferable[:4])}."}
+    return {"relevance_level": "Irrelevant", "relevance_score": 0.1, "transferable_skills": [], "reason": f"Previous work experience has little connection to the {job_title} role."}
+
+
+def calculate_education_match(resume_education: str, job_description: str, education_req: str = None) -> dict:
+    """Compare candidate's education level against job requirements."""
+    required_level = _extract_education_requirement(education_req or "") or _extract_education_requirement(job_description)
+    candidate_level = _extract_education_requirement(resume_education or "")
+
+    if not required_level:
+        score = 1.0 if candidate_level else 0.7
+        return {"score": score, "required_education": "Not specified", "candidate_education": candidate_level or "Not specified", "reason": "No specific education requirement found in job description."}
+    if not candidate_level:
+        return {"score": 0.3, "required_education": required_level, "candidate_education": "Not specified", "reason": f"Job requires {required_level} level education, but none detected in resume."}
+
+    req_rank = DEGREE_HIERARCHY.get(required_level, 0)
+    cand_rank = DEGREE_HIERARCHY.get(candidate_level, 0)
+    if cand_rank >= req_rank:
+        return {"score": 1.0, "required_education": required_level, "candidate_education": candidate_level, "reason": f"Your {candidate_level} degree meets or exceeds the {required_level} requirement."}
+    elif cand_rank == req_rank - 1:
+        return {"score": 0.7, "required_education": required_level, "candidate_education": candidate_level, "reason": f"Your {candidate_level} degree is close to the required {required_level} level."}
+    else:
+        score = max(0.2, round(cand_rank / req_rank, 2) if req_rank > 0 else 0.2)
+        return {"score": score, "required_education": required_level, "candidate_education": candidate_level, "reason": f"Your {candidate_level} degree does not meet the {required_level} requirement."}
+
+
 def calculate_skills_match(resume_skills: str, job_skills: str) -> dict:
     """
     Compare resume skills against job requirements.
     Returns match ratio and lists of matched/missing skills.
     """
+
     resume_tokens = _tokenize_skills(resume_skills)
     job_tokens = _tokenize_skills(job_skills)
     
@@ -309,15 +410,43 @@ def calculate_match_score(resume_data: dict, job, use_ai: bool = False) -> dict:
     job_desc = (job.description or "") + " " + (job.skills_requirements or "")
     experience_result = calculate_experience_match(resume_years, job_desc, getattr(job, 'experience_requirements', None))
 
-    resume_certs = resume_data.get("certifications", "") or resume_data.get("skills", "")
-    education_result = calculate_certifications_match(resume_certs, job_desc, getattr(job, 'certifications_requirements', None))
+    # Experience RELEVANCE analysis (not just years)
+    resume_experience = resume_data.get("experience", "")
+    relevance_result = calculate_experience_relevance(
+        resume_experience, resume_skills, job.job_title, job_desc
+    )
+    # Combine years score with relevance score (relevance weighs more)
+    combined_exp_score = (
+        experience_result["score"] * 0.35 +
+        relevance_result["relevance_score"] * 0.65
+    )
 
-    # Weighted rule-based composite: Skills 40% + Experience 40% + Certifications 20%
+    # Education matching (separate from certifications)
+    resume_education = resume_data.get("education", "")
+    education_result = calculate_education_match(
+        resume_education, job_desc, getattr(job, 'education_requirements', None)
+    )
+
+    # Certifications matching
+    resume_certs = resume_data.get("certifications", "") or resume_data.get("skills", "")
+    certs_result = calculate_certifications_match(resume_certs, job_desc, getattr(job, 'certifications_requirements', None))
+
+    # Projects score placeholder (rule-based: check if portfolio/projects mentioned)
+    projects_score = 0.5  # default neutral
+    resume_text_lower = (resume_data.get("experience", "") + " " + resume_data.get("skills", "")).lower()
+    if any(kw in resume_text_lower for kw in ["project", "portfolio", "github", "gitlab", "open source", "capstone"]):
+        projects_score = 0.8
+
+    # ── Weighted rule-based composite ─────────────────────────────────────────
+    # Skills 40% + Experience Relevance 30% + Education 15% + Certifications 10% + Projects 5%
     rule_match_pct = (
         skills_result["score"] * 0.40 +
-        experience_result["score"] * 0.40 +
-        education_result["score"] * 0.20
+        combined_exp_score * 0.30 +
+        education_result["score"] * 0.15 +
+        certs_result["score"] * 0.10 +
+        projects_score * 0.05
     ) * 100
+
 
     # ── Gemini AI scoring ─────────────────────────────────────────────────────
     ai_result = None
@@ -385,6 +514,8 @@ def calculate_match_score(resume_data: dict, job, use_ai: bool = False) -> dict:
         ai_summary = ai_result.get("ai_summary", "")
         strengths = ai_result.get("strengths", [])
         weaknesses = ai_result.get("weaknesses", [])
+        relevance_level = ai_result.get("relevance_level", "Unknown")
+        score_explanation = ai_result.get("score_explanation", "")
 
     else:
         # Fallback: pure rule-based
@@ -398,6 +529,8 @@ def calculate_match_score(resume_data: dict, job, use_ai: bool = False) -> dict:
         ai_summary = ""
         strengths = []
         weaknesses = []
+        relevance_level = "Unknown"
+        score_explanation = ""
 
     # ── Build reason strings ──────────────────────────────────────────────────
     total_job_skills = len(skills_result["matched"]) + len(skills_result["missing"])
@@ -444,6 +577,8 @@ def calculate_match_score(resume_data: dict, job, use_ai: bool = False) -> dict:
         "strengths": strengths,
         "weaknesses": weaknesses,
         "ai_powered": ai_available,
+        "relevance_level": relevance_level,
+        "score_explanation": score_explanation,
     }
 
 
