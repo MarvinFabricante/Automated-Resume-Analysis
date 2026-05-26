@@ -190,50 +190,112 @@ def gemini_parse_resume(resume_text: str) -> Optional[dict]:
 # 2. Job Match Analysis via Gemini
 # ---------------------------------------------------------------------------
 
-MATCH_ANALYSIS_PROMPT = """
-You are an expert HR recruiter and ATS (Applicant Tracking System) analyst.
+MATCH_ANALYSIS_PROMPT = """You are an advanced AI Resume Analyzer and Job Relevance Evaluation System.
 
-Analyze how well this candidate's resume matches the job description and return a precise evaluation.
+Your main responsibility is to STRICTLY evaluate whether a candidate’s work experience is truly relevant to the target job position.
+
+CRITICAL RULE:
+Do NOT give high scores simply because the candidate has work experience.
+
+Having work experience does NOT automatically mean the experience is relevant.
+
+The system must carefully analyze:
+- Job titles
+- Responsibilities
+- Daily tasks
+- Industry relevance
+- Technologies used
+- Technical alignment
+- Role similarity
+- Transferable skills
+
+STRICT EXPERIENCE EVALUATION:
+Work experience must be evaluated very strictly.
+
+If the candidate’s previous jobs are unrelated to the target role, assign a LOW work experience score even if:
+- the candidate has many years of experience
+- the candidate has multiple previous jobs
+- the candidate has long employment history
+
+IMPORTANT:
+A resume full of unrelated jobs must NOT receive a high work experience score.
+
+Example:
+
+Target Job:
+Software Engineer
+
+Previous Experience:
+- Service Crew
+- Cashier
+- Fast Food Crew
+- Sales Clerk
+
+Evaluation:
+These experiences are considered irrelevant to software engineering because they do not involve programming, software development, system design, debugging, databases, or engineering-related responsibilities.
+
+Transferable skills such as teamwork, communication, customer service, adaptability, and multitasking may still be acknowledged.
+
+However:
+Transferable skills alone must NOT produce a high work experience score.
+
+STRICT SCORING POLICY:
+- Relevant experience = high score
+- Partially related experience = moderate or low score
+- Unrelated experience = very low score
+
+Do NOT:
+- reward experience simply because it exists
+- inflate scores because of unrelated years of work
+- treat all job experiences equally
+- assume any employment automatically contributes to the target role
+
+Prioritize actual relevance over quantity of experience.
+
+SCORING DISTRIBUTION:
+- Skills Match = 40%
+- Work Experience Relevance = 30%
+- Education = 15%
+- Certifications = 10%
+- Projects/Portfolio = 5%
+
+WORK EXPERIENCE RELEVANCE LEVELS:
+- Highly Relevant
+- Partially Relevant
+- Irrelevant
+
+MATCH LEVELS:
+- High Match = 80 to 100
+- Medium Match = 50 to 79
+- Low Match = 0 to 49
+
+Return the analysis in a clean structured format.
 
 Return ONLY a valid JSON object (no extra text, no markdown):
 {{
-  "ai_match_score": <integer 0-100: overall match percentage>,
-  "skills_score": <integer 0-100: how well candidate skills match job requirements>,
-  "experience_score": <integer 0-100: how well candidate experience matches requirements>,
-  "education_score": <integer 0-100: how well candidate education matches requirements>,
-  "matched_skills": ["list", "of", "matched", "skills"],
-  "missing_skills": ["list", "of", "critical", "missing", "skills"],
-  "strengths": ["2-3 specific strengths relevant to this job"],
-  "weaknesses": ["2-3 specific gaps or weaknesses for this job"],
-  "recommendations": ["2-3 actionable recommendations to improve candidacy"],
-  "ai_summary": "3-4 sentence overall assessment of the candidate for this specific role",
-  "relevance_level": "<Highly Relevant | Partially Relevant | Irrelevant>",
-  "score_explanation": "Detailed transparent explanation for how the score was distributed. Explain why previous jobs are considered relevant or irrelevant. Analyze transferable skills gained from those jobs if not directly related. Give fair scoring and avoid degrading or insulting unrelated professions."
+  "ai_match_score": <integer>,
+  "match_level": "<string>",
+  "skills_score": <integer>,
+  "skills_explanation": "<string>",
+  "experience_score": <integer>,
+  "experience_explanation": "<string>",
+  "relevance_level": "<string>",
+  "transferable_skills": ["list", "of", "skills"],
+  "education_score": <integer>,
+  "education_explanation": "<string>",
+  "certification_score": <integer>,
+  "certification_explanation": "<string>",
+  "projects_score": <integer>,
+  "projects_explanation": "<string>",
+  "strengths": ["list", "of", "strengths"],
+  "weaknesses": ["list", "of", "weaknesses"],
+  "ai_summary": "<string>",
+  "matched_skills": ["list", "of", "skills"],
+  "missing_skills": ["list", "of", "skills"],
+  "recommendations": ["list", "of", "recommendations"]
 }}
 
-Scoring guidelines:
-- Be strict and accurate. A 90+ score means an exceptional match.
-- 70-89: Good match with minor gaps.
-- 50-69: Partial match with significant gaps.
-- Below 50: Poor match.
-- Separate required qualifications from preferred/nice-to-have qualifications.
-- Consider semantic similarity, equivalent tools, and transferable skills, not just exact keywords.
-- Do not award credit for skills or experience that are not supported by the candidate data.
-- Penalize missing hard requirements more than missing optional skills.
-- Keep matched_skills limited to skills that are relevant to this specific job.
-- Keep missing_skills limited to important requirements that would materially affect fit.
-- For work experience, detect whether previous jobs are relevant, partially relevant, or irrelevant to the target position.
-- If experience is from a completely different industry (e.g., Service Crew applying for Software Engineer), recognize it as unrelated, but STILL evaluate transferable skills like communication, teamwork, time management, multitasking, or problem-solving under pressure. Give fair credit for these transferable traits.
-- Be transparent in the `score_explanation`. Elaborate on exactly how the percentage breakdown was calculated. Avoid degrading or insulting unrelated professions.
-
-CANDIDATE RESUME DATA:
-Name: {name}
-Skills: {skills}
-Years of Experience: {years_exp}
-Highest Degree: {degree}
-Experience: {experience}
-
-JOB DESCRIPTION:
+TARGET JOB:
 Title: {job_title}
 Department: {department}
 Required Skills: {job_skills}
@@ -241,7 +303,12 @@ Job Description: {job_desc}
 Experience Requirements: {exp_req}
 Education Requirements: {edu_req}
 
-Return ONLY the JSON. No markdown, no explanation.
+RESUME:
+Name: {name}
+Skills: {skills}
+Years of Experience: {years_exp}
+Highest Degree: {degree}
+Experience: {experience}
 """
 
 
@@ -292,17 +359,25 @@ def gemini_analyze_match(resume_data: dict, job_data: dict) -> Optional[dict]:
 
         result = {
             "ai_match_score": clamp(parsed.get("ai_match_score")),
+            "match_level": str(parsed.get("match_level", "Unknown")).strip(),
             "ai_skills_score": clamp(parsed.get("skills_score")),
+            "skills_explanation": str(parsed.get("skills_explanation", "")).strip(),
             "ai_experience_score": clamp(parsed.get("experience_score")),
+            "experience_explanation": str(parsed.get("experience_explanation", "")).strip(),
+            "relevance_level": str(parsed.get("relevance_level", "Unknown")).strip(),
+            "transferable_skills": [str(s) for s in (parsed.get("transferable_skills") or [])],
             "ai_education_score": clamp(parsed.get("education_score")),
-            "matched_skills": [str(s) for s in (parsed.get("matched_skills") or [])],
-            "missing_skills": [str(s) for s in (parsed.get("missing_skills") or [])],
+            "education_explanation": str(parsed.get("education_explanation", "")).strip(),
+            "ai_certification_score": clamp(parsed.get("certification_score")),
+            "certification_explanation": str(parsed.get("certification_explanation", "")).strip(),
+            "ai_projects_score": clamp(parsed.get("projects_score")),
+            "projects_explanation": str(parsed.get("projects_explanation", "")).strip(),
             "strengths": [str(s) for s in (parsed.get("strengths") or [])],
             "weaknesses": [str(s) for s in (parsed.get("weaknesses") or [])],
-            "recommendations": [str(s) for s in (parsed.get("recommendations") or [])],
             "ai_summary": str(parsed.get("ai_summary", "")).strip(),
-            "relevance_level": str(parsed.get("relevance_level", "Unknown")).strip(),
-            "score_explanation": str(parsed.get("score_explanation", "")).strip(),
+            "matched_skills": [str(s) for s in (parsed.get("matched_skills") or [])],
+            "missing_skills": [str(s) for s in (parsed.get("missing_skills") or [])],
+            "recommendations": [str(s) for s in (parsed.get("recommendations") or [])],
         }
 
         logger.info(f"Gemini match score for {resume_data.get('fullname')}: {result['ai_match_score']}%")

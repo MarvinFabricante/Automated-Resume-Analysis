@@ -61,17 +61,25 @@ def llama_analyze_match(resume_data: dict, job_data: dict) -> Optional[dict]:
 
         result = {
             "ai_match_score": clamp(parsed.get("ai_match_score")),
+            "match_level": str(parsed.get("match_level", "Unknown")).strip(),
             "ai_skills_score": clamp(parsed.get("skills_score")),
+            "skills_explanation": str(parsed.get("skills_explanation", "")).strip(),
             "ai_experience_score": clamp(parsed.get("experience_score")),
+            "experience_explanation": str(parsed.get("experience_explanation", "")).strip(),
+            "relevance_level": str(parsed.get("relevance_level", "Unknown")).strip(),
+            "transferable_skills": [str(s) for s in (parsed.get("transferable_skills") or [])],
             "ai_education_score": clamp(parsed.get("education_score")),
-            "matched_skills": [str(s) for s in (parsed.get("matched_skills") or [])],
-            "missing_skills": [str(s) for s in (parsed.get("missing_skills") or [])],
+            "education_explanation": str(parsed.get("education_explanation", "")).strip(),
+            "ai_certification_score": clamp(parsed.get("certification_score")),
+            "certification_explanation": str(parsed.get("certification_explanation", "")).strip(),
+            "ai_projects_score": clamp(parsed.get("projects_score")),
+            "projects_explanation": str(parsed.get("projects_explanation", "")).strip(),
             "strengths": [str(s) for s in (parsed.get("strengths") or [])],
             "weaknesses": [str(s) for s in (parsed.get("weaknesses") or [])],
-            "recommendations": [str(s) for s in (parsed.get("recommendations") or [])],
             "ai_summary": str(parsed.get("ai_summary", "")).strip(),
-            "relevance_level": str(parsed.get("relevance_level", "Unknown")).strip(),
-            "score_explanation": str(parsed.get("score_explanation", "")).strip(),
+            "matched_skills": [str(s) for s in (parsed.get("matched_skills") or [])],
+            "missing_skills": [str(s) for s in (parsed.get("missing_skills") or [])],
+            "recommendations": [str(s) for s in (parsed.get("recommendations") or [])],
         }
 
         logger.info(f"Llama 3 match score for {resume_data.get('fullname')}: {result['ai_match_score']}%")

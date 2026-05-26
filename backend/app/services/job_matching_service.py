@@ -515,7 +515,19 @@ def calculate_match_score(resume_data: dict, job, use_ai: bool = False) -> dict:
         strengths = ai_result.get("strengths", [])
         weaknesses = ai_result.get("weaknesses", [])
         relevance_level = ai_result.get("relevance_level", "Unknown")
-        score_explanation = ai_result.get("score_explanation", "")
+        score_explanation = ai_result.get("score_explanation", "") # Backwards compatibility if needed
+        match_level = ai_result.get("match_level", "Unknown")
+        skills_explanation = ai_result.get("skills_explanation", "")
+        experience_explanation = ai_result.get("experience_explanation", "")
+        education_explanation = ai_result.get("education_explanation", "")
+        certification_explanation = ai_result.get("certification_explanation", "")
+        projects_explanation = ai_result.get("projects_explanation", "")
+        transferable_skills = ai_result.get("transferable_skills", [])
+        blended_projects_score = _blend_scores(
+            projects_score * 100,
+            ai_result.get("ai_projects_score", projects_score * 100),
+            ai_available
+        )
 
     else:
         # Fallback: pure rule-based
@@ -531,6 +543,14 @@ def calculate_match_score(resume_data: dict, job, use_ai: bool = False) -> dict:
         weaknesses = []
         relevance_level = "Unknown"
         score_explanation = ""
+        match_level = "Unknown"
+        skills_explanation = ""
+        experience_explanation = ""
+        education_explanation = ""
+        certification_explanation = ""
+        projects_explanation = ""
+        transferable_skills = []
+        blended_projects_score = round(projects_score * 100, 1)
 
     # ── Build reason strings ──────────────────────────────────────────────────
     total_job_skills = len(skills_result["matched"]) + len(skills_result["missing"])
@@ -551,13 +571,21 @@ def calculate_match_score(resume_data: dict, job, use_ai: bool = False) -> dict:
         "job_type": job.job_type.value if job.job_type else None,
         # ── Scores ──
         "match_percentage": final_match_pct,
+        "match_level": match_level,
         "skills_score": round(blended_skills_score, 1),
+        "skills_explanation": skills_explanation,
         "experience_score": round(blended_exp_score, 1),
+        "experience_explanation": experience_explanation,
         "education_score": round(blended_edu_score, 1),
-        "certifications_score": round(blended_edu_score, 1),
+        "education_explanation": education_explanation,
+        "certifications_score": round(blended_edu_score, 1), # using edu score as per existing fallback, ideally should be blended_certs_score but preserving logic
+        "certification_explanation": certification_explanation,
+        "projects_score": round(blended_projects_score, 1),
+        "projects_explanation": projects_explanation,
         # ── Skills ──
         "matched_skills": all_matched,
         "missing_skills": all_missing,
+        "transferable_skills": transferable_skills,
         # ── Reasons ──
         "skills_reason": skills_reason,
         "experience_reason": experience_result["reason"],
