@@ -92,15 +92,13 @@ const PreviewAndVerifyPage = () => {
               Verify the information extracted from <span className="text-slate-900 font-bold">{state?.fileName || "your resume"}</span>.
             </p>
           </div>
-          {jobId !== 'smart' && (
-            <button
-              id="btn-edit-details"
-              onClick={() => navigate(`/applicationform/${jobId}`, { state: { ...extractedData, fileName: state?.fileName } })}
-              className="flex items-center text-sm font-bold text-[#D60041] hover:underline bg-pink-50 px-4 py-2 rounded-xl transition-colors"
-            >
-              <Edit3 size={16} className="mr-2" /> Edit Details
-            </button>
-          )}
+          <button
+            id="btn-edit-details"
+            onClick={() => navigate(`/applicationform/${jobId}`, { state: { ...extractedData, fileName: state?.fileName, matchData } })}
+            className="flex items-center text-sm font-bold text-[#D60041] hover:underline bg-pink-50 px-4 py-2 rounded-xl transition-colors"
+          >
+            <Edit3 size={16} className="mr-2" /> Edit Details
+          </button>
         </div>
 
         <div className="space-y-6">

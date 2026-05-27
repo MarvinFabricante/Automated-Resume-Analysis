@@ -69,6 +69,7 @@ const CandidateProfileForm = () => {
   React.useEffect(() => {
     const calculateMatchScore = async () => {
       if (!jobId || (!formData.skills.length && !formData.relevance && !formData.degree)) return;
+      if (jobId === 'smart') return;
       setIsCalculating(true);
       try {
         const payload = {
@@ -138,6 +139,46 @@ const CandidateProfileForm = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     
+    if (!jobId || jobId === 'smart') {
+      const updatedExtractedData = {
+        fullname: formData.fullName,
+        email: formData.email,
+        phone: formData.phone,
+        location: formData.location,
+        experience: formData.jobTitle + (formData.company ? " | " + formData.company : ""),
+        years_experience: formData.relevance ? (formData.relevance.match(/\d+/) ? parseInt(formData.relevance.match(/\d+/)[0], 10) : 0) : 0,
+        relevance: formData.relevance,
+        highest_degree: formData.degree,
+        education: formData.college,
+        skills: formData.skills.join(' | '),
+        file_url: location.state?.resumeUrl || null
+      };
+
+      try {
+        const payload = {
+          skills: formData.skills.join(', '),
+          experience: formData.relevance,
+          education: formData.degree,
+          highest_degree: formData.degree,
+          fullname: formData.fullName,
+          location: formData.location
+        };
+        const matchRes = await candidateService.matchData(null, payload);
+        const matches = matchRes.data.results || [];
+        navigate(`/candidate/smart-matches`, {
+          state: {
+            matches,
+            extractedData: updatedExtractedData,
+            fileName: location.state?.fileName
+          }
+        });
+      } catch (err) {
+        console.error("Failed to fetch smart matches:", err);
+        alert("Failed to fetch job matches. Please try again.");
+      }
+      return;
+    }
+
     const payload = {
       job_id: jobId,
       candidate_name: formData.fullName,
@@ -424,7 +465,7 @@ const CandidateProfileForm = () => {
               ) : (
                 <Save size={20} />
               )}
-              {isSubmitting ? 'Submitting...' : 'Submit Final Application'}
+              {isSubmitting ? 'Submitting...' : ((!jobId || jobId === 'smart') ? 'Find Job Matches' : 'Submit Final Application')}
             </button>
           </div>
 

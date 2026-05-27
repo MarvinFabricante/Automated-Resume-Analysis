@@ -9,7 +9,12 @@ import {
   CircleDot,
   Target,
   Cpu,
-  GraduationCap
+  GraduationCap,
+  Zap,
+  ChevronDown,
+  ChevronUp,
+  CheckCircle2,
+  XCircle
 } from 'lucide-react';
 import Header from '../../components/layout/Header';
 import Sidebar from '../../components/layout/Sidebar';
@@ -18,6 +23,7 @@ const CandidateSmartMatchResult = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { matches, extractedData, fileName } = location.state || {};
+  const [expandedJobId, setExpandedJobId] = React.useState(null);
 
   useEffect(() => {
     window.scrollTo(0, 0);
@@ -32,6 +38,11 @@ const CandidateSmartMatchResult = () => {
     if (pct >= 70) return '#22c55e';
     if (pct >= 40) return '#f59e0b';
     return '#ef4444';
+  };
+
+  const toggleAnalysis = (jobId, e) => {
+    e.stopPropagation();
+    setExpandedJobId(expandedJobId === jobId ? null : jobId);
   };
 
   return (
@@ -58,6 +69,35 @@ const CandidateSmartMatchResult = () => {
               We've analyzed your profile against our open positions. Here are the roles where your skills will shine the most.
             </p>
           </div>
+
+          {sortedMatches.length > 0 && (
+            <div className="bg-white p-8 md:p-10 rounded-[40px] border border-slate-100 shadow-xl shadow-slate-200/40 mb-12 relative overflow-hidden group animate-in fade-in slide-in-from-bottom-4 duration-700 delay-100">
+              <div className="absolute top-0 right-0 w-64 h-64 bg-red-50 rounded-bl-[200px] opacity-20 group-hover:opacity-40 transition-opacity duration-700 pointer-events-none"></div>
+              <h2 className="text-2xl font-black text-slate-900 mb-6 flex items-center gap-3 relative z-10">
+                <Zap className="text-[#D60041] p-2 bg-pink-50 rounded-xl" size={40} />
+                Top Match Analysis
+              </h2>
+              <div className="text-slate-600 space-y-6 relative z-10">
+                <p className="text-lg leading-relaxed">
+                  <strong className="text-slate-900">Why "{sortedMatches[0].job_title}" is your top match ({Math.round(sortedMatches[0].match_percentage)}%):</strong>{' '}
+                  {sortedMatches[0].ai_summary || `Your profile strongly aligns with the core requirements of this role. Your skills score of ${Math.round(sortedMatches[0].skills_score)}% and experience score of ${Math.round(sortedMatches[0].experience_score)}% were the highest among all available positions.`}
+                </p>
+                
+                {sortedMatches.length > 1 && (
+                  <p className="text-base leading-relaxed p-5 bg-slate-50 rounded-2xl border border-slate-100">
+                    <strong className="text-slate-900">Why other roles scored lower:</strong> Other recommended positions, such as <em className="font-semibold text-slate-800">{sortedMatches[1].job_title}</em> ({Math.round(sortedMatches[1].match_percentage)}%), had more gaps in required skills or mismatched experience levels compared to your current resume.
+                  </p>
+                )}
+
+                {sortedMatches[0].recommendations?.length > 0 && (
+                  <div className="p-6 bg-gradient-to-br from-pink-50 to-white rounded-2xl border border-pink-100 shadow-sm">
+                    <h4 className="text-sm font-black uppercase tracking-widest text-[#D60041] mb-3">Recommendation to Improve Your Fit</h4>
+                    <p className="text-slate-700 font-medium">{sortedMatches[0].recommendations[0]}</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
 
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-8 mb-12 items-stretch animate-in fade-in slide-in-from-bottom-6 duration-700 delay-200">
             {sortedMatches.length > 0 ? (
@@ -99,12 +139,13 @@ const CandidateSmartMatchResult = () => {
                             className="transition-all duration-1000 ease-out"
                           />
                         </svg>
-                        <div className="absolute inset-0 flex flex-col items-center justify-center">
-                          <span className="text-[10px] font-black text-slate-900 leading-none uppercase tracking-wider text-center">
-                            {match.match_percentage >= 70 ? 'Strong' : match.match_percentage >= 40 ? 'Good' : 'Potential'}
+                        <div className="absolute inset-0 flex flex-col items-center justify-center pt-1">
+                          <span className="text-lg font-black text-slate-900 leading-none tracking-tight text-center">
+                            {Math.round(match.match_percentage)}%
                           </span>
                         </div>
                       </div>
+                      <span className="text-[8px] font-black uppercase tracking-widest text-[#D60041] mt-2">Job Fit Score</span>
                     </div>
                   </div>
 
@@ -140,6 +181,77 @@ const CandidateSmartMatchResult = () => {
                         {match.job_type || "Full-time"}
                       </div>
                     </div>
+                  </div>
+
+                  {/* Detailed Analysis Toggle */}
+                  <div className="mb-8 relative z-10">
+                    <button 
+                      onClick={(e) => toggleAnalysis(match.job_id, e)}
+                      className="w-full flex items-center justify-between p-4 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-2xl transition-colors font-bold text-sm text-slate-700"
+                    >
+                      <span>View Detailed Analysis</span>
+                      {expandedJobId === match.job_id ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+                    </button>
+                    
+                    {expandedJobId === match.job_id && (
+                      <div className="mt-4 p-6 bg-white border border-slate-200 rounded-3xl shadow-sm space-y-6 animate-in slide-in-from-top-2 duration-300" onClick={(e) => e.stopPropagation()}>
+                        
+                        {/* Detailed Score Breakdown */}
+                        <div>
+                          <h4 className="text-[10px] font-black uppercase tracking-widest text-[#D60041] mb-4 flex items-center gap-2"><Target size={14}/> Score Breakdown</h4>
+                          <div className="space-y-4">
+                            <div className="bg-slate-50 p-4 rounded-xl">
+                              <p className="text-sm font-bold text-slate-900 flex justify-between">Skills Match <span className="text-[#D60041]">{Math.round(match.skills_score)}%</span></p>
+                              <p className="text-xs text-slate-500 mt-1">{match.skills_reason}</p>
+                            </div>
+                            <div className="bg-slate-50 p-4 rounded-xl">
+                              <p className="text-sm font-bold text-slate-900 flex justify-between">Experience Match <span className="text-[#D60041]">{Math.round(match.experience_score)}%</span></p>
+                              <p className="text-xs text-slate-500 mt-1">{match.experience_reason}</p>
+                            </div>
+                            <div className="bg-slate-50 p-4 rounded-xl">
+                              <p className="text-sm font-bold text-slate-900 flex justify-between">Education Match <span className="text-[#D60041]">{Math.round(match.education_score)}%</span></p>
+                              <p className="text-xs text-slate-500 mt-1">{match.education_reason}</p>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Missing / Matched Skills */}
+                        <div>
+                          <h4 className="text-[10px] font-black uppercase tracking-widest text-[#D60041] mb-4 flex items-center gap-2"><Cpu size={14}/> Skills Gap Analysis</h4>
+                          {match.matched_skills?.length > 0 && (
+                            <div className="mb-4">
+                              <p className="text-xs font-bold text-green-600 mb-2 flex items-center gap-1"><CheckCircle2 size={12}/> Matched Skills</p>
+                              <div className="flex flex-wrap gap-1.5">
+                                {match.matched_skills.map((s, i) => (
+                                  <span key={i} className="px-2 py-1 bg-green-50 text-green-700 border border-green-100 rounded-md text-[10px] font-bold">{s}</span>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                          {match.missing_skills?.length > 0 && (
+                            <div>
+                              <p className="text-xs font-bold text-red-500 mb-2 flex items-center gap-1"><XCircle size={12}/> Missing Skills</p>
+                              <div className="flex flex-wrap gap-1.5">
+                                {match.missing_skills.map((s, i) => (
+                                  <span key={i} className="px-2 py-1 bg-red-50 text-red-600 border border-red-100 rounded-md text-[10px] font-bold">{s}</span>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Experience Relevance Breakdown */}
+                        {match.experience_explanation && (
+                          <div>
+                            <h4 className="text-[10px] font-black uppercase tracking-widest text-[#D60041] mb-4 flex items-center gap-2"><Briefcase size={14}/> Experience Relevance</h4>
+                            <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 text-xs text-slate-600 whitespace-pre-wrap font-medium font-mono leading-relaxed overflow-x-auto max-h-60 overflow-y-auto">
+                              {match.experience_explanation}
+                            </div>
+                          </div>
+                        )}
+
+                      </div>
+                    )}
                   </div>
 
                   <div className="flex gap-4 relative z-10 mt-auto">

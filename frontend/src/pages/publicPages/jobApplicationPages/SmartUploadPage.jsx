@@ -26,6 +26,7 @@ const SmartUploadPage = () => {
   const [cooldown, setCooldown] = useState(0);
   const [isTermsAccepted, setIsTermsAccepted] = useState(false);
   const [showTermsModal, setShowTermsModal] = useState(false);
+  const [extractedData, setExtractedData] = useState(null);
   const fileInputRef = useRef(null);
   const navigate = useNavigate();
 
@@ -83,18 +84,8 @@ const SmartUploadPage = () => {
       
       const extracted = response.data;
       setUploadProgress(100);
+      setExtractedData(extracted);
       setIsComplete(true);
-
-      setTimeout(() => {
-        navigate('/preview-and-verify/smart', { 
-          state: { 
-            fileName: file.name, 
-            isSmart: true,
-            extractedData: extracted,
-            matches: null
-          } 
-        });
-      }, 500);
       
     } catch (error) {
       console.error("Error parsing resume:", error);
@@ -220,6 +211,7 @@ const SmartUploadPage = () => {
                   </div>
                 )}
 
+                {isComplete && (
                   <div className="space-y-8 animate-in fade-in zoom-in-95 duration-500">
                     <div className="bg-green-50 border border-green-100 p-8 rounded-[32px] flex items-center gap-6 shadow-sm">
                       <div className="bg-white text-green-500 p-4 rounded-2xl shadow-md border border-green-50">
@@ -230,7 +222,76 @@ const SmartUploadPage = () => {
                         <p className="text-slate-600 font-medium">Your credentials are ready. Match analysis will run after this review step.</p>
                       </div>
                     </div>
+
+                    {/* Extracted Data Display */}
+                    <div className="bg-slate-50 border border-slate-100 rounded-[32px] p-8 space-y-6">
+                      <div className="flex flex-col md:flex-row gap-8 items-start">
+                        {extractedData?.profile_image_url && (
+                          <div className="shrink-0">
+                            <img 
+                              src={extractedData.profile_image_url} 
+                              alt="Profile" 
+                              className="w-32 h-32 rounded-2xl object-cover border-4 border-white shadow-lg"
+                            />
+                          </div>
+                        )}
+                        <div className="flex-1">
+                          <h5 className="text-[10px] font-black uppercase tracking-[0.2em] text-[#D60041] mb-4">Extracted Profile Data</h5>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-10 gap-y-6">
+                            {[
+                              { label: "Full Name", value: extractedData?.fullname },
+                              { label: "Email Address", value: extractedData?.email },
+                              { label: "Phone Number", value: extractedData?.phone },
+                              { label: "Location", value: extractedData?.location },
+                              { label: "Experience", value: extractedData?.experience },
+                              { label: "Total Years", value: extractedData?.years_experience },
+                              { label: "Education", value: extractedData?.education },
+                              { label: "Highest Degree", value: extractedData?.highest_degree }
+                            ].map((item, idx) => (
+                              <div key={idx} className="space-y-1">
+                                <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">{item.label}</span>
+                                <p className="text-sm font-bold text-slate-900 truncate">
+                                  {item.value || "null"}
+                                </p>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <button
+                      onClick={() => navigate('/applicationform/smart', { 
+                        state: { 
+                          fileName: file.name, 
+                          isSmart: true,
+                          extractedData,
+                          personal: {
+                            name: extractedData?.fullname,
+                            email: extractedData?.email,
+                            phone: extractedData?.phone,
+                            location: extractedData?.location
+                          },
+                          experience: {
+                            title: extractedData?.experience ? extractedData.experience.split('|')[0]?.trim() : "",
+                            company: extractedData?.experience ? extractedData.experience.split('|')[1]?.trim() : "",
+                            relevance: extractedData?.years_experience ? `${extractedData.years_experience} years` : ""
+                          },
+                          education: {
+                            degree: extractedData?.highest_degree,
+                            college: extractedData?.education
+                          },
+                          skills: extractedData?.skills ? extractedData.skills.split(' | ') : [],
+                          resumeUrl: extractedData?.file_url
+                        } 
+                      })}
+                      className="w-full bg-slate-900 hover:bg-[#D60041] text-white py-5 rounded-[24px] font-bold flex items-center justify-center gap-3 transition-all shadow-xl hover:shadow-pink-100 active:scale-95"
+                    >
+                      <span>Proceed to Edit Information</span>
+                      <ArrowRight size={20} />
+                    </button>
                   </div>
+                )}
 
                 {!isUploading && !isComplete && (
                   <div className="space-y-8">

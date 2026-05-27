@@ -275,10 +275,34 @@ const CandidateSmartUpload = () => {
                     </div>
 
                     <button
-                      onClick={() => navigate(jobId ? `/candidate/preview-profile/${jobId}` : '/candidate/preview-profile', { state: { fileName: file.name, job: { title: jobTitle }, extractedData, matchData } })}
+                      onClick={() => navigate('/candidate/update-profile/smart', { 
+                        state: { 
+                          fileName: file.name, 
+                          job: { title: jobTitle }, 
+                          extractedData, 
+                          matchData,
+                          personal: {
+                            name: extractedData?.fullname,
+                            email: extractedData?.email,
+                            phone: extractedData?.phone,
+                            location: extractedData?.location
+                          },
+                          experience: {
+                            title: extractedData?.experience ? extractedData.experience.split('|')[0]?.trim() : "",
+                            company: extractedData?.experience ? extractedData.experience.split('|')[1]?.trim() : "",
+                            relevance: extractedData?.years_experience ? `${extractedData.years_experience} years` : ""
+                          },
+                          education: {
+                            degree: extractedData?.highest_degree,
+                            college: extractedData?.education
+                          },
+                          skills: extractedData?.skills ? extractedData.skills.split(' | ') : [],
+                          resumeUrl: extractedData?.file_url
+                        } 
+                      })}
                       className="w-full bg-slate-900 hover:bg-[#D60041] text-white py-6 rounded-[28px] font-black text-lg flex items-center justify-center gap-4 transition-all shadow-2xl shadow-slate-200 hover:shadow-pink-200 hover:-translate-y-1 active:scale-95 group"
                     >
-                      <span>Review Profile Updates</span>
+                      <span>Proceed to Edit Information</span>
                       <ArrowRight size={24} className="group-hover:translate-x-2 transition-transform" />
                     </button>
                   </div>

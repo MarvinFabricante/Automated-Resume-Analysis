@@ -56,6 +56,7 @@ const ApplicationForm = () => {
   useEffect(() => {
     const calculateMatchScore = async () => {
       if (!jobId || (!formData.skills.length && !formData.relevance && !formData.degree)) return;
+      if (jobId === 'smart') return; // Do not calculate score for a specific job if it's a smart upload
       setIsCalculating(true);
       try {
         const payload = {
@@ -116,6 +117,47 @@ const ApplicationForm = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    
+    if (jobId === 'smart') {
+      const updatedExtractedData = {
+        fullname: formData.fullName,
+        email: formData.email,
+        phone: formData.phone,
+        location: formData.location,
+        experience: formData.jobTitle + (formData.company ? " | " + formData.company : ""),
+        years_experience: formData.relevance ? (formData.relevance.match(/\d+/) ? parseInt(formData.relevance.match(/\d+/)[0], 10) : 0) : 0,
+        relevance: formData.relevance,
+        highest_degree: formData.degree,
+        education: formData.college,
+        skills: formData.skills.join(' | '),
+        profile_image_url: location.state?.profile_image_url || null
+      };
+
+      try {
+        const payload = {
+          skills: formData.skills.join(', '),
+          experience: formData.relevance,
+          education: formData.degree,
+          highest_degree: formData.degree,
+          fullname: formData.fullName,
+          location: formData.location
+        };
+        const matchRes = await candidateService.matchData(null, payload);
+        const matches = matchRes.data.results || [];
+        navigate(`/smart-matches`, {
+          state: {
+            matches,
+            extractedData: updatedExtractedData,
+            fileName: location.state?.fileName
+          }
+        });
+      } catch (err) {
+        console.error("Failed to fetch smart matches:", err);
+        alert("Failed to fetch job matches. Please try again.");
+      }
+      return;
+    }
+
     try {
       await candidateService.submitApplication({
         job_id: jobId,
@@ -386,7 +428,7 @@ const ApplicationForm = () => {
               className="px-10 py-4 bg-[#D10043] hover:bg-slate-900 text-white rounded-[20px] font-bold flex items-center justify-center gap-3 transition-all shadow-xl shadow-pink-100 active:scale-[0.98]"
             >
               <Save size={20} />
-              Save Application Details
+              {jobId === 'smart' ? 'Find Job Matches' : 'Save Application Details'}
             </button>
           </div>
 
