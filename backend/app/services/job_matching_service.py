@@ -421,26 +421,172 @@ def calculate_experience_relevance(resume_experience: str, resume_skills: str, j
     }
 
 
+def _find_education_context(text: str) -> str:
+    """Extract sentences from job description that likely contain education requirements."""
+    if not text:
+        return ""
+    sentences = re.split(r'(?<=[.!?])\s+', text)
+    ed_sentences = []
+    level_pattern = r'\b(bachelor|master|doctorate|ph\.?d|degree|university|college|graduated)\b'
+    for s in sentences:
+        if re.search(level_pattern, s, re.IGNORECASE):
+            ed_sentences.append(s)
+    return " ".join(ed_sentences)
+
+
+def _extract_core_subject(text: str) -> str:
+    """Extract the core field of study by removing generic degree terms."""
+    if not text:
+        return ""
+    level_pattern = r'\b(bachelor\'?s?|master\'?s?|doctorate|ph\.?d|associate\'?s?|diploma|degree|of|in|the|at|bs|ba|ms|ma|bsc|msc|b\.s\.?|m\.s\.?|b\.a\.?|m\.a\.?|undergraduate|graduate|postgraduate|majoring|major)\b'
+    text = re.sub(level_pattern, ' ', text, flags=re.IGNORECASE)
+    text = re.sub(r'[^\w\s]', ' ', text)
+    words = [w for w in text.lower().split() if len(w) > 2]
+    return " ".join(words)
+
+
 def calculate_education_match(resume_education: str, job_description: str, education_req: str = None) -> dict:
-    """Compare candidate's education level against job requirements."""
-    required_level = _extract_education_requirement(education_req or "") or _extract_education_requirement(job_description)
-    candidate_level = _extract_education_requirement(resume_education or "")
+    """
+    Compare candidate's education against job requirements with STRICT matching.
+    Only assigns percentage scores if the degree field is exactly or highly relevant.
+    """
+    req_text = education_req if education_req else _find_education_context(job_description)
+    cand_text = resume_education or ""
+    
+    required_level = _extract_education_requirement(req_text)
+    candidate_level = _extract_education_requirement(cand_text)
 
-    if not required_level:
+    if not required_level and not req_text.strip():
         score = 1.0 if candidate_level else 0.7
-        return {"score": score, "required_education": "Not specified", "candidate_education": candidate_level or "Not specified", "reason": "No specific education requirement found in job description."}
-    if not candidate_level:
-        return {"score": 0.3, "required_education": required_level, "candidate_education": "Not specified", "reason": f"Job requires {required_level} level education, but none detected in resume."}
+        return {
+            "score": score, 
+            "required_education": "Not specified", 
+            "candidate_education": candidate_level or "Not specified", 
+            "reason": "No specific education requirement found in job description."
+        }
 
+    if not candidate_level and not cand_text.strip():
+        return {
+            "score": 0.0, 
+            "required_education": required_level or req_text, 
+            "candidate_education": "Not specified", 
+            "reason": f"Job requires education ({required_level or 'specified in description'}), but no education details were found in the resume."
+        }
+        
     req_rank = DEGREE_HIERARCHY.get(required_level, 0)
     cand_rank = DEGREE_HIERARCHY.get(candidate_level, 0)
-    if cand_rank >= req_rank:
-        return {"score": 1.0, "required_education": required_level, "candidate_education": candidate_level, "reason": f"Your {candidate_level} degree meets or exceeds the {required_level} requirement."}
-    elif cand_rank == req_rank - 1:
-        return {"score": 0.7, "required_education": required_level, "candidate_education": candidate_level, "reason": f"Your {candidate_level} degree is close to the required {required_level} level."}
+    
+    level_met = False
+    level_reason = ""
+    if req_rank > 0 and cand_rank > 0:
+        if cand_rank >= req_rank:
+            level_met = True
+            level_reason = f"Candidate meets the required {required_level} degree level."
+        else:
+            level_met = False
+            level_reason = f"Candidate's {candidate_level} is below the required {required_level}."
     else:
-        score = max(0.2, round(cand_rank / req_rank, 2) if req_rank > 0 else 0.2)
-        return {"score": score, "required_education": required_level, "candidate_education": candidate_level, "reason": f"Your {candidate_level} degree does not meet the {required_level} requirement."}
+        level_met = True
+        level_reason = "Degree level inferred from context."
+
+    req_subject = _extract_core_subject(req_text)
+    cand_subject = _extract_core_subject(cand_text)
+
+    if not req_subject:
+        if level_met:
+            return {
+                "score": 1.0, 
+                "required_education": required_level or "Degree", 
+                "candidate_education": candidate_level or cand_text, 
+                "reason": f"Required degree level met. No specific major was required. {level_reason}"
+            }
+        else:
+            return {
+                "score": 0.0, 
+                "required_education": required_level or "Degree", 
+                "candidate_education": candidate_level or cand_text, 
+                "reason": f"Required degree level not met. {level_reason}"
+            }
+
+    if not cand_subject:
+        return {
+            "score": 0.0, 
+            "required_education": req_text, 
+            "candidate_education": cand_text, 
+            "reason": f"Job requires a specific major (related to '{req_subject}') but candidate education only mentions generic terms."
+        }
+
+    req_tokens = set(req_subject.split())
+    cand_tokens = set(cand_subject.split())
+    
+    generic_subject_words = {"science", "arts", "applied", "general", "course", "program"}
+    req_core = req_tokens - generic_subject_words
+    cand_core = cand_tokens - generic_subject_words
+    
+    if not req_core:
+        req_core = req_tokens
+    if not cand_core:
+        cand_core = cand_tokens
+
+    overlap = req_core & cand_core
+    overlap_ratio = len(overlap) / len(req_core) if req_core else 0.0
+
+    semantic_sim = _compute_semantic_similarity(req_subject, cand_subject)
+    
+    RELATED_MAJORS = {
+        "computer science": ["information technology", "software engineering", "computer engineering", "information systems", "computing"],
+        "information technology": ["computer science", "software engineering", "computer engineering", "information systems", "computing"],
+        "business": ["management", "administration", "commerce", "finance", "accounting", "marketing"],
+        "engineering": ["mechanical", "electrical", "civil", "chemical", "industrial", "software"],
+    }
+    
+    is_related = False
+    for req_field, related_list in RELATED_MAJORS.items():
+        if all(w in req_subject for w in req_field.split()):
+            for rel in related_list:
+                if all(w in cand_subject for w in rel.split()):
+                    is_related = True
+                    break
+                    
+    score = 0.0
+    match_quality = "Irrelevant"
+    reason_details = []
+    
+    if level_met:
+        if overlap_ratio >= 0.6 or (len(overlap) >= 2):
+            score = 1.0
+            match_quality = "Exact/Strong Match"
+            reason_details.append(f"Major strictly aligns with requirements (Matched terms: {', '.join(overlap)}).")
+        elif is_related or (semantic_sim >= 0.6 and len(overlap) >= 1):
+            score = 0.8
+            match_quality = "Highly Relevant Match"
+            reason_details.append(f"Major is highly relevant to the required field.")
+        elif overlap_ratio > 0 or semantic_sim >= 0.4:
+            score = 0.5
+            match_quality = "Partial Match"
+            reason_details.append(f"Major has partial relevance to the required field.")
+        else:
+            score = 0.0
+            match_quality = "Mismatch"
+            reason_details.append(f"Candidate's major ('{cand_subject}') does not match the required field ('{req_subject}').")
+    else:
+        if overlap_ratio >= 0.5 or is_related:
+            score = 0.5
+            match_quality = "Lower Degree Level"
+            reason_details.append(f"Major is relevant, but degree level is lower than required.")
+        else:
+            score = 0.0
+            match_quality = "Mismatch"
+            reason_details.append(f"Neither degree level nor major match requirements.")
+
+    final_reason = f"{match_quality}: {level_reason} " + " ".join(reason_details)
+    
+    return {
+        "score": score,
+        "required_education": required_level or req_text,
+        "candidate_education": candidate_level or cand_text,
+        "reason": final_reason.strip()
+    }
 
 
 def calculate_skills_match(resume_skills: str, job_skills: str) -> dict:
