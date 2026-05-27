@@ -258,12 +258,24 @@ const CandidateSmartMatchResult = () => {
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
-                        // For candidates, we might want to stay in the dashboard context
-                        navigate(`/candidate/findjobs`); 
+                        navigate(`/job-details/${match.job_id}`, { 
+                          state: { 
+                            job: { 
+                              job_id: match.job_id, 
+                              title: match.job_title, 
+                              department: match.department, 
+                              location: match.location, 
+                              job_type: match.job_type 
+                            }, 
+                            extractedData, 
+                            matchData: match, 
+                            fileName 
+                          } 
+                        });
                       }}
                       className="flex-1 py-4 rounded-2xl border border-slate-200 font-bold text-sm text-slate-700 hover:bg-slate-50 hover:border-slate-300 transition-all active:scale-95"
                     >
-                      Browse Jobs
+                      View Full Description
                     </button>
                     <button
                       onClick={(e) => {
