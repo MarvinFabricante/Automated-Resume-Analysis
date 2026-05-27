@@ -60,21 +60,22 @@ def _fuzzy_match(a: str, b: str, threshold: float = 0.75) -> bool:
 
 # ── Experience Relevance Analysis ─────────────────────────────────────────
 ROLE_FAMILY_KEYWORDS = {
-    "software": ["developer", "engineer", "programmer", "coding", "software", "backend", "frontend", "fullstack", "devops", "sre", "qa", "testing", "automation"],
-    "data": ["data", "analyst", "scientist", "machine learning", "ai", "analytics", "business intelligence", "statistics", "etl"],
-    "design": ["designer", "ui", "ux", "graphic", "creative", "visual", "figma", "adobe", "illustration"],
-    "marketing": ["marketing", "seo", "content", "social media", "digital marketing", "advertising", "brand", "copywriter"],
-    "finance": ["accountant", "finance", "auditor", "bookkeeper", "financial", "cpa", "banking", "investment"],
-    "hr": ["human resources", "hr", "recruiter", "talent", "hiring", "payroll", "compensation"],
-    "sales": ["sales", "account executive", "business development", "relationship manager", "account manager"],
-    "operations": ["operations", "logistics", "supply chain", "warehouse", "inventory", "procurement"],
-    "healthcare": ["nurse", "doctor", "medical", "healthcare", "clinical", "pharmacy", "patient"],
-    "education": ["teacher", "instructor", "professor", "tutor", "education", "training", "curriculum"],
-    "service": ["cashier", "service crew", "barista", "waiter", "waitress", "food", "retail", "customer service", "fast food", "restaurant"],
-    "admin": ["administrative", "secretary", "clerk", "receptionist", "office", "assistant"],
-    "engineering": ["civil engineer", "mechanical engineer", "electrical engineer", "structural", "construction"],
-    "legal": ["lawyer", "attorney", "paralegal", "legal", "compliance"],
+    "software": ["developer", "engineer", "programmer", "coding", "software", "backend", "frontend", "fullstack", "devops", "sre", "qa", "testing", "automation", "api", "microservices", "ci/cd", "git", "agile", "scrum", "it support", "technical support", "systems", "deployment", "infrastructure", "it"],
+    "data": ["data", "analyst", "scientist", "machine learning", "ai", "analytics", "business intelligence", "statistics", "etl", "big data", "data pipeline", "deep learning"],
+    "design": ["designer", "ui", "ux", "graphic", "creative", "visual", "figma", "adobe", "illustration", "wireframe", "prototype"],
+    "marketing": ["marketing", "seo", "content", "social media", "digital marketing", "advertising", "brand", "copywriter", "campaign"],
+    "finance": ["accountant", "finance", "auditor", "bookkeeper", "financial", "cpa", "banking", "investment", "tax", "budget"],
+    "hr": ["human resources", "hr", "recruiter", "talent", "hiring", "payroll", "compensation", "onboarding"],
+    "sales": ["sales", "account executive", "business development", "relationship manager", "account manager", "revenue"],
+    "operations": ["operations", "logistics", "supply chain", "warehouse", "inventory", "procurement", "shipping"],
+    "healthcare": ["nurse", "doctor", "medical", "healthcare", "clinical", "pharmacy", "patient", "diagnosis"],
+    "education": ["teacher", "instructor", "professor", "tutor", "education", "training", "curriculum", "academic"],
+    "service": ["cashier", "service crew", "barista", "waiter", "waitress", "food", "retail", "customer service", "fast food", "restaurant", "counter", "crew member", "food service"],
+    "admin": ["administrative", "secretary", "clerk", "receptionist", "office", "assistant", "filing", "clerical"],
+    "engineering": ["civil engineer", "mechanical engineer", "electrical engineer", "structural", "construction", "cad", "blueprint"],
+    "legal": ["lawyer", "attorney", "paralegal", "legal", "compliance", "litigation"],
     "management": ["manager", "director", "supervisor", "team lead", "head of", "vp", "chief"],
+    "manufacturing": ["factory", "assembly", "production", "manufacturing", "quality control", "machine operator", "factory worker", "laborer"],
 }
 
 TRANSFERABLE_SKILLS = {
@@ -87,6 +88,9 @@ TRANSFERABLE_SKILLS = {
     "adaptability": ["adaptable", "flexible", "versatile", "fast-paced"],
     "attention to detail": ["detail", "accuracy", "precise", "quality"],
 }
+
+# Maximum score transferable skills alone can contribute (out of 10)
+_TRANSFERABLE_ONLY_CAP = 2
 
 
 def _detect_role_family(text: str) -> str:
@@ -102,6 +106,19 @@ def _detect_role_family(text: str) -> str:
     return best_family
 
 
+def _detect_all_role_families(text: str) -> dict[str, int]:
+    """Return a dict mapping each role family to the number of keyword hits."""
+    if not text:
+        return {}
+    text_lower = text.lower()
+    result = {}
+    for family, keywords in ROLE_FAMILY_KEYWORDS.items():
+        count = sum(1 for kw in keywords if kw in text_lower)
+        if count > 0:
+            result[family] = count
+    return result
+
+
 def _identify_transferable_skills(experience_text: str) -> list[str]:
     if not experience_text:
         return []
@@ -109,11 +126,76 @@ def _identify_transferable_skills(experience_text: str) -> list[str]:
     return [name for name, indicators in TRANSFERABLE_SKILLS.items() if any(ind in text_lower for ind in indicators)]
 
 
+def _compute_semantic_similarity(text_a: str, text_b: str) -> float:
+    """
+    Use spaCy document vectors to compute a semantic similarity score between
+    two text fragments. Returns 0.0 if NLP is unavailable, the model has no
+    real word vectors (e.g. en_core_web_sm), or vectors are empty.
+
+    NOTE: en_core_web_sm does NOT ship with word vectors; its .similarity()
+    uses context-sensitive tensors that give misleadingly high scores for
+    unrelated text.  We detect this and return 0.0 to avoid score inflation.
+    """
+    try:
+        from app.extractors.nlp.nlp_engine import get_doc, get_nlp
+        import warnings
+
+        # Check if the loaded model actually has word vectors
+        nlp = get_nlp()
+        model_name = nlp.meta.get("name", "")
+        # Small models (e.g. en_core_web_sm) don't have real word vectors
+        if model_name.endswith("sm"):
+            return 0.0
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            doc_a = get_doc(text_a)
+            doc_b = get_doc(text_b)
+            if doc_a.vector_norm == 0 or doc_b.vector_norm == 0:
+                return 0.0
+            sim = doc_a.similarity(doc_b)
+            return max(0.0, min(1.0, sim))
+    except Exception:
+        return 0.0
+
+
+def _count_job_keyword_hits(entry_text: str, job_keywords: set[str]) -> tuple[int, list[str]]:
+    """
+    Count how many job-requirement keywords appear in an experience entry.
+    Returns (count, list_of_matched_keywords).
+    """
+    entry_lower = entry_text.lower()
+    matched = [kw for kw in job_keywords if kw in entry_lower and len(kw) > 2]
+    return len(matched), matched
+
+
+def _validate_verb_objects_against_job(verbs_objs: list[tuple[str, str]], job_text_lower: str) -> list[tuple[str, str]]:
+    """
+    Filter verb-object pairs to only those whose object terms appear in the
+    job description/requirements. This prevents crediting unrelated actions.
+    """
+    relevant = []
+    for verb, obj in verbs_objs:
+        obj_tokens = [t.strip().lower() for t in obj.split() if len(t.strip()) > 2]
+        if any(tok in job_text_lower for tok in obj_tokens):
+            relevant.append((verb, obj))
+    return relevant
+
+
 def calculate_experience_relevance(resume_experience: str, resume_skills: str, job_title: str, job_description: str) -> dict:
     """
     Evaluate how RELEVANT the candidate's work experience is to the target job.
-    Uses a hybrid approach (NLP, spaCy, rule-based) to analyze each entry individually
-    for explainable and transparent scoring.
+
+    STRICT SCORING POLICY:
+    ─────────────────────
+    • Irrelevant experience contributes ZERO to the experience score.
+    • Only relevant entries count toward the denominator/maximum score.
+    • Transferable skills alone are capped at a small contribution.
+    • Semantic similarity (spaCy vectors) gates borderline decisions.
+    • Each entry receives a transparent explanation of why it was scored.
+
+    Uses a hybrid approach (NLP, spaCy semantic similarity, keyword matching,
+    rule-based validation) to analyze each entry individually.
     """
     try:
         from app.extractors.nlp.nlp_engine import get_doc, get_verb_object_pairs
@@ -122,95 +204,220 @@ def calculate_experience_relevance(resume_experience: str, resume_skills: str, j
         nlp_available = False
 
     job_text = job_title + " " + (job_description or "")
+    job_text_lower = job_text.lower()
     target_family = _detect_role_family(job_text)
+    target_families = _detect_all_role_families(job_text)
     job_kw = set(_tokenize_skills(job_text))
 
     exp_entries = [e.strip() for e in (resume_experience or "").split("|") if e.strip()]
     if not exp_entries:
         return {
-            "relevance_level": "Irrelevant", 
-            "relevance_score": 0.1, 
-            "transferable_skills": [], 
+            "relevance_level": "Irrelevant",
+            "relevance_score": 0.0,
+            "transferable_skills": [],
             "reason": "No work experience provided to evaluate relevance.",
-            "detailed_breakdown": "No work experience provided."
+            "detailed_breakdown": "No work experience provided.",
+            "relevant_count": 0,
+            "irrelevant_count": 0,
+            "total_entries": 0,
         }
 
-    total_score = 0
-    max_possible_score = len(exp_entries) * 10
+    relevant_scores = []     # Scores from Highly Relevant / Partially Relevant entries only
     all_transferable = set()
     breakdown_texts = []
+    relevant_count = 0
+    irrelevant_count = 0
 
     for i, entry in enumerate(exp_entries):
         candidate_family = _detect_role_family(entry)
+        candidate_families = _detect_all_role_families(entry)
         entry_kw = set(_tokenize_skills(entry))
         direct_overlap = job_kw & entry_kw
         transferable = _identify_transferable_skills(entry)
         all_transferable.update(transferable)
 
+        # Semantic similarity between the experience entry and the job description
+        semantic_sim = _compute_semantic_similarity(entry, job_text) if nlp_available else 0.0
+
+        # Job keyword hits inside the entry
+        kw_hit_count, kw_hits = _count_job_keyword_hits(entry, job_kw)
+
+        # NLP verb-object pair extraction & validation
         verbs_objs = []
+        relevant_verbs_objs = []
         if nlp_available:
             entry_doc = get_doc(entry)
             verbs_objs = get_verb_object_pairs(entry_doc)
+            relevant_verbs_objs = _validate_verb_objects_against_job(verbs_objs, job_text_lower)
 
+        # ── Multi-signal relevance classification ─────────────────────────
         score_contrib = 0
         relevance = "Irrelevant"
         reasons = []
 
-        # Scoring logic
-        if target_family and candidate_family and target_family == candidate_family:
+        # Check if there is family overlap (including secondary families)
+        family_match = (target_family and candidate_family and target_family == candidate_family)
+        secondary_family_overlap = bool(set(target_families.keys()) & set(candidate_families.keys())) if not family_match else False
+
+        if family_match:
+            # ── Highly Relevant: same domain ──
             relevance = "Highly Relevant"
-            score_contrib += 8
-            reasons.append(f"Domain alignment: Role is in the '{candidate_family.title()}' family, matching the target job.")
-        elif direct_overlap and len(direct_overlap) >= 2:
+            score_contrib = 8
+            reasons.append(
+                f"✅ Domain alignment: Role is in the '{candidate_family.title()}' family, "
+                f"directly matching the target job '{target_family.title()}'."
+            )
+            # Bonus for strong keyword or semantic overlap
+            if len(direct_overlap) >= 3 or semantic_sim >= 0.6:
+                score_contrib = min(10, score_contrib + 1)
+                reasons.append(f"✅ Additional technical alignment detected (keyword overlap: {len(direct_overlap)}, semantic similarity: {semantic_sim:.0%}).")
+
+        elif len(direct_overlap) >= 3 or (len(direct_overlap) >= 2 and semantic_sim >= 0.5):
+            # ── Highly Relevant: strong technical/keyword overlap even if family differs ──
             relevance = "Highly Relevant"
-            score_contrib += 7
-            reasons.append(f"Technical alignment: Strong overlap in technologies/skills ({', '.join(list(direct_overlap)[:3])}).")
-        elif target_family and candidate_family and target_family != candidate_family and transferable:
+            score_contrib = 7
+            overlap_sample = ', '.join(list(direct_overlap)[:4])
+            reasons.append(
+                f"✅ Strong technical alignment: {len(direct_overlap)} overlapping keywords/technologies "
+                f"({overlap_sample}), semantic similarity: {semantic_sim:.0%}."
+            )
+
+        elif secondary_family_overlap and (len(direct_overlap) >= 1 or semantic_sim >= 0.45):
+            # ── Partially Relevant: related domain with some evidence ──
+            overlap_families = set(target_families.keys()) & set(candidate_families.keys())
             relevance = "Partially Relevant"
-            score_contrib += 4
-            reasons.append(f"Domain mismatch: Role is in '{candidate_family.title()}', but demonstrates transferable skills.")
-        elif transferable:
+            score_contrib = 4
+            reasons.append(
+                f"⚠️ Related domain overlap in: {', '.join(f.title() for f in overlap_families)}. "
+                f"Keyword overlap: {len(direct_overlap)}, semantic similarity: {semantic_sim:.0%}."
+            )
+
+        elif semantic_sim >= 0.55 and kw_hit_count >= 2:
+            # ── Partially Relevant: semantic similarity with keyword evidence ──
             relevance = "Partially Relevant"
-            score_contrib += 3
-            reasons.append("Limited technical relevance but valuable transferable skills identified.")
+            score_contrib = 4
+            reasons.append(
+                f"⚠️ Moderate semantic similarity ({semantic_sim:.0%}) with "
+                f"{kw_hit_count} job keyword hits ({', '.join(kw_hits[:3])})."
+            )
+
+        elif len(relevant_verbs_objs) >= 2:
+            # ── Partially Relevant: matched responsibilities via NLP ──
+            relevance = "Partially Relevant"
+            score_contrib = 3
+            vo_text = ", ".join([f"{v} {o}" for v, o in relevant_verbs_objs[:3]])
+            reasons.append(
+                f"⚠️ Matched job-relevant responsibilities via NLP analysis: {vo_text}."
+            )
+
+        elif transferable and (semantic_sim >= 0.35 or len(direct_overlap) >= 1):
+            # ── Minimally Relevant: only transferable skills with weak signal ──
+            relevance = "Partially Relevant"
+            score_contrib = min(_TRANSFERABLE_ONLY_CAP, len(transferable))
+            reasons.append(
+                f"⚠️ Limited relevance. Transferable skills detected but no direct "
+                f"technical or domain alignment. Score capped at {_TRANSFERABLE_ONLY_CAP}/10."
+            )
+
         else:
+            # ── Irrelevant: no meaningful signal ──
             relevance = "Irrelevant"
-            score_contrib += 1
-            reasons.append("No technical tools or development technologies detected.")
-            reasons.append("Experience is not aligned with the target position.")
+            score_contrib = 0  # STRICT: zero contribution
+            if candidate_family:
+                reasons.append(
+                    f"❌ Experience is in the '{candidate_family.title()}' domain, "
+                    f"which is not related to the target '{target_family.title() if target_family else 'Unknown'}' domain."
+                )
+            else:
+                reasons.append("❌ No recognizable professional domain detected in this entry.")
+            reasons.append(
+                "❌ No technical tools, relevant technologies, or domain-specific "
+                "responsibilities were found that align with the target position."
+            )
+            if transferable:
+                reasons.append(
+                    f"ℹ️ Transferable skills noted ({', '.join(transferable)}), but they are "
+                    f"insufficient on their own to generate a score for this specific role."
+                )
 
-        if transferable:
-            reasons.append(f"Transferable skills detected: {', '.join(transferable)}.")
+        # ── Add supplementary detail ─────────────────────────────────────
+        if transferable and relevance != "Irrelevant":
+            reasons.append(f"ℹ️ Transferable skills: {', '.join(transferable)}.")
 
-        if verbs_objs:
-            vo_text = ", ".join([f"{v} {o}" for v, o in verbs_objs[:3]])
-            reasons.append(f"Matched responsibilities (NLP): {vo_text}.")
-        elif not direct_overlap:
-            reasons.append("No specific aligned responsibilities found.")
+        if relevant_verbs_objs and relevance != "Irrelevant":
+            vo_text = ", ".join([f"{v} {o}" for v, o in relevant_verbs_objs[:3]])
+            reasons.append(f"ℹ️ Job-relevant responsibilities (NLP): {vo_text}.")
+        elif verbs_objs and not relevant_verbs_objs and relevance != "Irrelevant":
+            reasons.append("ℹ️ Responsibilities were detected but none align with the target job requirements.")
 
-        total_score += score_contrib
+        if semantic_sim > 0:
+            reasons.append(f"ℹ️ Semantic similarity to job description: {semantic_sim:.0%}.")
+
+        # ── Track scores ─────────────────────────────────────────────────
+        if relevance in ("Highly Relevant", "Partially Relevant"):
+            relevant_scores.append(score_contrib)
+            relevant_count += 1
+        else:
+            irrelevant_count += 1
 
         breakdown_texts.append(
             f"{i+1}. {entry}\n"
-            f"Relevance Level: {relevance}\n"
-            f"Score Contribution: +{score_contrib}/10\n"
-            f"Reason:\n- " + "\n- ".join(reasons) + "\n"
+            f"   Relevance Level: {relevance}\n"
+            f"   Score Contribution: +{score_contrib}/10"
+            f"{' (NOT counted — irrelevant)' if relevance == 'Irrelevant' else ''}\n"
+            f"   Reason:\n   - " + "\n   - ".join(reasons) + "\n"
         )
 
-    final_score = min(1.0, total_score / max_possible_score) if max_possible_score > 0 else 0.1
+    # ── Final score: only relevant entries count ─────────────────────────
+    if relevant_scores:
+        # Score is average of relevant entries, normalized to [0, 1]
+        avg_relevant = sum(relevant_scores) / len(relevant_scores)
+        final_score = min(1.0, avg_relevant / 10.0)
+    else:
+        # No relevant experience at all
+        final_score = 0.0
 
-    overall_level = "Irrelevant"
-    if final_score >= 0.7:
+    # ── Determine overall level ─────────────────────────────────────────
+    if final_score >= 0.65:
         overall_level = "Highly Relevant"
-    elif final_score >= 0.4:
+    elif final_score >= 0.30:
         overall_level = "Partially Relevant"
+    else:
+        overall_level = "Irrelevant"
+
+    # ── Summary line ────────────────────────────────────────────────────
+    summary_parts = [
+        f"Evaluated {len(exp_entries)} experience(s) using Hybrid NLP + Semantic analysis.",
+        f"Relevant: {relevant_count} | Irrelevant: {irrelevant_count}.",
+    ]
+    if irrelevant_count > 0 and relevant_count == 0:
+        summary_parts.append(
+            "None of the candidate's work experience is relevant to the target position. "
+            "Experience score reflects zero qualifying entries."
+        )
+    elif irrelevant_count > 0:
+        summary_parts.append(
+            f"{irrelevant_count} experience(s) were excluded from scoring because they are "
+            f"not relevant to the target job."
+        )
 
     return {
         "relevance_level": overall_level,
         "relevance_score": round(final_score, 2),
         "transferable_skills": list(all_transferable),
-        "reason": f"Evaluated {len(exp_entries)} experiences using Hybrid NLP analysis.",
-        "detailed_breakdown": "Work Experience Breakdown (Hybrid Evaluation):\n\n" + "\n".join(breakdown_texts)
+        "reason": " ".join(summary_parts),
+        "detailed_breakdown": (
+            "Work Experience Breakdown (Strict Relevance Evaluation):\n"
+            f"Target Position: {job_title}\n"
+            f"Target Domain: {target_family.title() if target_family else 'General'}\n"
+            f"Relevant Entries: {relevant_count}/{len(exp_entries)} | "
+            f"Irrelevant (excluded): {irrelevant_count}/{len(exp_entries)}\n"
+            f"Relevance Score: {final_score:.0%}\n\n"
+            + "\n".join(breakdown_texts)
+        ),
+        "relevant_count": relevant_count,
+        "irrelevant_count": irrelevant_count,
+        "total_entries": len(exp_entries),
     }
 
 
@@ -493,11 +700,19 @@ def calculate_match_score(resume_data: dict, job, use_ai: bool = False) -> dict:
     relevance_result = calculate_experience_relevance(
         resume_experience, resume_skills, job.job_title, job_desc
     )
-    # Combine years score with relevance score (relevance weighs more)
-    combined_exp_score = (
-        experience_result["score"] * 0.35 +
-        relevance_result["relevance_score"] * 0.65
-    )
+    # STRICT COMBINED SCORE: Relevance dominates at 75%.
+    # If zero relevant experience, the years score is heavily penalized to
+    # prevent unrelated job histories from inflating the percentage.
+    relevance_score = relevance_result["relevance_score"]
+    has_any_relevant = relevance_result.get("relevant_count", 0) > 0
+    if not has_any_relevant:
+        # All experience is irrelevant: cap the combined score very low
+        combined_exp_score = min(0.10, experience_result["score"] * 0.10)
+    else:
+        combined_exp_score = (
+            experience_result["score"] * 0.25 +
+            relevance_score * 0.75
+        )
 
     # Education matching (separate from certifications)
     resume_education = resume_data.get("education", "")
@@ -559,9 +774,12 @@ def calculate_match_score(resume_data: dict, job, use_ai: bool = False) -> dict:
             ai_result.get("ai_skills_score", skills_result["score"] * 100),
             ai_available
         )
+        # Use the relevance-adjusted combined score as the rule-based component,
+        # NOT the raw years score.  This ensures irrelevant experience cannot
+        # inflate the blended percentage.
         blended_exp_score = _blend_scores(
-            experience_result["score"] * 100,
-            ai_result.get("ai_experience_score", experience_result["score"] * 100),
+            combined_exp_score * 100,
+            ai_result.get("ai_experience_score", combined_exp_score * 100),
             ai_available
         )
         blended_edu_score = _blend_scores(
@@ -618,7 +836,8 @@ def calculate_match_score(resume_data: dict, job, use_ai: bool = False) -> dict:
     else:
         # Fallback: pure rule-based
         blended_skills_score = round(skills_result["score"] * 100, 1)
-        blended_exp_score = round(experience_result["score"] * 100, 1)
+        # Use relevance-adjusted combined score, not raw years
+        blended_exp_score = round(combined_exp_score * 100, 1)
         blended_edu_score = round(education_result["score"] * 100, 1)
         final_match_pct = min(100.0, round(rule_match_pct, 1))
         all_matched = [s.title() for s in skills_result["matched"]]
@@ -649,6 +868,24 @@ def calculate_match_score(resume_data: dict, job, use_ai: bool = False) -> dict:
     exp_entries = [e.strip() for e in experience_text.split("|") if e.strip()] if experience_text else []
     relevant_experience = " | ".join(exp_entries[:3]) if exp_entries else "No specific roles extracted."
 
+    # Build a relevance-aware experience reason
+    rel_count = relevance_result.get("relevant_count", 0)
+    irr_count = relevance_result.get("irrelevant_count", 0)
+    total_exp = relevance_result.get("total_entries", len(exp_entries))
+    experience_reason_strict = experience_result["reason"]
+    if total_exp > 0:
+        if rel_count == 0:
+            experience_reason_strict = (
+                f"None of the {total_exp} work experience(s) are relevant to this position. "
+                f"Experience score reflects zero qualifying entries."
+            )
+        elif irr_count > 0:
+            experience_reason_strict = (
+                f"{rel_count} of {total_exp} experience(s) are relevant. "
+                f"{irr_count} irrelevant experience(s) were excluded from scoring. "
+                + experience_result["reason"]
+            )
+
     return {
         "job_id": job.job_id,
         "job_title": job.job_title,
@@ -674,7 +911,8 @@ def calculate_match_score(resume_data: dict, job, use_ai: bool = False) -> dict:
         "transferable_skills": transferable_skills,
         # ── Reasons ──
         "skills_reason": skills_reason,
-        "experience_reason": experience_result["reason"],
+        "experience_reason": experience_reason_strict,
+        "experience_relevance_summary": relevance_result.get("reason", ""),
         "education_reason": education_result.get("reason", ""),
         "certifications_reason": education_result["reason"],
         # ── Experience ──
