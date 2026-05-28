@@ -4,7 +4,7 @@ import {
   X, Briefcase, MapPin, Building2, DollarSign, 
   ListChecks, FileText, Loader2, CheckCircle2, 
   AlertCircle, ChevronRight, ChevronLeft, Info,
-  Trophy, Target, Sparkles, GraduationCap
+  Trophy, Target, Sparkles, GraduationCap, Award
 } from 'lucide-react';
 
 import { useUpdateJobMutation } from '../../../redux/api/apiSlice';
@@ -24,6 +24,7 @@ const EditJobModal = ({ isOpen, onClose, onSuccess, jobData }) => {
     skills_requirements: '',
     education_requirements: '',
     experience_requirements: '',
+    certifications_requirements: '',
     is_active: true
   });
 
@@ -44,6 +45,7 @@ const EditJobModal = ({ isOpen, onClose, onSuccess, jobData }) => {
           : jobData.skills_requirements || '',
         education_requirements: jobData.education_requirements || '',
         experience_requirements: jobData.experience_requirements || '',
+        certifications_requirements: jobData.certifications_requirements || '',
         is_active: jobData.is_active ?? true
       });
       setStatus({ type: null, message: '' });
@@ -104,6 +106,12 @@ const EditJobModal = ({ isOpen, onClose, onSuccess, jobData }) => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+
+    if (currentStep < 3) {
+      nextStep();
+      return;
+    }
+
     if (!validateStep(3)) return;
 
     setStatus({ type: null, message: '' });
@@ -120,7 +128,6 @@ const EditJobModal = ({ isOpen, onClose, onSuccess, jobData }) => {
         if (onSuccess) onSuccess(result);
         onClose();
       }, 2000);
-
     } catch (err) {
       const errorMessage = err.data?.detail || 'An error occurred while updating the job.';
       setStatus({ type: 'error', message: errorMessage });
@@ -218,7 +225,18 @@ const EditJobModal = ({ isOpen, onClose, onSuccess, jobData }) => {
 
         {renderStepIndicator()}
 
-        <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto custom-scrollbar">
+        <form 
+          onSubmit={handleSubmit} 
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && e.target.tagName !== 'TEXTAREA') {
+              e.preventDefault();
+              if (currentStep < 3) {
+                nextStep();
+              }
+            }
+          }}
+          className="flex-1 overflow-y-auto custom-scrollbar"
+        >
           <div className="p-10">
             {currentStep === 1 && (
               <div className="space-y-6 animate-in slide-in-from-right-4 duration-500">
@@ -400,12 +418,12 @@ const EditJobModal = ({ isOpen, onClose, onSuccess, jobData }) => {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                   <div>
                     <label className={labelClasses}><GraduationCap size={12} /> Education Requirements</label>
                     <input
                       type="text"
-                      placeholder="e.g. Bachelor's Degree in Computer Science"
+                      placeholder="e.g. Bachelor's Degree"
                       className={inputClasses()}
                       value={formData.education_requirements}
                       onChange={(e) => setFormData({ ...formData, education_requirements: e.target.value })}
@@ -416,10 +434,21 @@ const EditJobModal = ({ isOpen, onClose, onSuccess, jobData }) => {
                     <label className={labelClasses}><Trophy size={12} /> Experience Requirements</label>
                     <input
                       type="text"
-                      placeholder="e.g. 3+ years of experience"
+                      placeholder="e.g. 3+ years"
                       className={inputClasses()}
                       value={formData.experience_requirements}
                       onChange={(e) => setFormData({ ...formData, experience_requirements: e.target.value })}
+                    />
+                  </div>
+
+                  <div>
+                    <label className={labelClasses}><Award size={12} /> Certifications</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. PMP, AWS"
+                      className={inputClasses()}
+                      value={formData.certifications_requirements}
+                      onChange={(e) => setFormData({ ...formData, certifications_requirements: e.target.value })}
                     />
                   </div>
                 </div>
@@ -450,6 +479,7 @@ const EditJobModal = ({ isOpen, onClose, onSuccess, jobData }) => {
             <div className="flex gap-3">
               {currentStep < 3 ? (
                 <button
+                  key="continue-btn"
                   type="button"
                   onClick={nextStep}
                   className="flex items-center gap-2 px-8 py-3.5 bg-gray-900 text-white rounded-2xl text-sm font-bold hover:bg-black transition-all shadow-lg active:scale-95"
@@ -458,6 +488,7 @@ const EditJobModal = ({ isOpen, onClose, onSuccess, jobData }) => {
                 </button>
               ) : (
                 <button
+                  key="submit-btn"
                   type="submit"
                   disabled={isUpdating}
                   className="flex items-center gap-2 px-10 py-3.5 bg-[#d81159] text-white rounded-2xl text-sm font-black hover:opacity-90 transition-all shadow-[0_10px_20px_rgba(216,17,89,0.2)] active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"

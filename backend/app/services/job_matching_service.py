@@ -5,7 +5,7 @@ from app.models.job_description import JobDescription
 
 logger = logging.getLogger(__name__)
 
-AI_SCORE_WEIGHT = 0.80
+AI_SCORE_WEIGHT = 0.0
 RULE_SCORE_WEIGHT = 1.0 - AI_SCORE_WEIGHT
 
 # Degree hierarchy for education matching
@@ -818,6 +818,31 @@ def _merge_unique(primary: list[str], secondary: list[str]) -> list[str]:
     return merged
 
 
+def calculate_location_match(candidate_location: str, job_location: str) -> dict:
+    """
+    Compare resume location against job location requirements.
+    Returns a dict with score and details.
+    """
+    if not job_location or job_location.lower() in ['remote', 'anywhere', 'flexible', 'wfh']:
+        return {"score": 1.0, "reason": "Job is remote or location is flexible."}
+    
+    if not candidate_location:
+        if any(term in job_location.lower() for term in ['remote', 'anywhere', 'flexible', 'wfh']):
+            return {"score": 1.0, "reason": "Job is remote or location is flexible."}
+        return {"score": 0.5, "reason": "Candidate location not specified."}
+        
+    cand_loc = candidate_location.lower()
+    job_loc = job_location.lower()
+    
+    if cand_loc in job_loc or job_loc in cand_loc:
+        return {"score": 1.0, "reason": "Candidate location matches job location."}
+        
+    if 'hybrid' in job_loc:
+        return {"score": 0.8, "reason": "Job is hybrid, assuming partial location match."}
+        
+    return {"score": 0.0, "reason": f"Candidate location ({candidate_location}) does not match job location ({job_location})."}
+
+
 def calculate_match_score(resume_data: dict, job, use_ai: bool = False) -> dict:
     """
     Calculate the overall match score between a parsed resume and a job.
@@ -870,20 +895,18 @@ def calculate_match_score(resume_data: dict, job, use_ai: bool = False) -> dict:
     resume_certs = resume_data.get("certifications", "") or resume_data.get("skills", "")
     certs_result = calculate_certifications_match(resume_certs, job_desc, getattr(job, 'certifications_requirements', None))
 
-    # Projects score placeholder (rule-based: check if portfolio/projects mentioned)
-    projects_score = 0.5  # default neutral
-    resume_text_lower = (resume_data.get("experience", "") + " " + resume_data.get("skills", "")).lower()
-    if any(kw in resume_text_lower for kw in ["project", "portfolio", "github", "gitlab", "open source", "capstone"]):
-        projects_score = 0.8
+    # Location matching
+    resume_location = resume_data.get("location", "")
+    location_result = calculate_location_match(resume_location, getattr(job, 'location', None))
 
     # ── Weighted rule-based composite ─────────────────────────────────────────
-    # Skills 40% + Experience Relevance 30% + Education 15% + Certifications 10% + Projects 5%
+    # Skills 45% + Experience Relevance 25% + Education 15% + Certifications 10% + Location 5%
     rule_match_pct = (
-        skills_result["score"] * 0.40 +
-        combined_exp_score * 0.30 +
+        skills_result["score"] * 0.45 +
+        combined_exp_score * 0.25 +
         education_result["score"] * 0.15 +
         certs_result["score"] * 0.10 +
-        projects_score * 0.05
+        location_result["score"] * 0.05
     ) * 100
 
 
@@ -930,7 +953,12 @@ def calculate_match_score(resume_data: dict, job, use_ai: bool = False) -> dict:
         )
         blended_edu_score = _blend_scores(
             education_result["score"] * 100,
-            ai_result.get("ai_certifications_score", education_result["score"] * 100),
+            ai_result.get("ai_education_score", education_result["score"] * 100),
+            ai_available
+        )
+        blended_certs_score = _blend_scores(
+            certs_result["score"] * 100,
+            ai_result.get("ai_certifications_score", certs_result["score"] * 100),
             ai_available
         )
 
@@ -971,13 +999,9 @@ def calculate_match_score(resume_data: dict, job, use_ai: bool = False) -> dict:
 
         education_explanation = ai_result.get("education_explanation", "")
         certification_explanation = ai_result.get("certification_explanation", "")
-        projects_explanation = ai_result.get("projects_explanation", "")
+        location_explanation = location_result.get("reason", "")
         transferable_skills = ai_result.get("transferable_skills", [])
-        blended_projects_score = _blend_scores(
-            projects_score * 100,
-            ai_result.get("ai_projects_score", projects_score * 100),
-            ai_available
-        )
+        blended_location_score = round(location_result["score"] * 100, 1)
 
     else:
         # Fallback: pure rule-based
@@ -985,6 +1009,8 @@ def calculate_match_score(resume_data: dict, job, use_ai: bool = False) -> dict:
         # Use relevance-adjusted combined score, not raw years
         blended_exp_score = round(combined_exp_score * 100, 1)
         blended_edu_score = round(education_result["score"] * 100, 1)
+        blended_certs_score = round(certs_result["score"] * 100, 1)
+        blended_location_score = round(location_result["score"] * 100, 1)
         final_match_pct = min(100.0, round(rule_match_pct, 1))
         all_matched = [s.title() for s in skills_result["matched"]]
         all_missing = [s.title() for s in skills_result["missing"]]
@@ -997,11 +1023,10 @@ def calculate_match_score(resume_data: dict, job, use_ai: bool = False) -> dict:
         match_level = "Unknown"
         skills_explanation = ""
         experience_explanation = relevance_result.get("detailed_breakdown", "")
-        education_explanation = ""
-        certification_explanation = ""
-        projects_explanation = ""
+        education_explanation = education_result.get("reason", "")
+        certification_explanation = certs_result.get("reason", "")
+        location_explanation = location_result.get("reason", "")
         transferable_skills = relevance_result.get("transferable_skills", [])
-        blended_projects_score = round(projects_score * 100, 1)
 
     # ── Build reason strings ──────────────────────────────────────────────────
     total_job_skills = len(skills_result["matched"]) + len(skills_result["missing"])
@@ -1047,10 +1072,10 @@ def calculate_match_score(resume_data: dict, job, use_ai: bool = False) -> dict:
         "experience_explanation": experience_explanation,
         "education_score": round(blended_edu_score, 1),
         "education_explanation": education_explanation,
-        "certifications_score": round(blended_edu_score, 1), # using edu score as per existing fallback, ideally should be blended_certs_score but preserving logic
+        "certifications_score": round(blended_certs_score, 1),
         "certification_explanation": certification_explanation,
-        "projects_score": round(blended_projects_score, 1),
-        "projects_explanation": projects_explanation,
+        "location_score": round(blended_location_score, 1),
+        "location_explanation": location_explanation,
         # ── Skills ──
         "matched_skills": all_matched,
         "missing_skills": all_missing,
@@ -1060,7 +1085,8 @@ def calculate_match_score(resume_data: dict, job, use_ai: bool = False) -> dict:
         "experience_reason": experience_reason_strict,
         "experience_relevance_summary": relevance_result.get("reason", ""),
         "education_reason": education_result.get("reason", ""),
-        "certifications_reason": education_result["reason"],
+        "certifications_reason": certs_result.get("reason", ""),
+        "location_reason": location_result.get("reason", ""),
         # ── Experience ──
         "relevant_experience": relevant_experience,
         "experience_gaps": f"Required: {experience_result.get('required_years', 0)} yrs | Candidate: {experience_result.get('candidate_years', 0)} yrs",
