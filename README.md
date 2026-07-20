@@ -2,7 +2,7 @@
 
 <p align="left">
   <a href="https://skillicons.dev">
-    <img src="https://skillicons.dev/icons?i=tailwind,javascript,react,redux,py,fastapi,redis,postgres" />
+    <img src="https://skillicons.dev/icons?i=tailwind,javascript,react,redux,py,fastapi,postgres" />
   </a>
 </p>
 
@@ -58,12 +58,12 @@ The "Match Score" is calculated using a multi-factor algorithm:
 ### **The Stack**
 - **Frontend**: React 19 (Vite), **Redux Toolkit** (Global State Management), Tailwind CSS (Premium Glassmorphism Design).
 - **Backend**: FastAPI (Python 3.12), SQLAlchemy 2.0 (Async Engine).
-- **Database**: PostgreSQL (Relational Data), Redis (Rate Limiting & Caching).
+- **Database**: PostgreSQL (Relational Data).
 - **Security**: JWT (JSON Web Tokens), BCrypt Hashing, Role-Based Access Control (RBAC).
 
 ### **Infrastructure Enhancements**
-- **Redis Caching**: Frequently accessed data (Job lists, HR metrics, Profiles) are cached in Redis to reduce database load and ensure <100ms response times.
-- **Rate Limiting**: Integrated `slowapi` with Redis to prevent spamming of the AI parsing engine (5 uploads per minute limit).
+- **In-Memory Caching**: Frequently accessed data (Job lists, HR metrics, Profiles) are cached in-memory to reduce database load and ensure <100ms response times.
+- **Rate Limiting**: Integrated `slowapi` with in-memory storage to prevent spamming of the AI parsing engine (5 uploads per minute limit).
 - **WebSocket Manager**: A dedicated service for real-time, role-aware notification broadcasting.
 
 ---

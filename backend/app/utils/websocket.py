@@ -49,5 +49,9 @@ class ConnectionManager:
         """Check local presence."""
         return user_id in self.active_connections
 
+    def get_online_count(self) -> int:
+        """Return the number of unique users currently connected."""
+        return len(self.active_connections)
+
 manager = ConnectionManager()
 

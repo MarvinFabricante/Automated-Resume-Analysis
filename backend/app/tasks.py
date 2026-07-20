@@ -68,7 +68,7 @@ async def async_analyze_application(application_id: int):
             ai_result = analyze_match_with_fallback(resume_data, job_data)
             
             if ai_result:
-                # Store the result in Redis cache (e.g., 30 days TTL)
+                # Store the result in cache (e.g., 30 days TTL)
                 await set_cache(cache_key, ai_result, ttl=2592000)
         
         if ai_result:
@@ -93,7 +93,7 @@ async def async_analyze_application(application_id: int):
             # Optionally clear cache
             from app.utils.cache import delete_cache
             try:
-                # Remove loop wrapper for cache deleting since delete_cache uses aioredis
+                # Clear stale cache entries after analysis
                 await delete_cache("app_stats:*")
             except Exception as e:
                 logger.warning(f"Failed to clear cache: {e}")

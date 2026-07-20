@@ -4,7 +4,7 @@
 The `utils` directory is the home for **Cross-Cutting Concerns and Shared Helpers**. These are modular, generic functions that are utilized across controllers, services, and repositories.
 
 ## Responsibilities
-- **Core Infrastructure**: Database connection engines, Redis setups, and Base declarative mapping.
+- **Core Infrastructure**: Database connection engines, in-memory caching, and Base declarative mapping.
 - **Security & Auth**: JWT generation, password hashing (`bcrypt`), and token decoding.
 - **Helper Functions**: Date formatters, math calculators, or generic string manipulation that isn't domain-specific.
 
