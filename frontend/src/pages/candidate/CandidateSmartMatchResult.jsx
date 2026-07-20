@@ -149,18 +149,20 @@ const CandidateSmartMatchResult = () => {
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-3 gap-4 mb-8 relative z-10">
+                  <div className="grid grid-cols-3 md:grid-cols-5 gap-3 mb-8 relative z-10">
                     {[
                       { label: 'Skills', score: match.skills_score, icon: <Cpu size={14} />, reason: match.skills_reason, color: 'text-blue-600', bg: 'bg-blue-50' },
                       { label: 'Experience', score: match.experience_score, icon: <Briefcase size={14} />, reason: match.experience_reason, color: 'text-purple-600', bg: 'bg-purple-50' },
-                      { label: 'Education', score: match.education_score, icon: <GraduationCap size={14} />, reason: match.education_reason, color: 'text-amber-600', bg: 'bg-amber-50' }
+                      { label: 'Education', score: match.education_score, icon: <GraduationCap size={14} />, reason: match.education_reason, color: 'text-amber-600', bg: 'bg-amber-50' },
+                      { label: 'Certs', score: match.certifications_score || 0, icon: <CheckCircle2 size={14} />, reason: match.certifications_reason, color: 'text-teal-600', bg: 'bg-teal-50' },
+                      { label: 'Location', score: match.location_score || 0, icon: <MapPin size={14} />, reason: match.location_reason, color: 'text-rose-600', bg: 'bg-rose-50' }
                     ].map((item, idx) => (
-                      <div key={idx} className={`${item.bg} p-4 rounded-2xl flex flex-col items-center text-center group-hover:shadow-inner transition-all`}>
+                      <div key={idx} className={`${item.bg} p-3 rounded-2xl flex flex-col items-center text-center group-hover:shadow-inner transition-all`}>
                         <div className={`${item.color} mb-1.5`}>{item.icon}</div>
-                        <p className={`text-xs font-black uppercase tracking-wider ${item.color}`}>
-                          {item.score >= 70 ? 'High' : item.score >= 40 ? 'Medium' : 'Basic'}
+                        <p className={`text-[10px] font-black uppercase tracking-wider ${item.color}`}>
+                          {item.score >= 70 ? 'High' : item.score >= 40 ? 'Med' : 'Basic'}
                         </p>
-                        <span className="text-[8px] font-black uppercase tracking-widest text-slate-400 mb-2">{item.label}</span>
+                        <span className="text-[8px] font-black uppercase tracking-widest text-slate-400 mb-1.5">{item.label}</span>
                         <p className="text-[7px] font-semibold leading-relaxed text-slate-500 line-clamp-3">{item.reason}</p>
                       </div>
                     ))}
@@ -211,6 +213,14 @@ const CandidateSmartMatchResult = () => {
                             <div className="bg-slate-50 p-4 rounded-xl">
                               <p className="text-sm font-bold text-slate-900 flex justify-between">Education Match <span className="text-[#D60041]">{Math.round(match.education_score)}%</span></p>
                               <p className="text-xs text-slate-500 mt-1">{match.education_reason}</p>
+                            </div>
+                            <div className="bg-slate-50 p-4 rounded-xl">
+                              <p className="text-sm font-bold text-slate-900 flex justify-between">Certifications Match <span className="text-[#D60041]">{Math.round(match.certifications_score || 0)}%</span></p>
+                              <p className="text-xs text-slate-500 mt-1">{match.certifications_reason}</p>
+                            </div>
+                            <div className="bg-slate-50 p-4 rounded-xl">
+                              <p className="text-sm font-bold text-slate-900 flex justify-between">Location Match <span className="text-[#D60041]">{Math.round(match.location_score || 0)}%</span></p>
+                              <p className="text-xs text-slate-500 mt-1">{match.location_reason}</p>
                             </div>
                           </div>
                         </div>

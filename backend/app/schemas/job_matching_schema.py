@@ -13,12 +13,14 @@ class JobMatchResult(BaseModel):
     experience_score: float
     education_score: float
     certifications_score: Optional[float] = None
+    location_score: Optional[float] = None
     matched_skills: list[str]
     missing_skills: list[str]
     skills_reason: Optional[str] = None
     experience_reason: Optional[str] = None
     education_reason: Optional[str] = None
     certifications_reason: Optional[str] = None
+    location_reason: Optional[str] = None
     relevant_experience: Optional[str] = None
     experience_gaps: Optional[str] = None
     required_degree: Optional[str] = None
