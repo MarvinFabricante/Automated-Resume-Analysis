@@ -124,6 +124,10 @@ class ChatService:
         Sends a message to another user if the roles are compatible,
         and broadcasts it via WebSocket.
         """
+        # Candidates are restricted from sending messages
+        if current_user.role.upper() == "CANDIDATE":
+            return None
+
         # Verify allowed to message
         allowed_roles = await self.get_allowed_roles(current_user.role)
         receiver = await ChatRepository.get_user_by_id(db, other_user_id)

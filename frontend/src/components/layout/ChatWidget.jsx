@@ -363,25 +363,31 @@ const ChatWidget = () => {
                             </div>
 
                             {/* Input Area */}
-                            <div className="p-4 bg-white border-t border-gray-100">
-                                <div className="relative flex items-center gap-2">
-                                    <input
-                                        type="text"
-                                        value={inputMessage}
-                                        onChange={(e) => setInputMessage(e.target.value)}
-                                        onKeyDown={handleKeyDown}
-                                        placeholder="Type a message..."
-                                        className="w-full bg-gray-100 border-none rounded-2xl py-3 px-4 text-sm focus:ring-2 focus:ring-pink-100 transition-all outline-none font-medium placeholder:text-gray-400"
-                                    />
-                                    <button 
-                                        onClick={sendMessage}
-                                        disabled={!inputMessage.trim()}
-                                        className="p-2.5 bg-[#D60041] hover:bg-[#b50037] text-white rounded-xl transition-all shadow-md shadow-pink-100 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
-                                    >
-                                        <Send className="h-4 w-4" />
-                                    </button>
+                            {currentUserRole.toUpperCase() !== 'CANDIDATE' ? (
+                                <div className="p-4 bg-white border-t border-gray-100">
+                                    <div className="relative flex items-center gap-2">
+                                        <input
+                                            type="text"
+                                            value={inputMessage}
+                                            onChange={(e) => setInputMessage(e.target.value)}
+                                            onKeyDown={handleKeyDown}
+                                            placeholder="Type a message..."
+                                            className="w-full bg-gray-100 border-none rounded-2xl py-3 px-4 text-sm focus:ring-2 focus:ring-pink-100 transition-all outline-none font-medium placeholder:text-gray-400"
+                                        />
+                                        <button 
+                                            onClick={sendMessage}
+                                            disabled={!inputMessage.trim()}
+                                            className="p-2.5 bg-[#D60041] hover:bg-[#b50037] text-white rounded-xl transition-all shadow-md shadow-pink-100 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                                        >
+                                            <Send className="h-4 w-4" />
+                                        </button>
+                                    </div>
                                 </div>
-                            </div>
+                            ) : (
+                                <div className="p-4 bg-white border-t border-gray-100 flex items-center justify-center">
+                                    <p className="text-xs font-bold text-gray-400">Read-only conversation. Only HR can message.</p>
+                                </div>
+                            )}
                         </>
                     )}
                 </div>

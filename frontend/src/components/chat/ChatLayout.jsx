@@ -18,6 +18,7 @@ const ChatLayout = ({ isFullPage = true }) => {
 
     const token = localStorage.getItem('token');
     const currentUserId = parseInt(localStorage.getItem('user_id'), 10);
+    const currentUserRole = localStorage.getItem('role') || 'Guest';
 
     // Sync ref with state
     useEffect(() => {
@@ -341,27 +342,33 @@ const ChatLayout = ({ isFullPage = true }) => {
                         </div>
 
                         {/* Input Area */}
-                        <div className="p-6 bg-white border-t border-gray-50">
-                            <div className="max-w-[1000px] mx-auto bg-gray-50 rounded-[24px] p-2 flex items-center gap-2 border border-gray-100 transition-all focus-within:bg-white focus-within:shadow-xl focus-within:shadow-pink-100/50 focus-within:border-pink-100">
-                                <button className="p-3 text-gray-400 hover:text-[#D60041] transition-colors"><Smile size={20} /></button>
-                                <button className="p-3 text-gray-400 hover:text-[#D60041] transition-colors"><Paperclip size={20} /></button>
-                                <input
-                                    type="text"
-                                    value={inputMessage}
-                                    onChange={(e) => setInputMessage(e.target.value)}
-                                    onKeyDown={handleKeyDown}
-                                    placeholder="Write your message..."
-                                    className="flex-1 bg-transparent border-none py-3 px-1 text-sm focus:ring-0 outline-none font-bold text-gray-900 placeholder:text-gray-400"
-                                />
-                                <button 
-                                    onClick={sendMessage}
-                                    disabled={!inputMessage.trim()}
-                                    className="p-4 bg-[#D60041] hover:bg-[#b50037] text-white rounded-2xl transition-all shadow-lg shadow-pink-100 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed group"
-                                >
-                                    <Send className="h-5 w-5 group-hover:translate-x-1 group-hover:-translate-y-1 transition-transform" />
-                                </button>
+                        {currentUserRole.toUpperCase() !== 'CANDIDATE' ? (
+                            <div className="p-6 bg-white border-t border-gray-50">
+                                <div className="max-w-[1000px] mx-auto bg-gray-50 rounded-[24px] p-2 flex items-center gap-2 border border-gray-100 transition-all focus-within:bg-white focus-within:shadow-xl focus-within:shadow-pink-100/50 focus-within:border-pink-100">
+                                    <button className="p-3 text-gray-400 hover:text-[#D60041] transition-colors"><Smile size={20} /></button>
+                                    <button className="p-3 text-gray-400 hover:text-[#D60041] transition-colors"><Paperclip size={20} /></button>
+                                    <input
+                                        type="text"
+                                        value={inputMessage}
+                                        onChange={(e) => setInputMessage(e.target.value)}
+                                        onKeyDown={handleKeyDown}
+                                        placeholder="Write your message..."
+                                        className="flex-1 bg-transparent border-none py-3 px-1 text-sm focus:ring-0 outline-none font-bold text-gray-900 placeholder:text-gray-400"
+                                    />
+                                    <button 
+                                        onClick={sendMessage}
+                                        disabled={!inputMessage.trim()}
+                                        className="p-4 bg-[#D60041] hover:bg-[#b50037] text-white rounded-2xl transition-all shadow-lg shadow-pink-100 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed group"
+                                    >
+                                        <Send className="h-5 w-5 group-hover:translate-x-1 group-hover:-translate-y-1 transition-transform" />
+                                    </button>
+                                </div>
                             </div>
-                        </div>
+                        ) : (
+                            <div className="p-6 bg-white border-t border-gray-50 flex items-center justify-center">
+                                <p className="text-sm font-bold text-gray-400">This conversation is read-only. Only HR can send messages.</p>
+                            </div>
+                        )}
                     </>
                 ) : (
                     <div className="flex-1 flex flex-col items-center justify-center p-12 text-center">
