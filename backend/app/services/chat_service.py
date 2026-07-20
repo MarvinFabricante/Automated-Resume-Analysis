@@ -6,7 +6,7 @@ from app.models.user import User
 from app.models.message import Message
 from app.schemas.message_schema import ChatUser
 from app.utils.websocket import manager
-from app.utils.redis_client import redis_client
+from app.utils.cache import get_cache, set_cache, clear_cache_pattern
 import json
 from datetime import datetime
 from app.repositories.chat_repository import ChatRepository
@@ -41,18 +41,16 @@ class ChatService:
     async def get_contacts(self, db: AsyncSession, current_user: User, search: Optional[str] = None) -> List[ChatUser]:
         """
         Fetches the list of contacts for the current user, including last message and unread count.
-        Uses Redis for caching to improve performance.
+        Uses in-memory caching to improve performance.
         """
         cache_key = f"contacts:{current_user.id}:{search or ''}"
-        redis = await redis_client.get_redis()
 
         # Try to get from cache
-        cached_data = await redis.get(cache_key)
+        cached_data = await get_cache(cache_key)
         if cached_data:
             try:
-                cached_users = json.loads(cached_data)
                 chat_users = []
-                for u_data in cached_users:
+                for u_data in cached_data:
                     # Convert back to ChatUser objects and refresh online status
                     u_data['is_online'] = await manager.is_user_online(u_data['id'])
                     if u_data.get('last_message_time'):
@@ -98,18 +96,13 @@ class ChatService:
                 u_dict['last_message_time'] = u_dict['last_message_time'].isoformat()
             cache_users.append(u_dict)
 
-        await redis.setex(cache_key, 10, json.dumps(cache_users))
+        await set_cache(cache_key, cache_users, ttl=10)
 
         return chat_users
 
     async def invalidate_contacts_cache(self, user_id: int):
         """Invalidates the contacts cache for a specific user."""
-        redis = await redis_client.get_redis()
-        # We use keys() with pattern because there might be multiple search variants cached
-        # For production, consider keeping track of keys in a set instead of using keys()
-        keys = await redis.keys(f"contacts:{user_id}:*")
-        if keys:
-            await redis.delete(*keys)
+        await clear_cache_pattern(f"contacts:{user_id}:")
 
     async def get_messages(self, db: AsyncSession, current_user: User, other_user_id: int) -> List[Message]:
         """
@@ -208,7 +201,7 @@ async def verify_token(token: str, db: AsyncSession):
 async def get_contacts(db: AsyncSession, current_user: User, search: Optional[str] = None) -> List[ChatUser]:
     """
     Fetches the list of contacts for the current user, including last message and unread count.
-    Uses Redis for caching to improve performance.
+    Uses in-memory caching to improve performance.
     """
     return await chat_service.get_contacts(db, current_user, search)
 
