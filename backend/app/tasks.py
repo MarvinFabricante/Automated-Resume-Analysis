@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker
 
-from app.celery_app import celery_app
+
 from app.services.ai_analysis_service import analyze_match_with_fallback
 from app.services.job_application_service import _resume_data_from_application
 from app.repositories.job_application_repository import JobApplicationRepository
@@ -88,8 +88,7 @@ async def async_analyze_application(application_id: int):
             logger.info(f"Successfully saved AI analysis for application {application_id}.")
             
             # Trigger candidate comparison if multiple candidates are available
-            from app.tasks import compare_candidates_task
-            compare_candidates_task.delay(app.job_id)
+            asyncio.create_task(async_compare_candidates(app.job_id))
             
             # Optionally clear cache
             from app.utils.cache import delete_cache
@@ -101,17 +100,7 @@ async def async_analyze_application(application_id: int):
         else:
             logger.warning(f"AI analysis returned empty for application {application_id}.")
 
-@celery_app.task(name="analyze_application_task")
-def analyze_application_task(application_id: int):
-    """
-    Celery task to run heavy AI analysis in the background.
-    """
-    loop = asyncio.get_event_loop()
-    if loop.is_running():
-        # if somehow running in an existing loop
-        loop.create_task(async_analyze_application(application_id))
-    else:
-        asyncio.run(async_analyze_application(application_id))
+
 
 async def async_compare_candidates(job_id: int):
     async with async_session() as db:
@@ -153,15 +142,4 @@ async def async_compare_candidates(job_id: int):
                     logger.info(f"Successfully saved candidate comparison for job {job_id}.")
         except Exception as e:
             logger.error(f"Error during candidate comparison task for job {job_id}: {e}")
-
-@celery_app.task(name="compare_candidates_task")
-def compare_candidates_task(job_id: int):
-    """
-    Celery task to run candidate comparison in the background.
-    """
-    loop = asyncio.get_event_loop()
-    if loop.is_running():
-        loop.create_task(async_compare_candidates(job_id))
-    else:
-        asyncio.run(async_compare_candidates(job_id))
 

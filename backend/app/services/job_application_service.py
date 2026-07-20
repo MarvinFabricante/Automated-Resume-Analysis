@@ -165,8 +165,9 @@ class JobApplicationService:
             print(f"WARNING: Notification failed but application saved: {notif_err}")
         # Trigger background AI analysis
         try:
-            from app.tasks import analyze_application_task
-            analyze_application_task.delay(new_application.id)
+            import asyncio
+            from app.tasks import async_analyze_application
+            asyncio.create_task(async_analyze_application(new_application.id))
             print(f"DEBUG: Dispatched background AI analysis task for application {new_application.id}")
         except Exception as task_err:
             print(f"WARNING: Failed to dispatch background task: {task_err}")

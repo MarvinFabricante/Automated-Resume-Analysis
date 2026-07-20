@@ -431,6 +431,84 @@ def gemini_analyze_match(resume_data: dict, job_data: dict) -> Optional[dict]:
         return None
 
 
+CANDIDATE_COMPARISON_PROMPT = """
+You are an expert HR recruiter and ATS (Applicant Tracking System) analyst.
+
+Analyze and perform a deep, detailed comparison of these candidates for the following job description.
+Your goal is to identify the most qualified candidate based on job fit and clearly explain all scoring and ranking decisions.
+
+Return ONLY a valid JSON object (no extra text, no markdown):
+{{
+  "rankings": [
+    {{
+      "rank": 1,
+      "candidate_name": "Name of the candidate",
+      "match_score": <integer 0-100>,
+      "score_breakdown_explanation": "Explain exactly how this candidate achieved this final percentage score based on their specific skills, experience, and education matching the job requirements.",
+      "reasoning": "Detailed explanation of why they are ranked here. Explain why they are better (or worse) than the others based on job requirements.",
+      "key_differentiator": "The primary reason this candidate stands out compared to the rest."
+    }}
+  ],
+  "comparison_summary": "A comprehensive summary comparing the candidates. Explain the reasoning behind score differences between candidates, and definitively state why the top candidate is the most qualified for the job."
+}}
+
+JOB DESCRIPTION:
+Title: {job_title}
+Department: {department}
+Required Skills: {job_skills}
+Job Description: {job_desc}
+Experience Requirements: {exp_req}
+Education Requirements: {edu_req}
+
+CANDIDATES DATA:
+{candidates_text}
+
+Return ONLY the JSON. No markdown, no explanation.
+"""
+
+def gemini_compare_candidates(job_data: dict, candidates_data: list[dict]) -> Optional[dict]:
+    """
+    Use Gemini to compare multiple candidates for a specific job.
+    """
+    if not _api_keys:
+        return None
+        
+    try:
+        candidates_text = ""
+        for i, cand in enumerate(candidates_data):
+            candidates_text += f"\n--- Candidate {i+1} ---\n"
+            candidates_text += f"Name: {cand.get('fullname', 'Unknown')}\n"
+            candidates_text += f"Skills: {cand.get('skills', 'None')}\n"
+            candidates_text += f"Years Experience: {cand.get('years_experience', 0)}\n"
+            candidates_text += f"Degree: {cand.get('highest_degree', 'None')}\n"
+            candidates_text += f"Experience Summary: {str(cand.get('experience', ''))[:1000]}\n"
+
+        prompt = CANDIDATE_COMPARISON_PROMPT.format(
+            job_title=job_data.get("job_title", ""),
+            department=job_data.get("department", ""),
+            job_skills=job_data.get("skills_requirements", ""),
+            job_desc=str(job_data.get("description", ""))[:2000],
+            exp_req=job_data.get("experience_requirements", "Not specified"),
+            edu_req=job_data.get("education_requirements", "Not specified"),
+            candidates_text=candidates_text
+        )
+
+        raw_response = _call_with_retry(prompt, max_output_tokens=4096)
+        if not raw_response:
+            return None
+
+        parsed = _extract_json(raw_response)
+        if not parsed:
+            logger.warning("Gemini candidate comparison: could not extract JSON.")
+            return None
+
+        return parsed
+
+    except Exception as e:
+        logger.error(f"gemini_compare_candidates error: {e}")
+        return None
+
+
 class GeminiService:
     _load_api_keys = staticmethod(_load_api_keys)
     _model_candidates = staticmethod(_model_candidates)
@@ -439,6 +517,7 @@ class GeminiService:
     _extract_json = staticmethod(_extract_json)
     gemini_parse_resume = staticmethod(gemini_parse_resume)
     gemini_analyze_match = staticmethod(gemini_analyze_match)
+    gemini_compare_candidates = staticmethod(gemini_compare_candidates)
 
 
 gemini_service = GeminiService()

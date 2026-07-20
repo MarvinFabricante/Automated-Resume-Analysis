@@ -1,51 +1,43 @@
-import redis.asyncio as redis
 import json
-import os
 import functools
+import time
 from typing import Any, Optional
 from fastapi.encoders import jsonable_encoder
-from dotenv import load_dotenv
 
-load_dotenv()
-
-# Redis configuration
-REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
-redis_client = redis.from_url(REDIS_URL, decode_responses=True)
+_cache = {}
 
 async def get_cache(key: str) -> Optional[Any]:
-    """Get data from Redis cache."""
-    try:
-        data = await redis_client.get(key)
-        if data:
-            return json.loads(data)
-    except Exception as e:
-        print(f"Redis get error: {e}")
+    """Get data from in-memory cache."""
+    item = _cache.get(key)
+    if item:
+        if item.get("expires_at") and time.time() > item["expires_at"]:
+            del _cache[key]
+            return None
+        return json.loads(item["value"])
     return None
 
 async def set_cache(key: str, value: Any, ttl: int = 3600):
-    """Set data in Redis cache with an optional TTL (default 1 hour)."""
-    try:
-        # Use jsonable_encoder to handle Pydantic models, etc.
-        serializable_value = jsonable_encoder(value)
-        await redis_client.set(key, json.dumps(serializable_value), ex=ttl)
-    except Exception as e:
-        print(f"Redis set error: {e}")
+    """Set data in in-memory cache with an optional TTL (default 1 hour)."""
+    serializable_value = jsonable_encoder(value)
+    _cache[key] = {
+        "value": json.dumps(serializable_value),
+        "expires_at": time.time() + ttl if ttl else None
+    }
 
 async def delete_cache(key: str):
-    """Delete a key from Redis cache."""
-    try:
-        await redis_client.delete(key)
-    except Exception as e:
-        print(f"Redis delete error: {e}")
+    """Delete a key from in-memory cache."""
+    if key in _cache:
+        del _cache[key]
 
 async def clear_cache_pattern(pattern: str):
-    """Clear all keys matching a pattern."""
-    try:
-        keys = await redis_client.keys(pattern)
-        if keys:
-            await redis_client.delete(*keys)
-    except Exception as e:
-        print(f"Redis pattern delete error: {e}")
+    """Clear all keys matching a pattern. (Simple wildcard matching)"""
+    keys_to_delete = []
+    prefix = pattern.replace("*", "")
+    for k in _cache.keys():
+        if prefix in k:
+            keys_to_delete.append(k)
+    for k in keys_to_delete:
+        del _cache[k]
 
 def cache_response(key_prefix: str, ttl: int = 3600):
     """
@@ -55,8 +47,6 @@ def cache_response(key_prefix: str, ttl: int = 3600):
     def decorator(func):
         @functools.wraps(func)
         async def wrapper(*args, **kwargs):
-            # Generate a unique key based on arguments
-            # Filter out non-serializable objects like AsyncSession, Request, etc.
             serializable_kwargs = {}
             for k, v in kwargs.items():
                 if isinstance(v, (str, int, float, bool, type(None), list, dict)):
@@ -64,15 +54,12 @@ def cache_response(key_prefix: str, ttl: int = 3600):
             
             cache_key = f"{key_prefix}:{json.dumps(serializable_kwargs, sort_keys=True)}"
             
-            # Try to get from cache
             cached_data = await get_cache(cache_key)
             if cached_data:
                 return cached_data
             
-            # Execute function
             result = await func(*args, **kwargs)
             
-            # Store in cache
             if result:
                 await set_cache(cache_key, result, ttl)
                 
