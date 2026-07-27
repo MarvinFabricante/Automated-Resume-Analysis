@@ -12,8 +12,8 @@ export const apiSlice = createApi({
       return headers;
     },
   }),
-  // Added AuditLogs and Users to tagTypes so they are recognized
-  tagTypes: ['Dashboard', 'Jobs', 'Candidates', 'Applications', 'AuditLogs', 'Users'],
+  // Added AuditLogs, Users, SystemConfig, Templates to tagTypes so they are recognized
+  tagTypes: ['Dashboard', 'Jobs', 'Candidates', 'Applications', 'AuditLogs', 'Users', 'SystemConfig', 'Templates'],
   endpoints: (builder) => ({
     // --- DASHBOARD STATS ---
     getDashboardStats: builder.query({
@@ -39,7 +39,7 @@ export const apiSlice = createApi({
     getJobs: builder.query({
       query: (params) => {
         const includeInactive = params?.include_inactive ?? false;
-        return `/hr/read-jobs?include_inactive=${includeInactive}`;
+        return `/admins/read-jobs?include_inactive=${includeInactive}`;
       },
       providesTags: ['Jobs'],
       transformResponse: (response) => {
@@ -57,7 +57,7 @@ export const apiSlice = createApi({
 
     createJob: builder.mutation({
       query: (newJob) => ({
-        url: '/hr/createjob',
+        url: '/admins/createjob',
         method: 'POST',
         body: newJob,
       }),
@@ -66,7 +66,7 @@ export const apiSlice = createApi({
 
     updateJob: builder.mutation({
       query: ({ jobId, body }) => ({
-        url: `/hr/update-job/${jobId}`,
+        url: `/admins/update-job/${jobId}`,
         method: 'PATCH',
         body,
       }),
@@ -75,7 +75,7 @@ export const apiSlice = createApi({
 
     archiveJob: builder.mutation({
       query: (jobId) => ({
-        url: `/hr/archive-job/${jobId}`,
+        url: `/admins/archive-job/${jobId}`,
         method: 'PATCH',
       }),
       invalidatesTags: ['Jobs', 'Dashboard'],
@@ -83,7 +83,7 @@ export const apiSlice = createApi({
 
     unarchiveJob: builder.mutation({
       query: (jobId) => ({
-        url: `/hr/unarchive-job/${jobId}`,
+        url: `/admins/unarchive-job/${jobId}`,
         method: 'PATCH',
       }),
       invalidatesTags: ['Jobs', 'Dashboard'],
@@ -91,7 +91,7 @@ export const apiSlice = createApi({
 
     deleteJob: builder.mutation({
       query: (jobId) => ({
-        url: `/hr/delete-job/${jobId}`,
+        url: `/admins/delete-job/${jobId}`,
         method: 'DELETE',
       }),
       invalidatesTags: ['Jobs', 'Dashboard', 'Applications'],
@@ -248,6 +248,32 @@ export const apiSlice = createApi({
       providesTags: ['Users'],
     }),
 
+    createUser: builder.mutation({
+      query: (body) => ({
+        url: '/admins/users',
+        method: 'POST',
+        body,
+      }),
+      invalidatesTags: ['Users'],
+    }),
+
+    updateUser: builder.mutation({
+      query: ({ userId, body }) => ({
+        url: `/admins/users/${userId}`,
+        method: 'PUT',
+        body,
+      }),
+      invalidatesTags: ['Users'],
+    }),
+
+    deleteUser: builder.mutation({
+      query: (userId) => ({
+        url: `/admins/users/${userId}`,
+        method: 'DELETE',
+      }),
+      invalidatesTags: ['Users'],
+    }),
+
     archiveUser: builder.mutation({
       query: (userId) => ({
         url: `/admins/users/${userId}/archive`,
@@ -286,6 +312,76 @@ export const apiSlice = createApi({
         }));
       },
     }),
+
+    // --- SYSTEM CONFIGURATION ---
+    getMatchingConfig: builder.query({
+      query: () => '/system-config/matching',
+      providesTags: ['SystemConfig'],
+    }),
+
+    updateMatchingWeights: builder.mutation({
+      query: (body) => ({
+        url: '/system-config/matching/weights',
+        method: 'PUT',
+        body,
+      }),
+      invalidatesTags: ['SystemConfig', 'AuditLogs'],
+    }),
+
+    updateMatchingThresholds: builder.mutation({
+      query: (body) => ({
+        url: '/system-config/matching/thresholds',
+        method: 'PUT',
+        body,
+      }),
+      invalidatesTags: ['SystemConfig', 'AuditLogs'],
+    }),
+
+    changeUserRole: builder.mutation({
+      query: ({ userId, role }) => ({
+        url: `/system-config/users/${userId}/role`,
+        method: 'PATCH',
+        body: { role },
+      }),
+      invalidatesTags: ['Users', 'AuditLogs'],
+    }),
+
+    getFormTemplates: builder.query({
+      query: () => '/system-config/templates',
+      providesTags: ['Templates'],
+    }),
+
+    createFormTemplate: builder.mutation({
+      query: (body) => ({
+        url: '/system-config/templates',
+        method: 'POST',
+        body,
+      }),
+      invalidatesTags: ['Templates', 'AuditLogs'],
+    }),
+
+    updateFormTemplate: builder.mutation({
+      query: ({ templateId, body }) => ({
+        url: `/system-config/templates/${templateId}`,
+        method: 'PUT',
+        body,
+      }),
+      invalidatesTags: ['Templates', 'AuditLogs'],
+    }),
+
+    deleteFormTemplate: builder.mutation({
+      query: (templateId) => ({
+        url: `/system-config/templates/${templateId}`,
+        method: 'DELETE',
+      }),
+      invalidatesTags: ['Templates', 'AuditLogs'],
+    }),
+
+    getSystemPerformance: builder.query({
+      query: () => '/system-config/performance',
+      providesTags: ['Dashboard'],
+    }),
+
   }),
 });
 
@@ -309,9 +405,21 @@ export const {
   useScheduleInterviewMutation,
   useGetHRActivitiesQuery,
   useGetUsersQuery,
+  useCreateUserMutation,
+  useUpdateUserMutation,
+  useDeleteUserMutation,
   useArchiveUserMutation,
   useUnarchiveUserMutation,
   useGetAdminSystemStatsQuery,
   useGetAuditLogsQuery,
   useGetActiveUsersCountQuery,
+  useGetMatchingConfigQuery,
+  useUpdateMatchingWeightsMutation,
+  useUpdateMatchingThresholdsMutation,
+  useChangeUserRoleMutation,
+  useGetFormTemplatesQuery,
+  useCreateFormTemplateMutation,
+  useUpdateFormTemplateMutation,
+  useDeleteFormTemplateMutation,
+  useGetSystemPerformanceQuery,
 } = apiSlice;

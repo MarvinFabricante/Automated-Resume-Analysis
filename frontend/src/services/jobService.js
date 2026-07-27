@@ -2,10 +2,10 @@ import api from './api';
 
 const jobService = {
   getAllJobs: () =>
-    api.get('/hr/read-jobs'),
+    api.get('/admins/read-jobs'),
 
   getJobById: (jobId) =>
-    api.get(`/hr/read-job/${jobId}`),
+    api.get(`/admins/read-job/${jobId}`),
 };
 
 export default jobService;

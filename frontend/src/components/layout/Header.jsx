@@ -342,12 +342,12 @@ const Header = () => {
     if (isAdminRole) return [
       { label: 'Dashboard', path: '/admin/dashboard', icon: <LayoutDashboard size={18} /> },
       { label: 'User Management', path: '/admin/users', icon: <Users size={18} /> },
+      { label: 'Jobs', path: '/admin/jobmanagement', icon: <Settings size={18} /> },
       { label: 'Audit Logs', path: '/admin/auditlog', icon: <Database size={18} /> },
     ];
     if (isHRRole) return [
       { label: 'Dashboard', path: '/hr/dashboard', icon: <Building2 size={18} /> },
       { label: 'Screening', path: '/hr/screeningportal', icon: <User size={18} /> },
-      { label: 'Jobs', path: '/hr/jobmanagement', icon: <Settings size={18} /> },
     ];
     if (isCandidateRole) return [
       { label: 'Dashboard', path: '/candidate/dashboard', icon: <LayoutDashboard size={18} /> },

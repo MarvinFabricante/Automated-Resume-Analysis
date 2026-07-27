@@ -32,13 +32,16 @@ import CandidateProfileForm from './pages/candidate/CandidateProfileForm';
 import CandidateSmartMatchResult from './pages/candidate/CandidateSmartMatchResult';
 
 import HRDashboard from './pages/hr/HRDashboard';
-import JobManagement from './pages/hr/JobManagement';
+
 import ScreeningPortal from './pages/hr/ScreeningPortal';
 import CompareCandidates from './pages/hr/CompareCandidates';
 
 import AdminDashboard from './pages/admin/AdminDashboard';
 import AuditLogPage from './pages/admin/AuditLog';
 import UsersPage from './pages/admin/Users';
+import JobManagement from './pages/admin/JobManagement';
+import SystemSettings from './pages/admin/SystemSettings';
+import PerformanceStats from './pages/admin/PerformanceStats';
 
 import AccountSettings from './pages/shared/AccountSettings';
 import ViewProfile from './pages/shared/ViewProfile';
@@ -98,7 +101,10 @@ const App = () => {
           <Route path="/admin">
             <Route path="dashboard" element={<AdminDashboard />} />
             <Route path="users" element={<UsersPage />} />
+            <Route path="jobmanagement" element={<JobManagement />} />
             <Route path="auditlog" element={<AuditLogPage />} />
+            <Route path="system-config" element={<SystemSettings />} />
+            <Route path="performance" element={<PerformanceStats />} />
             <Route path="messages" element={<MessagesPage />} />
             <Route path="settings" element={<AccountSettings />} />
             <Route path="profile" element={<ViewProfile />} />
@@ -110,7 +116,7 @@ const App = () => {
             <Route path="dashboard" element={<HRDashboard />} />
             <Route path="screeningportal" element={<ScreeningPortal />} />
             <Route path="comparecandidates" element={<CompareCandidates />} />
-            <Route path="jobmanagement" element={<JobManagement />} />
+
             <Route path="messages" element={<MessagesPage />} />
             <Route path="settings" element={<AccountSettings />} />
             <Route path="profile" element={<ViewProfile />} />

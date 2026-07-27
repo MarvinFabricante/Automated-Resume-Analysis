@@ -8,6 +8,12 @@ class UserCreate(BaseModel):
     role: str
     fullname: str
 
+class UserUpdate(BaseModel):
+    fullname: Optional[str] = None
+    email: Optional[EmailStr] = None
+    role: Optional[str] = None
+    password: Optional[str] = None
+
 class UserLogin(BaseModel):
     email: EmailStr
     password: str

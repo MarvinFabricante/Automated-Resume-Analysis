@@ -6,8 +6,18 @@ from typing import List
 
 from app.utils.database import get_db
 from app.schemas.admin_schema import AdminCreate, AdminResponse, AdminUpdate
-from app.schemas.user_schema import UserResponse
+from app.schemas.user_schema import UserResponse, UserCreate, UserUpdate
+from app.schemas.job_description_schema import JobCreate, JobResponse, JobUpdate
 from app.services import admin_service, audit_service
+from app.services.job_description_service import (
+    create_job,
+    delete_job,
+    get_all_active_jobs,
+    get_job,
+    set_job_status,
+    update_job,
+)
+from app.utils.auth import get_current_user
 from app.utils.cache import cache_response, clear_cache_pattern
 
 
@@ -47,6 +57,48 @@ async def unarchive_user(user_id: int, db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=404, detail="User not found")
     await clear_cache_pattern("admin_users:*")
     return {"message": "User unarchived successfully"}
+
+@router.post("/users", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
+async def create_user(
+    user_in: UserCreate, 
+    db: AsyncSession = Depends(get_db)
+):
+    from app.services.auth_service import auth_service
+    try:
+        new_user = await auth_service.register_user(db, user_in.email, user_in.password, user_in.role, user_in.fullname)
+        await clear_cache_pattern("admin_users:*")
+        return new_user
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@router.put("/users/{user_id}", response_model=UserResponse)
+async def update_user(
+    user_id: int,
+    user_update: UserUpdate,
+    db: AsyncSession = Depends(get_db)
+):
+    update_data = user_update.dict(exclude_unset=True)
+    if not update_data:
+        raise HTTPException(status_code=400, detail="No data provided to update")
+        
+    updated_user = await admin_service.update_user(db, user_id, update_data)
+    if not updated_user:
+        raise HTTPException(status_code=404, detail="User not found")
+        
+    await clear_cache_pattern("admin_users:*")
+    return updated_user
+
+@router.delete("/users/{user_id}", status_code=status.HTTP_200_OK)
+async def delete_user(
+    user_id: int,
+    db: AsyncSession = Depends(get_db)
+):
+    success = await admin_service.delete_user(db, user_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="User not found")
+        
+    await clear_cache_pattern("admin_users:*")
+    return {"message": "User removed successfully"}
 
 @router.post("/register", response_model=AdminResponse, status_code=status.HTTP_200_OK)
 async def register_admin(
@@ -102,4 +154,111 @@ async def upload_admin_profile_image(
     
     return {"image_url": image_url}
 
+# ===================== For Job Management Section
 
+@router.post("/createjob", response_model=JobResponse, status_code=status.HTTP_201_CREATED)
+async def create_job_description(
+    job: JobCreate, 
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    result = await create_job(db=db, job=job)
+    await clear_cache_pattern("active_jobs:*")
+    
+    # Record in audit log
+    await audit_service.record_activity(
+        db=db,
+        user_id=current_user.get("id"),
+        action="CREATE_JOB",
+        target=f"Job: {result.job_title}",
+        details=f"Admin created a new job position: {result.job_title}"
+    )
+    
+    return result
+
+@router.get("/read-jobs", response_model=List[JobResponse])
+@cache_response("active_jobs", ttl=600)
+async def read_active_jobs(
+    skip: int = 0, 
+    limit: int = 100, 
+    include_inactive: bool = False,
+    db: AsyncSession = Depends(get_db)
+):
+    return await get_all_active_jobs(db, skip=skip, limit=limit, include_inactive=include_inactive)
+
+@router.get("/read-job/{job_id}", response_model=JobResponse)
+@cache_response("job_detail", ttl=600)
+async def read_job(job_id: str, db: AsyncSession = Depends(get_db)):
+    db_job = await get_job(db, job_id=job_id)
+    if not db_job:
+        raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
+    return db_job
+
+@router.patch("/update-job/{job_id}", response_model=JobResponse)
+async def update_job_details(
+    job_id: str, 
+    job_data: JobUpdate, 
+    db: AsyncSession = Depends(get_db)
+):
+    db_job = await update_job(db=db, job_id=job_id, job_data=job_data)
+    if db_job:
+        await clear_cache_pattern(f"job_detail:*job_id\":\"{job_id}\"*")
+        await clear_cache_pattern("active_jobs:*")
+    if not db_job:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, 
+            detail=f"Job {job_id} not found"
+        )
+    return db_job
+
+@router.patch("/archive-job/{job_id}", response_model=JobResponse)
+async def archive_job(job_id: str, db: AsyncSession = Depends(get_db)):
+    db_job = await set_job_status(db=db, job_id=job_id, active_status=False)
+    if db_job:
+        await clear_cache_pattern("active_jobs:*")
+        await clear_cache_pattern(f"job_detail:*job_id\":\"{job_id}\"*")
+    if not db_job:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, 
+            detail=f"Job {job_id} not found"
+        )
+    return db_job
+
+@router.patch("/unarchive-job/{job_id}", response_model=JobResponse)
+async def unarchive_job(job_id: str, db: AsyncSession = Depends(get_db)):
+    db_job = await set_job_status(db=db, job_id=job_id, active_status=True)
+    if db_job:
+        await clear_cache_pattern("active_jobs:*")
+        await clear_cache_pattern(f"job_detail:*job_id\":\"{job_id}\"*")
+    if not db_job:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, 
+            detail=f"Job {job_id} not found"
+        )
+    return db_job
+
+@router.delete("/delete-job/{job_id}", response_model=JobResponse)
+async def delete_job_endpoint(
+    job_id: str, 
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    db_job = await delete_job(db=db, job_id=job_id)
+    if db_job:
+        await clear_cache_pattern("active_jobs:*")
+        await clear_cache_pattern(f"job_detail:*job_id\":\"{job_id}\"*")
+        
+        # Record in audit log
+        await audit_service.record_activity(
+            db=db,
+            user_id=current_user.get("id"),
+            action="DELETE_JOB",
+            target=f"Job: {db_job.job_title}",
+            details=f"Admin deleted the job position: {db_job.job_title}"
+        )
+    if not db_job:
+        raise HTTPException(
+            status_code=status.HTTP_442_UNPROCESSABLE_ENTITY if not db_job else status.HTTP_404_NOT_FOUND,
+            detail=f"Job {job_id} not found"
+        )
+    return db_job

@@ -18,19 +18,35 @@ import {
 } from 'lucide-react';
 import Header from '../../components/layout/Header';
 import Sidebar from '../../components/layout/Sidebar';
+import { X, Trash2, Edit } from 'lucide-react';
 import { 
   useGetUsersQuery, 
   useArchiveUserMutation, 
-  useUnarchiveUserMutation 
+  useUnarchiveUserMutation,
+  useChangeUserRoleMutation,
+  useCreateUserMutation,
+  useUpdateUserMutation,
+  useDeleteUserMutation
 } from '../../redux/api/apiSlice';
 
 const UsersPage = () => {
   const { data: users = [], isLoading } = useGetUsersQuery();
   const [archiveUser] = useArchiveUserMutation();
   const [unarchiveUser] = useUnarchiveUserMutation();
+  const [createUser] = useCreateUserMutation();
+  const [updateUser] = useUpdateUserMutation();
+  const [deleteUser] = useDeleteUserMutation();
   
   const [searchQuery, setSearchQuery] = useState("");
   const [activeMenu, setActiveMenu] = useState(null);
+  
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [editUserData, setEditUserData] = useState(null);
+
+  const [formData, setFormData] = useState({ fullname: '', email: '', role: 'HR', password: '' });
+  
+  const [changeUserRole] = useChangeUserRoleMutation();
 
   const filteredUsers = users.filter(user => 
     user.fullname?.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -46,6 +62,58 @@ const UsersPage = () => {
 
   const handleUnarchive = async (userId) => {
     await unarchiveUser(userId);
+    setActiveMenu(null);
+  };
+
+  const handleRoleChange = async (userId, newRole) => {
+    if (window.confirm(`Are you sure you want to change this user's role to ${newRole}?`)) {
+      await changeUserRole({ userId, role: newRole });
+      setActiveMenu(null);
+    }
+  };
+
+  const handleDelete = async (userId) => {
+    if (window.confirm("Are you sure you want to permanently delete this user? This action cannot be undone.")) {
+      await deleteUser(userId);
+      setActiveMenu(null);
+    }
+  };
+
+  const handleCreateSubmit = async (e) => {
+    e.preventDefault();
+    try {
+      await createUser(formData).unwrap();
+      setIsCreateModalOpen(false);
+      setFormData({ fullname: '', email: '', role: 'HR', password: '' });
+    } catch (err) {
+      alert(err.data?.detail || 'Failed to create user');
+    }
+  };
+
+  const handleEditSubmit = async (e) => {
+    e.preventDefault();
+    try {
+      const updateData = { ...formData };
+      if (!updateData.password) {
+        delete updateData.password;
+      }
+      await updateUser({ userId: editUserData.id, body: updateData }).unwrap();
+      setIsEditModalOpen(false);
+      setEditUserData(null);
+    } catch (err) {
+      alert(err.data?.detail || 'Failed to update user');
+    }
+  };
+
+  const openEditModal = (user) => {
+    setEditUserData(user);
+    setFormData({
+      fullname: user.fullname,
+      email: user.email,
+      role: user.role,
+      password: ''
+    });
+    setIsEditModalOpen(true);
     setActiveMenu(null);
   };
 
@@ -79,9 +147,15 @@ const UsersPage = () => {
                 className="w-full bg-white border border-gray-200 rounded-xl py-2.5 pl-10 pr-4 text-xs focus:ring-2 focus:ring-red-100 transition-all outline-none shadow-sm"
               />
             </div>
-            <button className="bg-[#D10043] text-white px-5 py-2.5 rounded-xl hover:bg-[#b00038] transition-all text-xs font-bold tracking-tight flex items-center justify-center shadow-lg shadow-red-100">
+            <button 
+              onClick={() => {
+                setFormData({ fullname: '', email: '', role: 'HR', password: '' });
+                setIsCreateModalOpen(true);
+              }}
+              className="bg-[#D10043] text-white px-5 py-2.5 rounded-xl hover:bg-[#b00038] transition-all text-xs font-bold tracking-tight flex items-center justify-center shadow-lg shadow-red-100"
+            >
               <UserPlus className="h-4 w-4 mr-2" />
-              Invite Member
+              Create Account
             </button>
           </div>
         </div>
@@ -168,10 +242,27 @@ const UsersPage = () => {
                           
                           {activeMenu === user.id && (
                             <div className="absolute right-8 top-16 w-48 bg-white border border-gray-100 rounded-2xl shadow-xl z-20 py-2 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
-                              <button className="w-full px-4 py-2 text-left text-xs font-bold text-gray-700 hover:bg-gray-50 flex items-center gap-2">
-                                <Settings2 size={14} /> View Settings
-                              </button>
-                              {user.is_archived ? (
+                                <button 
+                                  onClick={() => openEditModal(user)}
+                                  className="w-full px-4 py-2 text-left text-xs font-bold text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+                                >
+                                  <Edit size={14} /> Edit Account
+                                </button>
+                                <div className="border-t border-gray-100 my-1"></div>
+                                <div className="px-4 py-1 text-[10px] font-bold text-gray-400 uppercase">Change Role</div>
+                                {['ADMIN', 'HR', 'CANDIDATE'].map((role) => (
+                                  user.role !== role && (
+                                    <button 
+                                      key={role}
+                                      onClick={() => handleRoleChange(user.id, role)}
+                                      className="w-full px-4 py-1.5 text-left text-[11px] font-semibold text-gray-600 hover:bg-gray-50 hover:text-[#D10043] flex items-center gap-2"
+                                    >
+                                      Make {role}
+                                    </button>
+                                  )
+                                ))}
+                                <div className="border-t border-gray-100 my-1"></div>
+                                {user.is_archived ? (
                                 <button 
                                   onClick={() => handleUnarchive(user.id)}
                                   className="w-full px-4 py-2 text-left text-xs font-bold text-emerald-600 hover:bg-emerald-50 flex items-center gap-2"
@@ -186,6 +277,13 @@ const UsersPage = () => {
                                   <Archive size={14} /> Archive User
                                 </button>
                               )}
+                              <div className="border-t border-gray-100 my-1"></div>
+                              <button 
+                                onClick={() => handleDelete(user.id)}
+                                className="w-full px-4 py-2 text-left text-xs font-bold text-red-600 hover:bg-red-50 flex items-center gap-2"
+                              >
+                                <Trash2 size={14} /> Remove Account
+                              </button>
                             </div>
                           )}
                         </td>
@@ -261,6 +359,135 @@ const UsersPage = () => {
         </div>
         </main>
       </div>
+
+      {/* Create Modal */}
+      {isCreateModalOpen && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center">
+          <div className="bg-white rounded-3xl p-8 w-full max-w-md shadow-2xl relative animate-in fade-in zoom-in-95 duration-200">
+            <button 
+              onClick={() => setIsCreateModalOpen(false)}
+              className="absolute top-6 right-6 text-gray-400 hover:text-gray-600"
+            >
+              <X size={20} />
+            </button>
+            <h3 className="text-xl font-bold text-gray-900 mb-6">Create New Account</h3>
+            <form onSubmit={handleCreateSubmit} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-gray-700 mb-1">Full Name</label>
+                <input 
+                  type="text" required
+                  value={formData.fullname}
+                  onChange={(e) => setFormData({...formData, fullname: e.target.value})}
+                  className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-red-100 outline-none"
+                  placeholder="John Doe"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-700 mb-1">Email</label>
+                <input 
+                  type="email" required
+                  value={formData.email}
+                  onChange={(e) => setFormData({...formData, email: e.target.value})}
+                  className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-red-100 outline-none"
+                  placeholder="john@example.com"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-700 mb-1">Password</label>
+                <input 
+                  type="password" required
+                  value={formData.password}
+                  onChange={(e) => setFormData({...formData, password: e.target.value})}
+                  className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-red-100 outline-none"
+                  placeholder="••••••••"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-700 mb-1">Role</label>
+                <select 
+                  value={formData.role}
+                  onChange={(e) => setFormData({...formData, role: e.target.value})}
+                  className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-red-100 outline-none"
+                >
+                  <option value="HR">HR</option>
+                  <option value="ADMIN">Admin</option>
+                  <option value="CANDIDATE">Candidate</option>
+                </select>
+              </div>
+              <button 
+                type="submit" 
+                className="w-full bg-[#D10043] text-white py-3 rounded-xl font-bold hover:bg-[#b00038] transition-colors mt-6 shadow-lg shadow-red-100"
+              >
+                Create Account
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Modal */}
+      {isEditModalOpen && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center">
+          <div className="bg-white rounded-3xl p-8 w-full max-w-md shadow-2xl relative animate-in fade-in zoom-in-95 duration-200">
+            <button 
+              onClick={() => setIsEditModalOpen(false)}
+              className="absolute top-6 right-6 text-gray-400 hover:text-gray-600"
+            >
+              <X size={20} />
+            </button>
+            <h3 className="text-xl font-bold text-gray-900 mb-6">Edit Account</h3>
+            <form onSubmit={handleEditSubmit} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-gray-700 mb-1">Full Name</label>
+                <input 
+                  type="text" required
+                  value={formData.fullname}
+                  onChange={(e) => setFormData({...formData, fullname: e.target.value})}
+                  className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-red-100 outline-none"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-700 mb-1">Email</label>
+                <input 
+                  type="email" required
+                  value={formData.email}
+                  onChange={(e) => setFormData({...formData, email: e.target.value})}
+                  className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-red-100 outline-none"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-700 mb-1">New Password (Optional)</label>
+                <input 
+                  type="password"
+                  value={formData.password}
+                  onChange={(e) => setFormData({...formData, password: e.target.value})}
+                  className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-red-100 outline-none"
+                  placeholder="Leave blank to keep current"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-700 mb-1">Role</label>
+                <select 
+                  value={formData.role}
+                  onChange={(e) => setFormData({...formData, role: e.target.value})}
+                  className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-red-100 outline-none"
+                >
+                  <option value="HR">HR</option>
+                  <option value="ADMIN">Admin</option>
+                  <option value="CANDIDATE">Candidate</option>
+                </select>
+              </div>
+              <button 
+                type="submit" 
+                className="w-full bg-[#D10043] text-white py-3 rounded-xl font-bold hover:bg-[#b00038] transition-colors mt-6 shadow-lg shadow-red-100"
+              >
+                Update Account
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 };

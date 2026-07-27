@@ -47,6 +47,20 @@ class AdminRepository:
         return user
 
     @staticmethod
+    async def update_user(db: AsyncSession, user: User, update_data: dict) -> User:
+        for key, value in update_data.items():
+            setattr(user, key, value)
+        await db.commit()
+        await db.refresh(user)
+        return user
+
+    @staticmethod
+    async def delete_user(db: AsyncSession, user: User) -> bool:
+        await db.delete(user)
+        await db.commit()
+        return True
+
+    @staticmethod
     async def get_system_stats(db: AsyncSession) -> Dict[str, Any]:
         hr_count = await db.execute(select(func.count(HR.id)))
         candidate_count = await db.execute(select(func.count(Candidate.id)))

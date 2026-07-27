@@ -153,7 +153,7 @@ const JobManagementPage = () => {
 
   return (
     <div className="bg-[#FCFCFC] text-gray-800 antialiased min-h-screen font-['Inter'] flex flex-col">
-      <Helmet><title>HR - Job Management</title></Helmet>
+      <Helmet><title>Admin - Job Management</title></Helmet>
       <Header />
       
       <div className="flex flex-1">

@@ -9,6 +9,7 @@ from app.models.notification import Notification
 from app.models.message import Message
 from app.models.audit_log import AuditLog
 from app.models.interview import Interview, InterviewPanelist, InterviewLog
+from app.models.system_config import SystemConfig, FormTemplate
 
 __all__ = [
     "User",
@@ -23,5 +24,7 @@ __all__ = [
     "AuditLog",
     "Interview",
     "InterviewPanelist",
-    "InterviewLog"
+    "InterviewLog",
+    "SystemConfig",
+    "FormTemplate"
 ]

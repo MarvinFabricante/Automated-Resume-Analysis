@@ -18,6 +18,7 @@ from app.controllers.job_matching_controller import router as job_matching_route
 from app.controllers.chat_controller import router as chat_router
 from app.controllers.ai_caller_controller import router as ai_caller_router
 from app.controllers.interview_controller import router as interview_router
+from app.controllers.system_config_controller import router as system_config_router
 
 import os
 import logging
@@ -94,6 +95,7 @@ class BackendApplication:
         self.app.include_router(chat_router)
         self.app.include_router(ai_caller_router)
         self.app.include_router(interview_router)
+        self.app.include_router(system_config_router)
 
     def register_events(self):
         self.app.on_event("startup")(self.startup)
@@ -112,6 +114,7 @@ class BackendApplication:
         from app.models.message import Message
         from app.models.password_reset import PasswordReset
         from app.models.interview import Interview, InterviewPanelist, InterviewLog
+        from app.models.system_config import SystemConfig, FormTemplate
 
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)

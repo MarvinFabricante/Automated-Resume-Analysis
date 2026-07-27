@@ -2,7 +2,8 @@ import React from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Users, Database, Building2, User, Settings, Search, FileText, Info, Briefcase,
-  HelpCircle, BookOpen, ChevronRight, X, MessageSquare, Menu, ChevronLeft, Scale
+  HelpCircle, BookOpen, ChevronRight, X, MessageSquare, Menu, ChevronLeft, Scale,
+  Sliders, Activity
 } from 'lucide-react';
 import { useSelector, useDispatch } from 'react-redux';
 import { toggleSidebar, closeSidebar } from '../../redux/slices/uiSlice';
@@ -23,7 +24,10 @@ const Sidebar = () => {
     if (isAdminRole) {
       items.push(
         { label: 'Dashboard', path: '/admin/dashboard', icon: <LayoutDashboard size={22} /> },
+        { label: 'Performance', path: '/admin/performance', icon: <Activity size={22} /> },
         { label: 'User Management', path: '/admin/users', icon: <Users size={22} /> },
+        { label: 'Jobs', path: '/admin/jobmanagement', icon: <Briefcase size={22} /> },
+        { label: 'System Config', path: '/admin/system-config', icon: <Sliders size={22} /> },
         { label: 'Messages', path: '/admin/messages', icon: <MessageSquare size={22} /> },
         { label: 'Audit Logs', path: '/admin/auditlog', icon: <Database size={22} /> }
       );
@@ -32,7 +36,6 @@ const Sidebar = () => {
         { label: 'Dashboard', path: '/hr/dashboard', icon: <Building2 size={22} /> },
         { label: 'Screening', path: '/hr/screeningportal', icon: <User size={22} /> },
         { label: 'Compare Candidates', path: '/hr/comparecandidates', icon: <Scale size={22} /> },
-        { label: 'Jobs', path: '/hr/jobmanagement', icon: <Settings size={22} /> },
         { label: 'Messages', path: '/hr/messages', icon: <MessageSquare size={22} /> }
       );
     } else if (isCandidateRole) {

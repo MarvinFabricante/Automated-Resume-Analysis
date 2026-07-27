@@ -43,6 +43,22 @@ class AdminService:
 
         return await AdminRepository.update_user_archive_status(db, user, archive_status)
 
+    async def update_user(self, db: AsyncSession, user_id: int, update_data: dict):
+        user = await AdminRepository.get_user_by_id(db, user_id)
+        if not user:
+            return None
+        
+        if 'password' in update_data and update_data['password']:
+            update_data['password'] = hash_password(update_data['password'])
+        
+        return await AdminRepository.update_user(db, user, update_data)
+
+    async def delete_user(self, db: AsyncSession, user_id: int):
+        user = await AdminRepository.get_user_by_id(db, user_id)
+        if not user:
+            return False
+        return await AdminRepository.delete_user(db, user)
+
     async def get_system_stats(self, db: AsyncSession):
         return await AdminRepository.get_system_stats(db)
 
