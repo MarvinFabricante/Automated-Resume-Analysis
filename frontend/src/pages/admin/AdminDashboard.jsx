@@ -160,6 +160,9 @@ const AdminDashboard = () => {
                         </td>
                         <td className="py-5">
                           <p className="text-sm font-semibold text-gray-700">{log.action}</p>
+                          {log.details && (
+                            <p className="text-xs text-gray-500 mt-1">{log.details}</p>
+                          )}
                           <p className="text-[11px] text-gray-400 flex items-center gap-1 mt-0.5 italic">
                             <Clock size={12} /> {log.time} • {log.target}
                           </p>

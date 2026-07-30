@@ -228,6 +228,7 @@ export const apiSlice = createApi({
     getHRActivities: builder.query({
       query: () => '/admins/hr-activities',
       providesTags: ['AuditLogs'],
+      pollingInterval: 3000,
       transformResponse: (response) => {
         return response.map(log => ({
           id: log.id,
@@ -298,6 +299,7 @@ export const apiSlice = createApi({
     getAuditLogs: builder.query({
       query: () => '/admins/audit-logs',
       providesTags: ['AuditLogs'],
+      pollingInterval: 3000,
       transformResponse: (response) => {
         return response.map(log => ({
           id: `LOG-${log.id}`,
@@ -382,6 +384,37 @@ export const apiSlice = createApi({
       providesTags: ['Dashboard'],
     }),
 
+    // --- DATA MANAGEMENT & SECURITY ---
+    createDataBackup: builder.mutation({
+      query: () => ({
+        url: '/admins/data-backup',
+        method: 'POST',
+      }),
+      invalidatesTags: ['AuditLogs'],
+    }),
+
+    recoverData: builder.mutation({
+      query: () => ({
+        url: '/admins/data-recovery',
+        method: 'POST',
+      }),
+      invalidatesTags: ['AuditLogs'],
+    }),
+
+    getRetentionPolicy: builder.query({
+      query: () => '/admins/retention-policy',
+      providesTags: ['SystemConfig'],
+    }),
+
+    updateRetentionPolicy: builder.mutation({
+      query: (body) => ({
+        url: '/admins/retention-policy',
+        method: 'PUT',
+        body,
+      }),
+      invalidatesTags: ['SystemConfig', 'AuditLogs'],
+    }),
+
   }),
 });
 
@@ -422,4 +455,8 @@ export const {
   useUpdateFormTemplateMutation,
   useDeleteFormTemplateMutation,
   useGetSystemPerformanceQuery,
+  useCreateDataBackupMutation,
+  useRecoverDataMutation,
+  useGetRetentionPolicyQuery,
+  useUpdateRetentionPolicyMutation,
 } = apiSlice;

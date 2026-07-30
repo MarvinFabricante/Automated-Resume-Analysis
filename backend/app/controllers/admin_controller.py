@@ -262,3 +262,53 @@ async def delete_job_endpoint(
             detail=f"Job {job_id} not found"
         )
     return db_job
+
+# ===================== For Data Management & Security Section
+
+from datetime import datetime
+
+@router.post("/data-backup")
+async def create_data_backup(db: AsyncSession = Depends(get_db), current_user: dict = Depends(get_current_user)):
+    # Mock backup implementation
+    
+    await audit_service.record_activity(
+        db=db,
+        user_id=current_user.get("id"),
+        action="DATA_BACKUP",
+        target="System Database",
+        details="Admin triggered a manual data backup"
+    )
+    return {"message": "Data backup completed successfully", "timestamp": datetime.now().isoformat()}
+
+@router.post("/data-recovery")
+async def recover_data(db: AsyncSession = Depends(get_db), current_user: dict = Depends(get_current_user)):
+    # Mock recovery implementation
+    await audit_service.record_activity(
+        db=db,
+        user_id=current_user.get("id"),
+        action="DATA_RECOVERY",
+        target="System Database",
+        details="Admin initiated data recovery process"
+    )
+    return {"message": "Data recovery initiated successfully"}
+
+@router.get("/retention-policy")
+async def get_retention_policy(db: AsyncSession = Depends(get_db)):
+    # Mock retrieval of retention policy
+    return {"retention_days": 90, "auto_delete": True}
+
+@router.put("/retention-policy")
+async def update_retention_policy(
+    policy: dict,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    # Mock update of retention policy
+    await audit_service.record_activity(
+        db=db,
+        user_id=current_user.get("id"),
+        action="UPDATE_RETENTION",
+        target="System Config",
+        details=f"Admin updated data retention policy to {policy.get('retention_days', 90)} days"
+    )
+    return {"message": "Retention policy updated successfully", "policy": policy}
