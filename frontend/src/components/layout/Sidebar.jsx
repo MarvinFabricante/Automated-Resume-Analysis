@@ -42,7 +42,7 @@ const Sidebar = () => {
       items.push(
         { label: 'Dashboard', path: '/candidate/dashboard', icon: <LayoutDashboard size={22} /> },
         { label: 'Find Jobs', path: '/candidate/findjobs', icon: <Search size={22} /> },
-        { label: 'Applications', path: '/candidate/applicationtracking', icon: <FileText size={22} /> },
+
         { label: 'Messages', path: '/candidate/messages', icon: <MessageSquare size={22} /> }
       );
     } else {
