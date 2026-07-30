@@ -82,7 +82,7 @@ const CandidateDashboard = () => {
                           <h3 className="text-xl font-black text-slate-900 tracking-tight">Finish your application</h3>
                         </div>
                       </div>
-                      
+
                       <div className="flex flex-col sm:flex-row justify-between items-center p-6 bg-slate-50 rounded-3xl border border-slate-100 gap-6">
                         <div>
                           <h4 className="text-lg font-black text-slate-900 leading-none mb-1">
@@ -99,7 +99,7 @@ const CandidateDashboard = () => {
                             <div className={`bg-[#D10043] ${draftProgress.width} h-full rounded-full animate-pulse transition-all duration-700`}></div>
                           </div>
                         </div>
-                        <button 
+                        <button
                           onClick={() => navigate(getDraftRoute())}
                           className="bg-[#D10043] whitespace-nowrap text-white px-6 py-3 rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-slate-900 transition-all flex items-center gap-2 group"
                         >
@@ -118,11 +118,11 @@ const CandidateDashboard = () => {
                       </div>
                       <h3 className="text-xl font-black text-slate-900 mb-2">No Submitted Applications</h3>
                       <p className="text-slate-500 mb-8 max-w-sm mx-auto font-medium">
-                        {localStorage.getItem('draft_application_job_id') 
+                        {localStorage.getItem('draft_application_job_id')
                           ? `You have one application in progress for ${localStorage.getItem('draft_application_job_title')}. Finish it to see it here.`
                           : "You haven't applied for any positions yet. Explore our career opportunities to get started."}
                       </p>
-                      <button 
+                      <button
                         onClick={() => navigate('/candidate/findjobs')}
                         className="bg-[#D10043] text-white px-8 py-3 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-slate-900 transition-all"
                       >
@@ -132,8 +132,8 @@ const CandidateDashboard = () => {
                   )}
                 </div>
               )}
-              
-              <ProfileStrength />
+
+
             </div>
 
             <div className="space-y-10 animate-in fade-in slide-in-from-right-6 duration-700">
