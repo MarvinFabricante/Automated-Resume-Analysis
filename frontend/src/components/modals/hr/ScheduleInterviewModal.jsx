@@ -11,13 +11,11 @@ import {
   FileText
 } from 'lucide-react';
 import { 
-  useGetUsersQuery, 
   useGetAvailableSlotsMutation, 
   useScheduleInterviewMutation 
 } from '../../../redux/api/apiSlice';
 
 const ScheduleInterviewModal = ({ isOpen, onClose, candidate }) => {
-  const { data: users = [], isLoading: isLoadingUsers } = useGetUsersQuery();
   const [getSlots, { isLoading: isFetchingSlots }] = useGetAvailableSlotsMutation();
   const [scheduleInterview, { isLoading: isScheduling }] = useScheduleInterviewMutation();
 
@@ -25,28 +23,44 @@ const ScheduleInterviewModal = ({ isOpen, onClose, candidate }) => {
     date: '',
     title: 'Initial Interview',
     description: '',
-    panelistIds: [],
     selectedSlot: null
   });
 
   const [availableSlots, setAvailableSlots] = useState([]);
   const [hasAttemptedFetch, setHasAttemptedFetch] = useState(false);
+  const [weekendWarning, setWeekendWarning] = useState(false);
+
+  // Helper: check if a date string (YYYY-MM-DD) falls on a weekday
+  const isWeekday = (dateStr) => {
+    const d = new Date(dateStr + 'T00:00:00');
+    const day = d.getDay(); // 0=Sun, 6=Sat
+    return day !== 0 && day !== 6;
+  };
+
+  // Today's date as min for the date picker (ISO format)
+  const todayISO = new Date().toISOString().split('T')[0];
 
   useEffect(() => {
-    if (formData.date && formData.panelistIds.length > 0) {
+    if (formData.date) {
+      // Block weekends on the client side
+      if (!isWeekday(formData.date)) {
+        setWeekendWarning(true);
+        setAvailableSlots([]);
+        setHasAttemptedFetch(false);
+        return;
+      }
+      setWeekendWarning(false);
+
       const fetchSlots = async () => {
         setHasAttemptedFetch(true);
         try {
-          const startDate = new Date(formData.date);
-          startDate.setHours(0, 0, 0, 0);
-          
-          const endDate = new Date(formData.date);
-          endDate.setHours(23, 59, 59, 999);
+          // Build local ISO strings directly from the selected date to avoid
+          // the browser's toISOString() converting to UTC (which shifts hours).
+          const dateStr = formData.date; // "YYYY-MM-DD"
 
           const slots = await getSlots({
-            panelist_ids: formData.panelistIds,
-            start_date: startDate.toISOString(),
-            end_date: endDate.toISOString()
+            start_date: `${dateStr}T08:00:00`,
+            end_date:   `${dateStr}T17:00:00`
           }).unwrap();
           
           setAvailableSlots(slots || []);
@@ -63,8 +77,9 @@ const ScheduleInterviewModal = ({ isOpen, onClose, candidate }) => {
     } else {
       setAvailableSlots([]);
       setHasAttemptedFetch(false);
+      setWeekendWarning(false);
     }
-  }, [formData.date, formData.panelistIds, getSlots]);
+  }, [formData.date, getSlots]);
 
   if (!isOpen || !candidate) return null;
 
@@ -74,10 +89,6 @@ const ScheduleInterviewModal = ({ isOpen, onClose, candidate }) => {
       alert("Please select a time slot.");
       return;
     }
-    if (formData.panelistIds.length === 0) {
-      alert("Please select at least one panelist.");
-      return;
-    }
 
     try {
       await scheduleInterview({
@@ -85,31 +96,17 @@ const ScheduleInterviewModal = ({ isOpen, onClose, candidate }) => {
         title: formData.title,
         description: formData.description,
         start_time: formData.selectedSlot.start_time,
-        end_time: formData.selectedSlot.end_time,
-        panelist_ids: formData.panelistIds
+        end_time: formData.selectedSlot.end_time
       }).unwrap();
       
       alert(`Interview successfully scheduled!\nGoogle Calendar Event created and Twilio SMS sent to ${candidate.name}.`);
       onClose();
     } catch (error) {
       console.error("Schedule error:", error);
-      alert("Failed to schedule interview. Ensure panelists have Google Calendar access.");
+      alert("Failed to schedule interview. Ensure HR's Google Calendar is connected.");
     }
   };
 
-  const togglePanelist = (userId) => {
-    setFormData(prev => {
-      const current = prev.panelistIds;
-      const isSelected = current.includes(userId);
-      return {
-        ...prev,
-        panelistIds: isSelected 
-          ? current.filter(id => id !== userId) 
-          : [...current, userId],
-        selectedSlot: null // reset slot if panelists change
-      };
-    });
-  };
 
   const formatTime = (isoString) => {
     return new Date(isoString).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -165,10 +162,10 @@ const ScheduleInterviewModal = ({ isOpen, onClose, candidate }) => {
                     </div>
                     <div>
                       <p className={`text-[10px] font-black uppercase tracking-wider ${hasAttemptedFetch ? (availableSlots.length > 0 ? 'text-green-600' : 'text-red-600') : 'text-gray-500'}`}>
-                        {hasAttemptedFetch ? (availableSlots.length > 0 ? 'Conflict-Free Slots Found' : 'No Slots Available') : 'Select Date & Panel'}
+                        {hasAttemptedFetch ? (availableSlots.length > 0 ? 'Conflict-Free Slots Found' : 'No Slots Available') : 'Select Date'}
                       </p>
                       <p className="text-[10px] text-gray-400 font-medium leading-relaxed mt-0.5">
-                        {hasAttemptedFetch ? (availableSlots.length > 0 ? 'HR & Panel schedules verified.' : 'No mutual availability found.') : 'Awaiting input to check availability.'}
+                        {hasAttemptedFetch ? (availableSlots.length > 0 ? 'HR schedule verified.' : 'No availability found.') : 'Awaiting input to check availability.'}
                       </p>
                     </div>
                   </div>
@@ -216,32 +213,6 @@ const ScheduleInterviewModal = ({ isOpen, onClose, candidate }) => {
                 </div>
               </div>
 
-              {/* Panel Selection */}
-              <div>
-                <h3 className="text-sm font-bold text-gray-900 uppercase tracking-tight mb-4 flex items-center gap-2">
-                  <Users size={16} className="text-[#d81159]" /> Select Panelists
-                </h3>
-                {isLoadingUsers ? (
-                    <p className="text-sm text-gray-400">Loading users...</p>
-                ) : (
-                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                    {users.map(user => (
-                        <div 
-                            key={user.id} 
-                            onClick={() => togglePanelist(user.id)}
-                            className={`cursor-pointer flex flex-col p-3 rounded-xl border transition-all ${
-                                formData.panelistIds.includes(user.id) 
-                                    ? 'bg-pink-50 border-[#d81159] text-[#d81159]' 
-                                    : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'
-                            }`}
-                        >
-                            <span className="text-xs font-bold truncate">{user.fullname || user.email}</span>
-                            <span className="text-[10px] opacity-80 mt-1 uppercase tracking-wider">{user.role}</span>
-                        </div>
-                    ))}
-                  </div>
-                )}
-              </div>
 
               {/* Date & Time Availability */}
               <div>
@@ -255,15 +226,30 @@ const ScheduleInterviewModal = ({ isOpen, onClose, candidate }) => {
                     <input
                       required
                       type="date"
+                      min={todayISO}
                       className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl text-sm font-medium text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#d81159]/20 focus:border-[#d81159] transition-all"
                       value={formData.date}
-                      onChange={(e) => setFormData({ ...formData, date: e.target.value })}
+                      onChange={(e) => setFormData({ ...formData, date: e.target.value, selectedSlot: null })}
                     />
+                    <p className="text-[9px] text-gray-400 font-medium flex items-center gap-1 mt-1">
+                      <Clock size={10} /> Mon – Fri only &nbsp;•&nbsp; 8:00 AM – 5:00 PM
+                    </p>
                   </div>
 
-                  {formData.date && formData.panelistIds.length > 0 && (
+                  {/* Weekend warning */}
+                  {weekendWarning && (
+                    <div className="py-3 px-4 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-2">
+                      <AlertCircle size={16} className="text-amber-500 mt-0.5 flex-shrink-0" />
+                      <div>
+                        <p className="text-xs font-bold text-amber-700">Weekends Not Available</p>
+                        <p className="text-[10px] text-amber-600 mt-0.5">Interviews can only be scheduled Monday through Friday. Please select a weekday.</p>
+                      </div>
+                    </div>
+                  )}
+
+                  {formData.date && !weekendWarning && (
                     <div className="pt-2">
-                        <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-2">Available System Recommended Slots</label>
+                        <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-2">Available Slots (8:00 AM – 5:00 PM)</label>
                         {isFetchingSlots ? (
                             <div className="py-4 text-sm text-gray-500 animate-pulse">Checking mutual availability with Google Calendar...</div>
                         ) : availableSlots.length > 0 ? (
@@ -286,8 +272,8 @@ const ScheduleInterviewModal = ({ isOpen, onClose, candidate }) => {
                             </div>
                         ) : (
                             <div className="py-4 px-5 bg-red-50 border border-red-100 rounded-xl">
-                                <p className="text-xs font-bold text-red-600">No available slots found for the selected date and panelists.</p>
-                                <p className="text-[10px] text-red-500 mt-1">Please try another date or adjust the panel.</p>
+                                <p className="text-xs font-bold text-red-600">No available slots found for the selected date.</p>
+                                <p className="text-[10px] text-red-500 mt-1">All time slots are occupied or the calendar is fully booked. Please try another weekday.</p>
                             </div>
                         )}
                     </div>

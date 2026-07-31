@@ -113,7 +113,7 @@ class BackendApplication:
         from app.models.notification import Notification
         from app.models.message import Message
         from app.models.password_reset import PasswordReset
-        from app.models.interview import Interview, InterviewPanelist, InterviewLog
+        from app.models.interview import Interview, InterviewLog
         from app.models.system_config import SystemConfig, FormTemplate
 
         async with engine.begin() as conn:
@@ -162,6 +162,18 @@ class BackendApplication:
                     ))
             except Exception as e:
                 logger.warning(f"Could not ensure job_applications.{column_name}: {e}")
+
+        # Ensure google_credentials in users table
+        try:
+            if dialect == "sqlite":
+                existing = await conn.execute(text("PRAGMA table_info(users)"))
+                existing_names = {row[1] for row in existing.fetchall()}
+                if "google_credentials" not in existing_names:
+                    await conn.execute(text("ALTER TABLE users ADD COLUMN google_credentials TEXT"))
+            else:
+                await conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS google_credentials TEXT"))
+        except Exception as e:
+            logger.warning(f"Could not ensure users.google_credentials: {e}")
 
     async def startup(self):
         await self.create_tables()

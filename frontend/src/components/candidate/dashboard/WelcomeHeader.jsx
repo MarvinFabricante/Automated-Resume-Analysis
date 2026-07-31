@@ -21,13 +21,13 @@ const WelcomeHeader = () => {
         </p>
       </div>
 
-      <button
+      {/* <button
         onClick={() => navigate('/careerspage')}
         className="bg-[#D10043] text-white px-8 py-4 rounded-2xl hover:bg-slate-900 transition-all text-xs font-black uppercase tracking-widest shadow-xl shadow-pink-100 flex items-center group active:scale-[0.95]"
       >
         Explore New Opportunities
         <ChevronRight size={16} className="ml-3 group-hover:translate-x-1 transition-transform" />
-      </button>
+      </button> */}
     </div>
   );
 };

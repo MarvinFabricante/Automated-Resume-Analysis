@@ -21,19 +21,10 @@ class Interview(Base):
 
     # Relationships
     job_application = relationship("JobApplication", backref="interviews")
-    panelists = relationship("InterviewPanelist", back_populates="interview", cascade="all, delete-orphan")
     logs = relationship("InterviewLog", back_populates="interview", cascade="all, delete-orphan")
 
 
-class InterviewPanelist(Base):
-    __tablename__ = "interview_panelists"
 
-    id = Column(Integer, primary_key=True, index=True)
-    interview_id = Column(Integer, ForeignKey("interviews.id"), nullable=False)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    
-    interview = relationship("Interview", back_populates="panelists")
-    user = relationship("User")
 
 
 class InterviewLog(Base):

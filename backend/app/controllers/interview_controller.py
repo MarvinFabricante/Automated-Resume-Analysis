@@ -20,7 +20,7 @@ router = APIRouter(prefix="/interviews", tags=["Interviews"])
 async def get_available_slots(
     request: AvailableSlotsRequest,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user)
 ):
     """
     Automatically view available time slots by syncing HR and panel calendars using Google Calendar API.
@@ -28,9 +28,9 @@ async def get_available_slots(
     try:
         slots = await interview_service.get_available_slots(
             db,
-            request.panelist_ids,
             request.start_date,
             request.end_date,
+            current_user.get("id")
         )
         return slots
     except Exception as e:
@@ -40,17 +40,63 @@ async def get_available_slots(
 async def schedule_interview(
     data: InterviewCreateSchema,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user)
 ):
     """
     Allow one-click interview scheduling based on system-recommended available time slots.
-    Support automatic coordination for multi-panel interviews.
+    Validates that the requested slot falls within working hours (8 AM–5 PM, Mon–Fri)
+    and does not conflict with existing interviews.
     """
+    # ── Server-side working-hours validation ──────────────────────────
+    start = data.start_time
+    end = data.end_time
+
+    # Weekday check (Monday=0 … Friday=4)
+    if start.weekday() > 4:
+        raise HTTPException(
+            status_code=400,
+            detail="Interviews can only be scheduled on weekdays (Monday – Friday)."
+        )
+
+    # Working-hours check (8:00 AM – 5:00 PM)
+    if start.hour < 8 or end.hour > 17 or (end.hour == 17 and end.minute > 0):
+        raise HTTPException(
+            status_code=400,
+            detail="Interviews must be scheduled within working hours (8:00 AM – 5:00 PM)."
+        )
+
+    # ── Conflict check against existing DB interviews ─────────────────
+    from app.repositories.interview_repository import InterviewRepository
+    existing = await InterviewRepository.get_interviews_in_range(
+        db,
+        start.replace(tzinfo=None),
+        end.replace(tzinfo=None),
+    )
+    if existing:
+        raise HTTPException(
+            status_code=409,
+            detail="The selected time slot conflicts with an existing interview. Please choose another slot."
+        )
+
     try:
-        result = await interview_service.schedule_interview(db, data)
+        result = await interview_service.schedule_interview(db, data, current_user.get("id"))
         return result
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/calendar-events")
+async def get_calendar_events(
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Fetch and display the HR's Google Calendar schedules.
+    """
+    try:
+        events = await interview_service.get_calendar_events(db, current_user.get("id"))
+        return events
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

@@ -211,20 +211,31 @@ const Login = () => {
               Not your computer? Use a private browsing window to sign in. <a href="#" className="text-[#D60041] font-medium hover:underline">Learn more</a>
             </p>
 
-            <div className="flex flex-col-reverse sm:flex-row justify-between items-center gap-4 sm:gap-0 mt-8">
-              <a
-                href="/register"
-                className="text-sm font-medium text-[#D60041] hover:bg-red-50 px-3 py-2 rounded-md transition-colors w-full sm:w-auto text-center"
-              >
-                Create account
-              </a>
+            <div className="flex flex-col gap-4 mt-8">
               <button
-                type="submit"
-                disabled={loading}
-                className="w-full sm:w-auto bg-[#D60041] hover:bg-[#b50037] text-white text-sm font-medium px-6 py-2.5 rounded-full transition-colors disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center min-w-[100px]"
+                type="button"
+                onClick={() => window.location.href = 'http://localhost:8000/auth/google/login'}
+                className="w-full flex items-center justify-center gap-2 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 text-sm font-medium px-6 py-2.5 rounded-full transition-colors"
               >
-                {loading ? <Loader2 className="animate-spin h-5 w-5" /> : "Next"}
+                <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google Logo" className="w-5 h-5" />
+                Sign in with Google
               </button>
+
+              <div className="flex flex-col-reverse sm:flex-row justify-between items-center gap-4 sm:gap-0">
+                <a
+                  href="/register"
+                  className="text-sm font-medium text-[#D60041] hover:bg-red-50 px-3 py-2 rounded-md transition-colors w-full sm:w-auto text-center"
+                >
+                  Create account
+                </a>
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="w-full sm:w-auto bg-[#D60041] hover:bg-[#b50037] text-white text-sm font-medium px-6 py-2.5 rounded-full transition-colors disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center min-w-[100px]"
+                >
+                  {loading ? <Loader2 className="animate-spin h-5 w-5" /> : "Next"}
+                </button>
+              </div>
             </div>
           </form>
         </div>

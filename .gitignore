@@ -41,6 +41,11 @@ wheels/
 .mypy_cache/
 .ruff_cache/
 
+# --- Google OAuth Credentials ---
+token.pickle
+token.json
+credentials.json
+
 # --- Environment Variables (Crucial) ---
 .env
 .env.development.local

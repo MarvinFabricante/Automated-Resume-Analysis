@@ -10,6 +10,7 @@ import Login from './pages/publicPages/authenticationPages/Login';
 import Register from './pages/publicPages/authenticationPages/Register';
 import ForgotPassword from './pages/publicPages/authenticationPages/ForgotPassword';
 import ResetPassword from './pages/publicPages/authenticationPages/ResetPassword';
+import GoogleCallback from './pages/publicPages/authenticationPages/GoogleCallback';
 
 import LandingPage from './pages/publicPages/site/LandingPage';
 import AboutPage from './pages/publicPages/site/AboutPage';
@@ -85,6 +86,7 @@ const App = () => {
         <Route path="/register" element={<Register />} />
         <Route path="/forgot-password" element={<ForgotPassword />} />
         <Route path="/reset-password" element={<ResetPassword />} />
+        <Route path="/auth/callback" element={<GoogleCallback />} />
         <Route path="/" element={<LandingPage />} />
         <Route path="/careerspage" element={<CareersPage />} />
         <Route path="/aboutpage" element={<AboutPage />} />

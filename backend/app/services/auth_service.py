@@ -176,6 +176,54 @@ class AuthService:
         
         return True
 
+    async def login_with_google(self, db: AsyncSession, email: str, fullname: str, picture: str, google_credentials: str):
+        email = email.strip().lower()
+        
+        row = await AuthRepository.get_raw_user_by_email(db, email)
+        if not row:
+            new_user = await self.register_user(db, email, str(uuid.uuid4()), "CANDIDATE", fullname)
+            user_id = new_user.id
+            role = "CANDIDATE"
+        else:
+            user_id = row.id
+            role = row.role
+
+        user = await AuthRepository.get_user_by_id(db, user_id)
+        if user:
+            user.google_credentials = google_credentials
+            if picture and not user.profile_image_url:
+                user.profile_image_url = picture
+            user.is_online = True
+            user.last_active = datetime.utcnow()
+            await db.commit()
+
+        token = create_access_token({
+            "sub": email,
+            "role": role,
+            "id": user_id
+        })
+
+        if role in ["CANDIDATE", "HR"]:
+            title = "User Logged In via Google"
+            message = f"{fullname or email} has just logged into the system via Google."
+            notif_type = "candidate_login" if role == "CANDIDATE" else "hr_login"
+
+            await create_notification(
+                db=db,
+                title=title,
+                message=message,
+                type=notif_type,
+                target_role="ADMIN"
+            )
+
+            await record_activity(
+                db=db,
+                user_id=user_id,
+                action="SIGN_IN",
+                details=f"User {email} signed in via Google"
+            )
+
+        return {"token": token, "role": role, "fullname": fullname or user.fullname if user else "", "user_id": user_id, "profile_image_url": user.profile_image_url if user else picture}
 
 auth_service = AuthService()
 
@@ -197,3 +245,6 @@ async def reset_user_password(db: AsyncSession, token: str, new_password: str):
 
 async def change_password(db: AsyncSession, user_id: int, current_password: str, new_password: str):
     return await auth_service.change_password(db, user_id, current_password, new_password)
+
+async def login_with_google(db: AsyncSession, email: str, fullname: str, picture: str, google_credentials: str):
+    return await auth_service.login_with_google(db, email, fullname, picture, google_credentials)

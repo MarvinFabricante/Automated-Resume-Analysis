@@ -18,6 +18,7 @@ class User(Base):
     is_archived = Column(Boolean, default=False)
     is_online = Column(Boolean, default=False)
     last_active = Column(DateTime, nullable=True)
+    google_credentials = Column(Text, nullable=True)
 
     __mapper_args__ = {
         "polymorphic_on": role,

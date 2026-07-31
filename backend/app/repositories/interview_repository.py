@@ -1,15 +1,12 @@
+from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, and_
 from typing import List, Optional
-from app.models.interview import Interview, InterviewPanelist, InterviewLog
+from app.models.interview import Interview, InterviewLog
 from app.models.job_application import JobApplication
 from app.models.user import User
 
 class InterviewRepository:
-    @staticmethod
-    async def get_panelists(db: AsyncSession, panelist_ids: List[int]) -> List[User]:
-        result = await db.execute(select(User).filter(User.id.in_(panelist_ids)))
-        return result.scalars().all()
 
     @staticmethod
     async def get_job_application(db: AsyncSession, application_id: int) -> Optional[JobApplication]:
@@ -23,9 +20,6 @@ class InterviewRepository:
         await db.flush() # flush to get id
         return interview
 
-    @staticmethod
-    async def add_panelist_to_interview(db: AsyncSession, interview_id: int, user_id: int) -> None:
-        db.add(InterviewPanelist(interview_id=interview_id, user_id=user_id))
 
     @staticmethod
     async def update_interview(db: AsyncSession, interview: Interview) -> Interview:
@@ -50,3 +44,18 @@ class InterviewRepository:
     async def get_interviews_for_application(db: AsyncSession, application_id: int) -> List[Interview]:
         result = await db.execute(select(Interview).filter(Interview.job_application_id == application_id))
         return result.scalars().all()
+
+    @staticmethod
+    async def get_interviews_in_range(db: AsyncSession, start_time: datetime, end_time: datetime) -> List[Interview]:
+        """Fetch all non-canceled interviews that overlap with the given date range."""
+        result = await db.execute(
+            select(Interview).filter(
+                and_(
+                    Interview.start_time < end_time,
+                    Interview.end_time > start_time,
+                    Interview.status != "CANCELED",
+                )
+            )
+        )
+        return result.scalars().all()
+

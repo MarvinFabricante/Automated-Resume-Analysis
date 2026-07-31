@@ -1,0 +1,249 @@
+INFO:     Started server process [74433]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+ERROR:app.utils.database:Unexpected error occurred: 500: (sqlalchemy.dialects.postgresql.asyncpg.Error) <class 'asyncpg.exceptions.DataError'>: invalid input for query argument $4: datetime.datetime(2026, 7, 30, 16, 0, tz... (can't subtract offset-naive and offset-aware datetimes)
+[SQL: INSERT INTO interviews (job_application_id, title, description, start_time, end_time, google_event_id, meeting_link, status, created_at, updated_at) VALUES ($1::INTEGER, $2::VARCHAR, $3::VARCHAR, $4::TIMESTAMP WITHOUT TIME ZONE, $5::TIMESTAMP WITHOUT TIME ZONE, $6::VARCHAR, $7::VARCHAR, $8::VARCHAR, $9::TIMESTAMP WITHOUT TIME ZONE, $10::TIMESTAMP WITHOUT TIME ZONE) RETURNING interviews.id]
+[parameters: (42, 'Initial Interview for Sebastian Curtis Lavarias', 'Interview lang po', datetime.datetime(2026, 7, 30, 16, 0, tzinfo=TzInfo(0)), datetime.datetime(2026, 7, 30, 17, 0, tzinfo=TzInfo(0)), None, None, 'SCHEDULED', datetime.datetime(2026, 7, 31, 5, 19, 55, 338418), datetime.datetime(2026, 7, 31, 5, 19, 55, 338429))]
+(Background on this error at: https://sqlalche.me/e/20/dbapi)
+INFO:     127.0.0.1:38424 - "POST /interviews/schedule HTTP/1.1" 500 Internal Server Error
+INFO:     127.0.0.1:38424 - "OPTIONS /applications/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38428 - "GET /applications/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:32770 - "OPTIONS /interviews/schedule HTTP/1.1" 200 OK
+ERROR:app.utils.database:Unexpected error occurred: 500: (sqlalchemy.dialects.postgresql.asyncpg.Error) <class 'asyncpg.exceptions.DataError'>: invalid input for query argument $4: datetime.datetime(2026, 7, 30, 16, 0, tz... (can't subtract offset-naive and offset-aware datetimes)
+[SQL: INSERT INTO interviews (job_application_id, title, description, start_time, end_time, google_event_id, meeting_link, status, created_at, updated_at) VALUES ($1::INTEGER, $2::VARCHAR, $3::VARCHAR, $4::TIMESTAMP WITHOUT TIME ZONE, $5::TIMESTAMP WITHOUT TIME ZONE, $6::VARCHAR, $7::VARCHAR, $8::VARCHAR, $9::TIMESTAMP WITHOUT TIME ZONE, $10::TIMESTAMP WITHOUT TIME ZONE) RETURNING interviews.id]
+[parameters: (42, 'Initial Interview for Sebastian Curtis Lavarias', 'Interview lang po', datetime.datetime(2026, 7, 30, 16, 0, tzinfo=TzInfo(0)), datetime.datetime(2026, 7, 30, 17, 0, tzinfo=TzInfo(0)), None, None, 'SCHEDULED', datetime.datetime(2026, 7, 31, 5, 24, 29, 622962), datetime.datetime(2026, 7, 31, 5, 24, 29, 622973))]
+(Background on this error at: https://sqlalche.me/e/20/dbapi)
+INFO:     127.0.0.1:32786 - "POST /interviews/schedule HTTP/1.1" 500 Internal Server Error
+INFO:     127.0.0.1:32786 - "GET /applications/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:44196 - "OPTIONS /auth/login HTTP/1.1" 200 OK
+ERROR:app.utils.database:Unexpected error occurred: 401: Invalid credentials
+INFO:     127.0.0.1:44210 - "POST /auth/login HTTP/1.1" 401 Unauthorized
+INFO:     127.0.0.1:39024 - "POST /auth/login HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54274 - "WebSocket /notifications/ws?role=HR&email=sam@gmail.com" [accepted]
+INFO:     connection open
+INFO:     127.0.0.1:39024 - "GET /notifications/?role=HR&email=sam@gmail.com HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54280 - "WebSocket /chat/ws?token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJzYW1AZ21haWwuY29tIiwicm9sZSI6IkhSIiwiaWQiOjE0LCJleHAiOjE3ODU0Nzc4Mjd9.dLKMBcE8hI9rG3rygPVYe2CjYcibTX7hjxQizieaUXE" [accepted]
+INFO:     connection open
+INFO:app.controllers.chat_controller:WebSocket connected: User 14
+INFO:     127.0.0.1:39024 - "OPTIONS /hr/dashboard-trends HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54294 - "OPTIONS /hr/application-stats HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54318 - "OPTIONS /hr/candidate-count HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54302 - "WebSocket /notifications/ws?role=HR&email=sam@gmail.com" [accepted]
+INFO:     connection open
+INFO:     127.0.0.1:39024 - "OPTIONS /hr/resume-count HTTP/1.1" 200 OK
+INFO:app.controllers.chat_controller:WebSocket disconnected: User 14
+INFO:     connection closed
+INFO:     127.0.0.1:54294 - "OPTIONS /admins/read-jobs?include_inactive=false HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54318 - "OPTIONS /applications/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54322 - "GET /hr/dashboard-trends HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54322 - "GET /admins/read-jobs?include_inactive=false HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54322 - "GET /applications/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:39024 - "GET /hr/application-stats HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54318 - "GET /hr/resume-count HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54294 - "GET /hr/candidate-count HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54260 - "GET /hr/profile/14 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54282 - "GET /notifications/?role=HR&email=sam@gmail.com HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54326 - "WebSocket /chat/ws?token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJzYW1AZ21haWwuY29tIiwicm9sZSI6IkhSIiwiaWQiOjE0LCJleHAiOjE3ODU0Nzc4Mjd9.dLKMBcE8hI9rG3rygPVYe2CjYcibTX7hjxQizieaUXE" [accepted]
+INFO:     connection open
+INFO:app.controllers.chat_controller:WebSocket connected: User 14
+INFO:     127.0.0.1:54318 - "GET /hr/profile/14 HTTP/1.1" 200 OK
+INFO:     connection closed
+INFO:app.controllers.chat_controller:WebSocket disconnected: User 14
+INFO:     connection closed
+INFO:     127.0.0.1:54338 - "WebSocket /notifications/ws?role=HR&email=sam@gmail.com" [accepted]
+INFO:     connection open
+INFO:     127.0.0.1:54282 - "GET /hr/profile/14 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54318 - "GET /notifications/?role=HR&email=sam@gmail.com HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54348 - "WebSocket /notifications/ws?role=HR&email=sam@gmail.com" [accepted]
+INFO:     connection open
+INFO:     127.0.0.1:54260 - "GET /notifications/?role=HR&email=sam@gmail.com HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54282 - "GET /hr/profile/14 HTTP/1.1" 200 OK
+INFO:     connection closed
+INFO:     127.0.0.1:54352 - "WebSocket /notifications/ws?role=HR&email=sam@gmail.com" [accepted]
+INFO:     connection open
+INFO:     127.0.0.1:54282 - "GET /notifications/?role=HR&email=sam@gmail.com HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54260 - "GET /hr/profile/14 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54358 - "WebSocket /notifications/ws?role=HR&email=sam@gmail.com" [accepted]
+INFO:     connection open
+INFO:     127.0.0.1:54318 - "GET /notifications/?role=HR&email=sam@gmail.com HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54260 - "GET /hr/profile/14 HTTP/1.1" 200 OK
+INFO:     connection closed
+INFO:     127.0.0.1:54370 - "WebSocket /notifications/ws?role=HR&email=sam@gmail.com" [accepted]
+INFO:     connection open
+INFO:     127.0.0.1:54260 - "GET /notifications/?role=HR&email=sam@gmail.com HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54318 - "GET /hr/profile/14 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54282 - "GET /notifications/?role=HR&email=sam@gmail.com HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54260 - "GET /hr/profile/14 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54372 - "WebSocket /chat/ws?token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJzYW1AZ21haWwuY29tIiwicm9sZSI6IkhSIiwiaWQiOjE0LCJleHAiOjE3ODU0Nzc4Mjd9.dLKMBcE8hI9rG3rygPVYe2CjYcibTX7hjxQizieaUXE" [accepted]
+INFO:     connection open
+INFO:app.controllers.chat_controller:WebSocket connected: User 14
+INFO:app.controllers.chat_controller:WebSocket disconnected: User 14
+INFO:     connection closed
+INFO:     127.0.0.1:54380 - "WebSocket /notifications/ws?role=HR&email=sam@gmail.com" [accepted]
+INFO:     connection open
+INFO:     127.0.0.1:54394 - "WebSocket /chat/ws?token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJzYW1AZ21haWwuY29tIiwicm9sZSI6IkhSIiwiaWQiOjE0LCJleHAiOjE3ODU0Nzc4Mjd9.dLKMBcE8hI9rG3rygPVYe2CjYcibTX7hjxQizieaUXE" [accepted]
+INFO:     connection open
+INFO:app.controllers.chat_controller:WebSocket connected: User 14
+INFO:     connection closed
+INFO:app.controllers.chat_controller:WebSocket disconnected: User 14
+INFO:     connection closed
+INFO:     127.0.0.1:54406 - "WebSocket /notifications/ws?role=HR&email=sam@gmail.com" [accepted]
+INFO:     connection open
+INFO:     127.0.0.1:54282 - "GET /hr/profile/14 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54260 - "GET /notifications/?role=HR&email=sam@gmail.com HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54412 - "WebSocket /notifications/ws?role=HR&email=sam@gmail.com" [accepted]
+INFO:     connection open
+INFO:     127.0.0.1:54282 - "GET /hr/profile/14 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54318 - "GET /notifications/?role=HR&email=sam@gmail.com HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58190 - "OPTIONS /interviews/available-slots HTTP/1.1" 200 OK
+INFO:googleapiclient.discovery_cache:file_cache is only supported with oauth2client<4.0.0
+Google Calendar API Error querying freebusy: <HttpError 400 when requesting https://www.googleapis.com/calendar/v3/freeBusy?alt=json returned "Bad Request". Details: "[{'domain': 'global', 'reason': 'badRequest', 'message': 'Bad Request'}]">
+INFO:     127.0.0.1:58200 - "POST /interviews/available-slots HTTP/1.1" 200 OK
+ERROR:app.utils.database:Unexpected error occurred: 500: (sqlalchemy.dialects.postgresql.asyncpg.Error) <class 'asyncpg.exceptions.DataError'>: invalid input for query argument $4: datetime.datetime(2026, 7, 30, 16, 0, tz... (can't subtract offset-naive and offset-aware datetimes)
+[SQL: INSERT INTO interviews (job_application_id, title, description, start_time, end_time, google_event_id, meeting_link, status, created_at, updated_at) VALUES ($1::INTEGER, $2::VARCHAR, $3::VARCHAR, $4::TIMESTAMP WITHOUT TIME ZONE, $5::TIMESTAMP WITHOUT TIME ZONE, $6::VARCHAR, $7::VARCHAR, $8::VARCHAR, $9::TIMESTAMP WITHOUT TIME ZONE, $10::TIMESTAMP WITHOUT TIME ZONE) RETURNING interviews.id]
+[parameters: (42, 'Initial Interview', '', datetime.datetime(2026, 7, 30, 16, 0, tzinfo=TzInfo(0)), datetime.datetime(2026, 7, 30, 17, 0, tzinfo=TzInfo(0)), None, None, 'SCHEDULED', datetime.datetime(2026, 7, 31, 5, 34, 12, 111637), datetime.datetime(2026, 7, 31, 5, 34, 12, 111645))]
+(Background on this error at: https://sqlalche.me/e/20/dbapi)
+INFO:     127.0.0.1:53656 - "POST /interviews/schedule HTTP/1.1" 500 Internal Server Error
+INFO:     127.0.0.1:53656 - "GET /applications/ HTTP/1.1" 200 OK
+INFO:     connection closed
+INFO:     connection closed
+INFO:     connection closed
+INFO:     connection closed
+INFO:     connection closed
+INFO:     connection closed
+ERROR:app.utils.database:Unexpected error occurred: 401: Account has been archived. Please contact administration.
+INFO:     127.0.0.1:56966 - "POST /auth/login HTTP/1.1" 401 Unauthorized
+ERROR:app.utils.database:Unexpected error occurred: 401: Invalid credentials
+INFO:     127.0.0.1:46832 - "POST /auth/login HTTP/1.1" 401 Unauthorized
+ERROR:app.utils.database:Unexpected error occurred: 401: Account has been archived. Please contact administration.
+INFO:     127.0.0.1:46832 - "POST /auth/login HTTP/1.1" 401 Unauthorized
+INFO:     127.0.0.1:59032 - "POST /auth/login HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59038 - "WebSocket /notifications/ws?role=HR&email=marvinfabricante630@gmail.com" [accepted]
+INFO:     connection open
+INFO:     127.0.0.1:59032 - "GET /notifications/?role=HR&email=marvinfabricante630@gmail.com HTTP/1.1" 200 OK
+ERROR:app.utils.database:Unexpected error occurred: 404: HR profile not found
+INFO:     127.0.0.1:59046 - "GET /hr/profile/5 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:59054 - "WebSocket /chat/ws?token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJtYXJ2aW5mYWJyaWNhbnRlNjMwQGdtYWlsLmNvbSIsInJvbGUiOiJIUiIsImlkIjo1LCJleHAiOjE3ODU0NzgzOTR9.ee4VgWF_KVtThwfdHRrligpFjavTzZvgzfEJ3KFB5S8" [accepted]
+INFO:     connection open
+INFO:     127.0.0.1:59046 - "GET /notifications/?role=HR&email=marvinfabricante630@gmail.com HTTP/1.1" 200 OK
+INFO:app.controllers.chat_controller:WebSocket connected: User 5
+ERROR:app.utils.database:Unexpected error occurred: 404: HR profile not found
+INFO:     127.0.0.1:59032 - "GET /hr/profile/5 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:59060 - "WebSocket /notifications/ws?role=HR&email=marvinfabricante630@gmail.com" [accepted]
+INFO:     connection open
+INFO:     127.0.0.1:59102 - "GET /admins/read-jobs?include_inactive=false HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59046 - "GET /hr/application-stats HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59032 - "GET /hr/dashboard-trends HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59064 - "WebSocket /chat/ws?token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJtYXJ2aW5mYWJyaWNhbnRlNjMwQGdtYWlsLmNvbSIsInJvbGUiOiJIUiIsImlkIjo1LCJleHAiOjE3ODU0NzgzOTR9.ee4VgWF_KVtThwfdHRrligpFjavTzZvgzfEJ3KFB5S8" [accepted]
+INFO:     127.0.0.1:59074 - "GET /hr/candidate-count HTTP/1.1" 200 OK
+INFO:     connection open
+INFO:app.controllers.chat_controller:WebSocket connected: User 5
+INFO:     127.0.0.1:59088 - "GET /hr/resume-count HTTP/1.1" 200 OK
+INFO:app.controllers.chat_controller:WebSocket disconnected: User 5
+INFO:     connection closed
+INFO:     127.0.0.1:59116 - "GET /applications/ HTTP/1.1" 200 OK
+INFO:     connection closed
+INFO:app.controllers.chat_controller:WebSocket disconnected: User 5
+INFO:     connection closed
+INFO:     127.0.0.1:53754 - "WebSocket /notifications/ws?role=HR&email=marvinfabricante630@gmail.com" [accepted]
+INFO:     connection open
+INFO:     127.0.0.1:59116 - "GET /notifications/?role=HR&email=marvinfabricante630@gmail.com HTTP/1.1" 200 OK
+ERROR:app.utils.database:Unexpected error occurred: 404: HR profile not found
+INFO:     127.0.0.1:59088 - "GET /hr/profile/5 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53762 - "WebSocket /notifications/ws?role=HR&email=marvinfabricante630@gmail.com" [accepted]
+INFO:     connection open
+INFO:     127.0.0.1:59074 - "GET /notifications/?role=HR&email=marvinfabricante630@gmail.com HTTP/1.1" 200 OK
+ERROR:app.utils.database:Unexpected error occurred: 404: HR profile not found
+INFO:     127.0.0.1:59116 - "GET /hr/profile/5 HTTP/1.1" 404 Not Found
+INFO:googleapiclient.discovery_cache:file_cache is only supported with oauth2client<4.0.0
+Google Calendar API Error querying freebusy: <HttpError 400 when requesting https://www.googleapis.com/calendar/v3/freeBusy?alt=json returned "Bad Request". Details: "[{'domain': 'global', 'reason': 'badRequest', 'message': 'Bad Request'}]">
+INFO:     127.0.0.1:54626 - "POST /interviews/available-slots HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49454 - "OPTIONS /interviews/schedule HTTP/1.1" 200 OK
+ERROR:app.utils.database:Unexpected error occurred: 500: (sqlalchemy.dialects.postgresql.asyncpg.Error) <class 'asyncpg.exceptions.DataError'>: invalid input for query argument $4: datetime.datetime(2026, 7, 31, 9, 0, tzi... (can't subtract offset-naive and offset-aware datetimes)
+[SQL: INSERT INTO interviews (job_application_id, title, description, start_time, end_time, google_event_id, meeting_link, status, created_at, updated_at) VALUES ($1::INTEGER, $2::VARCHAR, $3::VARCHAR, $4::TIMESTAMP WITHOUT TIME ZONE, $5::TIMESTAMP WITHOUT TIME ZONE, $6::VARCHAR, $7::VARCHAR, $8::VARCHAR, $9::TIMESTAMP WITHOUT TIME ZONE, $10::TIMESTAMP WITHOUT TIME ZONE) RETURNING interviews.id]
+[parameters: (42, 'Initial Interview', '', datetime.datetime(2026, 7, 31, 9, 0, tzinfo=TzInfo(0)), datetime.datetime(2026, 7, 31, 10, 0, tzinfo=TzInfo(0)), None, None, 'SCHEDULED', datetime.datetime(2026, 7, 31, 5, 43, 57, 519693), datetime.datetime(2026, 7, 31, 5, 43, 57, 519711))]
+(Background on this error at: https://sqlalche.me/e/20/dbapi)
+INFO:     127.0.0.1:49460 - "POST /interviews/schedule HTTP/1.1" 500 Internal Server Error
+INFO:     127.0.0.1:49460 - "OPTIONS /applications/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49454 - "GET /applications/ HTTP/1.1" 200 OK
+INFO:     connection closed
+INFO:     connection closed
+INFO:     connection closed
+INFO:     127.0.0.1:55704 - "GET /auth/google/login HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:55704 - "GET /favicon.ico HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:49350 - "OPTIONS /auth/login HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49354 - "POST /auth/login HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49356 - "WebSocket /notifications/ws?role=HR&email=marvinfabricante630@gmail.com" [accepted]
+INFO:     connection open
+ERROR:app.utils.database:Unexpected error occurred: 404: HR profile not found
+INFO:     127.0.0.1:49354 - "GET /notifications/?role=HR&email=marvinfabricante630@gmail.com HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49350 - "GET /hr/profile/5 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:49374 - "GET /notifications/?role=HR&email=marvinfabricante630@gmail.com HTTP/1.1" 200 OK
+ERROR:app.utils.database:Unexpected error occurred: 404: HR profile not found
+INFO:     127.0.0.1:49364 - "WebSocket /chat/ws?token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJtYXJ2aW5mYWJyaWNhbnRlNjMwQGdtYWlsLmNvbSIsInJvbGUiOiJIUiIsImlkIjo1LCJleHAiOjE3ODU0Nzg5NDB9.Bah_qZ9ljCkm3PeTD5BC3shNVXtgOWCF1zkwR2AdLGs" [accepted]
+INFO:     connection open
+INFO:app.controllers.chat_controller:WebSocket connected: User 5
+INFO:     127.0.0.1:49350 - "GET /hr/profile/5 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:49376 - "WebSocket /notifications/ws?role=HR&email=marvinfabricante630@gmail.com" [accepted]
+INFO:     connection open
+INFO:     127.0.0.1:49350 - "OPTIONS /hr/dashboard-trends HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49350 - "OPTIONS /hr/application-stats HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49354 - "OPTIONS /hr/candidate-count HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49388 - "OPTIONS /hr/resume-count HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49400 - "OPTIONS /admins/read-jobs?include_inactive=false HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49374 - "GET /hr/dashboard-trends HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49432 - "GET /applications/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49350 - "GET /hr/application-stats HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49388 - "GET /hr/resume-count HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49354 - "GET /hr/candidate-count HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49400 - "GET /admins/read-jobs?include_inactive=false HTTP/1.1" 200 OK
+INFO:app.controllers.chat_controller:WebSocket disconnected: User 5
+INFO:     connection closed
+INFO:     127.0.0.1:49416 - "WebSocket /chat/ws?token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJtYXJ2aW5mYWJyaWNhbnRlNjMwQGdtYWlsLmNvbSIsInJvbGUiOiJIUiIsImlkIjo1LCJleHAiOjE3ODU0Nzg5NDB9.Bah_qZ9ljCkm3PeTD5BC3shNVXtgOWCF1zkwR2AdLGs" [accepted]
+INFO:     connection open
+INFO:app.controllers.chat_controller:WebSocket connected: User 5
+INFO:     connection closed
+INFO:app.controllers.chat_controller:WebSocket disconnected: User 5
+INFO:     connection closed
+INFO:     127.0.0.1:49436 - "WebSocket /notifications/ws?role=HR&email=marvinfabricante630@gmail.com" [accepted]
+INFO:     connection open
+ERROR:app.utils.database:Unexpected error occurred: 404: HR profile not found
+INFO:     127.0.0.1:49432 - "GET /notifications/?role=HR&email=marvinfabricante630@gmail.com HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49400 - "GET /hr/profile/5 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:49438 - "WebSocket /notifications/ws?role=HR&email=marvinfabricante630@gmail.com" [accepted]
+INFO:     connection open
+INFO:     127.0.0.1:49400 - "GET /notifications/?role=HR&email=marvinfabricante630@gmail.com HTTP/1.1" 200 OK
+ERROR:app.utils.database:Unexpected error occurred: 404: HR profile not found
+INFO:     127.0.0.1:49432 - "GET /hr/profile/5 HTTP/1.1" 404 Not Found
+INFO:     connection closed
+INFO:     127.0.0.1:49454 - "WebSocket /notifications/ws?role=HR&email=marvinfabricante630@gmail.com" [accepted]
+INFO:     127.0.0.1:49432 - "GET /notifications/?role=HR&email=marvinfabricante630@gmail.com HTTP/1.1" 200 OK
+INFO:     connection open
+ERROR:app.utils.database:Unexpected error occurred: 404: HR profile not found
+INFO:     127.0.0.1:49400 - "GET /hr/profile/5 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:49354 - "GET /notifications/?role=HR&email=marvinfabricante630@gmail.com HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49468 - "WebSocket /notifications/ws?role=HR&email=marvinfabricante630@gmail.com" [accepted]
+INFO:     connection open
+ERROR:app.utils.database:Unexpected error occurred: 404: HR profile not found
+INFO:     127.0.0.1:49400 - "GET /hr/profile/5 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:35418 - "OPTIONS /interviews/available-slots HTTP/1.1" 200 OK
+INFO:googleapiclient.discovery_cache:file_cache is only supported with oauth2client<4.0.0
+Google Calendar API Error querying freebusy: <HttpError 400 when requesting https://www.googleapis.com/calendar/v3/freeBusy?alt=json returned "Bad Request". Details: "[{'domain': 'global', 'reason': 'badRequest', 'message': 'Bad Request'}]">
+INFO:     127.0.0.1:35428 - "POST /interviews/available-slots HTTP/1.1" 200 OK
+ERROR:app.utils.database:Unexpected error occurred: 500: (sqlalchemy.dialects.postgresql.asyncpg.Error) <class 'asyncpg.exceptions.DataError'>: invalid input for query argument $4: datetime.datetime(2026, 7, 30, 16, 30, t... (can't subtract offset-naive and offset-aware datetimes)
+[SQL: INSERT INTO interviews (job_application_id, title, description, start_time, end_time, google_event_id, meeting_link, status, created_at, updated_at) VALUES ($1::INTEGER, $2::VARCHAR, $3::VARCHAR, $4::TIMESTAMP WITHOUT TIME ZONE, $5::TIMESTAMP WITHOUT TIME ZONE, $6::VARCHAR, $7::VARCHAR, $8::VARCHAR, $9::TIMESTAMP WITHOUT TIME ZONE, $10::TIMESTAMP WITHOUT TIME ZONE) RETURNING interviews.id]
+[parameters: (42, 'Initial Interview', '', datetime.datetime(2026, 7, 30, 16, 30, tzinfo=TzInfo(0)), datetime.datetime(2026, 7, 30, 17, 30, tzinfo=TzInfo(0)), None, None, 'SCHEDULED', datetime.datetime(2026, 7, 31, 5, 52, 36, 270868), datetime.datetime(2026, 7, 31, 5, 52, 36, 270880))]
+(Background on this error at: https://sqlalche.me/e/20/dbapi)
+INFO:     127.0.0.1:35428 - "POST /interviews/schedule HTTP/1.1" 500 Internal Server Error
+INFO:     127.0.0.1:35428 - "GET /applications/ HTTP/1.1" 200 OK
+INFO:     connection closed
+INFO:     connection closed
+INFO:     connection closed
+INFO:     connection closed
+INFO:     127.0.0.1:55668 - "GET /auth/google/login HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:55802 - "HEAD /auth/google/login HTTP/1.1" 404 Not Found
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [74433]

@@ -2,11 +2,7 @@ from pydantic import BaseModel, Field
 from typing import List, Optional
 from datetime import datetime
 
-class InterviewPanelistSchema(BaseModel):
-    user_id: int
-
 class AvailableSlotsRequest(BaseModel):
-    panelist_ids: List[int]
     start_date: datetime
     end_date: datetime
 
@@ -17,7 +13,6 @@ class InterviewCreateSchema(BaseModel):
     description: Optional[str] = None
     start_time: datetime
     end_time: datetime
-    panelist_ids: List[int]
 
 class InterviewResponseSchema(BaseModel):
     id: int
