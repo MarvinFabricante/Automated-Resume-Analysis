@@ -33,6 +33,10 @@ origins = [
     "http://192.168.1.15:5173",
 ]
 
+frontend_url = os.getenv("FRONTEND_URL")
+if frontend_url:
+    origins.append(frontend_url)
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -204,3 +208,5 @@ async def startup():
 
 async def root():
     return await backend_application.root()
+
+# SHIFT NA BS ECE
