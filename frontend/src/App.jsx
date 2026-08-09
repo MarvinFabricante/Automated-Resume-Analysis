@@ -38,7 +38,6 @@ import ScreeningPortal from './pages/hr/ScreeningPortal';
 import CompareCandidates from './pages/hr/CompareCandidates';
 
 import AdminDashboard from './pages/admin/AdminDashboard';
-import AuditLogPage from './pages/admin/AuditLog';
 import UsersPage from './pages/admin/Users';
 import JobManagement from './pages/admin/JobManagement';
 import SystemSettings from './pages/admin/SystemSettings';
@@ -104,7 +103,6 @@ const App = () => {
             <Route path="dashboard" element={<AdminDashboard />} />
             <Route path="users" element={<UsersPage />} />
             <Route path="jobmanagement" element={<JobManagement />} />
-            <Route path="auditlog" element={<AuditLogPage />} />
             <Route path="system-config" element={<SystemSettings />} />
             <Route path="performance" element={<PerformanceStats />} />
             <Route path="messages" element={<MessagesPage />} />

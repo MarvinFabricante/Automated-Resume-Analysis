@@ -343,7 +343,6 @@ const Header = () => {
       { label: 'Dashboard', path: '/admin/dashboard', icon: <LayoutDashboard size={18} /> },
       { label: 'User Management', path: '/admin/users', icon: <Users size={18} /> },
       { label: 'Jobs', path: '/admin/jobmanagement', icon: <Settings size={18} /> },
-      { label: 'Audit Logs', path: '/admin/auditlog', icon: <Database size={18} /> },
     ];
     if (isHRRole) return [
       { label: 'Dashboard', path: '/hr/dashboard', icon: <Building2 size={18} /> },

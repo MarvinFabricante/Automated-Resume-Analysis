@@ -28,8 +28,7 @@ const Sidebar = () => {
         { label: 'User Management', path: '/admin/users', icon: <Users size={22} /> },
         { label: 'Jobs', path: '/admin/jobmanagement', icon: <Briefcase size={22} /> },
         { label: 'System Config', path: '/admin/system-config', icon: <Sliders size={22} /> },
-        { label: 'Messages', path: '/admin/messages', icon: <MessageSquare size={22} /> },
-        { label: 'Audit Logs', path: '/admin/auditlog', icon: <Database size={22} /> }
+        { label: 'Messages', path: '/admin/messages', icon: <MessageSquare size={22} /> }
       );
     } else if (isHRRole) {
       items.push(

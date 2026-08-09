@@ -225,25 +225,6 @@ export const apiSlice = createApi({
     }),
 
     // --- ADMIN / HR TOOLS ---
-    getHRActivities: builder.query({
-      query: () => '/admins/hr-activities',
-      providesTags: ['AuditLogs'],
-      pollingInterval: 3000,
-      transformResponse: (response) => {
-        return response.map(log => ({
-          id: log.id,
-          user: log.user?.fullname || log.user?.email || "Unknown HR",
-          profileImage: log.user?.profile_image_url || null,
-          role: log.user?.role || "HR",
-          action: log.action.replace('_', ' '),
-          time: new Date(log.created_at).toLocaleString(),
-          status: "Success",
-          details: log.details,
-          target: log.target
-        }));
-      },
-    }),
-
     getUsers: builder.query({
       query: () => '/admins/users',
       providesTags: ['Users'],
@@ -294,25 +275,6 @@ export const apiSlice = createApi({
     getAdminSystemStats: builder.query({
       query: () => '/admins/system-stats',
       providesTags: ['Dashboard'],
-    }),
-
-    getAuditLogs: builder.query({
-      query: () => '/admins/audit-logs',
-      providesTags: ['AuditLogs'],
-      pollingInterval: 3000,
-      transformResponse: (response) => {
-        return response.map(log => ({
-          id: `LOG-${log.id}`,
-          user: log.user?.fullname || log.user?.email || "Unknown",
-          role: log.user?.role || "N/A",
-          action: log.action.replace('_', ' '),
-          target: log.target || "N/A",
-          ip: log.ip_address || "Internal",
-          time: new Date(log.created_at).toLocaleString(),
-          status: "Success",
-          details: log.details
-        }));
-      },
     }),
 
     // --- SYSTEM CONFIGURATION ---
@@ -436,7 +398,6 @@ export const {
   useUpdateApplicationStatusMutation,
   useGetAvailableSlotsMutation,
   useScheduleInterviewMutation,
-  useGetHRActivitiesQuery,
   useGetUsersQuery,
   useCreateUserMutation,
   useUpdateUserMutation,
@@ -444,7 +405,6 @@ export const {
   useArchiveUserMutation,
   useUnarchiveUserMutation,
   useGetAdminSystemStatsQuery,
-  useGetAuditLogsQuery,
   useGetActiveUsersCountQuery,
   useGetMatchingConfigQuery,
   useUpdateMatchingWeightsMutation,

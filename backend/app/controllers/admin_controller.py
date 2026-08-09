@@ -23,18 +23,9 @@ from app.utils.cache import cache_response, clear_cache_pattern
 
 router = APIRouter(prefix="/admins", tags=["Adminstrators"])
 
-@router.get("/hr-activities")
-async def get_hr_activities(db: AsyncSession = Depends(get_db)):
-    activities = await audit_service.get_recent_hr_activities(db)
-    return activities
-
 @router.get("/system-stats")
 async def get_system_stats(db: AsyncSession = Depends(get_db)):
     return await admin_service.get_system_stats(db)
-
-@router.get("/audit-logs")
-async def get_audit_logs(db: AsyncSession = Depends(get_db)):
-    return await audit_service.get_all_audit_logs(db)
 
 @router.get("/users", response_model=List[UserResponse])
 @cache_response("admin_users", ttl=600)
