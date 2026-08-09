@@ -15,6 +15,12 @@ services:
         fromDatabase:
           name: resume-analyzer-db
           property: connectionString
+      - key: SUPABASE_URL
+        value: "https://duolxfkqnqkczmrrccgu.supabase.co"
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        value: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImR1b2x4ZmtxbnFrY3ptcnJjY2d1Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4NjI1OTEzMywiZXhwIjoyMTAxODM1MTMzfQ.Md4ELxd3cywd32lclc-VZd0LtYAFIn0teQciP9oszFU"
+      - key: SUPABASE_BUCKET
+        value: "resume storage"
 
 databases:
   - name: resume-analyzer-db

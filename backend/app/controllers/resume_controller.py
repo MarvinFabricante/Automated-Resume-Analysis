@@ -1,6 +1,8 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, File, UploadFile
+from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List
+import io
 
 from app.utils.database import get_db
 from app.schemas.resume_schema import ResumeCreate, ResumeResponse, ResumeUpdate
@@ -46,7 +48,7 @@ async def update_resume(resume_id: int, resume_in: ResumeUpdate, db: AsyncSessio
 @router.delete("/{resume_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_resume(resume_id: int, db: AsyncSession = Depends(get_db)):
     """
-    Delete a resume from the database.
+    Delete a resume from the database and Supabase Storage.
     """
     success = await resume_service.delete_resume(db, resume_id)
     if not success:
@@ -54,3 +56,101 @@ async def delete_resume(resume_id: int, db: AsyncSession = Depends(get_db)):
     return None
 
 
+# ── Supabase Storage Endpoints ──────────────────────────────────────
+
+
+@router.post("/upload", tags=["Resumes"])
+async def upload_resume_file(
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Upload a resume file to Supabase Storage and return the public URL.
+    Does NOT parse the file — use /candidate/parse-resume for parsing.
+    """
+    file_bytes = await file.read()
+
+    try:
+        from app.utils.supabase_storage import upload_resume
+        result = await upload_resume(
+            file_bytes=file_bytes,
+            original_filename=file.filename,
+        )
+        return {
+            "message": "Resume uploaded successfully",
+            "public_url": result["public_url"],
+            "storage_path": result["storage_path"],
+            "filename": result["filename"],
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to upload resume: {str(e)}"
+        )
+
+
+@router.get("/download/{storage_path:path}", tags=["Resumes"])
+async def download_resume_file(storage_path: str):
+    """
+    Download a resume file from Supabase Storage.
+    The storage_path should be the path within the bucket (e.g. resumes/1234_file.pdf).
+    """
+    try:
+        from app.utils.supabase_storage import download_resume
+        file_bytes = await download_resume(storage_path)
+
+        # Determine content type from filename
+        import os
+        filename = os.path.basename(storage_path)
+        ext = os.path.splitext(filename)[1].lower()
+        mime_map = {
+            ".pdf": "application/pdf",
+            ".doc": "application/msword",
+            ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            ".txt": "text/plain",
+        }
+        content_type = mime_map.get(ext, "application/octet-stream")
+
+        return StreamingResponse(
+            io.BytesIO(file_bytes),
+            media_type=content_type,
+            headers={
+                "Content-Disposition": f'attachment; filename="{filename}"'
+            },
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Resume file not found: {str(e)}"
+        )
+
+
+@router.get("/storage/list", tags=["Resumes"])
+async def list_stored_resumes():
+    """
+    List all resume files stored in Supabase Storage.
+    """
+    try:
+        from app.utils.supabase_storage import list_resumes, get_public_url
+        files = await list_resumes()
+
+        result = []
+        for f in files:
+            file_info = {
+                "name": f.get("name"),
+                "id": f.get("id"),
+                "created_at": f.get("created_at"),
+                "updated_at": f.get("updated_at"),
+                "metadata": f.get("metadata"),
+            }
+            # Add public URL if it's a file (has an id)
+            if f.get("id"):
+                file_info["public_url"] = get_public_url(f"resumes/{f['name']}")
+            result.append(file_info)
+
+        return {"files": result, "count": len(result)}
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to list resumes: {str(e)}"
+        )

@@ -98,20 +98,66 @@ def _apply_transient_analysis(app: JobApplication):
 def _enrich_resume_url(app: JobApplication):
     if app.resume_url:
         return
-        
-    import os
+
     import re
-    upload_dir = "uploads/resumes"
-    if not os.path.exists(upload_dir):
-        return
-        
+
     name_parts = [p.lower() for p in re.split(r'\W+', app.candidate_name) if p]
     if not name_parts:
         return
-        
+
+    # Try Supabase Storage first
+    try:
+        from app.utils.supabase_storage import _get_client, SUPABASE_BUCKET
+        client = _get_client()
+        files = client.storage.from_(SUPABASE_BUCKET).list("resumes")
+
+        best_match = None
+        best_time = -1
+
+        # Check top-level files and subdirectory files
+        all_files = []
+        for item in files:
+            if item.get("id") is None:
+                # It's a folder – list its contents
+                folder_name = item.get("name", "")
+                try:
+                    sub_files = client.storage.from_(SUPABASE_BUCKET).list(f"resumes/{folder_name}")
+                    for sf in sub_files:
+                        if sf.get("id"):
+                            all_files.append((f"resumes/{folder_name}/{sf['name']}", sf["name"]))
+                except Exception:
+                    pass
+            else:
+                all_files.append((f"resumes/{item['name']}", item["name"]))
+
+        for storage_path, filename in all_files:
+            filename_lower = filename.lower()
+            if all(part in filename_lower for part in name_parts):
+                match = re.match(r'^(\d+)_', filename)
+                if match:
+                    ts = int(match.group(1))
+                    if ts > best_time:
+                        best_time = ts
+                        best_match = storage_path
+                elif not best_match:
+                    best_match = storage_path
+
+        if best_match:
+            public_url = client.storage.from_(SUPABASE_BUCKET).get_public_url(best_match)
+            app.resume_url = public_url
+            return
+    except Exception as e:
+        print(f"WARNING: Supabase resume lookup failed, trying local: {e}")
+
+    # Fallback: local filesystem
+    import os
+    upload_dir = "uploads/resumes"
+    if not os.path.exists(upload_dir):
+        return
+
     best_match = None
     best_time = -1
-    
+
     try:
         for filename in os.listdir(upload_dir):
             filename_lower = filename.lower()
@@ -126,7 +172,7 @@ def _enrich_resume_url(app: JobApplication):
                     best_match = filename
     except Exception as e:
         print(f"WARNING: Error while trying to auto-resolve resume url: {e}")
-        
+
     if best_match:
         app.resume_url = f"http://localhost:8000/{upload_dir}/{best_match}"
 
