@@ -32,6 +32,7 @@ import {
   useUpdateUserMutation,
   useDeleteUserMutation
 } from '../../redux/api/apiSlice';
+import { useSelector } from 'react-redux';
 
 const UsersPage = () => {
   const { data: users = [], isLoading } = useGetUsersQuery();
@@ -40,6 +41,7 @@ const UsersPage = () => {
   const [createUser] = useCreateUserMutation();
   const [updateUser] = useUpdateUserMutation();
   const [deleteUser] = useDeleteUserMutation();
+  const currentUserEmail = useSelector((state) => state.auth.user);
   
   const [searchQuery, setSearchQuery] = useState("");
   const [activeMenu, setActiveMenu] = useState(null);
@@ -265,66 +267,74 @@ const UsersPage = () => {
                               </div>
                             </td>
                             <td className="px-8 py-5 text-right relative">
-                              <button 
-                                onClick={() => setActiveMenu(activeMenu === user.id ? null : user.id)}
-                                className={`p-2 rounded-xl transition-all duration-200 ${activeMenu === user.id ? 'bg-gray-100 text-gray-900 shadow-inner' : 'text-gray-400 hover:bg-white hover:shadow-md hover:text-gray-700 border border-transparent hover:border-gray-200'}`}
-                              >
-                                <MoreHorizontal size={18} />
-                              </button>
-                              
-                              {activeMenu === user.id && (
-                                <div className="absolute right-8 top-16 w-52 bg-white/95 backdrop-blur-xl border border-gray-100 rounded-2xl shadow-[0_10px_40px_rgb(0,0,0,0.08)] z-50 py-2 overflow-hidden animate-in fade-in slide-in-from-top-2 zoom-in-95 duration-200">
-                                    <div className="px-4 py-2 border-b border-gray-50 mb-1">
-                                      <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">User Actions</p>
-                                    </div>
-                                    <button 
-                                      onClick={() => openEditModal(user)}
-                                      className="w-full px-4 py-2.5 text-left text-xs font-bold text-gray-700 hover:bg-gray-50 flex items-center gap-3 transition-colors"
-                                    >
-                                      <Edit size={14} className="text-gray-400" /> Edit Details
-                                    </button>
-                                    
-                                    <div className="border-t border-gray-50 my-1"></div>
-                                    <div className="px-4 py-1.5 text-[10px] font-black text-gray-400 uppercase tracking-widest mt-1">Role Assignment</div>
-                                    <div className="px-2">
-                                      {['ADMIN', 'HR', 'CANDIDATE'].map((role) => (
-                                        user.role !== role && (
-                                          <button 
-                                            key={role}
-                                            onClick={() => handleRoleChange(user.id, role)}
-                                            className="w-full px-3 py-2 text-left text-xs font-bold text-gray-600 hover:bg-[#D10043]/5 hover:text-[#D10043] rounded-lg flex items-center justify-between transition-colors group"
-                                          >
-                                            Make {role}
-                                            <ChevronRight size={12} className="opacity-0 -translate-x-2 group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-300" />
-                                          </button>
-                                        )
-                                      ))}
-                                    </div>
-
-                                    <div className="border-t border-gray-50 my-2"></div>
-                                    {user.is_archived ? (
-                                    <button 
-                                      onClick={() => handleUnarchive(user.id)}
-                                      className="w-full px-4 py-2.5 text-left text-xs font-bold text-emerald-600 hover:bg-emerald-50 flex items-center gap-3 transition-colors"
-                                    >
-                                      <RotateCcw size={14} className="text-emerald-500" /> Restore Account
-                                    </button>
-                                  ) : (
-                                    <button 
-                                      onClick={() => handleArchive(user.id)}
-                                      className="w-full px-4 py-2.5 text-left text-xs font-bold text-orange-600 hover:bg-orange-50 flex items-center gap-3 transition-colors"
-                                    >
-                                      <Archive size={14} className="text-orange-500" /> Suspend Access
-                                    </button>
-                                  )}
-                                  <div className="border-t border-gray-50 my-1"></div>
+                              {user.email !== currentUserEmail ? (
+                                <>
                                   <button 
-                                    onClick={() => handleDelete(user.id)}
-                                    className="w-full px-4 py-2.5 text-left text-xs font-bold text-red-600 hover:bg-red-50 flex items-center gap-3 transition-colors"
+                                    onClick={() => setActiveMenu(activeMenu === user.id ? null : user.id)}
+                                    className={`p-2 rounded-xl transition-all duration-200 ${activeMenu === user.id ? 'bg-gray-100 text-gray-900 shadow-inner' : 'text-gray-400 hover:bg-white hover:shadow-md hover:text-gray-700 border border-transparent hover:border-gray-200'}`}
                                   >
-                                    <Trash2 size={14} className="text-red-500" /> Delete Permanently
+                                    <MoreHorizontal size={18} />
                                   </button>
-                                </div>
+                                  
+                                  {activeMenu === user.id && (
+                                    <div className="absolute right-8 top-16 w-52 bg-white/95 backdrop-blur-xl border border-gray-100 rounded-2xl shadow-[0_10px_40px_rgb(0,0,0,0.08)] z-50 py-2 overflow-hidden animate-in fade-in slide-in-from-top-2 zoom-in-95 duration-200">
+                                        <div className="px-4 py-2 border-b border-gray-50 mb-1">
+                                          <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">User Actions</p>
+                                        </div>
+                                        <button 
+                                          onClick={() => openEditModal(user)}
+                                          className="w-full px-4 py-2.5 text-left text-xs font-bold text-gray-700 hover:bg-gray-50 flex items-center gap-3 transition-colors"
+                                        >
+                                          <Edit size={14} className="text-gray-400" /> Edit Details
+                                        </button>
+                                        
+                                        <div className="border-t border-gray-50 my-1"></div>
+                                        <div className="px-4 py-1.5 text-[10px] font-black text-gray-400 uppercase tracking-widest mt-1">Role Assignment</div>
+                                        <div className="px-2">
+                                          {['ADMIN', 'HR', 'CANDIDATE'].map((role) => (
+                                            user.role !== role && (
+                                              <button 
+                                                key={role}
+                                                onClick={() => handleRoleChange(user.id, role)}
+                                                className="w-full px-3 py-2 text-left text-xs font-bold text-gray-600 hover:bg-[#D10043]/5 hover:text-[#D10043] rounded-lg flex items-center justify-between transition-colors group"
+                                              >
+                                                Make {role}
+                                                <ChevronRight size={12} className="opacity-0 -translate-x-2 group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-300" />
+                                              </button>
+                                            )
+                                          ))}
+                                        </div>
+
+                                        <div className="border-t border-gray-50 my-2"></div>
+                                        {user.is_archived ? (
+                                        <button 
+                                          onClick={() => handleUnarchive(user.id)}
+                                          className="w-full px-4 py-2.5 text-left text-xs font-bold text-emerald-600 hover:bg-emerald-50 flex items-center gap-3 transition-colors"
+                                        >
+                                          <RotateCcw size={14} className="text-emerald-500" /> Restore Account
+                                        </button>
+                                      ) : (
+                                        <button 
+                                          onClick={() => handleArchive(user.id)}
+                                          className="w-full px-4 py-2.5 text-left text-xs font-bold text-orange-600 hover:bg-orange-50 flex items-center gap-3 transition-colors"
+                                        >
+                                          <Archive size={14} className="text-orange-500" /> Suspend Access
+                                        </button>
+                                      )}
+                                      <div className="border-t border-gray-50 my-1"></div>
+                                      <button 
+                                        onClick={() => handleDelete(user.id)}
+                                        className="w-full px-4 py-2.5 text-left text-xs font-bold text-red-600 hover:bg-red-50 flex items-center gap-3 transition-colors"
+                                      >
+                                        <Trash2 size={14} className="text-red-500" /> Delete Permanently
+                                      </button>
+                                    </div>
+                                  )}
+                                </>
+                              ) : (
+                                <span className="inline-flex items-center justify-center px-3 py-1.5 rounded-lg bg-gray-50 border border-gray-100 text-[10px] font-bold text-gray-400 uppercase tracking-widest whitespace-nowrap">
+                                  Current User
+                                </span>
                               )}
                             </td>
                           </tr>
