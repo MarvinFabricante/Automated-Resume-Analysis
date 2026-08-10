@@ -1,18 +1,8 @@
-git rm --cached backend/mariwasa.db
-git rm --cached backend/resume_analysis.db
-
-git rm --cached backend/migrate_ats_columns.py
-git rm --cached backend/recalc.py
-git rm --cached backend/recalc2.py
-git rm --cached backend/recalc_ats.py
-
-git rm --cached backend/scratch_candidate_test.py
-git rm --cached backend/scratch_check_passwords.py
-git rm --cached backend/scratch_db_test.py
-git rm --cached backend/scratch_login_test.py
-git rm --cached backend/scratch_test.py
-
-git rm --cached backend/test_api.py
-git rm --cached backend/test_db.py
-git rm --cached backend/resume_analysis.db
-git rm --cached backend/pytest.ini
+backend_error.log
+fix_hr_user.py
+patch.py
+patch_user.py
+patch_auth_controller.py
+pytest.ini
+resume_analysis.db
+test_supabase.py

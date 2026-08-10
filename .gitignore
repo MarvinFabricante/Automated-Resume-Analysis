@@ -81,3 +81,14 @@ backend/scratch_test.py
 backend/test_api.py
 backend/test_db.py
 backend/test_education.py
+
+# Ignore requested config, log, database, patch, and test files
+render.yaml
+backend_error.log
+fix_hr_user.py
+patch.py
+patch_user.py
+patch_auth_controller.py
+pytest.ini
+resume_analysis.db
+test_supabase.py
