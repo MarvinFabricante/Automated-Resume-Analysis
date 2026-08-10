@@ -182,180 +182,168 @@ def _enrich_applications(apps: list[JobApplication]) -> list[JobApplication]:
         _enrich_resume_url(app)
     return apps
 
+async def create_job_application(db: AsyncSession, application_in: JobApplicationCreate, db_job_id: int):
+    """Create a new job application and trigger AI analysis."""
+    data = application_in.model_dump()
+
+    # Remove job_id from data as we'll pass the internal ID
+    if 'job_id' in data:
+        del data['job_id']
+
+    # Create the application via repository
+    new_application = await JobApplicationRepository.create(db, {
+        "job_id": db_job_id,
+        **data
+    })
+
+    # Trigger notification
+    try:
+        job_title = application_in.job_title if application_in.job_title else "a position"
+        await create_notification(
+            db=db,
+            title="New Application Submitted",
+            message=f"{application_in.candidate_name} applied for {job_title}.",
+            type="application",
+            sender_role="CANDIDATE"
+        )
+    except Exception as notif_err:
+        print(f"WARNING: Notification failed but application saved: {notif_err}")
+    # Trigger background AI analysis
+    try:
+        import asyncio
+        from app.tasks import async_analyze_application
+        asyncio.create_task(async_analyze_application(new_application.id))
+        print(f"DEBUG: Dispatched background AI analysis task for application {new_application.id}")
+    except Exception as task_err:
+        print(f"WARNING: Failed to dispatch background task: {task_err}")
+
+    return new_application
+
+
+async def get_applications_by_job(db: AsyncSession, job_id: int):
+    """Get all applications for a specific job."""
+    applications = await JobApplicationRepository.get_by_job_id(db, job_id)
+    return _enrich_applications(applications)
+
+
+async def get_applications_by_email(db: AsyncSession, email: str):
+    """Get all applications for a specific candidate email."""
+    applications = await JobApplicationRepository.get_by_email(db, email)
+    return _enrich_applications(applications)
+
+
+async def get_all_applications(db: AsyncSession):
+    """Get all job applications."""
+    applications = await JobApplicationRepository.get_all(db)
+    return _enrich_applications(applications)
+
+
+async def update_application_status(db: AsyncSession, application_id: int, new_status: str) -> Optional[JobApplication]:
+    """Update application status and send notifications."""
+    db_application = await JobApplicationRepository.get_by_id(db, application_id)
+
+    if not db_application:
+        return None
+
+    status_upper = new_status.upper()
+    db_application.status = status_upper
+    db_application = await JobApplicationRepository.update(db, db_application)
+
+    # Send notifications about status change
+    try:
+        # Notify HR
+        await create_notification(
+            db=db,
+            title="Application Status Updated",
+            message=f"Application for {db_application.candidate_name} marked as {status_upper}.",
+            type="application_update",
+            target_role="HR",
+            sender_role="HR"
+        )
+        # Notify ADMIN
+        await create_notification(
+            db=db,
+            title="Application Status Updated",
+            message=f"Application for {db_application.candidate_name} marked as {status_upper}.",
+            type="application_update",
+            target_role="ADMIN",
+            sender_role="HR"
+        )
+
+        # Notify Candidate (Targeted to their email)
+        job_title = db_application.job.job_title if (db_application.job and db_application.job.job_title) else (db_application.job_title or "Position")
+
+        if status_upper == "ACCEPTED":
+            title = "Application Accepted 🎉"
+            message = f"Congratulations! Your application for the position of {job_title} has been accepted."
+        elif status_upper == "REJECTED":
+            title = "Application Update"
+            message = f"Thank you for your interest. Unfortunately, your application for the position of {job_title} has been rejected."
+        elif status_upper == "TECHNICAL INTERVIEW":
+            title = "Technical Interview Scheduled 💻"
+            message = f"You have advanced to the Technical Interview stage for the {job_title} position!"
+        elif status_upper == "FINAL INTERVIEW":
+            title = "Final Interview Scheduled 🤝"
+            message = f"Great news! You have reached the Final Interview stage for the {job_title} position!"
+        elif status_upper == "REVIEWED":
+            title = "Application Under Review"
+            message = f"Great news! Your application for the position of {job_title} has been reviewed."
+        else:
+            title = "Application Status Update"
+            message = f"Your application for the position of {job_title} is currently pending review."
+
+        await create_notification(
+            db=db,
+            title=title,
+            message=message,
+            type="application_update",
+            target_role="CANDIDATE",
+            target_email=db_application.candidate_email,
+            sender_role="HR"
+        )
+    except Exception as e:
+        print(f"Error creating status update notifications: {e}")
+
+    return db_application
+
+
+async def delete_application(db: AsyncSession, application_id: int) -> Optional[JobApplication]:
+    """Delete a job application."""
+    db_application = await JobApplicationRepository.get_by_id(db, application_id)
+    if not db_application:
+        return None
+
+    await JobApplicationRepository.delete(db, db_application)
+    return db_application
+
+
+async def get_and_validate_job(db: AsyncSession, job_id: str):
+    """Get and validate a job by job_id, with fallback to numeric ID lookup."""
+    from app.repositories.job_description_repository import JobDescriptionRepository
+
+    # Try to get by job_id first
+    job = await JobDescriptionRepository.get_by_job_id(db, job_id)
+
+    if not job:
+        # Fallback for static jobs or numeric IDs
+        try:
+            numeric_id = int(job_id)
+            job = await JobDescriptionRepository.get_by_id(db, numeric_id)
+        except (ValueError, TypeError):
+            pass
+
+    return job
+
+
 class JobApplicationService:
-    async def create_job_application(self, db: AsyncSession, application_in: JobApplicationCreate, db_job_id: int):
-        """Create a new job application and trigger AI analysis."""
-        data = application_in.model_dump()
-
-        # Remove job_id from data as we'll pass the internal ID
-        if 'job_id' in data:
-            del data['job_id']
-
-        # Create the application via repository
-        new_application = await JobApplicationRepository.create(db, {
-            "job_id": db_job_id,
-            **data
-        })
-
-        # Trigger notification
-        try:
-            job_title = application_in.job_title if application_in.job_title else "a position"
-            await create_notification(
-                db=db,
-                title="New Application Submitted",
-                message=f"{application_in.candidate_name} applied for {job_title}.",
-                type="application",
-                sender_role="CANDIDATE"
-            )
-        except Exception as notif_err:
-            print(f"WARNING: Notification failed but application saved: {notif_err}")
-        # Trigger background AI analysis
-        try:
-            import asyncio
-            from app.tasks import async_analyze_application
-            asyncio.create_task(async_analyze_application(new_application.id))
-            print(f"DEBUG: Dispatched background AI analysis task for application {new_application.id}")
-        except Exception as task_err:
-            print(f"WARNING: Failed to dispatch background task: {task_err}")
-
-        return new_application
-
-    async def get_applications_by_job(self, db: AsyncSession, job_id: int):
-        """Get all applications for a specific job."""
-        applications = await JobApplicationRepository.get_by_job_id(db, job_id)
-        return _enrich_applications(applications)
-
-    async def get_applications_by_email(self, db: AsyncSession, email: str):
-        """Get all applications for a specific candidate email."""
-        applications = await JobApplicationRepository.get_by_email(db, email)
-        return _enrich_applications(applications)
-
-    async def get_all_applications(self, db: AsyncSession):
-        """Get all job applications."""
-        applications = await JobApplicationRepository.get_all(db)
-        return _enrich_applications(applications)
-
-    async def update_application_status(self, db: AsyncSession, application_id: int, new_status: str) -> Optional[JobApplication]:
-        """Update application status and send notifications."""
-        db_application = await JobApplicationRepository.get_by_id(db, application_id)
-
-        if not db_application:
-            return None
-
-        status_upper = new_status.upper()
-        db_application.status = status_upper
-        db_application = await JobApplicationRepository.update(db, db_application)
-
-        # Send notifications about status change
-        try:
-            # Notify HR
-            await create_notification(
-                db=db,
-                title="Application Status Updated",
-                message=f"Application for {db_application.candidate_name} marked as {status_upper}.",
-                type="application_update",
-                target_role="HR",
-                sender_role="HR"
-            )
-            # Notify ADMIN
-            await create_notification(
-                db=db,
-                title="Application Status Updated",
-                message=f"Application for {db_application.candidate_name} marked as {status_upper}.",
-                type="application_update",
-                target_role="ADMIN",
-                sender_role="HR"
-            )
-
-            # Notify Candidate (Targeted to their email)
-            job_title = db_application.job.job_title if (db_application.job and db_application.job.job_title) else (db_application.job_title or "Position")
-
-            if status_upper == "ACCEPTED":
-                title = "Application Accepted 🎉"
-                message = f"Congratulations! Your application for the position of {job_title} has been accepted."
-            elif status_upper == "REJECTED":
-                title = "Application Update"
-                message = f"Thank you for your interest. Unfortunately, your application for the position of {job_title} has been rejected."
-            elif status_upper == "TECHNICAL INTERVIEW":
-                title = "Technical Interview Scheduled 💻"
-                message = f"You have advanced to the Technical Interview stage for the {job_title} position!"
-            elif status_upper == "FINAL INTERVIEW":
-                title = "Final Interview Scheduled 🤝"
-                message = f"Great news! You have reached the Final Interview stage for the {job_title} position!"
-            elif status_upper == "REVIEWED":
-                title = "Application Under Review"
-                message = f"Great news! Your application for the position of {job_title} has been reviewed."
-            else:
-                title = "Application Status Update"
-                message = f"Your application for the position of {job_title} is currently pending review."
-
-            await create_notification(
-                db=db,
-                title=title,
-                message=message,
-                type="application_update",
-                target_role="CANDIDATE",
-                target_email=db_application.candidate_email,
-                sender_role="HR"
-            )
-        except Exception as e:
-            print(f"Error creating status update notifications: {e}")
-
-        return db_application
-
-    async def delete_application(self, db: AsyncSession, application_id: int) -> Optional[JobApplication]:
-        """Delete a job application."""
-        db_application = await JobApplicationRepository.get_by_id(db, application_id)
-        if not db_application:
-            return None
-
-        await JobApplicationRepository.delete(db, db_application)
-        return db_application
-
-    async def get_and_validate_job(self, db: AsyncSession, job_id: str):
-        """Get and validate a job by job_id, with fallback to numeric ID lookup."""
-        from app.repositories.job_description_repository import JobDescriptionRepository
-
-        # Try to get by job_id first
-        job = await JobDescriptionRepository.get_by_job_id(db, job_id)
-
-        if not job:
-            # Fallback for static jobs or numeric IDs
-            try:
-                numeric_id = int(job_id)
-                job = await JobDescriptionRepository.get_by_id(db, numeric_id)
-            except (ValueError, TypeError):
-                pass
-
-        return job
+    create_job_application = staticmethod(create_job_application)
+    get_applications_by_job = staticmethod(get_applications_by_job)
+    get_applications_by_email = staticmethod(get_applications_by_email)
+    get_all_applications = staticmethod(get_all_applications)
+    update_application_status = staticmethod(update_application_status)
+    delete_application = staticmethod(delete_application)
+    get_and_validate_job = staticmethod(get_and_validate_job)
 
 
 job_application_service = JobApplicationService()
 
-
-async def create_job_application(db: AsyncSession, application_in: JobApplicationCreate, db_job_id: int):
-    return await job_application_service.create_job_application(db, application_in, db_job_id)
-
-
-async def get_applications_by_job(db: AsyncSession, job_id: int):
-    return await job_application_service.get_applications_by_job(db, job_id)
-
-
-async def get_applications_by_email(db: AsyncSession, email: str):
-    return await job_application_service.get_applications_by_email(db, email)
-
-
-async def get_all_applications(db: AsyncSession):
-    return await job_application_service.get_all_applications(db)
-
-
-async def update_application_status(db: AsyncSession, application_id: int, new_status: str) -> Optional[JobApplication]:
-    return await job_application_service.update_application_status(db, application_id, new_status)
-
-
-async def delete_application(db: AsyncSession, application_id: int) -> Optional[JobApplication]:
-    return await job_application_service.delete_application(db, application_id)
-
-
-async def get_and_validate_job(db: AsyncSession, job_id: str):
-    return await job_application_service.get_and_validate_job(db, job_id)
