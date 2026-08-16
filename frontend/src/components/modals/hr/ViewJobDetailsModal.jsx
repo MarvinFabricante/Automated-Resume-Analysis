@@ -6,24 +6,24 @@ import {
   AlertCircle, Globe, Wallet, GraduationCap, Trophy
 } from 'lucide-react';
 
+const DetailCard = ({ icon: Icon, label, value, colorClass = "text-gray-400" }) => (
+  <div className="group p-6 rounded-[24px] bg-gray-50/50 border border-gray-100/50 hover:bg-white hover:border-pink-100 hover:shadow-xl hover:shadow-pink-50/50 transition-all duration-300 flex items-center gap-5">
+    <div className={`w-14 h-14 rounded-2xl bg-white border border-gray-100 flex items-center justify-center shadow-sm group-hover:scale-110 transition-transform duration-500 ${colorClass}`}>
+      <Icon size={24} />
+    </div>
+    <div className="min-w-0">
+      <p className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-400 mb-1">{label}</p>
+      <p className="text-base font-black text-gray-900 truncate">{value || 'N/A'}</p>
+    </div>
+  </div>
+);
+
 const ViewJobDetailsModal = ({ isOpen, onClose, job }) => {
   if (!isOpen || !job) return null;
 
   const skillsArray = typeof job.skills_requirements === 'string'
     ? job.skills_requirements.split(',').map(s => s.trim())
     : job.skills_requirements || [];
-
-  const DetailCard = ({ icon: Icon, label, value, colorClass = "text-gray-400" }) => (
-    <div className="group p-6 rounded-[24px] bg-gray-50/50 border border-gray-100/50 hover:bg-white hover:border-pink-100 hover:shadow-xl hover:shadow-pink-50/50 transition-all duration-300 flex items-center gap-5">
-      <div className={`w-14 h-14 rounded-2xl bg-white border border-gray-100 flex items-center justify-center shadow-sm group-hover:scale-110 transition-transform duration-500 ${colorClass}`}>
-        <Icon size={24} />
-      </div>
-      <div className="min-w-0">
-        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-400 mb-1">{label}</p>
-        <p className="text-base font-black text-gray-900 truncate">{value || 'N/A'}</p>
-      </div>
-    </div>
-  );
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-md transition-opacity duration-300">

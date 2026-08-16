@@ -44,6 +44,7 @@ const UsersPage = () => {
   const currentUserEmail = useSelector((state) => state.auth.user);
   
   const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState("ALL"); // ALL, ACTIVE, ARCHIVED
   const [activeMenu, setActiveMenu] = useState(null);
   
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -54,34 +55,59 @@ const UsersPage = () => {
   
   const [changeUserRole] = useChangeUserRoleMutation();
 
-  const filteredUsers = users.filter(user => 
-    user.fullname?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    user.email?.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredUsers = users.filter(user => {
+    const matchesSearch = 
+      user.fullname?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      user.email?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      user.role?.toLowerCase().includes(searchQuery.toLowerCase());
+    
+    if (!matchesSearch) return false;
+    if (statusFilter === 'ACTIVE') return !user.is_archived;
+    if (statusFilter === 'ARCHIVED') return user.is_archived;
+    return true;
+  });
 
   const handleArchive = async (userId) => {
-    if (window.confirm("Are you sure you want to archive this user? They will no longer be able to log in.")) {
-      await archiveUser(userId);
-      setActiveMenu(null);
+    if (window.confirm("Are you sure you want to suspend this user account? They will no longer be able to log in.")) {
+      try {
+        await archiveUser(userId).unwrap();
+        setActiveMenu(null);
+      } catch (err) {
+        alert(err.data?.detail || 'Failed to suspend user account');
+      }
     }
   };
 
   const handleUnarchive = async (userId) => {
-    await unarchiveUser(userId);
-    setActiveMenu(null);
+    if (window.confirm("Are you sure you want to restore this user account? They will regain access to log in immediately.")) {
+      try {
+        await unarchiveUser(userId).unwrap();
+        setActiveMenu(null);
+      } catch (err) {
+        alert(err.data?.detail || 'Failed to restore user account');
+      }
+    }
   };
 
   const handleRoleChange = async (userId, newRole) => {
     if (window.confirm(`Are you sure you want to change this user's role to ${newRole}?`)) {
-      await changeUserRole({ userId, role: newRole });
-      setActiveMenu(null);
+      try {
+        await changeUserRole({ userId, role: newRole }).unwrap();
+        setActiveMenu(null);
+      } catch (err) {
+        alert(err.data?.detail || 'Failed to update user role');
+      }
     }
   };
 
   const handleDelete = async (userId) => {
     if (window.confirm("Are you sure you want to permanently delete this user? This action cannot be undone.")) {
-      await deleteUser(userId);
-      setActiveMenu(null);
+      try {
+        await deleteUser(userId).unwrap();
+        setActiveMenu(null);
+      } catch (err) {
+        alert(err.data?.detail || 'Failed to delete user');
+      }
     }
   };
 
@@ -181,6 +207,35 @@ const UsersPage = () => {
             <div className="xl:col-span-3 flex flex-col h-full">
               <div className="bg-white/80 backdrop-blur-xl border border-gray-100 rounded-[32px] shadow-[0_8px_30px_rgb(0,0,0,0.04)] overflow-visible flex-1 flex flex-col">
                 
+                {/* Filter Tabs Bar */}
+                <div className="p-6 border-b border-gray-100/80 flex items-center justify-between gap-4 flex-wrap">
+                  <div className="flex items-center gap-2 bg-gray-100/80 p-1.5 rounded-2xl">
+                    <button
+                      onClick={() => setStatusFilter("ALL")}
+                      className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${statusFilter === "ALL" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-900"}`}
+                    >
+                      All ({users.length})
+                    </button>
+                    <button
+                      onClick={() => setStatusFilter("ACTIVE")}
+                      className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${statusFilter === "ACTIVE" ? "bg-white text-emerald-700 shadow-sm" : "text-gray-500 hover:text-gray-900"}`}
+                    >
+                      Active ({users.filter(u => !u.is_archived).length})
+                    </button>
+                    <button
+                      onClick={() => setStatusFilter("ARCHIVED")}
+                      className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${statusFilter === "ARCHIVED" ? "bg-white text-orange-600 shadow-sm" : "text-gray-500 hover:text-gray-900"}`}
+                    >
+                      Suspended / Archived ({users.filter(u => u.is_archived).length})
+                    </button>
+                  </div>
+                  {statusFilter === "ARCHIVED" && (
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-orange-50 border border-orange-100 text-xs font-bold text-orange-600 animate-pulse">
+                      <RotateCcw size={12} /> Click "Restore Account" in user options to restore access
+                    </span>
+                  )}
+                </div>
+
                 <div className="overflow-x-auto flex-1">
                   <table className="w-full text-left border-collapse">
                     <thead>
@@ -207,10 +262,10 @@ const UsersPage = () => {
                         </tr>
                       ) : filteredUsers.length > 0 ? (
                         filteredUsers.map((user) => (
-                          <tr key={user.id} className={`group hover:bg-gray-50/50 transition-all duration-300 ${user.is_archived ? 'opacity-50 grayscale-[50%]' : ''}`}>
+                          <tr key={user.id} className={`group hover:bg-gray-50/50 transition-all duration-300 ${user.is_archived ? 'bg-orange-50/30' : ''}`}>
                             <td className="px-8 py-5">
                               <div className="flex items-center gap-4">
-                                <div className={`relative w-11 h-11 rounded-[14px] flex items-center justify-center overflow-hidden border shadow-sm transition-transform group-hover:scale-105 duration-300 ${!user.profile_image_url ? (user.is_archived ? 'bg-gray-100 border-gray-200 text-gray-400' : 'bg-gradient-to-br from-red-50 to-pink-50 border-red-100 text-[#D10043]') : 'border-gray-200'}`}>
+                                <div className={`relative w-11 h-11 rounded-[14px] flex items-center justify-center overflow-hidden border shadow-sm transition-transform group-hover:scale-105 duration-300 ${!user.profile_image_url ? (user.is_archived ? 'bg-orange-100/50 border-orange-200 text-orange-600' : 'bg-gradient-to-br from-red-50 to-pink-50 border-red-100 text-[#D10043]') : 'border-gray-200'}`}>
                                   {user.profile_image_url ? (
                                     <img src={user.profile_image_url} alt={user.fullname} className="w-full h-full object-cover" />
                                   ) : (
@@ -223,7 +278,7 @@ const UsersPage = () => {
                                 <div className="flex flex-col">
                                   <div className="flex items-center gap-2">
                                     <p className="text-sm font-bold text-gray-900 leading-none group-hover:text-[#D10043] transition-colors">{user.fullname}</p>
-                                    {user.is_archived && <span className="text-[9px] font-black bg-gray-200 text-gray-500 px-1.5 py-0.5 rounded uppercase tracking-wider">Archived</span>}
+                                    {user.is_archived && <span className="text-[9px] font-black bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full uppercase tracking-wider border border-orange-200">Suspended</span>}
                                   </div>
                                   <p className="text-xs text-gray-500 font-medium mt-1 flex items-center gap-1.5 group-hover:text-gray-600 transition-colors">
                                     <Mail size={12} className="opacity-70" /> {user.email}
@@ -248,7 +303,12 @@ const UsersPage = () => {
                             </td>
                             <td className="px-6 py-5">
                               <div className="flex flex-col gap-1.5">
-                                {user.is_online && !user.is_archived ? (
+                                {user.is_archived ? (
+                                  <span className="inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-lg bg-orange-100/80 text-orange-700 border border-orange-200 w-fit">
+                                    <div className="w-1.5 h-1.5 bg-orange-500 rounded-full"></div>
+                                    Suspended
+                                  </span>
+                                ) : user.is_online ? (
                                   <span className="inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-100/50 w-fit">
                                     <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.8)]"></div>
                                     Active Now
@@ -268,22 +328,55 @@ const UsersPage = () => {
                             </td>
                             <td className="px-8 py-5 text-right relative">
                               {user.email !== currentUserEmail ? (
-                                <>
+                                <div className="flex items-center justify-end gap-2">
+                                  {user.is_archived && (
+                                    <button 
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        handleUnarchive(user.id);
+                                      }}
+                                      className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-extrabold flex items-center gap-1.5 transition-all hover:scale-105 shadow-md shadow-emerald-600/20 active:scale-95 cursor-pointer z-10"
+                                      title="Click to restore this account"
+                                    >
+                                      <RotateCcw size={14} />
+                                      <span>Restore Account</span>
+                                    </button>
+                                  )}
+
                                   <button 
-                                    onClick={() => setActiveMenu(activeMenu === user.id ? null : user.id)}
-                                    className={`p-2 rounded-xl transition-all duration-200 ${activeMenu === user.id ? 'bg-gray-100 text-gray-900 shadow-inner' : 'text-gray-400 hover:bg-white hover:shadow-md hover:text-gray-700 border border-transparent hover:border-gray-200'}`}
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.preventDefault();
+                                      e.stopPropagation();
+                                      setActiveMenu(activeMenu === user.id ? null : user.id);
+                                    }}
+                                    className={`p-2 rounded-xl transition-all duration-200 cursor-pointer ${activeMenu === user.id ? 'bg-gray-100 text-gray-900 shadow-inner' : 'text-gray-400 hover:bg-white hover:shadow-md hover:text-gray-700 border border-transparent hover:border-gray-200'}`}
                                   >
                                     <MoreHorizontal size={18} />
                                   </button>
                                   
                                   {activeMenu === user.id && (
-                                    <div className="absolute right-8 top-16 w-52 bg-white/95 backdrop-blur-xl border border-gray-100 rounded-2xl shadow-[0_10px_40px_rgb(0,0,0,0.08)] z-50 py-2 overflow-hidden animate-in fade-in slide-in-from-top-2 zoom-in-95 duration-200">
+                                    <>
+                                      <div 
+                                        className="fixed inset-0 z-40" 
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setActiveMenu(null);
+                                        }} 
+                                      />
+                                      <div className="absolute right-8 top-14 w-52 bg-white/95 backdrop-blur-xl border border-gray-100 rounded-2xl shadow-[0_10px_40px_rgb(0,0,0,0.12)] z-50 py-2 overflow-hidden animate-in fade-in slide-in-from-top-2 zoom-in-95 duration-200 text-left">
                                         <div className="px-4 py-2 border-b border-gray-50 mb-1">
                                           <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">User Actions</p>
                                         </div>
                                         <button 
-                                          onClick={() => openEditModal(user)}
-                                          className="w-full px-4 py-2.5 text-left text-xs font-bold text-gray-700 hover:bg-gray-50 flex items-center gap-3 transition-colors"
+                                          type="button"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            openEditModal(user);
+                                          }}
+                                          className="w-full px-4 py-2.5 text-left text-xs font-bold text-gray-700 hover:bg-gray-50 flex items-center gap-3 transition-colors cursor-pointer"
                                         >
                                           <Edit size={14} className="text-gray-400" /> Edit Details
                                         </button>
@@ -295,8 +388,12 @@ const UsersPage = () => {
                                             user.role !== role && (
                                               <button 
                                                 key={role}
-                                                onClick={() => handleRoleChange(user.id, role)}
-                                                className="w-full px-3 py-2 text-left text-xs font-bold text-gray-600 hover:bg-[#D10043]/5 hover:text-[#D10043] rounded-lg flex items-center justify-between transition-colors group"
+                                                type="button"
+                                                onClick={(e) => {
+                                                  e.stopPropagation();
+                                                  handleRoleChange(user.id, role);
+                                                }}
+                                                className="w-full px-3 py-2 text-left text-xs font-bold text-gray-600 hover:bg-[#D10043]/5 hover:text-[#D10043] rounded-lg flex items-center justify-between transition-colors group cursor-pointer"
                                               >
                                                 Make {role}
                                                 <ChevronRight size={12} className="opacity-0 -translate-x-2 group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-300" />
@@ -307,30 +404,43 @@ const UsersPage = () => {
 
                                         <div className="border-t border-gray-50 my-2"></div>
                                         {user.is_archived ? (
+                                          <button 
+                                            type="button"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              handleUnarchive(user.id);
+                                            }}
+                                            className="w-full px-4 py-2.5 text-left text-xs font-bold text-emerald-600 hover:bg-emerald-50 flex items-center gap-3 transition-colors cursor-pointer"
+                                          >
+                                            <RotateCcw size={14} className="text-emerald-500" /> Restore Account
+                                          </button>
+                                        ) : (
+                                          <button 
+                                            type="button"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              handleArchive(user.id);
+                                            }}
+                                            className="w-full px-4 py-2.5 text-left text-xs font-bold text-orange-600 hover:bg-orange-50 flex items-center gap-3 transition-colors cursor-pointer"
+                                          >
+                                            <Archive size={14} className="text-orange-500" /> Suspend Access
+                                          </button>
+                                        )}
+                                        <div className="border-t border-gray-50 my-1"></div>
                                         <button 
-                                          onClick={() => handleUnarchive(user.id)}
-                                          className="w-full px-4 py-2.5 text-left text-xs font-bold text-emerald-600 hover:bg-emerald-50 flex items-center gap-3 transition-colors"
+                                          type="button"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleDelete(user.id);
+                                          }}
+                                          className="w-full px-4 py-2.5 text-left text-xs font-bold text-red-600 hover:bg-red-50 flex items-center gap-3 transition-colors cursor-pointer"
                                         >
-                                          <RotateCcw size={14} className="text-emerald-500" /> Restore Account
+                                          <Trash2 size={14} className="text-red-500" /> Delete Permanently
                                         </button>
-                                      ) : (
-                                        <button 
-                                          onClick={() => handleArchive(user.id)}
-                                          className="w-full px-4 py-2.5 text-left text-xs font-bold text-orange-600 hover:bg-orange-50 flex items-center gap-3 transition-colors"
-                                        >
-                                          <Archive size={14} className="text-orange-500" /> Suspend Access
-                                        </button>
-                                      )}
-                                      <div className="border-t border-gray-50 my-1"></div>
-                                      <button 
-                                        onClick={() => handleDelete(user.id)}
-                                        className="w-full px-4 py-2.5 text-left text-xs font-bold text-red-600 hover:bg-red-50 flex items-center gap-3 transition-colors"
-                                      >
-                                        <Trash2 size={14} className="text-red-500" /> Delete Permanently
-                                      </button>
-                                    </div>
+                                      </div>
+                                    </>
                                   )}
-                                </>
+                                </div>
                               ) : (
                                 <span className="inline-flex items-center justify-center px-3 py-1.5 rounded-lg bg-gray-50 border border-gray-100 text-[10px] font-bold text-gray-400 uppercase tracking-widest whitespace-nowrap">
                                   Current User
@@ -392,23 +502,29 @@ const UsersPage = () => {
                 </h4>
                 
                 <div className="space-y-6 relative z-10">
-                  <div className="flex items-center justify-between p-4 rounded-2xl bg-gray-50/80 border border-gray-100 hover:border-gray-200 transition-colors">
+                  <div 
+                    onClick={() => setStatusFilter("ALL")}
+                    className={`flex items-center justify-between p-4 rounded-2xl border transition-all cursor-pointer group ${statusFilter === "ALL" ? "bg-red-50/40 border-[#D10043]/30 shadow-sm" : "bg-gray-50/80 border-gray-100 hover:border-gray-300"}`}
+                  >
                     <div className="flex flex-col">
                       <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Total Members</p>
                       <p className="text-3xl font-extrabold text-gray-900">{users.length}</p>
                     </div>
-                    <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center shadow-sm">
+                    <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center shadow-sm group-hover:scale-110 transition-transform">
                       <UserCheck className="text-emerald-500" size={20} />
                     </div>
                   </div>
                   
-                  <div className="flex items-center justify-between p-4 rounded-2xl bg-gray-50/80 border border-gray-100 hover:border-gray-200 transition-colors">
+                  <div 
+                    onClick={() => setStatusFilter("ARCHIVED")}
+                    className={`flex items-center justify-between p-4 rounded-2xl border transition-all cursor-pointer group ${statusFilter === "ARCHIVED" ? "bg-orange-100/50 border-orange-300 shadow-sm" : "bg-orange-50/40 border-orange-100/80 hover:border-orange-200"}`}
+                  >
                     <div className="flex flex-col">
-                      <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Suspended / Archived</p>
-                      <p className="text-3xl font-extrabold text-gray-900">{users.filter(u => u.is_archived).length}</p>
+                      <p className="text-[10px] font-black text-orange-500 uppercase tracking-widest mb-1">Suspended / Archived</p>
+                      <p className="text-3xl font-extrabold text-orange-600">{users.filter(u => u.is_archived).length}</p>
                     </div>
-                    <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center shadow-sm">
-                      <UserX className="text-orange-400" size={20} />
+                    <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center shadow-sm group-hover:scale-110 transition-transform">
+                      <UserX className="text-orange-500" size={20} />
                     </div>
                   </div>
                   

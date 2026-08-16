@@ -122,7 +122,7 @@ const calculateRuleBasedScore = (candidate, job, filters) => {
 
 const CompareCandidates = () => {
   const { data: candidates = [], isLoading } = useGetApplicationsQuery();
-  const { data: jobs = [], isLoading: isLoadingJobs } = useGetJobsQuery();
+  const { data: jobs = [] } = useGetJobsQuery();
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCandidateIds, setSelectedCandidateIds] = useState([]);
   const [activeCandidateId, setActiveCandidateId] = useState(null);
@@ -148,7 +148,7 @@ const CompareCandidates = () => {
   }, [candidates, searchQuery]);
 
   // Set the first candidate as active by default if not set
-  useMemo(() => {
+  React.useEffect(() => {
     if (filteredCandidates.length > 0 && !activeCandidateId) {
       setActiveCandidateId(filteredCandidates[0].id);
     }

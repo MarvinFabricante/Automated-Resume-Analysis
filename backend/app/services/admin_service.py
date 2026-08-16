@@ -59,6 +59,9 @@ class AdminService:
             return False
         return await AdminRepository.delete_user(db, user)
 
+    async def get_user_by_id(self, db: AsyncSession, user_id: int):
+        return await AdminRepository.get_user_by_id(db, user_id)
+
     async def get_system_stats(self, db: AsyncSession):
         return await AdminRepository.get_system_stats(db)
 
@@ -84,6 +87,10 @@ async def update_admin_profile(db: AsyncSession, admin_id: int, admin_update: Ad
 
 async def toggle_user_archive_status(db: AsyncSession, user_id: int, archive_status: bool):
     return await admin_service.toggle_user_archive_status(db, user_id, archive_status)
+
+
+async def get_user_by_id(db: AsyncSession, user_id: int):
+    return await admin_service.get_user_by_id(db, user_id)
 
 
 async def get_system_stats(db: AsyncSession):

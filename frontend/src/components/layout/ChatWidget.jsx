@@ -27,10 +27,6 @@ const ChatWidget = () => {
     const currentUserRole = localStorage.getItem('role') || 'Guest';
     const currentUserId = parseInt(localStorage.getItem('user_id'), 10);
 
-    // Don't render chat for guests
-    if (!token || currentUserRole.toUpperCase() === 'GUEST') {
-        return null;
-    }
 
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -133,6 +129,7 @@ const ChatWidget = () => {
         }
     };
 
+     
     useEffect(() => {
         if (isOpen) {
             fetchContacts();
@@ -213,6 +210,11 @@ const ChatWidget = () => {
             sendMessage();
         }
     };
+
+    // Don't render chat for guests
+    if (!token || currentUserRole.toUpperCase() === 'GUEST') {
+        return null;
+    }
 
     return (
         <div className="fixed bottom-6 right-6 z-[1000] font-['Inter']">

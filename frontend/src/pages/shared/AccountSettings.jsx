@@ -30,15 +30,16 @@ import Sidebar from '../../components/layout/Sidebar';
 
 import { updateProfileImage } from '../../redux/slices/authSlice';
 import { useDispatch } from 'react-redux';
+import { useNavigate } from 'react-router-dom';
 
 const BRAND_RED = "#D10043";
 
 const AccountSettings = () => {
   const dispatch = useDispatch();
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('profile');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [fetching, setFetching] = useState(false);
   const [passwordLoading, setPasswordLoading] = useState(false);
   const [passwordData, setPasswordData] = useState({
     currentPassword: '',
@@ -72,7 +73,6 @@ const AccountSettings = () => {
   useEffect(() => {
     const fetchProfile = async () => {
       if (!userId) return;
-      setFetching(true);
       try {
         const response = await profileService.getProfile(userRole, userId);
         const data = response.data;
@@ -94,8 +94,6 @@ const AccountSettings = () => {
         });
       } catch (err) {
         console.error("Failed to fetch profile:", err);
-      } finally {
-        setFetching(false);
       }
     };
     fetchProfile();
@@ -139,7 +137,8 @@ const AccountSettings = () => {
       }
 
       // 2. Update the rest of the profile
-      const response = await profileService.updateProfile(userRole, userId, updateData);
+      const updatePayload = { ...formData, profile_image_url: currentImageUrl };
+      const response = await profileService.updateProfile(userRole, userId, updatePayload);
       const updatedData = response.data;
       
       // Update local state with fresh data from server

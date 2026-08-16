@@ -1,3 +1,4 @@
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from typing import List, Optional, Dict, Any
@@ -36,13 +37,35 @@ async def update_admin(db: AsyncSession, admin: Admin, update_data: dict) -> Adm
 
 async def get_user_by_id(db: AsyncSession, user_id: int) -> Optional[User]:
     result = await db.execute(select(User).where(User.id == user_id))
-    return result.scalar_one_or_none()
+    user = result.scalar_one_or_none()
+    if user is None:
+        raw = await db.execute(
+            text("SELECT id, email, password, role, fullname, profile_image_url, is_archived, is_online FROM users WHERE id = :id"),
+            {"id": user_id}
+        )
+        row = raw.fetchone()
+        if row:
+            class _FallbackUser:
+                pass
+            user = _FallbackUser()
+            user.id = row.id
+            user.email = row.email
+            user.password = row.password
+            user.role = row.role
+            user.fullname = row.fullname
+            user.profile_image_url = row.profile_image_url
+            user.is_archived = row.is_archived
+            user.is_online = row.is_online
+    return user
 
 
 async def update_user_archive_status(db: AsyncSession, user: User, is_archived: bool) -> User:
-    user.is_archived = is_archived
+    await db.execute(
+        text("UPDATE users SET is_archived = :is_archived WHERE id = :uid"),
+        {"is_archived": is_archived, "uid": user.id}
+    )
     await db.commit()
-    await db.refresh(user)
+    user.is_archived = is_archived
     return user
 
 

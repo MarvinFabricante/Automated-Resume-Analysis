@@ -1,0 +1,285 @@
+
+> frontend@0.0.0 lint
+> eslint .
+
+
+/home/marvin/Documents/automated_resume_analysis/frontend/src/components/candidate/dashboard/WelcomeHeader.jsx
+  6:9  error  'navigate' is assigned a value but never used. Allowed unused vars must match /^[A-Z_]/u  no-unused-vars
+
+/home/marvin/Documents/automated_resume_analysis/frontend/src/components/chat/ChatLayout.jsx
+   98:8  warning  React Hook useEffect has a missing dependency: 'fetchContacts'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+  111:8  warning  React Hook useEffect has a missing dependency: 'fetchContacts'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+/home/marvin/Documents/automated_resume_analysis/frontend/src/components/hr/dashboard/KeyMetrics.jsx
+  4:27  error  'Icon' is defined but never used  no-unused-vars
+
+/home/marvin/Documents/automated_resume_analysis/frontend/src/components/hr/screening/CandidateCard.jsx
+  9:9  error  'status' is assigned a value but never used. Allowed unused vars must match /^[A-Z_]/u  no-unused-vars
+
+/home/marvin/Documents/automated_resume_analysis/frontend/src/components/layout/ChatWidget.jsx
+   39:5  error    React Hook "useEffect" is called conditionally. React Hooks must be called in the exact same order in every component render. Did you accidentally call a React Hook after an early return?  react-hooks/rules-of-hooks
+   44:5  error    React Hook "useEffect" is called conditionally. React Hooks must be called in the exact same order in every component render. Did you accidentally call a React Hook after an early return?  react-hooks/rules-of-hooks
+  125:8  warning  React Hook useEffect has a missing dependency: 'fetchContacts'. Either include it or remove the dependency array                                                                             react-hooks/exhaustive-deps
+  136:5  error    React Hook "useEffect" is called conditionally. React Hooks must be called in the exact same order in every component render. Did you accidentally call a React Hook after an early return?  react-hooks/rules-of-hooks
+  140:8  warning  React Hook useEffect has a missing dependency: 'fetchContacts'. Either include it or remove the dependency array                                                                             react-hooks/exhaustive-deps
+
+/home/marvin/Documents/automated_resume_analysis/frontend/src/components/layout/Header.jsx
+   25:10  error    'isMobileMenuOpen' is assigned a value but never used. Allowed unused vars must match /^[A-Z_]/u                                                                  no-unused-vars
+   25:28  error    'setIsMobileMenuOpen' is assigned a value but never used. Allowed unused vars must match /^[A-Z_]/u                                                               no-unused-vars
+   35:11  error    'isSidebarOpen' is assigned a value but never used. Allowed unused vars must match /^[A-Z_]/u                                                                     no-unused-vars
+  278:6   warning  React Hook useEffect has missing dependencies: 'isAdminRole', 'isCandidateRole', 'isHRRole', and 'userEmail'. Either include them or remove the dependency array  react-hooks/exhaustive-deps
+  298:6   warning  React Hook useEffect has missing dependencies: 'profileImageUrl' and 'userRole'. Either include them or remove the dependency array                               react-hooks/exhaustive-deps
+
+/home/marvin/Documents/automated_resume_analysis/frontend/src/components/modals/hr/CreateJobModal.jsx
+  36:7  error    Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+  34 |     if (isOpen && !formData.job_id) {
+  35 |       const generatedId = `JOB-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
+> 36 |       setFormData(prev => ({ ...prev, job_id: generatedId }));
+     |       ^^^^^^^^^^^ Avoid calling setState() directly within an effect
+  37 |     }
+  38 |     if (!isOpen) {
+  39 |       setStatus({ type: null, message: '' });  react-hooks/set-state-in-effect
+  43:6  warning  React Hook useEffect has a missing dependency: 'formData.job_id'. Either include it or remove the dependency array                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            react-hooks/exhaustive-deps
+
+/home/marvin/Documents/automated_resume_analysis/frontend/src/components/modals/hr/EditJobModal.jsx
+  35:7  error  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+  33 |   useEffect(() => {
+  34 |     if (isOpen && jobData) {
+> 35 |       setFormData({
+     |       ^^^^^^^^^^^ Avoid calling setState() directly within an effect
+  36 |         job_id: jobData.job_id || '',
+  37 |         job_title: jobData.job_title || jobData.title || '',
+  38 |         department: jobData.department || 'Human Resources',  react-hooks/set-state-in-effect
+
+/home/marvin/Documents/automated_resume_analysis/frontend/src/components/modals/hr/ScheduleInterviewModal.jsx
+  47:9  error  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+  45 |       // Block weekends on the client side
+  46 |       if (!isWeekday(formData.date)) {
+> 47 |         setWeekendWarning(true);
+     |         ^^^^^^^^^^^^^^^^^ Avoid calling setState() directly within an effect
+  48 |         setAvailableSlots([]);
+  49 |         setHasAttemptedFetch(false);
+  50 |         return;  react-hooks/set-state-in-effect
+
+/home/marvin/Documents/automated_resume_analysis/frontend/src/components/modals/hr/ViewCandidateDetailsModal.jsx
+  41:79  error  'Icon' is defined but never used  no-unused-vars
+
+/home/marvin/Documents/automated_resume_analysis/frontend/src/components/modals/hr/ViewJobDetailsModal.jsx
+  16:31  error  'Icon' is defined but never used                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             no-unused-vars
+  68:16  error  Error: Cannot create components during render
+
+Components created during render will reset their state each time they are created. Declare components outside of render.
+
+  66 |             {/* Quick Stats Grid - 2x2 Layout for prominence */}
+  67 |             <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+> 68 |               <DetailCard icon={Building2} label="Department" value={job.department} colorClass="text-blue-500" />
+     |                ^^^^^^^^^^ This component is created during render
+  69 |               <DetailCard icon={Clock} label="Job Type" value={job.job_type} colorClass="text-orange-500" />
+  70 |               <DetailCard icon={MapPin} label="Location" value={job.location} colorClass="text-emerald-500" />
+  71 |               <DetailCard icon={Wallet} label="Salary" value={job.salary_range} colorClass="text-[#d81159]" />
+
+  14 |     : job.skills_requirements || [];
+  15 |
+> 16 |   const DetailCard = ({ icon: Icon, label, value, colorClass = "text-gray-400" }) => (
+     |                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 17 |     <div className="group p-6 rounded-[24px] bg-gray-50/50 border border-gray-100/50 hover:bg-white hover:border-pink-100 hover:shadow-xl hover:shadow-pink-50/50 transition-all duration-300 flex items-center gap-5">
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 18 |       <div className={`w-14 h-14 rounded-2xl bg-white border border-gray-100 flex items-center justify-center shadow-sm group-hover:scale-110 transition-transform duration-500 ${colorClass}`}>
+     …
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 25 |     </div>
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 26 |   );
+     | ^^^^ The component is created during render here
+  27 |
+  28 |   return (
+  29 |     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-md transition-opacity duration-300">  react-hooks/static-components
+  69:16  error  Error: Cannot create components during render
+
+Components created during render will reset their state each time they are created. Declare components outside of render.
+
+  67 |             <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+  68 |               <DetailCard icon={Building2} label="Department" value={job.department} colorClass="text-blue-500" />
+> 69 |               <DetailCard icon={Clock} label="Job Type" value={job.job_type} colorClass="text-orange-500" />
+     |                ^^^^^^^^^^ This component is created during render
+  70 |               <DetailCard icon={MapPin} label="Location" value={job.location} colorClass="text-emerald-500" />
+  71 |               <DetailCard icon={Wallet} label="Salary" value={job.salary_range} colorClass="text-[#d81159]" />
+  72 |             </div>
+
+  14 |     : job.skills_requirements || [];
+  15 |
+> 16 |   const DetailCard = ({ icon: Icon, label, value, colorClass = "text-gray-400" }) => (
+     |                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 17 |     <div className="group p-6 rounded-[24px] bg-gray-50/50 border border-gray-100/50 hover:bg-white hover:border-pink-100 hover:shadow-xl hover:shadow-pink-50/50 transition-all duration-300 flex items-center gap-5">
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 18 |       <div className={`w-14 h-14 rounded-2xl bg-white border border-gray-100 flex items-center justify-center shadow-sm group-hover:scale-110 transition-transform duration-500 ${colorClass}`}>
+     …
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 25 |     </div>
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 26 |   );
+     | ^^^^ The component is created during render here
+  27 |
+  28 |   return (
+  29 |     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-md transition-opacity duration-300">                                                react-hooks/static-components
+  70:16  error  Error: Cannot create components during render
+
+Components created during render will reset their state each time they are created. Declare components outside of render.
+
+  68 |               <DetailCard icon={Building2} label="Department" value={job.department} colorClass="text-blue-500" />
+  69 |               <DetailCard icon={Clock} label="Job Type" value={job.job_type} colorClass="text-orange-500" />
+> 70 |               <DetailCard icon={MapPin} label="Location" value={job.location} colorClass="text-emerald-500" />
+     |                ^^^^^^^^^^ This component is created during render
+  71 |               <DetailCard icon={Wallet} label="Salary" value={job.salary_range} colorClass="text-[#d81159]" />
+  72 |             </div>
+  73 |
+
+  14 |     : job.skills_requirements || [];
+  15 |
+> 16 |   const DetailCard = ({ icon: Icon, label, value, colorClass = "text-gray-400" }) => (
+     |                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 17 |     <div className="group p-6 rounded-[24px] bg-gray-50/50 border border-gray-100/50 hover:bg-white hover:border-pink-100 hover:shadow-xl hover:shadow-pink-50/50 transition-all duration-300 flex items-center gap-5">
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 18 |       <div className={`w-14 h-14 rounded-2xl bg-white border border-gray-100 flex items-center justify-center shadow-sm group-hover:scale-110 transition-transform duration-500 ${colorClass}`}>
+     …
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 25 |     </div>
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 26 |   );
+     | ^^^^ The component is created during render here
+  27 |
+  28 |   return (
+  29 |     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-md transition-opacity duration-300">                                                                                                                    react-hooks/static-components
+  71:16  error  Error: Cannot create components during render
+
+Components created during render will reset their state each time they are created. Declare components outside of render.
+
+  69 |               <DetailCard icon={Clock} label="Job Type" value={job.job_type} colorClass="text-orange-500" />
+  70 |               <DetailCard icon={MapPin} label="Location" value={job.location} colorClass="text-emerald-500" />
+> 71 |               <DetailCard icon={Wallet} label="Salary" value={job.salary_range} colorClass="text-[#d81159]" />
+     |                ^^^^^^^^^^ This component is created during render
+  72 |             </div>
+  73 |
+  74 |             <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
+
+  14 |     : job.skills_requirements || [];
+  15 |
+> 16 |   const DetailCard = ({ icon: Icon, label, value, colorClass = "text-gray-400" }) => (
+     |                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 17 |     <div className="group p-6 rounded-[24px] bg-gray-50/50 border border-gray-100/50 hover:bg-white hover:border-pink-100 hover:shadow-xl hover:shadow-pink-50/50 transition-all duration-300 flex items-center gap-5">
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 18 |       <div className={`w-14 h-14 rounded-2xl bg-white border border-gray-100 flex items-center justify-center shadow-sm group-hover:scale-110 transition-transform duration-500 ${colorClass}`}>
+     …
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 25 |     </div>
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 26 |   );
+     | ^^^^ The component is created during render here
+  27 |
+  28 |   return (
+  29 |     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-md transition-opacity duration-300">                                                                                                                                                                  react-hooks/static-components
+
+/home/marvin/Documents/automated_resume_analysis/frontend/src/pages/admin/AdminDashboard.jsx
+   1:17  error  'useState' is defined but never used. Allowed unused vars must match /^[A-Z_]/u           no-unused-vars
+  27:9   error  'navigate' is assigned a value but never used. Allowed unused vars must match /^[A-Z_]/u  no-unused-vars
+
+/home/marvin/Documents/automated_resume_analysis/frontend/src/pages/admin/JobManagement.jsx
+   21:58  error  'refetch' is assigned a value but never used. Allowed unused vars must match /^[A-Z_]/u                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  no-unused-vars
+  137:5   error  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+  135 |   // Handle page reset on filter change
+  136 |   useEffect(() => {
+> 137 |     setCurrentPage(1);
+      |     ^^^^^^^^^^^^^^ Avoid calling setState() directly within an effect
+  138 |   }, [searchQuery, statusFilter, deptFilter]);
+  139 |
+  140 |   // Scroll to top when page changes  react-hooks/set-state-in-effect
+
+/home/marvin/Documents/automated_resume_analysis/frontend/src/pages/admin/SystemSettings.jsx
+  20:3  error  'useCreateFormTemplateMutation' is defined but never used. Allowed unused vars must match /^[A-Z_]/u  no-unused-vars
+
+/home/marvin/Documents/automated_resume_analysis/frontend/src/pages/candidate/CandidateProfileForm.jsx
+   67:10  error  'isCalculating' is assigned a value but never used. Allowed unused vars must match /^[A-Z_]/u  no-unused-vars
+  108:9   error  'getMatchColor' is assigned a value but never used. Allowed unused vars must match /^[A-Z_]/u  no-unused-vars
+
+/home/marvin/Documents/automated_resume_analysis/frontend/src/pages/hr/CompareCandidates.jsx
+  125:39  error  'isLoadingJobs' is assigned a value but never used. Allowed unused vars must match /^[A-Z_]/u                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       no-unused-vars
+  153:7   error  Error: Calling setState from useMemo may trigger an infinite loop
+
+Each time the memo callback is evaluated it will change state. This can cause a memoization dependency to change, running the memo function again and causing an infinite loop. Instead of setting state in useMemo(), prefer deriving the value during render. (https://react.dev/reference/react/useState).
+
+  151 |   useMemo(() => {
+  152 |     if (filteredCandidates.length > 0 && !activeCandidateId) {
+> 153 |       setActiveCandidateId(filteredCandidates[0].id);
+      |       ^^^^^^^^^^^^^^^^^^^^ Found setState() within useMemo()
+  154 |     }
+  155 |   }, [filteredCandidates, activeCandidateId]);
+  156 |  react-hooks/set-state-in-render
+
+/home/marvin/Documents/automated_resume_analysis/frontend/src/pages/publicPages/jobApplicationPages/ApplicationForm.jsx
+  39:10  error  'isCalculating' is assigned a value but never used. Allowed unused vars must match /^[A-Z_]/u  no-unused-vars
+  89:9   error  'getMatchColor' is assigned a value but never used. Allowed unused vars must match /^[A-Z_]/u  no-unused-vars
+
+/home/marvin/Documents/automated_resume_analysis/frontend/src/pages/publicPages/jobApplicationPages/ApplyForJobPage.jsx
+  45:10  error  'isMatching' is assigned a value but never used. Allowed unused vars must match /^[A-Z_]/u  no-unused-vars
+
+/home/marvin/Documents/automated_resume_analysis/frontend/src/pages/publicPages/jobApplicationPages/JobDetailsPage.jsx
+  60:17  error  'e' is defined but never used     no-unused-vars
+  60:20  error  Empty block statement             no-empty
+  97:31  error  'Icon' is defined but never used  no-unused-vars
+
+/home/marvin/Documents/automated_resume_analysis/frontend/src/pages/publicPages/jobApplicationPages/PreviewAndVerify.jsx
+  72:9  error  'getMatchColor' is assigned a value but never used. Allowed unused vars must match /^[A-Z_]/u  no-unused-vars
+
+/home/marvin/Documents/automated_resume_analysis/frontend/src/pages/publicPages/jobApplicationPages/SubmissionSuccess.jsx
+  89:49  error  Error: Cannot call impure function during render
+
+`Math.random` is an impure function. Calling an impure function can produce unstable results that update unpredictably when the component happens to re-render. (https://react.dev/reference/rules/components-and-hooks-must-be-pure#components-and-hooks-must-be-idempotent).
+
+  87 |
+  88 |           <div className="bg-slate-50 p-6 border-t border-slate-100 flex items-center justify-center gap-2 text-slate-400 font-bold text-xs">
+> 89 |             <p>Application ID: #APP-{Math.floor(Math.random() * 900000 + 100000)}</p>
+     |                                                 ^^^^^^^^^^^^^ Cannot call impure function
+  90 |           </div>
+  91 |         </div>
+  92 |  react-hooks/purity
+
+/home/marvin/Documents/automated_resume_analysis/frontend/src/pages/shared/AccountSettings.jsx
+   41:10  error  'fetching' is assigned a value but never used. Allowed unused vars must match /^[A-Z_]/u         no-unused-vars
+  137:9   error  'currentImageUrl' is assigned a value but never used. Allowed unused vars must match /^[A-Z_]/u  no-unused-vars
+  142:77  error  'updateData' is not defined                                                                      no-undef
+  692:44  error  'navigate' is not defined                                                                        no-undef
+
+/home/marvin/Documents/automated_resume_analysis/frontend/src/pages/shared/ViewProfile.jsx
+  35:10  error    'loading' is assigned a value but never used. Allowed unused vars must match /^[A-Z_]/u                      no-unused-vars
+  64:6   warning  React Hook useEffect has a missing dependency: 'dispatch'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+✖ 48 problems (40 errors, 8 warnings)
+

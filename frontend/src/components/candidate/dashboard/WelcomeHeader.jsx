@@ -1,9 +1,7 @@
 import React from 'react';
-import { Zap, Sparkles, ChevronRight } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { Zap } from 'lucide-react';
 
 const WelcomeHeader = () => {
-  const navigate = useNavigate();
   const fullname = localStorage.getItem('fullname') || 'Candidate';
 
   return (

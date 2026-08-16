@@ -190,6 +190,8 @@ class AuthService:
 
         user = await AuthRepository.get_user_by_id(db, user_id)
         if user:
+            if getattr(user, 'is_archived', False) or (row and getattr(row, 'is_archived', False)):
+                raise Exception("Account has been archived. Please contact administration.")
             user.google_credentials = google_credentials
             if picture and not user.profile_image_url:
                 user.profile_image_url = picture

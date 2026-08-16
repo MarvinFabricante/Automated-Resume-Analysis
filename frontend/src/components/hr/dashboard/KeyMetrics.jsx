@@ -1,6 +1,7 @@
 import React from 'react';
 import { MoreHorizontal, FileText, Clock, Briefcase, Zap, Users, CheckCircle2, X } from 'lucide-react';
 
+// eslint-disable-next-line no-unused-vars
 const StatCard = ({ icon: Icon, label, value, trend, trendColor, bgColor, iconColor }) => (
   <div className="flex flex-col p-6 border border-gray-100 bg-gray-50/50 rounded-[24px] hover:bg-white hover:border-pink-100 hover:shadow-xl hover:-translate-y-1 transition-all duration-300 group">
     <div className="flex justify-between items-start mb-6">

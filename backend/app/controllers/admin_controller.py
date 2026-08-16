@@ -17,9 +17,21 @@ from app.services.job_description_service import (
     set_job_status,
     update_job,
 )
+from typing import List, Optional
+from fastapi import Header
+from jose import jwt
 from app.utils.auth import get_current_user
 from app.utils.cache import cache_response, clear_cache_pattern
 
+def get_optional_current_user(authorization: Optional[str] = Header(None)) -> Optional[dict]:
+    if not authorization:
+        return None
+    try:
+        token = authorization.replace("Bearer ", "").strip()
+        from app.utils.auth import SECRET_KEY, ALGORITHM
+        return jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+    except Exception:
+        return None
 
 router = APIRouter(prefix="/admins", tags=["Adminstrators"])
 
@@ -34,18 +46,49 @@ async def read_users(db: AsyncSession = Depends(get_db)):
     return users
 
 @router.patch("/users/{user_id}/archive")
-async def archive_user(user_id: int, db: AsyncSession = Depends(get_db)):
+async def archive_user(
+    user_id: int, 
+    db: AsyncSession = Depends(get_db),
+    current_user: Optional[dict] = Depends(get_optional_current_user)
+):
+    if current_user and current_user.get("id") == user_id:
+        raise HTTPException(status_code=400, detail="You cannot suspend/archive your own account.")
+
     user = await admin_service.toggle_user_archive_status(db, user_id, True)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
+
+    if current_user and current_user.get("id"):
+        await audit_service.record_activity(
+            db=db,
+            user_id=current_user.get("id"),
+            action="SUSPEND_USER",
+            target=f"User: {user.email}",
+            details=f"Admin suspended user account: {user.email}"
+        )
+
     await clear_cache_pattern("admin_users:*")
     return {"message": "User archived successfully"}
 
 @router.patch("/users/{user_id}/unarchive")
-async def unarchive_user(user_id: int, db: AsyncSession = Depends(get_db)):
+async def unarchive_user(
+    user_id: int, 
+    db: AsyncSession = Depends(get_db),
+    current_user: Optional[dict] = Depends(get_optional_current_user)
+):
     user = await admin_service.toggle_user_archive_status(db, user_id, False)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
+
+    if current_user and current_user.get("id"):
+        await audit_service.record_activity(
+            db=db,
+            user_id=current_user.get("id"),
+            action="RESTORE_USER",
+            target=f"User: {user.email}",
+            details=f"Admin restored user account: {user.email}"
+        )
+
     await clear_cache_pattern("admin_users:*")
     return {"message": "User unarchived successfully"}
 
@@ -82,11 +125,27 @@ async def update_user(
 @router.delete("/users/{user_id}", status_code=status.HTTP_200_OK)
 async def delete_user(
     user_id: int,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    current_user: Optional[dict] = Depends(get_optional_current_user)
 ):
+    if current_user and current_user.get("id") == user_id:
+        raise HTTPException(status_code=400, detail="You cannot delete your own account.")
+
+    target_user = await admin_service.get_user_by_id(db, user_id)
+    user_email = target_user.email if target_user else f"ID: {user_id}"
+
     success = await admin_service.delete_user(db, user_id)
     if not success:
         raise HTTPException(status_code=404, detail="User not found")
+
+    if current_user and current_user.get("id"):
+        await audit_service.record_activity(
+            db=db,
+            user_id=current_user.get("id"),
+            action="DELETE_USER",
+            target=f"User: {user_email}",
+            details=f"Admin deleted user account: {user_email}"
+        )
         
     await clear_cache_pattern("admin_users:*")
     return {"message": "User removed successfully"}

@@ -18,6 +18,7 @@ const SubmissionSuccessPage = () => {
   const { state } = useLocation();
   const { jobId } = useParams();
   const [jobTitle, setJobTitle] = React.useState(state?.jobTitle || "Success");
+  const [appId] = React.useState(() => Math.floor(Math.random() * 900000 + 100000));
 
   React.useEffect(() => {
     const fetchJobTitle = async () => {
@@ -86,7 +87,7 @@ const SubmissionSuccessPage = () => {
           </div>
 
           <div className="bg-slate-50 p-6 border-t border-slate-100 flex items-center justify-center gap-2 text-slate-400 font-bold text-xs">
-            <p>Application ID: #APP-{Math.floor(Math.random() * 900000 + 100000)}</p>
+            <p>Application ID: #APP-{appId}</p>
           </div>
         </div>
 
