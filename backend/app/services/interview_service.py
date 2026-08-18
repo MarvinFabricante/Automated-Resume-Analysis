@@ -228,6 +228,8 @@ async def update_interview_status(db: AsyncSession, interview_id: int, status: s
 async def get_interviews_for_application(db: AsyncSession, application_id: int):
     return await InterviewRepository.get_interviews_for_application(db, application_id)
 
+async def get_interviews_for_candidate(db: AsyncSession, email: str):
+    return await InterviewRepository.get_interviews_for_candidate(db, email)
 
 class InterviewService:
     WORK_START_HOUR = WORK_START_HOUR
@@ -239,6 +241,7 @@ class InterviewService:
     get_calendar_events = staticmethod(get_calendar_events)
     update_interview_status = staticmethod(update_interview_status)
     get_interviews_for_application = staticmethod(get_interviews_for_application)
+    get_interviews_for_candidate = staticmethod(get_interviews_for_candidate)
 
 
 interview_service = InterviewService()

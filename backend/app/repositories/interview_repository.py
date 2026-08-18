@@ -51,6 +51,14 @@ async def get_interviews_in_range(db: AsyncSession, start_time: datetime, end_ti
     return result.scalars().all()
 
 
+async def get_interviews_for_candidate(db: AsyncSession, email: str) -> List[Interview]:
+    result = await db.execute(
+        select(Interview)
+        .join(JobApplication)
+        .filter(JobApplication.candidate_email == email)
+    )
+    return result.scalars().all()
+
 
 class InterviewRepository:
     get_job_application = staticmethod(get_job_application)
@@ -61,3 +69,4 @@ class InterviewRepository:
     get_interview_by_id = staticmethod(get_interview_by_id)
     get_interviews_for_application = staticmethod(get_interviews_for_application)
     get_interviews_in_range = staticmethod(get_interviews_in_range)
+    get_interviews_for_candidate = staticmethod(get_interviews_for_candidate)

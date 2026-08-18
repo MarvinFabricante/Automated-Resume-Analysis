@@ -129,4 +129,16 @@ async def get_application_interviews(
     """
     return await interview_service.get_interviews_for_application(db, application_id)
 
+@router.get("/candidate/{email}", response_model=List[InterviewResponseSchema])
+async def get_candidate_interviews(
+    email: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Maintain interview history for a candidate.
+    """
+    return await interview_service.get_interviews_for_candidate(db, email)
+
+
 

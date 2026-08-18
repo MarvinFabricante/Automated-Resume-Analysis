@@ -224,6 +224,16 @@ export const apiSlice = createApi({
       invalidatesTags: ['Applications', 'Dashboard'],
     }),
 
+    getApplicationInterviews: builder.query({
+      query: (applicationId) => `/interviews/application/${applicationId}`,
+      providesTags: (result, error, id) => [{ type: 'Applications', id }],
+    }),
+
+    getCandidateInterviews: builder.query({
+      query: (email) => `/interviews/candidate/${email}`,
+      providesTags: ['Applications'],
+    }),
+
     // --- ADMIN / HR TOOLS ---
     getUsers: builder.query({
       query: () => '/admins/users',
@@ -398,6 +408,8 @@ export const {
   useUpdateApplicationStatusMutation,
   useGetAvailableSlotsMutation,
   useScheduleInterviewMutation,
+  useGetApplicationInterviewsQuery,
+  useGetCandidateInterviewsQuery,
   useGetUsersQuery,
   useCreateUserMutation,
   useUpdateUserMutation,

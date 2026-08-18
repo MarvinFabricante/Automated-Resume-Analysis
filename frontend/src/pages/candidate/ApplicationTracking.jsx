@@ -17,8 +17,12 @@ import {
   Sparkles,
   ShieldCheck,
   Building2,
-  Clock
+  Clock,
+  XCircle,
+  Video
 } from 'lucide-react';
+import { useSelector } from 'react-redux';
+import { useGetCandidateApplicationsQuery, useGetApplicationInterviewsQuery } from '../../redux/api/apiSlice';
 import Header from '../../components/layout/Header';
 import Sidebar from '../../components/layout/Sidebar';
 
@@ -27,13 +31,32 @@ const BRAND_RED = "#D10043";
 const ApplicationTracking = () => {
   const { state } = useLocation();
   const navigate = useNavigate();
-  const application = state?.application;
+  const initialApp = state?.application;
+  
+  const { user: email } = useSelector((state) => state.auth);
+  
+  // Real-time polling of applications
+  const { data: applications = [] } = useGetCandidateApplicationsQuery(email, {
+    skip: !email,
+    pollingInterval: 5000, // Poll every 5s for real-time feel
+  });
+  
+  // Find the live application data, fallback to initial state if not found yet
+  const application = applications.find(app => app.id === initialApp?.id) || initialApp;
+
+  // Fetch interviews for this application
+  const { data: interviews = [] } = useGetApplicationInterviewsQuery(application?.id, {
+    skip: !application?.id,
+    pollingInterval: 10000,
+  });
+
+  const latestInterview = interviews.length > 0 ? interviews[interviews.length - 1] : null;
 
   useEffect(() => {
-    if (!application) {
+    if (!initialApp && !application) {
       navigate('/candidate/dashboard');
     }
-  }, [application, navigate]);
+  }, [initialApp, application, navigate]);
 
   if (!application) return null;
 
@@ -55,27 +78,29 @@ const ApplicationTracking = () => {
     },
     {
       label: "Initial Screening",
-      date: application.step > 1 ? "Completed" : "Pending",
-      description: application.originalData?.match_score ? "Recruiter reviewed your profile and resume. Your skills were evaluated against our requirements." : "Recruiter is currently reviewing your profile and resume.",
-      status: application.step > 1 ? "completed" : (application.step === 1 ? "current" : "upcoming")
-    },
-    {
-      label: "Technical Interview",
       date: application.step > 2 ? "Completed" : "Pending",
-      description: "Live coding and architectural discussion with the Engineering Lead.",
+      description: application.originalData?.match_score ? "Recruiter reviewed your profile and resume. Your skills were evaluated against our requirements." : "Recruiter is currently reviewing your profile and resume.",
       status: application.step > 2 ? "completed" : (application.step === 2 ? "current" : "upcoming")
     },
     {
+      label: "Technical Interview",
+      date: application.step > 3 ? "Completed" : (application.step === 3 && latestInterview ? new Date(latestInterview.start_time).toLocaleString() : "Pending"),
+      description: "Live coding and architectural discussion with the Engineering Lead.",
+      status: application.step > 3 ? "completed" : (application.step === 3 ? "current" : "upcoming"),
+      interviewInfo: application.step === 3 && latestInterview ? latestInterview : null
+    },
+    {
       label: "Final Interview",
-      date: application.step > 3 ? "Completed" : "Pending",
+      date: application.step > 4 ? "Completed" : (application.step === 4 && latestInterview ? new Date(latestInterview.start_time).toLocaleString() : "Pending"),
       description: "Interview with the Head of Digital Transformation.",
-      status: application.step > 3 ? "completed" : (application.step === 3 ? "current" : "upcoming")
+      status: application.step > 4 ? "completed" : (application.step === 4 ? "current" : "upcoming"),
+      interviewInfo: application.step === 4 && latestInterview ? latestInterview : null
     },
     {
       label: "Job Offer",
       date: application.status === 'Accepted' ? "Completed" : application.status === 'Rejected' ? "Declined" : "Pending",
       description: application.status === 'Rejected' ? "We regret to inform you that we are not moving forward with your application at this time." : "Final decision and salary negotiation phase.",
-      status: application.status === 'Accepted' ? "completed" : application.status === 'Rejected' ? "failed" : (application.step === 4 ? "current" : "upcoming")
+      status: application.status === 'Accepted' ? "completed" : application.status === 'Rejected' ? "failed" : (application.step === 5 ? "current" : "upcoming")
     }
   ];
 
@@ -199,6 +224,30 @@ const ApplicationTracking = () => {
                         <p className={`text-sm font-medium leading-relaxed ${step.status === 'upcoming' ? 'text-slate-300' : 'text-slate-500'}`}>
                           {step.description}
                         </p>
+                        
+                        {/* Interview Details if available */}
+                        {step.interviewInfo && step.status === 'current' && (
+                          <div className="mt-4 bg-slate-50 border border-slate-100 rounded-2xl p-4 flex flex-col gap-3">
+                            <div className="flex items-center justify-between">
+                              <span className="flex items-center text-xs font-black text-slate-700 uppercase tracking-widest">
+                                <Calendar className="w-4 h-4 mr-2 text-[#D10043]" />
+                                Scheduled Session
+                              </span>
+                              <span className="bg-blue-100 text-blue-600 text-[10px] font-black px-2 py-0.5 rounded-md uppercase tracking-widest">
+                                Google Calendar
+                              </span>
+                            </div>
+                            <div className="flex flex-col gap-1">
+                              <span className="text-sm font-bold text-slate-900">{step.interviewInfo.title}</span>
+                              <span className="text-xs font-medium text-slate-500">{new Date(step.interviewInfo.start_time).toLocaleString()} - {new Date(step.interviewInfo.end_time).toLocaleTimeString()}</span>
+                            </div>
+                            {step.interviewInfo.meeting_link && (
+                              <a href={step.interviewInfo.meeting_link} target="_blank" rel="noopener noreferrer" className="mt-2 flex items-center justify-center w-full py-2.5 bg-[#D10043] hover:bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-[0.1em] transition-all gap-2 group/link">
+                                <Video size={14} className="group-hover/link:animate-pulse" /> Join Meeting
+                              </a>
+                            )}
+                          </div>
+                        )}
                       </div>
                       <div className="text-right">
                         <span className={`text-[10px] font-black uppercase tracking-[0.2em] whitespace-nowrap px-3 py-1 rounded-lg ${step.status === 'upcoming' ? 'text-slate-200 bg-slate-50/50' : 'text-[#D10043] bg-pink-50/50'}`}>
@@ -260,17 +309,18 @@ const ApplicationTracking = () => {
                     <span>Congratulations! You have been offered the position. Please review the <span className="text-white">Job Offer</span> details and reach out to the recruiter.</span>
                   ) : (
                     <>
-                      {application.step === 1 && <span>Your application is currently <span className="text-white">under review</span>. Keep your profile updated to stand out.</span>}
-                      {application.step === 2 && <span>Great news! You passed the initial screening. <span className="text-white">Next steps</span> will be communicated soon.</span>}
-                      {application.step === 3 && <span>Your Technical Interview is confirmed. <span className="text-white">Please prepare</span> your environment for the session.</span>}
-                      {application.step >= 4 && <span>Your final stages are complete. We will reach out with a <span className="text-white">final decision</span> shortly.</span>}
+                    {application.step === 1 && <span>Your application is currently <span className="text-white">pending review</span>. Keep your profile updated to stand out.</span>}
+                    {application.step === 2 && <span>Your application is currently <span className="text-white">under review</span>. We will communicate the next steps soon.</span>}
+                    {application.step === 3 && <span>Great news! You are invited to a <span className="text-white">Technical Interview</span>. Please prepare your environment for the session.</span>}
+                    {application.step === 4 && <span>You have reached the <span className="text-white">Final Interview</span>. Almost there, prepare well!</span>}
+                    {application.step >= 5 && <span>Your final stages are complete. We will reach out with a <span className="text-white">final decision</span> shortly.</span>}
                     </>
                   )}
                 </p>
                 
                 <div className="space-y-3">
                   <button className="w-full py-4 bg-[#D10043] hover:bg-white hover:text-slate-900 text-white rounded-2xl font-black text-[10px] uppercase tracking-[0.2em] transition-all flex items-center justify-center gap-2 group/btn shadow-lg shadow-pink-900/20">
-                    {application.step === 3 ? (
+                    {application.step === 3 || application.step === 4 ? (
                       <>Check Environment <ExternalLink size={12} className="group-hover/btn:translate-x-1 group-hover/btn:-translate-y-1 transition-transform" /></>
                     ) : (
                       <>View Status Details <ChevronRight size={12} className="group-hover/btn:translate-x-1 transition-transform" /></>
