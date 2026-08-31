@@ -152,3 +152,27 @@ def analyze_application_task(application_id: int):
 def compare_candidates_task(job_id: int):
     asyncio.run(async_compare_candidates(job_id))
 
+@celery_app.task(name="match_single_job_task")
+def match_single_job_task(resume_data: dict, job_dict: dict, use_ai: bool = False) -> dict:
+    from app.services.job_matching_service import calculate_match_score
+    
+    class MockJob:
+        def __init__(self, data: dict):
+            self.job_id = data.get("job_id")
+            self.job_title = data.get("job_title", "Unknown Role")
+            self.department = data.get("department", "")
+            self.location = data.get("location", "")
+            self.job_type = None
+            self.description = data.get("description", "")
+            self.skills_requirements = data.get("skills_requirements", "")
+            self.experience_requirements = data.get("experience_requirements", "")
+            self.education_requirements = data.get("education_requirements", "")
+            self.certifications_requirements = data.get("certifications_requirements", "")
+            
+        def get(self, key, default=None):
+            return getattr(self, key, default)
+
+    mock_job = MockJob(job_dict)
+    return calculate_match_score(resume_data, mock_job, use_ai=use_ai)
+
+

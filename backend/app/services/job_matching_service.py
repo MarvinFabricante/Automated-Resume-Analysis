@@ -1224,16 +1224,50 @@ def nlp_compare_candidates(job_data: dict, candidates_data: list[dict]) -> dict:
 async def match_resume_to_all_jobs(db, resume_data: dict, use_ai: bool = False) -> list[dict]:
     """
     Match parsed resume data against all active jobs in the database.
-    Returns a list of match results sorted by match_percentage descending.
+    Leverages Celery background tasks to process all jobs in parallel,
+    significantly speeding up the NLP analysis process.
     """
     from app.repositories.job_description_repository import JobDescriptionRepository
+    from celery import group
+    from app.tasks import match_single_job_task
+    import asyncio
     
     jobs = await JobDescriptionRepository.get_all_active(db, include_inactive=False)
     
-    matches = []
+    if not jobs:
+        return []
+        
+    job_dicts = []
     for job in jobs:
-        match_result = calculate_match_score(resume_data, job, use_ai=use_ai)
-        matches.append(match_result)
+        job_dicts.append({
+            "job_id": job.job_id,
+            "job_title": job.job_title,
+            "department": job.department,
+            "location": job.location,
+            "description": job.description,
+            "skills_requirements": job.skills_requirements,
+            "experience_requirements": job.experience_requirements,
+            "education_requirements": getattr(job, "education_requirements", ""),
+            "certifications_requirements": getattr(job, "certifications_requirements", "")
+        })
+        
+    # Fan out to celery workers for parallel processing
+    task_group = group([match_single_job_task.s(resume_data, jd, use_ai) for jd in job_dicts])
+    
+    def _wait_for_group():
+        result = task_group.apply_async()
+        # Wait up to 30 seconds for all parallel workers to finish their NLP tasks
+        return result.get(timeout=30)
+        
+    try:
+        # Offload the blocking wait to a thread so we don't freeze the FastAPI event loop
+        matches = await asyncio.to_thread(_wait_for_group)
+    except Exception as e:
+        logger.error(f"Celery group matching failed or timed out: {e}. Falling back to sequential execution.")
+        matches = []
+        for job in jobs:
+            match_result = calculate_match_score(resume_data, job, use_ai=use_ai)
+            matches.append(match_result)
     
     # Sort by match percentage descending
     matches.sort(key=lambda x: x["match_percentage"], reverse=True)

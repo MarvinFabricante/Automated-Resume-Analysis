@@ -58,41 +58,17 @@ def _needs_analysis_enrichment(app: JobApplication) -> bool:
 
 def _apply_transient_analysis(app: JobApplication):
     """
-    Fill missing analysis fields for older records before serialization.
-    This does not commit changes; it only prevents the frontend from showing
-    empty/contradictory details when match_score was saved without its breakdown.
+    Check if analysis fields are missing for older records.
+    Instead of calculating synchronously, dispatch a background task to process it.
     """
     if not app.job or not _needs_analysis_enrichment(app):
         return
 
     try:
-        from app.services.job_matching_service import calculate_match_score
-        scores = calculate_match_score(_resume_data_from_application(app), app.job)
+        from app.tasks import analyze_application_task
+        analyze_application_task.delay(app.id)
     except Exception as e:
-        print(f"WARNING: Failed to enrich application analysis for {app.id}: {e}")
-        return
-
-    app.match_score = app.match_score if app.match_score is not None else scores.get("match_percentage")
-    if app.skills_score is None or (app.skills_score == 0 and scores.get("skills_score", 0) > 0):
-        app.skills_score = scores.get("skills_score")
-    if app.experience_score is None or (app.experience_score == 0 and scores.get("experience_score", 0) > 0):
-        app.experience_score = scores.get("experience_score")
-    if app.education_score is None or (app.education_score == 0 and scores.get("education_score", 0) > 0):
-        app.education_score = scores.get("education_score")
-    app.skills_reason = app.skills_reason or scores.get("skills_reason")
-    app.experience_reason = app.experience_reason or scores.get("experience_reason")
-    app.education_reason = app.education_reason or scores.get("education_reason")
-    app.matched_skills = app.matched_skills or scores.get("matched_skills")
-    app.missing_skills = app.missing_skills or scores.get("missing_skills")
-    app.relevant_experience = app.relevant_experience or scores.get("relevant_experience")
-    app.experience_gaps = app.experience_gaps or scores.get("experience_gaps")
-    app.required_degree = app.required_degree or scores.get("required_degree")
-    app.candidate_degree = app.candidate_degree or scores.get("candidate_degree")
-    app.recommendations = app.recommendations or scores.get("recommendations")
-    app.ai_summary = app.ai_summary or scores.get("ai_summary")
-    app.strengths = app.strengths or scores.get("strengths")
-    app.weaknesses = app.weaknesses or scores.get("weaknesses")
-    app.ai_powered = app.ai_powered or scores.get("ai_powered", False)
+        print(f"WARNING: Failed to dispatch background analysis for {app.id}: {e}")
 
 
 def _enrich_resume_url(app: JobApplication):
