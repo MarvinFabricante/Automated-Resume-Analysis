@@ -36,6 +36,7 @@ def get_optional_current_user(authorization: Optional[str] = Header(None)) -> Op
 router = APIRouter(prefix="/admins", tags=["Adminstrators"])
 
 @router.get("/system-stats")
+@cache_response("system_stats", ttl=300)
 async def get_system_stats(db: AsyncSession = Depends(get_db)):
     return await admin_service.get_system_stats(db)
 
@@ -343,6 +344,7 @@ async def recover_data(db: AsyncSession = Depends(get_db), current_user: dict = 
     return {"message": "Data recovery initiated successfully"}
 
 @router.get("/retention-policy")
+@cache_response("retention_policy", ttl=3600)
 async def get_retention_policy(db: AsyncSession = Depends(get_db)):
     # Mock retrieval of retention policy
     return {"retention_days": 90, "auto_delete": True}

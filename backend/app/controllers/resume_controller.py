@@ -7,6 +7,7 @@ import io
 from app.utils.database import get_db
 from app.schemas.resume_schema import ResumeCreate, ResumeResponse, ResumeUpdate
 from app.services import resume_service
+from app.utils.cache import cache_response, clear_cache_pattern
 
 
 router = APIRouter(prefix="/resumes", tags=["Resumes"])
@@ -16,9 +17,13 @@ async def create_resume(resume_in: ResumeCreate, db: AsyncSession = Depends(get_
     """
     Store a new resume in the database.
     """
-    return await resume_service.create_resume(db, resume_in)
+    result = await resume_service.create_resume(db, resume_in)
+    await clear_cache_pattern("cand_resumes*")
+    await clear_cache_pattern("storage_resumes*")
+    return result
 
 @router.get("/{resume_id}", response_model=ResumeResponse)
+@cache_response("resume", ttl=600)
 async def get_resume(resume_id: int, db: AsyncSession = Depends(get_db)):
     """
     Retrieve a specific resume by ID.
@@ -29,6 +34,7 @@ async def get_resume(resume_id: int, db: AsyncSession = Depends(get_db)):
     return resume
 
 @router.get("/candidate/{candidate_id}", response_model=List[ResumeResponse])
+@cache_response("cand_resumes", ttl=600)
 async def get_resumes_by_candidate(candidate_id: int, db: AsyncSession = Depends(get_db)):
     """
     Retrieve all resumes for a specific candidate.
@@ -43,6 +49,8 @@ async def update_resume(resume_id: int, resume_in: ResumeUpdate, db: AsyncSessio
     updated_resume = await resume_service.update_resume(db, resume_id, resume_in)
     if not updated_resume:
         raise HTTPException(status_code=404, detail="Resume not found")
+    await clear_cache_pattern(f"resume:*resume_id\": {resume_id}*")
+    await clear_cache_pattern("cand_resumes*")
     return updated_resume
 
 @router.delete("/{resume_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -53,6 +61,9 @@ async def delete_resume(resume_id: int, db: AsyncSession = Depends(get_db)):
     success = await resume_service.delete_resume(db, resume_id)
     if not success:
         raise HTTPException(status_code=404, detail="Resume not found")
+    await clear_cache_pattern(f"resume:*resume_id\": {resume_id}*")
+    await clear_cache_pattern("cand_resumes*")
+    await clear_cache_pattern("storage_resumes*")
     return None
 
 
@@ -76,12 +87,14 @@ async def upload_resume_file(
             file_bytes=file_bytes,
             original_filename=file.filename,
         )
-        return {
+        response_data = {
             "message": "Resume uploaded successfully",
             "public_url": result["public_url"],
             "storage_path": result["storage_path"],
             "filename": result["filename"],
         }
+        await clear_cache_pattern("storage_resumes*")
+        return response_data
     except Exception as e:
         raise HTTPException(
             status_code=500,
@@ -126,6 +139,7 @@ async def download_resume_file(storage_path: str):
 
 
 @router.get("/storage/list", tags=["Resumes"])
+@cache_response("storage_resumes", ttl=300)
 async def list_stored_resumes():
     """
     List all resume files stored in Supabase Storage.

@@ -128,3 +128,5 @@ weasel==1.0.0
 websockets==16.0
 wrapt==2.1.2
 yarl==1.23.0
+celery==5.4.0
+redis==5.0.8

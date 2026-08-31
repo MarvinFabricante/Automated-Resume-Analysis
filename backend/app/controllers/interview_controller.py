@@ -12,6 +12,7 @@ from app.schemas.interview_schema import (
 from app.utils.auth import get_current_user
 from app.services import interview_service
 from app.models.user import User
+from app.utils.cache import cache_response, clear_cache_pattern
 
 
 router = APIRouter(prefix="/interviews", tags=["Interviews"])
@@ -80,6 +81,9 @@ async def schedule_interview(
 
     try:
         result = await interview_service.schedule_interview(db, data, current_user.get("id"))
+        await clear_cache_pattern("app_interviews*")
+        await clear_cache_pattern("cand_interviews*")
+        await clear_cache_pattern("calendar_events*")
         return result
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -87,6 +91,7 @@ async def schedule_interview(
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/calendar-events")
+@cache_response("calendar_events", ttl=300)
 async def get_calendar_events(
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user)
@@ -112,6 +117,8 @@ async def update_interview_status(
     """
     try:
         result = await interview_service.update_interview_status(db, interview_id, status)
+        await clear_cache_pattern("app_interviews*")
+        await clear_cache_pattern("cand_interviews*")
         return result
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
@@ -119,6 +126,7 @@ async def update_interview_status(
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/application/{application_id}", response_model=List[InterviewResponseSchema])
+@cache_response("app_interviews", ttl=60)
 async def get_application_interviews(
     application_id: int,
     db: AsyncSession = Depends(get_db),
@@ -130,6 +138,7 @@ async def get_application_interviews(
     return await interview_service.get_interviews_for_application(db, application_id)
 
 @router.get("/candidate/{email}", response_model=List[InterviewResponseSchema])
+@cache_response("cand_interviews", ttl=60)
 async def get_candidate_interviews(
     email: str,
     db: AsyncSession = Depends(get_db),

@@ -7,6 +7,7 @@ from app.schemas.job_application_schema import JobApplicationCreate, JobApplicat
 from app.services import job_application_service
 from app.services.audit_service import record_activity
 from app.utils.auth import get_current_user
+from app.utils.cache import cache_response, clear_cache_pattern
 
 
 router = APIRouter(prefix="/applications", tags=["Job Applications"])
@@ -25,6 +26,7 @@ async def create_job_application(application_in: JobApplicationCreate, db: Async
     return await job_application_service.create_job_application(db, application_in, job.id)
 
 @router.get("/", response_model=List[JobApplicationResponse])
+@cache_response("all_apps", ttl=60)
 async def get_all_applications(db: AsyncSession = Depends(get_db)):
     """
     Get all job applications from all jobs.
@@ -32,6 +34,7 @@ async def get_all_applications(db: AsyncSession = Depends(get_db)):
     return await job_application_service.get_all_applications(db)
 
 @router.get("/job/{job_id}", response_model=List[JobApplicationResponse])
+@cache_response("job_apps", ttl=60)
 async def get_applications_for_job(job_id: int, db: AsyncSession = Depends(get_db)):
     """
     Get all applications for a specific job.
@@ -51,6 +54,7 @@ async def get_candidate_comparison(job_id: int):
     return cached_result
 
 @router.get("/candidate/{email}", response_model=List[JobApplicationResponse])
+@cache_response("cand_apps", ttl=60)
 async def get_applications_for_candidate(email: str, db: AsyncSession = Depends(get_db)):
     """
     Get all applications for a specific candidate by email.
@@ -84,6 +88,9 @@ async def update_application_status(
     # Invalidate cache since stats might change
     from app.utils.cache import delete_cache
     await delete_cache("app_stats:{}")
+    await clear_cache_pattern("all_apps*")
+    await clear_cache_pattern("job_apps*")
+    await clear_cache_pattern("cand_apps*")
     
     return db_application
 
@@ -111,6 +118,9 @@ async def delete_application(
     # Invalidate cache since stats might change
     from app.utils.cache import delete_cache
     await delete_cache("app_stats:{}")
+    await clear_cache_pattern("all_apps*")
+    await clear_cache_pattern("job_apps*")
+    await clear_cache_pattern("cand_apps*")
     
     return None
 

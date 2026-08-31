@@ -13,6 +13,7 @@ from app.schemas.system_config_schema import (
 )
 from app.services.system_config_service import system_config_service
 from app.services.audit_service import audit_service
+from app.utils.cache import cache_response, clear_cache_pattern
 
 
 router = APIRouter(prefix="/system-config", tags=["System Configuration"])
@@ -21,6 +22,7 @@ router = APIRouter(prefix="/system-config", tags=["System Configuration"])
 # ─── System Parameters ────────────────────────────────────────────────────────
 
 @router.get("/matching", response_model=MatchingConfigResponse)
+@cache_response("matching_config", ttl=3600)
 async def get_matching_config(
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(require_role("ADMIN"))
@@ -40,6 +42,7 @@ async def update_matching_weights(
     await audit_service.record_activity(
         db=db, user_id=current_user.get("id"), action="UPDATE_CONFIG", target="Matching Weights", details="Updated matching algorithm weights"
     )
+    await clear_cache_pattern("matching_config*")
     return result
 
 
@@ -55,12 +58,14 @@ async def update_matching_thresholds(
     await audit_service.record_activity(
         db=db, user_id=current_user.get("id"), action="UPDATE_CONFIG", target="Matching Thresholds", details="Updated matching algorithm thresholds"
     )
+    await clear_cache_pattern("matching_config*")
     return result
 
 
 # ─── Role Management ──────────────────────────────────────────────────────────
 
 @router.get("/roles/{role_name}", response_model=List[UserRoleResponse])
+@cache_response("users_role", ttl=300)
 async def get_users_by_role(
     role_name: str,
     db: AsyncSession = Depends(get_db),
@@ -87,12 +92,14 @@ async def change_user_role(
     await audit_service.record_activity(
         db=db, user_id=current_user.get("id"), action="UPDATE_ROLE", target=f"User {user.email}", details=f"Changed role to {role_update.role.upper()}"
     )
+    await clear_cache_pattern("users_role*")
     return user
 
 
 # ─── Form Templates ───────────────────────────────────────────────────────────
 
 @router.get("/templates", response_model=List[FormTemplateResponse])
+@cache_response("form_templates", ttl=600)
 async def list_form_templates(
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user)
@@ -110,6 +117,7 @@ async def create_form_template(
     await audit_service.record_activity(
         db=db, user_id=current_user.get("id"), action="CREATE_TEMPLATE", target=template.name, details="Created new application form template"
     )
+    await clear_cache_pattern("form_templates*")
     return result
 
 
@@ -127,6 +135,7 @@ async def update_form_template(
     await audit_service.record_activity(
         db=db, user_id=current_user.get("id"), action="UPDATE_TEMPLATE", target=result.name, details="Updated application form template"
     )
+    await clear_cache_pattern("form_templates*")
     return result
 
 
@@ -143,11 +152,13 @@ async def delete_form_template(
     await audit_service.record_activity(
         db=db, user_id=current_user.get("id"), action="DELETE_TEMPLATE", target=f"Template {template_id}", details="Deleted application form template"
     )
+    await clear_cache_pattern("form_templates*")
 
 
 # ─── System Performance ───────────────────────────────────────────────────────
 
 @router.get("/performance", response_model=SystemPerformanceResponse)
+@cache_response("system_performance", ttl=300)
 async def get_system_performance(
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(require_role("ADMIN"))

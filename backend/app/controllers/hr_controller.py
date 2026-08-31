@@ -41,6 +41,7 @@ async def get_app_stats(db: AsyncSession = Depends(get_db)):
     return stats
 
 @router.get("/profile/{hr_id}", response_model=HRResponse)
+@cache_response("hr_profile", ttl=600)
 async def get_hr_profile_details(hr_id: int, db: AsyncSession = Depends(get_db)):
     profile = await hr_service.get_hr_profile(db, hr_id)
     if not profile:
@@ -80,6 +81,7 @@ async def upload_hr_profile_image(
 
 
 @router.get("/dashboard-trends")
+@cache_response("dashboard_trends", ttl=300)
 async def get_dashboard_trends_endpoint(db: AsyncSession = Depends(get_db)):
     return await hr_service.get_dashboard_trends(db)
 
