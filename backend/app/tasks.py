@@ -83,7 +83,7 @@ async def async_analyze_application(application_id: int):
             app.ai_summary = ai_result.get("ai_summary")
             app.strengths = ai_result.get("strengths")
             app.weaknesses = ai_result.get("weaknesses")
-            app.ai_powered = True
+            app.ai_powered = False
             
             await JobApplicationRepository.update(db, app)
             logger.info(f"Successfully saved AI analysis for application {application_id}.")
