@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Search, Send, ArrowLeft, MoreVertical, Paperclip, Smile, Phone, Video } from 'lucide-react';
 import chatService from '../../services/chatService';
 import { useSelector } from 'react-redux';
+import { WS_BASE_URL } from '../../services/api';
 
 const ChatLayout = ({ isFullPage = true }) => {
     const { profileImageUrl: myProfileImage } = useSelector(state => state.auth);
@@ -38,7 +39,7 @@ const ChatLayout = ({ isFullPage = true }) => {
         if (!token) return;
 
         const connectWebSocket = () => {
-            const ws = new WebSocket(`ws://localhost:8000/chat/ws?token=${encodeURIComponent(token)}`);
+            const ws = new WebSocket(`${WS_BASE_URL}/chat/ws?token=${encodeURIComponent(token)}`);
             
             ws.onmessage = (event) => {
                 const data = JSON.parse(event.data);

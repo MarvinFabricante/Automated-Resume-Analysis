@@ -17,7 +17,6 @@ import {
   useUpdateMatchingWeightsMutation,
   useUpdateMatchingThresholdsMutation,
   useGetFormTemplatesQuery,
-  useCreateFormTemplateMutation,
   useDeleteFormTemplateMutation
 } from '../../redux/api/apiSlice';
 

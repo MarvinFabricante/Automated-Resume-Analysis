@@ -42,7 +42,7 @@ const ApplyForJobPage = () => {
   const [showTermsModal, setShowTermsModal] = useState(false);
   const [extractedData, setExtractedData] = useState(null);
   const [matchData, setMatchData] = useState(null);
-  const [isMatching, setIsMatching] = useState(false);
+  const [, setIsMatching] = useState(false);
   const [cooldown, setCooldown] = useState(0);
   const fileInputRef = useRef(null);
   const navigate = useNavigate();

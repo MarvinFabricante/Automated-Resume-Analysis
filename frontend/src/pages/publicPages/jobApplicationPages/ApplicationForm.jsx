@@ -36,7 +36,7 @@ const ApplicationForm = () => {
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [matchScore, setMatchScore] = useState(location.state?.matchData?.match_percentage || 0);
   const [matchData, setMatchData] = useState(location.state?.matchData || null);
-  const [isCalculating, setIsCalculating] = useState(false);
+  const [, setIsCalculating] = useState(false);
 
   useEffect(() => {
     const fetchJobTitle = async () => {
@@ -85,12 +85,6 @@ const ApplicationForm = () => {
 
     return () => clearTimeout(timeoutId);
   }, [formData.skills, formData.relevance, formData.degree, formData.fullName, formData.location, jobId]);
-
-  const getMatchColor = (pct) => {
-    if (pct >= 70) return '#22c55e';
-    if (pct >= 40) return '#f59e0b';
-    return '#ef4444';
-  };
 
   const handleChange = (e) => {
     const { name, value } = e.target;

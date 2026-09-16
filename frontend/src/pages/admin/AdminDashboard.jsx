@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { Helmet } from 'react-helmet-async';
 import { 
   ChevronDown, 
@@ -21,10 +21,8 @@ import Sidebar from '../../components/layout/Sidebar';
 
 import { useGetAdminSystemStatsQuery } from '../../redux/api/apiSlice';
 import { Briefcase } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
 
 const AdminDashboard = () => {
-  const navigate = useNavigate();
   const { data: stats, isLoading: isStatsLoading } = useGetAdminSystemStatsQuery();
 
   const SYSTEM_STATS = [

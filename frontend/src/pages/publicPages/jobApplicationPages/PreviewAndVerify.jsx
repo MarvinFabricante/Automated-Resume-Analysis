@@ -69,12 +69,6 @@ const PreviewAndVerifyPage = () => {
     profile_image_url: data?.profile_image_url || null
   };
 
-  const getMatchColor = (pct) => {
-    if (pct >= 70) return '#22c55e';
-    if (pct >= 40) return '#f59e0b';
-    return '#ef4444';
-  };
-
   return (
     <div className="min-h-screen bg-[#F8FAFC] text-slate-900 antialiased font-['Inter',_sans-serif]">
       <Helmet>

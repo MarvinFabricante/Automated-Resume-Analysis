@@ -30,6 +30,8 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 origins = [
+    "http://localhost",
+    "http://localhost:80",
     "http://localhost:5173",
     "http://127.0.0.1:5173",
     "http://localhost:3000",
@@ -40,6 +42,10 @@ origins = [
 frontend_url = os.getenv("FRONTEND_URL")
 if frontend_url:
     origins.append(frontend_url)
+    for url in frontend_url.split(","):
+        cleaned = url.strip().rstrip("/")
+        if cleaned and cleaned not in origins:
+            origins.append(cleaned)
 
 
 async def ensure_application_analysis_columns(conn):

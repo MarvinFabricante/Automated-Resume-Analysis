@@ -64,7 +64,7 @@ const CandidateProfileForm = () => {
   const [experienceReason, setExperienceReason] = useState(location.state?.matchData?.experience_reason || "");
   const [educationReason, setEducationReason] = useState(location.state?.matchData?.education_reason || "");
   const [matchData, setMatchData] = useState(location.state?.matchData || null);
-  const [isCalculating, setIsCalculating] = useState(false);
+  const [, setIsCalculating] = useState(false);
 
   React.useEffect(() => {
     const calculateMatchScore = async () => {
@@ -104,12 +104,6 @@ const CandidateProfileForm = () => {
 
     return () => clearTimeout(timeoutId);
   }, [formData.skills, formData.relevance, formData.degree, formData.fullName, formData.location, jobId]);
-
-  const getMatchColor = (pct) => {
-    if (pct >= 70) return '#22c55e';
-    if (pct >= 40) return '#f59e0b';
-    return '#ef4444';
-  };
 
   const handleChange = (e) => {
     const { name, value } = e.target;

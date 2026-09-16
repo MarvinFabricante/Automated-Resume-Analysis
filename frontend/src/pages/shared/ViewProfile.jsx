@@ -32,7 +32,7 @@ const BRAND_RED = "#D10043";
 const ViewProfile = () => {
   const navigate = useNavigate();
   const [profile, setProfile] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [, setLoading] = useState(true);
 
   const userEmail = localStorage.getItem('saved_email') || 'user@system.com';
   const userRole = localStorage.getItem('role') || 'Guest';
@@ -61,7 +61,7 @@ const ViewProfile = () => {
       }
     };
     fetchProfile();
-  }, [userRole, userId]);
+  }, [userRole, userId, dispatch]);
 
   const profileData = {
     name: profile?.fullname || (userRole === 'CANDIDATE' ? "Candidate User" : userRole === 'HR' ? "HR Official" : "Admin User"),

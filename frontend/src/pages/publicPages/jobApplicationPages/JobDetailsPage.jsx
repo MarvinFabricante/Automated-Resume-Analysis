@@ -57,7 +57,9 @@ const JobDetailsPage = () => {
             setIsLoading(false);
             return;
           }
-        } catch(e) {}
+        } catch {
+          // Fall back to location state or static jobs
+        }
       }
 
       if (location.state?.job?.description) {

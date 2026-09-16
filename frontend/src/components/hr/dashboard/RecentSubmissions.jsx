@@ -1,6 +1,7 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ChevronUp, Users, ArrowRight, User } from 'lucide-react';
+import { API_BASE_URL } from '../../../services/api';
 
 const BASE_URL = "http://localhost:8000";
 

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { MessageSquare, Send, Minus, Search, ArrowLeft, Circle } from 'lucide-react';
 import chatService from '../../services/chatService';
 import { useSelector } from 'react-redux';
+import { WS_BASE_URL } from '../../services/api';
 
 const ChatWidget = () => {
     const { profileImageUrl: myProfileImage } = useSelector(state => state.auth);
@@ -45,7 +46,8 @@ const ChatWidget = () => {
         const connectWebSocket = () => {
             if (!shouldReconnect) return;
 
-            const ws = new WebSocket(`ws://localhost:8000/chat/ws?token=${encodeURIComponent(token)}`);
+
+            const ws = new WebSocket(`${WS_BASE_URL}/chat/ws?token=${encodeURIComponent(token)}`);
             wsRef.current = ws;
             
             ws.onmessage = (event) => {

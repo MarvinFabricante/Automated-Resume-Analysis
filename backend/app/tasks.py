@@ -14,11 +14,14 @@ from app.services.job_application_service import _resume_data_from_application
 from app.repositories.job_application_repository import JobApplicationRepository
 from app.repositories.job_description_repository import JobDescriptionRepository
 
+from app.utils.database import DATABASE_URL
+
 load_dotenv()
 logger = logging.getLogger(__name__)
 
 DB_URL = os.getenv("DATABASE_URL", "postgresql+asyncpg://postgres:passwordnamin@localhost/automated_resume_db")
 engine = create_async_engine(DB_URL)
+engine = create_async_engine(DATABASE_URL)
 async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
 async def async_analyze_application(application_id: int):

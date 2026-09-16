@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Calendar, MapPin, ChevronDown, CheckCircle2, XCircle, Clock, Search, Check, Archive, Trash2 } from 'lucide-react';
+import { API_BASE_URL } from '../../../services/api';
 
 const CandidateCard = ({ candidate, onOpenDetails, onOpenInterview, onUpdateStatus, onArchiveApplication, onDeleteApplication }) => {
   const [isUpdating, setIsUpdating] = useState(false);
@@ -9,8 +10,8 @@ const CandidateCard = ({ candidate, onOpenDetails, onOpenInterview, onUpdateStat
   const status = candidate.status.toLowerCase();
 
   const avatarUrl = candidate.profileImage
-    ? (candidate.profileImage.startsWith('http') ? candidate.profileImage : `http://localhost:8000/${candidate.profileImage}`)
-    : `https://ui-avatars.com/api/?name=${encodeURIComponent(candidate.name)}&background=fdf2f8&color=d81159&bold=true`;
+  ? (candidate.profileImage.startsWith('http') ? candidate.profileImage : `${API_BASE_URL}/${candidate.profileImage}`)
+  : (`https://ui-avatars.com/api/?name=${encodeURIComponent(candidate.name)}&background=fdf2f8&color=d81159&bold=true`)
 
   const formatDate = (dateStr) => {
     if (!dateStr) return "N/A";

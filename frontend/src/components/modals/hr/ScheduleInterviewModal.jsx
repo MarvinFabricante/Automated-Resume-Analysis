@@ -28,7 +28,6 @@ const ScheduleInterviewModal = ({ isOpen, onClose, candidate }) => {
 
   const [availableSlots, setAvailableSlots] = useState([]);
   const [hasAttemptedFetch, setHasAttemptedFetch] = useState(false);
-  const [weekendWarning, setWeekendWarning] = useState(false);
 
   // Helper: check if a date string (YYYY-MM-DD) falls on a weekday
   const isWeekday = (dateStr) => {
@@ -37,48 +36,36 @@ const ScheduleInterviewModal = ({ isOpen, onClose, candidate }) => {
     return day !== 0 && day !== 6;
   };
 
+  const weekendWarning = Boolean(formData.date && !isWeekday(formData.date));
+
   // Today's date as min for the date picker (ISO format)
   const todayISO = new Date().toISOString().split('T')[0];
 
   useEffect(() => {
-    if (formData.date) {
-      // Block weekends on the client side
-      if (!isWeekday(formData.date)) {
-        setWeekendWarning(true);
-        setAvailableSlots([]);
-        setHasAttemptedFetch(false);
-        return;
-      }
-      setWeekendWarning(false);
-
-      const fetchSlots = async () => {
-        setHasAttemptedFetch(true);
-        try {
-          // Build local ISO strings directly from the selected date to avoid
-          // the browser's toISOString() converting to UTC (which shifts hours).
-          const dateStr = formData.date; // "YYYY-MM-DD"
-
-          const slots = await getSlots({
-            start_date: `${dateStr}T08:00:00`,
-            end_date:   `${dateStr}T17:00:00`
-          }).unwrap();
-          
-          setAvailableSlots(slots || []);
-        } catch (error) {
-          console.error("Failed to fetch slots:", error);
-          setAvailableSlots([]);
-        }
-      };
-      
-      const timer = setTimeout(() => {
-        fetchSlots();
-      }, 500); // debounce
-      return () => clearTimeout(timer);
-    } else {
-      setAvailableSlots([]);
-      setHasAttemptedFetch(false);
-      setWeekendWarning(false);
+    if (!formData.date || !isWeekday(formData.date)) {
+      return;
     }
+
+    const timer = setTimeout(async () => {
+      setHasAttemptedFetch(true);
+      try {
+        // Build local ISO strings directly from the selected date to avoid
+        // the browser's toISOString() converting to UTC (which shifts hours).
+        const dateStr = formData.date; // "YYYY-MM-DD"
+
+        const slots = await getSlots({
+          start_date: `${dateStr}T08:00:00`,
+          end_date:   `${dateStr}T17:00:00`
+        }).unwrap();
+        
+        setAvailableSlots(slots || []);
+      } catch (error) {
+        console.error("Failed to fetch slots:", error);
+        setAvailableSlots([]);
+      }
+    }, 500); // debounce
+
+    return () => clearTimeout(timer);
   }, [formData.date, getSlots]);
 
   if (!isOpen || !candidate) return null;
@@ -229,7 +216,11 @@ const ScheduleInterviewModal = ({ isOpen, onClose, candidate }) => {
                       min={todayISO}
                       className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl text-sm font-medium text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#d81159]/20 focus:border-[#d81159] transition-all"
                       value={formData.date}
-                      onChange={(e) => setFormData({ ...formData, date: e.target.value, selectedSlot: null })}
+                      onChange={(e) => {
+                        setFormData({ ...formData, date: e.target.value, selectedSlot: null });
+                        setAvailableSlots([]);
+                        setHasAttemptedFetch(false);
+                      }}
                     />
                     <p className="text-[9px] text-gray-400 font-medium flex items-center gap-1 mt-1">
                       <Clock size={10} /> Mon – Fri only &nbsp;•&nbsp; 8:00 AM – 5:00 PM

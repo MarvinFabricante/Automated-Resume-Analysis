@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import authService from '../../../services/authService';
+import { API_BASE_URL } from '../../../services/api';
 import { useDispatch } from 'react-redux';
 import { setCredentials } from '../../../redux/slices/authSlice';
 import { Helmet } from 'react-helmet-async';
@@ -214,7 +215,7 @@ const Login = () => {
             <div className="flex flex-col gap-4 mt-8">
               <button
                 type="button"
-                onClick={() => window.location.href = 'http://localhost:8000/auth/google/login'}
+                onClick={() => window.location.href = `${API_BASE_URL}/auth/google/login`}
                 className="w-full flex items-center justify-center gap-2 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 text-sm font-medium px-6 py-2.5 rounded-full transition-colors"
               >
                 <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google Logo" className="w-5 h-5" />

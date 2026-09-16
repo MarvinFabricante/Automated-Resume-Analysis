@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Helmet } from 'react-helmet-async';
 import { 
   X, Briefcase, MapPin, Building2, DollarSign, 
@@ -30,7 +30,12 @@ const EditJobModal = ({ isOpen, onClose, onSuccess, jobData }) => {
 
   const [errors, setErrors] = useState({});
 
-  useEffect(() => {
+  const [prevJobData, setPrevJobData] = useState(null);
+  const [prevIsOpen, setPrevIsOpen] = useState(isOpen);
+
+  if (isOpen !== prevIsOpen || (isOpen && jobData !== prevJobData)) {
+    setPrevIsOpen(isOpen);
+    setPrevJobData(jobData);
     if (isOpen && jobData) {
       setFormData({
         job_id: jobData.job_id || '',
@@ -52,7 +57,7 @@ const EditJobModal = ({ isOpen, onClose, onSuccess, jobData }) => {
       setCurrentStep(1);
       setErrors({});
     }
-  }, [isOpen, jobData]);
+  }
 
   const validateStep = (step) => {
     const newErrors = {};

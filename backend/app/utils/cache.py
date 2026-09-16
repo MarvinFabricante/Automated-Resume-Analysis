@@ -1,3 +1,4 @@
+import os
 import json
 import functools
 import time
@@ -8,6 +9,8 @@ from fastapi.encoders import jsonable_encoder
 
 # Initialize Redis client
 redis_client = redis.Redis.from_url("redis://localhost:6379/0", decode_responses=False)
+REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+redis_client = redis.Redis.from_url(REDIS_URL, decode_responses=False)
 
 async def get_cache(key: str) -> Optional[Any]:
     """Get data from Redis cache."""

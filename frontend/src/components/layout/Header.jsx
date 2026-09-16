@@ -14,6 +14,7 @@ import { logout as logoutAction, updateProfileImage } from '../../redux/slices/a
 import { setNotifications, addNotification, markAllRead as markAllReadAction } from '../../redux/slices/notificationSlice';
 import { closeSidebar } from '../../redux/slices/uiSlice';
 import { setTheme } from '../../redux/slices/themeSlice';
+import { WS_BASE_URL } from '../../services/api';
 
 const BRAND_RED = "#D60041";
 
@@ -202,6 +203,7 @@ const Header = () => {
 
     if (isAdminRole || isHRRole || isCandidateRole) {
       ws = new WebSocket(`ws://localhost:8000/notifications/ws?role=${userRole}&email=${userEmail}`);
+      ws = new WebSocket(`${WS_BASE_URL}/notifications/ws?role=${userRole}&email=${userEmail}`);
       ws.onmessage = (event) => {
         try {
           const n = JSON.parse(event.data);

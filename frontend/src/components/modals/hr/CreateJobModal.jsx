@@ -30,17 +30,26 @@ const CreateJobModal = ({ isOpen, onClose, onSuccess }) => {
 
   const [errors, setErrors] = useState({});
 
-  useEffect(() => {
-    if (isOpen && !formData.job_id) {
-      const generatedId = `JOB-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
-      setFormData(prev => ({ ...prev, job_id: generatedId }));
-    }
+  const [prevIsOpen, setPrevIsOpen] = useState(isOpen);
+
+  if (isOpen !== prevIsOpen) {
+    setPrevIsOpen(isOpen);
     if (!isOpen) {
       setStatus({ type: null, message: '' });
       setCurrentStep(1);
       setErrors({});
     }
-  }, [isOpen]);
+  }
+
+  useEffect(() => {
+    if (isOpen && !formData.job_id) {
+      const timer = setTimeout(() => {
+        const generatedId = `JOB-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
+        setFormData(prev => (prev.job_id ? prev : { ...prev, job_id: generatedId }));
+      }, 0);
+      return () => clearTimeout(timer);
+    }
+  }, [isOpen, formData.job_id]);
 
   const validateStep = (step) => {
     const newErrors = {};

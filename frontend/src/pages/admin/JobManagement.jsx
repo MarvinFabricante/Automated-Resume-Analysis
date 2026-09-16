@@ -18,7 +18,7 @@ import { useGetJobsQuery, useArchiveJobMutation, useUnarchiveJobMutation, useDel
 
 const JobManagementPage = () => {
   // RTK Query hook handles fetching, loading, error, and caching!
-  const { data: jobs = [], isLoading, error: queryError, refetch } = useGetJobsQuery({ include_inactive: true });
+  const { data: jobs = [], isLoading, error: queryError } = useGetJobsQuery({ include_inactive: true });
   const error = queryError ? "Failed to sync with database. Please try again later." : null;
 
   const [archiveJob] = useArchiveJobMutation();
@@ -133,9 +133,15 @@ const JobManagementPage = () => {
   }, [jobs, searchQuery, statusFilter, deptFilter]);
 
   // Handle page reset on filter change
-  useEffect(() => {
+  const [prevFilters, setPrevFilters] = useState({ searchQuery, statusFilter, deptFilter });
+  if (
+    prevFilters.searchQuery !== searchQuery ||
+    prevFilters.statusFilter !== statusFilter ||
+    prevFilters.deptFilter !== deptFilter
+  ) {
+    setPrevFilters({ searchQuery, statusFilter, deptFilter });
     setCurrentPage(1);
-  }, [searchQuery, statusFilter, deptFilter]);
+  }
 
   // Scroll to top when page changes
   useEffect(() => {
