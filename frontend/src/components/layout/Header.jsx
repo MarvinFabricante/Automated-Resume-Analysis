@@ -4,7 +4,7 @@ import {
   ChevronDown, LayoutDashboard, Users, Database, ShieldCheck, LogOut,
   Settings, Menu, X, FileText, Search, User, Building2, Info, Briefcase, LogIn, UserPlus,
   Bell, Clock, CheckCircle2, AlertCircle, MessageSquare, ChevronRight,
-  TrendingUp, Zap, Radio, Edit3, Sun, Moon, Monitor
+  TrendingUp, Zap, Radio, Edit3, Sun, Moon, Monitor, Calendar
 } from 'lucide-react';
 import NotificationDropdown from './NotificationDropdown';
 import notificationService from '../../services/notificationService';
@@ -349,6 +349,7 @@ const Header = () => {
     if (isHRRole) return [
       { label: 'Dashboard', path: '/hr/dashboard', icon: <Building2 size={18} /> },
       { label: 'Screening', path: '/hr/screeningportal', icon: <User size={18} /> },
+      { label: 'Scheduling', path: '/hr/scheduling', icon: <Calendar size={18} /> },
     ];
     if (isCandidateRole) return [
       { label: 'Dashboard', path: '/candidate/dashboard', icon: <LayoutDashboard size={18} /> },

@@ -102,24 +102,43 @@ def delete_real_google_calendar(credentials_json: str, calendar_id: str):
 # ── Event operations ─────────────────────────────────────────────────────────
 
 
-def get_real_google_events(credentials_json: str, calendar_id: str = "primary", max_results: int = 100):
-    """List upcoming events from a specific calendar."""
+def get_real_google_events(
+    credentials_json: str,
+    calendar_id: str = "primary",
+    max_results: int = 150,
+    time_min: str = None,
+    time_max: str = None,
+):
+    """List events from a specific calendar with optional date range filtering."""
     service, _ = get_google_calendar_service(credentials_json)
     if not service:
         return None
     try:
-        events_result = service.events().list(
-            calendarId=calendar_id or 'primary',
-            maxResults=max_results,
-            singleEvents=True,
-            orderBy='startTime',
-        ).execute()
+        kwargs = {
+            "calendarId": calendar_id or 'primary',
+            "maxResults": max_results,
+            "singleEvents": True,
+            "orderBy": 'startTime',
+        }
+        if time_min:
+            kwargs["timeMin"] = time_min if (time_min.endswith('Z') or '+' in time_min) else f"{time_min}Z"
+        if time_max:
+            kwargs["timeMax"] = time_max if (time_max.endswith('Z') or '+' in time_max) else f"{time_max}Z"
+
+        events_result = service.events().list(**kwargs).execute()
         items = events_result.get('items', [])
         formatted = []
         for ev in items:
             start = ev.get('start', {}).get('dateTime') or ev.get('start', {}).get('date') or ""
             end = ev.get('end', {}).get('dateTime') or ev.get('end', {}).get('date') or ""
             is_all_day = 'date' in ev.get('start', {})
+            hangout_link = ev.get('hangoutLink', '')
+            if not hangout_link and ev.get('conferenceData'):
+                entry_points = ev.get('conferenceData', {}).get('entryPoints', [])
+                for ep in entry_points:
+                    if ep.get('uri'):
+                        hangout_link = ep.get('uri')
+                        break
 
             formatted.append({
                 "id": ev.get('id'),
@@ -134,11 +153,14 @@ def get_real_google_events(credentials_json: str, calendar_id: str = "primary", 
                 "label_name": "Google Event",
                 "status": ev.get('status', 'confirmed').capitalize(),
                 "created_at": ev.get('created', ''),
+                "html_link": ev.get('htmlLink', ''),
+                "meet_link": hangout_link,
             })
         return formatted
     except HttpError as err:
         print(f"Google Calendar API Error listing events: {err}")
         return None
+
 
 
 def create_real_google_event(
@@ -209,6 +231,69 @@ def create_real_google_event(
         return created
     except HttpError as err:
         print(f"Google Calendar API Error creating event: {err}")
+        return None
+
+
+def update_real_google_event(
+    credentials_json: str,
+    calendar_id: str,
+    event_id: str,
+    summary: str = None,
+    start_dt: str = None,
+    end_dt: str = None,
+    description: str = None,
+    location: str = None,
+    status: str = None,
+):
+    """Update an existing event on Google Calendar using patch."""
+    service, _ = get_google_calendar_service(credentials_json)
+    if not service or not event_id:
+        return None
+    try:
+        body = {}
+        if summary is not None:
+            body['summary'] = summary
+        if description is not None:
+            body['description'] = description
+        if location is not None:
+            body['location'] = location
+        if status is not None:
+            body['status'] = status
+        if start_dt is not None:
+            formatted_start = start_dt
+            if not formatted_start.endswith('Z') and '+' not in formatted_start:
+                formatted_start += 'Z'
+            body['start'] = {'dateTime': formatted_start, 'timeZone': 'UTC'}
+        if end_dt is not None:
+            formatted_end = end_dt
+            if not formatted_end.endswith('Z') and '+' not in formatted_end:
+                formatted_end += 'Z'
+            body['end'] = {'dateTime': formatted_end, 'timeZone': 'UTC'}
+
+        updated = service.events().patch(
+            calendarId=calendar_id or 'primary',
+            eventId=event_id,
+            body=body,
+            sendUpdates='all'
+        ).execute()
+        return updated
+    except HttpError as err:
+        print(f"Google Calendar API Error updating event: {err}")
+        return None
+
+
+def get_single_google_event(credentials_json: str, calendar_id: str, event_id: str):
+    """Fetch a single event by eventId from Google Calendar."""
+    service, _ = get_google_calendar_service(credentials_json)
+    if not service or not event_id:
+        return None
+    try:
+        return service.events().get(
+            calendarId=calendar_id or 'primary',
+            eventId=event_id,
+        ).execute()
+    except HttpError as err:
+        print(f"Google Calendar API Error fetching event {event_id}: {err}")
         return None
 
 

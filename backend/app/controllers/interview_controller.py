@@ -1,13 +1,16 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from typing import List
+from typing import List, Optional
 
 from app.utils.database import get_db
 from app.schemas.interview_schema import (
     AvailableSlotsRequest,
     InterviewCreateSchema,
+    InterviewUpdateSchema,
     InterviewResponseSchema,
     TimeSlotSchema,
+    CalendarFeedResponseSchema,
+    GoogleCalendarStatusSchema,
 )
 from app.utils.auth import get_current_user
 from app.services import interview_service
@@ -16,6 +19,68 @@ from app.utils.cache import cache_response, clear_cache_pattern
 
 
 router = APIRouter(prefix="/interviews", tags=["Interviews"])
+
+@router.get("", response_model=List[InterviewResponseSchema])
+async def get_all_interviews(
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Fetch all scheduled interviews with candidate details for the HR scheduling module.
+    """
+    try:
+        return await interview_service.get_all_interviews(db)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/calendar-feed", response_model=CalendarFeedResponseSchema)
+async def get_calendar_feed(
+    time_min: Optional[str] = Query(None),
+    time_max: Optional[str] = Query(None),
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Unified calendar feed: returns all system interviews, syncs any external Google Calendar updates,
+    and returns external Google Calendar events so HR has a complete schedule.
+    """
+    try:
+        feed = await interview_service.get_calendar_feed(
+            db, current_user.get("id"), time_min=time_min, time_max=time_max
+        )
+        return feed
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/sync", response_model=CalendarFeedResponseSchema)
+async def sync_google_calendar(
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Manually trigger two-way synchronization between the system calendar and Google Calendar.
+    """
+    try:
+        feed = await interview_service.get_calendar_feed(db, current_user.get("id"))
+        await clear_cache_pattern("app_interviews*")
+        await clear_cache_pattern("cand_interviews*")
+        await clear_cache_pattern("calendar_events*")
+        return feed
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/google-status", response_model=GoogleCalendarStatusSchema)
+async def get_google_status(
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Check if the current HR user has connected their Google Calendar.
+    """
+    try:
+        return await interview_service.get_google_calendar_status(db, current_user.get("id"))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/available-slots", response_model=List[TimeSlotSchema])
 async def get_available_slots(
@@ -90,6 +155,47 @@ async def schedule_interview(
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@router.put("/{interview_id}", response_model=InterviewResponseSchema)
+async def update_interview(
+    interview_id: int,
+    data: InterviewUpdateSchema,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Modify or reschedule an interview and update the event directly on Google Calendar.
+    """
+    try:
+        result = await interview_service.update_interview(db, interview_id, data, current_user.get("id"))
+        await clear_cache_pattern("app_interviews*")
+        await clear_cache_pattern("cand_interviews*")
+        await clear_cache_pattern("calendar_events*")
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.delete("/{interview_id}")
+async def delete_interview(
+    interview_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Delete an interview and delete its corresponding event on Google Calendar.
+    """
+    try:
+        await interview_service.delete_interview(db, interview_id, current_user.get("id"))
+        await clear_cache_pattern("app_interviews*")
+        await clear_cache_pattern("cand_interviews*")
+        await clear_cache_pattern("calendar_events*")
+        return {"message": "Interview deleted successfully and removed from Google Calendar"}
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @router.get("/calendar-events")
 @cache_response("calendar_events", ttl=300)
 async def get_calendar_events(
@@ -110,7 +216,7 @@ async def update_interview_status(
     interview_id: int,
     status: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user)
 ):
     """
     Track interview confirmations and detect no-shows.
@@ -130,7 +236,7 @@ async def update_interview_status(
 async def get_application_interviews(
     application_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user)
 ):
     """
     Maintain interview history.
@@ -142,12 +248,13 @@ async def get_application_interviews(
 async def get_candidate_interviews(
     email: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user)
 ):
     """
     Maintain interview history for a candidate.
     """
     return await interview_service.get_interviews_for_candidate(db, email)
+
 
 
 

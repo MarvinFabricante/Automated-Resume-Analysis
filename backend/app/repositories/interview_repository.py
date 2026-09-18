@@ -60,6 +60,52 @@ async def get_interviews_for_candidate(db: AsyncSession, email: str) -> List[Int
     return result.scalars().all()
 
 
+from sqlalchemy.orm import selectinload
+
+
+async def get_all_interviews(db: AsyncSession) -> List[Interview]:
+    """Fetch all interviews with their associated job application details."""
+    result = await db.execute(
+        select(Interview)
+        .options(selectinload(Interview.job_application))
+        .order_by(Interview.start_time.asc())
+    )
+    return result.scalars().all()
+
+
+async def get_interview_by_google_event_id(db: AsyncSession, google_event_id: str) -> Optional[Interview]:
+    """Fetch an interview by its Google Calendar event ID."""
+    result = await db.execute(
+        select(Interview)
+        .options(selectinload(Interview.job_application))
+        .filter(Interview.google_event_id == google_event_id)
+    )
+    return result.scalars().first()
+
+
+async def get_interviews_in_range_excluding(
+    db: AsyncSession, start_time: datetime, end_time: datetime, exclude_interview_id: int
+) -> List[Interview]:
+    """Fetch all non-canceled interviews that overlap with the given date range, excluding a specific interview ID."""
+    result = await db.execute(
+        select(Interview).filter(
+            and_(
+                Interview.id != exclude_interview_id,
+                Interview.start_time < end_time,
+                Interview.end_time > start_time,
+                Interview.status != "CANCELED",
+            )
+        )
+    )
+    return result.scalars().all()
+
+
+async def delete_interview(db: AsyncSession, interview: Interview) -> None:
+    """Delete an interview from the database."""
+    await db.delete(interview)
+    await db.commit()
+
+
 class InterviewRepository:
     get_job_application = staticmethod(get_job_application)
     create_interview = staticmethod(create_interview)
@@ -67,6 +113,11 @@ class InterviewRepository:
     add_interview_log = staticmethod(add_interview_log)
     commit_changes = staticmethod(commit_changes)
     get_interview_by_id = staticmethod(get_interview_by_id)
+    get_all_interviews = staticmethod(get_all_interviews)
+    get_interview_by_google_event_id = staticmethod(get_interview_by_google_event_id)
     get_interviews_for_application = staticmethod(get_interviews_for_application)
     get_interviews_in_range = staticmethod(get_interviews_in_range)
+    get_interviews_in_range_excluding = staticmethod(get_interviews_in_range_excluding)
     get_interviews_for_candidate = staticmethod(get_interviews_for_candidate)
+    delete_interview = staticmethod(delete_interview)
+

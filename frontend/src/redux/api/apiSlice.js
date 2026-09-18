@@ -14,8 +14,8 @@ export const apiSlice = createApi({
       return headers;
     },
   }),
-  // Added AuditLogs, Users, SystemConfig, Templates to tagTypes so they are recognized
-  tagTypes: ['Dashboard', 'Jobs', 'Candidates', 'Applications', 'AuditLogs', 'Users', 'SystemConfig', 'Templates'],
+  // Added AuditLogs, Users, SystemConfig, Templates, Interviews, CalendarEvents to tagTypes
+  tagTypes: ['Dashboard', 'Jobs', 'Candidates', 'Applications', 'AuditLogs', 'Users', 'SystemConfig', 'Templates', 'Interviews', 'CalendarEvents'],
   endpoints: (builder) => ({
     // --- DASHBOARD STATS ---
     getDashboardStats: builder.query({
@@ -209,6 +209,32 @@ export const apiSlice = createApi({
     }),
 
     // --- INTERVIEWS ---
+    getAllInterviews: builder.query({
+      query: () => '/interviews',
+      providesTags: ['Interviews'],
+    }),
+
+    getCalendarFeed: builder.query({
+      query: (params = {}) => ({
+        url: '/interviews/calendar-feed',
+        params,
+      }),
+      providesTags: ['Interviews', 'CalendarEvents'],
+    }),
+
+    syncGoogleCalendar: builder.mutation({
+      query: () => ({
+        url: '/interviews/sync',
+        method: 'POST',
+      }),
+      invalidatesTags: ['Interviews', 'CalendarEvents'],
+    }),
+
+    getGoogleCalendarStatus: builder.query({
+      query: () => '/interviews/google-status',
+      providesTags: ['CalendarEvents'],
+    }),
+
     getAvailableSlots: builder.mutation({
       query: (body) => ({
         url: '/interviews/available-slots',
@@ -223,7 +249,24 @@ export const apiSlice = createApi({
         method: 'POST',
         body,
       }),
-      invalidatesTags: ['Applications', 'Dashboard'],
+      invalidatesTags: ['Applications', 'Dashboard', 'Interviews', 'CalendarEvents'],
+    }),
+
+    updateInterview: builder.mutation({
+      query: ({ interviewId, ...body }) => ({
+        url: `/interviews/${interviewId}`,
+        method: 'PUT',
+        body,
+      }),
+      invalidatesTags: ['Interviews', 'CalendarEvents', 'Applications'],
+    }),
+
+    deleteInterview: builder.mutation({
+      query: (interviewId) => ({
+        url: `/interviews/${interviewId}`,
+        method: 'DELETE',
+      }),
+      invalidatesTags: ['Interviews', 'CalendarEvents', 'Applications'],
     }),
 
     getApplicationInterviews: builder.query({
@@ -410,6 +453,12 @@ export const {
   useUpdateApplicationStatusMutation,
   useGetAvailableSlotsMutation,
   useScheduleInterviewMutation,
+  useGetAllInterviewsQuery,
+  useGetCalendarFeedQuery,
+  useSyncGoogleCalendarMutation,
+  useGetGoogleCalendarStatusQuery,
+  useUpdateInterviewMutation,
+  useDeleteInterviewMutation,
   useGetApplicationInterviewsQuery,
   useGetCandidateInterviewsQuery,
   useGetUsersQuery,
