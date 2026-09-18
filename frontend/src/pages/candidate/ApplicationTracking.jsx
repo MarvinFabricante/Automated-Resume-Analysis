@@ -84,10 +84,10 @@ const ApplicationTracking = () => {
     },
     {
       label: "Technical Interview",
-      date: application.step > 3 ? "Completed" : (application.step === 3 && latestInterview ? new Date(latestInterview.start_time).toLocaleString() : "Pending"),
+      date: application.step > 3 ? "Completed" : (latestInterview ? new Date(latestInterview.start_time).toLocaleString() : "Pending"),
       description: "Live coding and architectural discussion with the Engineering Lead.",
-      status: application.step > 3 ? "completed" : (application.step === 3 ? "current" : "upcoming"),
-      interviewInfo: application.step === 3 && latestInterview ? latestInterview : null
+      status: application.step > 3 ? "completed" : (latestInterview || application.step === 3 ? "current" : "upcoming"),
+      interviewInfo: latestInterview || null
     },
     {
       label: "Final Interview",
@@ -225,29 +225,36 @@ const ApplicationTracking = () => {
                           {step.description}
                         </p>
                         
-                        {/* Interview Details if available */}
-                        {step.interviewInfo && step.status === 'current' && (
-                          <div className="mt-4 bg-slate-50 border border-slate-100 rounded-2xl p-4 flex flex-col gap-3">
-                            <div className="flex items-center justify-between">
-                              <span className="flex items-center text-xs font-black text-slate-700 uppercase tracking-widest">
-                                <Calendar className="w-4 h-4 mr-2 text-[#D10043]" />
-                                Scheduled Session
+                      {/* Interview Details if available */}
+                      {step.interviewInfo && (
+                        <div className="mt-4 bg-slate-50 border border-slate-100 rounded-2xl p-4 flex flex-col gap-3">
+                          <div className="flex items-center justify-between">
+                            <span className="flex items-center text-xs font-black text-slate-700 uppercase tracking-widest">
+                              <Calendar className="w-4 h-4 mr-2 text-[#D10043]" />
+                              Scheduled Session
+                            </span>
+                            <span className="bg-blue-100 text-blue-600 text-[10px] font-black px-2 py-0.5 rounded-md uppercase tracking-widest">
+                              Google Calendar
+                            </span>
+                          </div>
+                          <div className="flex flex-col gap-1">
+                            <span className="text-sm font-bold text-slate-900">{step.interviewInfo.title}</span>
+                            <span className="text-xs font-medium text-slate-500">
+                              {new Date(step.interviewInfo.start_time).toLocaleString()} – {new Date(step.interviewInfo.end_time).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true })}
+                            </span>
+                            {step.interviewInfo.interviewer_name && (
+                              <span className="text-xs text-[#D10043] font-bold mt-0.5">
+                                Assigned Panelist: {step.interviewInfo.interviewer_name}
                               </span>
-                              <span className="bg-blue-100 text-blue-600 text-[10px] font-black px-2 py-0.5 rounded-md uppercase tracking-widest">
-                                Google Calendar
-                              </span>
-                            </div>
-                            <div className="flex flex-col gap-1">
-                              <span className="text-sm font-bold text-slate-900">{step.interviewInfo.title}</span>
-                              <span className="text-xs font-medium text-slate-500">{new Date(step.interviewInfo.start_time).toLocaleString()} - {new Date(step.interviewInfo.end_time).toLocaleTimeString()}</span>
-                            </div>
-                            {step.interviewInfo.meeting_link && (
-                              <a href={step.interviewInfo.meeting_link} target="_blank" rel="noopener noreferrer" className="mt-2 flex items-center justify-center w-full py-2.5 bg-[#D10043] hover:bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-[0.1em] transition-all gap-2 group/link">
-                                <Video size={14} className="group-hover/link:animate-pulse" /> Join Meeting
-                              </a>
                             )}
                           </div>
-                        )}
+                          {step.interviewInfo.meeting_link && (
+                            <a href={step.interviewInfo.meeting_link} target="_blank" rel="noopener noreferrer" className="mt-2 flex items-center justify-center w-full py-2.5 bg-[#D10043] hover:bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-[0.1em] transition-all gap-2 group/link">
+                              <Video size={14} className="group-hover/link:animate-pulse" /> Join Meeting
+                            </a>
+                          )}
+                        </div>
+                      )}
                       </div>
                       <div className="text-right">
                         <span className={`text-[10px] font-black uppercase tracking-[0.2em] whitespace-nowrap px-3 py-1 rounded-lg ${step.status === 'upcoming' ? 'text-slate-200 bg-slate-50/50' : 'text-[#D10043] bg-pink-50/50'}`}>

@@ -91,3 +91,11 @@ async def test_interview_controller_endpoints(client, db_session):
     resp = await client.delete(f"/interviews/{interview_id}", headers=headers)
     assert resp.status_code == 200
     assert "deleted successfully" in resp.json()["message"]
+
+    # 7. HR interviewers endpoint GET /hr/interviewers
+    resp = await client.get("/hr/interviewers", headers=headers)
+    assert resp.status_code == 200
+    interviewers = resp.json()
+    assert isinstance(interviewers, list)
+    assert any(i["id"] == user.id for i in interviewers)
+

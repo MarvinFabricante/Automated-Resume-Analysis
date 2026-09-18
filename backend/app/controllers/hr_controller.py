@@ -86,3 +86,33 @@ async def get_dashboard_trends_endpoint(db: AsyncSession = Depends(get_db)):
     return await hr_service.get_dashboard_trends(db)
 
 
+@router.get("/interviewers")
+async def get_hr_interviewers(db: AsyncSession = Depends(get_db)):
+    """Fetch all active HR interviewers/panelists with their details and Google Calendar status."""
+    from sqlalchemy import text
+    query = text("""
+        SELECT u.id, u.fullname, u.email, u.profile_image_url, 
+               (u.google_credentials IS NOT NULL) AS has_google_calendar,
+               h.company_name, h.department, h.position
+        FROM users u
+        LEFT JOIN hr_staffs h ON h.id = u.id
+        WHERE u.role = 'HR' AND u.is_archived = false
+        ORDER BY u.fullname ASC
+    """)
+    result = await db.execute(query)
+    rows = result.fetchall()
+    return [
+        {
+            "id": r.id,
+            "fullname": r.fullname,
+            "email": r.email,
+            "profile_image_url": r.profile_image_url,
+            "has_google_calendar": bool(r.has_google_calendar),
+            "company_name": r.company_name or "Mariwasa Siam Ceramics, Inc.",
+            "department": r.department or "Human Resources",
+            "position": r.position or "HR Specialist",
+        }
+        for r in rows
+    ]
+
+

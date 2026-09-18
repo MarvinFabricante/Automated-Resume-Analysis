@@ -20,13 +20,15 @@ import {
 import {
   useUpdateInterviewMutation,
   useDeleteInterviewMutation,
-  useGetAvailableSlotsMutation
+  useGetAvailableSlotsMutation,
+  useGetHRInterviewersQuery
 } from '../../../redux/api/apiSlice';
 
 const InterviewDetailsModal = ({ isOpen, onClose, interview, onStatusChanged }) => {
   const [updateInterview, { isLoading: isUpdating }] = useUpdateInterviewMutation();
   const [deleteInterview, { isLoading: isDeleting }] = useDeleteInterviewMutation();
   const [getSlots, { isLoading: isFetchingSlots }] = useGetAvailableSlotsMutation();
+  const { data: interviewers = [] } = useGetHRInterviewersQuery();
 
   const [isEditing, setIsEditing] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -39,10 +41,21 @@ const InterviewDetailsModal = ({ isOpen, onClose, interview, onStatusChanged }) 
     date: '',
     startTime: '',
     endTime: '',
-    status: 'SCHEDULED'
+    status: 'SCHEDULED',
+    interviewerId: null
   });
 
   const [availableSlots, setAvailableSlots] = useState([]);
+
+  const actualInterviewId = interview?.rawId || (typeof interview?.id === 'string' && interview.id.startsWith('iv-') ? parseInt(interview.id.replace('iv-', ''), 10) : interview?.id);
+
+  const toLocalDateString = (d) => {
+    if (!d) return '';
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  };
 
   useEffect(() => {
     if (interview) {
@@ -50,10 +63,12 @@ const InterviewDetailsModal = ({ isOpen, onClose, interview, onStatusChanged }) 
       setConfirmDelete(false);
       setErrorMsg('');
 
-      const start = interview.start_time ? new Date(interview.start_time) : null;
-      const end = interview.end_time ? new Date(interview.end_time) : null;
+      const rawStart = interview.start_time || interview.start || interview.start_datetime;
+      const rawEnd = interview.end_time || interview.end || interview.end_datetime;
+      const start = rawStart ? new Date(rawStart) : null;
+      const end = rawEnd ? new Date(rawEnd) : null;
 
-      const dateStr = start ? start.toISOString().split('T')[0] : '';
+      const dateStr = start ? toLocalDateString(start) : '';
       const startStr = start ? `${String(start.getHours()).padStart(2, '0')}:${String(start.getMinutes()).padStart(2, '0')}` : '09:00';
       const endStr = end ? `${String(end.getHours()).padStart(2, '0')}:${String(end.getMinutes()).padStart(2, '0')}` : '10:00';
 
@@ -63,7 +78,8 @@ const InterviewDetailsModal = ({ isOpen, onClose, interview, onStatusChanged }) 
         date: dateStr,
         startTime: startStr,
         endTime: endStr,
-        status: interview.status || 'SCHEDULED'
+        status: interview.status || 'SCHEDULED',
+        interviewerId: interview.interviewer_id || null
       });
     }
   }, [interview, isOpen]);
@@ -81,7 +97,8 @@ const InterviewDetailsModal = ({ isOpen, onClose, interview, onStatusChanged }) 
         try {
           const slots = await getSlots({
             start_date: `${formData.date}T08:00:00`,
-            end_date: `${formData.date}T17:00:00`
+            end_date: `${formData.date}T17:00:00`,
+            hr_id: formData.interviewerId || undefined
           }).unwrap();
           setAvailableSlots(slots || []);
         } catch {
@@ -90,7 +107,7 @@ const InterviewDetailsModal = ({ isOpen, onClose, interview, onStatusChanged }) 
       }, 400);
       return () => clearTimeout(timer);
     }
-  }, [formData.date, isEditing, getSlots]);
+  }, [formData.date, formData.interviewerId, isEditing, getSlots]);
 
   if (!isOpen || !interview) return null;
 
@@ -132,12 +149,13 @@ const InterviewDetailsModal = ({ isOpen, onClose, interview, onStatusChanged }) 
 
     try {
       await updateInterview({
-        interviewId: interview.id,
+        interviewId: actualInterviewId,
         title: formData.title,
         description: formData.description,
         start_time: startDateTime,
         end_time: endDateTime,
-        status: formData.status
+        status: formData.status,
+        interviewer_id: formData.interviewerId || undefined
       }).unwrap();
 
       setIsEditing(false);
@@ -150,7 +168,7 @@ const InterviewDetailsModal = ({ isOpen, onClose, interview, onStatusChanged }) 
   const handleQuickStatusChange = async (newStatus) => {
     try {
       await updateInterview({
-        interviewId: interview.id,
+        interviewId: actualInterviewId,
         status: newStatus
       }).unwrap();
       if (onStatusChanged) onStatusChanged();
@@ -161,7 +179,7 @@ const InterviewDetailsModal = ({ isOpen, onClose, interview, onStatusChanged }) 
 
   const handleDelete = async () => {
     try {
-      await deleteInterview(interview.id).unwrap();
+      await deleteInterview(actualInterviewId).unwrap();
       onClose();
       if (onStatusChanged) onStatusChanged();
     } catch (err) {
@@ -236,7 +254,13 @@ const InterviewDetailsModal = ({ isOpen, onClose, interview, onStatusChanged }) 
                   <div className="flex items-center gap-2 mt-2">
                     <Calendar size={14} className="text-[#D60041]" />
                     <span className="text-sm font-semibold text-gray-600">
-                      {formatDateTime(interview.start_time || interview.start_datetime)}
+                      {formatDateTime(interview.start_time || interview.start || interview.start_datetime)}
+                      {(interview.end_time || interview.end || interview.end_datetime) && (
+                        <span>
+                          {' '}–{' '}
+                          {new Date(interview.end_time || interview.end || interview.end_datetime).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true })}
+                        </span>
+                      )}
                     </span>
                   </div>
                 </div>
@@ -281,6 +305,31 @@ const InterviewDetailsModal = ({ isOpen, onClose, interview, onStatusChanged }) 
                       <Phone size={14} className="text-gray-400 shrink-0" />
                       <span>{interview.candidate_phone || 'No phone provided'}</span>
                     </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Assigned HR Interviewer / Panelist Card */}
+              {!isGoogleOnlyEvent && (
+                <div className="bg-rose-50/40 border border-rose-100 rounded-2xl p-5">
+                  <p className="text-[10px] font-black uppercase text-rose-600 tracking-wider mb-3">
+                    Assigned HR Interviewer / Panelist
+                  </p>
+                  <div className="flex items-center gap-4">
+                    <div className="w-11 h-11 rounded-xl bg-rose-100 text-[#D60041] flex items-center justify-center font-black text-base shadow-sm">
+                      {(interview.interviewer_name || interview.interviewer?.fullname || 'H').charAt(0).toUpperCase()}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <h4 className="text-sm font-bold text-gray-900 truncate">
+                        {interview.interviewer_name || interview.interviewer?.fullname || 'Mariwasa Siam Ceramics HR'}
+                      </h4>
+                      <p className="text-xs text-gray-500 font-medium truncate mt-0.5">
+                        {interview.interviewer_email || interview.interviewer?.email || 'HR Department'}
+                      </p>
+                    </div>
+                    <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-black bg-rose-100 text-[#D60041] uppercase tracking-wider">
+                      HR Panelist
+                    </span>
                   </div>
                 </div>
               )}
@@ -427,6 +476,24 @@ const InterviewDetailsModal = ({ isOpen, onClose, interview, onStatusChanged }) 
                   className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-2xl text-sm font-semibold text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#D60041]/20 focus:border-[#D60041]"
                   required
                 />
+              </div>
+
+              <div>
+                <label className="block text-xs font-black text-gray-700 uppercase tracking-wider mb-2">
+                  Assigned HR Interviewer / Panelist
+                </label>
+                <select
+                  value={formData.interviewerId || ''}
+                  onChange={(e) => setFormData({ ...formData, interviewerId: e.target.value ? parseInt(e.target.value, 10) : null })}
+                  className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-2xl text-sm font-semibold text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#D60041]/20 focus:border-[#D60041]"
+                >
+                  <option value="">Default (Current HR)</option>
+                  {interviewers.map((hr) => (
+                    <option key={hr.id} value={hr.id}>
+                      {hr.fullname} ({hr.position || 'HR Specialist'}) {hr.has_google_calendar ? '• Google Calendar Linked' : ''}
+                    </option>
+                  ))}
+                </select>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">

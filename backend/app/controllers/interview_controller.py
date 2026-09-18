@@ -37,6 +37,7 @@ async def get_all_interviews(
 async def get_calendar_feed(
     time_min: Optional[str] = Query(None),
     time_max: Optional[str] = Query(None),
+    hr_id: Optional[int] = Query(None),
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
@@ -46,7 +47,7 @@ async def get_calendar_feed(
     """
     try:
         feed = await interview_service.get_calendar_feed(
-            db, current_user.get("id"), time_min=time_min, time_max=time_max
+            db, current_user.get("id"), time_min=time_min, time_max=time_max, hr_id=hr_id
         )
         return feed
     except Exception as e:
@@ -92,11 +93,12 @@ async def get_available_slots(
     Automatically view available time slots by syncing HR and panel calendars using Google Calendar API.
     """
     try:
+        target_id = request.hr_id if request.hr_id else current_user.get("id")
         slots = await interview_service.get_available_slots(
             db,
             request.start_date,
             request.end_date,
-            current_user.get("id")
+            target_id
         )
         return slots
     except Exception as e:
@@ -133,15 +135,29 @@ async def schedule_interview(
 
     # ── Conflict check against existing DB interviews ─────────────────
     from app.repositories.interview_repository import InterviewRepository
+    target_interviewer = data.interviewer_id if data.interviewer_id else current_user.get("id")
     existing = await InterviewRepository.get_interviews_in_range(
         db,
         start.replace(tzinfo=None),
         end.replace(tzinfo=None),
+        interviewer_id=target_interviewer,
     )
     if existing:
         raise HTTPException(
             status_code=409,
-            detail="The selected time slot conflicts with an existing interview. Please choose another slot."
+            detail="The selected time slot conflicts with an existing interview for this HR panelist. Please choose another slot."
+        )
+
+    # Check candidate conflict
+    cand_interviews = await InterviewRepository.get_interviews_for_application(db, data.job_application_id)
+    cand_conflict = [
+        iv for iv in cand_interviews
+        if iv.status != "CANCELED" and iv.start_time < end.replace(tzinfo=None) and iv.end_time > start.replace(tzinfo=None)
+    ]
+    if cand_conflict:
+        raise HTTPException(
+            status_code=409,
+            detail="This candidate already has an interview scheduled at the selected time."
         )
 
     try:

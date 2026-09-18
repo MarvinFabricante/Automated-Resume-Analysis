@@ -29,45 +29,56 @@ async def add_interview_log(db: AsyncSession, interview_id: int, log_type: str, 
 async def commit_changes(db: AsyncSession) -> None:
     await db.commit()
 
+from sqlalchemy.orm import selectinload
+
 async def get_interview_by_id(db: AsyncSession, interview_id: int) -> Optional[Interview]:
-    result = await db.execute(select(Interview).filter(Interview.id == interview_id))
+    result = await db.execute(
+        select(Interview)
+        .options(selectinload(Interview.job_application), selectinload(Interview.interviewer))
+        .filter(Interview.id == interview_id)
+    )
     return result.scalars().first()
 
 async def get_interviews_for_application(db: AsyncSession, application_id: int) -> List[Interview]:
-    result = await db.execute(select(Interview).filter(Interview.job_application_id == application_id))
-    return result.scalars().all()
-
-async def get_interviews_in_range(db: AsyncSession, start_time: datetime, end_time: datetime) -> List[Interview]:
-    """Fetch all non-canceled interviews that overlap with the given date range."""
     result = await db.execute(
-        select(Interview).filter(
-            and_(
-                Interview.start_time < end_time,
-                Interview.end_time > start_time,
-                Interview.status != "CANCELED",
-            )
-        )
+        select(Interview)
+        .options(selectinload(Interview.job_application), selectinload(Interview.interviewer))
+        .filter(Interview.job_application_id == application_id)
     )
     return result.scalars().all()
+
+async def get_interviews_in_range(db: AsyncSession, start_time: datetime, end_time: datetime, interviewer_id: Optional[int] = None) -> List[Interview]:
+    """Fetch all non-canceled interviews that overlap with the given date range, optionally filtered by interviewer."""
+    conditions = [
+        Interview.start_time < end_time,
+        Interview.end_time > start_time,
+        Interview.status != "CANCELED",
+    ]
+    if interviewer_id:
+        from sqlalchemy import or_
+        conditions.append(or_(Interview.interviewer_id == interviewer_id, Interview.interviewer_id.is_(None)))
+    result = await db.execute(
+        select(Interview).filter(and_(*conditions))
+    )
+    return result.scalars().all()
+
 
 
 async def get_interviews_for_candidate(db: AsyncSession, email: str) -> List[Interview]:
     result = await db.execute(
         select(Interview)
+        .options(selectinload(Interview.job_application), selectinload(Interview.interviewer))
         .join(JobApplication)
         .filter(JobApplication.candidate_email == email)
     )
     return result.scalars().all()
 
 
-from sqlalchemy.orm import selectinload
-
-
 async def get_all_interviews(db: AsyncSession) -> List[Interview]:
-    """Fetch all interviews with their associated job application details."""
+    """Fetch all interviews with their associated job application and interviewer details."""
     result = await db.execute(
         select(Interview)
-        .options(selectinload(Interview.job_application))
+        .options(selectinload(Interview.job_application), selectinload(Interview.interviewer))
         .order_by(Interview.start_time.asc())
     )
     return result.scalars().all()
@@ -77,7 +88,7 @@ async def get_interview_by_google_event_id(db: AsyncSession, google_event_id: st
     """Fetch an interview by its Google Calendar event ID."""
     result = await db.execute(
         select(Interview)
-        .options(selectinload(Interview.job_application))
+        .options(selectinload(Interview.job_application), selectinload(Interview.interviewer))
         .filter(Interview.google_event_id == google_event_id)
     )
     return result.scalars().first()

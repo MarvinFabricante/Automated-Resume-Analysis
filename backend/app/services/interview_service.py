@@ -1,7 +1,7 @@
 import os
 import asyncio
 from datetime import datetime, timedelta
-from typing import List
+from typing import List, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from twilio.rest import Client as TwilioClient
@@ -17,14 +17,28 @@ from app.services.google_calendar_service import (
 )
 
 def _populate_candidate_info(interview):
-    """Helper to attach candidate details from job_application relationship to the interview model."""
+    """Helper to attach candidate details and interviewer info to the interview model."""
     app = getattr(interview, "job_application", None)
     if app:
-        setattr(interview, "candidate_name", app.candidate_name)
-        setattr(interview, "candidate_email", app.candidate_email)
-        setattr(interview, "candidate_phone", app.phone)
-        setattr(interview, "job_title", app.job_title)
-        setattr(interview, "job_id", app.job_id)
+        setattr(interview, "candidate_name", getattr(app, "candidate_name", None))
+        setattr(interview, "candidate_email", getattr(app, "candidate_email", None))
+        setattr(interview, "candidate_phone", getattr(app, "phone", None))
+        setattr(interview, "job_title", getattr(app, "job_title", None))
+        setattr(interview, "job_id", getattr(app, "job_description_id", None))
+
+    interviewer = getattr(interview, "interviewer", None)
+    if interviewer:
+        setattr(interview, "interviewer_id", interviewer.id)
+        setattr(interview, "interviewer_name", interviewer.fullname)
+        setattr(interview, "interviewer_email", interviewer.email)
+    elif getattr(interview, "interviewer_id", None):
+        setattr(interview, "interviewer_id", interview.interviewer_id)
+        setattr(interview, "interviewer_name", None)
+        setattr(interview, "interviewer_email", None)
+    else:
+        setattr(interview, "interviewer_id", None)
+        setattr(interview, "interviewer_name", None)
+        setattr(interview, "interviewer_email", None)
     return interview
 
 def send_sms_notification_sync(to_phone: str, message: str):
@@ -96,8 +110,8 @@ async def get_available_slots(db: AsyncSession, start_date: datetime, end_date: 
                 busy_end = datetime.fromisoformat(busy['end'].replace('Z', '+00:00')).replace(tzinfo=None)
                 google_busy.append((busy_start, busy_end))
 
-    # ── Fetch existing DB interviews in the range ────────────────
-    db_interviews = await InterviewRepository.get_interviews_in_range(db, loop_start, loop_end)
+    # ── Fetch existing DB interviews in the range for this interviewer ─
+    db_interviews = await InterviewRepository.get_interviews_in_range(db, loop_start, loop_end, interviewer_id=user_id)
     db_busy: List[tuple] = [(iv.start_time, iv.end_time) for iv in db_interviews]
 
     # Merge both busy lists
@@ -158,8 +172,11 @@ async def schedule_interview(db: AsyncSession, data: InterviewCreateSchema, user
     if not application:
         raise ValueError("Application not found")
 
+    # Target interviewer: if specified, use that HR account, else fallback to current user_id
+    interviewer_id = data.interviewer_id if data.interviewer_id else user_id
+
     from app.repositories.auth_repository import AuthRepository
-    user = await AuthRepository.get_user_by_id(db, user_id)
+    user = await AuthRepository.get_user_by_id(db, interviewer_id)
     credentials_json = user.google_credentials if user else None
 
     # 2. Create Interview Record
@@ -174,6 +191,7 @@ async def schedule_interview(db: AsyncSession, data: InterviewCreateSchema, user
 
     interview_data = {
         "job_application_id": data.job_application_id,
+        "interviewer_id": interviewer_id,
         "title": data.title,
         "description": data.description,
         "start_time": start,
@@ -229,8 +247,14 @@ async def schedule_interview(db: AsyncSession, data: InterviewCreateSchema, user
             await InterviewRepository.add_interview_log(db, interview.id, "SMS_SENT", "Notification sent to candidate")
             await InterviewRepository.commit_changes(db)
 
-    # Attach candidate attributes for Pydantic response
+    # 5. Update candidate application status if pending
+    if getattr(application, "status", None) == "PENDING":
+        application.status = "SCHEDULED"
+        await InterviewRepository.commit_changes(db)
+
+    # Attach candidate and interviewer attributes for Pydantic response
     setattr(interview, "job_application", application)
+    setattr(interview, "interviewer", user)
     _populate_candidate_info(interview)
     return interview
 
@@ -270,6 +294,8 @@ async def update_interview(db: AsyncSession, interview_id: int, data: InterviewU
         interview.title = data.title
     if data.description is not None:
         interview.description = data.description
+    if data.interviewer_id is not None:
+        interview.interviewer_id = data.interviewer_id
     if data.status is not None:
         old_status = interview.status
         interview.status = data.status
@@ -281,8 +307,12 @@ async def update_interview(db: AsyncSession, interview_id: int, data: InterviewU
 
     # Synchronize modification to Google Calendar if linked
     from app.repositories.auth_repository import AuthRepository
-    user = await AuthRepository.get_user_by_id(db, user_id)
+    interviewer_to_sync = interview.interviewer_id or user_id
+    user = await AuthRepository.get_user_by_id(db, interviewer_to_sync)
     credentials_json = user.google_credentials if user else None
+    if not credentials_json and interviewer_to_sync != user_id:
+        user_fallback = await AuthRepository.get_user_by_id(db, user_id)
+        credentials_json = user_fallback.google_credentials if user_fallback else None
 
     if credentials_json and interview.google_event_id:
         try:
@@ -328,8 +358,12 @@ async def delete_interview(db: AsyncSession, interview_id: int, user_id: int):
         raise ValueError("Interview not found")
 
     from app.repositories.auth_repository import AuthRepository
-    user = await AuthRepository.get_user_by_id(db, user_id)
+    interviewer_to_sync = interview.interviewer_id or user_id
+    user = await AuthRepository.get_user_by_id(db, interviewer_to_sync)
     credentials_json = user.google_credentials if user else None
+    if not credentials_json and interviewer_to_sync != user_id:
+        user_fallback = await AuthRepository.get_user_by_id(db, user_id)
+        credentials_json = user_fallback.google_credentials if user_fallback else None
 
     if credentials_json and interview.google_event_id:
         try:
@@ -352,7 +386,7 @@ async def get_all_interviews(db: AsyncSession):
     return [_populate_candidate_info(iv) for iv in interviews]
 
 
-async def get_calendar_feed(db: AsyncSession, user_id: int, time_min: str = None, time_max: str = None):
+async def get_calendar_feed(db: AsyncSession, user_id: int, time_min: str = None, time_max: str = None, hr_id: Optional[int] = None):
     """
     Unified calendar feed:
       1. Returns all database interviews with candidate information.
@@ -360,11 +394,15 @@ async def get_calendar_feed(db: AsyncSession, user_id: int, time_min: str = None
       3. Returns non-interview external Google Calendar events so HR has unified visibility.
     """
     from app.repositories.auth_repository import AuthRepository
-    user = await AuthRepository.get_user_by_id(db, user_id)
+    sync_user_id = hr_id if hr_id else user_id
+    user = await AuthRepository.get_user_by_id(db, sync_user_id)
     credentials_json = user.google_credentials if user else None
 
     # Fetch DB interviews
     db_interviews = await InterviewRepository.get_all_interviews(db)
+    if hr_id:
+        db_interviews = [iv for iv in db_interviews if iv.interviewer_id == hr_id]
+
     interviews_map = {iv.google_event_id: iv for iv in db_interviews if iv.google_event_id}
 
     google_events = []

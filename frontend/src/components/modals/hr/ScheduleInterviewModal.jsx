@@ -8,16 +8,43 @@ import {
   X,
   Users,
   Video,
-  FileText
+  FileText,
+  RefreshCw
 } from 'lucide-react';
 import { 
   useGetAvailableSlotsMutation, 
-  useScheduleInterviewMutation 
+  useScheduleInterviewMutation,
+  useGetHRInterviewersQuery
 } from '../../../redux/api/apiSlice';
 
 const ScheduleInterviewModal = ({ isOpen, onClose, candidate }) => {
+  const { data: interviewers = [] } = useGetHRInterviewersQuery();
   const [getSlots, { isLoading: isFetchingSlots }] = useGetAvailableSlotsMutation();
   const [scheduleInterview, { isLoading: isScheduling }] = useScheduleInterviewMutation();
+
+  const [selectedInterviewerId, setSelectedInterviewerId] = useState(null);
+  const [useCustomTime, setUseCustomTime] = useState(false);
+  const [customStartTime, setCustomStartTime] = useState('09:00');
+  const [customEndTime, setCustomEndTime] = useState('10:00');
+  const [errorMsg, setErrorMsg] = useState('');
+  const [successMsg, setSuccessMsg] = useState('');
+
+  const toLocalDateString = (d) => {
+    const dateObj = d || new Date();
+    const y = dateObj.getFullYear();
+    const m = String(dateObj.getMonth() + 1).padStart(2, '0');
+    const day = String(dateObj.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  };
+
+  const isWeekday = (dateStr) => {
+    if (!dateStr) return false;
+    const parts = dateStr.split('-');
+    if (parts.length !== 3) return false;
+    const d = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+    const day = d.getDay();
+    return day !== 0 && day !== 6;
+  };
 
   const [formData, setFormData] = useState({
     date: '',
@@ -29,17 +56,40 @@ const ScheduleInterviewModal = ({ isOpen, onClose, candidate }) => {
   const [availableSlots, setAvailableSlots] = useState([]);
   const [hasAttemptedFetch, setHasAttemptedFetch] = useState(false);
 
-  // Helper: check if a date string (YYYY-MM-DD) falls on a weekday
-  const isWeekday = (dateStr) => {
-    const d = new Date(dateStr + 'T00:00:00');
-    const day = d.getDay(); // 0=Sun, 6=Sat
-    return day !== 0 && day !== 6;
-  };
+  // Set default interviewer to currently logged-in HR
+  useEffect(() => {
+    if (isOpen && interviewers.length > 0) {
+      const loggedInId = parseInt(localStorage.getItem('user_id'), 10);
+      const match = interviewers.find((i) => i.id === loggedInId);
+      setSelectedInterviewerId(match ? match.id : interviewers[0].id);
+    }
+  }, [isOpen, interviewers]);
+
+  useEffect(() => {
+    if (isOpen) {
+      setErrorMsg('');
+      setSuccessMsg('');
+      setUseCustomTime(false);
+      let defaultDate = toLocalDateString(new Date());
+      if (!isWeekday(defaultDate)) {
+        const parts = defaultDate.split('-');
+        const d = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+        while (d.getDay() === 0 || d.getDay() === 6) {
+          d.setDate(d.getDate() + 1);
+        }
+        defaultDate = toLocalDateString(d);
+      }
+      setFormData({
+        date: defaultDate,
+        title: candidate ? `Interview with ${candidate.name || candidate.candidate_name}` : 'Initial Interview',
+        description: '',
+        selectedSlot: null
+      });
+    }
+  }, [isOpen, candidate]);
 
   const weekendWarning = Boolean(formData.date && !isWeekday(formData.date));
-
-  // Today's date as min for the date picker (ISO format)
-  const todayISO = new Date().toISOString().split('T')[0];
+  const todayISO = toLocalDateString(new Date());
 
   useEffect(() => {
     if (!formData.date || !isWeekday(formData.date)) {
@@ -49,51 +99,69 @@ const ScheduleInterviewModal = ({ isOpen, onClose, candidate }) => {
     const timer = setTimeout(async () => {
       setHasAttemptedFetch(true);
       try {
-        // Build local ISO strings directly from the selected date to avoid
-        // the browser's toISOString() converting to UTC (which shifts hours).
-        const dateStr = formData.date; // "YYYY-MM-DD"
-
+        const dateStr = formData.date;
         const slots = await getSlots({
           start_date: `${dateStr}T08:00:00`,
-          end_date:   `${dateStr}T17:00:00`
+          end_date:   `${dateStr}T17:00:00`,
+          hr_id: selectedInterviewerId || undefined
         }).unwrap();
         
         setAvailableSlots(slots || []);
       } catch (error) {
-        console.error("Failed to fetch slots:", error);
         setAvailableSlots([]);
       }
-    }, 500); // debounce
+    }, 400);
 
     return () => clearTimeout(timer);
-  }, [formData.date, getSlots]);
+  }, [formData.date, selectedInterviewerId, getSlots]);
 
   if (!isOpen || !candidate) return null;
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!formData.selectedSlot) {
-      alert("Please select a time slot.");
-      return;
+    setErrorMsg('');
+
+    let finalStart = '';
+    let finalEnd = '';
+
+    if (useCustomTime) {
+      if (!customStartTime || !customEndTime) {
+        setErrorMsg('Please select start and end time.');
+        return;
+      }
+      finalStart = `${formData.date}T${customStartTime}:00`;
+      finalEnd = `${formData.date}T${customEndTime}:00`;
+      if (new Date(finalStart) >= new Date(finalEnd)) {
+        setErrorMsg('End time must be after start time.');
+        return;
+      }
+    } else {
+      if (!formData.selectedSlot) {
+        setErrorMsg('Please select a time slot or use custom hours.');
+        return;
+      }
+      finalStart = formData.selectedSlot.start_time;
+      finalEnd = formData.selectedSlot.end_time;
     }
 
     try {
       await scheduleInterview({
         job_application_id: candidate.id,
+        interviewer_id: selectedInterviewerId || undefined,
         title: formData.title,
         description: formData.description,
-        start_time: formData.selectedSlot.start_time,
-        end_time: formData.selectedSlot.end_time
+        start_time: finalStart,
+        end_time: finalEnd
       }).unwrap();
       
-      alert(`Interview successfully scheduled!\nGoogle Calendar Event created and Twilio SMS sent to ${candidate.name}.`);
-      onClose();
+      setSuccessMsg(`Interview scheduled successfully! Meeting link created and SMS notification sent.`);
+      setTimeout(() => {
+        onClose();
+      }, 1200);
     } catch (error) {
-      console.error("Schedule error:", error);
-      alert("Failed to schedule interview. Ensure HR's Google Calendar is connected.");
+      setErrorMsg(error?.data?.detail || 'Failed to schedule interview. Please check slot availability.');
     }
   };
-
 
   const formatTime = (isoString) => {
     return new Date(isoString).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -171,7 +239,39 @@ const ScheduleInterviewModal = ({ isOpen, onClose, candidate }) => {
           {/* Main content area */}
           <div className="flex-grow p-8 overflow-y-auto bg-white flex flex-col">
             <div className="space-y-8 flex-1">
+
+              {errorMsg && (
+                <div className="bg-rose-50 border border-rose-200 text-rose-700 px-4 py-3 rounded-2xl flex items-center gap-3 text-xs font-semibold">
+                  <AlertCircle size={18} className="shrink-0" />
+                  <span>{errorMsg}</span>
+                </div>
+              )}
+
+              {successMsg && (
+                <div className="bg-emerald-50 border border-emerald-200 text-emerald-700 px-4 py-3 rounded-2xl flex items-center gap-3 text-xs font-semibold">
+                  <Check size={18} className="shrink-0" />
+                  <span>{successMsg}</span>
+                </div>
+              )}
               
+              {/* HR Interviewer / Panelist */}
+              <div>
+                <h3 className="text-sm font-bold text-gray-900 uppercase tracking-tight mb-3 flex items-center gap-2">
+                  <Users size={16} className="text-[#d81159]" /> Assigned HR Interviewer
+                </h3>
+                <select
+                  value={selectedInterviewerId || ''}
+                  onChange={(e) => setSelectedInterviewerId(e.target.value ? parseInt(e.target.value, 10) : null)}
+                  className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl text-sm font-medium text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#d81159]/20 focus:border-[#d81159] transition-all"
+                >
+                  {interviewers.map((hr) => (
+                    <option key={hr.id} value={hr.id}>
+                      {hr.fullname} ({hr.position || 'HR Specialist'}) {hr.has_google_calendar ? '• Google Calendar Linked' : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
               {/* Event Details */}
               <div>
                 <h3 className="text-sm font-bold text-gray-900 uppercase tracking-tight mb-4 flex items-center gap-2">
@@ -203,9 +303,39 @@ const ScheduleInterviewModal = ({ isOpen, onClose, candidate }) => {
 
               {/* Date & Time Availability */}
               <div>
-                <h3 className="text-sm font-bold text-gray-900 uppercase tracking-tight mb-4 flex items-center gap-2">
-                  <Clock size={16} className="text-[#d81159]" /> Schedule Date & Time
-                </h3>
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-sm font-bold text-gray-900 uppercase tracking-tight flex items-center gap-2">
+                    <Clock size={16} className="text-[#d81159]" /> Schedule Date & Time
+                  </h3>
+
+                  <div className="flex items-center gap-1 bg-gray-100 p-0.5 rounded-xl text-[11px] font-bold">
+                    <button
+                      type="button"
+                      onClick={() => setUseCustomTime(false)}
+                      className={`px-2.5 py-1 rounded-lg transition-all ${
+                        !useCustomTime
+                          ? 'bg-white text-[#d81159] shadow-sm font-black'
+                          : 'text-gray-500 hover:text-gray-900'
+                      }`}
+                    >
+                      Slots ({availableSlots.length})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setUseCustomTime(true);
+                        setFormData({ ...formData, selectedSlot: null });
+                      }}
+                      className={`px-2.5 py-1 rounded-lg transition-all ${
+                        useCustomTime
+                          ? 'bg-white text-[#d81159] shadow-sm font-black'
+                          : 'text-gray-500 hover:text-gray-900'
+                      }`}
+                    >
+                      Custom Hours
+                    </button>
+                  </div>
+                </div>
                 
                 <div className="space-y-4">
                   <div className="space-y-2 max-w-[250px]">
@@ -239,35 +369,71 @@ const ScheduleInterviewModal = ({ isOpen, onClose, candidate }) => {
                   )}
 
                   {formData.date && !weekendWarning && (
-                    <div className="pt-2">
-                        <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-2">Available Slots (8:00 AM – 5:00 PM)</label>
-                        {isFetchingSlots ? (
-                            <div className="py-4 text-sm text-gray-500 animate-pulse">Checking mutual availability with Google Calendar...</div>
-                        ) : availableSlots.length > 0 ? (
-                            <div className="flex flex-wrap gap-3">
-                                {availableSlots.map((slot, idx) => (
-                                    <button
-                                        key={idx}
-                                        type="button"
-                                        onClick={() => setFormData({ ...formData, selectedSlot: slot })}
-                                        className={`flex flex-col items-center justify-center py-2 px-4 rounded-xl border transition-all ${
-                                            formData.selectedSlot === slot
-                                                ? 'bg-[#d81159] text-white border-[#d81159] shadow-md shadow-pink-100'
-                                                : 'bg-white text-gray-600 border-gray-200 hover:border-[#d81159]/50 hover:bg-pink-50/30'
-                                        }`}
-                                    >
-                                        <span className="text-sm font-bold">{formatTime(slot.start_time)}</span>
-                                        <span className="text-[10px] opacity-80">to {formatTime(slot.end_time)}</span>
-                                    </button>
-                                ))}
-                            </div>
-                        ) : (
-                            <div className="py-4 px-5 bg-red-50 border border-red-100 rounded-xl">
-                                <p className="text-xs font-bold text-red-600">No available slots found for the selected date.</p>
-                                <p className="text-[10px] text-red-500 mt-1">All time slots are occupied or the calendar is fully booked. Please try another weekday.</p>
-                            </div>
-                        )}
-                    </div>
+                    !useCustomTime ? (
+                      <div className="pt-2">
+                          <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-2">Available Slots (8:00 AM – 5:00 PM)</label>
+                          {isFetchingSlots ? (
+                              <div className="py-4 text-sm text-gray-500 animate-pulse">Checking mutual availability with Google Calendar...</div>
+                          ) : availableSlots.length > 0 ? (
+                              <div className="flex flex-wrap gap-3">
+                                  {availableSlots.map((slot, idx) => (
+                                      <button
+                                          key={idx}
+                                          type="button"
+                                          onClick={() => setFormData({ ...formData, selectedSlot: slot })}
+                                          className={`flex flex-col items-center justify-center py-2 px-4 rounded-xl border transition-all ${
+                                              formData.selectedSlot === slot
+                                                  ? 'bg-[#d81159] text-white border-[#d81159] shadow-md shadow-pink-100'
+                                                  : 'bg-white text-gray-600 border-gray-200 hover:border-[#d81159]/50 hover:bg-pink-50/30'
+                                          }`}
+                                      >
+                                          <span className="text-sm font-bold">{formatTime(slot.start_time)}</span>
+                                          <span className="text-[10px] opacity-80">to {formatTime(slot.end_time)}</span>
+                                      </button>
+                                  ))}
+                              </div>
+                          ) : (
+                              <div className="py-4 px-5 bg-red-50 border border-red-100 rounded-xl space-y-2">
+                                  <p className="text-xs font-bold text-red-600">No standard 1-hour slots found for this date.</p>
+                                  <button
+                                    type="button"
+                                    onClick={() => setUseCustomTime(true)}
+                                    className="text-xs text-[#d81159] font-bold underline"
+                                  >
+                                    Switch to Custom Hours
+                                  </button>
+                              </div>
+                          )}
+                      </div>
+                    ) : (
+                      <div className="pt-2 space-y-3">
+                        <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Custom Interview Hours (8:00 AM – 5:00 PM)</label>
+                        <div className="grid grid-cols-2 gap-3 max-w-sm">
+                          <div>
+                            <label className="text-[10px] text-gray-500 font-semibold block mb-1">Start Time</label>
+                            <input
+                              type="time"
+                              min="08:00"
+                              max="16:30"
+                              value={customStartTime}
+                              onChange={(e) => setCustomStartTime(e.target.value)}
+                              className="w-full px-3 py-2 bg-gray-50 border border-gray-100 rounded-xl text-xs font-bold text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#d81159]/20"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-[10px] text-gray-500 font-semibold block mb-1">End Time</label>
+                            <input
+                              type="time"
+                              min="08:30"
+                              max="17:00"
+                              value={customEndTime}
+                              onChange={(e) => setCustomEndTime(e.target.value)}
+                              className="w-full px-3 py-2 bg-gray-50 border border-gray-100 rounded-xl text-xs font-bold text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#d81159]/20"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    )
                   )}
                 </div>
               </div>
@@ -285,7 +451,7 @@ const ScheduleInterviewModal = ({ isOpen, onClose, candidate }) => {
               </button>
               <button
                 type="submit"
-                disabled={isScheduling || !formData.selectedSlot}
+                disabled={isScheduling || (!useCustomTime && !formData.selectedSlot) || (useCustomTime && (!customStartTime || !customEndTime))}
                 className="px-6 py-2.5 bg-[#d81159] text-white rounded-xl text-xs font-bold uppercase tracking-wider hover:shadow-lg hover:shadow-pink-200 transition-all disabled:opacity-50 flex items-center gap-2"
               >
                 {isScheduling ? 'Scheduling...' : 'Confirm & Schedule'}

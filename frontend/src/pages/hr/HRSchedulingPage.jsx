@@ -18,7 +18,8 @@ import {
   Check,
   ExternalLink,
   Sparkles,
-  Link as LinkIcon
+  Link as LinkIcon,
+  Users
 } from 'lucide-react';
 import Header from '../../components/layout/Header';
 import Sidebar from '../../components/layout/Sidebar';
@@ -27,7 +28,8 @@ import NewScheduleModal from '../../components/modals/hr/NewScheduleModal';
 import {
   useGetCalendarFeedQuery,
   useSyncGoogleCalendarMutation,
-  useGetGoogleCalendarStatusQuery
+  useGetGoogleCalendarStatusQuery,
+  useGetHRInterviewersQuery
 } from '../../redux/api/apiSlice';
 
 const MONTH_NAMES = [
@@ -47,6 +49,7 @@ const HRSchedulingPage = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [sourceFilter, setSourceFilter] = useState('ALL');
+  const [hrFilter, setHrFilter] = useState('ALL');
 
   // Modals state
   const [detailsModalOpen, setDetailsModalOpen] = useState(false);
@@ -56,7 +59,10 @@ const HRSchedulingPage = () => {
   const [syncToast, setSyncToast] = useState('');
 
   // API queries
-  const { data: calendarFeed, isLoading, refetch } = useGetCalendarFeedQuery();
+  const { data: interviewers = [] } = useGetHRInterviewersQuery();
+  const { data: calendarFeed, isLoading, refetch } = useGetCalendarFeedQuery(
+    hrFilter !== 'ALL' ? { hr_id: hrFilter } : undefined
+  );
   const { data: googleStatus } = useGetGoogleCalendarStatusQuery();
   const [syncGoogleCalendar, { isLoading: isSyncing }] = useSyncGoogleCalendarMutation();
 
@@ -133,9 +139,14 @@ const HRSchedulingPage = () => {
         status: iv.status || 'SCHEDULED',
         start,
         end,
+        start_time: iv.start_time,
+        end_time: iv.end_time,
         meeting_link: iv.meeting_link,
         google_event_id: iv.google_event_id,
         description: iv.description,
+        interviewer_id: iv.interviewer_id,
+        interviewer_name: iv.interviewer_name,
+        interviewer_email: iv.interviewer_email,
         type: 'interview'
       });
     });
@@ -157,6 +168,8 @@ const HRSchedulingPage = () => {
           status: 'CONFIRMED',
           start,
           end,
+          start_time: ev.start_datetime,
+          end_time: ev.end_datetime,
           meeting_link: ev.meet_link,
           html_link: ev.html_link,
           google_event_id: ev.id,
@@ -172,6 +185,13 @@ const HRSchedulingPage = () => {
   // Filter events based on search and filters
   const filteredEvents = useMemo(() => {
     return allEvents.filter((ev) => {
+      // HR Filter
+      if (hrFilter !== 'ALL' && !ev.isGoogleEvent) {
+        if (ev.interviewer_id && ev.interviewer_id !== parseInt(hrFilter, 10)) {
+          return false;
+        }
+      }
+
       // Source filter
       if (sourceFilter === 'INTERVIEWS' && ev.isGoogleEvent) return false;
       if (sourceFilter === 'GOOGLE' && !ev.isGoogleEvent) return false;
@@ -188,12 +208,13 @@ const HRSchedulingPage = () => {
         const titleMatch = ev.title.toLowerCase().includes(q);
         const nameMatch = (ev.candidate_name || '').toLowerCase().includes(q);
         const jobMatch = (ev.job_title || '').toLowerCase().includes(q);
-        if (!titleMatch && !nameMatch && !jobMatch) return false;
+        const interviewerMatch = (ev.interviewer_name || '').toLowerCase().includes(q);
+        if (!titleMatch && !nameMatch && !jobMatch && !interviewerMatch) return false;
       }
 
       return true;
     });
-  }, [allEvents, sourceFilter, statusFilter, searchQuery]);
+  }, [allEvents, sourceFilter, statusFilter, hrFilter, searchQuery]);
 
   // Metrics computation
   const metrics = useMemo(() => {
@@ -294,13 +315,16 @@ const HRSchedulingPage = () => {
     setDetailsModalOpen(true);
   };
 
+  const toLocalDateString = (d) => {
+    const dateObj = d || new Date();
+    const y = dateObj.getFullYear();
+    const m = String(dateObj.getMonth() + 1).padStart(2, '0');
+    const day = String(dateObj.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  };
+
   const handleOpenNewSchedule = (dayDate) => {
-    if (dayDate) {
-      const iso = dayDate.toISOString().split('T')[0];
-      setNewScheduleDate(iso);
-    } else {
-      setNewScheduleDate(new Date().toISOString().split('T')[0]);
-    }
+    setNewScheduleDate(toLocalDateString(dayDate));
     setNewScheduleModalOpen(true);
   };
 
@@ -537,6 +561,22 @@ const HRSchedulingPage = () => {
                   <option value="INTERVIEWS">ARAS Interviews Only</option>
                   <option value="GOOGLE">Google Calendar Only</option>
                 </select>
+
+                <div className="flex items-center gap-1.5 bg-white border border-gray-200 rounded-xl px-3 py-2 shadow-sm">
+                  <Users size={14} className="text-[#D60041] shrink-0" />
+                  <select
+                    value={hrFilter}
+                    onChange={(e) => setHrFilter(e.target.value)}
+                    className="bg-transparent text-xs font-bold text-gray-700 focus:outline-none cursor-pointer"
+                  >
+                    <option value="ALL">All HR Panelists</option>
+                    {interviewers.map((hr) => (
+                      <option key={hr.id} value={hr.id}>
+                        {hr.fullname}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
             </div>
 
@@ -708,6 +748,11 @@ const HRSchedulingPage = () => {
                               <p className="text-[11px] text-gray-500 font-medium truncate mt-0.5">
                                 {ev.job_title || ev.title}
                               </p>
+                              {ev.interviewer_name && (
+                                <p className="text-[10px] text-[#D60041] font-bold truncate mt-1 flex items-center gap-1">
+                                  <Users size={10} /> {ev.interviewer_name}
+                                </p>
+                              )}
                             </div>
                           ))
                         )}
@@ -770,6 +815,11 @@ const HRSchedulingPage = () => {
                             <p className="text-xs text-gray-500 font-medium truncate mt-0.5">
                               {ev.job_title ? `${ev.job_title} • ` : ''}{ev.title}
                             </p>
+                            {ev.interviewer_name && (
+                              <p className="text-[11px] text-[#D60041] font-semibold mt-1 flex items-center gap-1.5">
+                                <Users size={12} /> Panelist: {ev.interviewer_name}
+                              </p>
+                            )}
                           </div>
                         </div>
 
@@ -866,6 +916,11 @@ const HRSchedulingPage = () => {
                                 <Clock size={12} className="text-[#D60041]" />
                                 {formatEventTime(ev.start)} – {formatEventTime(ev.end)}
                               </p>
+                              {ev.interviewer_name && (
+                                <p className="text-[11px] text-[#D60041] font-semibold mt-1 flex items-center gap-1.5">
+                                  <Users size={12} /> Assigned Panelist: {ev.interviewer_name}
+                                </p>
+                              )}
                             </div>
                           </div>
 

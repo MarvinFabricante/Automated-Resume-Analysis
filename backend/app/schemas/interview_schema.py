@@ -5,6 +5,7 @@ from datetime import datetime
 class AvailableSlotsRequest(BaseModel):
     start_date: datetime
     end_date: datetime
+    hr_id: Optional[int] = None
 
     
 class InterviewCreateSchema(BaseModel):
@@ -13,6 +14,7 @@ class InterviewCreateSchema(BaseModel):
     description: Optional[str] = None
     start_time: datetime
     end_time: datetime
+    interviewer_id: Optional[int] = None
 
 class InterviewUpdateSchema(BaseModel):
     title: Optional[str] = None
@@ -20,6 +22,7 @@ class InterviewUpdateSchema(BaseModel):
     start_time: Optional[datetime] = None
     end_time: Optional[datetime] = None
     status: Optional[str] = None
+    interviewer_id: Optional[int] = None
 
 class InterviewResponseSchema(BaseModel):
     id: int
@@ -37,6 +40,9 @@ class InterviewResponseSchema(BaseModel):
     candidate_phone: Optional[str] = None
     job_title: Optional[str] = None
     job_id: Optional[int] = None
+    interviewer_id: Optional[int] = None
+    interviewer_name: Optional[str] = None
+    interviewer_email: Optional[str] = None
     
     class Config:
         from_attributes = True

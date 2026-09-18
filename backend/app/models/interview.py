@@ -8,6 +8,7 @@ class Interview(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     job_application_id = Column(Integer, ForeignKey("job_applications.id"), nullable=False)
+    interviewer_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     title = Column(String, nullable=False)
     description = Column(String, nullable=True)
     start_time = Column(DateTime, nullable=False)
@@ -21,6 +22,7 @@ class Interview(Base):
 
     # Relationships
     job_application = relationship("JobApplication", backref="interviews")
+    interviewer = relationship("User", foreign_keys=[interviewer_id])
     logs = relationship("InterviewLog", back_populates="interview", cascade="all, delete-orphan")
 
 

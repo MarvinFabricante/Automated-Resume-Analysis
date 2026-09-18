@@ -14,8 +14,8 @@ export const apiSlice = createApi({
       return headers;
     },
   }),
-  // Added AuditLogs, Users, SystemConfig, Templates, Interviews, CalendarEvents to tagTypes
-  tagTypes: ['Dashboard', 'Jobs', 'Candidates', 'Applications', 'AuditLogs', 'Users', 'SystemConfig', 'Templates', 'Interviews', 'CalendarEvents'],
+  // Added AuditLogs, Users, SystemConfig, Templates, Interviews, CalendarEvents, HRInterviewers to tagTypes
+  tagTypes: ['Dashboard', 'Jobs', 'Candidates', 'Applications', 'AuditLogs', 'Users', 'SystemConfig', 'Templates', 'Interviews', 'CalendarEvents', 'HRInterviewers'],
   endpoints: (builder) => ({
     // --- DASHBOARD STATS ---
     getDashboardStats: builder.query({
@@ -243,6 +243,11 @@ export const apiSlice = createApi({
       }),
     }),
 
+    getHRInterviewers: builder.query({
+      query: () => '/hr/interviewers',
+      providesTags: ['HRInterviewers'],
+    }),
+
     scheduleInterview: builder.mutation({
       query: (body) => ({
         url: '/interviews/schedule',
@@ -452,6 +457,7 @@ export const {
   useDeleteJobMutation,
   useUpdateApplicationStatusMutation,
   useGetAvailableSlotsMutation,
+  useGetHRInterviewersQuery,
   useScheduleInterviewMutation,
   useGetAllInterviewsQuery,
   useGetCalendarFeedQuery,
