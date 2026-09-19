@@ -15,6 +15,7 @@ from app.services.google_calendar_service import (
     query_freebusy,
     get_real_google_events,
 )
+from app.services.email_service import EmailService
 
 def _populate_candidate_info(interview):
     """Helper to attach candidate details and interviewer info to the interview model."""
@@ -39,6 +40,7 @@ def _populate_candidate_info(interview):
         setattr(interview, "interviewer_id", None)
         setattr(interview, "interviewer_name", None)
         setattr(interview, "interviewer_email", None)
+    setattr(interview, "meeting_link", None)
     return interview
 
 def send_sms_notification_sync(to_phone: str, message: str):
@@ -218,30 +220,48 @@ async def schedule_interview(db: AsyncSession, data: InterviewCreateSchema, user
                 location='',
                 is_all_day=False,
                 attendees=attendees,
-                create_meet_link=True,
+                create_meet_link=False,
                 interview_id=interview.id,
             )
 
             if event:
                 interview.google_event_id = event.get('id')
-                # Extract Google Meet link
-                conference_data = event.get('conferenceData', {})
-                entry_points = conference_data.get('entryPoints', [])
-                for ep in entry_points:
-                    if ep.get('entryPointType') == 'video':
-                        interview.meeting_link = ep.get('uri')
-                        break
+                interview.meeting_link = None
                 await InterviewRepository.commit_changes(db)
         except Exception as e:
             print(f"Warning: Could not create event on Google Calendar: {e}")
     else:
-        # Generate a standard meeting link if Google Calendar is not linked
-        interview.meeting_link = f"https://meet.google.com/aras-{interview.id}"
+        interview.meeting_link = None
         await InterviewRepository.commit_changes(db)
 
-    # 4. Send SMS Notification
+    # 4. Email Candidate on their Gmail account
+    if application.candidate_email:
+        try:
+            interviewer_name = user.fullname if user and getattr(user, 'fullname', None) else None
+            email_sent = await EmailService.send_interview_invitation_email(
+                to_email=application.candidate_email,
+                candidate_name=application.candidate_name or "Candidate",
+                job_title=application.job_title or "Job Position",
+                interview_title=data.title,
+                start_time=data.start_time,
+                end_time=data.end_time,
+                interviewer_name=interviewer_name,
+                notes=data.description or ""
+            )
+            if email_sent:
+                await InterviewRepository.add_interview_log(
+                    db, interview.id, "EMAIL_SENT", f"Interview invitation email sent to {application.candidate_email}"
+                )
+                await InterviewRepository.commit_changes(db)
+        except Exception as e:
+            print(f"Warning: Could not send interview invitation email: {e}")
+
+    # 5. Send SMS Notification (if phone configured)
     if application.phone:
-        message = f"Hi {application.candidate_name}, your interview for {application.job_title} is scheduled on {data.start_time.strftime('%Y-%m-%d %H:%M')}. Link: {interview.meeting_link or 'Sent to email'}."
+        message = (
+            f"Hi {application.candidate_name}, your interview for {application.job_title} is scheduled on "
+            f"{data.start_time.strftime('%Y-%m-%d %H:%M')}. Please check your email ({application.candidate_email}) for interview details."
+        )
         sent = await asyncio.to_thread(send_sms_notification_sync, application.phone, message)
         if sent:
             await InterviewRepository.add_interview_log(db, interview.id, "SMS_SENT", "Notification sent to candidate")
@@ -332,17 +352,39 @@ async def update_interview(db: AsyncSession, interview_id: int, data: InterviewU
         except Exception as e:
             print(f"Warning: Could not modify Google Calendar event: {e}")
 
-    # If rescheduled time changed, notify candidate via SMS
+    # If rescheduled time changed, notify candidate via email and SMS
     application = await InterviewRepository.get_job_application(db, interview.job_application_id)
-    if time_changed and application and application.phone:
-        message = (
-            f"Hi {application.candidate_name}, your interview for {application.job_title} has been rescheduled to "
-            f"{interview.start_time.strftime('%Y-%m-%d %H:%M')}. Meeting link: {interview.meeting_link or 'Sent to email'}."
-        )
-        sent = await asyncio.to_thread(send_sms_notification_sync, application.phone, message)
-        if sent:
-            await InterviewRepository.add_interview_log(db, interview.id, "SMS_RESCHEDULED", "Reschedule SMS notification sent")
-            await InterviewRepository.commit_changes(db)
+    if time_changed and application:
+        if application.candidate_email:
+            try:
+                interviewer_name = user.fullname if user and getattr(user, 'fullname', None) else None
+                email_sent = await EmailService.send_interview_rescheduled_email(
+                    to_email=application.candidate_email,
+                    candidate_name=application.candidate_name or "Candidate",
+                    job_title=application.job_title or "Job Position",
+                    interview_title=interview.title,
+                    start_time=interview.start_time,
+                    end_time=interview.end_time,
+                    interviewer_name=interviewer_name,
+                    notes=interview.description or ""
+                )
+                if email_sent:
+                    await InterviewRepository.add_interview_log(
+                        db, interview.id, "EMAIL_RESCHEDULED", f"Reschedule notification email sent to {application.candidate_email}"
+                    )
+                    await InterviewRepository.commit_changes(db)
+            except Exception as e:
+                print(f"Warning: Could not send reschedule email: {e}")
+
+        if application.phone:
+            message = (
+                f"Hi {application.candidate_name}, your interview for {application.job_title} has been rescheduled to "
+                f"{interview.start_time.strftime('%Y-%m-%d %H:%M')}. Please check your email for complete details."
+            )
+            sent = await asyncio.to_thread(send_sms_notification_sync, application.phone, message)
+            if sent:
+                await InterviewRepository.add_interview_log(db, interview.id, "SMS_RESCHEDULED", "Reschedule SMS notification sent")
+                await InterviewRepository.commit_changes(db)
 
     setattr(interview, "job_application", application)
     _populate_candidate_info(interview)

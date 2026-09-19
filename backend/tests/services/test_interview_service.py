@@ -3,11 +3,20 @@ from datetime import datetime
 from app.models.user import User
 from app.models.job_description import JobDescription, JobType
 from app.models.job_application import JobApplication
+from unittest.mock import patch, AsyncMock
 from app.schemas.interview_schema import InterviewCreateSchema, InterviewUpdateSchema
 from app.services.interview_service import interview_service
 
+@pytest.fixture(autouse=True)
+def mock_interview_emails():
+    with patch("app.services.email_service.EmailService.send_interview_invitation_email", new_callable=AsyncMock) as m1, \
+         patch("app.services.email_service.EmailService.send_interview_rescheduled_email", new_callable=AsyncMock) as m2:
+        m1.return_value = True
+        m2.return_value = True
+        yield (m1, m2)
+
 @pytest.mark.asyncio
-async def test_schedule_and_get_all_interviews(db_session):
+async def test_schedule_and_get_all_interviews(db_session, mock_interview_emails):
     # Setup test HR user
     user = User(
         email="hr_test@example.com",
@@ -56,6 +65,10 @@ async def test_schedule_and_get_all_interviews(db_session):
     assert interview.candidate_name == "John Doe"
     assert interview.candidate_email == "john@example.com"
     assert interview.status == "SCHEDULED"
+    assert interview.meeting_link is None
+    m1, m2 = mock_interview_emails
+    assert m1.called
+    assert m1.call_args.kwargs["to_email"] == "john@example.com"
 
     # Get all interviews
     all_ivs = await interview_service.get_all_interviews(db_session)
@@ -65,7 +78,7 @@ async def test_schedule_and_get_all_interviews(db_session):
     assert found.candidate_name == "John Doe"
 
 @pytest.mark.asyncio
-async def test_update_and_reschedule_interview(db_session):
+async def test_update_and_reschedule_interview(db_session, mock_interview_emails):
     # Setup test HR user
     user = User(
         email="hr_reschedule@example.com",
@@ -117,6 +130,10 @@ async def test_update_and_reschedule_interview(db_session):
     assert updated.title == "Rescheduled Interview"
     assert updated.start_time == datetime(2026, 9, 23, 14, 0, 0)
     assert updated.candidate_name == "Jane Smith"
+    assert updated.meeting_link is None
+    m1, m2 = mock_interview_emails
+    assert m2.called
+    assert m2.call_args.kwargs["to_email"] == "jane@example.com"
 
     # Weekend validation rejection (Saturday)
     weekend_update = InterviewUpdateSchema(

@@ -22,7 +22,7 @@ import {
   useScheduleInterviewMutation
 } from '../../../redux/api/apiSlice';
 
-const NewScheduleModal = ({ isOpen, onClose, initialDate, onScheduled }) => {
+const NewScheduleModal = ({ isOpen, onClose, initialDate, initialTime, initialInterviewerId, onScheduled }) => {
   const { data: candidates = [], isLoading: isCandidatesLoading } = useGetApplicationsQuery();
   const { data: interviewers = [] } = useGetHRInterviewersQuery();
   const [getSlots, { isLoading: isFetchingSlots }] = useGetAvailableSlotsMutation();
@@ -58,21 +58,36 @@ const NewScheduleModal = ({ isOpen, onClose, initialDate, onScheduled }) => {
     return day !== 0 && day !== 6;
   };
 
-  // Set default interviewer to currently logged-in HR or first HR
+  // Set default interviewer to passed initialInterviewerId, currently logged-in HR, or first HR
   useEffect(() => {
     if (isOpen && interviewers.length > 0) {
-      const loggedInId = parseInt(localStorage.getItem('user_id'), 10);
-      const match = interviewers.find((i) => i.id === loggedInId);
-      setSelectedInterviewerId(match ? match.id : interviewers[0].id);
+      if (initialInterviewerId && interviewers.some((i) => i.id === Number(initialInterviewerId))) {
+        setSelectedInterviewerId(Number(initialInterviewerId));
+      } else {
+        const loggedInId = parseInt(localStorage.getItem('user_id'), 10);
+        const match = interviewers.find((i) => i.id === loggedInId);
+        setSelectedInterviewerId(match ? match.id : interviewers[0].id);
+      }
     }
-  }, [isOpen, interviewers]);
+  }, [isOpen, interviewers, initialInterviewerId]);
 
   useEffect(() => {
     if (isOpen) {
       setErrorMsg('');
       setSelectedSlot(null);
       setAvailableSlots([]);
-      setUseCustomTime(false);
+
+      if (initialTime) {
+        setUseCustomTime(true);
+        setCustomStartTime(initialTime);
+        const [h, m] = initialTime.split(':').map(Number);
+        const endH = Math.min((h || 9) + 1, 17);
+        const endM = m !== undefined ? m : 0;
+        setCustomEndTime(`${String(endH).padStart(2, '0')}:${String(endM).padStart(2, '0')}`);
+      } else {
+        setUseCustomTime(false);
+      }
+
       let defaultDate = initialDate || toLocalDateString(new Date());
       // Advance to next Monday if today or initialDate falls on weekend
       if (!isWeekday(defaultDate)) {
@@ -85,7 +100,7 @@ const NewScheduleModal = ({ isOpen, onClose, initialDate, onScheduled }) => {
       }
       setDate(defaultDate);
     }
-  }, [isOpen, initialDate]);
+  }, [isOpen, initialDate, initialTime]);
 
   useEffect(() => {
     if (selectedCandidate) {
@@ -177,7 +192,14 @@ const NewScheduleModal = ({ isOpen, onClose, initialDate, onScheduled }) => {
         end_time: finalEnd
       }).unwrap();
 
-      if (onScheduled) onScheduled();
+      if (onScheduled) {
+        onScheduled({
+          candidateName: selectedCandidate.candidate_name || selectedCandidate.name || 'Candidate',
+          title: title.trim() || 'Technical Interview',
+          date: date,
+          startTime: finalStart
+        });
+      }
       onClose();
     } catch (err) {
       setErrorMsg(err?.data?.detail || 'Failed to schedule interview. Please check slot availability.');
@@ -590,7 +612,7 @@ const NewScheduleModal = ({ isOpen, onClose, initialDate, onScheduled }) => {
             <div className="text-xs text-gray-700">
               <p className="font-bold text-gray-900">Seamless Automatic Synchronization</p>
               <p className="text-[11px] text-gray-500 font-medium mt-0.5">
-                Creating this schedule records the interview in ARAS, adds the event with Google Meet to your Google Calendar, and sends an SMS notice to the candidate.
+                Creating this schedule records the interview in ARAS, adds the event to your Google Calendar, and sends an email notice to the candidate's Gmail account.
               </p>
             </div>
           </div>

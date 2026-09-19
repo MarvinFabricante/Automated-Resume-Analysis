@@ -3,8 +3,16 @@ from datetime import datetime
 from app.models.user import User
 from app.models.job_description import JobDescription, JobType
 from app.models.job_application import JobApplication
-from app.models.interview import Interview
+from unittest.mock import patch, AsyncMock
 from app.utils.auth import create_access_token
+
+@pytest.fixture(autouse=True)
+def mock_interview_emails():
+    with patch("app.services.email_service.EmailService.send_interview_invitation_email", new_callable=AsyncMock) as m1, \
+         patch("app.services.email_service.EmailService.send_interview_rescheduled_email", new_callable=AsyncMock) as m2:
+        m1.return_value = True
+        m2.return_value = True
+        yield (m1, m2)
 
 @pytest.mark.asyncio
 async def test_interview_controller_endpoints(client, db_session):

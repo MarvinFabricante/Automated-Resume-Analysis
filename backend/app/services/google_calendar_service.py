@@ -129,17 +129,11 @@ def get_real_google_events(
         items = events_result.get('items', [])
         formatted = []
         for ev in items:
-            start = ev.get('start', {}).get('dateTime') or ev.get('start', {}).get('date') or ""
-            end = ev.get('end', {}).get('dateTime') or ev.get('end', {}).get('date') or ""
-            is_all_day = 'date' in ev.get('start', {})
-            hangout_link = ev.get('hangoutLink', '')
-            if not hangout_link and ev.get('conferenceData'):
-                entry_points = ev.get('conferenceData', {}).get('entryPoints', [])
-                for ep in entry_points:
-                    if ep.get('uri'):
-                        hangout_link = ep.get('uri')
-                        break
-
+            start_obj = ev.get('start', {})
+            end_obj = ev.get('end', {})
+            start = start_obj.get('dateTime') or start_obj.get('date') or ""
+            end = end_obj.get('dateTime') or end_obj.get('date') or ""
+            is_all_day = bool(start_obj.get('date') and not start_obj.get('dateTime'))
             formatted.append({
                 "id": ev.get('id'),
                 "calendar_id": calendar_id or 'primary',
@@ -154,7 +148,7 @@ def get_real_google_events(
                 "status": ev.get('status', 'confirmed').capitalize(),
                 "created_at": ev.get('created', ''),
                 "html_link": ev.get('htmlLink', ''),
-                "meet_link": hangout_link,
+                "meet_link": "",
             })
         return formatted
     except HttpError as err:
@@ -179,8 +173,7 @@ def create_real_google_event(
     """
     Create a new event on the specified calendar.
 
-    Optionally attaches attendees and a Google Meet conference link
-    (used by interview scheduling).
+    Optionally attaches attendees to the calendar event.
     """
     service, _ = get_google_calendar_service(credentials_json)
     if not service:
@@ -209,21 +202,10 @@ def create_real_google_event(
         if attendees:
             body['attendees'] = attendees
 
-        if create_meet_link and interview_id is not None:
-            from datetime import datetime as _dt
-            body['conferenceData'] = {
-                'createRequest': {
-                    'requestId': f"interview_{interview_id}_{_dt.now().timestamp()}",
-                    'conferenceSolutionKey': {'type': 'hangoutsMeet'},
-                }
-            }
-
         kwargs = {
             'calendarId': calendar_id or 'primary',
             'body': body,
         }
-        if create_meet_link:
-            kwargs['conferenceDataVersion'] = 1
         if attendees:
             kwargs['sendUpdates'] = 'all'
 

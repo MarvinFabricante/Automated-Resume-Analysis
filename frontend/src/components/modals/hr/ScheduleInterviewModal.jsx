@@ -7,7 +7,7 @@ import {
   AlertCircle,
   X,
   Users,
-  Video,
+  Mail,
   FileText,
   RefreshCw
 } from 'lucide-react';
@@ -154,7 +154,7 @@ const ScheduleInterviewModal = ({ isOpen, onClose, candidate }) => {
         end_time: finalEnd
       }).unwrap();
       
-      setSuccessMsg(`Interview scheduled successfully! Meeting link created and SMS notification sent.`);
+      setSuccessMsg(`Interview scheduled successfully! Interview notification emailed to candidate.`);
       setTimeout(() => {
         onClose();
       }, 1200);
@@ -230,8 +230,8 @@ const ScheduleInterviewModal = ({ isOpen, onClose, candidate }) => {
             
             <div className="mt-auto">
                 <div className="text-[9px] font-black text-gray-400 uppercase tracking-widest pt-4 border-t border-gray-100/50 flex items-center gap-2">
-                    <Video size={14} className="text-[#d81159]" />
-                    Google Meet Integrated
+                    <Mail size={14} className="text-[#d81159]" />
+                    Email Notification Enabled
                 </div>
             </div>
           </div>
@@ -292,7 +292,7 @@ const ScheduleInterviewModal = ({ isOpen, onClose, candidate }) => {
                     <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Description / Notes</label>
                     <textarea
                       className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl text-sm font-medium text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#d81159]/20 focus:border-[#d81159] transition-all resize-none min-h-[80px]"
-                      placeholder="Meeting agenda, technical questions to ask..."
+                      placeholder="Interview agenda, technical questions to ask..."
                       value={formData.description}
                       onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                     />

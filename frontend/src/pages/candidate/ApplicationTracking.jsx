@@ -19,7 +19,7 @@ import {
   Building2,
   Clock,
   XCircle,
-  Video
+  Mail
 } from 'lucide-react';
 import { useSelector } from 'react-redux';
 import { useGetCandidateApplicationsQuery, useGetApplicationInterviewsQuery } from '../../redux/api/apiSlice';
@@ -248,11 +248,10 @@ const ApplicationTracking = () => {
                               </span>
                             )}
                           </div>
-                          {step.interviewInfo.meeting_link && (
-                            <a href={step.interviewInfo.meeting_link} target="_blank" rel="noopener noreferrer" className="mt-2 flex items-center justify-center w-full py-2.5 bg-[#D10043] hover:bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-[0.1em] transition-all gap-2 group/link">
-                              <Video size={14} className="group-hover/link:animate-pulse" /> Join Meeting
-                            </a>
-                          )}
+                          <div className="mt-2.5 flex items-center justify-center w-full py-2 bg-emerald-50 text-emerald-800 border border-emerald-200/80 rounded-xl text-[11px] font-semibold gap-1.5 shadow-sm">
+                            <Mail size={13} className="text-emerald-600 shrink-0" />
+                            <span>Interview invitation sent to your Gmail</span>
+                          </div>
                         </div>
                       )}
                       </div>
