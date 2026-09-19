@@ -39,15 +39,21 @@ async def set_cache(key: str, value: Any, ttl: int = 3600):
 
 async def delete_cache(key: str):
     """Delete a key from Redis cache."""
-    await redis_client.delete(key)
+    try:
+        await redis_client.delete(key)
+    except Exception:
+        pass
 
 async def clear_cache_pattern(pattern: str):
     """Clear all keys matching a pattern."""
-    keys_to_delete = []
-    async for key in redis_client.scan_iter(match=f"*{pattern}*"):
-        keys_to_delete.append(key)
-    if keys_to_delete:
-        await redis_client.delete(*keys_to_delete)
+    try:
+        keys_to_delete = []
+        async for key in redis_client.scan_iter(match=f"*{pattern}*"):
+            keys_to_delete.append(key)
+        if keys_to_delete:
+            await redis_client.delete(*keys_to_delete)
+    except Exception:
+        pass
 
 def cache_response(key_prefix: str, ttl: int = 3600):
     """

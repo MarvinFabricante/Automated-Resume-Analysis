@@ -14,8 +14,10 @@ import {
   ExternalLink,
   Copy,
   Check,
-  RefreshCw
+  RefreshCw,
+  Lock
 } from 'lucide-react';
+import { useSelector } from 'react-redux';
 import {
   useUpdateInterviewMutation,
   useDeleteInterviewMutation,
@@ -109,10 +111,16 @@ const InterviewDetailsModal = ({ isOpen, onClose, interview, onStatusChanged }) 
 
   if (!isOpen || !interview) return null;
 
+  const loggedInUserId = parseInt(localStorage.getItem('user_id'), 10);
+  const userRole = useSelector((state) => state.auth?.role) || localStorage.getItem('role');
+  const isOwner = !interview.interviewer_id || interview.interviewer_id === loggedInUserId;
+  const isAdmin = userRole === 'ADMIN' || userRole === 'SUPERADMIN';
+  const canModify = !interview.isGoogleEvent && (isOwner || isAdmin);
   const isGoogleOnlyEvent = interview.isGoogleEvent;
 
   const handleSaveEdit = async (e) => {
     e.preventDefault();
+    if (!canModify) return;
     setErrorMsg('');
 
     if (!isWeekday(formData.date)) {
@@ -156,6 +164,7 @@ const InterviewDetailsModal = ({ isOpen, onClose, interview, onStatusChanged }) 
   };
 
   const handleQuickStatusChange = async (newStatus) => {
+    if (!canModify) return;
     try {
       await updateInterview({
         interviewId: actualInterviewId,
@@ -168,6 +177,7 @@ const InterviewDetailsModal = ({ isOpen, onClose, interview, onStatusChanged }) 
   };
 
   const handleDelete = async () => {
+    if (!canModify) return;
     try {
       await deleteInterview(actualInterviewId).unwrap();
       onClose();
@@ -232,8 +242,18 @@ const InterviewDetailsModal = ({ isOpen, onClose, interview, onStatusChanged }) 
             </div>
           )}
 
+          {/* Read-Only Notice Banner for Other HR Users */}
+          {!canModify && !isGoogleOnlyEvent && (
+            <div className="bg-slate-50 border border-slate-200 text-slate-700 px-4 py-3.5 rounded-2xl flex items-center gap-3 text-xs font-semibold shadow-sm">
+              <Lock size={18} className="text-slate-500 shrink-0" />
+              <span>
+                🔒 Assigned to <span className="font-bold text-slate-900">{interview.interviewer_name || interview.interviewer?.fullname || 'another HR'}</span>. Read-only view: you cannot edit, reschedule, or cancel this interview.
+              </span>
+            </div>
+          )}
+
           {/* VIEW MODE */}
-          {!isEditing ? (
+          {!isEditing || !canModify ? (
             <>
               {/* Event Title & Status */}
               <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 pb-6 border-b border-gray-100">
@@ -374,7 +394,7 @@ const InterviewDetailsModal = ({ isOpen, onClose, interview, onStatusChanged }) 
               </div>
 
               {/* Action Buttons */}
-              {!isGoogleOnlyEvent && (
+              {!isGoogleOnlyEvent && canModify && (
                 <div className="pt-4 border-t border-gray-100 space-y-3">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div className="flex items-center gap-2">

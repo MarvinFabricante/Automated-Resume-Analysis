@@ -22,8 +22,10 @@ import {
   X,
   RotateCcw,
   Eye,
-  ArrowRight
+  ArrowRight,
+  Lock
 } from 'lucide-react';
+import { useSelector } from 'react-redux';
 import Header from '../../components/layout/Header';
 import Sidebar from '../../components/layout/Sidebar';
 import InterviewDetailsModal from '../../components/modals/hr/InterviewDetailsModal';
@@ -89,6 +91,21 @@ const HRSchedulingPage = () => {
   const googleEvents = calendarFeed?.google_events || [];
   const isGoogleConnected = calendarFeed?.google_connected ?? googleStatus?.connected ?? false;
   const googleAccount = calendarFeed?.google_account || googleStatus?.email;
+
+  const loggedInUserId = parseInt(localStorage.getItem('user_id'), 10);
+  const userRole = useSelector((state) => state.auth?.role) || localStorage.getItem('role');
+  const isAdmin = userRole === 'ADMIN' || userRole === 'SUPERADMIN';
+
+  const isEventOwnedByCurrentUser = (ev) => {
+    if (ev.isGoogleEvent) return true;
+    if (!ev.interviewer_id) return true;
+    return ev.interviewer_id === loggedInUserId;
+  };
+
+  const isEventReadOnly = (ev) => {
+    if (ev.isGoogleEvent) return false;
+    return !isAdmin && !isEventOwnedByCurrentUser(ev);
+  };
 
   const toLocalDateString = (d) => {
     const dateObj = d instanceof Date ? d : new Date(d || Date.now());
@@ -842,6 +859,7 @@ const HRSchedulingPage = () => {
                             const isCompleted = ev.status === 'COMPLETED';
                             const isCanceled = ev.status === 'CANCELED' || ev.status === 'CANCELLED';
                             const isNoShow = ev.status === 'NO_SHOW';
+                            const readOnly = isEventReadOnly(ev);
 
                             let badgeStyle = 'bg-pink-50 text-[#D60041] border border-pink-200/80 hover:border-[#D60041]';
                             if (isGoogle) {
@@ -852,6 +870,8 @@ const HRSchedulingPage = () => {
                               badgeStyle = 'bg-gray-100 text-gray-400 line-through border border-gray-200';
                             } else if (isNoShow) {
                               badgeStyle = 'bg-amber-50 text-amber-700 border border-amber-200';
+                            } else if (readOnly) {
+                              badgeStyle = 'bg-gray-50 text-gray-700 border border-gray-200 hover:border-gray-400';
                             }
 
                             return (
@@ -862,10 +882,12 @@ const HRSchedulingPage = () => {
                                   handleEventClick(ev);
                                 }}
                                 className={`px-2 py-1 rounded-lg text-[10px] font-bold truncate flex items-center gap-1 transition-transform hover:scale-101 cursor-pointer ${badgeStyle}`}
-                                title={`${ev.title} (${formatEventTime(ev.start)})`}
+                                title={`${ev.title} (${formatEventTime(ev.start)})${readOnly && ev.interviewer_name ? ` • Assigned to ${ev.interviewer_name} (Read-Only)` : ''}`}
                               >
                                 {isGoogle ? (
                                   <span className="w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0" />
+                                ) : readOnly ? (
+                                  <Lock size={10} className="shrink-0 text-amber-600" />
                                 ) : (
                                   <CalendarIcon size={10} className="shrink-0" />
                                 )}
@@ -961,6 +983,8 @@ const HRSchedulingPage = () => {
                               const isGoogle = ev.isGoogleEvent;
                               const isCompleted = ev.status === 'COMPLETED';
                               const isCanceled = ev.status === 'CANCELED' || ev.status === 'CANCELLED';
+                              const readOnly = isEventReadOnly(ev);
+                              const isOwner = isEventOwnedByCurrentUser(ev);
 
                               return (
                                 <div
@@ -973,11 +997,18 @@ const HRSchedulingPage = () => {
                                       ? 'bg-emerald-50/60 border-emerald-200 text-emerald-900'
                                       : isCanceled
                                       ? 'bg-gray-100 border-gray-200 text-gray-400 line-through'
+                                      : readOnly
+                                      ? 'bg-gray-50/70 border-gray-200 text-gray-800 hover:border-gray-300'
                                       : 'bg-white border-pink-200/90 text-gray-900 hover:border-[#D60041]'
                                   }`}
                                 >
                                   <div className="flex items-center justify-between text-[10px] font-bold text-gray-500 mb-1">
                                     <span>{formatEventTime(ev.start)} – {formatEventTime(ev.end)}</span>
+                                    {readOnly && (
+                                      <span className="inline-flex items-center gap-0.5 text-[9px] font-black text-amber-700 bg-amber-50 px-1 py-0.5 rounded border border-amber-200" title="Read-Only">
+                                        <Lock size={8} /> Read-Only
+                                      </span>
+                                    )}
                                   </div>
                                   <h5 className="font-bold text-xs truncate group-hover:text-[#D60041] transition-colors">
                                     {ev.candidate_name && !isGoogle ? ev.candidate_name : ev.title}
@@ -985,9 +1016,21 @@ const HRSchedulingPage = () => {
                                   <p className="text-[11px] text-gray-500 font-medium truncate mt-0.5">
                                     {ev.job_title || (isGoogle ? 'External Google Event' : ev.title)}
                                   </p>
-                                  {ev.interviewer_name && (
-                                    <p className="text-[10px] text-[#D60041] font-bold truncate mt-1 flex items-center gap-1">
-                                      <Users size={10} /> {ev.interviewer_name}
+                                  {!isGoogle && (
+                                    <p className={`text-[10px] font-bold truncate mt-1 flex items-center gap-1 ${
+                                      readOnly ? 'text-gray-600' : 'text-[#D60041]'
+                                    }`}>
+                                      {readOnly ? (
+                                        <>
+                                          <Lock size={10} className="text-amber-600 shrink-0" />
+                                          <span>Panelist: {ev.interviewer_name || 'HR'} • Read-Only</span>
+                                        </>
+                                      ) : (
+                                        <>
+                                          <Users size={10} className="shrink-0" />
+                                          <span>Panelist: {isOwner ? 'You' : (ev.interviewer_name || 'Assigned')}</span>
+                                        </>
+                                      )}
                                     </p>
                                   )}
                                 </div>
@@ -1091,6 +1134,8 @@ const HRSchedulingPage = () => {
                             <div className="space-y-2">
                               {hourEvents.map((ev) => {
                                 const isGoogle = ev.isGoogleEvent;
+                                const readOnly = isEventReadOnly(ev);
+                                const isOwner = isEventOwnedByCurrentUser(ev);
                                 return (
                                   <div
                                     key={ev.id}
@@ -1102,30 +1147,37 @@ const HRSchedulingPage = () => {
                                         {isGoogle ? 'G' : (ev.candidate_name || 'C').charAt(0)}
                                       </div>
                                       <div className="truncate">
-                                        <div className="flex items-center gap-2">
+                                        <div className="flex items-center gap-2 flex-wrap">
                                           <h5 className="text-sm font-bold text-gray-900 truncate">
                                             {ev.candidate_name && !isGoogle ? ev.candidate_name : ev.title}
                                           </h5>
                                           {isGoogle ? (
                                             <span className="bg-blue-100 text-blue-700 text-[9px] font-black px-2 py-0.5 rounded-full uppercase">Google</span>
                                           ) : (
-                                            <span className={`text-[9px] font-black px-2 py-0.5 rounded-full uppercase ${
-                                              ev.status === 'COMPLETED'
-                                                ? 'bg-emerald-100 text-emerald-700'
-                                                : ev.status === 'CANCELED' || ev.status === 'CANCELLED'
-                                                ? 'bg-rose-100 text-rose-700 line-through'
-                                                : 'bg-pink-100 text-[#D60041]'
-                                            }`}>
-                                              {ev.status}
-                                            </span>
+                                            <>
+                                              <span className={`text-[9px] font-black px-2 py-0.5 rounded-full uppercase ${
+                                                ev.status === 'COMPLETED'
+                                                  ? 'bg-emerald-100 text-emerald-700'
+                                                  : ev.status === 'CANCELED' || ev.status === 'CANCELLED'
+                                                  ? 'bg-rose-100 text-rose-700 line-through'
+                                                  : 'bg-pink-100 text-[#D60041]'
+                                              }`}>
+                                                {ev.status}
+                                              </span>
+                                              {readOnly && (
+                                                <span className="bg-amber-100 text-amber-800 text-[9px] font-black px-2 py-0.5 rounded-full uppercase inline-flex items-center gap-1">
+                                                  <Lock size={9} /> Read-Only ({ev.interviewer_name ? `Assigned to ${ev.interviewer_name}` : 'Other HR'})
+                                                </span>
+                                              )}
+                                            </>
                                           )}
                                         </div>
                                         <p className="text-xs text-gray-500 font-medium truncate mt-0.5">
                                           {ev.job_title ? `${ev.job_title} • ` : ''}{ev.title} ({formatEventTime(ev.start)} – {formatEventTime(ev.end)})
                                         </p>
-                                        {ev.interviewer_name && (
+                                        {!isGoogle && (
                                           <p className="text-[11px] text-[#D60041] font-semibold mt-0.5 flex items-center gap-1.5">
-                                            <Users size={12} /> Panelist: {ev.interviewer_name}
+                                            <Users size={12} /> Panelist: {isOwner ? 'You' : (ev.interviewer_name || 'Assigned HR')}
                                           </p>
                                         )}
                                       </div>
@@ -1135,9 +1187,16 @@ const HRSchedulingPage = () => {
                                       <button
                                         type="button"
                                         onClick={() => handleEventClick(ev)}
-                                        className="px-3 py-1.5 bg-gray-50 hover:bg-gray-100 text-gray-700 border border-gray-200 rounded-xl text-xs font-bold transition-colors"
+                                        className="px-3 py-1.5 bg-gray-50 hover:bg-gray-100 text-gray-700 border border-gray-200 rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5"
                                       >
-                                        Manage
+                                        {readOnly ? (
+                                          <>
+                                            <Lock size={12} className="text-amber-600" />
+                                            <span>View (Read-Only)</span>
+                                          </>
+                                        ) : (
+                                          <span>Manage</span>
+                                        )}
                                       </button>
                                     </div>
                                   </div>
@@ -1240,6 +1299,8 @@ const HRSchedulingPage = () => {
                           <div className="space-y-2.5">
                             {group.events.map((ev) => {
                               const isGoogle = ev.isGoogleEvent;
+                              const readOnly = isEventReadOnly(ev);
+                              const isOwner = isEventOwnedByCurrentUser(ev);
                               return (
                                 <div
                                   key={ev.id}
@@ -1257,22 +1318,29 @@ const HRSchedulingPage = () => {
                                     </div>
 
                                     <div className="truncate">
-                                      <div className="flex items-center gap-2">
+                                      <div className="flex items-center gap-2 flex-wrap">
                                         <h5 className="text-sm font-bold text-gray-900 truncate">
                                           {ev.candidate_name && !isGoogle ? ev.candidate_name : ev.title}
                                         </h5>
                                         {isGoogle ? (
                                           <span className="bg-blue-100 text-blue-700 text-[9px] font-black px-2 py-0.5 rounded-full uppercase">Google Calendar</span>
                                         ) : (
-                                          <span className={`text-[9px] font-black px-2 py-0.5 rounded-full uppercase ${
-                                            ev.status === 'COMPLETED'
-                                              ? 'bg-emerald-100 text-emerald-700'
-                                              : ev.status === 'CANCELED' || ev.status === 'CANCELLED'
-                                              ? 'bg-rose-100 text-rose-700'
-                                              : 'bg-pink-100 text-[#D60041]'
-                                          }`}>
-                                            {ev.status}
-                                          </span>
+                                          <>
+                                            <span className={`text-[9px] font-black px-2 py-0.5 rounded-full uppercase ${
+                                              ev.status === 'COMPLETED'
+                                                ? 'bg-emerald-100 text-emerald-700'
+                                                : ev.status === 'CANCELED' || ev.status === 'CANCELLED'
+                                                ? 'bg-rose-100 text-rose-700'
+                                                : 'bg-pink-100 text-[#D60041]'
+                                            }`}>
+                                              {ev.status}
+                                            </span>
+                                            {readOnly && (
+                                              <span className="bg-amber-100 text-amber-800 text-[9px] font-black px-2 py-0.5 rounded-full uppercase inline-flex items-center gap-1">
+                                                <Lock size={9} /> Read-Only ({ev.interviewer_name ? `Assigned to ${ev.interviewer_name}` : 'Other HR'})
+                                              </span>
+                                            )}
+                                          </>
                                         )}
                                       </div>
                                       <p className="text-xs text-gray-500 font-medium truncate mt-0.5">
@@ -1282,9 +1350,9 @@ const HRSchedulingPage = () => {
                                         <Clock size={12} className="text-[#D60041]" />
                                         {formatEventTime(ev.start)} – {formatEventTime(ev.end)}
                                       </p>
-                                      {ev.interviewer_name && (
+                                      {!isGoogle && (
                                         <p className="text-[11px] text-[#D60041] font-semibold mt-1 flex items-center gap-1.5">
-                                          <Users size={12} /> Assigned Panelist: {ev.interviewer_name}
+                                          <Users size={12} /> Assigned Panelist: {isOwner ? 'You' : (ev.interviewer_name || 'Assigned HR')}
                                         </p>
                                       )}
                                     </div>
@@ -1294,9 +1362,16 @@ const HRSchedulingPage = () => {
                                     <button
                                       type="button"
                                       onClick={() => handleEventClick(ev)}
-                                      className="px-3.5 py-2 bg-gray-50 hover:bg-gray-100 text-gray-700 border border-gray-200 rounded-xl text-xs font-bold transition-colors"
+                                      className="px-3.5 py-2 bg-gray-50 hover:bg-gray-100 text-gray-700 border border-gray-200 rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5"
                                     >
-                                      Manage
+                                      {readOnly ? (
+                                        <>
+                                          <Lock size={12} className="text-amber-600" />
+                                          <span>View (Read-Only)</span>
+                                        </>
+                                      ) : (
+                                        <span>Manage</span>
+                                      )}
                                     </button>
                                   </div>
                                 </div>

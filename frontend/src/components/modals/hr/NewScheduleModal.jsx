@@ -13,10 +13,12 @@ import {
   ShieldCheck,
   RefreshCw,
   Sparkles,
-  Users
+  Users,
+  Lock
 } from 'lucide-react';
 import {
   useGetApplicationsQuery,
+  useGetAllInterviewsQuery,
   useGetAvailableSlotsMutation,
   useGetHRInterviewersQuery,
   useScheduleInterviewMutation
@@ -24,6 +26,7 @@ import {
 
 const NewScheduleModal = ({ isOpen, onClose, initialDate, initialTime, initialInterviewerId, onScheduled }) => {
   const { data: candidates = [], isLoading: isCandidatesLoading } = useGetApplicationsQuery();
+  const { data: allInterviews = [] } = useGetAllInterviewsQuery();
   const { data: interviewers = [] } = useGetHRInterviewersQuery();
   const [getSlots, { isLoading: isFetchingSlots }] = useGetAvailableSlotsMutation();
   const [scheduleInterview, { isLoading: isScheduling }] = useScheduleInterviewMutation();
@@ -135,6 +138,17 @@ const NewScheduleModal = ({ isOpen, onClose, initialDate, initialTime, initialIn
 
   const selectedInterviewer = interviewers.find((i) => i.id === selectedInterviewerId);
 
+  const getCandidateActiveInterview = (c) => {
+    if (!allInterviews || allInterviews.length === 0 || !c) return null;
+    const cEmail = (c.candidate_email || c.email || '').toLowerCase().trim();
+    return allInterviews.find((iv) => {
+      if (iv.status === 'CANCELED') return false;
+      if (iv.job_application_id && c.id && iv.job_application_id === c.id) return true;
+      if (cEmail && iv.candidate_email && iv.candidate_email.toLowerCase().trim() === cEmail) return true;
+      return false;
+    });
+  };
+
   const filteredCandidates = candidates.filter((c) => {
     const name = c.candidate_name || c.name || '';
     const job = c.job_title || c.preferredJob || '';
@@ -149,6 +163,13 @@ const NewScheduleModal = ({ isOpen, onClose, initialDate, initialTime, initialIn
 
     if (!selectedCandidate) {
       setErrorMsg('Please select a candidate application.');
+      return;
+    }
+
+    const existingActive = getCandidateActiveInterview(selectedCandidate);
+    if (existingActive) {
+      const interviewerName = existingActive.interviewer_name || existingActive.interviewer?.fullname || 'another HR';
+      setErrorMsg(`Candidate '${selectedCandidate.candidate_name || selectedCandidate.name}' is already scheduled for an interview with ${interviewerName}. Another HR cannot schedule an interview for this candidate.`);
       return;
     }
 
@@ -263,36 +284,75 @@ const NewScheduleModal = ({ isOpen, onClose, initialDate, initialTime, initialIn
                   ) : filteredCandidates.length === 0 ? (
                     <p className="text-xs text-gray-400 p-4 text-center">No matching candidates found.</p>
                   ) : (
-                    filteredCandidates.map((c) => (
-                      <div
-                        key={c.id}
-                        onClick={() => setSelectedCandidate(c)}
-                        className="p-3 bg-white hover:bg-pink-50/60 border border-gray-200/80 hover:border-[#D60041]/40 rounded-xl cursor-pointer transition-all flex items-center justify-between group shadow-sm"
-                      >
-                        <div className="flex items-center gap-3 min-w-0">
-                          <div className="w-9 h-9 rounded-lg bg-pink-100 text-[#D60041] flex items-center justify-center font-bold text-sm shrink-0">
-                            {(c.candidate_name || c.name || 'C').charAt(0)}
-                          </div>
-                          <div className="truncate">
-                            <h5 className="text-xs font-bold text-gray-900 group-hover:text-[#D60041] transition-colors truncate">
-                              {c.candidate_name || c.name}
-                            </h5>
-                            <p className="text-[11px] text-gray-500 font-medium truncate">
-                              {c.job_title || c.preferredJob || 'Applicant'} • {c.candidate_email || c.email}
-                            </p>
-                          </div>
-                        </div>
+                    filteredCandidates.map((c) => {
+                      const activeIv = getCandidateActiveInterview(c);
+                      const isScheduled = Boolean(activeIv);
+                      const interviewerName = activeIv?.interviewer_name || activeIv?.interviewer?.fullname || 'HR Panelist';
 
-                        <div className="flex items-center gap-2 shrink-0">
-                          {c.match_score && (
-                            <span className="text-[10px] font-black text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-md">
-                              {Math.round(c.match_score)}% Match
-                            </span>
-                          )}
-                          <span className="text-xs text-[#D60041] font-bold group-hover:underline">Select</span>
+                      if (isScheduled) {
+                        return (
+                          <div
+                            key={c.id}
+                            title={`Candidate already has an active interview scheduled with ${interviewerName}. Duplicate scheduling is locked.`}
+                            className="p-3 bg-gray-50/80 border border-gray-200/90 rounded-xl cursor-not-allowed transition-all flex items-center justify-between shadow-sm opacity-80"
+                          >
+                            <div className="flex items-center gap-3 min-w-0">
+                              <div className="w-9 h-9 rounded-lg bg-gray-100 text-gray-400 flex items-center justify-center font-bold text-sm shrink-0">
+                                {(c.candidate_name || c.name || 'C').charAt(0)}
+                              </div>
+                              <div className="truncate">
+                                <div className="flex items-center gap-2">
+                                  <h5 className="text-xs font-bold text-gray-600 truncate">
+                                    {c.candidate_name || c.name}
+                                  </h5>
+                                  <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-800 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-md shrink-0">
+                                    <Lock size={10} /> Scheduled with {interviewerName}
+                                  </span>
+                                </div>
+                                <p className="text-[11px] text-gray-400 font-medium truncate mt-0.5">
+                                  {c.job_title || c.preferredJob || 'Applicant'} • {c.candidate_email || c.email}
+                                </p>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-2 shrink-0">
+                              <span className="text-[11px] text-gray-400 font-bold px-2 py-0.5 bg-gray-100 rounded-md">Locked</span>
+                            </div>
+                          </div>
+                        );
+                      }
+
+                      return (
+                        <div
+                          key={c.id}
+                          onClick={() => setSelectedCandidate(c)}
+                          className="p-3 bg-white hover:bg-pink-50/60 border border-gray-200/80 hover:border-[#D60041]/40 rounded-xl cursor-pointer transition-all flex items-center justify-between group shadow-sm"
+                        >
+                          <div className="flex items-center gap-3 min-w-0">
+                            <div className="w-9 h-9 rounded-lg bg-pink-100 text-[#D60041] flex items-center justify-center font-bold text-sm shrink-0">
+                              {(c.candidate_name || c.name || 'C').charAt(0)}
+                            </div>
+                            <div className="truncate">
+                              <h5 className="text-xs font-bold text-gray-900 group-hover:text-[#D60041] transition-colors truncate">
+                                {c.candidate_name || c.name}
+                              </h5>
+                              <p className="text-[11px] text-gray-500 font-medium truncate">
+                                {c.job_title || c.preferredJob || 'Applicant'} • {c.candidate_email || c.email}
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-2 shrink-0">
+                            {c.match_score && (
+                              <span className="text-[10px] font-black text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-md">
+                                {Math.round(c.match_score)}% Match
+                              </span>
+                            )}
+                            <span className="text-xs text-[#D60041] font-bold group-hover:underline">Select</span>
+                          </div>
                         </div>
-                      </div>
-                    ))
+                      );
+                    })
                   )}
                 </div>
               </div>

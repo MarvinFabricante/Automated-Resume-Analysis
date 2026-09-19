@@ -9,16 +9,19 @@ import {
   Users,
   Mail,
   FileText,
-  RefreshCw
+  RefreshCw,
+  Lock
 } from 'lucide-react';
 import { 
   useGetAvailableSlotsMutation, 
   useScheduleInterviewMutation,
-  useGetHRInterviewersQuery
+  useGetHRInterviewersQuery,
+  useGetAllInterviewsQuery
 } from '../../../redux/api/apiSlice';
 
 const ScheduleInterviewModal = ({ isOpen, onClose, candidate }) => {
   const { data: interviewers = [] } = useGetHRInterviewersQuery();
+  const { data: allInterviews = [] } = useGetAllInterviewsQuery();
   const [getSlots, { isLoading: isFetchingSlots }] = useGetAvailableSlotsMutation();
   const [scheduleInterview, { isLoading: isScheduling }] = useScheduleInterviewMutation();
 
@@ -117,9 +120,28 @@ const ScheduleInterviewModal = ({ isOpen, onClose, candidate }) => {
 
   if (!isOpen || !candidate) return null;
 
+  const candidateEmail = (candidate?.candidate_email || candidate?.email || '').toLowerCase().trim();
+  const activeInterview = allInterviews.find((iv) => {
+    if (iv.status === 'CANCELED') return false;
+    if (candidate?.id && iv.job_application_id === candidate.id) return true;
+    if (candidateEmail && iv.candidate_email && iv.candidate_email.toLowerCase().trim() === candidateEmail) return true;
+    return false;
+  });
+
+  const activeStart = activeInterview?.start_time || activeInterview?.start || activeInterview?.start_datetime;
+  const activeFormattedDate = activeStart ? new Date(activeStart).toLocaleString('en-US', {
+    weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true
+  }) : 'a scheduled time';
+  const activeInterviewerName = activeInterview?.interviewer_name || activeInterview?.interviewer?.fullname || 'another HR';
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setErrorMsg('');
+
+    if (activeInterview) {
+      setErrorMsg(`This candidate already has an active interview scheduled with ${activeInterviewerName} on ${activeFormattedDate}. Only one active interview is permitted.`);
+      return;
+    }
 
     let finalStart = '';
     let finalEnd = '';
@@ -244,6 +266,18 @@ const ScheduleInterviewModal = ({ isOpen, onClose, candidate }) => {
                 <div className="bg-rose-50 border border-rose-200 text-rose-700 px-4 py-3 rounded-2xl flex items-center gap-3 text-xs font-semibold">
                   <AlertCircle size={18} className="shrink-0" />
                   <span>{errorMsg}</span>
+                </div>
+              )}
+
+              {activeInterview && (
+                <div className="bg-amber-50 border border-amber-200 text-amber-900 px-4 py-3.5 rounded-2xl flex items-start gap-3 text-xs font-semibold shadow-sm">
+                  <Lock size={18} className="shrink-0 text-amber-600 mt-0.5" />
+                  <div>
+                    <p className="font-bold text-amber-900">Duplicate Scheduling Blocked</p>
+                    <p className="mt-0.5 text-amber-800 leading-relaxed">
+                      This candidate already has an active interview scheduled with <span className="font-bold text-amber-950">{activeInterviewerName}</span> on <span className="font-bold text-amber-950">{activeFormattedDate}</span>. Only one active interview is permitted.
+                    </p>
+                  </div>
                 </div>
               )}
 
@@ -451,7 +485,7 @@ const ScheduleInterviewModal = ({ isOpen, onClose, candidate }) => {
               </button>
               <button
                 type="submit"
-                disabled={isScheduling || (!useCustomTime && !formData.selectedSlot) || (useCustomTime && (!customStartTime || !customEndTime))}
+                disabled={isScheduling || Boolean(activeInterview) || (!useCustomTime && !formData.selectedSlot) || (useCustomTime && (!customStartTime || !customEndTime))}
                 className="px-6 py-2.5 bg-[#d81159] text-white rounded-xl text-xs font-bold uppercase tracking-wider hover:shadow-lg hover:shadow-pink-200 transition-all disabled:opacity-50 flex items-center gap-2"
               >
                 {isScheduling ? 'Scheduling...' : 'Confirm & Schedule'}

@@ -160,6 +160,33 @@ async def schedule_interview(
             detail="This candidate already has an interview scheduled at the selected time."
         )
 
+    # Pre-check against existing active interviews for candidate/application (exclusivity)
+    application = await InterviewRepository.get_job_application(db, data.job_application_id)
+    if application:
+        active_interviews = [iv for iv in cand_interviews if iv.status != "CANCELED"]
+        if not active_interviews and application.candidate_email:
+            cand_all_ivs = await InterviewRepository.get_interviews_for_candidate(db, application.candidate_email)
+            active_interviews = [iv for iv in cand_all_ivs if iv.status != "CANCELED"]
+
+        if active_interviews:
+            existing_iv = active_interviews[0]
+            interviewer_name = None
+            if getattr(existing_iv, "interviewer", None) and getattr(existing_iv.interviewer, "fullname", None):
+                interviewer_name = existing_iv.interviewer.fullname
+            elif getattr(existing_iv, "interviewer_name", None):
+                interviewer_name = existing_iv.interviewer_name
+            elif getattr(existing_iv, "interviewer_id", None):
+                from app.repositories.auth_repository import AuthRepository
+                iv_user = await AuthRepository.get_user_by_id(db, existing_iv.interviewer_id)
+                interviewer_name = iv_user.fullname if iv_user else None
+
+            interviewer_display = interviewer_name or "another HR"
+            cand_name = application.candidate_name or "Candidate"
+            raise HTTPException(
+                status_code=409,
+                detail=f"Candidate '{cand_name}' is already scheduled for an interview with {interviewer_display}. Another HR cannot schedule an interview for this candidate."
+            )
+
     try:
         result = await interview_service.schedule_interview(db, data, current_user.get("id"))
         await clear_cache_pattern("app_interviews*")
@@ -167,6 +194,8 @@ async def schedule_interview(
         await clear_cache_pattern("calendar_events*")
         return result
     except ValueError as e:
+        if "already scheduled" in str(e).lower():
+            raise HTTPException(status_code=409, detail=str(e))
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -182,11 +211,15 @@ async def update_interview(
     Modify or reschedule an interview and update the event directly on Google Calendar.
     """
     try:
-        result = await interview_service.update_interview(db, interview_id, data, current_user.get("id"))
+        result = await interview_service.update_interview(
+            db, interview_id, data, current_user.get("id"), user_role=current_user.get("role")
+        )
         await clear_cache_pattern("app_interviews*")
         await clear_cache_pattern("cand_interviews*")
         await clear_cache_pattern("calendar_events*")
         return result
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
@@ -202,11 +235,15 @@ async def delete_interview(
     Delete an interview and delete its corresponding event on Google Calendar.
     """
     try:
-        await interview_service.delete_interview(db, interview_id, current_user.get("id"))
+        await interview_service.delete_interview(
+            db, interview_id, current_user.get("id"), user_role=current_user.get("role")
+        )
         await clear_cache_pattern("app_interviews*")
         await clear_cache_pattern("cand_interviews*")
         await clear_cache_pattern("calendar_events*")
         return {"message": "Interview deleted successfully and removed from Google Calendar"}
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
@@ -238,10 +275,14 @@ async def update_interview_status(
     Track interview confirmations and detect no-shows.
     """
     try:
-        result = await interview_service.update_interview_status(db, interview_id, status)
+        result = await interview_service.update_interview_status(
+            db, interview_id, status, user_id=current_user.get("id"), user_role=current_user.get("role")
+        )
         await clear_cache_pattern("app_interviews*")
         await clear_cache_pattern("cand_interviews*")
         return result
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
