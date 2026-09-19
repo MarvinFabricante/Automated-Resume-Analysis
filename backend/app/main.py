@@ -47,6 +47,13 @@ if frontend_url:
         if cleaned and cleaned not in origins:
             origins.append(cleaned)
 
+for env_name in ("PUBLIC_BASE_URL", "APP_PUBLIC_URL", "FRONTEND_PUBLIC_URL"):
+    configured_origin = os.getenv(env_name)
+    if configured_origin:
+        cleaned = configured_origin.strip().rstrip("/")
+        if cleaned and cleaned not in origins:
+            origins.append(cleaned)
+
 
 async def ensure_application_analysis_columns(conn):
     """

@@ -1,3 +1,5 @@
+import os
+
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.utils.database import get_db
@@ -84,6 +86,10 @@ from urllib.parse import urlencode
 
 
 def _public_origin_from_request(request: Request) -> str:
+    configured_origin = os.getenv("PUBLIC_BASE_URL") or os.getenv("APP_PUBLIC_URL") or os.getenv("FRONTEND_PUBLIC_URL")
+    if configured_origin:
+        return configured_origin.strip().rstrip("/")
+
     host = request.headers.get("x-forwarded-host") or request.headers.get("host") or "localhost:8000"
     proto = (request.headers.get("x-forwarded-proto") or request.url.scheme).split(",")[0].strip()
     if host.endswith(".trycloudflare.com"):

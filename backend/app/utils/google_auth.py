@@ -50,7 +50,11 @@ def _new_flow(redirect_uri: str):
 
 def get_google_auth_url(redirect_uri: str, frontend_origin: str):
     flow = _new_flow(redirect_uri)
-    auth_url, state = flow.authorization_url(access_type='offline', include_granted_scopes='true', prompt='consent')
+    auth_url, state = flow.authorization_url(
+        access_type='offline',
+        include_granted_scopes='true',
+        prompt='select_account consent',
+    )
     _pending_flows[state] = {
         "code_verifier": flow.code_verifier,
         "redirect_uri": redirect_uri,
