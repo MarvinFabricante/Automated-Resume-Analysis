@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import authService from '../../../services/authService';
 import { Users, Eye, EyeOff, Loader2, CheckCircle2, XCircle, ArrowLeft } from 'lucide-react';
 import { Helmet } from 'react-helmet-async';
+import logo from '../../../assets/logo.png';
 
 const Register = () => {
   const [role] = useState('CANDIDATE');
@@ -218,7 +219,7 @@ const Register = () => {
 
         <div className="w-full md:w-[45%] p-10 md:p-14 flex flex-col justify-start">
           <div className="mb-6">
-            <img src="src/assets/logo.png" alt="Mariwasa Logo" className="h-10 w-10 object-contain" />
+            <img src={logo} alt="Mariwasa Logo" className="h-10 w-10 object-contain" />
           </div>
           <h1 className="text-[36px] leading-[44px] font-normal tracking-normal text-gray-900 mb-4">
             Create a Mariwasa Account

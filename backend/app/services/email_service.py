@@ -49,7 +49,8 @@ def _send_smtp_sync(to_email: str, subject: str, html_body: str) -> bool:
 class EmailService:
     @staticmethod
     async def send_reset_password_email(email: str, token: str):
-        reset_link = f"http://localhost:5173/reset-password?token={token}"
+        frontend_url = os.getenv("PUBLIC_FRONTEND_URL") or os.getenv("FRONTEND_URL", "http://localhost:5173").split(",")[0].strip()
+        reset_link = f"{frontend_url.rstrip('/')}/reset-password?token={token}"
         subject = "Password Reset Request - Mariwasa Portal"
         body = f"""
         <html>

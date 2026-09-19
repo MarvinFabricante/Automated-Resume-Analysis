@@ -3,6 +3,7 @@ import { Helmet } from 'react-helmet-async';
 import { ChevronDown, LogIn, UserPlus, Briefcase, Info, FileUp, CheckCircle, ShieldCheck, ArrowRight } from 'lucide-react';
 import Header from '../../../components/layout/Header';
 import Footer from '../../../components/layout/Footer';
+import logo from '../../../assets/logo.png';
 
 const LandingPage = () => {
   return (
@@ -18,7 +19,7 @@ const LandingPage = () => {
         <section className="text-center px-6 max-w-7xl mx-auto mb-20 mt-10">
           <div className="inline-block p-1.5 rounded-full bg-white shadow-sm border border-gray-100 mb-8">
             <div className="flex items-center gap-3 px-3 py-1">
-              <img src="src/assets/logo.png" alt="Mariwasa Logo" className="h-6 w-6 object-contain" />
+              <img src={logo} alt="Mariwasa Logo" className="h-6 w-6 object-contain" />
               <span className="text-xs font-semibold uppercase tracking-wider text-gray-600">Careers Portal</span>
             </div>
           </div>

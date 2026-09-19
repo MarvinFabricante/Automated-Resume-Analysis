@@ -64,7 +64,7 @@ async def parse_resume_file(db: AsyncSession, file: UploadFile) -> dict:
             permanent_path = os.path.join(upload_dir, safe_filename)
             with open(permanent_path, "wb") as f:
                 f.write(file_bytes)
-            supabase_url = f"http://localhost:8000/{permanent_path}"
+            supabase_url = f"/{permanent_path}"
 
         if extracted_data:
             extracted_data["file_url"] = supabase_url
@@ -167,4 +167,3 @@ class ResumeService:
 
 
 resume_service = ResumeService()
-

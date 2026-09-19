@@ -7,13 +7,13 @@ import {
 import Header from '../../components/layout/Header';
 import Sidebar from '../../components/layout/Sidebar';
 import { useGetApplicationsQuery, useGetJobsQuery } from '../../redux/api/apiSlice';
-import { API_BASE_URL } from '../../services/api';
+import { getAssetUrl } from '../../services/api';
 
 const getAvatarUrl = (candidate) => {
   if (!candidate) return "";
   const profileImage = candidate.profileImage;
   return profileImage
-    ? (profileImage.startsWith('http') ? profileImage : `${API_BASE_URL}/${profileImage}`)
+    ? getAssetUrl(profileImage)
     : (`https://ui-avatars.com/api/?name=${encodeURIComponent(candidate.name)}&background=fdf2f8&color=d81159&bold=true`);
 };
 const calculateRuleBasedScore = (candidate, job, filters) => {
@@ -1074,4 +1074,3 @@ const CompareCandidates = () => {
 };
 
 export default CompareCandidates;
-

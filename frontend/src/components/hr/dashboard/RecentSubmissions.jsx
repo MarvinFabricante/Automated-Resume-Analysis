@@ -1,9 +1,7 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ChevronUp, Users, ArrowRight, User } from 'lucide-react';
-import { API_BASE_URL } from '../../../services/api';
-
-const BASE_URL = "http://localhost:8000";
+import { getAssetUrl } from '../../../services/api';
 
 const CandidateRow = ({ name, role, skills, match, status, profileImage }) => {
   const statusStyles = {
@@ -22,7 +20,7 @@ const CandidateRow = ({ name, role, skills, match, status, profileImage }) => {
       <div className="flex items-center gap-4 w-full sm:w-[40%] lg:w-[30%]">
         <div className="w-12 h-12 bg-red-50 rounded-full flex items-center justify-center overflow-hidden shrink-0 group-hover:bg-[#D60041] transition-colors duration-300">
           {profileImage ? (
-            <img src={profileImage.startsWith('http') ? profileImage : `${BASE_URL}${profileImage}`} alt={name} className="w-full h-full object-cover" />
+            <img src={getAssetUrl(profileImage)} alt={name} className="w-full h-full object-cover" />
           ) : (
             <User className="text-[#D60041] h-5 w-5 group-hover:text-white transition-colors" />
           )}

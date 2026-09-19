@@ -150,7 +150,7 @@ def _enrich_resume_url(app: JobApplication):
         print(f"WARNING: Error while trying to auto-resolve resume url: {e}")
 
     if best_match:
-        app.resume_url = f"http://localhost:8000/{upload_dir}/{best_match}"
+        app.resume_url = f"/{upload_dir}/{best_match}"
 
 def _enrich_applications(apps: list[JobApplication]) -> list[JobApplication]:
     for app in apps:
@@ -322,4 +322,3 @@ class JobApplicationService:
 
 
 job_application_service = JobApplicationService()
-

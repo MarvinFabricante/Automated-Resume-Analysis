@@ -8,8 +8,8 @@ services:
       POSTGRES_USER: ${DB_USER:-postgres}
       POSTGRES_PASSWORD: ${DB_PASSWORD:-passwordnamin}
       POSTGRES_DB: ${DB_NAME:-automated_resume_db}
-    ports:
-      - "${DB_PORT:-5432}:5432"
+    expose:
+      - "5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -25,8 +25,8 @@ services:
     image: redis:7-alpine
     container_name: resume_analysis_redis
     restart: unless-stopped
-    ports:
-      - "6379:6379"
+    expose:
+      - "6379"
     volumes:
       - redis_data:/data
     healthcheck:
@@ -57,8 +57,12 @@ services:
       - DB_HOST=db
       - DB_PORT=5432
       - PORT=8000
-    ports:
-      - "8000:8000"
+      - AUTO_SEED_DEMO_DATA=${AUTO_SEED_DEMO_DATA:-true}
+    # FastAPI is reached through the frontend Nginx gateway inside Docker.
+    # Keeping it off the host avoids port conflicts with local dev servers.
+    # Uncomment a ports block for direct host access if needed.
+    expose:
+      - "8000"
     volumes:
       - uploads_data:/app/uploads
     healthcheck:
@@ -97,21 +101,32 @@ services:
     networks:
       - app-network
 
-  # --- React Vite Frontend (Nginx) ---
+  # --- React Vite Frontend & Nginx Gateway ---
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
       args:
-        VITE_API_URL: ${VITE_API_URL:-http://localhost:8000}
-        VITE_WS_URL: ${VITE_WS_URL:-ws://localhost:8000}
+        VITE_API_URL: /api
+        VITE_WS_URL: ""
     container_name: resume_analysis_frontend
     restart: unless-stopped
     depends_on:
       backend:
         condition: service_started
     ports:
-      - "5173:80"
+      - "${HTTP_PORT:-8080}:80"
+    networks:
+      - app-network
+
+  # --- Cloudflare Tunnel (Live Public Access) ---
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: resume_analysis_tunnel
+    restart: unless-stopped
+    command: ${CLOUDFLARE_TUNNEL_COMMAND:-tunnel --no-autoupdate --url http://frontend:80}
+    depends_on:
+      - frontend
     networks:
       - app-network
 
@@ -123,4 +138,3 @@ volumes:
 networks:
   app-network:
     driver: bridge
-

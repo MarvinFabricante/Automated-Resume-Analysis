@@ -15,11 +15,15 @@ import {
 } from 'lucide-react';
 import Header from '../../../components/layout/Header';
 import Footer from '../../../components/layout/Footer';
+import banner from '../../../assets/banner.jpg';
+import banner2 from '../../../assets/banner2.jpg';
+import banner3 from '../../../assets/banner3.jpg';
+import subHeader from '../../../assets/sub header.jpg';
 
 const BANNERS = [
-  'src/assets/banner.jpg',
-  'src/assets/banner2.jpg',
-  'src/assets/banner3.jpg'
+  banner,
+  banner2,
+  banner3
 ];
 
 const AboutPage = () => {
@@ -89,7 +93,7 @@ const AboutPage = () => {
               </div>
               <div className="flex-1">
                 <img
-                  src="src/assets/sub header.jpg"
+                  src={subHeader}
                   alt="Corporate Office"
                   className="rounded-[24px] object-cover w-full h-[300px] shadow-sm"
                 />

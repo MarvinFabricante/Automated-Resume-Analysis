@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.utils.database import get_db
 
@@ -80,16 +80,27 @@ async def change_password(
 from fastapi.responses import RedirectResponse
 from app.utils.google_auth import get_google_auth_url, exchange_code_for_credentials
 import requests
+from urllib.parse import urlencode
+
+
+def _public_origin_from_request(request: Request) -> str:
+    host = request.headers.get("x-forwarded-host") or request.headers.get("host") or "localhost:8000"
+    proto = (request.headers.get("x-forwarded-proto") or request.url.scheme).split(",")[0].strip()
+    if host.endswith(".trycloudflare.com"):
+        proto = "https"
+    return f"{proto}://{host}"
 
 @router.get("/google/login")
-async def google_login():
-    url, state = get_google_auth_url()
+async def google_login(request: Request):
+    public_origin = _public_origin_from_request(request)
+    redirect_uri = f"{public_origin}/api/auth/google/callback"
+    url, state = get_google_auth_url(redirect_uri=redirect_uri, frontend_origin=public_origin)
     return RedirectResponse(url)
 
 @router.get("/google/callback")
-async def google_callback(code: str, state: str = "", db: AsyncSession = Depends(get_db)):
+async def google_callback(request: Request, code: str, state: str = "", db: AsyncSession = Depends(get_db)):
     try:
-        creds = exchange_code_for_credentials(code, state)
+        creds, frontend_origin = exchange_code_for_credentials(code, state)
         
         # Get user info
         user_info_response = requests.get(
@@ -109,10 +120,17 @@ async def google_callback(code: str, state: str = "", db: AsyncSession = Depends
         data = await auth_service.login_with_google(db, email, fullname, picture, creds.to_json())
         
         # Redirect to frontend with token
-        frontend_url = f"http://localhost:5173/auth/callback?token={data['token']}&role={data['role']}&fullname={data['fullname']}&user_id={data['user_id']}&picture={data.get('profile_image_url', '')}"
+        frontend_origin = frontend_origin or _public_origin_from_request(request)
+        query = urlencode({
+            "token": data["token"],
+            "role": data["role"],
+            "fullname": data["fullname"],
+            "user_id": data["user_id"],
+            "picture": data.get("profile_image_url", ""),
+        })
+        frontend_url = f"{frontend_origin}/auth/callback?{query}"
         return RedirectResponse(frontend_url)
     except Exception as e:
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=400, detail=str(e))
-

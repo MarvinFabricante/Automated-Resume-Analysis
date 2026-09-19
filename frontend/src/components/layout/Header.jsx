@@ -15,6 +15,7 @@ import { setNotifications, addNotification, markAllRead as markAllReadAction } f
 import { closeSidebar } from '../../redux/slices/uiSlice';
 import { setTheme } from '../../redux/slices/themeSlice';
 import { WS_BASE_URL } from '../../services/api';
+import logo from '../../assets/logo.png';
 
 const BRAND_RED = "#D60041";
 
@@ -202,7 +203,6 @@ const Header = () => {
     fetchNotifications();
 
     if (isAdminRole || isHRRole || isCandidateRole) {
-      ws = new WebSocket(`ws://localhost:8000/notifications/ws?role=${userRole}&email=${userEmail}`);
       ws = new WebSocket(`${WS_BASE_URL}/notifications/ws?role=${userRole}&email=${userEmail}`);
       ws.onmessage = (event) => {
         try {
@@ -371,7 +371,7 @@ const Header = () => {
         <div className="flex items-center space-x-4 shrink-0">
           <div className="flex items-center space-x-4 cursor-pointer group" onClick={() => navigate(isGuest ? '/' : location.pathname)}>
             <div className={`w-10 h-10 rounded-xl flex items-center justify-center overflow-hidden transition-all duration-300 ${!isGuest && 'group-hover:shadow-[0_0_15px_rgba(209,0,67,0.3)]'}`}>
-              <img src="/src/assets/logo.png" alt="logo" className="w-full h-full object-contain" />
+              <img src={logo} alt="logo" className="w-full h-full object-contain" />
             </div>
             <div>
               <h1 className="text-base font-black tracking-tight text-gray-900 leading-tight">

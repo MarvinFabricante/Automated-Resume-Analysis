@@ -5,14 +5,14 @@ WORKDIR /app
 
 # Install dependencies
 COPY package*.json ./
-RUN npm ci
+RUN npm install
 
 # Copy source files
 COPY . .
 
 # Build args for Vite
-ARG VITE_API_URL=http://localhost:8000
-ARG VITE_WS_URL=ws://localhost:8000
+ARG VITE_API_URL=/api
+ARG VITE_WS_URL=""
 ENV VITE_API_URL=$VITE_API_URL
 ENV VITE_WS_URL=$VITE_WS_URL
 

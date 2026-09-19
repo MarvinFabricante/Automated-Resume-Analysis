@@ -122,9 +122,22 @@ async def create_tables():
         await ensure_application_analysis_columns(conn)
 
 
+async def seed_demo_data_if_enabled():
+    if os.getenv("AUTO_SEED_DEMO_DATA", "false").lower() not in {"1", "true", "yes"}:
+        return
+
+    try:
+        from seed_demo_data import seed_demo_data
+
+        await seed_demo_data()
+    except Exception as e:
+        logger.warning(f"Could not seed demo data: {e}")
+
+
 @asynccontextmanager
 async def lifespan(app_instance: FastAPI):
     await create_tables()
+    await seed_demo_data_if_enabled()
     yield
 
 
@@ -155,6 +168,7 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
+    allow_origin_regex=r"https?://.*\.trycloudflare\.com",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

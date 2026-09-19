@@ -1,5 +1,6 @@
 import React from 'react';
 import { Mail, MapPin, Phone } from 'lucide-react';
+import logo from '../../assets/logo.png';
 
 const Footer = () => {
   return (
@@ -11,7 +12,7 @@ const Footer = () => {
           <div className="flex flex-col items-center md:items-start max-w-sm">
             <div className="flex items-center gap-3 mb-5">
               <img 
-                src="/src/assets/logo.png" 
+                src={logo} 
                 alt="Mariwasa Logo" 
                 className="h-10 w-10 object-contain grayscale opacity-80" 
               />

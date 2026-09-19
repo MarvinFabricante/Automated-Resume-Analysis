@@ -12,6 +12,7 @@ import {
   ArrowLeft,
   KeyRound
 } from 'lucide-react';
+import logo from '../../../assets/logo.png';
 
 const ResetPassword = () => {
   const [searchParams] = useSearchParams();
@@ -122,7 +123,7 @@ const ResetPassword = () => {
       <div className="bg-white rounded-[28px] shadow-sm w-full max-w-[1040px] flex flex-col md:flex-row overflow-hidden min-h-[400px]">
         <div className="w-full md:w-[45%] p-10 md:p-14 flex flex-col justify-start">
           <div className="mb-6">
-            <img src="src/assets/logo.png" alt="Mariwasa Logo" className="h-10 w-10 object-contain" />
+            <img src={logo} alt="Mariwasa Logo" className="h-10 w-10 object-contain" />
           </div>
           <h1 className="text-[36px] leading-[44px] font-normal tracking-normal text-gray-900 mb-4">
             Reset password

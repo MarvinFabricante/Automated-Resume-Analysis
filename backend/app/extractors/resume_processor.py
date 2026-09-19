@@ -47,6 +47,6 @@ def process_resume(file_path: str, file_extension: str) -> dict:
         image_path = extract_image_from_docx(file_path)
 
     if image_path:
-        extracted_data['profile_image_url'] = f"http://localhost:8000/{image_path}"
+        extracted_data['profile_image_url'] = f"/{image_path}"
 
     return extracted_data
