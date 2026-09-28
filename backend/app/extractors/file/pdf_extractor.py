@@ -4,14 +4,27 @@ import os
 
 def extract_text_from_pdf(file_path: str) -> str:
     """
-    Extracts text from a .pdf file using pdfminer.six.
+    Extracts text from a .pdf file using pdfminer.six with PyMuPDF fallback.
     """
+    text = ""
     try:
         text = extract_text(file_path)
-        return text
     except Exception as e:
-        print(f"Error reading PDF file: {e}")
-        return ""
+        print(f"pdfminer error reading PDF file: {e}")
+
+    # Fallback to PyMuPDF (fitz) if pdfminer returned nothing or very minimal text
+    if not text or len(text.strip()) < 40:
+        try:
+            doc = fitz.open(file_path)
+            pages = []
+            for page in doc:
+                pages.append(page.get_text())
+            doc.close()
+            text = "\n".join(pages)
+        except Exception as e:
+            print(f"PyMuPDF fallback error: {e}")
+
+    return text
 
 def extract_image_from_pdf(file_path: str) -> str:
     """

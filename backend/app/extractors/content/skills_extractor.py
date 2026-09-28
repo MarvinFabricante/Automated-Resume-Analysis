@@ -190,6 +190,10 @@ _SKILL_SYNONYMS = {
     "MICROSOFT AZURE": "AZURE",
     "GOOGLE CLOUD": "GCP", "GOOGLE CLOUD PLATFORM": "GCP",
     "MSSQL": "SQL SERVER", "MS SQL": "SQL SERVER",
+    "HTML5": "HTML5", "CSS3": "CSS3",
+    "MATERIALIZE": "MATERIALIZE", "QUASAR": "QUASAR",
+    "CAPACITORJS": "CapacitorJS",
+    "VUE 2": "VUE", "VUE 3": "VUE",
 }
 
 # ─── Casing Overrides ────────────────────────────────────────────────────────
@@ -204,10 +208,12 @@ _UPPER_CASE_SKILLS = {
     "iot", "nft", "erp", "crm", "pwa", "saas", "paas", "iaas",
     "sass", "scss", "less", "npm", "yarn", "pnpm", "pip",
     "k8s", "ec2", "s3", "eks", "ecs",
+    "html5 + css3", "html + css",
 }
 
 _TITLE_CASE_OVERRIDES = {
-    "node.js": "Node.js", "react.js": "React.js", "vue.js": "Vue.js",
+    "node.js": "Node.js", "nodejs": "Node.js",
+    "react.js": "React.js", "vue.js": "Vue.js",
     "next.js": "Next.js", "nuxt.js": "Nuxt.js", "express.js": "Express.js",
     "nest.js": "Nest.js", "angular.js": "Angular.js", "ember.js": "Ember.js",
     "backbone.js": "Backbone.js", "three.js": "Three.js",
@@ -244,6 +250,7 @@ _TITLE_CASE_OVERRIDES = {
     "swiftui": "SwiftUI", "jetpack compose": "Jetpack Compose",
     "tailwindcss": "TailwindCSS", "tailwind css": "TailwindCSS",
     "bootstrap": "Bootstrap", "material ui": "Material UI",
+    "materialize": "Materialize", "quasar": "Quasar",
     "chakra ui": "Chakra UI",
     "webpack": "Webpack", "vite": "Vite", "babel": "Babel",
     "selenium": "Selenium", "cypress": "Cypress", "playwright": "Playwright",
@@ -262,6 +269,11 @@ _TITLE_CASE_OVERRIDES = {
     "svelte": "Svelte", "sveltekit": "SvelteKit",
     "remix": "Remix", "gatsby": "Gatsby",
     "uipath": "UiPath",
+    "capacitorjs": "CapacitorJS",
+    "html5": "HTML5", "css3": "CSS3",
+    "html5 + css3": "HTML5 + CSS3", "html + css": "HTML + CSS",
+    "vue 2": "Vue 2", "vue 3": "Vue 3",
+    "ubuntu": "Ubuntu",
 }
 
 
@@ -297,6 +309,8 @@ _STOP_HEADERS = [
     "OBJECTIVE", "SUMMARY", "ABOUT ME", "PROFILE",
     "VOLUNTEER", "HOBBIES", "LANGUAGES", "PERSONAL INFORMATION",
     "TRAINING", "SEMINARS", "ACTIVITIES",
+    "CONTACT", "CONTACT INFORMATION", "CONTACT DETAILS",
+    "WORK PROJECTS", "PERSONAL PROJECTS", "ACADEMIC PROJECTS",
 ]
 
 # ─── Noise words that should never be extracted as skills ─────────────────────
@@ -337,19 +351,90 @@ def _is_section_header(line: str, keywords: list[str]) -> bool:
     return False
 
 
+# ─── Date / Education noise detection for skills section ─────────────────────
+
+_DATE_NOISE_RE = re.compile(
+    r'^(?:'
+    r'(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|'
+    r'Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)'
+    r'\s+\d{4}'
+    r'|Expected\s+\d{4}'
+    r'|(?:19|20)\d{2}\s*[-–—to]+\s*(?:(?:19|20)\d{2}|Present|Expected|Current)'
+    r'|(?:19|20)\d{2}'
+    r'|Class\s+of\s+\d{4}'
+    r'|Batch\s+\d{4}'
+    r'|Graduated?\s+\d{4}'
+    r'|\d{1,2}(?:st|nd|rd|th)?\s+Year'
+    r')$',
+    re.IGNORECASE
+)
+
+_EDUCATION_NOISE_WORDS = {
+    'college student', 'year college', 'year college student',
+    '1st year', '2nd year', '3rd year', '4th year', '5th year',
+    'freshman', 'sophomore', 'junior year', 'senior year',
+    'undergraduate', 'graduate', 'postgraduate',
+    'expected graduation', 'graduation date',
+}
+
+
+def _is_date_or_education_noise(skill: str) -> bool:
+    """Check if a candidate skill string is actually a date range or education noise."""
+    clean = skill.strip()
+    if not clean:
+        return True
+    # Check against date noise regex
+    if _DATE_NOISE_RE.match(clean):
+        return True
+    # Check for date range embedded in skill
+    lower = clean.lower()
+    if lower in _EDUCATION_NOISE_WORDS:
+        return True
+    # Check if string is mostly numeric (e.g., "2023", "2027")
+    digits = sum(1 for c in clean if c.isdigit())
+    if digits >= 4 and len(clean) <= 10:
+        # Looks like a year or date
+        if re.fullmatch(r'(?:19|20)\d{2}', clean.strip()):
+            return True
+    # Date patterns like "June 2023" or "Expected 2027" or "June 2023 - Expected 2027"
+    if re.match(r'^(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)', clean, re.I):
+        if re.search(r'\d{4}', clean):
+            return True
+    if re.match(r'^Expected\s', clean, re.I):
+        return True
+    return False
+
+
 def _split_skill_items(raw_text: str) -> list[str]:
     """Split a raw skills string into individual skill tokens."""
     text = raw_text
-    for d in ['|', '•', '●', '◦', '▪', '►', '★', '✓', '✔', ';']:
+    for d in ['|', '•', '●', '◦', '▪', '►', '★', '✓', '✔', ';', '\n', '\r']:
         text = text.replace(d, ',')
 
-    # Replace standalone hyphens/dashes used as list delimiters
+    # Replace standalone hyphens/dashes used as list delimiters (but not date range dashes)
     text = re.sub(r'(?<!\w)\s*[-–—]\s+', ', ', text)
+
+    # Split "/" separated skills (e.g. "Bootstrap / Tailwind / Materialize")
+    # but preserve known compound skills like "UI/UX", "CI/CD", "SSL/TLS", "HTML5 + CSS3"
+    _PRESERVE_SLASH = {'UI/UX', 'CI/CD', 'SSL/TLS', 'TCP/IP', 'OS/400', 'I/O', 'R/W'}
 
     items = []
     for chunk in text.split(','):
-        cleaned = chunk.strip().strip('*').strip()
-        if cleaned and 1 < len(cleaned) < 60:
+        cleaned = chunk.strip().strip('*•-–—').strip()
+        # If chunk still contains a category label like "Languages: Python", strip before colon
+        if ':' in cleaned:
+            before, _, after = cleaned.partition(':')
+            if len(before) < 30 and len(after.strip()) > 1:
+                cleaned = after.strip()
+
+        # Split on " / " (spaced slash) to handle "Bootstrap / Tailwind / Materialize / Quasar"
+        if ' / ' in cleaned and cleaned.upper().strip() not in _PRESERVE_SLASH:
+            sub_items = cleaned.split(' / ')
+            for si in sub_items:
+                si = si.strip()
+                if si and 1 < len(si) < 50 and not _is_date_or_education_noise(si):
+                    items.append(si)
+        elif cleaned and 1 < len(cleaned) < 50 and not _is_date_or_education_noise(cleaned):
             items.append(cleaned)
     return items
 
@@ -458,7 +543,12 @@ def extract_skills(text: str) -> str:
 
         if _is_section_header(clean_line, _SKILL_HEADERS):
             if found_section and section_lines:
-                section_skills.extend(_split_skill_items(" ".join(section_lines)))
+                for sl in section_lines:
+                    line_to_split = sl
+                    colon_idx = line_to_split.find(':')
+                    if 0 <= colon_idx < 30:
+                        line_to_split = line_to_split[colon_idx + 1:].strip()
+                    section_skills.extend(_split_skill_items(line_to_split))
                 section_lines = []
             found_section = True
             colon_idx = clean_line.find(':')
@@ -474,7 +564,12 @@ def extract_skills(text: str) -> str:
             section_lines.append(clean_line)
 
     if section_lines:
-        section_skills.extend(_split_skill_items(" ".join(section_lines)))
+        for sl in section_lines:
+            line_to_split = sl
+            colon_idx = line_to_split.find(':')
+            if 0 <= colon_idx < 30:
+                line_to_split = line_to_split[colon_idx + 1:].strip()
+            section_skills.extend(_split_skill_items(line_to_split))
 
     # ── Pass 2: Contextual extraction from experience/project text ────────────
     contextual_skills = _extract_contextual_skills(text)
@@ -509,6 +604,9 @@ def extract_skills(text: str) -> str:
         key = formatted.lower().strip()
         if key in _NOISE_WORDS or len(key) < 2:
             return
+        # Filter out date ranges and education noise that leak into skills
+        if _is_date_or_education_noise(formatted):
+            return
         # Canonical dedup
         canonical = _get_canonical_key(formatted.upper().strip())
         if canonical not in seen_canonical:
@@ -526,3 +624,11 @@ def extract_skills(text: str) -> str:
         _add_skill(s)
 
     return " | ".join(unique_skills[:50]) if unique_skills else ""
+
+
+def extract_skills_list(text: str) -> list[str]:
+    """Return skills as a clean list of strings."""
+    skills_str = extract_skills(text)
+    if not skills_str:
+        return []
+    return [s.strip() for s in skills_str.split('|') if s.strip()]

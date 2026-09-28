@@ -50,5 +50,12 @@ class ResumeMatchRequest(BaseModel):
     location: Optional[str] = ""
     experience: Optional[str] = ""
     education: Optional[str] = ""
+    job_title: Optional[str] = ""
+    company: Optional[str] = ""
+    relevance: Optional[str] = ""
+    degree: Optional[str] = ""
+    institution: Optional[str] = ""
+    college: Optional[str] = ""
+    certifications: Optional[str] = ""
     profile_image_url: Optional[str] = None
     ai_summary: Optional[str] = None
