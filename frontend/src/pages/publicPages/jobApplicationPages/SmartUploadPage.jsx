@@ -243,10 +243,12 @@ const SmartUploadPage = () => {
                               { label: "Email Address", value: extractedData?.email },
                               { label: "Phone Number", value: extractedData?.phone },
                               { label: "Location", value: extractedData?.location },
-                              { label: "Experience", value: extractedData?.experience },
-                              { label: "Total Years", value: extractedData?.years_experience },
-                              { label: "Education", value: extractedData?.education },
-                              { label: "Highest Degree", value: extractedData?.highest_degree }
+                              { label: "Job Title", value: extractedData?.job_title },
+                              { label: "Company", value: extractedData?.company },
+                              { label: "Experience / Relevance", value: extractedData?.relevance || extractedData?.experience },
+                              { label: "Total Years", value: extractedData?.years_experience ? `${extractedData.years_experience} years` : null },
+                              { label: "Degree", value: extractedData?.degree || extractedData?.highest_degree },
+                              { label: "Institution / College", value: extractedData?.institution || extractedData?.college }
                             ].map((item, idx) => (
                               <div key={idx} className="space-y-1">
                                 <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">{item.label}</span>
@@ -273,15 +275,17 @@ const SmartUploadPage = () => {
                             location: extractedData?.location
                           },
                           experience: {
-                            title: extractedData?.experience ? extractedData.experience.split('|')[0]?.trim() : "",
-                            company: extractedData?.experience ? extractedData.experience.split('|')[1]?.trim() : "",
-                            relevance: extractedData?.years_experience ? `${extractedData.years_experience} years` : ""
+                            title: extractedData?.job_title || (extractedData?.experience ? extractedData.experience.split('|')[0]?.trim() : ""),
+                            company: extractedData?.company || (extractedData?.experience ? extractedData.experience.split('|')[1]?.trim() : ""),
+                            relevance: extractedData?.relevance || (extractedData?.years_experience ? `${extractedData.years_experience} years` : "")
                           },
                           education: {
-                            degree: extractedData?.highest_degree,
-                            college: extractedData?.education
+                            degree: extractedData?.degree || extractedData?.highest_degree || "",
+                            college: extractedData?.institution || extractedData?.college || extractedData?.education || ""
                           },
-                          skills: extractedData?.skills ? extractedData.skills.split(' | ') : [],
+                          skills: Array.isArray(extractedData?.skills_list) && extractedData.skills_list.length > 0
+                            ? extractedData.skills_list
+                            : (extractedData?.skills ? extractedData.skills.split(' | ').filter(Boolean) : []),
                           resumeUrl: extractedData?.file_url
                         } 
                       })}

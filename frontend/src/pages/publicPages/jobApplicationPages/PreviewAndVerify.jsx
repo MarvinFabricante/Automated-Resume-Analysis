@@ -56,15 +56,17 @@ const PreviewAndVerifyPage = () => {
       phone: data?.phone || "",
       location: data?.location || ""
     },
-    skills: data?.skills ? data.skills.split(' | ').filter(Boolean) : ["Extraction in progress"],
+    skills: (Array.isArray(data?.skills_list) && data.skills_list.length > 0)
+      ? data.skills_list
+      : (data?.skills ? data.skills.split(' | ').filter(Boolean) : ["Extraction in progress"]),
     experience: {
-      title: data?.experience ? data.experience.split('|')[0] : "",
-      company: state?.job?.department || "Department Not Specified",
-      relevance: data?.years_experience ? `${data.years_experience}+ years of experience` : "Experience not extracted"
+      title: data?.job_title || (data?.experience ? data.experience.split('|')[0]?.trim() : ""),
+      company: data?.company || state?.job?.department || "Department Not Specified",
+      relevance: data?.relevance || (data?.years_experience ? `${data.years_experience}+ years of experience` : "Experience not extracted")
     },
     education: {
-      degree: data?.highest_degree || "",
-      college: data?.education ? data.education.split('|')[0] : ""
+      degree: data?.degree || data?.highest_degree || "",
+      college: data?.institution || data?.college || (data?.education ? data.education.split('|')[0]?.trim() : "")
     },
     profile_image_url: data?.profile_image_url || null
   };

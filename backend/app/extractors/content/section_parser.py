@@ -33,7 +33,8 @@ _SECTION_DEFINITIONS: dict[str, list[str]] = {
         "TECHNICAL EXPERTISE", "SKILL HIGHLIGHTS",
         "TOOLS & FRAMEWORKS", "TOOLS AND FRAMEWORKS",
         "TECHNOLOGY STACK", "RELEVANT SKILLS",
-        "HARD SKILLS", "SOFT SKILLS",
+        "HARD SKILLS", "SOFT SKILLS", "SKILLS & EXPERTISE",
+        "SKILLS INVENTORY", "CORE STRENGTHS",
     ],
     "EXPERIENCE": [
         "EXPERIENCE", "WORK HISTORY", "EMPLOYMENT", "PROFESSIONAL BACKGROUND",
@@ -41,14 +42,15 @@ _SECTION_DEFINITIONS: dict[str, list[str]] = {
         "RELEVANT EXPERIENCE", "EMPLOYMENT HISTORY", "JOB EXPERIENCE",
         "CAREER SUMMARY", "CAREER EXPERIENCE",
         "POSITIONS HELD", "WORK RECORD", "INDUSTRY EXPERIENCE",
-        "PROFESSIONAL HISTORY",
+        "PROFESSIONAL HISTORY", "WORK AND EXPERIENCE",
+        "RELEVANT WORK EXPERIENCE", "EMPLOYMENT RECORD",
     ],
     "EDUCATION": [
         "EDUCATION", "ACADEMIC", "QUALIFICATIONS", "SCHOLASTIC",
         "EDUCATIONAL ATTAINMENT", "EDUCATIONAL BACKGROUND", "ACADEMIC BACKGROUND",
         "STUDIES", "SCHOOLING", "ACADEMIC QUALIFICATIONS", "ACADEMIC RECORD",
         "EDUCATIONAL HISTORY", "ACADEMIC HISTORY", "DEGREES",
-        "EDUCATIONAL QUALIFICATIONS",
+        "EDUCATIONAL QUALIFICATIONS", "EDUCATION AND TRAINING",
     ],
     "CERTIFICATIONS": [
         "CERTIFICATIONS", "CERTIFICATES", "CERTIFICATION", "CERTIFICATE",
@@ -57,12 +59,15 @@ _SECTION_DEFINITIONS: dict[str, list[str]] = {
         "LICENSES AND CERTIFICATIONS", "CREDENTIALS",
         "PROFESSIONAL CREDENTIALS", "ACCREDITATIONS",
         "TRAININGS AND CERTIFICATIONS", "CERTIFICATIONS AND TRAINING",
-        "TRAINING AND CERTIFICATIONS",
+        "TRAINING AND CERTIFICATIONS", "CERTIFICATES & LICENSES",
+        "CERTIFICATIONS & LICENSES", "PROFESSIONAL LICENSES & CERTIFICATIONS",
+        "ELIGIBILITIES", "GOVERNMENT ELIGIBILITY", "ELIGIBILITY",
     ],
     "PROJECTS": [
         "PROJECTS", "PERSONAL PROJECTS", "ACADEMIC PROJECTS",
         "RELEVANT PROJECTS", "KEY PROJECTS", "PORTFOLIO",
-        "SIDE PROJECTS", "CAPSTONE", "THESIS",
+        "SIDE PROJECTS", "CAPSTONE", "THESIS", "WORK PROJECTS",
+        "PROJECT HIGHLIGHTS", "NOTABLE PROJECTS",
     ],
     "SUMMARY": [
         "SUMMARY", "PROFESSIONAL SUMMARY", "CAREER OBJECTIVE",
@@ -97,7 +102,8 @@ _SECTION_DEFINITIONS: dict[str, list[str]] = {
     ],
     "PERSONAL": [
         "PERSONAL INFORMATION", "PERSONAL DETAILS", "CONTACT",
-        "CONTACT INFORMATION", "CONTACT DETAILS",
+        "CONTACT INFORMATION", "CONTACT DETAILS", "CONTACT US",
+        "GET IN TOUCH", "PERSONAL PROFILE", "COMMUNICATION",
     ],
     "AFFILIATIONS": [
         "AFFILIATIONS", "MEMBERSHIPS", "ORGANIZATIONS",
@@ -118,10 +124,10 @@ _DECORATION_RE = re.compile(r'^[\s\-–—=_*#•►◆■□▪▸▹:│┃]+|
 
 
 def _normalise_header(line: str) -> str:
-    """Strip decorations and normalise a candidate header line to UPPER."""
+    """Strip decorations and normalise a candidate header line to UPPER with normalized spaces."""
     clean = _DECORATION_RE.sub('', line).strip()
-    # Remove trailing colon
     clean = clean.rstrip(':').strip()
+    clean = re.sub(r'\s+', ' ', clean)
     return clean.upper()
 
 
@@ -158,27 +164,102 @@ def split_into_sections(text: str) -> dict[str, str]:
     An unlabelled preamble (the header area before the first section)
     is stored under the key ``"HEADER"``.
 
-    Each section body is the raw text between its header line and the
-    next detected header (or end of document).
+    Includes intelligent boundary detection for multi-column / side-by-side
+    resume templates where entries were placed right above or beside their header.
     """
     lines = text.split('\n')
     sections: dict[str, list[str]] = {}
     current_label = "HEADER"
     sections[current_label] = []
 
+    _DEGREE_INST_HINTS = {
+        "BACHELOR", "MASTER", "COLLEGE", "COLLEGES", "UNIVERSITY", "DEGREE",
+        "STUDENT", "DIPLOMA", "ASSOCIATE", "BSIT", "BSCS", "BSCPE", "BSIS",
+        "STI", "DLSU", "PUP", "UP", "UST", "FEU", "MAPUA", "UDM", "HIGH SCHOOL"
+    }
+
+    _ROLE_DATE_HINTS = {
+        "PRESENT", "202", "201", "RIDER", "DEVELOPER", "ENGINEER", "MANAGER",
+        "PANDA", "FOOD PANDA", "CREW", "OFFICER", "TECHNICIAN", "OPERATOR",
+        "ASSISTANT", "LEAD", "DIRECTOR", "SUPERVISOR", "ANALYST", "SPECIALIST",
+        "COORDINATOR", "DESIGNER", "INTERN", "DRIVER", "CASHIER", "CLERK"
+    }
+
     for line in lines:
-        label = detect_section_label(line)
+        cleaned_line = line.strip()
+        if not cleaned_line:
+            sections[current_label].append(line)
+            continue
+
+        label = detect_section_label(cleaned_line)
         if label:
+            # Check if previous section has trailing lines that actually belong to this new section
+            # e.g. "STI Colleges Ortigas-Cainta\nBachelor..." preceding EDUCATION header
+            if label == "EDUCATION" and sections.get(current_label):
+                prev_lines = [l for l in sections[current_label] if l.strip()]
+                if prev_lines:
+                    tail = prev_lines[-4:]
+                    tail_text = " ".join(tail).upper()
+                    if any(hint in tail_text for hint in _DEGREE_INST_HINTS):
+                        moved = []
+                        while sections[current_label]:
+                            top = sections[current_label][-1].strip()
+                            if not top:
+                                sections[current_label].pop()
+                                continue
+                            top_upper = top.upper()
+                            if any(hint in top_upper for hint in _DEGREE_INST_HINTS):
+                                moved.insert(0, sections[current_label].pop())
+                                if len(moved) >= 4:
+                                    break
+                            else:
+                                break
+                        if label not in sections:
+                            sections[label] = []
+                        sections[label].extend(moved)
+
+            elif label == "EXPERIENCE" and sections.get(current_label):
+                prev_lines = [l for l in sections[current_label] if l.strip()]
+                if prev_lines:
+                    tail = prev_lines[-4:]
+                    tail_text = " ".join(tail).upper()
+                    if any(hint in tail_text for hint in _ROLE_DATE_HINTS):
+                        moved = []
+                        while sections[current_label]:
+                            top = sections[current_label][-1].strip()
+                            if not top:
+                                sections[current_label].pop()
+                                continue
+                            top_upper = top.upper()
+                            if any(hint in top_upper for hint in _ROLE_DATE_HINTS):
+                                moved.insert(0, sections[current_label].pop())
+                                if len(moved) >= 4:
+                                    break
+                            else:
+                                break
+                        if label not in sections:
+                            sections[label] = []
+                        sections[label].extend(moved)
+
             current_label = label
             if current_label not in sections:
                 sections[current_label] = []
+
             # If the header line contains inline content after a colon, keep it
-            colon_idx = line.find(':')
+            colon_idx = cleaned_line.find(':')
             if colon_idx >= 0:
-                after = line[colon_idx + 1:].strip()
+                after = cleaned_line[colon_idx + 1:].strip()
                 if after:
                     sections[current_label].append(after)
         else:
+            # Check if this line is an education graduation date right at top of SKILLS
+            if current_label == "SKILLS" and not [l for l in sections["SKILLS"] if l.strip()]:
+                clean_up = cleaned_line.upper()
+                if any(w in clean_up for w in ["EXPECTED", "GRADUATED", "GRADUATION", "CLASS OF"]) and any(y in clean_up for y in ["202", "201"]):
+                    if "EDUCATION" in sections:
+                        sections["EDUCATION"].append(cleaned_line)
+                        continue
+
             sections[current_label].append(line)
 
     # Join into contiguous text blocks

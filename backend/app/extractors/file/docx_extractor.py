@@ -6,13 +6,19 @@ import fitz
 
 def extract_text_from_docx(file_path: str) -> str:
     """
-    Extracts text from a .docx file using python-docx.
+    Extracts text from a .docx file using python-docx (paragraphs + tables).
     """
     try:
         doc = docx.Document(file_path)
         full_text = []
         for para in doc.paragraphs:
-            full_text.append(para.text)
+            if para.text.strip():
+                full_text.append(para.text.strip())
+        for table in doc.tables:
+            for row in table.rows:
+                row_cells = [cell.text.strip() for cell in row.cells if cell.text.strip()]
+                if row_cells:
+                    full_text.append(" | ".join(row_cells))
         return '\n'.join(full_text)
     except Exception as e:
         print(f"Error reading DOCX file: {e}")

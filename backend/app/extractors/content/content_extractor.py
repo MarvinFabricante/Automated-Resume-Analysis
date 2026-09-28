@@ -3,9 +3,15 @@ from .name_extractor import extract_fullname
 from .email_extractor import extract_email
 from .phone_extractor import extract_phone
 from .location_extractor import extract_location
-from .experience_extractor import extract_experience, extract_years_experience
-from .education_extractor import extract_education, extract_highest_degree
-from .skills_extractor import extract_skills
+from .experience_extractor import (
+    extract_experience, extract_years_experience, extract_experience_entries,
+    extract_job_title, extract_company, extract_relevance
+)
+from .education_extractor import (
+    extract_education, extract_highest_degree, extract_education_entries,
+    extract_degree_title, extract_institution
+)
+from .skills_extractor import extract_skills, extract_skills_list
 from .certifications_extractor import extract_certifications
 from .section_parser import split_into_sections
 from ..nlp.nlp_engine import extract_all as nlp_extract_all
@@ -15,31 +21,35 @@ def _generate_summary(data: dict) -> str:
     """
     Generate a rich, professional summary from extracted resume data.
     Produces a 2-4 sentence summary highlighting key qualifications.
-    This replaces the Gemini-generated summary with a comprehensive
-    rule-based version that draws from all extracted fields.
     """
     parts = []
 
     name = data.get("fullname", "The candidate")
     years = data.get("years_experience", 0)
-    degree = data.get("highest_degree", "")
+    job_title = data.get("job_title", "")
+    company = data.get("company", "")
+    degree = data.get("degree") or data.get("highest_degree", "")
     skills_raw = data.get("skills", "")
     experience_raw = data.get("experience", "")
     certifications_raw = data.get("certifications", "")
-    education_raw = data.get("education", "")
 
-    # ── Opening sentence: identity + experience level ─────────────────────────
-    if years and years > 0 and degree:
+    # ── Opening sentence: identity + title + experience level ────────────────
+    if job_title and years and years > 0:
         parts.append(
-            f"{name} is a professional with {years} years of experience "
-            f"and holds a {degree.title()} degree."
+            f"{name} is an experienced {job_title} with over {years} years of professional experience."
+        )
+    elif job_title:
+        parts.append(f"{name} is a professional {job_title}.")
+    elif years and years > 0 and degree:
+        parts.append(
+            f"{name} is a professional with {years} years of experience and holds a {degree} degree."
         )
     elif years and years > 0:
         parts.append(f"{name} is a professional with {years} years of experience.")
     elif degree:
-        parts.append(f"{name} holds a {degree.title()} degree.")
+        parts.append(f"{name} holds a degree in {degree}.")
     else:
-        parts.append(f"{name} is a professional candidate.")
+        parts.append(f"{name} is a qualified professional candidate.")
 
     # ── Skills highlight ──────────────────────────────────────────────────────
     if skills_raw:
@@ -47,27 +57,27 @@ def _generate_summary(data: dict) -> str:
         if len(skill_list) >= 5:
             top_skills = ", ".join(skill_list[:6])
             parts.append(
-                f"Key technical skills include {top_skills}, "
-                f"among {len(skill_list)} total competencies."
+                f"Core competencies and technical skills include {top_skills}, "
+                f"among {len(skill_list)} total proficiencies."
             )
         elif len(skill_list) >= 2:
-            parts.append(f"Skilled in {', '.join(skill_list)}.")
+            parts.append(f"Proficient in {', '.join(skill_list)}.")
         elif skill_list:
-            parts.append(f"Skilled in {skill_list[0]}.")
+            parts.append(f"Proficient in {skill_list[0]}.")
 
     # ── Experience highlight ──────────────────────────────────────────────────
-    if experience_raw:
+    if company and job_title:
+        parts.append(f"Most recently served as {job_title} at {company}.")
+    elif experience_raw:
         exp_entries = [e.strip() for e in experience_raw.split('|') if e.strip()]
         if exp_entries:
-            # Use the most recent role (first entry)
             latest_role = exp_entries[0]
             if len(exp_entries) > 1:
                 parts.append(
-                    f"Most recently served as {latest_role}, "
-                    f"with {len(exp_entries)} roles in career history."
+                    f"Career history includes {latest_role}, with {len(exp_entries)} recorded positions."
                 )
             else:
-                parts.append(f"Professional experience includes {latest_role}.")
+                parts.append(f"Professional background includes {latest_role}.")
 
     # ── Certifications highlight ──────────────────────────────────────────────
     if certifications_raw:
@@ -79,8 +89,8 @@ def _generate_summary(data: dict) -> str:
                 parts.append(f"Certified in {', '.join(cert_list)}.")
             else:
                 parts.append(
-                    f"Holds {len(cert_list)} professional certifications including "
-                    f"{', '.join(cert_list[:2])}, and more."
+                    f"Holds {len(cert_list)} certifications including "
+                    f"{', '.join(cert_list[:2])}, and others."
                 )
 
     return " ".join(parts)
@@ -90,15 +100,16 @@ def _post_process(data: dict) -> dict:
     """
     Post-processing quality pass on extracted data.
     - Cleans up empty/whitespace-only fields
-    - Ensures consistency
-    - Validates extracted values
+    - Ensures consistency and validates values
     """
-    # Clean all string fields
-    for key in ["fullname", "email", "phone", "location", "experience",
-                "education", "highest_degree", "skills", "certifications", "summary"]:
+    string_fields = [
+        "fullname", "email", "phone", "location", "job_title", "company",
+        "relevance", "experience", "education", "degree", "highest_degree",
+        "institution", "college", "skills", "certifications", "summary"
+    ]
+    for key in string_fields:
         if key in data and isinstance(data[key], str):
             data[key] = data[key].strip()
-            # Remove redundant pipe separators
             data[key] = re.sub(r'\s*\|\s*\|\s*', ' | ', data[key])
             data[key] = data[key].strip(' |')
 
@@ -112,7 +123,7 @@ def _post_process(data: dict) -> dict:
     if not isinstance(years, int) or years < 0:
         data["years_experience"] = 0
     elif years > 50:
-        data["years_experience"] = 50  # sanity cap
+        data["years_experience"] = 50
 
     # Validate highest_degree
     valid_degrees = {
@@ -122,6 +133,12 @@ def _post_process(data: dict) -> dict:
     if data.get("highest_degree", "") not in valid_degrees:
         data["highest_degree"] = ""
 
+    # Ensure institution and college match
+    if not data.get("college") and data.get("institution"):
+        data["college"] = data["institution"]
+    elif not data.get("institution") and data.get("college"):
+        data["institution"] = data["college"]
+
     return data
 
 
@@ -130,21 +147,16 @@ def _cross_validate(data: dict, sections: dict) -> dict:
     Cross-validate extracted data using section awareness.
     Uses parsed sections to fill gaps left by individual extractors.
     """
-    # If skills are sparse, try extracting more from the TRAINING section
-    skills_raw = data.get("skills", "")
-    skill_count = len([s for s in skills_raw.split('|') if s.strip()]) if skills_raw else 0
-
-    # If education is empty but we found section content, recheck
+    # If education is empty but section has content, recheck
     if not data.get("education") and sections.get("EDUCATION"):
         edu_section = sections["EDUCATION"].strip()
         if edu_section and len(edu_section) > 5:
             data["education"] = edu_section[:300]
 
-    # If experience is empty but section has content, use it
+    # If experience is empty but section has content, fallback
     if not data.get("experience") and sections.get("EXPERIENCE"):
         exp_section = sections["EXPERIENCE"].strip()
         if exp_section and len(exp_section) > 10:
-            # Take first 3 non-empty lines as fallback entries
             lines = [l.strip() for l in exp_section.split('\n') if l.strip()]
             if lines:
                 data["experience"] = " | ".join(lines[:5])
@@ -163,42 +175,84 @@ def _cross_validate(data: dict, sections: dict) -> dict:
 def extract_content(text: str) -> dict:
     """
     Main content extraction pipeline.
-    Extracts all structured data from resume text using:
-      - Regex patterns
-      - Rule-based extraction
-      - Keyword matching
-      - Structured section parsing
+    Extracts all structured details from resume text:
+      - full name
+      - email address
+      - phone number
+      - location
+      - job title
+      - company
+      - experience & relevance
+      - education/degree
+      - institution / college
+      - skills (string & list)
+      - certifications
 
-    No LLM/AI is used in this pipeline. Gemini is reserved
-    exclusively for the downstream analysis/matching stage.
+    No external LLM is required; runs high-speed rule-based + spaCy NLP pipelines.
     """
-    # Pre-parse sections for cross-validation
     sections = split_into_sections(text)
 
+    # Structured entries
+    exp_entries = extract_experience_entries(text)
+    edu_entries = extract_education_entries(text)
+
+    # Core extractions
+    fullname = extract_fullname(text)
+    email = extract_email(text)
+    phone = extract_phone(text)
+    location = extract_location(text)
+
+    job_title = extract_job_title(text, exp_entries)
+    company = extract_company(text, exp_entries)
+    experience_str = extract_experience(text)
+    years_experience = extract_years_experience(text)
+
+    skills_str = extract_skills(text)
+    skills_list = extract_skills_list(text)
+    relevance = extract_relevance(text, years_experience, job_title, skills_str)
+
+    degree_title = extract_degree_title(text, edu_entries)
+    highest_degree = extract_highest_degree(text)
+    institution = extract_institution(text, edu_entries)
+    education_str = extract_education(text)
+    certifications_str = extract_certifications(text)
+
     data = {
-        "fullname": extract_fullname(text),
-        "email": extract_email(text),
-        "phone": extract_phone(text),
-        "location": extract_location(text),
-        "experience": extract_experience(text),
-        "years_experience": extract_years_experience(text),
-        "education": extract_education(text),
-        "highest_degree": extract_highest_degree(text),
-        "skills": extract_skills(text),
-        "certifications": extract_certifications(text),
+        # Personal Information
+        "fullname": fullname,
+        "email": email,
+        "phone": phone,
+        "location": location,
+
+        # Job & Experience Details
+        "job_title": job_title,
+        "company": company,
+        "experience": experience_str,
+        "experience_details": exp_entries,
+        "years_experience": years_experience,
+        "relevance": relevance,
+
+        # Education Details
+        "degree": degree_title,
+        "highest_degree": highest_degree,
+        "institution": institution,
+        "college": institution,  # alias for frontend/DB compatibility
+        "education": education_str,
+        "education_details": edu_entries,
+
+        # Skills & Certifications
+        "skills": skills_str,
+        "skills_list": skills_list,
+        "certifications": certifications_str,
     }
 
-    # ── Run unified NLP engine: preprocessing, NER, and rule-based matching ──
+    # Run unified NLP engine for NER entities
     try:
         nlp_out = nlp_extract_all(text)
-        doc = nlp_out.get("doc")
-
-        # Expose entities into data for downstream use
         ents = nlp_out.get("entities")
         if ents:
             data["nlp_entities"] = ents
     except Exception:
-        # If NLP engine fails, keep rule-based outputs
         pass
 
     # Cross-validate using section boundaries
@@ -207,7 +261,7 @@ def extract_content(text: str) -> dict:
     # Generate summary from extracted data
     data["summary"] = _generate_summary(data)
 
-    # Post-process for quality
+    # Post-process for cleanliness and validation
     data = _post_process(data)
 
     return data
