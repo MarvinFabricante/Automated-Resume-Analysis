@@ -89,7 +89,7 @@ const AboutPage = () => {
               </div>
               <div className="flex-1">
                 <img
-                  src="src/assets/sub header.jpg"
+                  src="/assets/sub header.jpg"
                   alt="Corporate Office"
                   className="rounded-[24px] object-cover w-full h-[300px] shadow-sm"
                 />

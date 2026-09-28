@@ -47,6 +47,13 @@ if frontend_url:
         if cleaned and cleaned not in origins:
             origins.append(cleaned)
 
+# Also add PUBLIC_BASE_URL (Cloudflare tunnel URL) to CORS origins
+public_base_url = os.getenv("PUBLIC_BASE_URL")
+if public_base_url:
+    cleaned = public_base_url.strip().rstrip("/")
+    if cleaned and cleaned not in origins:
+        origins.append(cleaned)
+
 
 async def ensure_application_analysis_columns(conn):
     """

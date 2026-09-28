@@ -1,6 +1,5 @@
 import axios from 'axios';
 
-const BASE_URL = 'http://localhost:8000';
 export const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
 const getWsBaseUrl = () => {
@@ -13,7 +12,9 @@ const getWsBaseUrl = () => {
       const protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
       return `${protocol}//${url.host}`;
     } catch {
-      // fallback
+      // If VITE_API_URL is a relative path like '/api', derive from window.location
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      return `${protocol}//${window.location.host}`;
     }
   }
   return 'ws://localhost:8000';
@@ -22,7 +23,6 @@ const getWsBaseUrl = () => {
 export const WS_BASE_URL = getWsBaseUrl();
 
 const api = axios.create({
-  baseURL: BASE_URL,
   baseURL: API_BASE_URL,
 });
 

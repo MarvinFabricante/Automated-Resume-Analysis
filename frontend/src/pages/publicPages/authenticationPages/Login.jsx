@@ -144,7 +144,7 @@ const Login = () => {
 
         <div className="w-full md:w-[45%] p-10 md:p-14 flex flex-col justify-start">
           <div className="mb-6">
-            <img src="src/assets/logo.png" alt="Mariwasa Logo" className="h-10 w-10 object-contain" />
+            <img src="/assets/logo.png" alt="Mariwasa Logo" className="h-10 w-10 object-contain" />
           </div>
           <h1 className="text-[36px] leading-[44px] font-normal tracking-normal text-gray-900 mb-4">
             Sign in
@@ -213,14 +213,17 @@ const Login = () => {
             </p>
 
             <div className="flex flex-col gap-4 mt-8">
-              <button
-                type="button"
-                onClick={() => window.location.href = `${API_BASE_URL}/auth/google/login`}
-                className="w-full flex items-center justify-center gap-2 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 text-sm font-medium px-6 py-2.5 rounded-full transition-colors"
-              >
-                <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google Logo" className="w-5 h-5" />
-                Sign in with Google
-              </button>
+              <div className="flex flex-col items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => window.location.href = `${API_BASE_URL}/auth/google/login`}
+                  className="w-full flex items-center justify-center gap-2 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 text-sm font-medium px-6 py-2.5 rounded-full transition-colors"
+                >
+                  <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google Logo" className="w-5 h-5" />
+                  Sign in with Google
+                </button>
+                <span className="text-[11px] text-gray-500 font-medium italic">For HR Personnel Only</span>
+              </div>
 
               <div className="flex flex-col-reverse sm:flex-row justify-between items-center gap-4 sm:gap-0">
                 <a

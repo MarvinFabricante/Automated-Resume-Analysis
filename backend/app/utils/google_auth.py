@@ -19,11 +19,27 @@ CREDENTIALS_FILE = os.path.join(_BACKEND_DIR, 'credentials.json')
 # In-memory store for PKCE code_verifier, keyed by OAuth state
 _pending_flows: dict[str, str] = {}
 
+
+def _get_redirect_uri() -> str:
+    """
+    Build the Google OAuth redirect URI dynamically.
+    Uses PUBLIC_BASE_URL (the Cloudflare tunnel URL) when available,
+    otherwise falls back to localhost for local development.
+    The redirect goes through nginx's /api/ proxy which strips the prefix,
+    so the backend sees /auth/google/callback.
+    """
+    public_url = os.getenv("PUBLIC_BASE_URL", "").rstrip("/")
+    if public_url:
+        return f"{public_url}/api/auth/google/callback"
+    return "http://localhost:8000/auth/google/callback"
+
+
 def get_google_auth_url():
+    redirect_uri = _get_redirect_uri()
     flow = Flow.from_client_secrets_file(
         CREDENTIALS_FILE,
         scopes=SCOPES,
-        redirect_uri='http://localhost:8000/auth/google/callback'
+        redirect_uri=redirect_uri
     )
     auth_url, state = flow.authorization_url(access_type='offline', include_granted_scopes='true', prompt='consent')
     # Store the code_verifier so we can pass it during token exchange
@@ -31,10 +47,11 @@ def get_google_auth_url():
     return auth_url, state
 
 def exchange_code_for_credentials(code: str, state: str):
+    redirect_uri = _get_redirect_uri()
     flow = Flow.from_client_secrets_file(
         CREDENTIALS_FILE,
         scopes=SCOPES,
-        redirect_uri='http://localhost:8000/auth/google/callback'
+        redirect_uri=redirect_uri
     )
     # Restore the PKCE code_verifier from the original auth request
     code_verifier = _pending_flows.pop(state, None)
@@ -58,4 +75,3 @@ def get_calendar_service(credentials_json: str):
     except Exception as e:
         print(f"Error building calendar service: {e}")
         return None, credentials_json
-

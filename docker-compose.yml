@@ -9,7 +9,7 @@ services:
       POSTGRES_PASSWORD: ${DB_PASSWORD:-passwordnamin}
       POSTGRES_DB: ${DB_NAME:-automated_resume_db}
     ports:
-      - "${DB_PORT:-5432}:5432"
+      - "${DB_HOST_PORT:-5434}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -26,7 +26,7 @@ services:
     container_name: resume_analysis_redis
     restart: unless-stopped
     ports:
-      - "6379:6379"
+      - "${REDIS_HOST_PORT:-6380}:6379"
     volumes:
       - redis_data:/data
     healthcheck:
@@ -103,15 +103,27 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
       args:
-        VITE_API_URL: ${VITE_API_URL:-http://localhost:8000}
-        VITE_WS_URL: ${VITE_WS_URL:-ws://localhost:8000}
+        VITE_API_URL: /api
+        VITE_WS_URL: ""
     container_name: resume_analysis_frontend
     restart: unless-stopped
     depends_on:
       backend:
         condition: service_started
     ports:
-      - "5173:80"
+      - "8080:80"
+    networks:
+      - app-network
+
+  # --- Cloudflare Quick Tunnel ---
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    container_name: resume_analysis_tunnel
+    restart: unless-stopped
+    depends_on:
+      frontend:
+        condition: service_started
+    command: tunnel --no-autoupdate --url http://frontend:80
     networks:
       - app-network
 
@@ -123,4 +135,3 @@ volumes:
 networks:
   app-network:
     driver: bridge
-

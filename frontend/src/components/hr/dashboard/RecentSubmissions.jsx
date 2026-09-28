@@ -3,9 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { ChevronUp, Users, ArrowRight, User } from 'lucide-react';
 import { API_BASE_URL } from '../../../services/api';
 
-const BASE_URL = "http://localhost:8000";
 
-const CandidateRow = ({ name, role, skills, match, status, profileImage }) => {
+const CandidateRow = ({ name, role, skills, match, status, profileImage, onReview }) => {
   const statusStyles = {
     pending: "bg-amber-50 text-amber-700 ring-1 ring-amber-600/20",
     reviewed: "bg-blue-50 text-blue-700 ring-1 ring-blue-600/20",
@@ -22,7 +21,7 @@ const CandidateRow = ({ name, role, skills, match, status, profileImage }) => {
       <div className="flex items-center gap-4 w-full sm:w-[40%] lg:w-[30%]">
         <div className="w-12 h-12 bg-red-50 rounded-full flex items-center justify-center overflow-hidden shrink-0 group-hover:bg-[#D60041] transition-colors duration-300">
           {profileImage ? (
-            <img src={profileImage.startsWith('http') ? profileImage : `${BASE_URL}${profileImage}`} alt={name} className="w-full h-full object-cover" />
+            <img src={profileImage.startsWith('http') ? profileImage : `${API_BASE_URL}${profileImage}`} alt={name} className="w-full h-full object-cover" />
           ) : (
             <User className="text-[#D60041] h-5 w-5 group-hover:text-white transition-colors" />
           )}
@@ -62,7 +61,10 @@ const CandidateRow = ({ name, role, skills, match, status, profileImage }) => {
           </span>
         </div>
 
-        <button className="px-4 md:px-6 py-2.5 bg-gray-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-[#D60041] transition-all shadow-md active:scale-95 shrink-0">
+        <button 
+          onClick={onReview}
+          className="px-4 md:px-6 py-2.5 bg-gray-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-[#D60041] transition-all shadow-md active:scale-95 shrink-0"
+        >
           Review
         </button>
       </div>
@@ -84,7 +86,7 @@ const RecentSubmissions = ({ candidates }) => {
         </div>
 
         <button 
-          onClick={() => navigate('/screening')} 
+          onClick={() => navigate('/hr/screeningportal')} 
           className="group flex items-center gap-1.5 text-sm font-medium text-[#D60041] hover:text-[#b50037] transition-colors"
         >
           <span>View All</span>
@@ -102,6 +104,7 @@ const RecentSubmissions = ({ candidates }) => {
             match={can.matchScore}
             status={can.status}
             profileImage={can.profileImage}
+            onReview={() => navigate('/hr/screeningportal')}
           />
         ))}
       </div>

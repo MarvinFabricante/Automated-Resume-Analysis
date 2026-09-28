@@ -13,7 +13,8 @@ class EmailService:
         # For now, we'll simulate the email sending by printing to console
         # and providing the reset link.
         
-        reset_link = f"http://localhost:5173/reset-password?token={token}"
+        base_url = os.getenv("PUBLIC_BASE_URL", "http://localhost:5173").rstrip("/")
+        reset_link = f"{base_url}/reset-password?token={token}"
         
         subject = "Password Reset Request - Mariwasa Portal"
         body = f"""

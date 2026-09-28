@@ -11,7 +11,7 @@ const Footer = () => {
           <div className="flex flex-col items-center md:items-start max-w-sm">
             <div className="flex items-center gap-3 mb-5">
               <img 
-                src="/src/assets/logo.png" 
+                src="/assets/logo.png" 
                 alt="Mariwasa Logo" 
                 className="h-10 w-10 object-contain grayscale opacity-80" 
               />
