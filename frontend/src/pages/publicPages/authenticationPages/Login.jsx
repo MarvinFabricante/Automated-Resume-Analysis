@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import authService from '../../../services/authService';
 import { API_BASE_URL } from '../../../services/api';
 import { useDispatch } from 'react-redux';
@@ -30,6 +30,26 @@ const Login = () => {
   });
   const [verifiedUserRole, setVerifiedUserRole] = useState('');
 
+  useEffect(() => {
+    const checkExistingSession = () => {
+      const token = localStorage.getItem('token');
+      const role = localStorage.getItem('role');
+      if (token && role) {
+        if (role.toUpperCase() === 'ADMIN') {
+          window.location.href = '/admin/dashboard';
+        } else if (role.toUpperCase() === 'HR') {
+          window.location.href = '/hr/dashboard';
+        } else {
+          window.location.href = '/candidate/dashboard';
+        }
+      }
+    };
+    
+    checkExistingSession();
+    window.addEventListener('storage', checkExistingSession);
+    return () => window.removeEventListener('storage', checkExistingSession);
+  }, []);
+
   const handleEmailChange = (e) => {
     const value = e.target.value;
     setEmail(value);
@@ -38,6 +58,20 @@ const Login = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+
+    const existingToken = localStorage.getItem('token');
+    const existingRole = localStorage.getItem('role');
+    
+    if (existingToken && existingRole) {
+      setModalState({
+        isOpen: true,
+        type: 'error',
+        title: 'Already Logged In',
+        message: 'An account is already logged in on this browser. Please log out first to switch accounts.'
+      });
+      return;
+    }
+
     setLoading(true);
 
     const normalizedEmail = email.trim().toLowerCase();

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import authService from '../../../services/authService';
 import { Users, Eye, EyeOff, Loader2, CheckCircle2, XCircle, ArrowLeft } from 'lucide-react';
 import { Helmet } from 'react-helmet-async';
@@ -27,12 +27,45 @@ const Register = () => {
     message: ''
   });
 
+  useEffect(() => {
+    const checkExistingSession = () => {
+      const token = localStorage.getItem('token');
+      const role = localStorage.getItem('role');
+      if (token && role) {
+        if (role.toUpperCase() === 'ADMIN') {
+          window.location.href = '/admin/dashboard';
+        } else if (role.toUpperCase() === 'HR') {
+          window.location.href = '/hr/dashboard';
+        } else {
+          window.location.href = '/candidate/dashboard';
+        }
+      }
+    };
+    
+    checkExistingSession();
+    window.addEventListener('storage', checkExistingSession);
+    return () => window.removeEventListener('storage', checkExistingSession);
+  }, []);
+
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+
+    const existingToken = localStorage.getItem('token');
+    const existingRole = localStorage.getItem('role');
+    
+    if (existingToken && existingRole) {
+      setModalState({
+        isOpen: true,
+        type: 'error',
+        title: 'Already Logged In',
+        message: 'An account is already logged in on this browser. Please log out first to switch accounts.'
+      });
+      return;
+    }
 
     if (!agreedToTerms) {
       setModalState({
