@@ -364,19 +364,29 @@ const Header = () => {
   const navItems = getNavItems();
 
   return (
-    <header className="bg-white border-b border-gray-100 px-4 sm:px-6 md:px-10 py-4 sticky top-0 z-50 font-sans shadow-sm">
+    <>
+    <header className="bg-white border-b border-gray-100 px-4 sm:px-6 md:px-10 py-3 sm:py-4 sticky top-0 z-50 font-sans shadow-sm">
       <div className="max-w-[1400px] mx-auto flex items-center justify-between">
 
-        <div className="flex items-center space-x-4 shrink-0">
-          <div className="flex items-center space-x-4 cursor-pointer group" onClick={() => navigate(isGuest ? '/' : location.pathname)}>
-            <div className={`w-10 h-10 rounded-xl flex items-center justify-center overflow-hidden transition-all duration-300 ${!isGuest && 'group-hover:shadow-[0_0_15px_rgba(209,0,67,0.3)]'}`}>
+        <div className="flex items-center space-x-2 sm:space-x-4 shrink-0">
+          {/* Mobile hamburger - visible on small screens for logged-in users or public pages */}
+          <button
+            className="lg:hidden p-2 rounded-xl text-gray-500 hover:bg-gray-50 hover:text-gray-900 transition-all -ml-1"
+            onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+            aria-label="Toggle mobile menu"
+          >
+            {isMobileMenuOpen ? <X size={22} /> : <Menu size={22} />}
+          </button>
+
+          <div className="flex items-center space-x-2 sm:space-x-4 cursor-pointer group" onClick={() => navigate(isGuest ? '/' : location.pathname)}>
+            <div className={`w-8 h-8 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center overflow-hidden transition-all duration-300 ${!isGuest && 'group-hover:shadow-[0_0_15px_rgba(209,0,67,0.3)]'}`}>
               <img src="/assets/logo.png" alt="logo" className="w-full h-full object-contain" />
             </div>
             <div>
-              <h1 className="text-base font-black tracking-tight text-gray-900 leading-tight">
+              <h1 className="text-sm sm:text-base font-black tracking-tight text-gray-900 leading-tight">
                 {isPublicSitePage ? "Mariwasa" : isAdminRole ? "Admin Portal" : isHRRole ? "HR Portal" : isCandidateRole ? "Candidate Portal" : "Mariwasa"}
               </h1>
-              <p className={`text-[10px] font-bold uppercase tracking-widest mt-0.5 ${isGuest || isPublicSitePage ? 'text-gray-400' : 'text-[#D60041]'}`}>
+              <p className={`text-[9px] sm:text-[10px] font-bold uppercase tracking-widest mt-0.5 ${isGuest || isPublicSitePage ? 'text-gray-400' : 'text-[#D60041]'}`}>
                 {isGuest || isPublicSitePage ? "Siam Ceramics Inc." : "Resume Analysis System"}
               </p>
             </div>
@@ -405,20 +415,20 @@ const Header = () => {
           )}
         </div>
 
-        <div className="flex items-center space-x-4 relative shrink-0" ref={dropdownRef}>
+        <div className="flex items-center space-x-1.5 sm:space-x-4 relative shrink-0" ref={dropdownRef}>
           {/* Theme Toggle - Always Visible */}
-          <div className="relative mr-2" ref={themeRef}>
+          <div className="relative mr-0 sm:mr-2" ref={themeRef}>
             <button
               onClick={() => setIsThemeOpen(!isThemeOpen)}
-              className={`w-11 h-11 rounded-2xl flex items-center justify-center transition-all duration-300 border ${isThemeOpen ? 'bg-slate-900 border-slate-900 shadow-xl' : 'bg-gray-50/50 border-gray-100 hover:bg-white hover:border-pink-100 hover:shadow-md hover:scale-105 active:scale-95'}`}
+              className={`w-9 h-9 sm:w-11 sm:h-11 rounded-xl sm:rounded-2xl flex items-center justify-center transition-all duration-300 border ${isThemeOpen ? 'bg-slate-900 border-slate-900 shadow-xl' : 'bg-gray-50/50 border-gray-100 hover:bg-white hover:border-pink-100 hover:shadow-md hover:scale-105 active:scale-95'}`}
               aria-label="Toggle theme"
             >
               {currentTheme === 'light' ? (
-                <Sun size={20} className={isThemeOpen ? 'text-white' : 'text-gray-500'} />
+                <Sun size={18} className={isThemeOpen ? 'text-white' : 'text-gray-500'} />
               ) : currentTheme === 'dark' ? (
-                <Moon size={20} className={isThemeOpen ? 'text-white' : 'text-gray-500'} />
+                <Moon size={18} className={isThemeOpen ? 'text-white' : 'text-gray-500'} />
               ) : (
-                <Monitor size={20} className={isThemeOpen ? 'text-white' : 'text-gray-500'} />
+                <Monitor size={18} className={isThemeOpen ? 'text-white' : 'text-gray-500'} />
               )}
             </button>
             
@@ -470,14 +480,14 @@ const Header = () => {
             </div>
           ) : (
             <>
-              <div className="relative mr-2" ref={notificationsRef}>
+              <div className="relative mr-0 sm:mr-2" ref={notificationsRef}>
                 <button
                   onClick={() => setIsNotificationsOpen(!isNotificationsOpen)}
-                  className={`w-11 h-11 rounded-2xl flex items-center justify-center transition-all duration-300 border ${pulse ? 'ring-4 ring-pink-100 scale-110' : ''} ${isNotificationsOpen ? 'bg-slate-900 border-slate-900 shadow-xl' : 'bg-gray-50/50 border-gray-100 hover:bg-white hover:border-pink-100 hover:shadow-md hover:scale-105 active:scale-95'}`}
+                  className={`w-9 h-9 sm:w-11 sm:h-11 rounded-xl sm:rounded-2xl flex items-center justify-center transition-all duration-300 border ${pulse ? 'ring-4 ring-pink-100 scale-110' : ''} ${isNotificationsOpen ? 'bg-slate-900 border-slate-900 shadow-xl' : 'bg-gray-50/50 border-gray-100 hover:bg-white hover:border-pink-100 hover:shadow-md hover:scale-105 active:scale-95'}`}
                 >
-                  <Bell size={20} className={`${pulse ? 'animate-bounce text-[#D60041]' : ''} ${isNotificationsOpen ? 'text-white' : 'text-gray-500'}`} />
+                  <Bell size={18} className={`${pulse ? 'animate-bounce text-[#D60041]' : ''} ${isNotificationsOpen ? 'text-white' : 'text-gray-500'}`} />
                   {unreadCount > 0 && (
-                    <span className="absolute -top-1 -right-1 w-5 h-5 bg-[#D60041] text-white text-[9px] font-black rounded-full border-2 border-white flex items-center justify-center shadow-lg animate-in zoom-in duration-300">
+                    <span className="absolute -top-1 -right-1 w-4 h-4 sm:w-5 sm:h-5 bg-[#D60041] text-white text-[8px] sm:text-[9px] font-black rounded-full border-2 border-white flex items-center justify-center shadow-lg animate-in zoom-in duration-300">
                       {unreadCount}
                     </span>
                   )}
@@ -501,27 +511,27 @@ const Header = () => {
           )}
 
           {isProfileOpen && !isGuest && (
-            <div className="absolute right-0 top-[calc(100%+16px)] w-72 bg-white border border-gray-100 rounded-[24px] shadow-2xl py-3 z-[60] animate-in fade-in slide-in-from-top-4 duration-200">
-              <div className="px-6 py-5 border-b border-gray-50 mb-2 flex items-center gap-4">
-                <div className="w-12 h-12 rounded-2xl overflow-hidden border border-gray-100 shrink-0 bg-gray-50 flex items-center justify-center">
+            <div className="absolute right-0 top-[calc(100%+16px)] w-[calc(100vw-2rem)] sm:w-72 max-w-[288px] bg-white border border-gray-100 rounded-[24px] shadow-2xl py-3 z-[60] animate-in fade-in slide-in-from-top-4 duration-200">
+              <div className="px-4 sm:px-6 py-4 sm:py-5 border-b border-gray-50 mb-2 flex items-center gap-3 sm:gap-4">
+                <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-2xl overflow-hidden border border-gray-100 shrink-0 bg-gray-50 flex items-center justify-center">
                   {profileImageUrl ? (
                     <img src={profileImageUrl} alt="Profile" className="w-full h-full object-cover" />
                   ) : (
-                    isAdminRole ? <ShieldCheck size={24} className="text-[#D60041]" /> : <User size={24} className="text-gray-400" />
+                    isAdminRole ? <ShieldCheck size={20} className="text-[#D60041]" /> : <User size={20} className="text-gray-400" />
                   )}
                 </div>
                 <div className="min-w-0">
                   <p className="text-[10px] text-gray-400 font-black uppercase tracking-widest mb-0.5">{isAdminRole ? "Admin Session" : "Active Account"}</p>
-                  <p className="text-sm font-bold text-gray-900 truncate">{userEmail}</p>
+                  <p className="text-xs sm:text-sm font-bold text-gray-900 truncate">{userEmail}</p>
                 </div>
               </div>
-              <button onClick={() => navigate(isAdminRole ? '/admin/profile' : isHRRole ? '/hr/profile' : '/candidate/profile')} className="w-full text-left px-6 py-3.5 text-sm font-bold text-gray-600 hover:bg-gray-50 hover:text-gray-900 flex items-center space-x-4 transition-all group">
+              <button onClick={() => { navigate(isAdminRole ? '/admin/profile' : isHRRole ? '/hr/profile' : '/candidate/profile'); setIsProfileOpen(false); }} className="w-full text-left px-4 sm:px-6 py-3 sm:py-3.5 text-sm font-bold text-gray-600 hover:bg-gray-50 hover:text-gray-900 flex items-center space-x-4 transition-all group">
                 <User size={18} className="text-gray-400 group-hover:text-gray-600" /> <span>View Profile</span>
               </button>
-              <button onClick={() => navigate(isAdminRole ? '/admin/settings' : isHRRole ? '/hr/settings' : '/candidate/settings')} className="w-full text-left px-6 py-3.5 text-sm font-bold text-gray-600 hover:bg-gray-50 hover:text-gray-900 flex items-center space-x-4 transition-all group">
+              <button onClick={() => { navigate(isAdminRole ? '/admin/settings' : isHRRole ? '/hr/settings' : '/candidate/settings'); setIsProfileOpen(false); }} className="w-full text-left px-4 sm:px-6 py-3 sm:py-3.5 text-sm font-bold text-gray-600 hover:bg-gray-50 hover:text-gray-900 flex items-center space-x-4 transition-all group">
                 <Settings size={18} className="text-gray-400 group-hover:text-gray-600" /> <span>Account Settings</span>
               </button>
-              <button onClick={handleLogout} className="w-full text-left px-6 py-3.5 text-sm font-bold text-red-600 hover:bg-red-50 flex items-center space-x-4 transition-all">
+              <button onClick={handleLogout} className="w-full text-left px-4 sm:px-6 py-3 sm:py-3.5 text-sm font-bold text-red-600 hover:bg-red-50 flex items-center space-x-4 transition-all">
                 <LogOut size={18} /> <span>Secure Sign Out</span>
               </button>
             </div>
@@ -529,6 +539,101 @@ const Header = () => {
         </div>
       </div>
     </header>
+
+    {/* Mobile Navigation Dropdown */}
+    {isMobileMenuOpen && (
+      <div className="lg:hidden absolute top-full left-0 w-full bg-white border-b border-gray-100 shadow-xl z-[45] animate-in fade-in slide-in-from-top-2 duration-200 max-h-[calc(100vh-65px)] overflow-y-auto">
+        <div className="flex flex-col pb-4">
+          {/* Nav Items */}
+          <div className="p-4 border-b border-gray-50">
+            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3 px-2">Navigation</p>
+            <nav className="space-y-1">
+              {navItems.map((item, index) => {
+                const isActive = location.pathname === item.path;
+                return (
+                  <button
+                    key={index}
+                    onClick={() => { navigate(item.path); setIsMobileMenuOpen(false); }}
+                    className={`w-full flex items-center space-x-3 px-4 py-3.5 rounded-2xl transition-all duration-200 ${
+                      isActive
+                        ? 'bg-red-50 text-[#D60041] shadow-sm'
+                        : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                    }`}
+                  >
+                    <span className={`${isActive ? 'text-[#D60041]' : 'text-gray-400'}`}>{item.icon}</span>
+                    <span className="text-sm font-bold tracking-tight">{item.label}</span>
+                  </button>
+                );
+              })}
+            </nav>
+          </div>
+
+          {/* Application Page Cancel */}
+          {isApplicationPage && (
+            <div className="p-4 border-b border-gray-50">
+              <button
+                onClick={() => { navigate('/careerspage'); setIsMobileMenuOpen(false); }}
+                className="w-full flex items-center justify-center space-x-2 bg-white border border-gray-200 text-gray-600 px-4 py-3 rounded-2xl text-sm font-bold hover:bg-red-50 hover:text-[#D60041] transition-all"
+              >
+                <X size={18} />
+                <span>Cancel Application</span>
+              </button>
+            </div>
+          )}
+
+          {/* Profile Section for logged-in users on mobile */}
+          {!isGuest && !isApplicationPage && (
+            <div className="p-4 border-b border-gray-50">
+              <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3 px-2">Account</p>
+              <div className="flex items-center gap-3 px-4 py-3 bg-gray-50/80 rounded-2xl mb-3">
+                <div className="w-10 h-10 rounded-xl overflow-hidden border border-gray-200 shrink-0 bg-white flex items-center justify-center">
+                  {profileImageUrl ? (
+                    <img src={profileImageUrl} alt="Profile" className="w-full h-full object-cover" />
+                  ) : (
+                    isAdminRole ? <ShieldCheck size={18} className="text-[#D60041]" /> : <User size={18} className="text-gray-400" />
+                  )}
+                </div>
+                <div className="min-w-0">
+                  <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">{userRole}</p>
+                  <p className="text-xs font-bold text-gray-900 truncate">{userEmail}</p>
+                </div>
+              </div>
+              <button onClick={() => { navigate(isAdminRole ? '/admin/profile' : isHRRole ? '/hr/profile' : '/candidate/profile'); setIsMobileMenuOpen(false); }} className="w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-sm font-bold text-gray-600 hover:bg-gray-50 transition-all">
+                <User size={18} className="text-gray-400" /> <span>View Profile</span>
+              </button>
+              <button onClick={() => { navigate(isAdminRole ? '/admin/settings' : isHRRole ? '/hr/settings' : '/candidate/settings'); setIsMobileMenuOpen(false); }} className="w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-sm font-bold text-gray-600 hover:bg-gray-50 transition-all">
+                <Settings size={18} className="text-gray-400" /> <span>Account Settings</span>
+              </button>
+              <button onClick={() => { handleLogout(); setIsMobileMenuOpen(false); }} className="w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-sm font-bold text-red-600 hover:bg-red-50 transition-all">
+                <LogOut size={18} /> <span>Sign Out</span>
+              </button>
+            </div>
+          )}
+
+          {/* Guest Auth Actions on mobile */}
+          {isGuest && (
+            <div className="p-4">
+              <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3 px-2">Access Portal</p>
+              <div className="space-y-2">
+                <button
+                  onClick={() => { navigate('/login'); setIsMobileMenuOpen(false); }}
+                  className="w-full flex items-center space-x-3 px-4 py-3.5 rounded-2xl bg-[#D60041] text-white text-sm font-bold transition-all shadow-md"
+                >
+                  <LogIn size={18} /> <span>Login to Account</span>
+                </button>
+                <button
+                  onClick={() => { navigate('/register'); setIsMobileMenuOpen(false); }}
+                  className="w-full flex items-center space-x-3 px-4 py-3.5 rounded-2xl bg-gray-50 text-gray-700 border border-gray-200 text-sm font-bold transition-all hover:bg-gray-100"
+                >
+                  <UserPlus size={18} className="text-gray-400" /> <span>Register New User</span>
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    )}
+    </>
   );
 };
 

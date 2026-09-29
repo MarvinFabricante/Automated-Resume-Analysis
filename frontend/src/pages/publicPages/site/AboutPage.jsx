@@ -17,9 +17,9 @@ import Header from '../../../components/layout/Header';
 import Footer from '../../../components/layout/Footer';
 
 const BANNERS = [
-  'src/assets/banner.jpg',
-  'src/assets/banner2.jpg',
-  'src/assets/banner3.jpg'
+  '/assets/banner.jpg',
+  '/assets/banner2.jpg',
+  '/assets/banner3.jpg'
 ];
 
 const AboutPage = () => {
@@ -39,7 +39,7 @@ const AboutPage = () => {
       <Header />
 
       <main className="flex-grow">
-        <section className="relative w-full h-[500px] md:h-[650px] flex items-center justify-center overflow-hidden">
+        <section className="relative w-full h-[400px] md:h-[650px] flex items-center justify-center overflow-hidden">
           {BANNERS.map((bg, index) => (
             <div
               key={index}
@@ -68,9 +68,9 @@ const AboutPage = () => {
           </div>
         </section>
 
-        <div className="max-w-7xl mx-auto px-6 py-20">
+        <div className="max-w-7xl mx-auto px-6 py-10 md:py-20">
 
-          <section className="bg-white rounded-[32px] shadow-sm border border-gray-100 p-10 md:p-16 mb-20 relative overflow-hidden">
+          <section className="bg-white rounded-[32px] shadow-sm border border-gray-100 p-6 md:p-16 mb-20 relative overflow-hidden">
             <div className="absolute top-0 right-0 w-64 h-64 bg-pink-50 rounded-full blur-3xl opacity-50 -translate-y-1/2 translate-x-1/2"></div>
             <div className="relative z-10 flex flex-col md:flex-row gap-12 items-center">
               <div className="flex-1">
@@ -89,7 +89,7 @@ const AboutPage = () => {
               </div>
               <div className="flex-1">
                 <img
-                  src="/assets/sub header.jpg"
+                  src="/assets/sub_header.jpg"
                   alt="Corporate Office"
                   className="rounded-[24px] object-cover w-full h-[300px] shadow-sm"
                 />
@@ -130,7 +130,7 @@ const AboutPage = () => {
                   desc: "HR seamlessly reviews top matches and schedules interviews efficiently."
                 }
               ].map((step, idx) => (
-                <div key={idx} className="bg-white p-8 rounded-[24px] border border-gray-100 shadow-sm hover:shadow-md transition-shadow relative overflow-hidden group">
+                <div key={idx} className="bg-white p-6 md:p-8 rounded-[24px] border border-gray-100 shadow-sm hover:shadow-md transition-shadow relative overflow-hidden group">
                   <div className="absolute top-0 left-0 w-1 h-full bg-gray-100 group-hover:bg-[#D60041] transition-colors"></div>
                   <div className="w-12 h-12 bg-gray-50 rounded-xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
                     <step.icon className="text-[#D60041]" size={24} />
@@ -143,7 +143,7 @@ const AboutPage = () => {
           </section>
 
           <div className="grid md:grid-cols-2 gap-8 mb-20">
-            <div className="bg-white p-10 md:p-12 rounded-[32px] border border-gray-100 shadow-sm flex flex-col items-center text-center">
+            <div className="bg-white p-6 md:p-12 rounded-[32px] border border-gray-100 shadow-sm flex flex-col items-center text-center">
               <div className="w-16 h-16 bg-red-50 text-[#D60041] rounded-2xl flex items-center justify-center mb-6">
                 <Target size={32} />
               </div>
@@ -155,7 +155,7 @@ const AboutPage = () => {
               </p>
             </div>
 
-            <div className="bg-[#1A1A1A] p-10 md:p-12 rounded-[32px] shadow-sm flex flex-col items-center text-center">
+            <div className="bg-[#1A1A1A] p-6 md:p-12 rounded-[32px] shadow-sm flex flex-col items-center text-center">
               <div className="w-16 h-16 bg-white/10 text-white rounded-2xl flex items-center justify-center mb-6">
                 <Globe size={32} />
               </div>
@@ -188,7 +188,7 @@ const AboutPage = () => {
                   icon: Users
                 }
               ].map((value, idx) => (
-                <div key={idx} className="bg-white p-8 rounded-[24px] border border-gray-100 text-center flex flex-col items-center">
+                <div key={idx} className="bg-white p-6 md:p-8 rounded-[24px] border border-gray-100 text-center flex flex-col items-center">
                   <div className="text-[#D60041] mb-5 bg-red-50 p-3 rounded-xl">
                     <value.icon size={24} />
                   </div>
@@ -199,7 +199,7 @@ const AboutPage = () => {
             </div>
           </section>
 
-          <section className="text-center py-16 px-6 bg-white rounded-[32px] border border-gray-100 shadow-sm relative overflow-hidden">
+          <section className="text-center py-10 md:py-16 px-6 bg-white rounded-[32px] border border-gray-100 shadow-sm relative overflow-hidden">
             <div className="absolute inset-0 bg-gradient-to-br from-white via-white to-pink-50/50 z-0"></div>
             <div className="relative z-10 max-w-2xl mx-auto">
               <h2 className="text-3xl font-normal tracking-tight mb-4 text-gray-900">Ready to join our team?</h2>

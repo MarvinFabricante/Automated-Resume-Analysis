@@ -103,7 +103,7 @@ const CareersPage = () => {
       </Helmet>
       <Header />
 
-      <main className="flex-grow max-w-6xl mx-auto px-6 py-16 lg:py-24 w-full">
+      <main className="flex-grow max-w-6xl mx-auto px-4 md:px-6 py-10 md:py-16 lg:py-24 w-full">
 
         <div className="text-center mb-16 relative">
           <div className="inline-block p-1.5 rounded-full bg-white shadow-sm border border-gray-100 mb-8">
@@ -112,7 +112,7 @@ const CareersPage = () => {
               <span className="text-xs font-semibold uppercase tracking-wider text-gray-600">Open Positions</span>
             </div>
           </div>
-          <h1 className="text-5xl md:text-6xl font-normal tracking-tight text-gray-900 mb-6">
+          <h1 className="text-4xl md:text-6xl font-normal tracking-tight text-gray-900 mb-6">
             Find Your <span className="font-semibold text-[#D60041]">Career</span> at Mariwasa
           </h1>
           <p className="text-gray-600 text-lg md:text-xl max-w-2xl mx-auto font-normal leading-relaxed">
@@ -121,7 +121,7 @@ const CareersPage = () => {
         </div>
 
         <div className="w-full mb-16 relative z-20">
-          <div className="bg-white p-3 rounded-full shadow-sm border border-gray-100 flex flex-col md:flex-row gap-3 relative">
+          <div className="bg-white p-3 rounded-[24px] md:rounded-full shadow-sm border border-gray-100 flex flex-col md:flex-row gap-3 relative">
             <div className="relative flex-grow">
               <Search className="absolute left-6 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
               <input
@@ -197,7 +197,7 @@ const CareersPage = () => {
               <div 
                 key={job.id} 
                 onClick={() => navigate(`/apply/${job.job_id}`, { state: { job } })}
-                className="bg-white p-8 rounded-[32px] border border-gray-100 shadow-sm hover:shadow-md transition-all duration-300 group flex flex-col relative overflow-hidden cursor-pointer"
+                className="bg-white p-6 md:p-8 rounded-[32px] border border-gray-100 shadow-sm hover:shadow-md transition-all duration-300 group flex flex-col relative overflow-hidden cursor-pointer"
               >
                 <div className="absolute top-0 right-0 w-32 h-32 bg-red-50 rounded-bl-[100px] opacity-0 group-hover:opacity-50 transition-opacity duration-300"></div>
 
@@ -243,7 +243,7 @@ const CareersPage = () => {
                   </div>
                 </div>
 
-                <div className="flex gap-3 relative z-10">
+                <div className="flex flex-col sm:flex-row gap-3 relative z-10">
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
