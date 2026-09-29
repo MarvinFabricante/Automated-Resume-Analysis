@@ -4,6 +4,7 @@ import { useSelector } from 'react-redux';
 import { useEffect } from 'react';
 
 import ProtectedRoute from './ProtectedRoutes';
+import PublicRoute from './PublicRoute';
 import ScrollToTop from './components/layout/ScrollToTop';
 
 import Login from './pages/publicPages/authenticationPages/Login';
@@ -81,12 +82,14 @@ const App = () => {
     <HelmetProvider>
       <ScrollToTop />
       <Routes>
-        <Route path="/login" element={<Login />} />
-        <Route path="/register" element={<Register />} />
-        <Route path="/forgot-password" element={<ForgotPassword />} />
-        <Route path="/reset-password" element={<ResetPassword />} />
-        <Route path="/auth/callback" element={<GoogleCallback />} />
-        <Route path="/" element={<LandingPage />} />
+        <Route element={<PublicRoute />}>
+          <Route path="/login" element={<Login />} />
+          <Route path="/register" element={<Register />} />
+          <Route path="/forgot-password" element={<ForgotPassword />} />
+          <Route path="/reset-password" element={<ResetPassword />} />
+          <Route path="/auth/callback" element={<GoogleCallback />} />
+          <Route path="/" element={<LandingPage />} />
+        </Route>
         <Route path="/careerspage" element={<CareersPage />} />
         <Route path="/aboutpage" element={<AboutPage />} />
 

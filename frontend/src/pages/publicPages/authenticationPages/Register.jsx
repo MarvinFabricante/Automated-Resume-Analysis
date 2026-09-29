@@ -62,7 +62,7 @@ const Register = () => {
         isOpen: true,
         type: 'error',
         title: 'Already Logged In',
-        message: 'An account is already logged in on this browser. Please log out first to switch accounts.'
+        message: `An account (${existingRole.toLowerCase()}) is already logged in on this browser. Please log out first if you want to switch accounts.`
       });
       return;
     }
