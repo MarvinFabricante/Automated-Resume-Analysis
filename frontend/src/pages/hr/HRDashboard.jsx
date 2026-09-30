@@ -48,7 +48,7 @@ const HRDashboard = () => {
 
       <div className="flex flex-1">
         <Sidebar />
-        <div className="flex-1">
+        <div className="flex-1 min-w-0 flex flex-col">
           {isLoading && (
             <div className="fixed inset-0 bg-white/60 backdrop-blur-sm z-[999] flex items-center justify-center">
               <div className="flex flex-col items-center">

@@ -26,7 +26,7 @@ const StatCard = ({ icon: Icon, label, value, trend, trendColor, bgColor, iconCo
 );
 
 const ApplicationStatusCard = ({ appStats }) => (
-  <div className="flex flex-col p-6 border border-gray-100 bg-gray-50/50 rounded-[24px] hover:bg-white hover:border-pink-100 hover:shadow-xl hover:-translate-y-1 transition-all duration-300 group md:col-span-2 xl:col-span-2">
+  <div className="flex flex-col p-6 border border-gray-100 bg-gray-50/50 rounded-[24px] hover:bg-white hover:border-pink-100 hover:shadow-xl hover:-translate-y-1 transition-all duration-300 group sm:col-span-2 md:col-span-2 xl:col-span-2">
     <div className="flex justify-between items-center mb-6">
       <div className="w-12 h-12 bg-pink-50 rounded-2xl flex items-center justify-center group-hover:scale-110 transition-transform duration-300 shadow-inner">
         <Zap className="h-5 w-5 text-[#D60041]" />

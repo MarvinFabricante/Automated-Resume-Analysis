@@ -12,7 +12,7 @@ import profileService from '../../services/profileService';
 import { useSelector, useDispatch } from 'react-redux';
 import { logout as logoutAction, updateProfileImage } from '../../redux/slices/authSlice';
 import { setNotifications, addNotification, markAllRead as markAllReadAction } from '../../redux/slices/notificationSlice';
-import { closeSidebar } from '../../redux/slices/uiSlice';
+import { closeSidebar, toggleSidebar } from '../../redux/slices/uiSlice';
 import { setTheme } from '../../redux/slices/themeSlice';
 import { WS_BASE_URL } from '../../services/api';
 
@@ -369,13 +369,21 @@ const Header = () => {
       <div className="max-w-[1400px] mx-auto flex items-center justify-between">
 
         <div className="flex items-center space-x-2 sm:space-x-4 shrink-0">
-          {/* Mobile hamburger - visible on small screens for logged-in users or public pages */}
           <button
             className="lg:hidden p-2 rounded-xl text-gray-500 hover:bg-gray-50 hover:text-gray-900 transition-all -ml-1"
-            onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+            onClick={() => {
+              if (!isGuest && !isPublicSitePage && !isApplicationPage) {
+                dispatch(isSidebarOpen ? closeSidebar() : { type: 'ui/toggleSidebar' });
+                // We actually need toggleSidebar imported if we want to dispatch it directly,
+                // but wait, toggleSidebar is not imported in Header.jsx.
+                // Let's import it.
+              } else {
+                setIsMobileMenuOpen(!isMobileMenuOpen);
+              }
+            }}
             aria-label="Toggle mobile menu"
           >
-            {isMobileMenuOpen ? <X size={22} /> : <Menu size={22} />}
+            {isMobileMenuOpen || (isSidebarOpen && !isGuest && !isPublicSitePage && !isApplicationPage) ? <X size={22} /> : <Menu size={22} />}
           </button>
 
           <div className="flex items-center space-x-2 sm:space-x-4 cursor-pointer group" onClick={() => navigate(isGuest ? '/' : location.pathname)}>
@@ -494,18 +502,18 @@ const Header = () => {
                 </button>
                 {isNotificationsOpen && <NotificationDropdown userRole={userRole} notifications={notifications} onMarkAllRead={handleMarkAllRead} />}
               </div>
-              <div onClick={() => setIsProfileOpen(!isProfileOpen)} className={`hidden lg:flex items-center space-x-4 border px-2 py-2 pr-5 rounded-full cursor-pointer transition-all duration-300 group ${isProfileOpen ? 'bg-gray-50 border-gray-200 shadow-inner' : 'hover:border-pink-200 border-gray-100 hover:shadow-md hover:bg-white bg-gray-50/50'}`}>
+              <div onClick={() => setIsProfileOpen(!isProfileOpen)} className={`flex items-center sm:space-x-4 border p-1 sm:px-2 sm:py-2 sm:pr-5 rounded-full cursor-pointer transition-all duration-300 group ${isProfileOpen ? 'bg-gray-50 border-gray-200 shadow-inner' : 'hover:border-pink-200 border-gray-100 hover:shadow-md hover:bg-white bg-gray-50/50'}`}>
                 <div className={`w-9 h-9 rounded-full flex items-center justify-center border transition-all duration-300 overflow-hidden ${isProfileOpen ? 'bg-[#D60041] border-[#D60041] shadow-md shadow-pink-200' : 'bg-white border-gray-200 group-hover:border-pink-200'}`}>
                   {profileImageUrl && <img src={profileImageUrl} alt="Profile" className="w-full h-full object-cover" onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex'; }} />}
                   <div className={`items-center justify-center w-full h-full ${profileImageUrl ? 'hidden' : 'flex'}`}>
                     {isAdminRole ? <ShieldCheck className={`h-4 w-4 ${isProfileOpen ? 'text-white' : 'text-gray-600 group-hover:text-[#D60041]'}`} /> : <User className={`h-4 w-4 ${isProfileOpen ? 'text-white' : 'text-gray-600 group-hover:text-[#D60041]'}`} />}
                   </div>
                 </div>
-                <div className="flex flex-col items-start overflow-hidden">
+                <div className="hidden sm:flex flex-col items-start overflow-hidden">
                   <span className="text-[10px] text-gray-400 font-bold uppercase tracking-widest leading-none mb-0.5">{userRole}</span>
                   <span className="text-xs font-bold text-gray-900 truncate max-w-[130px]">{userEmail}</span>
                 </div>
-                <ChevronDown size={14} className={`text-gray-400 transition-transform duration-300 ml-1 ${isProfileOpen ? 'rotate-180 text-[#D60041]' : 'group-hover:text-gray-600'}`} />
+                <ChevronDown size={14} className={`hidden sm:block text-gray-400 transition-transform duration-300 ml-1 ${isProfileOpen ? 'rotate-180 text-[#D60041]' : 'group-hover:text-gray-600'}`} />
               </div>
             </>
           )}
@@ -577,35 +585,6 @@ const Header = () => {
               >
                 <X size={18} />
                 <span>Cancel Application</span>
-              </button>
-            </div>
-          )}
-
-          {/* Profile Section for logged-in users on mobile */}
-          {!isGuest && !isApplicationPage && (
-            <div className="p-4 border-b border-gray-50">
-              <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3 px-2">Account</p>
-              <div className="flex items-center gap-3 px-4 py-3 bg-gray-50/80 rounded-2xl mb-3">
-                <div className="w-10 h-10 rounded-xl overflow-hidden border border-gray-200 shrink-0 bg-white flex items-center justify-center">
-                  {profileImageUrl ? (
-                    <img src={profileImageUrl} alt="Profile" className="w-full h-full object-cover" />
-                  ) : (
-                    isAdminRole ? <ShieldCheck size={18} className="text-[#D60041]" /> : <User size={18} className="text-gray-400" />
-                  )}
-                </div>
-                <div className="min-w-0">
-                  <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">{userRole}</p>
-                  <p className="text-xs font-bold text-gray-900 truncate">{userEmail}</p>
-                </div>
-              </div>
-              <button onClick={() => { navigate(isAdminRole ? '/admin/profile' : isHRRole ? '/hr/profile' : '/candidate/profile'); setIsMobileMenuOpen(false); }} className="w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-sm font-bold text-gray-600 hover:bg-gray-50 transition-all">
-                <User size={18} className="text-gray-400" /> <span>View Profile</span>
-              </button>
-              <button onClick={() => { navigate(isAdminRole ? '/admin/settings' : isHRRole ? '/hr/settings' : '/candidate/settings'); setIsMobileMenuOpen(false); }} className="w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-sm font-bold text-gray-600 hover:bg-gray-50 transition-all">
-                <Settings size={18} className="text-gray-400" /> <span>Account Settings</span>
-              </button>
-              <button onClick={() => { handleLogout(); setIsMobileMenuOpen(false); }} className="w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-sm font-bold text-red-600 hover:bg-red-50 transition-all">
-                <LogOut size={18} /> <span>Sign Out</span>
               </button>
             </div>
           )}

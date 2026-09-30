@@ -58,14 +58,18 @@ const Sidebar = () => {
 
   return (
     <>
+      {/* Mobile Backdrop */}
+      <div 
+        className={`lg:hidden fixed inset-0 bg-gray-900/50 z-[35] transition-opacity duration-300 ${isSidebarOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+        onClick={() => dispatch(closeSidebar())}
+      />
       <aside
         className={`
-          hidden lg:flex
-          fixed top-[81px] left-0 
+          flex fixed top-[81px] left-0 
           bg-white border-r border-gray-100 
           h-[calc(100vh-81px)] 
           z-[40] flex-col transition-all duration-300 ease-in-out
-          ${isSidebarOpen ? 'w-64' : 'w-20'}
+          ${isSidebarOpen ? 'translate-x-0 w-64' : '-translate-x-full lg:translate-x-0 lg:w-20'}
         `}
       >
         {/* SIDEBAR TOGGLE AREA */}
