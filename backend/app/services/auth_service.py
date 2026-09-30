@@ -257,7 +257,9 @@ class AuthService:
         if user:
             if getattr(user, 'is_archived', False) or (row and getattr(row, 'is_archived', False)):
                 raise Exception("Account has been archived. Please contact administration.")
-            user.google_credentials = google_credentials
+            # Store google_credentials ONLY for HR and ADMIN who interact with Google Calendar
+            if role in ["HR", "ADMIN"]:
+                user.google_credentials = google_credentials
             if picture and not user.profile_image_url:
                 user.profile_image_url = picture
             if fullname and not user.fullname:
@@ -301,7 +303,12 @@ class AuthService:
             "profile_image_url": user.profile_image_url if user else picture
         }
 
-    async def register_with_google(self, db: AsyncSession, email: str, fullname: str, picture: str, google_credentials: str):
+    async def register_candidate_with_google(self, db: AsyncSession, email: str, fullname: str, picture: str):
+        """
+        Register a new candidate account via Google OAuth.
+        Handles ONLY candidate authentication and account creation.
+        Does not request Google Calendar permissions or link to Google Calendar Console services.
+        """
         email = email.strip().lower()
 
         # Check if this Google account is already registered under any role
@@ -310,7 +317,7 @@ class AuthService:
             role_name = row.role.capitalize() if row.role else "Account"
             raise Exception(f"This Google account is already registered as an active {role_name}. Please sign in instead.")
 
-        # Registration via Google is strictly for CANDIDATES ONLY
+        # Candidate account creation only
         role = "CANDIDATE"
         new_user = await self.register_user(db, email, "password", role, fullname)
         user_id = new_user.id
@@ -327,7 +334,8 @@ class AuthService:
 
         user = await AuthRepository.get_user_by_id(db, user_id)
         if user:
-            user.google_credentials = google_credentials
+            # Explicitly do NOT set google_credentials - candidate has no calendar console integration
+            user.google_credentials = None
             if picture and not user.profile_image_url:
                 user.profile_image_url = picture
             if fullname and not user.fullname:
@@ -368,6 +376,10 @@ class AuthService:
             "profile_image_url": user.profile_image_url if user else picture
         }
 
+    async def register_with_google(self, db: AsyncSession, email: str, fullname: str, picture: str, google_credentials: str = None):
+        """Backward-compatible proxy to register_candidate_with_google."""
+        return await self.register_candidate_with_google(db, email, fullname, picture)
+
 auth_service = AuthService()
 
 
@@ -392,6 +404,10 @@ async def change_password(db: AsyncSession, user_id: int, current_password: str,
 async def login_with_google(db: AsyncSession, email: str, fullname: str, picture: str, google_credentials: str):
     return await auth_service.login_with_google(db, email, fullname, picture, google_credentials)
 
-async def register_with_google(db: AsyncSession, email: str, fullname: str, picture: str, google_credentials: str):
-    return await auth_service.register_with_google(db, email, fullname, picture, google_credentials)
+async def register_candidate_with_google(db: AsyncSession, email: str, fullname: str, picture: str):
+    return await auth_service.register_candidate_with_google(db, email, fullname, picture)
+
+async def register_with_google(db: AsyncSession, email: str, fullname: str, picture: str, google_credentials: str = None):
+    return await auth_service.register_candidate_with_google(db, email, fullname, picture)
+
 

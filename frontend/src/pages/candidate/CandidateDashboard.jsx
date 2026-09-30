@@ -30,7 +30,7 @@ const CandidateDashboard = () => {
   const draftStep = parseInt(localStorage.getItem('draft_application_step') || '1');
   const getDraftProgress = () => {
     if (draftStep === 1) return { text: "Upload Phase", width: "w-1/3" };
-    if (draftStep === 2) return { text: "AI Verification", width: "w-2/3" };
+    if (draftStep === 2) return { text: "Application Details", width: "w-2/3" };
     if (draftStep === 3) return { text: "Final Review", width: "w-[90%]" };
     return { text: "Incomplete", width: "w-1/4" };
   };
@@ -38,8 +38,8 @@ const CandidateDashboard = () => {
 
   const getDraftRoute = () => {
     const jobId = localStorage.getItem('draft_application_job_id');
-    if (draftStep === 2) return `/candidate/preview-profile/${jobId}`;
-    if (draftStep === 3) return `/candidate/update-profile/${jobId}`;
+    if (draftStep === 2) return `/candidate/update-profile/${jobId}`;
+    if (draftStep === 3) return `/candidate/preview-profile/${jobId}`;
     return `/candidate/upload-resume/${jobId}`;
   };
 

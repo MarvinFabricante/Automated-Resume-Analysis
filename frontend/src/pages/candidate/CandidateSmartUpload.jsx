@@ -7,15 +7,15 @@ import {
   FileUp,
   X,
   FileText,
-  CheckCircle2,
-  ShieldCheck,
   ArrowRight,
+  ArrowLeft,
   Cpu,
   Zap
 } from 'lucide-react';
 import Header from '../../components/layout/Header';
 import Sidebar from '../../components/layout/Sidebar';
 import RecruitmentTermsModal from '../../components/modals/shared/RecruitmentTermsModal';
+import ApplicationProgressBar from '../../components/common/ApplicationProgressBar';
 
 const CandidateSmartUpload = () => {
   const [file, setFile] = useState(null);
@@ -152,6 +152,17 @@ const CandidateSmartUpload = () => {
       <div className="flex flex-1">
         <Sidebar />
         <main className="max-w-7xl mx-auto px-6 py-12 flex-grow">
+        {/* Reversal of action / Back button */}
+        <button
+          onClick={() => navigate(jobId ? `/candidate/findjobs` : '/candidate/dashboard')}
+          className="flex items-center text-slate-500 hover:text-[#D10043] transition-all mb-6 font-semibold text-sm group"
+        >
+          <ArrowLeft size={18} className="mr-2 group-hover:-translate-x-1 transition-transform" />
+          {jobId ? 'Back to Jobs' : 'Back to Dashboard'}
+        </button>
+
+        {jobId && <ApplicationProgressBar currentStep={1} />}
+
         <div className="bg-white rounded-[40px] shadow-xl shadow-slate-200/60 border border-slate-100 overflow-hidden relative">
           <div className="absolute top-0 right-0 w-80 h-80 bg-[#D60041]/5 rounded-bl-[300px] -mr-20 -mt-20 opacity-50"></div>
 
@@ -275,7 +286,7 @@ const CandidateSmartUpload = () => {
                     </div>
 
                     <button
-                      onClick={() => navigate('/candidate/update-profile/smart', { 
+                      onClick={() => navigate(jobId ? `/candidate/update-profile/${jobId}` : '/candidate/update-profile/smart', { 
                         state: { 
                           fileName: file.name, 
                           job: { title: jobTitle }, 
@@ -302,7 +313,7 @@ const CandidateSmartUpload = () => {
                       })}
                       className="w-full bg-slate-900 hover:bg-[#D60041] text-white py-6 rounded-[28px] font-black text-lg flex items-center justify-center gap-4 transition-all shadow-2xl shadow-slate-200 hover:shadow-pink-200 hover:-translate-y-1 active:scale-95 group"
                     >
-                      <span>Proceed to Edit Information</span>
+                      <span>Proceed to Application Details</span>
                       <ArrowRight size={24} className="group-hover:translate-x-2 transition-transform" />
                     </button>
                   </div>

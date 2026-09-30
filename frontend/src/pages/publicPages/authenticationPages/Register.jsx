@@ -78,7 +78,7 @@ const Register = () => {
       return;
     }
 
-    window.location.href = `${API_BASE_URL}/auth/google/login?flow=register`;
+    window.location.href = `${API_BASE_URL}/auth/google/candidate-register`;
   };
 
   const handleChange = (e) => {

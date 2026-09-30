@@ -80,11 +80,28 @@ async def change_password(
 import os
 import urllib.parse
 from fastapi.responses import RedirectResponse
-from app.utils.google_auth import get_google_auth_url, exchange_code_for_credentials
+from app.utils.google_auth import get_google_auth_url, get_candidate_google_auth_url, exchange_code_for_credentials
 import requests
+
+@router.get("/google/candidate-register")
+async def google_candidate_register():
+    """
+    Dedicated endpoint for candidate Google OAuth registration.
+    Handles ONLY user authentication and account creation.
+    Does NOT request Google Calendar permissions or touch Google Calendar Console services.
+    """
+    url, state = get_candidate_google_auth_url()
+    return RedirectResponse(url)
+
+@router.get("/google/register")
+async def google_register():
+    """Alias for candidate Google registration."""
+    return await google_candidate_register()
 
 @router.get("/google/login")
 async def google_login(flow: str = "login"):
+    if flow in ["candidate_register", "register"]:
+        return await google_candidate_register()
     url, state = get_google_auth_url(flow_type=flow)
     return RedirectResponse(url)
 
@@ -108,8 +125,9 @@ async def google_callback(code: str, state: str = "", db: AsyncSession = Depends
         if not email:
             raise HTTPException(status_code=400, detail="Failed to retrieve email from Google")
         
-        if flow_type == "register":
-            data = await auth_service.register_with_google(db, email, fullname, picture, creds.to_json())
+        if flow_type in ["candidate_register", "register"]:
+            # Pure user authentication and account creation for Candidate - no Google Calendar logic or linking
+            data = await auth_service.register_candidate_with_google(db, email, fullname, picture)
         else:
             data = await auth_service.login_with_google(db, email, fullname, picture, creds.to_json())
         
@@ -128,7 +146,8 @@ async def google_callback(code: str, state: str = "", db: AsyncSession = Depends
         import traceback
         traceback.print_exc()
         error_msg = urllib.parse.quote(str(e))
-        target_path = "/register" if flow_type == "register" else "/login"
+        target_path = "/register" if flow_type in ["candidate_register", "register"] else "/login"
         return RedirectResponse(f"{base_url}{target_path}?error={error_msg}")
+
 
 

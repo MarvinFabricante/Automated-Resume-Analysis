@@ -21,6 +21,7 @@ import {
 import Header from '../../../components/layout/Header';
 import Footer from '../../../components/layout/Footer';
 import RecruitmentTermsModal from '../../../components/modals/shared/RecruitmentTermsModal';
+import ApplicationProgressBar from '../../../components/common/ApplicationProgressBar';
 
 const STATIC_JOBS = [
   { job_id: "1", title: "Production Supervisor", department: "Manufacturing" },
@@ -96,6 +97,51 @@ const ApplyForJobPage = () => {
       return () => clearTimeout(timer);
     }
   }, [cooldown]);
+
+  // Restore previously extracted data if navigated back (reversal of action)
+  useEffect(() => {
+    if (location.state?.extractedData && !extractedData) {
+      setExtractedData(location.state.extractedData);
+      setIsComplete(true);
+      if (location.state.fileName) {
+        setFile({ name: location.state.fileName, size: 1024 * 1024 });
+      }
+      if (location.state.matchData) {
+        setMatchData(location.state.matchData);
+      }
+    }
+  }, [location.state, extractedData]);
+
+  const handleProceedToForm = () => {
+    if (!job?.job_id) return;
+    navigate(`/applicationform/${job.job_id}`, {
+      state: {
+        job,
+        fileName: file?.name || "Uploaded Resume",
+        extractedData,
+        matchData,
+        personal: {
+          name: extractedData?.fullname,
+          email: extractedData?.email,
+          phone: extractedData?.phone,
+          location: extractedData?.location
+        },
+        experience: {
+          title: extractedData?.job_title || (extractedData?.experience ? extractedData.experience.split('|')[0]?.trim() : ""),
+          company: extractedData?.company || (extractedData?.experience ? extractedData.experience.split('|')[1]?.trim() : "") || job?.department || "",
+          relevance: extractedData?.relevance || (extractedData?.years_experience ? `${extractedData.years_experience} years of experience` : "")
+        },
+        education: {
+          degree: extractedData?.degree || extractedData?.highest_degree || "",
+          college: extractedData?.institution || extractedData?.college || (extractedData?.education ? extractedData.education.split('|')[0]?.trim() : "")
+        },
+        skills: (Array.isArray(extractedData?.skills_list) && extractedData.skills_list.length > 0)
+          ? extractedData.skills_list
+          : (extractedData?.skills ? extractedData.skills.split(' | ').filter(Boolean) : []),
+        profile_image_url: extractedData?.profile_image_url || null
+      }
+    });
+  };
 
   const getMatchTier = (pct) => {
     if (pct >= 70) return 'Strong Match';
@@ -187,6 +233,17 @@ const ApplyForJobPage = () => {
       <Header />
 
       <main className="max-w-7xl mx-auto px-6 py-12">
+        {/* Reversal of action: Back to Job Details */}
+        <button
+          onClick={() => navigate(job?.job_id ? `/job-details/${job.job_id}` : '/careerspage')}
+          className="flex items-center text-slate-500 hover:text-[#D10043] transition-all mb-6 font-semibold text-sm group"
+        >
+          <ArrowLeft size={18} className="mr-2 group-hover:-translate-x-1 transition-transform" />
+          Back to Job Details
+        </button>
+
+        {/* Multi-step Application Progress Bar */}
+        <ApplicationProgressBar currentStep={1} />
 
         <div className="bg-white rounded-[40px] shadow-xl shadow-slate-200/60 border border-slate-100 overflow-hidden relative">
           <div className="absolute top-0 right-0 w-64 h-64 bg-red-50 rounded-bl-[200px] -mr-20 -mt-20 opacity-50"></div>
@@ -431,20 +488,29 @@ const ApplyForJobPage = () => {
                       </div>
                     </div>
 
-                    <button
-                      onClick={() => navigate(`/preview-and-verify/${job.job_id}`, { 
-                        state: { 
-                          job, 
-                          fileName: file.name,
-                          extractedData,
-                          matchData
-                        } 
-                      })}
-                      className="w-full bg-slate-900 hover:bg-[#D60041] text-white py-5 rounded-[24px] font-bold flex items-center justify-center gap-3 transition-all shadow-xl hover:shadow-pink-100 active:scale-95"
-                    >
-                      <span>Proceed to Review Information</span>
-                      <ArrowRight size={20} />
-                    </button>
+                    <div className="flex flex-col sm:flex-row gap-4 pt-4 border-t border-slate-100">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setFile(null);
+                          setExtractedData(null);
+                          setIsComplete(false);
+                          setMatchData(null);
+                        }}
+                        className="flex-1 bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-700 py-4 md:py-5 rounded-[24px] font-bold transition-all active:scale-95 flex items-center justify-center gap-2 text-sm"
+                      >
+                        <FileUp size={18} />
+                        <span>Upload Different Resume</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleProceedToForm}
+                        className="flex-[2] bg-[#D60041] hover:bg-slate-900 text-white py-4 md:py-5 rounded-[24px] font-bold flex items-center justify-center gap-3 transition-all shadow-xl shadow-pink-100 active:scale-95"
+                      >
+                        <span>Proceed to Application Details</span>
+                        <ArrowRight size={20} />
+                      </button>
+                    </div>
                   </div>
                 )}
 
@@ -474,7 +540,7 @@ const ApplyForJobPage = () => {
                         }`}
                     >
                       <ShieldCheck size={22} />
-                      <span>{cooldown > 0 ? `Wait ${cooldown}s` : 'Submit My Application'}</span>
+                      <span>{cooldown > 0 ? `Wait ${cooldown}s` : 'Process & Continue to Application'}</span>
                     </button>
                   </div>
                 )}
