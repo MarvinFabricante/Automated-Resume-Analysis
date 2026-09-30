@@ -82,12 +82,12 @@ const App = () => {
     <HelmetProvider>
       <ScrollToTop />
       <Routes>
+        <Route path="/auth/callback" element={<GoogleCallback />} />
         <Route element={<PublicRoute />}>
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
           <Route path="/forgot-password" element={<ForgotPassword />} />
           <Route path="/reset-password" element={<ResetPassword />} />
-          <Route path="/auth/callback" element={<GoogleCallback />} />
           <Route path="/" element={<LandingPage />} />
         </Route>
         <Route path="/careerspage" element={<CareersPage />} />

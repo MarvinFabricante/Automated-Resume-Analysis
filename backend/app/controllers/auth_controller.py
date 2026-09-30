@@ -78,19 +78,22 @@ async def change_password(
 
 
 import os
+import urllib.parse
 from fastapi.responses import RedirectResponse
 from app.utils.google_auth import get_google_auth_url, exchange_code_for_credentials
 import requests
 
 @router.get("/google/login")
-async def google_login():
-    url, state = get_google_auth_url()
+async def google_login(flow: str = "login"):
+    url, state = get_google_auth_url(flow_type=flow)
     return RedirectResponse(url)
 
 @router.get("/google/callback")
 async def google_callback(code: str, state: str = "", db: AsyncSession = Depends(get_db)):
+    base_url = os.getenv("PUBLIC_BASE_URL", "http://localhost:5173").rstrip("/")
+    flow_type = "login"
     try:
-        creds = exchange_code_for_credentials(code, state)
+        creds, flow_type = exchange_code_for_credentials(code, state)
         
         # Get user info
         user_info_response = requests.get(
@@ -105,16 +108,27 @@ async def google_callback(code: str, state: str = "", db: AsyncSession = Depends
         if not email:
             raise HTTPException(status_code=400, detail="Failed to retrieve email from Google")
         
-        # We need to find or create the user and update google_credentials
-        # Let's add auth_service method for google login
-        data = await auth_service.login_with_google(db, email, fullname, picture, creds.to_json())
+        if flow_type == "register":
+            data = await auth_service.register_with_google(db, email, fullname, picture, creds.to_json())
+        else:
+            data = await auth_service.login_with_google(db, email, fullname, picture, creds.to_json())
         
-        # Redirect to frontend with token — use PUBLIC_BASE_URL for deployed environment
-        base_url = os.getenv("PUBLIC_BASE_URL", "http://localhost:5173").rstrip("/")
-        frontend_url = f"{base_url}/auth/callback?token={data['token']}&role={data['role']}&fullname={data['fullname']}&user_id={data['user_id']}&picture={data.get('profile_image_url', '')}"
+        # Redirect to frontend with token, role, email, and user details
+        params = {
+            "token": data["token"],
+            "role": data["role"],
+            "fullname": data["fullname"],
+            "user_id": data["user_id"],
+            "email": email,
+            "picture": data.get("profile_image_url", "")
+        }
+        frontend_url = f"{base_url}/auth/callback?{urllib.parse.urlencode(params)}"
         return RedirectResponse(frontend_url)
     except Exception as e:
         import traceback
         traceback.print_exc()
-        raise HTTPException(status_code=400, detail=str(e))
+        error_msg = urllib.parse.quote(str(e))
+        target_path = "/register" if flow_type == "register" else "/login"
+        return RedirectResponse(f"{base_url}{target_path}?error={error_msg}")
+
 

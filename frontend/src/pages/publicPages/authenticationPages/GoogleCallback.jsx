@@ -20,6 +20,7 @@ const GoogleCallback = () => {
 
     const token = searchParams.get('token');
     const role = searchParams.get('role');
+    const email = searchParams.get('email');
     const fullname = searchParams.get('fullname');
     const userId = searchParams.get('user_id');
     const picture = searchParams.get('picture');
@@ -27,11 +28,16 @@ const GoogleCallback = () => {
     if (token && role) {
       // Store auth data
       localStorage.setItem('token', token);
+      localStorage.setItem('role', role);
+      localStorage.setItem('saved_email', email || '');
       localStorage.setItem('fullname', fullname || '');
       localStorage.setItem('user_id', userId || '');
+      if (picture) {
+        localStorage.setItem('profile_image_url', picture);
+      }
 
       dispatch(setCredentials({
-        user: fullname || 'Google User',
+        user: email || fullname || 'Google User',
         role: role,
         profileImageUrl: picture || null,
       }));

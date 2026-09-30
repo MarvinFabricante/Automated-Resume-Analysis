@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import authService from '../../../services/authService';
+import { API_BASE_URL } from '../../../services/api';
 import { Users, Eye, EyeOff, Loader2, CheckCircle2, XCircle, ArrowLeft } from 'lucide-react';
 import { Helmet } from 'react-helmet-async';
 
@@ -28,6 +29,22 @@ const Register = () => {
   });
 
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const errorParam = params.get('error');
+    if (errorParam) {
+      const decoded = decodeURIComponent(errorParam);
+      const isExisting = decoded.toLowerCase().includes('already') || decoded.toLowerCase().includes('exists') || decoded.toLowerCase().includes('registered');
+      setModalState({
+        isOpen: true,
+        type: isExisting ? 'exists' : 'error',
+        title: isExisting ? 'Account Already Exists' : 'Registration Error',
+        message: decoded
+      });
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+  }, []);
+
+  useEffect(() => {
     const checkExistingSession = () => {
       const token = localStorage.getItem('token');
       const role = localStorage.getItem('role');
@@ -46,6 +63,23 @@ const Register = () => {
     window.addEventListener('storage', checkExistingSession);
     return () => window.removeEventListener('storage', checkExistingSession);
   }, []);
+
+  const handleGoogleRegister = () => {
+    const existingToken = localStorage.getItem('token');
+    const existingRole = localStorage.getItem('role');
+    
+    if (existingToken && existingRole) {
+      setModalState({
+        isOpen: true,
+        type: 'error',
+        title: 'Already Logged In',
+        message: `An account (${existingRole.toLowerCase()}) is already logged in on this browser. Please log out first if you want to switch accounts.`
+      });
+      return;
+    }
+
+    window.location.href = `${API_BASE_URL}/auth/google/login?flow=register`;
+  };
 
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -254,15 +288,37 @@ const Register = () => {
             <img src="/assets/logo.png" alt="Mariwasa Logo" className="h-10 w-10 object-contain" />
           </div>
           <h1 className="text-[36px] leading-[44px] font-normal tracking-normal text-gray-900 mb-4">
-            Create a Mariwasa Account
+            Candidate Registration
           </h1>
           <p className="text-base font-normal text-gray-800 mb-8 md:mb-0">
-            to access the Resume Analysis System. Set up your profile to continue.
+            to access the Mariwasa Resume Analysis System. Register with your Google account or type your Gmail address and password below.
           </p>
         </div>
 
         <div className="w-full md:w-[55%] p-10 md:p-14 flex flex-col justify-center">
-          <form onSubmit={handleSubmit} className="w-full max-w-[420px] mx-auto md:mx-0 md:ml-auto">
+          <div className="w-full max-w-[420px] mx-auto md:mx-0 md:ml-auto">
+            {/* Google OAuth Register - Candidate Only */}
+            <div className="mb-6">
+              <button
+                type="button"
+                onClick={handleGoogleRegister}
+                className="w-full flex items-center justify-center gap-3 bg-white border border-gray-300 hover:bg-gray-50 hover:border-gray-400 text-gray-700 text-sm font-semibold px-6 py-3 rounded-full transition-all shadow-sm hover:shadow active:scale-[0.99] group"
+              >
+                <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google Logo" className="w-5 h-5 group-hover:scale-105 transition-transform" />
+                <span>Register with Google (Candidate)</span>
+              </button>
+              <p className="text-center text-[11px] text-gray-500 mt-2 font-medium">
+                Google account registration is for Candidate accounts only
+              </p>
+            </div>
+
+            {/* Divider */}
+            <div className="relative flex items-center justify-center my-6">
+              <div className="border-t border-gray-200 w-full"></div>
+              <span className="bg-white px-3 text-xs text-gray-400 uppercase tracking-wider font-medium absolute">or register with google / email & password</span>
+            </div>
+
+            <form onSubmit={handleSubmit} className="w-full">
 
             <div className="space-y-4 mb-6">
 
@@ -291,10 +347,10 @@ const Register = () => {
                   value={formData.email}
                   onChange={handleChange}
                   className="peer w-full px-4 py-3.5 border border-gray-400 rounded-[4px] text-base text-gray-900 focus:outline-none focus:border-[#D60041] focus:border-2 focus:py-[13px] focus:px-[15px] transition-all placeholder-transparent bg-transparent"
-                  placeholder="Email address"
+                  placeholder="Google account or Email address"
                 />
                 <label htmlFor="email" className="absolute left-3.5 -top-2.5 bg-white px-1 text-xs font-normal text-gray-600 peer-placeholder-shown:text-base peer-placeholder-shown:text-gray-600 peer-placeholder-shown:top-3.5 peer-focus:-top-2.5 peer-focus:text-xs peer-focus:text-[#D60041] transition-all cursor-text pointer-events-none">
-                  Email address
+                  Google Account / Gmail / Email address
                 </label>
               </div>
 
@@ -400,6 +456,7 @@ const Register = () => {
           </form>
         </div>
       </div>
+    </div>
 
       <div className="w-full max-w-[1040px] mt-4 flex flex-col sm:flex-row justify-between items-center text-xs text-gray-600 px-2">
         <div className="mb-4 sm:mb-0">

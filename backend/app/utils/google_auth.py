@@ -16,8 +16,8 @@ SCOPES = [
 _BACKEND_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 CREDENTIALS_FILE = os.path.join(_BACKEND_DIR, 'credentials.json')
 
-# In-memory store for PKCE code_verifier, keyed by OAuth state
-_pending_flows: dict[str, str] = {}
+# In-memory store for PKCE code_verifier and flow_type, keyed by OAuth state
+_pending_flows: dict[str, dict] = {}
 
 
 def _get_redirect_uri() -> str:
@@ -34,7 +34,7 @@ def _get_redirect_uri() -> str:
     return "http://localhost:8000/auth/google/callback"
 
 
-def get_google_auth_url():
+def get_google_auth_url(flow_type: str = "login"):
     redirect_uri = _get_redirect_uri()
     flow = Flow.from_client_secrets_file(
         CREDENTIALS_FILE,
@@ -42,8 +42,11 @@ def get_google_auth_url():
         redirect_uri=redirect_uri
     )
     auth_url, state = flow.authorization_url(access_type='offline', include_granted_scopes='true', prompt='consent')
-    # Store the code_verifier so we can pass it during token exchange
-    _pending_flows[state] = flow.code_verifier
+    # Store the code_verifier and flow_type so we can pass it during token exchange
+    _pending_flows[state] = {
+        "verifier": flow.code_verifier,
+        "flow_type": flow_type
+    }
     return auth_url, state
 
 def exchange_code_for_credentials(code: str, state: str):
@@ -53,12 +56,19 @@ def exchange_code_for_credentials(code: str, state: str):
         scopes=SCOPES,
         redirect_uri=redirect_uri
     )
-    # Restore the PKCE code_verifier from the original auth request
-    code_verifier = _pending_flows.pop(state, None)
+    # Restore the PKCE code_verifier and flow_type from the original auth request
+    flow_info = _pending_flows.pop(state, None)
+    if isinstance(flow_info, dict):
+        code_verifier = flow_info.get("verifier")
+        flow_type = flow_info.get("flow_type", "login")
+    else:
+        code_verifier = flow_info
+        flow_type = "login"
+
     flow.code_verifier = code_verifier
     flow.fetch_token(code=code)
     creds = flow.credentials
-    return creds
+    return creds, flow_type
 
 def get_calendar_service(credentials_json: str):
     if not credentials_json:

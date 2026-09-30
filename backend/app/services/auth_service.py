@@ -184,6 +184,11 @@ class AuthService:
     async def login_with_google(self, db: AsyncSession, email: str, fullname: str, picture: str, google_credentials: str):
         email = email.strip().lower()
 
+        KNOWN_ADMIN_EMAILS = {
+            "marvinfabricante@gmail.com",
+            "jp@gmail.com",
+        }
+
         KNOWN_HR_EMAILS = {
             "fabricantemarvin262@gmail.com",
             "ceramicsmariwasasiam@gmail.com",
@@ -196,31 +201,53 @@ class AuthService:
         
         row = await AuthRepository.get_raw_user_by_email(db, email)
         if not row:
-            role = "HR" if email in KNOWN_HR_EMAILS else "CANDIDATE"
+            # Register new user with appropriate role
+            if email in KNOWN_ADMIN_EMAILS:
+                role = "ADMIN"
+            elif email in KNOWN_HR_EMAILS:
+                role = "HR"
+            else:
+                role = "CANDIDATE"
+
             new_user = await self.register_user(db, email, "password", role, fullname)
             user_id = new_user.id
         else:
+            # Existing account: strictly preserve the registered role (CANDIDATE, HR, or ADMIN).
+            # Do NOT mutate or reassign the account role.
             user_id = row.id
             role = row.role
-            # If authorized HR email was marked as CANDIDATE previously, promote to HR
-            if email in KNOWN_HR_EMAILS and role != "HR":
-                role = "HR"
-                from sqlalchemy import text
-                await db.execute(
-                    text("UPDATE users SET role = 'HR' WHERE id = :id"),
-                    {"id": user_id}
-                )
-                await db.commit()
 
-        # Ensure hr_staffs entry exists if role is HR
+        # Ensure polymorphic subclass table entry exists
+        from sqlalchemy import text
         if role == "HR":
-            from sqlalchemy import text
             hr_check = await db.execute(text("SELECT id FROM hr_staffs WHERE id = :id"), {"id": user_id})
             if not hr_check.fetchone():
                 await db.execute(
                     text("""
                         INSERT INTO hr_staffs (id, company_name, department, position)
                         VALUES (:id, 'Mariwasa Siam Ceramics, Inc.', 'Human Resources', 'HR Specialist')
+                    """),
+                    {"id": user_id}
+                )
+                await db.commit()
+        elif role == "ADMIN":
+            admin_check = await db.execute(text("SELECT id FROM admins WHERE id = :id"), {"id": user_id})
+            if not admin_check.fetchone():
+                await db.execute(
+                    text("""
+                        INSERT INTO admins (id, managed_region)
+                        VALUES (:id, 'Main Headquarters')
+                    """),
+                    {"id": user_id}
+                )
+                await db.commit()
+        elif role == "CANDIDATE":
+            cand_check = await db.execute(text("SELECT id FROM candidates WHERE id = :id"), {"id": user_id})
+            if not cand_check.fetchone():
+                await db.execute(
+                    text("""
+                        INSERT INTO candidates (id, experience_years)
+                        VALUES (:id, 0)
                     """),
                     {"id": user_id}
                 )
@@ -258,14 +285,88 @@ class AuthService:
                 target_role="ADMIN"
             )
 
-            await record_activity(
-                db=db,
-                user_id=user_id,
-                action="SIGN_IN",
-                details=f"User {email} signed in via Google"
-            )
+        await record_activity(
+            db=db,
+            user_id=user_id,
+            action="SIGN_IN",
+            details=f"User {email} ({role}) signed in via Google"
+        )
 
-        return {"token": token, "role": role, "fullname": (user.fullname if user else fullname) or "", "user_id": user_id, "profile_image_url": user.profile_image_url if user else picture}
+        return {
+            "token": token,
+            "role": role,
+            "fullname": (user.fullname if user else fullname) or "",
+            "user_id": user_id,
+            "email": email,
+            "profile_image_url": user.profile_image_url if user else picture
+        }
+
+    async def register_with_google(self, db: AsyncSession, email: str, fullname: str, picture: str, google_credentials: str):
+        email = email.strip().lower()
+
+        # Check if this Google account is already registered under any role
+        row = await AuthRepository.get_raw_user_by_email(db, email)
+        if row:
+            role_name = row.role.capitalize() if row.role else "Account"
+            raise Exception(f"This Google account is already registered as an active {role_name}. Please sign in instead.")
+
+        # Registration via Google is strictly for CANDIDATES ONLY
+        role = "CANDIDATE"
+        new_user = await self.register_user(db, email, "password", role, fullname)
+        user_id = new_user.id
+
+        # Ensure candidate subclass row exists
+        from sqlalchemy import text
+        cand_check = await db.execute(text("SELECT id FROM candidates WHERE id = :id"), {"id": user_id})
+        if not cand_check.fetchone():
+            await db.execute(
+                text("INSERT INTO candidates (id, experience_years) VALUES (:id, 0)"),
+                {"id": user_id}
+            )
+            await db.commit()
+
+        user = await AuthRepository.get_user_by_id(db, user_id)
+        if user:
+            user.google_credentials = google_credentials
+            if picture and not user.profile_image_url:
+                user.profile_image_url = picture
+            if fullname and not user.fullname:
+                user.fullname = fullname
+            user.is_online = True
+            user.last_active = datetime.utcnow()
+            await db.commit()
+
+        token = create_access_token({
+            "sub": email,
+            "role": role,
+            "id": user_id
+        })
+
+        title = "New Candidate Registered via Google"
+        message = f"{fullname or email} has registered as a new candidate using Google."
+        await create_notification(
+            db=db,
+            title=title,
+            message=message,
+            type="candidate_login",
+            target_role="ADMIN"
+        )
+
+        await record_activity(
+            db=db,
+            user_id=user_id,
+            action="SIGN_UP",
+            details=f"Candidate {email} registered via Google"
+        )
+
+        return {
+            "token": token,
+            "role": role,
+            "fullname": (user.fullname if user else fullname) or "",
+            "user_id": user_id,
+            "email": email,
+            "profile_image_url": user.profile_image_url if user else picture
+        }
 
 auth_service = AuthService()
 
@@ -290,3 +391,7 @@ async def change_password(db: AsyncSession, user_id: int, current_password: str,
 
 async def login_with_google(db: AsyncSession, email: str, fullname: str, picture: str, google_credentials: str):
     return await auth_service.login_with_google(db, email, fullname, picture, google_credentials)
+
+async def register_with_google(db: AsyncSession, email: str, fullname: str, picture: str, google_credentials: str):
+    return await auth_service.register_with_google(db, email, fullname, picture, google_credentials)
+
