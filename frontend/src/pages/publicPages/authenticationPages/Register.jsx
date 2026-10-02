@@ -187,38 +187,38 @@ const Register = () => {
   };
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center px-4 py-8 bg-[#F0F4F9] font-sans antialiased text-gray-800 relative">
+    <div className="min-h-screen flex flex-col items-center justify-center px-4 pt-16 pb-8 sm:py-8 bg-[#F0F4F9] font-sans antialiased text-gray-800 relative">
       <Helmet>
         <title>Create Account - Mariwasa Portal</title>
       </Helmet>
 
       <button 
         onClick={() => window.location.href = '/'}
-        className="fixed top-8 left-8 flex items-center gap-2 text-gray-600 hover:text-[#D60041] transition-all group font-bold text-xs uppercase tracking-widest bg-white/50 backdrop-blur-sm py-3 px-5 rounded-2xl border border-gray-200 hover:border-pink-100 hover:shadow-lg active:scale-95 z-50"
+        className="fixed top-3 left-3 sm:top-8 sm:left-8 flex items-center gap-1.5 sm:gap-2 text-gray-600 hover:text-[#D60041] transition-all group font-bold text-[11px] sm:text-xs uppercase tracking-widest bg-white/70 backdrop-blur-sm py-2 px-3 sm:py-3 sm:px-5 rounded-xl sm:rounded-2xl border border-gray-200 hover:border-pink-100 hover:shadow-lg active:scale-95 z-50 shadow-sm"
       >
-        <ArrowLeft size={16} className="group-hover:-translate-x-1 transition-transform" />
+        <ArrowLeft size={14} className="group-hover:-translate-x-1 transition-transform sm:w-4 sm:h-4" />
         Back to Home
       </button>
 
       {modalState.isOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/40 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm p-8 transform transition-all animate-in zoom-in-95 duration-200">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm p-6 sm:p-8 transform transition-all animate-in zoom-in-95 duration-200">
             <div className="flex flex-col items-center text-center">
-              <div className={`w-16 h-16 rounded-full flex items-center justify-center mb-5 ${modalState.type === 'success' ? 'bg-green-50' :
+              <div className={`w-14 h-14 sm:w-16 sm:h-16 rounded-full flex items-center justify-center mb-4 sm:mb-5 ${modalState.type === 'success' ? 'bg-green-50' :
                   modalState.type === 'exists' ? 'bg-blue-50' : 'bg-red-50'
                 }`}>
                 {modalState.type === 'success' ? (
-                  <CheckCircle2 className="w-8 h-8 text-green-500" />
+                  <CheckCircle2 className="w-7 h-7 sm:w-8 sm:h-8 text-green-500" />
                 ) : modalState.type === 'exists' ? (
-                  <Users className="w-8 h-8 text-blue-500" />
+                  <Users className="w-7 h-7 sm:w-8 sm:h-8 text-blue-500" />
                 ) : (
-                  <XCircle className="w-8 h-8 text-red-500" />
+                  <XCircle className="w-7 h-7 sm:w-8 sm:h-8 text-red-500" />
                 )}
               </div>
-              <h3 className="text-xl font-normal text-gray-900 mb-2 tracking-tight">
+              <h3 className="text-lg sm:text-xl font-normal text-gray-900 mb-2 tracking-tight">
                 {modalState.title}
               </h3>
-              <p className="text-sm text-gray-600 mb-8 px-2 leading-relaxed">
+              <p className="text-xs sm:text-sm text-gray-600 mb-6 sm:mb-8 px-2 leading-relaxed">
                 {modalState.message}
               </p>
               <button
@@ -229,7 +229,7 @@ const Register = () => {
                     setModalState({ ...modalState, isOpen: false });
                   }
                 }}
-                className={`w-full font-medium py-2.5 px-4 rounded-full transition-all duration-200 text-sm ${modalState.type === 'success' ? 'bg-[#D60041] hover:bg-[#b50037] text-white' :
+                className={`w-full font-medium py-2.5 px-4 rounded-full transition-all duration-200 text-xs sm:text-sm ${modalState.type === 'success' ? 'bg-[#D60041] hover:bg-[#b50037] text-white' :
                     modalState.type === 'exists' ? 'bg-blue-600 hover:bg-blue-700 text-white' :
                       'bg-gray-100 hover:bg-gray-200 text-gray-800'
                   }`}
@@ -244,14 +244,14 @@ const Register = () => {
 
       {showTermsModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/40 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-white rounded-[28px] shadow-2xl w-full max-w-lg p-8 transform transition-all animate-in zoom-in-95 duration-200 relative overflow-hidden flex flex-col max-h-[80vh]">
-            <div className="flex justify-between items-center mb-6 shrink-0">
-              <h3 className="text-2xl font-normal tracking-tight text-gray-900">Terms and Conditions</h3>
-              <button onClick={() => setShowTermsModal(false)} className="text-gray-400 hover:bg-gray-100 p-2 rounded-full transition">
-                <XCircle className="w-6 h-6" />
+          <div className="bg-white rounded-2xl sm:rounded-[28px] shadow-2xl w-full max-w-lg p-5 sm:p-8 transform transition-all animate-in zoom-in-95 duration-200 relative overflow-hidden flex flex-col max-h-[85vh]">
+            <div className="flex justify-between items-center mb-4 sm:mb-6 shrink-0">
+              <h3 className="text-xl sm:text-2xl font-normal tracking-tight text-gray-900">Terms and Conditions</h3>
+              <button onClick={() => setShowTermsModal(false)} className="text-gray-400 hover:bg-gray-100 p-1.5 sm:p-2 rounded-full transition">
+                <XCircle className="w-5 h-5 sm:w-6 sm:h-6" />
               </button>
             </div>
-            <div className="overflow-y-auto pr-2 text-sm text-gray-700 space-y-4 mb-6 font-normal">
+            <div className="overflow-y-auto pr-2 text-xs sm:text-sm text-gray-700 space-y-4 mb-4 sm:mb-6 font-normal">
               <p>Welcome to Mariwasa Siam Ceramics Inc. Resume Analysis System. By registering an account, you agree to comply with our terms and conditions.</p>
               <h4 className="font-medium text-gray-900 mt-2">1. Data Privacy</h4>
               <p>We collect and process your personal and professional data strictly for recruitment and analytical purposes. We adhere to data protection regulations and ensure your data is kept secure.</p>
@@ -260,10 +260,10 @@ const Register = () => {
               <h4 className="font-medium text-gray-900 mt-2">3. System Usage</h4>
               <p>The system is to be used exclusively for applying to, or managing, job positions at Mariwasa. Any misuse, unauthorized access attempts, or submission of false information may result in account termination.</p>
             </div>
-            <div className="mt-auto shrink-0 pt-6 border-t border-gray-100 flex justify-end gap-3">
+            <div className="mt-auto shrink-0 pt-4 sm:pt-6 border-t border-gray-100 flex justify-end gap-3">
               <button
                 onClick={() => setShowTermsModal(false)}
-                className="px-6 py-2.5 rounded-full font-medium text-sm text-gray-700 hover:bg-gray-100 transition"
+                className="px-5 sm:px-6 py-2.5 rounded-full font-medium text-xs sm:text-sm text-gray-700 hover:bg-gray-100 transition"
               >
                 Close
               </button>
@@ -272,7 +272,7 @@ const Register = () => {
                   setAgreedToTerms(true);
                   setShowTermsModal(false);
                 }}
-                className="px-6 py-2.5 rounded-full font-medium text-sm bg-[#D60041] hover:bg-[#b50037] text-white transition shadow-sm"
+                className="px-5 sm:px-6 py-2.5 rounded-full font-medium text-xs sm:text-sm bg-[#D60041] hover:bg-[#b50037] text-white transition shadow-sm"
               >
                 I agree
               </button>
@@ -281,21 +281,21 @@ const Register = () => {
         </div>
       )}
 
-      <div className="bg-white rounded-[28px] shadow-sm w-full max-w-[1040px] flex flex-col md:flex-row overflow-hidden min-h-[500px]">
+      <div className="bg-white rounded-2xl sm:rounded-[28px] shadow-sm w-full max-w-[1040px] flex flex-col md:flex-row overflow-hidden min-h-[500px]">
 
-        <div className="w-full md:w-[45%] p-10 md:p-14 flex flex-col justify-start">
-          <div className="mb-6">
-            <img src="/assets/logo.png" alt="Mariwasa Logo" className="h-10 w-10 object-contain" />
+        <div className="w-full md:w-[45%] p-6 sm:p-10 md:p-14 flex flex-col justify-start border-b md:border-b-0 md:border-r border-gray-100">
+          <div className="mb-4 sm:mb-6">
+            <img src="/assets/logo.png" alt="Mariwasa Logo" className="h-9 w-9 sm:h-10 sm:w-10 object-contain" />
           </div>
-          <h1 className="text-[36px] leading-[44px] font-normal tracking-normal text-gray-900 mb-4">
+          <h1 className="text-2xl sm:text-[36px] sm:leading-[44px] font-normal tracking-tight sm:tracking-normal text-gray-900 mb-2 sm:mb-4">
             Candidate Registration
           </h1>
-          <p className="text-base font-normal text-gray-800 mb-8 md:mb-0">
+          <p className="text-sm sm:text-base font-normal text-gray-700 leading-relaxed mb-4 md:mb-0">
             to access the Mariwasa Resume Analysis System. Register with your Google account or type your Gmail address and password below.
           </p>
         </div>
 
-        <div className="w-full md:w-[55%] p-10 md:p-14 flex flex-col justify-center">
+        <div className="w-full md:w-[55%] p-6 sm:p-10 md:p-14 flex flex-col justify-center">
           <div className="w-full max-w-[420px] mx-auto md:mx-0 md:ml-auto">
             {/* Google OAuth Register - Candidate Only */}
             <div className="mb-6">

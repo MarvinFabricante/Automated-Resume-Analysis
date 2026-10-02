@@ -361,17 +361,17 @@ const HRSchedulingPage = () => {
                 </p>
               </div>
 
-              <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto">
+              <div className="flex flex-wrap items-center gap-2 sm:gap-3 w-full lg:w-auto">
                 {/* Google Calendar Connection Status Badge */}
-                <div className="flex items-center gap-2.5 px-3.5 py-2 rounded-xl bg-white border border-gray-200 text-xs font-semibold shadow-sm">
-                  <div className={`w-2.5 h-2.5 rounded-full ${isGoogleConnected ? 'bg-emerald-500 animate-pulse' : 'bg-amber-400'}`} />
+                <div className="flex items-center gap-2 px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl bg-white border border-gray-200 text-xs font-semibold shadow-sm">
+                  <div className={`w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-full ${isGoogleConnected ? 'bg-emerald-500 animate-pulse' : 'bg-amber-400'}`} />
                   <span className="text-gray-700">
                     {isGoogleConnected ? (
                       <span className="flex items-center gap-1">
-                        Google Calendar: <strong className="text-emerald-600 font-bold truncate max-w-[120px]">{googleAccount || 'Connected'}</strong>
+                        Google: <strong className="text-emerald-600 font-bold truncate max-w-[100px] sm:max-w-[120px]">{googleAccount || 'Connected'}</strong>
                       </span>
                     ) : (
-                      <span className="text-gray-500">Google Calendar: Offline</span>
+                      <span className="text-gray-500">Google: Offline</span>
                     )}
                   </span>
                 </div>
@@ -380,7 +380,7 @@ const HRSchedulingPage = () => {
                 <button
                   onClick={handleManualSync}
                   disabled={isSyncing}
-                  className="px-3.5 py-2 bg-white hover:bg-pink-50 border border-gray-200 hover:border-pink-200 text-gray-700 hover:text-[#D60041] rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-2"
+                  className="px-3 py-1.5 sm:px-3.5 sm:py-2 bg-white hover:bg-pink-50 border border-gray-200 hover:border-pink-200 text-gray-700 hover:text-[#D60041] rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-1.5 sm:gap-2"
                   title="Synchronize events with Google Calendar"
                 >
                   <RefreshCw size={14} className={isSyncing ? 'animate-spin text-[#D60041]' : 'text-gray-400'} />
@@ -390,7 +390,7 @@ const HRSchedulingPage = () => {
                 {/* New Schedule Button */}
                 <button
                   onClick={() => handleOpenNewSchedule()}
-                  className="px-4 py-2 bg-[#D60041] hover:bg-rose-700 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-[#D60041]/20 flex items-center gap-2"
+                  className="px-3.5 py-1.5 sm:px-4 sm:py-2 bg-[#D60041] hover:bg-rose-700 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-[#D60041]/20 flex items-center gap-1.5 sm:gap-2 ml-auto lg:ml-0"
                 >
                   <Plus size={16} />
                   <span>New Schedule</span>
@@ -407,92 +407,92 @@ const HRSchedulingPage = () => {
             )}
 
             {/* KPI Summary Cards */}
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-              <div className="bg-white border border-gray-100 rounded-3xl p-5 shadow-sm">
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+              <div className="bg-white border border-gray-100 rounded-2xl sm:rounded-3xl p-3.5 sm:p-5 shadow-sm">
                 <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-black uppercase text-gray-400 tracking-wider">Today's Sessions</span>
-                  <div className="w-8 h-8 rounded-xl bg-pink-50 text-[#D60041] flex items-center justify-center">
-                    <Clock size={16} />
+                  <span className="text-[9px] sm:text-[10px] font-black uppercase text-gray-400 tracking-wider">Today's Sessions</span>
+                  <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-xl bg-pink-50 text-[#D60041] flex items-center justify-center shrink-0">
+                    <Clock size={14} className="sm:w-4 sm:h-4" />
                   </div>
                 </div>
-                <p className="text-2xl font-black text-gray-900 mt-2">{metrics.todayCount}</p>
-                <p className="text-[11px] text-gray-400 font-semibold mt-0.5">Interviews scheduled today</p>
+                <p className="text-xl sm:text-2xl font-black text-gray-900 mt-1.5 sm:mt-2">{metrics.todayCount}</p>
+                <p className="text-[10px] sm:text-[11px] text-gray-400 font-semibold mt-0.5 truncate">Scheduled today</p>
               </div>
 
-              <div className="bg-white border border-gray-100 rounded-3xl p-5 shadow-sm">
+              <div className="bg-white border border-gray-100 rounded-2xl sm:rounded-3xl p-3.5 sm:p-5 shadow-sm">
                 <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-black uppercase text-gray-400 tracking-wider">This Week</span>
-                  <div className="w-8 h-8 rounded-xl bg-orange-50 text-orange-600 flex items-center justify-center">
-                    <CalendarDays size={16} />
+                  <span className="text-[9px] sm:text-[10px] font-black uppercase text-gray-400 tracking-wider">This Week</span>
+                  <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-xl bg-orange-50 text-orange-600 flex items-center justify-center shrink-0">
+                    <CalendarDays size={14} className="sm:w-4 sm:h-4" />
                   </div>
                 </div>
-                <p className="text-2xl font-black text-gray-900 mt-2">{metrics.weekCount}</p>
-                <p className="text-[11px] text-gray-400 font-semibold mt-0.5">Total sessions this week</p>
+                <p className="text-xl sm:text-2xl font-black text-gray-900 mt-1.5 sm:mt-2">{metrics.weekCount}</p>
+                <p className="text-[10px] sm:text-[11px] text-gray-400 font-semibold mt-0.5 truncate">Sessions this week</p>
               </div>
 
-              <div className="bg-white border border-gray-100 rounded-3xl p-5 shadow-sm">
+              <div className="bg-white border border-gray-100 rounded-2xl sm:rounded-3xl p-3.5 sm:p-5 shadow-sm">
                 <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-black uppercase text-gray-400 tracking-wider">Active Scheduled</span>
-                  <div className="w-8 h-8 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">
-                    <User size={16} />
+                  <span className="text-[9px] sm:text-[10px] font-black uppercase text-gray-400 tracking-wider">Active Scheduled</span>
+                  <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
+                    <User size={14} className="sm:w-4 sm:h-4" />
                   </div>
                 </div>
-                <p className="text-2xl font-black text-gray-900 mt-2">{metrics.totalScheduled}</p>
-                <p className="text-[11px] text-gray-400 font-semibold mt-0.5">Upcoming candidate interviews</p>
+                <p className="text-xl sm:text-2xl font-black text-gray-900 mt-1.5 sm:mt-2">{metrics.totalScheduled}</p>
+                <p className="text-[10px] sm:text-[11px] text-gray-400 font-semibold mt-0.5 truncate">Upcoming interviews</p>
               </div>
 
-              <div className="bg-white border border-gray-100 rounded-3xl p-5 shadow-sm">
+              <div className="bg-white border border-gray-100 rounded-2xl sm:rounded-3xl p-3.5 sm:p-5 shadow-sm">
                 <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-black uppercase text-gray-400 tracking-wider">Completed</span>
-                  <div className="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
-                    <CheckCircle2 size={16} />
+                  <span className="text-[9px] sm:text-[10px] font-black uppercase text-gray-400 tracking-wider">Completed</span>
+                  <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
+                    <CheckCircle2 size={14} className="sm:w-4 sm:h-4" />
                   </div>
                 </div>
-                <p className="text-2xl font-black text-emerald-600 mt-2">{metrics.completedCount}</p>
-                <p className="text-[11px] text-gray-400 font-semibold mt-0.5">Completed candidate sessions</p>
+                <p className="text-xl sm:text-2xl font-black text-emerald-600 mt-1.5 sm:mt-2">{metrics.completedCount}</p>
+                <p className="text-[10px] sm:text-[11px] text-gray-400 font-semibold mt-0.5 truncate">Completed sessions</p>
               </div>
             </div>
 
             {/* Calendar Control Toolbar */}
-            <div className="bg-white border border-gray-100 rounded-3xl p-5 shadow-sm flex flex-col md:flex-row justify-between items-stretch md:items-center gap-4">
+            <div className="bg-white border border-gray-100 rounded-2xl sm:rounded-3xl p-3.5 sm:p-5 shadow-sm flex flex-col md:flex-row justify-between items-stretch md:items-center gap-3 sm:gap-4">
               {/* Date Navigation */}
-              <div className="flex items-center gap-3">
+              <div className="flex flex-wrap sm:flex-nowrap items-center justify-between sm:justify-start gap-2 sm:gap-3">
                 <div className="flex items-center border border-gray-200 rounded-xl overflow-hidden bg-gray-50/50">
                   <button
                     onClick={handlePrev}
-                    className="p-2 hover:bg-white text-gray-600 hover:text-gray-900 transition-colors"
+                    className="p-1.5 sm:p-2 hover:bg-white text-gray-600 hover:text-gray-900 transition-colors"
                     title="Previous"
                   >
                     <ChevronLeft size={18} />
                   </button>
                   <button
                     onClick={handleToday}
-                    className="px-3 py-1 text-xs font-bold text-gray-700 hover:bg-white border-x border-gray-200 transition-colors"
+                    className="px-2.5 sm:px-3 py-1 text-xs font-bold text-gray-700 hover:bg-white border-x border-gray-200 transition-colors"
                   >
                     Today
                   </button>
                   <button
                     onClick={handleNext}
-                    className="p-2 hover:bg-white text-gray-600 hover:text-gray-900 transition-colors"
+                    className="p-1.5 sm:p-2 hover:bg-white text-gray-600 hover:text-gray-900 transition-colors"
                     title="Next"
                   >
                     <ChevronRight size={18} />
                   </button>
                 </div>
 
-                <h3 className="text-lg md:text-xl font-black text-gray-900 tracking-tight">
+                <h3 className="text-base sm:text-lg md:text-xl font-black text-gray-900 tracking-tight">
                   {viewMode === 'day'
-                    ? selectedDayForDayView.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+                    ? selectedDayForDayView.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
                     : `${MONTH_NAMES[currentDate.getMonth()]} ${currentDate.getFullYear()}`}
                 </h3>
               </div>
 
               {/* View Mode Switcher */}
-              <div className="flex items-center gap-2">
-                <div className="flex bg-gray-100 p-1 rounded-xl border border-gray-200/60 text-xs font-bold text-gray-600">
+              <div className="flex items-center gap-1 sm:gap-2 w-full md:w-auto">
+                <div className="grid grid-cols-4 sm:flex bg-gray-100 p-1 rounded-xl border border-gray-200/60 text-xs font-bold text-gray-600 w-full md:w-auto">
                   <button
                     onClick={() => setViewMode('month')}
-                    className={`px-3 py-1.5 rounded-lg transition-all ${
+                    className={`px-2 sm:px-3 py-1.5 rounded-lg transition-all text-[11px] sm:text-xs text-center ${
                       viewMode === 'month' ? 'bg-white text-[#D60041] shadow-sm font-black' : 'hover:text-gray-900'
                     }`}
                   >
@@ -500,7 +500,7 @@ const HRSchedulingPage = () => {
                   </button>
                   <button
                     onClick={() => setViewMode('week')}
-                    className={`px-3 py-1.5 rounded-lg transition-all ${
+                    className={`px-2 sm:px-3 py-1.5 rounded-lg transition-all text-[11px] sm:text-xs text-center ${
                       viewMode === 'week' ? 'bg-white text-[#D60041] shadow-sm font-black' : 'hover:text-gray-900'
                     }`}
                   >
@@ -508,7 +508,7 @@ const HRSchedulingPage = () => {
                   </button>
                   <button
                     onClick={() => setViewMode('day')}
-                    className={`px-3 py-1.5 rounded-lg transition-all ${
+                    className={`px-2 sm:px-3 py-1.5 rounded-lg transition-all text-[11px] sm:text-xs text-center ${
                       viewMode === 'day' ? 'bg-white text-[#D60041] shadow-sm font-black' : 'hover:text-gray-900'
                     }`}
                   >
@@ -516,7 +516,7 @@ const HRSchedulingPage = () => {
                   </button>
                   <button
                     onClick={() => setViewMode('agenda')}
-                    className={`px-3 py-1.5 rounded-lg transition-all ${
+                    className={`px-2 sm:px-3 py-1.5 rounded-lg transition-all text-[11px] sm:text-xs text-center ${
                       viewMode === 'agenda' ? 'bg-white text-[#D60041] shadow-sm font-black' : 'hover:text-gray-900'
                     }`}
                   >
@@ -590,186 +590,200 @@ const HRSchedulingPage = () => {
 
             {/* VIEW 1: MONTH VIEW */}
             {!isLoading && viewMode === 'month' && (
-              <div className="bg-white border border-gray-100 rounded-3xl shadow-sm overflow-hidden">
-                {/* Days of Week Header */}
-                <div className="grid grid-cols-7 border-b border-gray-100 bg-gray-50/70 text-center">
-                  {DAYS_OF_WEEK.map((d, i) => (
-                    <div key={i} className="py-3 text-xs font-black uppercase tracking-wider text-gray-500">
-                      {d}
-                    </div>
-                  ))}
+              <div className="bg-white border border-gray-100 rounded-2xl sm:rounded-3xl shadow-sm overflow-hidden">
+                <div className="md:hidden text-center py-1.5 text-[10px] text-gray-400 font-bold bg-gray-50 border-b border-gray-100 uppercase tracking-wider">
+                  ↔ Swipe horizontally to explore full week
                 </div>
+                <div className="overflow-x-auto scrollbar-hide">
+                  <div className="min-w-[700px] md:min-w-0">
+                    {/* Days of Week Header */}
+                    <div className="grid grid-cols-7 border-b border-gray-100 bg-gray-50/70 text-center">
+                      {DAYS_OF_WEEK.map((d, i) => (
+                        <div key={i} className="py-3 text-xs font-black uppercase tracking-wider text-gray-500">
+                          {d}
+                        </div>
+                      ))}
+                    </div>
 
-                {/* 7-column Calendar Grid */}
-                <div className="grid grid-cols-7 auto-rows-fr divide-x divide-y divide-gray-100">
-                  {monthGridDays.map((dayObj, index) => {
-                    const dayEvents = getEventsForDay(dayObj.date);
-                    const dayIsToday = isToday(dayObj.date);
+                    {/* 7-column Calendar Grid */}
+                    <div className="grid grid-cols-7 auto-rows-fr divide-x divide-y divide-gray-100">
+                      {monthGridDays.map((dayObj, index) => {
+                        const dayEvents = getEventsForDay(dayObj.date);
+                        const dayIsToday = isToday(dayObj.date);
 
-                    return (
-                      <div
-                        key={index}
-                        onClick={() => handleOpenNewSchedule(dayObj.date)}
-                        className={`min-h-[120px] p-2 flex flex-col justify-between transition-colors cursor-pointer group ${
-                          dayObj.isCurrentMonth ? 'bg-white hover:bg-gray-50/50' : 'bg-gray-50/30 text-gray-300'
-                        }`}
-                      >
-                        {/* Day Number Header */}
-                        <div className="flex items-center justify-between mb-1.5">
-                          <span
-                            className={`text-xs font-black w-6 h-6 rounded-full flex items-center justify-center transition-all ${
-                              dayIsToday
-                                ? 'bg-[#D60041] text-white shadow-sm shadow-[#D60041]/30'
-                                : dayObj.isCurrentMonth
-                                ? 'text-gray-800'
-                                : 'text-gray-300'
+                        return (
+                          <div
+                            key={index}
+                            onClick={() => handleOpenNewSchedule(dayObj.date)}
+                            className={`min-h-[120px] p-2 flex flex-col justify-between transition-colors cursor-pointer group ${
+                              dayObj.isCurrentMonth ? 'bg-white hover:bg-gray-50/50' : 'bg-gray-50/30 text-gray-300'
                             }`}
                           >
-                            {dayObj.date.getDate()}
-                          </span>
-
-                          <span className="opacity-0 group-hover:opacity-100 text-[#D60041] text-[10px] font-bold transition-opacity">
-                            + Add
-                          </span>
-                        </div>
-
-                        {/* Events List in Day Cell */}
-                        <div className="space-y-1 flex-1 overflow-y-auto max-h-[85px] scrollbar-hide">
-                          {dayEvents.slice(0, 3).map((ev) => {
-                            const isGoogle = ev.isGoogleEvent;
-                            const isCompleted = ev.status === 'COMPLETED';
-                            const isCanceled = ev.status === 'CANCELED';
-
-                            let badgeStyle = 'bg-pink-50 text-[#D60041] border border-pink-200/80 hover:border-[#D60041]';
-                            if (isGoogle) {
-                              badgeStyle = 'bg-blue-50 text-blue-700 border border-blue-200/80 hover:border-blue-400';
-                            } else if (isCompleted) {
-                              badgeStyle = 'bg-emerald-50 text-emerald-700 border border-emerald-200/80';
-                            } else if (isCanceled) {
-                              badgeStyle = 'bg-gray-100 text-gray-500 line-through border border-gray-200';
-                            }
-
-                            return (
-                              <div
-                                key={ev.id}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleEventClick(ev);
-                                }}
-                                className={`px-2 py-1 rounded-lg text-[10px] font-bold truncate flex items-center gap-1 transition-transform hover:scale-101 cursor-pointer ${badgeStyle}`}
-                                title={`${ev.title} (${formatEventTime(ev.start)})`}
+                            {/* Day Number Header */}
+                            <div className="flex items-center justify-between mb-1.5">
+                              <span
+                                className={`text-xs font-black w-6 h-6 rounded-full flex items-center justify-center transition-all ${
+                                  dayIsToday
+                                    ? 'bg-[#D60041] text-white shadow-sm shadow-[#D60041]/30'
+                                    : dayObj.isCurrentMonth
+                                    ? 'text-gray-800'
+                                    : 'text-gray-300'
+                                }`}
                               >
-                                {isGoogle ? (
-                                  <span className="w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0" />
-                                ) : (
-                                  <Video size={10} className="shrink-0" />
-                                )}
-                                <span className="shrink-0 font-medium opacity-80">{formatEventTime(ev.start)}</span>
-                                <span className="truncate">{ev.candidate_name && !isGoogle ? ev.candidate_name : ev.title}</span>
-                              </div>
-                            );
-                          })}
+                                {dayObj.date.getDate()}
+                              </span>
 
-                          {dayEvents.length > 3 && (
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setSelectedDayForDayView(dayObj.date);
-                                setViewMode('day');
-                              }}
-                              className="text-[9px] font-black text-gray-500 hover:text-[#D60041] px-1 block"
-                            >
-                              +{dayEvents.length - 3} more
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
+                              <span className="opacity-0 group-hover:opacity-100 text-[#D60041] text-[10px] font-bold transition-opacity">
+                                + Add
+                              </span>
+                            </div>
+
+                            {/* Events List in Day Cell */}
+                            <div className="space-y-1 flex-1 overflow-y-auto max-h-[85px] scrollbar-hide">
+                              {dayEvents.slice(0, 3).map((ev) => {
+                                const isGoogle = ev.isGoogleEvent;
+                                const isCompleted = ev.status === 'COMPLETED';
+                                const isCanceled = ev.status === 'CANCELED';
+
+                                let badgeStyle = 'bg-pink-50 text-[#D60041] border border-pink-200/80 hover:border-[#D60041]';
+                                if (isGoogle) {
+                                  badgeStyle = 'bg-blue-50 text-blue-700 border border-blue-200/80 hover:border-blue-400';
+                                } else if (isCompleted) {
+                                  badgeStyle = 'bg-emerald-50 text-emerald-700 border border-emerald-200/80';
+                                } else if (isCanceled) {
+                                  badgeStyle = 'bg-gray-100 text-gray-500 line-through border border-gray-200';
+                                }
+
+                                return (
+                                  <div
+                                    key={ev.id}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleEventClick(ev);
+                                    }}
+                                    className={`px-2 py-1 rounded-lg text-[10px] font-bold truncate flex items-center gap-1 transition-transform hover:scale-101 cursor-pointer ${badgeStyle}`}
+                                    title={`${ev.title} (${formatEventTime(ev.start)})`}
+                                  >
+                                    {isGoogle ? (
+                                      <span className="w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0" />
+                                    ) : (
+                                      <Video size={10} className="shrink-0" />
+                                    )}
+                                    <span className="shrink-0 font-medium opacity-80">{formatEventTime(ev.start)}</span>
+                                    <span className="truncate">{ev.candidate_name && !isGoogle ? ev.candidate_name : ev.title}</span>
+                                  </div>
+                                );
+                              })}
+
+                              {dayEvents.length > 3 && (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setSelectedDayForDayView(dayObj.date);
+                                    setViewMode('day');
+                                  }}
+                                  className="text-[9px] font-black text-gray-500 hover:text-[#D60041] px-1 block"
+                                >
+                                  +{dayEvents.length - 3} more
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
                 </div>
               </div>
             )}
 
             {/* VIEW 2: WEEK VIEW */}
             {!isLoading && viewMode === 'week' && (
-              <div className="bg-white border border-gray-100 rounded-3xl shadow-sm overflow-hidden">
-                <div className="grid grid-cols-7 border-b border-gray-100 bg-gray-50/70 text-center divide-x divide-gray-100">
-                  {currentWeekDays.map((d, i) => {
-                    const isTod = isToday(d);
-                    return (
-                      <div key={i} className="py-3 px-2">
-                        <p className="text-[10px] font-black uppercase tracking-wider text-gray-400">
-                          {DAYS_OF_WEEK[d.getDay()]}
-                        </p>
-                        <p className={`text-base font-black mt-0.5 inline-block px-2.5 py-0.5 rounded-full ${
-                          isTod ? 'bg-[#D60041] text-white shadow-sm' : 'text-gray-900'
-                        }`}>
-                          {d.getDate()}
-                        </p>
-                      </div>
-                    );
-                  })}
+              <div className="bg-white border border-gray-100 rounded-2xl sm:rounded-3xl shadow-sm overflow-hidden">
+                <div className="md:hidden text-center py-1.5 text-[10px] text-gray-400 font-bold bg-gray-50 border-b border-gray-100 uppercase tracking-wider">
+                  ↔ Swipe horizontally to explore full week
                 </div>
-
-                <div className="grid grid-cols-7 divide-x divide-gray-100 min-h-[480px]">
-                  {currentWeekDays.map((dayDate, colIdx) => {
-                    const dayEvents = getEventsForDay(dayDate);
-                    return (
-                      <div
-                        key={colIdx}
-                        onClick={() => handleOpenNewSchedule(dayDate)}
-                        className="p-2 space-y-2 hover:bg-gray-50/40 transition-colors cursor-pointer"
-                      >
-                        {dayEvents.length === 0 ? (
-                          <div className="h-full flex items-center justify-center text-[11px] text-gray-300 font-medium">
-                            No sessions
+                <div className="overflow-x-auto scrollbar-hide">
+                  <div className="min-w-[700px] md:min-w-0">
+                    <div className="grid grid-cols-7 border-b border-gray-100 bg-gray-50/70 text-center divide-x divide-gray-100">
+                      {currentWeekDays.map((d, i) => {
+                        const isTod = isToday(d);
+                        return (
+                          <div key={i} className="py-3 px-2">
+                            <p className="text-[10px] font-black uppercase tracking-wider text-gray-400">
+                              {DAYS_OF_WEEK[d.getDay()]}
+                            </p>
+                            <p className={`text-base font-black mt-0.5 inline-block px-2.5 py-0.5 rounded-full ${
+                              isTod ? 'bg-[#D60041] text-white shadow-sm' : 'text-gray-900'
+                            }`}>
+                              {d.getDate()}
+                            </p>
                           </div>
-                        ) : (
-                          dayEvents.map((ev) => (
-                            <div
-                              key={ev.id}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleEventClick(ev);
-                              }}
-                              className={`p-2.5 rounded-2xl border text-xs cursor-pointer shadow-sm hover:shadow-md transition-all ${
-                                ev.isGoogleEvent
-                                  ? 'bg-blue-50/60 border-blue-200 text-blue-900'
-                                  : ev.status === 'COMPLETED'
-                                  ? 'bg-emerald-50/60 border-emerald-200 text-emerald-900'
-                                  : 'bg-white border-pink-200/90 text-gray-900 hover:border-[#D60041]'
-                              }`}
-                            >
-                              <div className="flex items-center justify-between text-[10px] font-bold text-gray-500 mb-1">
-                                <span>{formatEventTime(ev.start)}</span>
-                                {ev.meeting_link && <Video size={12} className="text-[#D60041]" />}
+                        );
+                      })}
+                    </div>
+
+                    <div className="grid grid-cols-7 divide-x divide-gray-100 min-h-[480px]">
+                      {currentWeekDays.map((dayDate, colIdx) => {
+                        const dayEvents = getEventsForDay(dayDate);
+                        return (
+                          <div
+                            key={colIdx}
+                            onClick={() => handleOpenNewSchedule(dayDate)}
+                            className="p-2 space-y-2 hover:bg-gray-50/40 transition-colors cursor-pointer"
+                          >
+                            {dayEvents.length === 0 ? (
+                              <div className="h-full flex items-center justify-center text-[11px] text-gray-300 font-medium">
+                                No sessions
                               </div>
-                              <h5 className="font-bold text-xs truncate">{ev.candidate_name || ev.title}</h5>
-                              <p className="text-[11px] text-gray-500 font-medium truncate mt-0.5">
-                                {ev.job_title || ev.title}
-                              </p>
-                              {ev.interviewer_name && (
-                                <p className="text-[10px] text-[#D60041] font-bold truncate mt-1 flex items-center gap-1">
-                                  <Users size={10} /> {ev.interviewer_name}
-                                </p>
-                              )}
-                            </div>
-                          ))
-                        )}
-                      </div>
-                    );
-                  })}
+                            ) : (
+                              dayEvents.map((ev) => (
+                                <div
+                                  key={ev.id}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleEventClick(ev);
+                                  }}
+                                  className={`p-2.5 rounded-2xl border text-xs cursor-pointer shadow-sm hover:shadow-md transition-all ${
+                                    ev.isGoogleEvent
+                                      ? 'bg-blue-50/60 border-blue-200 text-blue-900'
+                                      : ev.status === 'COMPLETED'
+                                      ? 'bg-emerald-50/60 border-emerald-200 text-emerald-900'
+                                      : 'bg-white border-pink-200/90 text-gray-900 hover:border-[#D60041]'
+                                  }`}
+                                >
+                                  <div className="flex items-center justify-between text-[10px] font-bold text-gray-500 mb-1">
+                                    <span>{formatEventTime(ev.start)}</span>
+                                    {ev.meeting_link && <Video size={12} className="text-[#D60041]" />}
+                                  </div>
+                                  <h5 className="font-bold text-xs truncate">{ev.candidate_name || ev.title}</h5>
+                                  <p className="text-[11px] text-gray-500 font-medium truncate mt-0.5">
+                                    {ev.job_title || ev.title}
+                                  </p>
+                                  {ev.interviewer_name && (
+                                    <p className="text-[10px] text-[#D60041] font-bold truncate mt-1 flex items-center gap-1">
+                                      <Users size={10} /> {ev.interviewer_name}
+                                    </p>
+                                  )}
+                                </div>
+                              ))
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
                 </div>
               </div>
             )}
 
             {/* VIEW 3: DAY VIEW */}
             {!isLoading && viewMode === 'day' && (
-              <div className="bg-white border border-gray-100 rounded-3xl shadow-sm p-6 space-y-4">
-                <div className="flex items-center justify-between pb-4 border-b border-gray-100">
+              <div className="bg-white border border-gray-100 rounded-2xl sm:rounded-3xl shadow-sm p-4 sm:p-6 space-y-4">
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pb-4 border-b border-gray-100">
                   <div>
-                    <h4 className="text-xl font-black text-gray-900">
-                      {selectedDayForDayView.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
+                    <h4 className="text-lg sm:text-xl font-black text-gray-900">
+                      {selectedDayForDayView.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
                     </h4>
                     <p className="text-xs text-gray-500 font-medium mt-0.5">
                       {getEventsForDay(selectedDayForDayView).length} scheduled session(s) today
@@ -777,7 +791,7 @@ const HRSchedulingPage = () => {
                   </div>
                   <button
                     onClick={() => handleOpenNewSchedule(selectedDayForDayView)}
-                    className="px-4 py-2 bg-[#D60041] hover:bg-rose-700 text-white rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5"
+                    className="w-full sm:w-auto px-4 py-2 bg-[#D60041] hover:bg-rose-700 text-white rounded-xl text-xs font-bold transition-colors flex items-center justify-center gap-1.5"
                   >
                     <Plus size={14} /> Schedule for this day
                   </button>
@@ -851,10 +865,10 @@ const HRSchedulingPage = () => {
 
             {/* VIEW 4: AGENDA / LIST VIEW */}
             {!isLoading && viewMode === 'agenda' && (
-              <div className="bg-white border border-gray-100 rounded-3xl shadow-sm p-6 space-y-4">
-                <div className="flex items-center justify-between pb-4 border-b border-gray-100">
+              <div className="bg-white border border-gray-100 rounded-2xl sm:rounded-3xl shadow-sm p-4 sm:p-6 space-y-4">
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 pb-4 border-b border-gray-100">
                   <div>
-                    <h4 className="text-xl font-black text-gray-900">Upcoming Schedule Agenda</h4>
+                    <h4 className="text-lg sm:text-xl font-black text-gray-900">Upcoming Schedule Agenda</h4>
                     <p className="text-xs text-gray-500 font-medium mt-0.5">
                       All scheduled candidate interviews and synchronized Google Calendar commitments
                     </p>

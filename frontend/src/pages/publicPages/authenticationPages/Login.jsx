@@ -155,34 +155,34 @@ const Login = () => {
   };
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center px-4 py-8 bg-[#F0F4F9] font-sans antialiased text-gray-800">
+    <div className="min-h-screen flex flex-col items-center justify-center px-4 pt-16 pb-8 sm:py-8 bg-[#F0F4F9] font-sans antialiased text-gray-800">
       <Helmet>
         <title>Sign in - Mariwasa Portal</title>
       </Helmet>
 
       <button
         onClick={() => window.location.href = '/'}
-        className="fixed top-8 left-8 flex items-center gap-2 text-gray-600 hover:text-[#D60041] transition-all group font-bold text-xs uppercase tracking-widest bg-white/50 backdrop-blur-sm py-3 px-5 rounded-2xl border border-gray-200 hover:border-pink-100 hover:shadow-lg active:scale-95 z-50"
+        className="fixed top-3 left-3 sm:top-8 sm:left-8 flex items-center gap-1.5 sm:gap-2 text-gray-600 hover:text-[#D60041] transition-all group font-bold text-[11px] sm:text-xs uppercase tracking-widest bg-white/70 backdrop-blur-sm py-2 px-3 sm:py-3 sm:px-5 rounded-xl sm:rounded-2xl border border-gray-200 hover:border-pink-100 hover:shadow-lg active:scale-95 z-50 shadow-sm"
       >
-        <ArrowLeft size={16} className="group-hover:-translate-x-1 transition-transform" />
+        <ArrowLeft size={14} className="group-hover:-translate-x-1 transition-transform sm:w-4 sm:h-4" />
         Back to Home
       </button>
 
       {modalState.isOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/40 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm p-8 transform transition-all animate-in zoom-in-95 duration-200">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm p-6 sm:p-8 transform transition-all animate-in zoom-in-95 duration-200">
             <div className="flex flex-col items-center text-center">
-              <div className={`w-16 h-16 rounded-full flex items-center justify-center mb-5 ${modalState.type === 'success' ? 'bg-green-50' : 'bg-red-50'}`}>
+              <div className={`w-14 h-14 sm:w-16 sm:h-16 rounded-full flex items-center justify-center mb-4 sm:mb-5 ${modalState.type === 'success' ? 'bg-green-50' : 'bg-red-50'}`}>
                 {modalState.type === 'success' ? (
-                  <CheckCircle2 className="w-8 h-8 text-green-500" />
+                  <CheckCircle2 className="w-7 h-7 sm:w-8 sm:h-8 text-green-500" />
                 ) : (
-                  <XCircle className="w-8 h-8 text-red-500" />
+                  <XCircle className="w-7 h-7 sm:w-8 sm:h-8 text-red-500" />
                 )}
               </div>
-              <h3 className="text-xl font-normal text-gray-900 mb-2 tracking-tight">
+              <h3 className="text-lg sm:text-xl font-normal text-gray-900 mb-2 tracking-tight">
                 {modalState.title}
               </h3>
-              <p className="text-sm text-gray-600 mb-8 px-2 leading-relaxed">
+              <p className="text-xs sm:text-sm text-gray-600 mb-6 sm:mb-8 px-2 leading-relaxed">
                 {modalState.message}
               </p>
               <button
@@ -193,7 +193,7 @@ const Login = () => {
                     setModalState({ ...modalState, isOpen: false });
                   }
                 }}
-                className={`w-full font-medium py-2.5 px-4 rounded-full transition-all duration-200 text-sm ${modalState.type === 'success'
+                className={`w-full font-medium py-2.5 px-4 rounded-full transition-all duration-200 text-xs sm:text-sm ${modalState.type === 'success'
                   ? 'bg-[#D60041] hover:bg-[#b50037] text-white'
                   : 'bg-gray-100 hover:bg-gray-200 text-gray-800'
                   }`}
@@ -205,21 +205,21 @@ const Login = () => {
         </div>
       )}
 
-      <div className="bg-white rounded-[28px] shadow-sm w-full max-w-[1040px] flex flex-col md:flex-row overflow-hidden min-h-[400px]">
+      <div className="bg-white rounded-2xl sm:rounded-[28px] shadow-sm w-full max-w-[1040px] flex flex-col md:flex-row overflow-hidden min-h-[400px]">
 
-        <div className="w-full md:w-[45%] p-10 md:p-14 flex flex-col justify-start">
-          <div className="mb-6">
-            <img src="/assets/logo.png" alt="Mariwasa Logo" className="h-10 w-10 object-contain" />
+        <div className="w-full md:w-[45%] p-6 sm:p-10 md:p-14 flex flex-col justify-start border-b md:border-b-0 md:border-r border-gray-100">
+          <div className="mb-4 sm:mb-6">
+            <img src="/assets/logo.png" alt="Mariwasa Logo" className="h-9 w-9 sm:h-10 sm:w-10 object-contain" />
           </div>
-          <h1 className="text-[36px] leading-[44px] font-normal tracking-normal text-gray-900 mb-4">
+          <h1 className="text-2xl sm:text-[36px] sm:leading-[44px] font-normal tracking-tight sm:tracking-normal text-gray-900 mb-2 sm:mb-4">
             Sign in
           </h1>
-          <p className="text-base font-normal text-gray-800 mb-8 md:mb-0">
+          <p className="text-sm sm:text-base font-normal text-gray-700 leading-relaxed mb-4 md:mb-0">
             to Mariwasa Resume Analysis System. Sign in with your Google account or your email credentials.
           </p>
         </div>
 
-        <div className="w-full md:w-[55%] p-10 md:p-14 flex flex-col justify-center">
+        <div className="w-full md:w-[55%] p-6 sm:p-10 md:p-14 flex flex-col justify-center">
           <div className="w-full max-w-[400px] mx-auto md:mx-0 md:ml-auto">
             {/* Google OAuth Login - Accessible for Candidate, HR, Admin */}
             <div className="mb-6">

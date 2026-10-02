@@ -17,9 +17,9 @@ const CandidateRow = ({ name, role, skills, match, status, profileImage, onRevie
     : (typeof skills === 'string' ? skills.split(',').map(s => s.trim()) : []);
 
   return (
-    <div className="flex flex-col sm:flex-row sm:items-center justify-between p-4 border border-gray-100 bg-white rounded-[24px] hover:border-[#D60041]/30 hover:shadow-md transition-all duration-300 group gap-4">
-      <div className="flex items-center gap-4 w-full sm:w-[40%] lg:w-[30%]">
-        <div className="w-12 h-12 bg-red-50 rounded-full flex items-center justify-center overflow-hidden shrink-0 group-hover:bg-[#D60041] transition-colors duration-300">
+    <div className="flex flex-col sm:flex-row sm:items-center justify-between p-3.5 sm:p-4 border border-gray-100 bg-white rounded-2xl sm:rounded-[24px] hover:border-[#D60041]/30 hover:shadow-md transition-all duration-300 group gap-3 sm:gap-4">
+      <div className="flex items-center gap-3 sm:gap-4 w-full sm:w-[40%] lg:w-[30%]">
+        <div className="w-10 h-10 sm:w-12 sm:h-12 bg-red-50 rounded-full flex items-center justify-center overflow-hidden shrink-0 group-hover:bg-[#D60041] transition-colors duration-300">
           {profileImage ? (
             <img src={profileImage.startsWith('http') ? profileImage : `${API_BASE_URL}${profileImage}`} alt={name} className="w-full h-full object-cover" />
           ) : (
@@ -27,13 +27,13 @@ const CandidateRow = ({ name, role, skills, match, status, profileImage, onRevie
           )}
         </div>
 
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <h3 className="font-bold text-sm md:text-[15px] text-gray-900 truncate group-hover:text-[#D60041] transition-colors">{name}</h3>
           <p className="text-[11px] text-gray-500 font-medium truncate">{role}</p>
         </div>
       </div>
 
-      <div className="flex flex-1 items-center justify-between sm:justify-end gap-4 md:gap-8">
+      <div className="flex flex-1 items-center justify-between sm:justify-end gap-3 sm:gap-4 md:gap-8 pt-2 sm:pt-0 border-t sm:border-t-0 border-gray-50">
         <div className="hidden lg:flex gap-2 min-w-[150px]">
           {skillsList.slice(0, 2).map((skill, i) => (
             <span key={i} className="px-2.5 py-1 bg-gray-50 rounded-md text-[10px] font-medium text-gray-600 border border-gray-100 whitespace-nowrap">
@@ -47,23 +47,23 @@ const CandidateRow = ({ name, role, skills, match, status, profileImage, onRevie
           )}
         </div>
 
-        <div className="flex flex-col items-center justify-center min-w-[50px]">
+        <div className="flex flex-col items-center justify-center min-w-[45px]">
           <div className="flex items-baseline gap-0.5">
-            <span className="text-base md:text-lg font-black text-gray-900 group-hover:text-[#D60041] transition-colors">{match}</span>
-            <span className="text-[10px] font-bold text-gray-400">%</span>
+            <span className="text-sm sm:text-base md:text-lg font-black text-gray-900 group-hover:text-[#D60041] transition-colors">{match}</span>
+            <span className="text-[9px] font-bold text-gray-400">%</span>
           </div>
           <span className="text-[8px] font-black text-gray-400 uppercase tracking-widest">Match</span>
         </div>
 
-        <div className="hidden xs:flex min-w-[70px] justify-center">
-          <span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-wider ${statusStyles[status.toLowerCase()] || statusStyles.pending}`}>
+        <div className="flex min-w-[65px] justify-center">
+          <span className={`px-2.5 sm:px-3 py-0.5 sm:py-1 rounded-full text-[9px] font-black uppercase tracking-wider ${statusStyles[status.toLowerCase()] || statusStyles.pending}`}>
             {status}
           </span>
         </div>
 
         <button 
           onClick={onReview}
-          className="px-4 md:px-6 py-2.5 bg-gray-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-[#D60041] transition-all shadow-md active:scale-95 shrink-0"
+          className="px-3.5 sm:px-4 md:px-6 py-2 sm:py-2.5 bg-gray-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-[#D60041] transition-all shadow-md active:scale-95 shrink-0"
         >
           Review
         </button>
@@ -76,7 +76,7 @@ const RecentSubmissions = ({ candidates }) => {
   const navigate = useNavigate();
 
   return (
-    <div className="bg-white border border-gray-100 rounded-[24px] shadow-sm p-6 lg:p-8 mb-8">
+    <div className="bg-white border border-gray-100 rounded-2xl sm:rounded-[24px] shadow-sm p-4 sm:p-6 lg:p-8 mb-6 sm:mb-8">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4 sm:gap-0">
         <div>
           <h3 className="text-xl font-semibold text-gray-900 tracking-tight">Recent Submissions</h3>

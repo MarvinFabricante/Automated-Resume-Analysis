@@ -95,20 +95,20 @@ const HRDashboard = () => {
             <ApplicationTrends />
             <RecentSubmissions candidates={recentCandidates} />
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
 
               <div
                 onClick={() => navigate('/hr/screeningportal')}
-                className="bg-white border border-gray-100 rounded-[32px] p-8 lg:p-10 shadow-sm hover:-translate-y-1 hover:shadow-xl hover:border-orange-100 transition-all duration-300 cursor-pointer flex flex-col items-start gap-6 group"
+                className="bg-white border border-gray-100 rounded-2xl sm:rounded-[32px] p-5 sm:p-6 lg:p-8 shadow-sm hover:-translate-y-1 hover:shadow-xl hover:border-orange-100 transition-all duration-300 cursor-pointer flex flex-col items-start gap-4 sm:gap-6 group"
               >
-                <div className="w-14 h-14 bg-gradient-to-br from-orange-50 to-orange-100/50 rounded-2xl flex items-center justify-center group-hover:scale-110 transition-transform duration-300 shadow-inner">
-                  <AlertCircle className="text-orange-500 h-6 w-6" />
+                <div className="w-12 h-12 sm:w-14 sm:h-14 bg-gradient-to-br from-orange-50 to-orange-100/50 rounded-2xl flex items-center justify-center group-hover:scale-110 transition-transform duration-300 shadow-inner shrink-0">
+                  <AlertCircle className="text-orange-500 h-5 w-5 sm:h-6 sm:w-6" />
                 </div>
                 <div>
-                  <h4 className="text-xl font-bold tracking-tight text-gray-900 group-hover:text-orange-600 transition-colors">
+                  <h4 className="text-lg sm:text-xl font-bold tracking-tight text-gray-900 group-hover:text-orange-600 transition-colors">
                     Pending Reviews
                   </h4>
-                  <p className="text-sm text-gray-500 font-bold mt-2">
+                  <p className="text-xs sm:text-sm text-gray-500 font-bold mt-1 sm:mt-2">
                     {appStats.pending} applications waiting
                   </p>
                 </div>
@@ -116,16 +116,16 @@ const HRDashboard = () => {
 
               <div
                 onClick={() => navigate('/hr/scheduling')}
-                className="bg-white border border-gray-100 rounded-[32px] p-8 lg:p-10 shadow-sm hover:-translate-y-1 hover:shadow-xl hover:border-pink-100 transition-all duration-300 cursor-pointer flex flex-col items-start gap-6 group"
+                className="bg-white border border-gray-100 rounded-2xl sm:rounded-[32px] p-5 sm:p-6 lg:p-8 shadow-sm hover:-translate-y-1 hover:shadow-xl hover:border-pink-100 transition-all duration-300 cursor-pointer flex flex-col items-start gap-4 sm:gap-6 group"
               >
-                <div className="w-14 h-14 bg-gradient-to-br from-pink-50 to-rose-100/50 rounded-2xl flex items-center justify-center group-hover:scale-110 transition-transform duration-300 shadow-inner">
-                  <Calendar className="text-[#D60041] h-6 w-6" />
+                <div className="w-12 h-12 sm:w-14 sm:h-14 bg-gradient-to-br from-pink-50 to-rose-100/50 rounded-2xl flex items-center justify-center group-hover:scale-110 transition-transform duration-300 shadow-inner shrink-0">
+                  <Calendar className="text-[#D60041] h-5 w-5 sm:h-6 sm:w-6" />
                 </div>
                 <div>
-                  <h4 className="text-xl font-bold tracking-tight text-gray-900 group-hover:text-[#D60041] transition-colors">
+                  <h4 className="text-lg sm:text-xl font-bold tracking-tight text-gray-900 group-hover:text-[#D60041] transition-colors">
                     Interview Scheduling
                   </h4>
-                  <p className="text-sm text-gray-500 font-bold mt-2">
+                  <p className="text-xs sm:text-sm text-gray-500 font-bold mt-1 sm:mt-2">
                     System calendar & Google sync
                   </p>
                 </div>
@@ -133,16 +133,16 @@ const HRDashboard = () => {
 
               <div
                 onClick={() => navigate('/hr/screeningportal')}
-                className="bg-white border border-gray-100 rounded-[32px] p-8 lg:p-10 shadow-sm hover:-translate-y-1 hover:shadow-xl hover:border-red-100 transition-all duration-300 cursor-pointer flex flex-col items-start gap-6 group"
+                className="bg-white border border-gray-100 rounded-2xl sm:rounded-[32px] p-5 sm:p-6 lg:p-8 shadow-sm hover:-translate-y-1 hover:shadow-xl hover:border-red-100 transition-all duration-300 cursor-pointer flex flex-col items-start gap-4 sm:gap-6 group"
               >
-                <div className="w-14 h-14 bg-gradient-to-br from-pink-50 to-red-50 rounded-2xl flex items-center justify-center group-hover:scale-110 transition-transform duration-300 shadow-inner">
-                  <Briefcase className="text-[#D60041] h-6 w-6" />
+                <div className="w-12 h-12 sm:w-14 sm:h-14 bg-gradient-to-br from-pink-50 to-red-50 rounded-2xl flex items-center justify-center group-hover:scale-110 transition-transform duration-300 shadow-inner shrink-0">
+                  <Briefcase className="text-[#D60041] h-5 w-5 sm:h-6 sm:w-6" />
                 </div>
                 <div>
-                  <h4 className="text-xl font-bold tracking-tight text-gray-900 group-hover:text-[#D60041] transition-colors">
+                  <h4 className="text-lg sm:text-xl font-bold tracking-tight text-gray-900 group-hover:text-[#D60041] transition-colors">
                     Active Positions
                   </h4>
-                  <p className="text-sm text-gray-500 font-bold mt-2">
+                  <p className="text-xs sm:text-sm text-gray-500 font-bold mt-1 sm:mt-2">
                     {activeJobsCount} roles currently open
                   </p>
                 </div>
@@ -150,16 +150,16 @@ const HRDashboard = () => {
 
               <div 
                 onClick={() => navigate('/hr/comparecandidates')}
-                className="bg-white border border-gray-100 rounded-[32px] p-8 lg:p-10 shadow-sm hover:-translate-y-1 hover:shadow-xl hover:border-blue-100 transition-all duration-300 cursor-pointer flex flex-col items-start gap-6 group"
+                className="bg-white border border-gray-100 rounded-2xl sm:rounded-[32px] p-5 sm:p-6 lg:p-8 shadow-sm hover:-translate-y-1 hover:shadow-xl hover:border-blue-100 transition-all duration-300 cursor-pointer flex flex-col items-start gap-4 sm:gap-6 group"
               >
-                <div className="w-14 h-14 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-2xl flex items-center justify-center group-hover:scale-110 transition-transform duration-300 shadow-inner">
-                  <BarChart3 className="text-blue-500 h-6 w-6" />
+                <div className="w-12 h-12 sm:w-14 sm:h-14 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-2xl flex items-center justify-center group-hover:scale-110 transition-transform duration-300 shadow-inner shrink-0">
+                  <BarChart3 className="text-blue-500 h-5 w-5 sm:h-6 sm:w-6" />
                 </div>
                 <div>
-                  <h4 className="text-xl font-bold tracking-tight text-gray-900 group-hover:text-blue-600 transition-colors">
+                  <h4 className="text-lg sm:text-xl font-bold tracking-tight text-gray-900 group-hover:text-blue-600 transition-colors">
                     Compare Candidates
                   </h4>
-                  <p className="text-sm text-gray-500 font-bold mt-2">
+                  <p className="text-xs sm:text-sm text-gray-500 font-bold mt-1 sm:mt-2">
                     Side-by-side ATS analysis
                   </p>
                 </div>

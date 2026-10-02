@@ -373,10 +373,7 @@ const Header = () => {
             className="lg:hidden p-2 rounded-xl text-gray-500 hover:bg-gray-50 hover:text-gray-900 transition-all -ml-1"
             onClick={() => {
               if (!isGuest && !isPublicSitePage && !isApplicationPage) {
-                dispatch(isSidebarOpen ? closeSidebar() : { type: 'ui/toggleSidebar' });
-                // We actually need toggleSidebar imported if we want to dispatch it directly,
-                // but wait, toggleSidebar is not imported in Header.jsx.
-                // Let's import it.
+                dispatch(isSidebarOpen ? closeSidebar() : toggleSidebar());
               } else {
                 setIsMobileMenuOpen(!isMobileMenuOpen);
               }
