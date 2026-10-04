@@ -80,8 +80,42 @@ async def change_password(
 import os
 import urllib.parse
 from fastapi.responses import RedirectResponse
-from app.utils.google_auth import get_google_auth_url, get_candidate_google_auth_url, exchange_code_for_credentials
+from app.utils.google_auth import (
+    get_google_auth_url,
+    get_candidate_google_auth_url,
+    get_hr_google_auth_url,
+    get_admin_google_auth_url,
+    exchange_code_for_credentials,
+)
+from app.repositories.auth_repository import AuthRepository
 import requests
+
+@router.get("/check-role")
+async def check_email_role(email: str, db: AsyncSession = Depends(get_db)):
+    """
+    Check the role associated with an email to detect if it is registered as
+    CANDIDATE, HR, or ADMIN. Helps frontend adapt the Google login portal
+    and avoid login/calendar permission conflicts before OAuth begins.
+    """
+    clean_email = email.strip().lower()
+    if not clean_email:
+        return {"exists": False, "role": "CANDIDATE"}
+
+    row = await AuthRepository.get_raw_user_by_email(db, clean_email)
+    if row:
+        return {
+            "exists": True, 
+            "role": (row.role or "CANDIDATE").upper(),
+            "fullname": row.fullname or ""
+        }
+
+    # If not registered yet in DB, check pre-authorized staff lists
+    if clean_email in auth_service.KNOWN_ADMIN_EMAILS:
+        return {"exists": False, "role": "ADMIN", "is_authorized_staff": True}
+    elif clean_email in auth_service.KNOWN_HR_EMAILS:
+        return {"exists": False, "role": "HR", "is_authorized_staff": True}
+    
+    return {"exists": False, "role": "CANDIDATE", "is_authorized_staff": False}
 
 @router.get("/google/candidate-register")
 async def google_candidate_register():
@@ -90,7 +124,7 @@ async def google_candidate_register():
     Handles ONLY user authentication and account creation.
     Does NOT request Google Calendar permissions or touch Google Calendar Console services.
     """
-    url, state = get_candidate_google_auth_url()
+    url, state = get_candidate_google_auth_url(flow_type="candidate_register")
     return RedirectResponse(url)
 
 @router.get("/google/register")
@@ -99,20 +133,40 @@ async def google_register():
     return await google_candidate_register()
 
 @router.get("/google/login")
-async def google_login(flow: str = "login"):
+async def google_login(flow: str = "login", role: str = "candidate"):
+    """
+    Role-aware Google OAuth login endpoint.
+    - Candidate: requests ONLY basic profile scopes (no Google Calendar / Console restrictions).
+    - HR: requests Calendar scopes for authorized HR accounts configured in Google Console.
+    - Admin: requests basic profile scopes for System Administrators.
+    """
+    norm_role = (role or "candidate").strip().lower()
     if flow in ["candidate_register", "register"]:
-        return await google_candidate_register()
-    url, state = get_google_auth_url(flow_type=flow)
+        url, state = get_candidate_google_auth_url(flow_type="candidate_register")
+    elif norm_role == "hr" or flow == "hr_login":
+        url, state = get_hr_google_auth_url(flow_type="hr_login")
+    elif norm_role == "admin" or flow == "admin_login":
+        url, state = get_admin_google_auth_url(flow_type="admin_login")
+    else:
+        url, state = get_candidate_google_auth_url(flow_type="candidate_login")
+    
     return RedirectResponse(url)
 
 @router.get("/google/callback")
 async def google_callback(code: str, state: str = "", db: AsyncSession = Depends(get_db)):
     base_url = os.getenv("PUBLIC_BASE_URL", "http://localhost:5173").rstrip("/")
     flow_type = "login"
+    role_requested = "candidate"
     try:
-        creds, flow_type = exchange_code_for_credentials(code, state)
+        creds, flow_info = exchange_code_for_credentials(code, state)
+        if isinstance(flow_info, dict):
+            flow_type = flow_info.get("flow_type", "login")
+            role_requested = flow_info.get("role", "candidate")
+        else:
+            flow_type = flow_info
+            role_requested = "candidate"
         
-        # Get user info
+        # Get user info from Google
         user_info_response = requests.get(
             'https://www.googleapis.com/oauth2/v2/userinfo',
             headers={'Authorization': f'Bearer {creds.token}'}
@@ -125,11 +179,22 @@ async def google_callback(code: str, state: str = "", db: AsyncSession = Depends
         if not email:
             raise HTTPException(status_code=400, detail="Failed to retrieve email from Google")
         
+        creds_json = creds.to_json() if creds else ""
+        granted_scopes = getattr(creds, 'scopes', [])
+
         if flow_type in ["candidate_register", "register"]:
             # Pure user authentication and account creation for Candidate - no Google Calendar logic or linking
             data = await auth_service.register_candidate_with_google(db, email, fullname, picture)
         else:
-            data = await auth_service.login_with_google(db, email, fullname, picture, creds.to_json())
+            data = await auth_service.login_with_google(
+                db=db,
+                email=email,
+                fullname=fullname,
+                picture=picture,
+                google_credentials=creds_json,
+                target_role=role_requested,
+                granted_scopes=granted_scopes
+            )
         
         # Redirect to frontend with token, role, email, and user details
         params = {

@@ -19,6 +19,9 @@ const authService = {
     
   changePassword: (current_password, new_password) =>
     api.post('/auth/change-password', { current_password, new_password }),
+
+  checkRole: (email) =>
+    api.get(`/auth/check-role?email=${encodeURIComponent(email)}`),
 };
 
 export default authService;

@@ -10,7 +10,11 @@ import {
   Loader2,
   CheckCircle2,
   XCircle,
-  ArrowLeft
+  ArrowLeft,
+  User,
+  Calendar,
+  ShieldCheck,
+  Sparkles
 } from 'lucide-react';
 
 const Login = () => {
@@ -20,6 +24,9 @@ const Login = () => {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [selectedRole, setSelectedRole] = useState('candidate'); // 'candidate' | 'hr' | 'admin'
+  const [detectedRoleInfo, setDetectedRoleInfo] = useState(null);
+  const [isDetectingRole, setIsDetectingRole] = useState(false);
   const dispatch = useDispatch();
 
   const [modalState, setModalState] = useState({
@@ -64,6 +71,45 @@ const Login = () => {
     return () => window.removeEventListener('storage', checkExistingSession);
   }, []);
 
+  // Intelligent Role Auto-Detection from typed email
+  useEffect(() => {
+    const cleanEmail = email.trim();
+    if (!cleanEmail || !cleanEmail.includes('@') || cleanEmail.length < 5) {
+      setDetectedRoleInfo(null);
+      setIsDetectingRole(false);
+      return;
+    }
+
+    setIsDetectingRole(true);
+    const timer = setTimeout(async () => {
+      try {
+        const response = await authService.checkRole(cleanEmail);
+        const data = response.data;
+        if (data && data.role) {
+          const roleKey = data.role.toLowerCase();
+          setDetectedRoleInfo({
+            role: roleKey,
+            roleName: data.role,
+            exists: data.exists,
+            isAuthorizedStaff: data.is_authorized_staff
+          });
+          // Automatically synchronize role tab if recognized
+          if (roleKey === 'hr' || roleKey === 'admin') {
+            setSelectedRole(roleKey);
+          } else if (roleKey === 'candidate') {
+            setSelectedRole('candidate');
+          }
+        }
+      } catch (err) {
+        // Silently keep default
+      } finally {
+        setIsDetectingRole(false);
+      }
+    }, 400);
+
+    return () => clearTimeout(timer);
+  }, [email]);
+
   const handleGoogleLogin = () => {
     const existingToken = localStorage.getItem('token');
     const existingRole = localStorage.getItem('role');
@@ -78,7 +124,8 @@ const Login = () => {
       return;
     }
 
-    window.location.href = `${API_BASE_URL}/auth/google/login`;
+    // Role-specific Google login URL with separated scopes to avoid Google Console conflicts
+    window.location.href = `${API_BASE_URL}/auth/google/login?role=${selectedRole}`;
   };
 
   const handleEmailChange = (e) => {
@@ -205,41 +252,133 @@ const Login = () => {
         </div>
       )}
 
-      <div className="bg-white rounded-2xl sm:rounded-[28px] shadow-sm w-full max-w-[1040px] flex flex-col md:flex-row overflow-hidden min-h-[400px]">
+      <div className="bg-white rounded-2xl sm:rounded-[28px] shadow-sm w-full max-w-[1060px] flex flex-col md:flex-row overflow-hidden min-h-[460px]">
 
-        <div className="w-full md:w-[45%] p-6 sm:p-10 md:p-14 flex flex-col justify-start border-b md:border-b-0 md:border-r border-gray-100">
-          <div className="mb-4 sm:mb-6">
-            <img src="/assets/logo.png" alt="Mariwasa Logo" className="h-9 w-9 sm:h-10 sm:w-10 object-contain" />
+        {/* Left Portal Info Banner */}
+        <div className="w-full md:w-[42%] p-6 sm:p-10 md:p-12 flex flex-col justify-between border-b md:border-b-0 md:border-r border-gray-100 bg-gradient-to-b from-white to-gray-50/50">
+          <div>
+            <div className="mb-4 sm:mb-6 flex items-center gap-3">
+              <img src="/assets/logo.png" alt="Mariwasa Logo" className="h-9 w-9 sm:h-10 sm:w-10 object-contain" />
+              <span className="text-xs font-bold tracking-wider uppercase text-gray-400">Mariwasa Portal</span>
+            </div>
+            
+            <h1 className="text-2xl sm:text-[34px] sm:leading-[42px] font-normal tracking-tight text-gray-900 mb-3 sm:mb-4">
+              Sign in
+            </h1>
+            
+            <p className="text-sm sm:text-base font-normal text-gray-600 leading-relaxed mb-6">
+              {selectedRole === 'candidate' && "Sign in to view and track your job applications, assessments, and interview schedules."}
+              {selectedRole === 'hr' && "Human Resources portal to manage job postings, evaluate candidate resumes, and sync interview calendars."}
+              {selectedRole === 'admin' && "Administration console for system settings, user management, audit trails, and security."}
+            </p>
           </div>
-          <h1 className="text-2xl sm:text-[36px] sm:leading-[44px] font-normal tracking-tight sm:tracking-normal text-gray-900 mb-2 sm:mb-4">
-            Sign in
-          </h1>
-          <p className="text-sm sm:text-base font-normal text-gray-700 leading-relaxed mb-4 md:mb-0">
-            to Mariwasa Resume Analysis System. Sign in with your Google account or your email credentials.
-          </p>
+
+          <div className="mt-4 pt-4 border-t border-gray-100">
+            <div className="flex items-center gap-2 text-xs font-medium text-gray-500">
+              <Sparkles size={14} className="text-[#D60041]" />
+              <span>
+                {selectedRole === 'candidate' && "Candidate Google accounts log in without Google Console restrictions."}
+                {selectedRole === 'hr' && "HR Google accounts integrate directly with Google Calendar."}
+                {selectedRole === 'admin' && "Authorized administrator authentication."}
+              </span>
+            </div>
+          </div>
         </div>
 
-        <div className="w-full md:w-[55%] p-6 sm:p-10 md:p-14 flex flex-col justify-center">
-          <div className="w-full max-w-[400px] mx-auto md:mx-0 md:ml-auto">
-            {/* Google OAuth Login - Accessible for Candidate, HR, Admin */}
-            <div className="mb-6">
+        {/* Right Form Container */}
+        <div className="w-full md:w-[58%] p-6 sm:p-10 md:p-12 flex flex-col justify-center">
+          <div className="w-full max-w-[420px] mx-auto md:mx-0 md:ml-auto">
+            
+            {/* Role Selection Tabs */}
+            <div className="mb-5">
+              <div className="text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-2 flex items-center justify-between">
+                <span>Select Login Role</span>
+                {detectedRoleInfo && (
+                  <span className="text-emerald-600 font-semibold normal-case tracking-normal flex items-center gap-1">
+                    ✓ Recognized as {detectedRoleInfo.roleName}
+                  </span>
+                )}
+              </div>
+              <div className="grid grid-cols-3 gap-1.5 p-1 bg-gray-100 rounded-xl">
+                <button
+                  type="button"
+                  onClick={() => setSelectedRole('candidate')}
+                  className={`flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-lg text-xs font-bold transition-all ${
+                    selectedRole === 'candidate'
+                      ? 'bg-white text-gray-900 shadow-sm'
+                      : 'text-gray-600 hover:text-gray-900 hover:bg-white/50'
+                  }`}
+                >
+                  <User size={13} className={selectedRole === 'candidate' ? 'text-[#D60041]' : 'text-gray-400'} />
+                  <span>Candidate</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setSelectedRole('hr')}
+                  className={`flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-lg text-xs font-bold transition-all ${
+                    selectedRole === 'hr'
+                      ? 'bg-white text-[#D60041] shadow-sm'
+                      : 'text-gray-600 hover:text-gray-900 hover:bg-white/50'
+                  }`}
+                >
+                  <Calendar size={13} className={selectedRole === 'hr' ? 'text-[#D60041]' : 'text-gray-400'} />
+                  <span>HR Staff</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setSelectedRole('admin')}
+                  className={`flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-lg text-xs font-bold transition-all ${
+                    selectedRole === 'admin'
+                      ? 'bg-white text-indigo-700 shadow-sm'
+                      : 'text-gray-600 hover:text-gray-900 hover:bg-white/50'
+                  }`}
+                >
+                  <ShieldCheck size={13} className={selectedRole === 'admin' ? 'text-indigo-600' : 'text-gray-400'} />
+                  <span>Admin</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Google OAuth Login Button */}
+            <div className="mb-5">
               <button
                 type="button"
                 onClick={handleGoogleLogin}
-                className="w-full flex items-center justify-center gap-3 bg-white border border-gray-300 hover:bg-gray-50 hover:border-gray-400 text-gray-700 text-sm font-semibold px-6 py-3 rounded-full transition-all shadow-sm hover:shadow active:scale-[0.99] group"
+                className="w-full flex items-center justify-center gap-3 bg-white border border-gray-300 hover:bg-gray-50 hover:border-gray-400 text-gray-800 text-sm font-semibold px-5 py-3 rounded-full transition-all shadow-sm hover:shadow active:scale-[0.99] group"
               >
                 <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google Logo" className="w-5 h-5 group-hover:scale-105 transition-transform" />
-                <span>Sign in with Google</span>
+                <span>
+                  {selectedRole === 'candidate' && "Sign in with Google (Candidate)"}
+                  {selectedRole === 'hr' && "Sign in with Google (HR Portal)"}
+                  {selectedRole === 'admin' && "Sign in with Google (Admin Portal)"}
+                </span>
               </button>
-              <p className="text-center text-[11px] text-gray-500 mt-2 font-medium">
-                Supports Candidate, HR, & Admin Google Accounts
+              
+              <p className="text-center text-[11px] text-gray-500 mt-2 font-medium px-2 leading-tight">
+                {selectedRole === 'candidate' && (
+                  <span className="text-gray-500">
+                    Candidate Portal: Log in with any Google account without Google Console conflicts.
+                  </span>
+                )}
+                {selectedRole === 'hr' && (
+                  <span className="text-amber-700 font-medium">
+                    HR Portal: Connects Google Calendar for authorized HR personnel registered in Google Console.
+                  </span>
+                )}
+                {selectedRole === 'admin' && (
+                  <span className="text-gray-500">
+                    Admin Portal: Dedicated sign-in for verified system administrators.
+                  </span>
+                )}
               </p>
             </div>
 
             {/* Divider */}
-            <div className="relative flex items-center justify-center my-6">
+            <div className="relative flex items-center justify-center my-5">
               <div className="border-t border-gray-200 w-full"></div>
-              <span className="bg-white px-3 text-xs text-gray-400 uppercase tracking-wider font-medium absolute">or sign in with email</span>
+              <span className="bg-white px-3 text-xs text-gray-400 uppercase tracking-wider font-medium absolute">or sign in with password</span>
             </div>
 
             <form onSubmit={handleSubmit} className="w-full">
@@ -252,13 +391,14 @@ const Login = () => {
                     value={email}
                     onChange={handleEmailChange}
                     className="peer w-full px-4 py-3.5 border border-gray-400 rounded-[4px] text-base text-gray-900 focus:outline-none focus:border-[#D60041] focus:border-2 focus:py-[13px] focus:px-[15px] transition-all placeholder-transparent bg-transparent"
-                    placeholder="Email or phone"
+                    placeholder="Email address"
                   />
                   <label
                     htmlFor="email"
-                    className="absolute left-3.5 -top-2.5 bg-white px-1 text-xs font-normal text-gray-600 peer-placeholder-shown:text-base peer-placeholder-shown:text-gray-600 peer-placeholder-shown:top-3.5 peer-focus:-top-2.5 peer-focus:text-xs peer-focus:text-[#D60041] transition-all cursor-text pointer-events-none"
+                    className="absolute left-3.5 -top-2.5 bg-white px-1 text-xs font-normal text-gray-600 peer-placeholder-shown:text-base peer-placeholder-shown:text-gray-600 peer-placeholder-shown:top-3.5 peer-focus:-top-2.5 peer-focus:text-xs peer-focus:text-[#D60041] transition-all cursor-text pointer-events-none flex items-center gap-1"
                   >
-                    Email address
+                    <span>Email address</span>
+                    {isDetectingRole && <Loader2 size={10} className="animate-spin text-[#D60041]" />}
                   </label>
                 </div>
 
@@ -283,20 +423,19 @@ const Login = () => {
                     onClick={() => setShowPassword(!showPassword)}
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-600 hover:text-gray-900 p-1 rounded-full hover:bg-gray-100 transition-colors"
                   >
-                    {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                   </button>
                 </div>
               </div>
 
-              <div className="mb-6 mt-2">
-                <a href="/forgot-password" className="text-sm font-medium text-[#D60041] hover:bg-red-50 px-2 py-1.5 -ml-2 rounded-md transition-colors inline-block">
+              <div className="mb-5 mt-2 flex items-center justify-between">
+                <a href="/forgot-password" className="text-xs font-medium text-[#D60041] hover:underline transition-colors inline-block">
                   Forgot password?
                 </a>
+                <span className="text-[11px] text-gray-400 font-medium">
+                  Signing in as: <strong className="uppercase text-gray-600">{selectedRole}</strong>
+                </span>
               </div>
-
-              <p className="text-sm text-gray-600 mb-8 leading-relaxed">
-                Not your computer? Use a private browsing window to sign in. <a href="#" className="text-[#D60041] font-medium hover:underline">Learn more</a>
-              </p>
 
               <div className="flex flex-col-reverse sm:flex-row justify-between items-center gap-4 sm:gap-0 mt-6">
                 <a
@@ -308,7 +447,7 @@ const Login = () => {
                 <button
                   type="submit"
                   disabled={loading}
-                  className="w-full sm:w-auto bg-[#D60041] hover:bg-[#b50037] text-white text-sm font-medium px-6 py-2.5 rounded-full transition-colors disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center min-w-[100px]"
+                  className="w-full sm:w-auto bg-[#D60041] hover:bg-[#b50037] text-white text-sm font-medium px-6 py-2.5 rounded-full transition-colors disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center min-w-[100px] shadow-sm"
                 >
                   {loading ? <Loader2 className="animate-spin h-5 w-5" /> : "Sign in"}
                 </button>
@@ -318,7 +457,7 @@ const Login = () => {
         </div>
       </div>
 
-      <div className="w-full max-w-[1040px] mt-4 flex flex-col sm:flex-row justify-between items-center text-xs text-gray-600 px-2">
+      <div className="w-full max-w-[1060px] mt-4 flex flex-col sm:flex-row justify-between items-center text-xs text-gray-600 px-2">
         <div className="mb-4 sm:mb-0">
           <select className="bg-transparent border-none focus:ring-0 cursor-pointer outline-none hover:bg-gray-200 py-1 px-2 rounded-md transition-colors">
             <option>English (United States)</option>

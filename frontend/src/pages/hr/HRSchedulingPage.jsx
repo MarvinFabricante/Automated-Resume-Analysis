@@ -31,6 +31,7 @@ import {
   useGetGoogleCalendarStatusQuery,
   useGetHRInterviewersQuery
 } from '../../redux/api/apiSlice';
+import { API_BASE_URL } from '../../services/api';
 
 const MONTH_NAMES = [
   'January', 'February', 'March', 'April', 'May', 'June',
@@ -375,6 +376,20 @@ const HRSchedulingPage = () => {
                     )}
                   </span>
                 </div>
+
+                {/* Connect Google Calendar Button if offline */}
+                {!isGoogleConnected && (
+                  <button
+                    onClick={() => {
+                      window.location.href = `${API_BASE_URL}/auth/google/login?role=hr`;
+                    }}
+                    className="px-3 py-1.5 sm:px-3.5 sm:py-2 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-700 rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-1.5 sm:gap-2"
+                    title="Connect Google Calendar for interview synchronization"
+                  >
+                    <CalendarIcon size={14} className="text-emerald-600" />
+                    <span>Connect Calendar</span>
+                  </button>
+                )}
 
                 {/* Manual Sync Button */}
                 <button
