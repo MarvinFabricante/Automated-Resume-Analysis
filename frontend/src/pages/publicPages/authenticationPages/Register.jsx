@@ -79,7 +79,8 @@ const Register = () => {
       return;
     }
 
-    window.location.href = `${API_BASE_URL}/auth/google/candidate-register`;
+    const clientOrigin = typeof window !== 'undefined' ? window.location.origin : '';
+    window.location.href = `${API_BASE_URL}/auth/google/candidate-register?origin=${encodeURIComponent(clientOrigin)}`;
   };
 
   const handleChange = (e) => {

@@ -94,16 +94,51 @@ import requests
 from urllib.parse import urlencode
 
 
-def _public_origin_from_request(request: Request) -> str:
+def _public_origin_from_request(request: Request, client_origin: str = None) -> str:
+    # 1. Explicit client origin from query param or header
+    if client_origin:
+        clean = client_origin.strip().rstrip("/")
+        if clean.startswith("http://") or clean.startswith("https://"):
+            return clean
+
+    # 2. Check Referer header from frontend
+    referer = request.headers.get("referer")
+    if referer:
+        try:
+            parsed = urllib.parse.urlparse(referer)
+            if parsed.scheme and parsed.netloc:
+                return f"{parsed.scheme}://{parsed.netloc}"
+        except Exception:
+            pass
+
+    # 3. Check X-Forwarded-Host or Host
+    forwarded_host = request.headers.get("x-forwarded-host") or request.headers.get("host")
+    forwarded_proto = (request.headers.get("x-forwarded-proto") or request.url.scheme).split(",")[0].strip()
+    if forwarded_host:
+        if forwarded_host.endswith(".trycloudflare.com"):
+            forwarded_proto = "https"
+        # If accessing directly from localhost or 127.0.0.1, prioritize that
+        if "localhost" in forwarded_host or "127.0.0.1" in forwarded_host:
+            return f"{forwarded_proto}://{forwarded_host}"
+        if ".trycloudflare.com" in forwarded_host:
+            return f"https://{forwarded_host}"
+
+    # 4. Fallback to configured PUBLIC_BASE_URL
     configured_origin = os.getenv("PUBLIC_BASE_URL") or os.getenv("APP_PUBLIC_URL") or os.getenv("FRONTEND_PUBLIC_URL")
     if configured_origin:
         return configured_origin.strip().rstrip("/")
 
-    host = request.headers.get("x-forwarded-host") or request.headers.get("host") or "localhost:8000"
-    proto = (request.headers.get("x-forwarded-proto") or request.url.scheme).split(",")[0].strip()
-    if host.endswith(".trycloudflare.com"):
-        proto = "https"
-    return f"{proto}://{host}"
+    if forwarded_host:
+        return f"{forwarded_proto}://{forwarded_host}"
+
+    return "http://localhost:8080"
+
+
+def _redirect_uri_for_origin(origin: str) -> str:
+    clean = origin.rstrip("/")
+    if clean.endswith(":8000"):
+        return f"{clean}/auth/google/callback"
+    return f"{clean}/api/auth/google/callback"
 
 @router.get("/check-role")
 async def check_email_role(email: str, db: AsyncSession = Depends(get_db)):
@@ -133,37 +168,41 @@ async def check_email_role(email: str, db: AsyncSession = Depends(get_db)):
     return {"exists": False, "role": "CANDIDATE", "is_authorized_staff": False}
 
 @router.get("/google/candidate-register")
-async def google_candidate_register():
+async def google_candidate_register(request: Request, origin: str = None):
     """
     Dedicated endpoint for candidate Google OAuth registration.
     Handles ONLY user authentication and account creation.
     Does NOT request Google Calendar permissions or touch Google Calendar Console services.
     """
-    url, state = get_candidate_google_auth_url(flow_type="candidate_register")
+    base_origin = _public_origin_from_request(request, origin)
+    redirect_uri = _redirect_uri_for_origin(base_origin)
+    url, state = get_candidate_google_auth_url(flow_type="candidate_register", redirect_uri=redirect_uri)
     return RedirectResponse(url)
 
 @router.get("/google/register")
-async def google_register():
+async def google_register(request: Request, origin: str = None):
     """Alias for candidate Google registration."""
-    return await google_candidate_register()
+    return await google_candidate_register(request, origin)
 
 @router.get("/google/login")
-async def google_login(request: Request, flow: str = "login", role: str = "candidate"):
+async def google_login(request: Request, flow: str = "login", role: str = "candidate", origin: str = None):
     """
     Role-aware Google OAuth login endpoint.
     - Candidate: requests ONLY basic profile scopes (no Google Calendar / Console restrictions).
     - HR: requests Calendar scopes for authorized HR accounts configured in Google Console.
     - Admin: requests basic profile scopes for System Administrators.
     """
+    base_origin = _public_origin_from_request(request, origin)
+    redirect_uri = _redirect_uri_for_origin(base_origin)
     norm_role = (role or "candidate").strip().lower()
     if flow in ["candidate_register", "register"]:
-        url, state = get_candidate_google_auth_url(flow_type="candidate_register")
+        url, state = get_candidate_google_auth_url(flow_type="candidate_register", redirect_uri=redirect_uri)
     elif norm_role == "hr" or flow == "hr_login":
-        url, state = get_hr_google_auth_url(flow_type="hr_login")
+        url, state = get_hr_google_auth_url(flow_type="hr_login", redirect_uri=redirect_uri)
     elif norm_role == "admin" or flow == "admin_login":
-        url, state = get_admin_google_auth_url(flow_type="admin_login")
+        url, state = get_admin_google_auth_url(flow_type="admin_login", redirect_uri=redirect_uri)
     else:
-        url, state = get_candidate_google_auth_url(flow_type="candidate_login")
+        url, state = get_candidate_google_auth_url(flow_type="candidate_login", redirect_uri=redirect_uri)
     
     return RedirectResponse(url)
 
@@ -177,6 +216,14 @@ async def google_callback(request: Request, code: str, state: str = "", db: Asyn
         if isinstance(flow_info, dict):
             flow_type = flow_info.get("flow_type", "login")
             role_requested = flow_info.get("role", "candidate")
+            flow_redirect = flow_info.get("redirect_uri")
+            if flow_redirect:
+                try:
+                    parsed = urllib.parse.urlparse(flow_redirect)
+                    if parsed.scheme and parsed.netloc:
+                        base_url = f"{parsed.scheme}://{parsed.netloc}"
+                except Exception:
+                    pass
         else:
             flow_type = flow_info
             role_requested = "candidate"

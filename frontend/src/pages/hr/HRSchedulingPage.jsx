@@ -508,7 +508,8 @@ const HRSchedulingPage = () => {
                 {!isGoogleConnected && (
                   <button
                     onClick={() => {
-                      window.location.href = `${API_BASE_URL}/auth/google/login?role=hr`;
+                      const clientOrigin = typeof window !== 'undefined' ? window.location.origin : '';
+                      window.location.href = `${API_BASE_URL}/auth/google/login?role=hr&origin=${encodeURIComponent(clientOrigin)}`;
                     }}
                     className="px-3 py-1.5 sm:px-3.5 sm:py-2 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-700 rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-1.5 sm:gap-2"
                     title="Connect Google Calendar for interview synchronization"

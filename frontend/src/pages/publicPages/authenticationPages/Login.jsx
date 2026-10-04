@@ -126,7 +126,8 @@ const Login = () => {
     }
 
     // Role-specific Google login URL with separated scopes to avoid Google Console conflicts
-    window.location.href = `${API_BASE_URL}/auth/google/login?role=${selectedRole}`;
+    const clientOrigin = typeof window !== 'undefined' ? window.location.origin : '';
+    window.location.href = `${API_BASE_URL}/auth/google/login?role=${selectedRole}&origin=${encodeURIComponent(clientOrigin)}`;
   };
 
   const handleEmailChange = (e) => {

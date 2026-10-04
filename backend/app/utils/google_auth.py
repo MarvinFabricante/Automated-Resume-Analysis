@@ -49,14 +49,21 @@ def _client_config():
     return None
 
 
-def _get_redirect_uri() -> str:
+def _get_redirect_uri(base_origin: str = None) -> str:
     """
     Build the Google OAuth redirect URI dynamically.
+    If base_origin is provided, constructs redirect URI from it.
     Uses PUBLIC_BASE_URL (e.g. Cloudflare tunnel URL) when available,
     otherwise falls back to localhost for local development.
     The redirect goes through nginx's /api/ proxy which strips the prefix,
     so the backend sees /auth/google/callback.
     """
+    if base_origin:
+        clean = base_origin.rstrip("/")
+        if clean.endswith(":8000"):
+            return f"{clean}/auth/google/callback"
+        return f"{clean}/api/auth/google/callback"
+
     public_url = (os.getenv("PUBLIC_BASE_URL") or os.getenv("APP_PUBLIC_URL") or "").rstrip("/")
     if public_url:
         return f"{public_url}/api/auth/google/callback"
@@ -78,17 +85,17 @@ def _create_flow(scopes: list[str], redirect_uri: str):
     )
 
 
-def get_candidate_google_auth_url(flow_type: str = "candidate_login"):
+def get_candidate_google_auth_url(flow_type: str = "candidate_login", redirect_uri: str = None):
     """
     Generate Google OAuth URL specifically for candidate login or registration.
     Uses CANDIDATE_AUTH_SCOPES (openid, email, profile) ONLY.
     Does NOT request calendar permissions or interact with Google Calendar Console services,
     avoiding 403 access_denied / unverified app blocks for non-test users.
     """
-    redirect_uri = _get_redirect_uri()
+    chosen_redirect_uri = redirect_uri or _get_redirect_uri()
     flow = _create_flow(
         scopes=CANDIDATE_AUTH_SCOPES,
-        redirect_uri=redirect_uri
+        redirect_uri=chosen_redirect_uri
     )
     auth_url, state = flow.authorization_url(
         access_type='online',
@@ -99,21 +106,21 @@ def get_candidate_google_auth_url(flow_type: str = "candidate_login"):
         "flow_type": flow_type,
         "role": "candidate",
         "scopes": CANDIDATE_AUTH_SCOPES,
-        "redirect_uri": redirect_uri
+        "redirect_uri": chosen_redirect_uri
     }
     return auth_url, state
 
 
-def get_hr_google_auth_url(flow_type: str = "hr_login"):
+def get_hr_google_auth_url(flow_type: str = "hr_login", redirect_uri: str = None):
     """
     Generate Google OAuth URL specifically for HR staff.
     Uses CALENDAR_SCOPES to allow Google Calendar synchronization for interview management.
     Requires the Google account to be registered/authorized in Google Console.
     """
-    redirect_uri = _get_redirect_uri()
+    chosen_redirect_uri = redirect_uri or _get_redirect_uri()
     flow = _create_flow(
         scopes=CALENDAR_SCOPES,
-        redirect_uri=redirect_uri
+        redirect_uri=chosen_redirect_uri
     )
     auth_url, state = flow.authorization_url(
         access_type='offline',
@@ -125,20 +132,20 @@ def get_hr_google_auth_url(flow_type: str = "hr_login"):
         "flow_type": flow_type,
         "role": "hr",
         "scopes": CALENDAR_SCOPES,
-        "redirect_uri": redirect_uri
+        "redirect_uri": chosen_redirect_uri
     }
     return auth_url, state
 
 
-def get_admin_google_auth_url(flow_type: str = "admin_login"):
+def get_admin_google_auth_url(flow_type: str = "admin_login", redirect_uri: str = None):
     """
     Generate Google OAuth URL specifically for System Administrators.
     Uses CANDIDATE_AUTH_SCOPES (identity and profile).
     """
-    redirect_uri = _get_redirect_uri()
+    chosen_redirect_uri = redirect_uri or _get_redirect_uri()
     flow = _create_flow(
         scopes=CANDIDATE_AUTH_SCOPES,
-        redirect_uri=redirect_uri
+        redirect_uri=chosen_redirect_uri
     )
     auth_url, state = flow.authorization_url(
         access_type='online',
@@ -149,7 +156,7 @@ def get_admin_google_auth_url(flow_type: str = "admin_login"):
         "flow_type": flow_type,
         "role": "admin",
         "scopes": CANDIDATE_AUTH_SCOPES,
-        "redirect_uri": redirect_uri
+        "redirect_uri": chosen_redirect_uri
     }
     return auth_url, state
 
@@ -164,14 +171,14 @@ def get_google_auth_url(role: str = "candidate", flow_type: str = "login", redir
     norm_flow = (flow_type or "login").strip().lower()
 
     if norm_flow in ["candidate_register", "register"]:
-        return get_candidate_google_auth_url(flow_type="candidate_register")
+        return get_candidate_google_auth_url(flow_type="candidate_register", redirect_uri=redirect_uri)
     elif norm_role == "hr" or norm_flow == "hr_login":
-        return get_hr_google_auth_url(flow_type="hr_login")
+        return get_hr_google_auth_url(flow_type="hr_login", redirect_uri=redirect_uri)
     elif norm_role == "admin" or norm_flow == "admin_login":
-        return get_admin_google_auth_url(flow_type="admin_login")
+        return get_admin_google_auth_url(flow_type="admin_login", redirect_uri=redirect_uri)
     else:
         # Default: Candidate login with basic scopes (no calendar conflicts)
-        return get_candidate_google_auth_url(flow_type="candidate_login")
+        return get_candidate_google_auth_url(flow_type="candidate_login", redirect_uri=redirect_uri)
 
 
 def exchange_code_for_credentials(code: str, state: str):
