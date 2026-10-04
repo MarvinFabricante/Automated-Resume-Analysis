@@ -3,6 +3,7 @@ import authService from '../../../services/authService';
 import { API_BASE_URL } from '../../../services/api';
 import { Users, Eye, EyeOff, Loader2, CheckCircle2, XCircle, ArrowLeft } from 'lucide-react';
 import { Helmet } from 'react-helmet-async';
+import logo from '../../../assets/logo.png';
 
 const Register = () => {
   const [role] = useState('CANDIDATE');
@@ -285,7 +286,7 @@ const Register = () => {
 
         <div className="w-full md:w-[45%] p-6 sm:p-10 md:p-14 flex flex-col justify-start border-b md:border-b-0 md:border-r border-gray-100">
           <div className="mb-4 sm:mb-6">
-            <img src="/assets/logo.png" alt="Mariwasa Logo" className="h-9 w-9 sm:h-10 sm:w-10 object-contain" />
+            <img src={logo} alt="Mariwasa Logo" className="h-9 w-9 sm:h-10 sm:w-10 object-contain" />
           </div>
           <h1 className="text-2xl sm:text-[36px] sm:leading-[44px] font-normal tracking-tight sm:tracking-normal text-gray-900 mb-2 sm:mb-4">
             Candidate Registration

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Calendar, Clock, Video, User, ExternalLink } from 'lucide-react';
+import { Calendar, Clock, Mail, User } from 'lucide-react';
 import { useSelector } from 'react-redux';
 import { useGetCandidateInterviewsQuery } from '../../../redux/api/apiSlice';
 
@@ -42,7 +42,7 @@ const UpcomingInterviews = () => {
         <div className="bg-slate-50/50 rounded-[32px] p-8 border border-slate-100 text-center space-y-2">
           <Calendar size={28} className="mx-auto text-slate-300" />
           <p className="text-sm text-slate-600 font-bold">No upcoming interviews scheduled yet.</p>
-          <p className="text-xs text-slate-400">Our HR panel is reviewing your applications. You will see your meeting schedule here once scheduled.</p>
+          <p className="text-xs text-slate-400">Our HR panel is reviewing your applications. You will see your interview schedule here once scheduled.</p>
         </div>
       ) : (
         <div className="space-y-4">
@@ -61,8 +61,8 @@ const UpcomingInterviews = () => {
                   <span className="bg-orange-100 text-orange-700 text-[9px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider">
                     {iv.status || 'Upcoming'}
                   </span>
-                  <span className="bg-blue-100 text-blue-700 text-[9px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider flex items-center gap-1">
-                    <Video size={10} /> Google Meet
+                  <span className="bg-emerald-100 text-emerald-700 text-[9px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider flex items-center gap-1">
+                    <Mail size={10} /> Invitation Emailed
                   </span>
                 </div>
 
@@ -93,20 +93,10 @@ const UpcomingInterviews = () => {
                   </span>
                 </div>
 
-                {iv.meeting_link ? (
-                  <a
-                    href={iv.meeting_link}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="w-full py-3.5 bg-[#D10043] hover:bg-slate-900 text-white rounded-2xl text-[11px] font-black uppercase tracking-[0.15em] transition-all shadow-md hover:shadow-lg active:scale-[0.98] flex items-center justify-center gap-2 group/btn block text-center"
-                  >
-                    <Video size={15} className="group-hover/btn:animate-pulse" /> Join Meeting Session
-                  </a>
-                ) : (
-                  <div className="py-3 px-4 bg-white border border-slate-100 text-slate-400 rounded-2xl text-xs font-semibold text-center">
-                    Meeting link will be provided prior to session
-                  </div>
-                )}
+                <div className="py-3.5 px-4 bg-emerald-50/80 border border-emerald-200/80 text-emerald-900 rounded-2xl text-xs font-semibold flex items-center justify-center gap-2.5 shadow-sm">
+                  <Mail size={15} className="text-emerald-600 shrink-0" />
+                  <span>Interview invitation & schedule details sent to your registered Gmail</span>
+                </div>
               </div>
             );
           })}

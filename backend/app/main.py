@@ -47,12 +47,12 @@ if frontend_url:
         if cleaned and cleaned not in origins:
             origins.append(cleaned)
 
-# Also add PUBLIC_BASE_URL (Cloudflare tunnel URL) to CORS origins
-public_base_url = os.getenv("PUBLIC_BASE_URL")
-if public_base_url:
-    cleaned = public_base_url.strip().rstrip("/")
-    if cleaned and cleaned not in origins:
-        origins.append(cleaned)
+for env_name in ("PUBLIC_BASE_URL", "APP_PUBLIC_URL", "FRONTEND_PUBLIC_URL"):
+    configured_origin = os.getenv(env_name)
+    if configured_origin:
+        cleaned = configured_origin.strip().rstrip("/")
+        if cleaned and cleaned not in origins:
+            origins.append(cleaned)
 
 
 async def ensure_application_analysis_columns(conn):
@@ -129,9 +129,22 @@ async def create_tables():
         await ensure_application_analysis_columns(conn)
 
 
+async def seed_demo_data_if_enabled():
+    if os.getenv("AUTO_SEED_DEMO_DATA", "false").lower() not in {"1", "true", "yes"}:
+        return
+
+    try:
+        from seed_demo_data import seed_demo_data
+
+        await seed_demo_data()
+    except Exception as e:
+        logger.warning(f"Could not seed demo data: {e}")
+
+
 @asynccontextmanager
 async def lifespan(app_instance: FastAPI):
     await create_tables()
+    await seed_demo_data_if_enabled()
     yield
 
 
@@ -162,6 +175,7 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
+    allow_origin_regex=r"https?://.*\.trycloudflare\.com",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

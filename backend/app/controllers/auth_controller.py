@@ -1,4 +1,6 @@
-from fastapi import APIRouter, Depends, HTTPException
+import os
+
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.utils.database import get_db
 
@@ -89,6 +91,19 @@ from app.utils.google_auth import (
 )
 from app.repositories.auth_repository import AuthRepository
 import requests
+from urllib.parse import urlencode
+
+
+def _public_origin_from_request(request: Request) -> str:
+    configured_origin = os.getenv("PUBLIC_BASE_URL") or os.getenv("APP_PUBLIC_URL") or os.getenv("FRONTEND_PUBLIC_URL")
+    if configured_origin:
+        return configured_origin.strip().rstrip("/")
+
+    host = request.headers.get("x-forwarded-host") or request.headers.get("host") or "localhost:8000"
+    proto = (request.headers.get("x-forwarded-proto") or request.url.scheme).split(",")[0].strip()
+    if host.endswith(".trycloudflare.com"):
+        proto = "https"
+    return f"{proto}://{host}"
 
 @router.get("/check-role")
 async def check_email_role(email: str, db: AsyncSession = Depends(get_db)):
@@ -133,7 +148,7 @@ async def google_register():
     return await google_candidate_register()
 
 @router.get("/google/login")
-async def google_login(flow: str = "login", role: str = "candidate"):
+async def google_login(request: Request, flow: str = "login", role: str = "candidate"):
     """
     Role-aware Google OAuth login endpoint.
     - Candidate: requests ONLY basic profile scopes (no Google Calendar / Console restrictions).
@@ -153,8 +168,8 @@ async def google_login(flow: str = "login", role: str = "candidate"):
     return RedirectResponse(url)
 
 @router.get("/google/callback")
-async def google_callback(code: str, state: str = "", db: AsyncSession = Depends(get_db)):
-    base_url = os.getenv("PUBLIC_BASE_URL", "http://localhost:5173").rstrip("/")
+async def google_callback(request: Request, code: str, state: str = "", db: AsyncSession = Depends(get_db)):
+    base_url = _public_origin_from_request(request)
     flow_type = "login"
     role_requested = "candidate"
     try:
@@ -205,7 +220,7 @@ async def google_callback(code: str, state: str = "", db: AsyncSession = Depends
             "email": email,
             "picture": data.get("profile_image_url", "")
         }
-        frontend_url = f"{base_url}/auth/callback?{urllib.parse.urlencode(params)}"
+        frontend_url = f"{base_url}/auth/callback?{urlencode(params)}"
         return RedirectResponse(frontend_url)
     except Exception as e:
         import traceback
@@ -213,6 +228,3 @@ async def google_callback(code: str, state: str = "", db: AsyncSession = Depends
         error_msg = urllib.parse.quote(str(e))
         target_path = "/register" if flow_type in ["candidate_register", "register"] else "/login"
         return RedirectResponse(f"{base_url}{target_path}?error={error_msg}")
-
-
-

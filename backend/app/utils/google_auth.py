@@ -33,6 +33,22 @@ CREDENTIALS_FILE = os.path.join(_BACKEND_DIR, 'credentials.json')
 _pending_flows: dict[str, dict] = {}
 
 
+def _client_config():
+    client_id = os.getenv("GOOGLE_CLIENT_ID")
+    client_secret = os.getenv("GOOGLE_CLIENT_SECRET")
+    if client_id and client_secret:
+        return {
+            "web": {
+                "client_id": client_id,
+                "client_secret": client_secret,
+                "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                "token_uri": "https://oauth2.googleapis.com/token",
+                "redirect_uris": [],
+            }
+        }
+    return None
+
+
 def _get_redirect_uri() -> str:
     """
     Build the Google OAuth redirect URI dynamically.
@@ -41,10 +57,25 @@ def _get_redirect_uri() -> str:
     The redirect goes through nginx's /api/ proxy which strips the prefix,
     so the backend sees /auth/google/callback.
     """
-    public_url = os.getenv("PUBLIC_BASE_URL", "").rstrip("/")
+    public_url = (os.getenv("PUBLIC_BASE_URL") or os.getenv("APP_PUBLIC_URL") or "").rstrip("/")
     if public_url:
         return f"{public_url}/api/auth/google/callback"
-    return "http://localhost:8000/auth/google/callback"
+    return os.getenv("GOOGLE_REDIRECT_URI", "http://localhost:8000/auth/google/callback")
+
+
+def _create_flow(scopes: list[str], redirect_uri: str):
+    config = _client_config()
+    if config:
+        return Flow.from_client_config(
+            config,
+            scopes=scopes,
+            redirect_uri=redirect_uri
+        )
+    return Flow.from_client_secrets_file(
+        CREDENTIALS_FILE,
+        scopes=scopes,
+        redirect_uri=redirect_uri
+    )
 
 
 def get_candidate_google_auth_url(flow_type: str = "candidate_login"):
@@ -55,8 +86,7 @@ def get_candidate_google_auth_url(flow_type: str = "candidate_login"):
     avoiding 403 access_denied / unverified app blocks for non-test users.
     """
     redirect_uri = _get_redirect_uri()
-    flow = Flow.from_client_secrets_file(
-        CREDENTIALS_FILE,
+    flow = _create_flow(
         scopes=CANDIDATE_AUTH_SCOPES,
         redirect_uri=redirect_uri
     )
@@ -68,7 +98,8 @@ def get_candidate_google_auth_url(flow_type: str = "candidate_login"):
         "verifier": flow.code_verifier,
         "flow_type": flow_type,
         "role": "candidate",
-        "scopes": CANDIDATE_AUTH_SCOPES
+        "scopes": CANDIDATE_AUTH_SCOPES,
+        "redirect_uri": redirect_uri
     }
     return auth_url, state
 
@@ -80,8 +111,7 @@ def get_hr_google_auth_url(flow_type: str = "hr_login"):
     Requires the Google account to be registered/authorized in Google Console.
     """
     redirect_uri = _get_redirect_uri()
-    flow = Flow.from_client_secrets_file(
-        CREDENTIALS_FILE,
+    flow = _create_flow(
         scopes=CALENDAR_SCOPES,
         redirect_uri=redirect_uri
     )
@@ -94,7 +124,8 @@ def get_hr_google_auth_url(flow_type: str = "hr_login"):
         "verifier": flow.code_verifier,
         "flow_type": flow_type,
         "role": "hr",
-        "scopes": CALENDAR_SCOPES
+        "scopes": CALENDAR_SCOPES,
+        "redirect_uri": redirect_uri
     }
     return auth_url, state
 
@@ -105,8 +136,7 @@ def get_admin_google_auth_url(flow_type: str = "admin_login"):
     Uses CANDIDATE_AUTH_SCOPES (identity and profile).
     """
     redirect_uri = _get_redirect_uri()
-    flow = Flow.from_client_secrets_file(
-        CREDENTIALS_FILE,
+    flow = _create_flow(
         scopes=CANDIDATE_AUTH_SCOPES,
         redirect_uri=redirect_uri
     )
@@ -118,12 +148,13 @@ def get_admin_google_auth_url(flow_type: str = "admin_login"):
         "verifier": flow.code_verifier,
         "flow_type": flow_type,
         "role": "admin",
-        "scopes": CANDIDATE_AUTH_SCOPES
+        "scopes": CANDIDATE_AUTH_SCOPES,
+        "redirect_uri": redirect_uri
     }
     return auth_url, state
 
 
-def get_google_auth_url(role: str = "candidate", flow_type: str = "login"):
+def get_google_auth_url(role: str = "candidate", flow_type: str = "login", redirect_uri: str = None, frontend_origin: str = None):
     """
     Generate Google OAuth URL based on the requested role and flow.
     Routes candidate flows to candidate-only auth scopes (zero calendar permissions).
@@ -144,32 +175,26 @@ def get_google_auth_url(role: str = "candidate", flow_type: str = "login"):
 
 
 def exchange_code_for_credentials(code: str, state: str):
-    redirect_uri = _get_redirect_uri()
-    # Restore the PKCE code_verifier, flow_type, role, and scopes from the original auth request
-    flow_info = _pending_flows.pop(state, None)
-    if isinstance(flow_info, dict):
-        code_verifier = flow_info.get("verifier")
-        flow_type = flow_info.get("flow_type", "login")
-        role = flow_info.get("role", "candidate")
-        scopes = flow_info.get("scopes", CANDIDATE_AUTH_SCOPES)
-    else:
-        code_verifier = flow_info
-        flow_type = "login"
-        role = "candidate"
-        scopes = CANDIDATE_AUTH_SCOPES
+    flow_info = _pending_flows.pop(state, {})
+    redirect_uri = flow_info.get("redirect_uri") or _get_redirect_uri()
+    scopes = flow_info.get("scopes", CANDIDATE_AUTH_SCOPES)
+    code_verifier = flow_info.get("verifier")
+    flow_type = flow_info.get("flow_type", "login")
+    role = flow_info.get("role", "candidate")
 
-    flow = Flow.from_client_secrets_file(
-        CREDENTIALS_FILE,
+    flow = _create_flow(
         scopes=scopes,
         redirect_uri=redirect_uri
     )
-    flow.code_verifier = code_verifier
+    if code_verifier:
+        flow.code_verifier = code_verifier
     flow.fetch_token(code=code)
     creds = flow.credentials
     return creds, {
         "flow_type": flow_type,
         "role": role,
-        "scopes": scopes
+        "scopes": scopes,
+        "redirect_uri": redirect_uri
     }
 
 

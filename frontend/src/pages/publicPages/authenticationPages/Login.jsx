@@ -16,6 +16,7 @@ import {
   ShieldCheck,
   Sparkles
 } from 'lucide-react';
+import logo from '../../../assets/logo.png';
 
 const Login = () => {
   const [email, setEmail] = useState(() => {
@@ -258,7 +259,7 @@ const Login = () => {
         <div className="w-full md:w-[42%] p-6 sm:p-10 md:p-12 flex flex-col justify-between border-b md:border-b-0 md:border-r border-gray-100 bg-gradient-to-b from-white to-gray-50/50">
           <div>
             <div className="mb-4 sm:mb-6 flex items-center gap-3">
-              <img src="/assets/logo.png" alt="Mariwasa Logo" className="h-9 w-9 sm:h-10 sm:w-10 object-contain" />
+              <img src={logo} alt="Mariwasa Logo" className="h-9 w-9 sm:h-10 sm:w-10 object-contain" />
               <span className="text-xs font-bold tracking-wider uppercase text-gray-400">Mariwasa Portal</span>
             </div>
             

@@ -56,7 +56,7 @@ async def upload_profile_image(
     
     # Update database with a cache-busting timestamp
     import time
-    image_url = f"http://localhost:8000/{file_path}?t={int(time.time())}"
+    image_url = f"/{file_path}?t={int(time.time())}"
     print(f"Updating database with image_url: {image_url}")
     await candidate_service.update_candidate_profile(db, candidate_id, CandidateUpdate(profile_image_url=image_url))
     await clear_cache_pattern(f"candidate_profile:*\"candidate_id\": {candidate_id}*")

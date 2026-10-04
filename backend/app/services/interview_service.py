@@ -15,6 +15,7 @@ from app.services.google_calendar_service import (
     query_freebusy,
     get_real_google_events,
 )
+from app.services.email_service import EmailService
 
 def _populate_candidate_info(interview):
     """Helper to attach candidate details and interviewer info to the interview model."""
@@ -39,6 +40,7 @@ def _populate_candidate_info(interview):
         setattr(interview, "interviewer_id", None)
         setattr(interview, "interviewer_name", None)
         setattr(interview, "interviewer_email", None)
+    setattr(interview, "meeting_link", None)
     return interview
 
 def send_sms_notification_sync(to_phone: str, message: str):
@@ -172,6 +174,32 @@ async def schedule_interview(db: AsyncSession, data: InterviewCreateSchema, user
     if not application:
         raise ValueError("Application not found")
 
+    # ── Candidate Exclusivity Check ──────────────────────────────────
+    # Check whether an active interview (status != "CANCELED") already exists for application or candidate email
+    existing_for_app = await InterviewRepository.get_interviews_for_application(db, data.job_application_id)
+    active_interviews = [iv for iv in existing_for_app if iv.status != "CANCELED"]
+    if not active_interviews and application.candidate_email:
+        cand_all_ivs = await InterviewRepository.get_interviews_for_candidate(db, application.candidate_email)
+        active_interviews = [iv for iv in cand_all_ivs if iv.status != "CANCELED"]
+
+    if active_interviews:
+        existing_iv = active_interviews[0]
+        interviewer_name = None
+        if getattr(existing_iv, "interviewer", None) and getattr(existing_iv.interviewer, "fullname", None):
+            interviewer_name = existing_iv.interviewer.fullname
+        elif getattr(existing_iv, "interviewer_name", None):
+            interviewer_name = existing_iv.interviewer_name
+        elif getattr(existing_iv, "interviewer_id", None):
+            from app.repositories.auth_repository import AuthRepository
+            iv_user = await AuthRepository.get_user_by_id(db, existing_iv.interviewer_id)
+            interviewer_name = iv_user.fullname if iv_user else None
+
+        interviewer_display = interviewer_name or "another HR"
+        cand_display_name = application.candidate_name or "Candidate"
+        raise ValueError(
+            f"Candidate '{cand_display_name}' is already scheduled for an interview with {interviewer_display}. Another HR cannot schedule an interview for this candidate."
+        )
+
     # Target interviewer: if specified, use that HR account, else fallback to current user_id
     interviewer_id = data.interviewer_id if data.interviewer_id else user_id
 
@@ -218,30 +246,48 @@ async def schedule_interview(db: AsyncSession, data: InterviewCreateSchema, user
                 location='',
                 is_all_day=False,
                 attendees=attendees,
-                create_meet_link=True,
+                create_meet_link=False,
                 interview_id=interview.id,
             )
 
             if event:
                 interview.google_event_id = event.get('id')
-                # Extract Google Meet link
-                conference_data = event.get('conferenceData', {})
-                entry_points = conference_data.get('entryPoints', [])
-                for ep in entry_points:
-                    if ep.get('entryPointType') == 'video':
-                        interview.meeting_link = ep.get('uri')
-                        break
+                interview.meeting_link = None
                 await InterviewRepository.commit_changes(db)
         except Exception as e:
             print(f"Warning: Could not create event on Google Calendar: {e}")
     else:
-        # Generate a standard meeting link if Google Calendar is not linked
-        interview.meeting_link = f"https://meet.google.com/aras-{interview.id}"
+        interview.meeting_link = None
         await InterviewRepository.commit_changes(db)
 
-    # 4. Send SMS Notification
+    # 4. Email Candidate on their Gmail account
+    if application.candidate_email:
+        try:
+            interviewer_name = user.fullname if user and getattr(user, 'fullname', None) else None
+            email_sent = await EmailService.send_interview_invitation_email(
+                to_email=application.candidate_email,
+                candidate_name=application.candidate_name or "Candidate",
+                job_title=application.job_title or "Job Position",
+                interview_title=data.title,
+                start_time=data.start_time,
+                end_time=data.end_time,
+                interviewer_name=interviewer_name,
+                notes=data.description or ""
+            )
+            if email_sent:
+                await InterviewRepository.add_interview_log(
+                    db, interview.id, "EMAIL_SENT", f"Interview invitation email sent to {application.candidate_email}"
+                )
+                await InterviewRepository.commit_changes(db)
+        except Exception as e:
+            print(f"Warning: Could not send interview invitation email: {e}")
+
+    # 5. Send SMS Notification (if phone configured)
     if application.phone:
-        message = f"Hi {application.candidate_name}, your interview for {application.job_title} is scheduled on {data.start_time.strftime('%Y-%m-%d %H:%M')}. Link: {interview.meeting_link or 'Sent to email'}."
+        message = (
+            f"Hi {application.candidate_name}, your interview for {application.job_title} is scheduled on "
+            f"{data.start_time.strftime('%Y-%m-%d %H:%M')}. Please check your email ({application.candidate_email}) for interview details."
+        )
         sent = await asyncio.to_thread(send_sms_notification_sync, application.phone, message)
         if sent:
             await InterviewRepository.add_interview_log(db, interview.id, "SMS_SENT", "Notification sent to candidate")
@@ -259,13 +305,19 @@ async def schedule_interview(db: AsyncSession, data: InterviewCreateSchema, user
     return interview
 
 
-async def update_interview(db: AsyncSession, interview_id: int, data: InterviewUpdateSchema, user_id: int):
+async def update_interview(db: AsyncSession, interview_id: int, data: InterviewUpdateSchema, user_id: int, user_role: Optional[str] = None):
     """
     Modify/reschedule an interview and synchronize the update directly with Google Calendar.
     """
     interview = await InterviewRepository.get_interview_by_id(db, interview_id)
     if not interview:
         raise ValueError("Interview not found")
+
+    # Ownership Verification
+    is_admin = user_role in ["ADMIN", "SUPERADMIN"] if user_role else False
+    is_owner = not interview.interviewer_id or interview.interviewer_id == user_id
+    if not is_owner and not is_admin:
+        raise PermissionError("You do not have permission to modify this interview. Only the assigned HR interviewer or an administrator can make changes.")
 
     time_changed = False
     if data.start_time is not None or data.end_time is not None:
@@ -332,30 +384,58 @@ async def update_interview(db: AsyncSession, interview_id: int, data: InterviewU
         except Exception as e:
             print(f"Warning: Could not modify Google Calendar event: {e}")
 
-    # If rescheduled time changed, notify candidate via SMS
+    # If rescheduled time changed, notify candidate via email and SMS
     application = await InterviewRepository.get_job_application(db, interview.job_application_id)
-    if time_changed and application and application.phone:
-        message = (
-            f"Hi {application.candidate_name}, your interview for {application.job_title} has been rescheduled to "
-            f"{interview.start_time.strftime('%Y-%m-%d %H:%M')}. Meeting link: {interview.meeting_link or 'Sent to email'}."
-        )
-        sent = await asyncio.to_thread(send_sms_notification_sync, application.phone, message)
-        if sent:
-            await InterviewRepository.add_interview_log(db, interview.id, "SMS_RESCHEDULED", "Reschedule SMS notification sent")
-            await InterviewRepository.commit_changes(db)
+    if time_changed and application:
+        if application.candidate_email:
+            try:
+                interviewer_name = user.fullname if user and getattr(user, 'fullname', None) else None
+                email_sent = await EmailService.send_interview_rescheduled_email(
+                    to_email=application.candidate_email,
+                    candidate_name=application.candidate_name or "Candidate",
+                    job_title=application.job_title or "Job Position",
+                    interview_title=interview.title,
+                    start_time=interview.start_time,
+                    end_time=interview.end_time,
+                    interviewer_name=interviewer_name,
+                    notes=interview.description or ""
+                )
+                if email_sent:
+                    await InterviewRepository.add_interview_log(
+                        db, interview.id, "EMAIL_RESCHEDULED", f"Reschedule notification email sent to {application.candidate_email}"
+                    )
+                    await InterviewRepository.commit_changes(db)
+            except Exception as e:
+                print(f"Warning: Could not send reschedule email: {e}")
+
+        if application.phone:
+            message = (
+                f"Hi {application.candidate_name}, your interview for {application.job_title} has been rescheduled to "
+                f"{interview.start_time.strftime('%Y-%m-%d %H:%M')}. Please check your email for complete details."
+            )
+            sent = await asyncio.to_thread(send_sms_notification_sync, application.phone, message)
+            if sent:
+                await InterviewRepository.add_interview_log(db, interview.id, "SMS_RESCHEDULED", "Reschedule SMS notification sent")
+                await InterviewRepository.commit_changes(db)
 
     setattr(interview, "job_application", application)
     _populate_candidate_info(interview)
     return interview
 
 
-async def delete_interview(db: AsyncSession, interview_id: int, user_id: int):
+async def delete_interview(db: AsyncSession, interview_id: int, user_id: int, user_role: Optional[str] = None):
     """
     Delete an interview and delete its corresponding event from Google Calendar.
     """
     interview = await InterviewRepository.get_interview_by_id(db, interview_id)
     if not interview:
         raise ValueError("Interview not found")
+
+    # Ownership Verification
+    is_admin = user_role in ["ADMIN", "SUPERADMIN"] if user_role else False
+    is_owner = not interview.interviewer_id or interview.interviewer_id == user_id
+    if not is_owner and not is_admin:
+        raise PermissionError("You do not have permission to delete this interview. Only the assigned HR interviewer or an administrator can make changes.")
 
     from app.repositories.auth_repository import AuthRepository
     interviewer_to_sync = interview.interviewer_id or user_id
@@ -489,10 +569,17 @@ async def get_calendar_events(db: AsyncSession, user_id: int):
     return []
 
 
-async def update_interview_status(db: AsyncSession, interview_id: int, status: str):
+async def update_interview_status(db: AsyncSession, interview_id: int, status: str, user_id: Optional[int] = None, user_role: Optional[str] = None):
     interview = await InterviewRepository.get_interview_by_id(db, interview_id)
     if not interview:
         raise ValueError("Interview not found")
+
+    # Ownership Verification
+    if user_id is not None:
+        is_admin = user_role in ["ADMIN", "SUPERADMIN"] if user_role else False
+        is_owner = not interview.interviewer_id or interview.interviewer_id == user_id
+        if not is_owner and not is_admin:
+            raise PermissionError("You do not have permission to change the status of this interview. Only the assigned HR interviewer or an administrator can make changes.")
 
     interview.status = status
     await InterviewRepository.add_interview_log(db, interview.id, "STATUS_CHANGE", f"Status changed to {status}")

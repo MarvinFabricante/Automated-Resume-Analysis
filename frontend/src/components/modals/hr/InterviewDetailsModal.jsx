@@ -3,7 +3,6 @@ import {
   X,
   Calendar,
   Clock,
-  Video,
   User,
   Mail,
   Phone,
@@ -15,8 +14,10 @@ import {
   ExternalLink,
   Copy,
   Check,
-  RefreshCw
+  RefreshCw,
+  Lock
 } from 'lucide-react';
+import { useSelector } from 'react-redux';
 import {
   useUpdateInterviewMutation,
   useDeleteInterviewMutation,
@@ -31,7 +32,6 @@ const InterviewDetailsModal = ({ isOpen, onClose, interview, onStatusChanged }) 
   const { data: interviewers = [] } = useGetHRInterviewersQuery();
 
   const [isEditing, setIsEditing] = useState(false);
-  const [copied, setCopied] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
@@ -111,18 +111,16 @@ const InterviewDetailsModal = ({ isOpen, onClose, interview, onStatusChanged }) 
 
   if (!isOpen || !interview) return null;
 
+  const loggedInUserId = parseInt(localStorage.getItem('user_id'), 10);
+  const userRole = useSelector((state) => state.auth?.role) || localStorage.getItem('role');
+  const isOwner = !interview.interviewer_id || interview.interviewer_id === loggedInUserId;
+  const isAdmin = userRole === 'ADMIN' || userRole === 'SUPERADMIN';
+  const canModify = !interview.isGoogleEvent && (isOwner || isAdmin);
   const isGoogleOnlyEvent = interview.isGoogleEvent;
-
-  const handleCopyLink = () => {
-    if (interview.meeting_link || interview.meet_link) {
-      navigator.clipboard.writeText(interview.meeting_link || interview.meet_link);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    }
-  };
 
   const handleSaveEdit = async (e) => {
     e.preventDefault();
+    if (!canModify) return;
     setErrorMsg('');
 
     if (!isWeekday(formData.date)) {
@@ -166,6 +164,7 @@ const InterviewDetailsModal = ({ isOpen, onClose, interview, onStatusChanged }) 
   };
 
   const handleQuickStatusChange = async (newStatus) => {
+    if (!canModify) return;
     try {
       await updateInterview({
         interviewId: actualInterviewId,
@@ -178,6 +177,7 @@ const InterviewDetailsModal = ({ isOpen, onClose, interview, onStatusChanged }) 
   };
 
   const handleDelete = async () => {
+    if (!canModify) return;
     try {
       await deleteInterview(actualInterviewId).unwrap();
       onClose();
@@ -242,8 +242,18 @@ const InterviewDetailsModal = ({ isOpen, onClose, interview, onStatusChanged }) 
             </div>
           )}
 
+          {/* Read-Only Notice Banner for Other HR Users */}
+          {!canModify && !isGoogleOnlyEvent && (
+            <div className="bg-slate-50 border border-slate-200 text-slate-700 px-4 py-3.5 rounded-2xl flex items-center gap-3 text-xs font-semibold shadow-sm">
+              <Lock size={18} className="text-slate-500 shrink-0" />
+              <span>
+                🔒 Assigned to <span className="font-bold text-slate-900">{interview.interviewer_name || interview.interviewer?.fullname || 'another HR'}</span>. Read-only view: you cannot edit, reschedule, or cancel this interview.
+              </span>
+            </div>
+          )}
+
           {/* VIEW MODE */}
-          {!isEditing ? (
+          {!isEditing || !canModify ? (
             <>
               {/* Event Title & Status */}
               <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 pb-6 border-b border-gray-100">
@@ -334,43 +344,27 @@ const InterviewDetailsModal = ({ isOpen, onClose, interview, onStatusChanged }) 
                 </div>
               )}
 
-              {/* Meeting Link Box */}
-              {(interview.meeting_link || interview.meet_link) && (
-                <div className="bg-emerald-50/60 border border-emerald-100 rounded-2xl p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-emerald-500 text-white flex items-center justify-center shadow-md shadow-emerald-500/20">
-                      <Video size={20} />
-                    </div>
-                    <div>
-                      <p className="text-[10px] font-black uppercase text-emerald-800 tracking-wider">
-                        Google Meet Link
-                      </p>
-                      <p className="text-xs font-semibold text-emerald-900 truncate max-w-xs sm:max-w-sm">
-                        {interview.meeting_link || interview.meet_link}
-                      </p>
-                    </div>
+              {/* Candidate Email Notification Box */}
+              <div className="bg-rose-50/60 border border-rose-100 rounded-2xl p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-[#D60041] text-white flex items-center justify-center shadow-md shadow-[#D60041]/20 shrink-0">
+                    <Mail size={20} />
                   </div>
-
-                  <div className="flex items-center gap-2 w-full sm:w-auto">
-                    <button
-                      onClick={handleCopyLink}
-                      className="flex-1 sm:flex-initial px-3 py-2 bg-white hover:bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-xl text-xs font-bold transition-colors flex items-center justify-center gap-1.5 shadow-sm"
-                    >
-                      {copied ? <Check size={14} /> : <Copy size={14} />}
-                      {copied ? 'Copied' : 'Copy'}
-                    </button>
-                    <a
-                      href={interview.meeting_link || interview.meet_link}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex-1 sm:flex-initial px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-emerald-600/20 flex items-center justify-center gap-1.5"
-                    >
-                      <ExternalLink size={14} />
-                      Join Call
-                    </a>
+                  <div>
+                    <p className="text-[10px] font-black uppercase text-[#D60041] tracking-wider">
+                      Candidate Gmail Notification
+                    </p>
+                    <p className="text-xs font-semibold text-slate-800">
+                      {interview.candidate_email
+                        ? `Interview schedule details sent to ${interview.candidate_email}`
+                        : 'Scheduled interview notification sent to candidate\'s registered email'}
+                    </p>
                   </div>
                 </div>
-              )}
+                <span className="px-3 py-1 bg-white border border-rose-200 text-[#D60041] rounded-xl text-[11px] font-bold shadow-sm self-start sm:self-auto">
+                  Emailed via SMTP
+                </span>
+              </div>
 
               {/* Description / Notes */}
               {(interview.description || interview.notes) && (
@@ -400,7 +394,7 @@ const InterviewDetailsModal = ({ isOpen, onClose, interview, onStatusChanged }) 
               </div>
 
               {/* Action Buttons */}
-              {!isGoogleOnlyEvent && (
+              {!isGoogleOnlyEvent && canModify && (
                 <div className="pt-4 border-t border-gray-100 space-y-3">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div className="flex flex-wrap items-center gap-2">
@@ -596,7 +590,7 @@ const InterviewDetailsModal = ({ isOpen, onClose, interview, onStatusChanged }) 
                   rows={3}
                   value={formData.description}
                   onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                  placeholder="Add meeting agenda or notes for HR panel..."
+                  placeholder="Add interview agenda or notes for HR panel..."
                   className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-2xl text-sm font-medium text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#D60041]/20 focus:border-[#D60041] resize-none"
                 />
               </div>

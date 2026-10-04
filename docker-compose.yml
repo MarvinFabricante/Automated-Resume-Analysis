@@ -111,7 +111,7 @@ services:
       backend:
         condition: service_started
     ports:
-      - "8080:80"
+      - "${HTTP_PORT:-8080}:80"
     networks:
       - app-network
 
@@ -123,7 +123,7 @@ services:
     depends_on:
       frontend:
         condition: service_started
-    command: tunnel --no-autoupdate --url http://frontend:80
+    command: ${CLOUDFLARE_TUNNEL_COMMAND:-tunnel --no-autoupdate --url http://frontend:80}
     networks:
       - app-network
 
