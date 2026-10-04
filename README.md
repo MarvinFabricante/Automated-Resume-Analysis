@@ -68,6 +68,28 @@ The "Match Score" is calculated using a multi-factor algorithm:
 
 ---
 
+## Quick Start: One-Click Application & Cloudflare Tunnel
+
+To start the complete application ecosystem (PostgreSQL, Redis, FastAPI Backend, Celery AI Worker, Frontend Nginx, and Cloudflare Quick Tunnel) with automatic environment synchronization:
+
+```bash
+./start.sh
+```
+
+### Available Options:
+| Command | Description |
+|---|---|
+| `./start.sh` | Build & start all services, generate a live Cloudflare tunnel, and configure CORS/OAuth |
+| `./start.sh -q` or `--quick` | Fast start without rebuilding container images |
+| `./start.sh -b` or `--rebuild` | Force a clean rebuild of all containers (`--no-cache`) |
+| `./start.sh -r` or `--restart` | Restart all services and regenerate a fresh Cloudflare tunnel |
+| `./start.sh -s` or `--stop` | Stop all running services gracefully |
+| `./start.sh --status` | Check container health and verify live Cloudflare tunnel status |
+| `./start.sh --logs [service]` | Stream logs (e.g. `./start.sh --logs backend` or all) |
+| `./start.sh --seed` | Seed default Mariwasa job openings and HR staff accounts |
+
+---
+
 ## User Manual: Getting Started
 
 ### **For Candidates**
