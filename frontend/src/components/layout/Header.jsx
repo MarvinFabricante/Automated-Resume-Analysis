@@ -4,7 +4,7 @@ import {
   ChevronDown, LayoutDashboard, Users, Database, ShieldCheck, LogOut,
   Settings, Menu, X, FileText, Search, User, Building2, Info, Briefcase, LogIn, UserPlus,
   Bell, Clock, CheckCircle2, AlertCircle, MessageSquare, ChevronRight,
-  TrendingUp, Zap, Radio, Edit3, Sun, Moon, Monitor, Calendar, Home, Scale
+  TrendingUp, Zap, Radio, Edit3, Calendar, Home, Scale
 } from 'lucide-react';
 import NotificationDropdown from './NotificationDropdown';
 import notificationService from '../../services/notificationService';
@@ -13,7 +13,6 @@ import { useSelector, useDispatch } from 'react-redux';
 import { logout as logoutAction, updateProfileImage } from '../../redux/slices/authSlice';
 import { setNotifications, addNotification, markAllRead as markAllReadAction } from '../../redux/slices/notificationSlice';
 import { closeSidebar, toggleSidebar } from '../../redux/slices/uiSlice';
-import { setTheme } from '../../redux/slices/themeSlice';
 import { WS_BASE_URL } from '../../services/api';
 import logo from '../../assets/logo.png';
 
@@ -25,12 +24,10 @@ const Header = () => {
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const [isThemeOpen, setIsThemeOpen] = useState(false);
   const [isMobileNotifsOpen, setIsMobileNotifsOpen] = useState(false);
   const [pulse, setPulse] = useState(false);
   const dropdownRef = useRef(null);
   const notificationsRef = useRef(null);
-  const themeRef = useRef(null);
   const mobileMenuRef = useRef(null);
   const hamburgerBtnRef = useRef(null);
 
@@ -38,7 +35,6 @@ const Header = () => {
   const { user: userEmail, role: userRole, profileImageUrl } = useSelector(state => state.auth);
   const { notifications, unreadCount } = useSelector(state => state.notifications);
   const { isSidebarOpen } = useSelector(state => state.ui);
-  const currentTheme = useSelector(state => state.theme?.theme || 'system');
 
   const isCandidateRole = userRole === 'CANDIDATE';
   const isHRRole = userRole === 'HR';
@@ -338,7 +334,6 @@ const Header = () => {
     setIsMobileMenuOpen(false);
     setIsProfileOpen(false);
     setIsNotificationsOpen(false);
-    setIsThemeOpen(false);
     setIsMobileNotifsOpen(false);
   }, [location.pathname]);
 
@@ -349,7 +344,6 @@ const Header = () => {
         setIsMobileMenuOpen(false);
         setIsProfileOpen(false);
         setIsNotificationsOpen(false);
-        setIsThemeOpen(false);
         setIsMobileNotifsOpen(false);
       }
     };
@@ -371,7 +365,6 @@ const Header = () => {
     const handleClickOutside = (event) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target)) setIsProfileOpen(false);
       if (notificationsRef.current && !notificationsRef.current.contains(event.target)) setIsNotificationsOpen(false);
-      if (themeRef.current && !themeRef.current.contains(event.target)) setIsThemeOpen(false);
       if (
         isMobileMenuOpen &&
         mobileMenuRef.current &&
@@ -420,15 +413,15 @@ const Header = () => {
 
   return (
     <>
-    <header className="main-header relative bg-white dark:bg-slate-900 lg:bg-white lg:dark:bg-white border-b border-gray-100 dark:border-slate-800 lg:border-gray-100 lg:dark:border-gray-100 px-4 sm:px-6 md:px-10 py-3 sm:py-4 sticky top-0 z-50 font-sans shadow-sm transition-colors duration-200">
+    <header className="main-header relative bg-white border-b border-gray-100 px-4 sm:px-6 md:px-10 py-3 sm:py-4 sticky top-0 z-50 font-sans shadow-sm transition-colors duration-200">
       <div className="max-w-[1400px] mx-auto flex items-center justify-between">
 
         <div className="flex items-center space-x-2 sm:space-x-4 shrink-0">
           <button
             ref={hamburgerBtnRef}
             className={`lg:hidden relative p-2 sm:p-2.5 rounded-xl transition-all active:scale-95 -ml-1 ${isMobileMenuOpen
-                ? 'bg-red-50 text-[#D60041] dark:bg-pink-950/40 dark:text-[#ff386e]'
-                : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-slate-800 hover:text-gray-900 dark:hover:text-white'
+                ? 'bg-red-50 text-[#D60041]'
+                : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
               }`}
             onClick={() => {
               if (isAdminRole && !isPublicSitePage && !isApplicationPage && !isHRPage) {
@@ -446,7 +439,7 @@ const Header = () => {
               <Menu size={22} className="transition-transform duration-200" />
             )}
             {!isMobileMenuOpen && unreadCount > 0 && !isGuest && (
-              <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-[#D60041] rounded-full border-2 border-white dark:border-slate-900 animate-pulse" />
+              <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-[#D60041] rounded-full border-2 border-white animate-pulse" />
             )}
           </button>
 
@@ -491,48 +484,6 @@ const Header = () => {
         </div>
 
         <div className="hidden lg:flex items-center space-x-1.5 sm:space-x-4 relative shrink-0" ref={dropdownRef}>
-          {/* Theme Toggle - Always Visible */}
-          <div className="relative mr-0 sm:mr-2" ref={themeRef}>
-            <button
-              onClick={() => setIsThemeOpen(!isThemeOpen)}
-              className={`desktop-icon-btn w-9 h-9 sm:w-11 sm:h-11 rounded-xl sm:rounded-2xl flex items-center justify-center transition-all duration-300 border ${isThemeOpen
-                  ? 'bg-slate-900 border-slate-900 shadow-xl'
-                  : 'bg-white border-gray-200/80 hover:bg-gray-50 hover:border-pink-200 hover:shadow-md hover:scale-105 active:scale-95'
-                }`}
-              aria-label="Toggle theme"
-            >
-              {currentTheme === 'light' ? (
-                <Sun size={18} className={isThemeOpen ? 'text-white' : 'text-gray-600'} />
-              ) : currentTheme === 'dark' ? (
-                <Moon size={18} className={isThemeOpen ? 'text-white' : 'text-gray-600'} />
-              ) : (
-                <Monitor size={18} className={isThemeOpen ? 'text-white' : 'text-gray-600'} />
-              )}
-            </button>
-
-            {isThemeOpen && (
-              <div className="desktop-dropdown absolute right-0 mt-3 w-40 bg-white border border-gray-100 rounded-2xl shadow-xl py-2 z-[60] animate-in fade-in slide-in-from-top-2 duration-200">
-                <button
-                  onClick={() => { dispatch(setTheme('light')); setIsThemeOpen(false); }}
-                  className={`w-full flex items-center space-x-3 px-4 py-2 text-sm font-bold transition-colors ${currentTheme === 'light' ? 'text-[#D60041] bg-pink-50' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'}`}
-                >
-                  <Sun size={16} /> <span>Light</span>
-                </button>
-                <button
-                  onClick={() => { dispatch(setTheme('dark')); setIsThemeOpen(false); }}
-                  className={`w-full flex items-center space-x-3 px-4 py-2 text-sm font-bold transition-colors ${currentTheme === 'dark' ? 'text-[#D60041] bg-pink-50' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'}`}
-                >
-                  <Moon size={16} /> <span>Dark</span>
-                </button>
-                <button
-                  onClick={() => { dispatch(setTheme('system')); setIsThemeOpen(false); }}
-                  className={`w-full flex items-center space-x-3 px-4 py-2 text-sm font-bold transition-colors ${currentTheme === 'system' ? 'text-[#D60041] bg-pink-50' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'}`}
-                >
-                  <Monitor size={16} /> <span>System</span>
-                </button>
-              </div>
-            )}
-          </div>
 
           {isApplicationPage ? (
             <button
@@ -624,12 +575,12 @@ const Header = () => {
       {isMobileMenuOpen && (
         <div
           ref={mobileMenuRef}
-          className="lg:hidden absolute top-full left-0 w-full bg-white dark:bg-slate-900 border-b border-gray-200/90 dark:border-slate-800 shadow-2xl z-50 animate-in fade-in slide-in-from-top-2 duration-200 max-h-[calc(100vh-70px)] overflow-y-auto"
+          className="lg:hidden absolute top-full left-0 w-full bg-white border-b border-gray-200/90 shadow-2xl z-50 animate-in fade-in slide-in-from-top-2 duration-200 max-h-[calc(100vh-70px)] overflow-y-auto"
         >
-          <div className="flex flex-col py-3 divide-y divide-gray-100 dark:divide-slate-800">
+          <div className="flex flex-col py-3 divide-y divide-gray-100">
             {/* 1. Primary Navigation Links */}
             <div className="px-4 py-2">
-              <p className="text-[10px] font-black text-gray-400 dark:text-slate-400 uppercase tracking-widest mb-2 px-2">
+              <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 px-2">
                 {isHRRole || isHRPage ? "HR Management Menu" : "Navigation"}
               </p>
               <nav className="space-y-1">
@@ -643,18 +594,18 @@ const Header = () => {
                         setIsMobileMenuOpen(false);
                       }}
                       className={`w-full flex items-center justify-between px-4 py-3 rounded-2xl transition-all duration-200 text-left ${isActive
-                          ? 'bg-red-50 dark:bg-pink-950/40 text-[#D60041] dark:text-[#ff386e] font-bold shadow-xs border border-red-100/70 dark:border-pink-900/50'
-                          : 'text-gray-700 dark:text-slate-200 hover:bg-gray-50 dark:hover:bg-slate-800 hover:text-gray-900 dark:hover:text-white font-semibold'
+                          ? 'bg-red-50 text-[#D60041] font-bold shadow-xs border border-red-100/70'
+                          : 'text-gray-700 hover:bg-gray-50 hover:text-gray-900 font-semibold'
                         }`}
                     >
                       <div className="flex items-center space-x-3.5">
-                        <span className={`${isActive ? 'text-[#D60041] dark:text-[#ff386e]' : 'text-gray-400 dark:text-slate-400'}`}>
+                        <span className={`${isActive ? 'text-[#D60041]' : 'text-gray-400'}`}>
                           {item.icon}
                         </span>
                         <span className="text-sm tracking-tight">{item.label}</span>
                       </div>
                       {isActive && (
-                        <span className="w-2 h-2 rounded-full bg-[#D60041] dark:bg-[#ff386e]" />
+                        <span className="w-2 h-2 rounded-full bg-[#D60041]" />
                       )}
                     </button>
                   );
@@ -662,57 +613,7 @@ const Header = () => {
               </nav>
             </div>
 
-            {/* 2. Theme Selection (Light and Dark Mode) */}
-            <div className="px-4 py-3">
-              <div className="flex items-center justify-between mb-2.5 px-2">
-                <p className="text-[10px] font-black text-gray-400 dark:text-slate-400 uppercase tracking-widest flex items-center gap-1.5">
-                  <Sun size={13} className="text-[#D60041]" />
-                  <span>Light and Dark Mode</span>
-                </p>
-                <span className="text-[11px] font-bold text-gray-500 dark:text-slate-400 uppercase tracking-wider">
-                  {currentTheme}
-                </span>
-              </div>
-              <div className="grid grid-cols-3 gap-2 bg-gray-50 dark:bg-slate-800/80 p-1.5 rounded-2xl border border-gray-100 dark:border-slate-700">
-                <button
-                  type="button"
-                  onClick={() => dispatch(setTheme('light'))}
-                  className={`flex items-center justify-center space-x-2 py-2.5 px-2 rounded-xl text-xs font-bold transition-all duration-200 ${currentTheme === 'light'
-                      ? 'bg-white text-[#D60041] shadow-sm border border-gray-200/80 font-black scale-[1.02]'
-                      : 'text-gray-600 dark:text-slate-300 hover:text-gray-900 dark:hover:text-white'
-                    }`}
-                >
-                  <Sun size={16} className={currentTheme === 'light' ? 'text-[#D60041]' : 'text-amber-500'} />
-                  <span>Light</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => dispatch(setTheme('dark'))}
-                  className={`flex items-center justify-center space-x-2 py-2.5 px-2 rounded-xl text-xs font-bold transition-all duration-200 ${currentTheme === 'dark'
-                      ? 'bg-slate-900 text-white shadow-sm border border-slate-700 font-black scale-[1.02]'
-                      : 'text-gray-600 dark:text-slate-300 hover:text-gray-900 dark:hover:text-white'
-                    }`}
-                >
-                  <Moon size={16} className={currentTheme === 'dark' ? 'text-pink-400' : 'text-indigo-400'} />
-                  <span>Dark</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => dispatch(setTheme('system'))}
-                  className={`flex items-center justify-center space-x-2 py-2.5 px-2 rounded-xl text-xs font-bold transition-all duration-200 ${currentTheme === 'system'
-                      ? 'bg-white dark:bg-slate-900 text-[#D60041] dark:text-pink-400 shadow-sm border border-gray-200/80 dark:border-slate-700 font-black scale-[1.02]'
-                      : 'text-gray-600 dark:text-slate-300 hover:text-gray-900 dark:hover:text-white'
-                    }`}
-                >
-                  <Monitor size={16} className="text-gray-400" />
-                  <span>System</span>
-                </button>
-              </div>
-            </div>
-
-            {/* 3. Notifications Section (Mobile) */}
+            {/* 2. Notifications Section (Mobile) */}
             {!isGuest && (
               <div className="px-4 py-3">
                 <div
@@ -721,7 +622,7 @@ const Header = () => {
                 >
                   <div className="flex items-center space-x-2.5">
                     <div className="relative">
-                      <div className="w-8 h-8 rounded-xl bg-gray-100 dark:bg-slate-800 flex items-center justify-center text-gray-600 dark:text-slate-300 group-hover:text-[#D60041] transition-colors">
+                      <div className="w-8 h-8 rounded-xl bg-gray-100 flex items-center justify-center text-gray-600 group-hover:text-[#D60041] transition-colors">
                         <Bell size={16} />
                       </div>
                       {unreadCount > 0 && (
@@ -731,19 +632,19 @@ const Header = () => {
                       )}
                     </div>
                     <div>
-                      <p className="text-xs font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                      <p className="text-xs font-bold text-gray-900 flex items-center gap-2">
                         <span>{userRole === 'HR' ? 'Recruitment Alerts' : 'Notifications'}</span>
                         {unreadCount > 0 ? (
-                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-red-100 dark:bg-pink-950/60 text-[#D60041] dark:text-[#ff386e]">
+                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-red-100 text-[#D60041]">
                             {unreadCount} new
                           </span>
                         ) : (
-                          <span className="text-[10px] font-medium text-gray-400 dark:text-slate-500">
+                          <span className="text-[10px] font-medium text-gray-400">
                             Up to date
                           </span>
                         )}
                       </p>
-                      <p className="text-[10px] text-gray-400 dark:text-slate-400 font-medium">
+                      <p className="text-[10px] text-gray-400 font-medium">
                         {notifications.length} {notifications.length === 1 ? 'alert' : 'alerts'}
                       </p>
                     </div>
@@ -769,31 +670,31 @@ const Header = () => {
                 </div>
 
                 {isMobileNotifsOpen && (
-                  <div className="mt-3 pt-3 border-t border-gray-100 dark:border-slate-800 space-y-2 max-h-56 overflow-y-auto pr-1">
+                  <div className="mt-3 pt-3 border-t border-gray-100 space-y-2 max-h-56 overflow-y-auto pr-1">
                     {notifications.length === 0 ? (
                       <div className="py-6 text-center">
                         <CheckCircle2 size={24} className="mx-auto text-emerald-500 mb-1.5 opacity-80" />
-                        <p className="text-xs font-bold text-gray-700 dark:text-slate-300">All caught up!</p>
-                        <p className="text-[11px] text-gray-400 dark:text-slate-500">No new notifications</p>
+                        <p className="text-xs font-bold text-gray-700">All caught up!</p>
+                        <p className="text-[11px] text-gray-400">No new notifications</p>
                       </div>
                     ) : (
                       notifications.slice(0, 5).map((n) => (
                         <div
                           key={n.id}
                           className={`p-2.5 rounded-xl border transition-all ${!n.read
-                              ? 'bg-red-50/40 dark:bg-pink-950/20 border-red-100 dark:border-pink-900/40'
-                              : 'bg-gray-50/60 dark:bg-slate-800/40 border-gray-100 dark:border-slate-800'
+                              ? 'bg-red-50/40 border-red-100'
+                              : 'bg-gray-50/60 border-gray-100'
                             }`}
                         >
                           <div className="flex items-start justify-between gap-2 mb-1">
-                            <p className="text-xs font-bold text-gray-900 dark:text-white truncate">
+                            <p className="text-xs font-bold text-gray-900 truncate">
                               {n.title}
                             </p>
-                            <span className="text-[9px] font-bold text-gray-400 dark:text-slate-500 shrink-0">
+                            <span className="text-[9px] font-bold text-gray-400 shrink-0">
                               {n.time}
                             </span>
                           </div>
-                          <p className="text-[11px] text-gray-600 dark:text-slate-300 line-clamp-2 leading-relaxed">
+                          <p className="text-[11px] text-gray-600 line-clamp-2 leading-relaxed">
                             {n.desc}
                           </p>
                         </div>
@@ -812,7 +713,7 @@ const Header = () => {
                     navigate('/careerspage');
                     setIsMobileMenuOpen(false);
                   }}
-                  className="w-full flex items-center justify-center space-x-2 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 text-gray-700 dark:text-slate-200 px-4 py-3 rounded-2xl text-sm font-bold hover:bg-red-50 dark:hover:bg-rose-950/40 hover:text-[#D60041] transition-all shadow-xs"
+                  className="w-full flex items-center justify-center space-x-2 bg-white border border-gray-200 text-gray-700 px-4 py-3 rounded-2xl text-sm font-bold hover:bg-red-50 hover:text-[#D60041] transition-all shadow-xs"
                 >
                   <X size={18} />
                   <span>Cancel Application</span>
@@ -822,10 +723,10 @@ const Header = () => {
 
             {/* 4. Access Portal (Login Account, Register User) */}
             {isGuest ? (
-              <div className="px-4 py-3 bg-gray-50/60 dark:bg-slate-800/40">
+              <div className="px-4 py-3 bg-gray-50/60">
                 <div className="flex items-center space-x-2 mb-3 px-2">
                   <ShieldCheck size={15} className="text-[#D60041]" />
-                  <p className="text-[10px] font-black text-gray-400 dark:text-slate-400 uppercase tracking-widest">
+                  <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">
                     Access Portal
                   </p>
                 </div>
@@ -854,15 +755,15 @@ const Header = () => {
                       navigate('/register');
                       setIsMobileMenuOpen(false);
                     }}
-                    className="w-full flex items-center justify-between px-4 py-3 rounded-2xl bg-white dark:bg-slate-800 text-gray-800 dark:text-white border border-gray-200 dark:border-slate-700 text-sm font-bold transition-all hover:bg-gray-50 dark:hover:bg-slate-700/60 shadow-xs active:scale-[0.99] group"
+                    className="w-full flex items-center justify-between px-4 py-3 rounded-2xl bg-white text-gray-800 border border-gray-200 text-sm font-bold transition-all hover:bg-gray-50 shadow-xs active:scale-[0.99] group"
                   >
                     <div className="flex items-center space-x-3">
-                      <div className="w-8 h-8 rounded-xl bg-gray-100 dark:bg-slate-700 flex items-center justify-center text-gray-600 dark:text-gray-300">
+                      <div className="w-8 h-8 rounded-xl bg-gray-100 flex items-center justify-center text-gray-600">
                         <UserPlus size={18} />
                       </div>
                       <div className="text-left">
                         <p className="leading-tight">Register New User</p>
-                        <p className="text-[11px] text-gray-500 dark:text-slate-400 font-normal">Create Candidate Account</p>
+                        <p className="text-[11px] text-gray-500 font-normal">Create Candidate Account</p>
                       </div>
                     </div>
                     <ChevronRight size={18} className="text-gray-400 group-hover:translate-x-1 transition-transform" />
@@ -870,16 +771,16 @@ const Header = () => {
                 </div>
               </div>
             ) : (
-              <div className="px-4 py-3 bg-gray-50/60 dark:bg-slate-800/40">
+              <div className="px-4 py-3 bg-gray-50/60">
                 <div className="flex items-center space-x-2 mb-3 px-2">
                   <ShieldCheck size={15} className="text-[#D60041]" />
-                  <p className="text-[10px] font-black text-gray-400 dark:text-slate-400 uppercase tracking-widest">
+                  <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">
                     Active Portal Session
                   </p>
                 </div>
 
-                <div className="bg-white dark:bg-slate-800 p-3 rounded-2xl border border-gray-200/80 dark:border-slate-700 mb-3 flex items-center space-x-3">
-                  <div className="w-10 h-10 rounded-xl overflow-hidden bg-gray-100 dark:bg-slate-700 flex items-center justify-center text-[#D60041] shrink-0 border border-gray-200 dark:border-slate-600">
+                <div className="bg-white p-3 rounded-2xl border border-gray-200/80 mb-3 flex items-center space-x-3">
+                  <div className="w-10 h-10 rounded-xl overflow-hidden bg-gray-100 flex items-center justify-center text-[#D60041] shrink-0 border border-gray-200">
                     {profileImageUrl ? (
                       <img src={profileImageUrl} alt="Profile" className="w-full h-full object-cover" />
                     ) : (
@@ -888,7 +789,7 @@ const Header = () => {
                   </div>
                   <div className="min-w-0 flex-1">
                     <span className="text-[10px] font-black uppercase tracking-wider text-[#D60041] block">{userRole} Portal</span>
-                    <p className="text-xs font-bold text-gray-900 dark:text-white truncate">{userEmail}</p>
+                    <p className="text-xs font-bold text-gray-900 truncate">{userEmail}</p>
                   </div>
                 </div>
 
@@ -907,7 +808,7 @@ const Header = () => {
                       navigate(isAdminRole ? '/admin/profile' : (isHRRole || isHRPage) ? '/hr/profile' : '/candidate/profile');
                       setIsMobileMenuOpen(false);
                     }}
-                    className="w-full flex items-center space-x-3 px-4 py-2.5 rounded-2xl bg-white dark:bg-slate-800 text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-slate-700 text-sm font-bold hover:bg-gray-50 dark:hover:bg-slate-700/60 transition-all"
+                    className="w-full flex items-center space-x-3 px-4 py-2.5 rounded-2xl bg-white text-gray-700 border border-gray-200 text-sm font-bold hover:bg-gray-50 transition-all"
                   >
                     <User size={18} className="text-gray-400" /> <span>My Profile</span>
                   </button>
@@ -916,7 +817,7 @@ const Header = () => {
                       navigate(isAdminRole ? '/admin/settings' : (isHRRole || isHRPage) ? '/hr/settings' : '/candidate/settings');
                       setIsMobileMenuOpen(false);
                     }}
-                    className="w-full flex items-center space-x-3 px-4 py-2.5 rounded-2xl bg-white dark:bg-slate-800 text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-slate-700 text-sm font-bold hover:bg-gray-50 dark:hover:bg-slate-700/60 transition-all"
+                    className="w-full flex items-center space-x-3 px-4 py-2.5 rounded-2xl bg-white text-gray-700 border border-gray-200 text-sm font-bold hover:bg-gray-50 transition-all"
                   >
                     <Settings size={18} className="text-gray-400" /> <span>Account Settings</span>
                   </button>
@@ -926,7 +827,7 @@ const Header = () => {
                         navigate('/careerspage');
                         setIsMobileMenuOpen(false);
                       }}
-                      className="w-full flex items-center space-x-3 px-4 py-2.5 rounded-2xl bg-white dark:bg-slate-800 text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-slate-700 text-sm font-bold hover:bg-gray-50 dark:hover:bg-slate-700/60 transition-all"
+                      className="w-full flex items-center space-x-3 px-4 py-2.5 rounded-2xl bg-white text-gray-700 border border-gray-200 text-sm font-bold hover:bg-gray-50 transition-all"
                     >
                       <Briefcase size={18} className="text-gray-400" /> <span>View Careers Portal</span>
                     </button>
@@ -936,7 +837,7 @@ const Header = () => {
                       handleLogout();
                       setIsMobileMenuOpen(false);
                     }}
-                    className="w-full flex items-center space-x-3 px-4 py-2.5 rounded-2xl bg-red-50 dark:bg-rose-950/40 text-red-600 dark:text-rose-400 text-sm font-bold border border-red-100 dark:border-rose-900/50 hover:bg-red-100 dark:hover:bg-rose-900/40 transition-all"
+                    className="w-full flex items-center space-x-3 px-4 py-2.5 rounded-2xl bg-red-50 text-red-600 text-sm font-bold border border-red-100 hover:bg-red-100 transition-all"
                   >
                     <LogOut size={18} /> <span>Sign Out</span>
                   </button>

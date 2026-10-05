@@ -1,6 +1,5 @@
 import { Routes, Route } from 'react-router-dom';
 import { HelmetProvider } from 'react-helmet-async';
-import { useSelector } from 'react-redux';
 import { useEffect } from 'react';
 
 import ProtectedRoute from './ProtectedRoutes';
@@ -49,34 +48,16 @@ import ViewProfile from './pages/shared/ViewProfile';
 import MessagesPage from './pages/common/MessagesPage';
 
 const App = () => {
-  const theme = useSelector((state) => state.theme.theme);
-
   useEffect(() => {
-    const applyTheme = (currentTheme) => {
-      const root = window.document.documentElement;
-      root.classList.remove('light', 'dark');
-
-      if (currentTheme === 'system') {
-        const systemPrefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-        if (systemPrefersDark) {
-          root.classList.add('dark');
-        } else {
-          root.classList.add('light');
-        }
-      } else {
-        root.classList.add(currentTheme);
-      }
-    };
-
-    applyTheme(theme);
-
-    if (theme === 'system') {
-      const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
-      const handleChange = () => applyTheme('system');
-      mediaQuery.addEventListener('change', handleChange);
-      return () => mediaQuery.removeEventListener('change', handleChange);
+    const root = window.document.documentElement;
+    root.classList.remove('dark');
+    root.classList.add('light');
+    try {
+      localStorage.removeItem('theme');
+    } catch {
+      // ignore
     }
-  }, [theme]);
+  }, []);
 
   return (
     <HelmetProvider>
