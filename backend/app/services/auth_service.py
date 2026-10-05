@@ -181,40 +181,83 @@ class AuthService:
         
         return True
 
-    async def login_with_google(self, db: AsyncSession, email: str, fullname: str, picture: str, google_credentials: str):
-        email = email.strip().lower()
+    KNOWN_ADMIN_EMAILS = {
+        "marvinfabricante@gmail.com",
+        "jp@gmail.com",
+    }
 
-        KNOWN_HR_EMAILS = {
-            "fabricantemarvin262@gmail.com",
-            "ceramicsmariwasasiam@gmail.com",
-            "johnpaul6214@gmail.com",
-            "jaemoscoso13@gmail.com",
-            "macapanastyronjames@gmail.com",
-            "marvinfabricante630@gmail.com",
-            "sam@gmail.com",
-        }
+    KNOWN_HR_EMAILS = {
+        "fabricantemarvin262@gmail.com",
+        "ceramicsmariwasasiam@gmail.com",
+        "johnpaul6214@gmail.com",
+        "jaemoscoso13@gmail.com",
+        "macapanastyronjames@gmail.com",
+        "marvinfabricante630@gmail.com",
+        "sam@gmail.com",
+    }
+
+    async def login_with_google(
+        self, 
+        db: AsyncSession, 
+        email: str, 
+        fullname: str, 
+        picture: str, 
+        google_credentials: str, 
+        target_role: str = "candidate", 
+        granted_scopes: list = None
+    ):
+        email = email.strip().lower()
+        target_role = (target_role or "candidate").strip().upper()
+        if granted_scopes is None:
+            granted_scopes = []
+        
+        has_calendar_scope = any("calendar" in s for s in granted_scopes)
         
         row = await AuthRepository.get_raw_user_by_email(db, email)
         if not row:
-            role = "HR" if email in KNOWN_HR_EMAILS else "CANDIDATE"
+            # Register new user with appropriate role based on portal and authorization
+            if target_role == "HR":
+                if email not in self.KNOWN_HR_EMAILS:
+                    raise Exception(
+                        "This Google account is not registered as authorized HR staff in Google Console. "
+                        "Please sign in through the Candidate portal or contact your administrator."
+                    )
+                role = "HR"
+            elif target_role == "ADMIN":
+                if email not in self.KNOWN_ADMIN_EMAILS:
+                    raise Exception(
+                        "This Google account is not authorized as an Administrator. "
+                        "Please sign in through the Candidate portal or contact support."
+                    )
+                role = "ADMIN"
+            else:
+                role = "CANDIDATE"
+
             new_user = await self.register_user(db, email, "password", role, fullname)
             user_id = new_user.id
         else:
+            # Existing account: strictly preserve the registered role and prevent role collisions
             user_id = row.id
-            role = row.role
-            # If authorized HR email was marked as CANDIDATE previously, promote to HR
-            if email in KNOWN_HR_EMAILS and role != "HR":
-                role = "HR"
-                from sqlalchemy import text
-                await db.execute(
-                    text("UPDATE users SET role = 'HR' WHERE id = :id"),
-                    {"id": user_id}
-                )
-                await db.commit()
+            actual_role = row.role.upper()
 
-        # Ensure hr_staffs entry exists if role is HR
+            # Prevent a candidate from signing into HR or Admin portal
+            if target_role == "HR" and actual_role == "CANDIDATE":
+                raise Exception(
+                    "This Google account is registered as a Candidate. "
+                    "Please switch to the Candidate portal to sign in."
+                )
+            if target_role == "ADMIN" and actual_role != "ADMIN":
+                raise Exception(
+                    "This Google account does not have Administrator privileges. "
+                    f"It is registered as a {actual_role.capitalize()}. Please select the correct portal."
+                )
+
+            # If HR or Admin signs in via candidate portal, route them to their actual role
+            role = actual_role
+
+        # Ensure polymorphic subclass table entry exists
+        from sqlalchemy import text
         if role == "HR":
-            from sqlalchemy import text
             hr_check = await db.execute(text("SELECT id FROM hr_staffs WHERE id = :id"), {"id": user_id})
             if not hr_check.fetchone():
                 await db.execute(
@@ -225,12 +268,41 @@ class AuthService:
                     {"id": user_id}
                 )
                 await db.commit()
+        elif role == "ADMIN":
+            admin_check = await db.execute(text("SELECT id FROM admins WHERE id = :id"), {"id": user_id})
+            if not admin_check.fetchone():
+                await db.execute(
+                    text("""
+                        INSERT INTO admins (id, managed_region)
+                        VALUES (:id, 'Main Headquarters')
+                    """),
+                    {"id": user_id}
+                )
+                await db.commit()
+        elif role == "CANDIDATE":
+            cand_check = await db.execute(text("SELECT id FROM candidates WHERE id = :id"), {"id": user_id})
+            if not cand_check.fetchone():
+                await db.execute(
+                    text("""
+                        INSERT INTO candidates (id, experience_years)
+                        VALUES (:id, 0)
+                    """),
+                    {"id": user_id}
+                )
+                await db.commit()
 
         user = await AuthRepository.get_user_by_id(db, user_id)
         if user:
             if getattr(user, 'is_archived', False) or (row and getattr(row, 'is_archived', False)):
                 raise Exception("Account has been archived. Please contact administration.")
-            user.google_credentials = google_credentials
+            
+            # Store google_credentials ONLY for HR/ADMIN when calendar scopes were actually granted
+            if role in ["HR", "ADMIN"]:
+                if has_calendar_scope and google_credentials:
+                    user.google_credentials = google_credentials
+            else:
+                user.google_credentials = None
+
             if picture and not user.profile_image_url:
                 user.profile_image_url = picture
             if fullname and not user.fullname:
@@ -258,16 +330,102 @@ class AuthService:
                 target_role="ADMIN"
             )
 
-            await record_activity(
-                db=db,
-                user_id=user_id,
-                action="SIGN_IN",
-                details=f"User {email} signed in via Google"
-            )
+        await record_activity(
+            db=db,
+            user_id=user_id,
+            action="SIGN_IN",
+            details=f"User {email} ({role}) signed in via Google"
+        )
 
-        return {"token": token, "role": role, "fullname": (user.fullname if user else fullname) or "", "user_id": user_id, "profile_image_url": user.profile_image_url if user else picture}
+        return {
+            "token": token,
+            "role": role,
+            "fullname": (user.fullname if user else fullname) or "",
+            "user_id": user_id,
+            "email": email,
+            "profile_image_url": user.profile_image_url if user else picture
+        }
+
+    async def register_candidate_with_google(self, db: AsyncSession, email: str, fullname: str, picture: str):
+        """
+        Register a new candidate account via Google OAuth.
+        Handles ONLY candidate authentication and account creation.
+        Does not request Google Calendar permissions or link to Google Calendar Console services.
+        """
+        email = email.strip().lower()
+
+        # Check if this Google account is already registered under any role
+        row = await AuthRepository.get_raw_user_by_email(db, email)
+        if row:
+            role_name = row.role.capitalize() if row.role else "Account"
+            raise Exception(f"This Google account is already registered as an active {role_name}. Please sign in instead.")
+
+        # Candidate account creation only
+        role = "CANDIDATE"
+        new_user = await self.register_user(db, email, "password", role, fullname)
+        user_id = new_user.id
+
+        # Ensure candidate subclass row exists
+        from sqlalchemy import text
+        cand_check = await db.execute(text("SELECT id FROM candidates WHERE id = :id"), {"id": user_id})
+        if not cand_check.fetchone():
+            await db.execute(
+                text("INSERT INTO candidates (id, experience_years) VALUES (:id, 0)"),
+                {"id": user_id}
+            )
+            await db.commit()
+
+        user = await AuthRepository.get_user_by_id(db, user_id)
+        if user:
+            # Explicitly do NOT set google_credentials - candidate has no calendar console integration
+            user.google_credentials = None
+            if picture and not user.profile_image_url:
+                user.profile_image_url = picture
+            if fullname and not user.fullname:
+                user.fullname = fullname
+            user.is_online = True
+            user.last_active = datetime.utcnow()
+            await db.commit()
+
+        token = create_access_token({
+            "sub": email,
+            "role": role,
+            "id": user_id
+        })
+
+        title = "New Candidate Registered via Google"
+        message = f"{fullname or email} has registered as a new candidate using Google."
+        await create_notification(
+            db=db,
+            title=title,
+            message=message,
+            type="candidate_login",
+            target_role="ADMIN"
+        )
+
+        await record_activity(
+            db=db,
+            user_id=user_id,
+            action="SIGN_UP",
+            details=f"Candidate {email} registered via Google"
+        )
+
+        return {
+            "token": token,
+            "role": role,
+            "fullname": (user.fullname if user else fullname) or "",
+            "user_id": user_id,
+            "email": email,
+            "profile_image_url": user.profile_image_url if user else picture
+        }
+
+    async def register_with_google(self, db: AsyncSession, email: str, fullname: str, picture: str, google_credentials: str = None):
+        """Backward-compatible proxy to register_candidate_with_google."""
+        return await self.register_candidate_with_google(db, email, fullname, picture)
 
 auth_service = AuthService()
+KNOWN_ADMIN_EMAILS = auth_service.KNOWN_ADMIN_EMAILS
+KNOWN_HR_EMAILS = auth_service.KNOWN_HR_EMAILS
 
 
 async def register_user(db: AsyncSession, email: str, password: str, role: str, fullname: str = ""):
@@ -288,5 +446,24 @@ async def reset_user_password(db: AsyncSession, token: str, new_password: str):
 async def change_password(db: AsyncSession, user_id: int, current_password: str, new_password: str):
     return await auth_service.change_password(db, user_id, current_password, new_password)
 
-async def login_with_google(db: AsyncSession, email: str, fullname: str, picture: str, google_credentials: str):
-    return await auth_service.login_with_google(db, email, fullname, picture, google_credentials)
+async def login_with_google(
+    db: AsyncSession, 
+    email: str, 
+    fullname: str, 
+    picture: str, 
+    google_credentials: str,
+    target_role: str = "candidate",
+    granted_scopes: list = None
+):
+    return await auth_service.login_with_google(
+        db, email, fullname, picture, google_credentials,
+        target_role=target_role, granted_scopes=granted_scopes
+    )
+
+async def register_candidate_with_google(db: AsyncSession, email: str, fullname: str, picture: str):
+    return await auth_service.register_candidate_with_google(db, email, fullname, picture)
+
+async def register_with_google(db: AsyncSession, email: str, fullname: str, picture: str, google_credentials: str = None):
+    return await auth_service.register_candidate_with_google(db, email, fullname, picture)
+
+

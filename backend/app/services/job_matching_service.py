@@ -1284,6 +1284,13 @@ async def match_resume_to_job(db, resume_data: dict, job_id: str, use_ai: bool =
     job = await JobDescriptionRepository.get_by_job_id(db, job_id)
     
     if not job:
+        try:
+            numeric_id = int(job_id)
+            job = await JobDescriptionRepository.get_by_id(db, numeric_id)
+        except (ValueError, TypeError):
+            pass
+
+    if not job:
         return None
     
     return calculate_match_score(resume_data, job, use_ai=use_ai)

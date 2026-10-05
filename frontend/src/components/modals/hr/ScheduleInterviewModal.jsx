@@ -190,24 +190,24 @@ const ScheduleInterviewModal = ({ isOpen, onClose, candidate }) => {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/50 backdrop-blur-sm">
-      <div className="bg-white w-full max-w-5xl max-h-[90vh] rounded-3xl shadow-2xl overflow-hidden flex flex-col animate-in fade-in zoom-in duration-200">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-gray-900/50 backdrop-blur-sm">
+      <div className="bg-white w-full max-w-5xl max-h-[96vh] sm:max-h-[90vh] rounded-2xl sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col animate-in fade-in zoom-in duration-200">
         
-        <div className="px-8 py-5 border-b border-gray-100 flex justify-between items-center bg-white sticky top-0 z-10">
+        <div className="px-4 sm:px-8 py-3.5 sm:py-5 border-b border-gray-100 flex justify-between items-center bg-white sticky top-0 z-10 shrink-0">
           <div className="flex items-center gap-2">
             <div className="h-2 w-2 rounded-full bg-[#d81159] animate-pulse"></div>
-            <span className="text-[11px] font-bold text-gray-400 uppercase tracking-widest">Schedule Interview</span>
+            <span className="text-[10px] sm:text-[11px] font-bold text-gray-400 uppercase tracking-widest">Schedule Interview</span>
           </div>
-          <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-full transition-colors text-gray-400">
+          <button onClick={onClose} className="p-1.5 sm:p-2 hover:bg-gray-100 rounded-full transition-colors text-gray-400">
             <X size={20} />
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="flex flex-1 overflow-hidden flex-col md:flex-row">
+        <form onSubmit={handleSubmit} className="flex flex-1 overflow-y-auto md:overflow-hidden flex-col md:flex-row min-h-0">
           {/* Sidebar */}
-          <div className="w-full md:w-80 bg-gray-50/50 border-r border-gray-100 p-8 overflow-y-auto flex flex-col">
-            <div className="text-center mb-8">
-              <div className="w-24 h-24 rounded-2xl overflow-hidden border-4 border-white shadow-sm mx-auto mb-4 bg-pink-50 flex items-center justify-center">
+          <div className="w-full md:w-80 bg-gray-50/50 border-b md:border-b-0 md:border-r border-gray-100 p-5 sm:p-8 md:overflow-y-auto shrink-0 flex flex-col">
+            <div className="text-center mb-5 sm:mb-8">
+              <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl overflow-hidden border-4 border-white shadow-sm mx-auto mb-3 sm:mb-4 bg-pink-50 flex items-center justify-center">
                 {candidate.profileImage ? (
                   <img src={candidate.profileImage} alt={candidate.name} className="w-full h-full object-cover" />
                 ) : (
@@ -259,8 +259,8 @@ const ScheduleInterviewModal = ({ isOpen, onClose, candidate }) => {
           </div>
 
           {/* Main content area */}
-          <div className="flex-grow p-8 overflow-y-auto bg-white flex flex-col">
-            <div className="space-y-8 flex-1">
+          <div className="flex-grow p-4 sm:p-8 md:overflow-y-auto bg-white flex flex-col">
+            <div className="space-y-6 sm:space-y-8 flex-1">
 
               {errorMsg && (
                 <div className="bg-rose-50 border border-rose-200 text-rose-700 px-4 py-3 rounded-2xl flex items-center gap-3 text-xs font-semibold">
@@ -475,18 +475,18 @@ const ScheduleInterviewModal = ({ isOpen, onClose, candidate }) => {
             </div>
 
             {/* Form Footer */}
-            <div className="flex justify-end gap-3 mt-8 pt-6 border-t border-gray-100 bg-white">
+            <div className="flex flex-wrap sm:flex-nowrap justify-end gap-2.5 sm:gap-3 mt-6 sm:mt-8 pt-4 sm:pt-6 border-t border-gray-100 bg-white shrink-0">
               <button
                 type="button"
                 onClick={onClose}
-                className="px-5 py-2.5 bg-gray-50 text-gray-500 rounded-xl text-xs font-bold uppercase tracking-wider hover:bg-gray-100 transition-all"
+                className="w-full sm:w-auto px-5 py-2.5 bg-gray-50 text-gray-500 rounded-xl text-xs font-bold uppercase tracking-wider hover:bg-gray-100 transition-all text-center"
               >
                 Cancel
               </button>
               <button
                 type="submit"
                 disabled={isScheduling || Boolean(activeInterview) || (!useCustomTime && !formData.selectedSlot) || (useCustomTime && (!customStartTime || !customEndTime))}
-                className="px-6 py-2.5 bg-[#d81159] text-white rounded-xl text-xs font-bold uppercase tracking-wider hover:shadow-lg hover:shadow-pink-200 transition-all disabled:opacity-50 flex items-center gap-2"
+                className="w-full sm:w-auto px-6 py-2.5 bg-[#d81159] text-white rounded-xl text-xs font-bold uppercase tracking-wider hover:shadow-lg hover:shadow-pink-200 transition-all disabled:opacity-50 flex items-center justify-center gap-2 text-center"
               >
                 {isScheduling ? 'Scheduling...' : 'Confirm & Schedule'}
               </button>

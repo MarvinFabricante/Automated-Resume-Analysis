@@ -70,7 +70,7 @@ const AdminDashboard = () => {
       
       <div className="flex flex-1">
         <Sidebar />
-        <main className="flex-1 max-w-[1400px] mx-auto px-10 py-10">
+        <main className="flex-1 max-w-[1400px] mx-auto px-4 sm:px-10 py-6 sm:py-10 w-full overflow-hidden">
         
         <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-10 gap-4">
           <div>

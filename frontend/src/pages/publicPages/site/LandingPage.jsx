@@ -23,7 +23,7 @@ const LandingPage = () => {
               <span className="text-xs font-semibold uppercase tracking-wider text-gray-600">Careers Portal</span>
             </div>
           </div>
-          <h1 className="text-5xl md:text-7xl font-normal tracking-tight text-gray-900 mb-6 leading-tight">
+          <h1 className="text-4xl md:text-7xl font-normal tracking-tight text-gray-900 mb-6 leading-tight">
             Join <span className="font-semibold text-[#D60041]">Mariwasa Siam</span> Ceramics
           </h1>
           <p className="text-gray-600 text-lg md:text-xl font-normal max-w-2xl mx-auto leading-relaxed">
@@ -32,7 +32,7 @@ const LandingPage = () => {
         </section>
 
         <div className="grid md:grid-cols-2 gap-6 mb-24 max-w-6xl mx-auto px-6">
-          <div className="bg-white p-12 rounded-[32px] border border-gray-100 shadow-sm hover:shadow-xl transition-all duration-300 group relative overflow-hidden flex flex-col">
+          <div className="bg-white p-8 md:p-12 rounded-[32px] border border-gray-100 shadow-sm hover:shadow-xl transition-all duration-300 group relative overflow-hidden flex flex-col">
             <div className="absolute top-0 right-0 w-32 h-32 bg-pink-50 rounded-bl-[100px] z-0 opacity-50 group-hover:scale-110 transition-transform"></div>
             <div className="relative z-10 flex-grow">
               <div className="w-16 h-16 bg-red-50 text-[#D60041] rounded-2xl mb-8 flex items-center justify-center group-hover:scale-110 transition-transform">
@@ -49,7 +49,7 @@ const LandingPage = () => {
             </a>
           </div>
 
-          <div className="bg-[#1A1A1A] p-12 rounded-[32px] shadow-sm hover:shadow-xl hover:shadow-gray-900/20 transition-all duration-300 group relative overflow-hidden flex flex-col">
+          <div className="bg-[#1A1A1A] p-8 md:p-12 rounded-[32px] shadow-sm hover:shadow-xl hover:shadow-gray-900/20 transition-all duration-300 group relative overflow-hidden flex flex-col">
             <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-bl-[100px] z-0 opacity-50 group-hover:scale-110 transition-transform"></div>
             <div className="relative z-10 flex-grow">
               <div className="w-16 h-16 bg-white/10 text-white rounded-2xl mb-8 flex items-center justify-center group-hover:scale-110 transition-transform">
@@ -73,7 +73,7 @@ const LandingPage = () => {
             { title: "Perfect Match", desc: "We match your skills precisely with our technical requirements without human bias.", icon: <CheckCircle /> },
             { title: "Real-time Status", desc: "Track every stage of your application securely through your dashboard.", icon: <LogIn /> }
           ].map((feature, idx) => (
-            <div key={idx} className="bg-white p-8 rounded-[24px] border border-gray-100 hover:border-gray-200 transition-colors">
+            <div key={idx} className="bg-white p-6 md:p-8 rounded-[24px] border border-gray-100 hover:border-gray-200 transition-colors">
               <div className="text-[#D60041] mb-5 flex justify-start">
                 <div className="p-3 bg-red-50 rounded-xl">
                   {React.cloneElement(feature.icon, { size: 24 })}
@@ -86,7 +86,7 @@ const LandingPage = () => {
         </div>
 
         <section className="max-w-6xl mx-auto px-6 mb-24">
-          <div className="bg-white rounded-[32px] border border-gray-100 shadow-sm p-10 md:p-16 flex flex-col md:flex-row items-center gap-12 relative overflow-hidden">
+          <div className="bg-white rounded-[32px] border border-gray-100 shadow-sm p-8 md:p-16 flex flex-col md:flex-row items-center gap-12 relative overflow-hidden">
             <div className="absolute top-0 right-0 w-64 h-64 bg-gray-50 rounded-full blur-3xl opacity-50 -translate-y-1/2 translate-x-1/2"></div>
 
             <div className="flex-1 relative z-10">

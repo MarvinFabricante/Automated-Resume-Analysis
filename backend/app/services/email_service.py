@@ -49,8 +49,12 @@ def _send_smtp_sync(to_email: str, subject: str, html_body: str) -> bool:
 class EmailService:
     @staticmethod
     async def send_reset_password_email(email: str, token: str):
-        frontend_url = os.getenv("PUBLIC_FRONTEND_URL") or os.getenv("FRONTEND_URL", "http://localhost:5173").split(",")[0].strip()
-        reset_link = f"{frontend_url.rstrip('/')}/reset-password?token={token}"
+        base_url = (
+            os.getenv("PUBLIC_BASE_URL")
+            or os.getenv("PUBLIC_FRONTEND_URL")
+            or os.getenv("FRONTEND_URL", "http://localhost:5173").split(",")[0].strip()
+        ).rstrip("/")
+        reset_link = f"{base_url}/reset-password?token={token}"
         subject = "Password Reset Request - Mariwasa Portal"
         body = f"""
         <html>
@@ -125,7 +129,7 @@ class EmailService:
                 <!-- Main Content -->
                 <div style="padding: 32px;">
                     <p style="font-size: 16px; margin: 0 0 16px 0;">Dear <strong>{candidate_name}</strong>,</p>
-                    
+
                     <p style="font-size: 15px; color: #334155; margin: 0 0 24px 0; line-height: 1.6;">
                         We are pleased to inform you that an interview has been scheduled for your application for the position of <strong>{job_title}</strong> at Mariwasa Siam Ceramics, Inc.
                     </p>
@@ -135,7 +139,7 @@ class EmailService:
                         <h3 style="margin: 0 0 18px 0; font-size: 16px; font-weight: 700; color: #9f1239; border-bottom: 1px solid #fecdd3; padding-bottom: 10px;">
                             Schedule Information
                         </h3>
-                        
+
                         <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
                             <tr>
                                 <td style="padding: 6px 0; color: #64748b; font-weight: 600; width: 140px;">Stage / Round:</td>
@@ -247,7 +251,7 @@ class EmailService:
                 <!-- Main Content -->
                 <div style="padding: 32px;">
                     <p style="font-size: 16px; margin: 0 0 16px 0;">Dear <strong>{candidate_name}</strong>,</p>
-                    
+
                     <p style="font-size: 15px; color: #334155; margin: 0 0 24px 0; line-height: 1.6;">
                         Please be advised that your interview schedule for the position of <strong>{job_title}</strong> has been updated. Below are your new interview details:
                     </p>
@@ -257,7 +261,7 @@ class EmailService:
                         <h3 style="margin: 0 0 18px 0; font-size: 16px; font-weight: 700; color: #92400e; border-bottom: 1px solid #fde68a; padding-bottom: 10px;">
                             New Schedule Information
                         </h3>
-                        
+
                         <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
                             <tr>
                                 <td style="padding: 6px 0; color: #64748b; font-weight: 600; width: 140px;">Stage / Round:</td>

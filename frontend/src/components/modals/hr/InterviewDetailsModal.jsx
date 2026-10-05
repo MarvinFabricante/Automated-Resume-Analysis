@@ -215,26 +215,26 @@ const InterviewDetailsModal = ({ isOpen, onClose, interview, onStatusChanged }) 
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="bg-white w-full max-w-2xl max-h-[90vh] rounded-3xl shadow-2xl overflow-hidden flex flex-col">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-gray-900/60 backdrop-blur-sm animate-in fade-in duration-200">
+      <div className="bg-white w-full max-w-2xl max-h-[96vh] sm:max-h-[90vh] rounded-2xl sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col">
         {/* Header */}
-        <div className="px-6 sm:px-8 py-5 border-b border-gray-100 flex justify-between items-center bg-white sticky top-0 z-10">
-          <div className="flex items-center gap-3">
-            <div className={`h-2.5 w-2.5 rounded-full ${isGoogleOnlyEvent ? 'bg-blue-500' : 'bg-[#D60041]'} animate-pulse`} />
-            <span className="text-xs font-black text-gray-500 uppercase tracking-wider">
+        <div className="px-4 sm:px-8 py-3.5 sm:py-5 border-b border-gray-100 flex justify-between items-center bg-white sticky top-0 z-10 shrink-0">
+          <div className="flex items-center gap-2.5 sm:gap-3">
+            <div className={`h-2.5 w-2.5 rounded-full ${isGoogleOnlyEvent ? 'bg-blue-500' : 'bg-[#D60041]'} animate-pulse shrink-0`} />
+            <span className="text-[11px] sm:text-xs font-black text-gray-500 uppercase tracking-wider truncate">
               {isGoogleOnlyEvent ? 'Google Calendar Event' : (isEditing ? 'Reschedule / Edit Interview' : 'Interview Session Details')}
             </span>
           </div>
           <button
             onClick={onClose}
-            className="p-2 hover:bg-gray-100 rounded-full transition-colors text-gray-400 hover:text-gray-700"
+            className="p-1.5 sm:p-2 hover:bg-gray-100 rounded-full transition-colors text-gray-400 hover:text-gray-700"
           >
             <X size={20} />
           </button>
         </div>
 
         {/* Modal Body */}
-        <div className="p-6 sm:p-8 overflow-y-auto flex-1 space-y-6">
+        <div className="p-4 sm:p-8 overflow-y-auto flex-1 space-y-5 sm:space-y-6">
           {errorMsg && (
             <div className="bg-rose-50 border border-rose-200 text-rose-700 px-4 py-3 rounded-2xl flex items-center gap-3 text-xs font-semibold">
               <AlertCircle size={18} className="shrink-0" />
@@ -397,10 +397,10 @@ const InterviewDetailsModal = ({ isOpen, onClose, interview, onStatusChanged }) 
               {!isGoogleOnlyEvent && canModify && (
                 <div className="pt-4 border-t border-gray-100 space-y-3">
                   <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
                       <button
                         onClick={() => setIsEditing(true)}
-                        className="px-4 py-2.5 bg-gray-900 hover:bg-[#D60041] text-white rounded-xl text-xs font-bold transition-all flex items-center gap-2 shadow-sm"
+                        className="px-3.5 sm:px-4 py-2 sm:py-2.5 bg-gray-900 hover:bg-[#D60041] text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 sm:gap-2 shadow-sm"
                       >
                         <Edit3 size={14} />
                         Reschedule / Edit
@@ -595,18 +595,18 @@ const InterviewDetailsModal = ({ isOpen, onClose, interview, onStatusChanged }) 
                 />
               </div>
 
-              <div className="flex items-center justify-end gap-3 pt-4 border-t border-gray-100">
+              <div className="flex flex-wrap sm:flex-nowrap items-center justify-end gap-2.5 sm:gap-3 pt-4 border-t border-gray-100">
                 <button
                   type="button"
                   onClick={() => setIsEditing(false)}
-                  className="px-5 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl text-xs font-bold transition-colors"
+                  className="w-full sm:w-auto px-5 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl text-xs font-bold transition-colors text-center"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={isUpdating}
-                  className="px-6 py-2.5 bg-[#D60041] hover:bg-rose-700 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-[#D60041]/20 disabled:opacity-50"
+                  className="w-full sm:w-auto px-6 py-2.5 bg-[#D60041] hover:bg-rose-700 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-[#D60041]/20 disabled:opacity-50 text-center"
                 >
                   {isUpdating ? 'Saving to System & Google Calendar...' : 'Save Changes'}
                 </button>

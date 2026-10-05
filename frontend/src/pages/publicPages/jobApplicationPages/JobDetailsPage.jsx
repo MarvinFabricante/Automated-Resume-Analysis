@@ -152,30 +152,30 @@ const JobDetailsPage = () => {
               Back
             </button>
 
-            <div className="bg-white rounded-[40px] shadow-xl shadow-slate-200/50 border border-slate-100 overflow-hidden relative">
+            <div className="bg-white rounded-2xl sm:rounded-[40px] shadow-xl shadow-slate-200/50 border border-slate-100 overflow-hidden relative">
               <div className="absolute top-0 right-0 w-64 h-64 bg-red-50 rounded-bl-[200px] -mr-20 -mt-20 opacity-50"></div>
 
-              <div className="p-8 md:p-12 border-b border-slate-50 bg-gradient-to-b from-slate-50/50 to-transparent relative z-10">
+              <div className="p-5 sm:p-8 md:p-12 border-b border-slate-50 bg-gradient-to-b from-slate-50/50 to-transparent relative z-10">
 
-                <div className="flex items-center gap-6 mb-6">
-                  <div className="w-16 h-16 bg-[#D60041] rounded-2xl flex items-center justify-center text-white shadow-lg shadow-pink-100 shrink-0">
-                    <Briefcase size={32} />
+                <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 sm:gap-6 mb-6">
+                  <div className="w-14 h-14 sm:w-16 sm:h-16 bg-[#D60041] rounded-2xl flex items-center justify-center text-white shadow-lg shadow-pink-100 shrink-0">
+                    <Briefcase size={28} />
                   </div>
                   <div>
-                    <span className="text-[11px] font-bold uppercase tracking-widest text-[#D60041]">Job Description Card</span>
-                    <h1 className="text-3xl md:text-4xl font-black text-slate-900 tracking-tight leading-tight mt-1">
+                    <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-widest text-[#D60041]">Job Description Card</span>
+                    <h1 className="text-2xl sm:text-3xl md:text-4xl font-black text-slate-900 tracking-tight leading-tight mt-1">
                       {job.title || job.job_title}
                     </h1>
-                    <p className="text-sm text-slate-500 font-medium">{job.department} Department</p>
+                    <p className="text-xs sm:text-sm text-slate-500 font-medium">{job.department} Department</p>
                   </div>
                 </div>
-                <p className="text-slate-500 leading-relaxed max-w-2xl font-medium">
+                <p className="text-slate-500 text-xs sm:text-sm leading-relaxed max-w-2xl font-medium">
                   Review the complete requirements and qualifications for this position.
                 </p>
               </div>
             </div>
 
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-6">
               <DetailItem icon={MapPin} label="Location" value={job.location || 'Philippines'} />
               <DetailItem icon={Clock} label="Employment Type" value={job.job_type || 'Full-time'} />
               <DetailItem icon={DollarSign} label="Salary Range" value={job.salary_range || 'Competitive'} />
@@ -184,13 +184,13 @@ const JobDetailsPage = () => {
 
             {/* AI Resume Analysis Integration */}
             {matchData && (
-              <div className="bg-white p-8 md:p-12 rounded-[40px] border-2 border-pink-100 shadow-2xl shadow-pink-100/50 relative overflow-hidden animate-in fade-in slide-in-from-bottom-6 duration-700">
+              <div className="bg-white p-5 sm:p-8 md:p-12 rounded-2xl sm:rounded-[40px] border-2 border-pink-100 shadow-2xl shadow-pink-100/50 relative overflow-hidden animate-in fade-in slide-in-from-bottom-6 duration-700">
                 <div className="absolute top-0 right-0 w-64 h-64 bg-gradient-to-bl from-pink-50 to-transparent rounded-bl-[200px] opacity-40"></div>
                 
-                <div className="flex flex-col md:flex-row gap-12 items-center relative z-10 mb-8 border-b border-slate-100 pb-8">
+                <div className="flex flex-col md:flex-row gap-6 sm:gap-12 items-center relative z-10 mb-8 border-b border-slate-100 pb-8">
                   <div className="flex flex-col items-center shrink-0">
-                    <div className="relative w-36 h-36">
-                      <svg className="w-36 h-36 -rotate-90" viewBox="0 0 100 100">
+                    <div className="relative w-32 h-32 sm:w-36 sm:h-36">
+                      <svg className="w-32 h-32 sm:w-36 sm:h-36 -rotate-90" viewBox="0 0 100 100">
                         <circle cx="50" cy="50" r="42" fill="none" stroke="#f1f5f9" strokeWidth="12" />
                         <circle
                           cx="50" cy="50" r="42" fill="none"
@@ -203,7 +203,7 @@ const JobDetailsPage = () => {
                         />
                       </svg>
                       <div className="absolute inset-0 flex flex-col items-center justify-center pt-2">
-                        <span className="text-3xl font-black text-slate-900 leading-none tracking-tight">
+                        <span className="text-2xl sm:text-3xl font-black text-slate-900 leading-none tracking-tight">
                           {Math.round(matchData.match_percentage)}%
                         </span>
                         <span className="text-[9px] font-black uppercase tracking-widest text-slate-400 mt-1">Overall Match</span>
@@ -211,24 +211,24 @@ const JobDetailsPage = () => {
                     </div>
                   </div>
                   
-                  <div className="flex-1 w-full">
-                    <h3 className="text-xl font-black text-slate-900 mb-2 flex items-center gap-3">
-                      <Zap className="text-[#D60041]" size={24} />
+                  <div className="flex-1 w-full text-center md:text-left">
+                    <h3 className="text-lg sm:text-xl font-black text-slate-900 mb-2 flex items-center justify-center md:justify-start gap-2 sm:gap-3">
+                      <Zap className="text-[#D60041]" size={22} />
                       Your Resume Analysis
                     </h3>
-                    <p className="text-slate-600 font-medium leading-relaxed mb-6">
+                    <p className="text-slate-600 text-xs sm:text-sm font-medium leading-relaxed mb-6">
                       {matchData.ai_summary || "We analyzed your qualifications against this job description. Here is the detailed breakdown of your fit."}
                     </p>
                     
-                    <div className="grid grid-cols-3 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
                       {[
                         { label: 'Skills Match', score: matchData.skills_score, icon: <Cpu size={16} />, color: 'text-blue-600', bg: 'bg-blue-50' },
                         { label: 'Experience Match', score: matchData.experience_score, icon: <Briefcase size={16} />, color: 'text-purple-600', bg: 'bg-purple-50' },
                         { label: 'Education Match', score: matchData.education_score, icon: <GraduationCap size={16} />, color: 'text-amber-600', bg: 'bg-amber-50' }
                       ].map((item, idx) => (
-                        <div key={idx} className={`${item.bg} p-4 rounded-2xl flex flex-col text-center`}>
-                          <div className={`mx-auto ${item.color} mb-2`}>{item.icon}</div>
-                          <p className="text-lg font-black text-slate-900">{Math.round(item.score)}%</p>
+                        <div key={idx} className={`${item.bg} p-3.5 sm:p-4 rounded-xl sm:rounded-2xl flex flex-col text-center`}>
+                          <div className={`mx-auto ${item.color} mb-1.5 sm:mb-2`}>{item.icon}</div>
+                          <p className="text-base sm:text-lg font-black text-slate-900">{Math.round(item.score)}%</p>
                           <span className="text-[9px] font-black uppercase tracking-widest text-slate-500">{item.label}</span>
                         </div>
                       ))}
@@ -236,7 +236,7 @@ const JobDetailsPage = () => {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-8 relative z-10">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 sm:gap-8 relative z-10">
                   <div className="space-y-6">
                     <div>
                       <h4 className="text-sm font-black uppercase tracking-widest text-[#D60041] mb-3 flex items-center gap-2">
@@ -360,17 +360,17 @@ const JobDetailsPage = () => {
                   </div>
                 )}
 
-                <div className="bg-slate-900 text-white p-8 rounded-[40px] shadow-xl overflow-hidden relative mt-8">
-                  <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full -mr-16 -mt-16"></div>
-                  <h4 className="text-xl font-black mb-4 relative z-10">Ready to Join?</h4>
-                  <p className="text-slate-400 text-sm leading-relaxed mb-8 relative z-10">
+                <div className="bg-slate-900 text-white p-6 sm:p-8 rounded-2xl sm:rounded-[40px] shadow-xl overflow-hidden relative mt-6 sm:mt-8">
+                  <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full -mr-16 -mt-16 pointer-events-none"></div>
+                  <h4 className="text-lg sm:text-xl font-black mb-3 sm:mb-4 relative z-10">Ready to Join?</h4>
+                  <p className="text-slate-400 text-xs sm:text-sm leading-relaxed mb-6 sm:mb-8 relative z-10">
                     Take the next step in your career with Mariwasa. Apply now to this position.
                   </p>
                   
                   {matchData ? (
                     <button
                       onClick={() => navigate(`/candidate/preview-profile/${job.job_id || job.id}`, { state: { job, extractedData, matchData, fileName } })}
-                      className="w-full bg-[#D60041] text-white py-5 rounded-[24px] font-bold text-sm hover:bg-white hover:text-slate-900 transition-all shadow-xl flex items-center justify-center gap-3 active:scale-95 relative z-10"
+                      className="w-full bg-[#D60041] text-white py-4 sm:py-5 rounded-xl sm:rounded-[24px] font-bold text-xs sm:text-sm hover:bg-white hover:text-slate-900 transition-all shadow-xl flex items-center justify-center gap-2 sm:gap-3 active:scale-95 relative z-10"
                     >
                       Start Application
                       <ArrowRight size={18} />
@@ -378,7 +378,7 @@ const JobDetailsPage = () => {
                   ) : (
                     <button
                       onClick={() => navigate(`/apply/${job.job_id || job.id}`, { state: { job } })}
-                      className="w-full bg-[#D60041] text-white py-5 rounded-[24px] font-bold text-sm hover:bg-white hover:text-slate-900 transition-all shadow-xl flex items-center justify-center gap-3 active:scale-95 relative z-10"
+                      className="w-full bg-[#D60041] text-white py-4 sm:py-5 rounded-xl sm:rounded-[24px] font-bold text-xs sm:text-sm hover:bg-white hover:text-slate-900 transition-all shadow-xl flex items-center justify-center gap-2 sm:gap-3 active:scale-95 relative z-10"
                     >
                       Apply Now
                       <ArrowRight size={18} />

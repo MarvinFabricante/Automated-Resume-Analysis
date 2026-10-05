@@ -219,10 +219,10 @@ const ChatWidget = () => {
     }
 
     return (
-        <div className="fixed bottom-6 right-6 z-[1000] font-['Inter']">
+        <div className="fixed bottom-4 right-4 sm:bottom-6 sm:right-6 z-[1000] font-['Inter']">
             {/* Chat Window */}
             {isOpen && (
-                <div className="bg-white w-[350px] h-[500px] rounded-[24px] shadow-2xl border border-gray-100 flex flex-col overflow-hidden mb-4 animate-in slide-in-from-bottom-5 duration-300">
+                <div className="bg-white w-[calc(100vw-2rem)] sm:w-[350px] h-[70vh] sm:h-[500px] max-h-[500px] rounded-[24px] shadow-2xl border border-gray-100 flex flex-col overflow-hidden mb-4 animate-in slide-in-from-bottom-5 duration-300">
                     
                     {view === 'contacts' ? (
                         <>

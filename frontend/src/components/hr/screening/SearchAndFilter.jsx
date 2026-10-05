@@ -14,15 +14,15 @@ const SearchAndFilter = ({
   suggestions 
 }) => {
   return (
-    <div className="bg-white p-8 rounded-[32px] border border-gray-100 shadow-sm mb-8 flex flex-col md:flex-row gap-5 relative">
+    <div className="bg-white p-4 sm:p-6 md:p-8 rounded-2xl sm:rounded-[32px] border border-gray-100 shadow-sm mb-6 sm:mb-8 flex flex-col md:flex-row gap-3.5 sm:gap-5 relative">
       <div className="relative flex-grow">
         <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none z-10">
-          <Search className="h-5 w-5 text-gray-400" />
+          <Search className="h-4 w-4 sm:h-5 sm:w-5 text-gray-400" />
         </div>
         <input
           type="text"
           placeholder="Search by candidate name..."
-          className="w-full pl-11 pr-4 py-3.5 bg-gray-50/50 border-2 border-gray-100 rounded-2xl text-sm font-medium focus:outline-none focus:border-pink-100 focus:bg-white focus:ring-4 focus:ring-pink-50 transition-all duration-300 relative z-10"
+          className="w-full pl-10 sm:pl-11 pr-4 py-2.5 sm:py-3.5 bg-gray-50/50 border-2 border-gray-100 rounded-xl sm:rounded-2xl text-xs sm:text-sm font-medium focus:outline-none focus:border-pink-100 focus:bg-white focus:ring-4 focus:ring-pink-50 transition-all duration-300 relative z-10"
           value={searchQuery}
           onChange={(e) => {
             setSearchQuery(e.target.value);
@@ -33,11 +33,11 @@ const SearchAndFilter = ({
         />
 
         {showSuggestions && suggestions.length > 0 && (
-          <ul className="absolute top-full left-0 w-full mt-2 bg-white border border-gray-100 rounded-2xl shadow-lg z-50 overflow-hidden py-2">
+          <ul className="absolute top-full left-0 w-full mt-2 bg-white border border-gray-100 rounded-xl sm:rounded-2xl shadow-lg z-50 overflow-hidden py-2">
             {suggestions.map((name, idx) => (
               <li
                 key={idx}
-                className="px-5 py-3 hover:bg-pink-50 hover:text-[#D60041] cursor-pointer text-sm font-semibold transition-colors flex items-center gap-3"
+                className="px-4 sm:px-5 py-2.5 sm:py-3 hover:bg-pink-50 hover:text-[#D60041] cursor-pointer text-xs sm:text-sm font-semibold transition-colors flex items-center gap-3"
                 onClick={() => {
                   setSearchQuery(name);
                   setShowSuggestions(false);
@@ -51,7 +51,7 @@ const SearchAndFilter = ({
         )}
       </div>
 
-      <div className="flex gap-5 w-full md:w-auto shrink-0 flex-col md:flex-row">
+      <div className="flex gap-3 sm:gap-5 w-full md:w-auto shrink-0 flex-col sm:flex-row">
         {/* Job Filter */}
         <div className="relative w-full md:w-56">
           <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">

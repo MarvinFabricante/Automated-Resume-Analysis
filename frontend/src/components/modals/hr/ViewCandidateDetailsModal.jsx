@@ -101,30 +101,30 @@ const ViewCandidateDetailsModal = ({ isOpen, onClose, candidate }) => {
   ].filter(Boolean).join(' ');
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#0c0d12]/60 backdrop-blur-sm">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-[#0c0d12]/60 backdrop-blur-sm">
       <Helmet>
         <title>{candidate.name} | ATS Analysis</title>
       </Helmet>
-      <div className="bg-white w-full max-w-6xl max-h-[92vh] rounded-[32px] shadow-2xl overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-300">
+      <div className="bg-white w-full max-w-6xl max-h-[96vh] sm:max-h-[92vh] rounded-2xl sm:rounded-[32px] shadow-2xl overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-300">
         
         {/* ─── Header ─── */}
-        <div className="px-8 py-5 border-b border-gray-100 flex justify-between items-center bg-white sticky top-0 z-10">
+        <div className="px-4 sm:px-8 py-3.5 sm:py-5 border-b border-gray-100 flex justify-between items-center bg-white sticky top-0 z-10 shrink-0">
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-2 px-3 py-1.5 bg-emerald-50 border border-emerald-100 rounded-xl">
-              <BarChart3 size={14} className="text-emerald-600" />
-              <span className="text-[10px] font-bold text-emerald-700 uppercase tracking-widest">ATS Resume Analysis</span>
+              <BarChart3 size={14} className="text-emerald-600 shrink-0" />
+              <span className="text-[10px] font-bold text-emerald-700 uppercase tracking-widest truncate">ATS Resume Analysis</span>
             </div>
           </div>
-          <button onClick={onClose} className="p-2.5 hover:bg-gray-100 rounded-xl transition-colors text-gray-400 hover:text-gray-600">
+          <button onClick={onClose} className="p-2 sm:p-2.5 hover:bg-gray-100 rounded-xl transition-colors text-gray-400 hover:text-gray-600">
             <X size={18} />
           </button>
         </div>
 
-        <div className="flex flex-1 overflow-hidden">
+        <div className="flex flex-col md:flex-row flex-1 overflow-y-auto md:overflow-hidden min-h-0">
           {/* ─── LEFT SIDEBAR ─── */}
-          <div className="w-[320px] bg-gradient-to-b from-gray-50/80 to-white border-r border-gray-100 p-7 overflow-y-auto">
+          <div className="w-full md:w-[320px] bg-gradient-to-b from-gray-50/80 to-white border-b md:border-b-0 md:border-r border-gray-100 p-5 sm:p-7 md:overflow-y-auto shrink-0">
             {/* Candidate Profile */}
-            <div className="text-center mb-7">
+            <div className="text-center mb-6 sm:mb-7">
               <div className="w-20 h-20 rounded-2xl overflow-hidden border-4 border-white shadow-lg mx-auto mb-4 bg-pink-50">
                 {candidate.profileImage ? (
                   <img src={candidate.profileImage} alt={candidate.name} className="w-full h-full object-cover" />
@@ -172,7 +172,7 @@ const ViewCandidateDetailsModal = ({ isOpen, onClose, candidate }) => {
           </div>
 
           {/* ─── RIGHT: DETAILED ANALYSIS ─── */}
-          <div className="flex-1 p-8 overflow-y-auto bg-white">
+          <div className="flex-1 p-4 sm:p-6 md:p-8 md:overflow-y-auto bg-white">
 
             {/* Formula Banner */}
             <div className="bg-gradient-to-r from-gray-900 to-gray-800 text-white p-5 rounded-2xl mb-8 shadow-lg">
@@ -566,8 +566,8 @@ const ViewCandidateDetailsModal = ({ isOpen, onClose, candidate }) => {
         </div>
 
         {/* ─── Footer ─── */}
-        <div className="p-6 border-t border-gray-100 bg-gray-50/50 flex justify-end gap-3">
-          <button onClick={onClose} className="px-6 py-2.5 bg-white border border-gray-200 text-gray-600 rounded-xl text-sm font-bold hover:bg-gray-50 transition-all">
+        <div className="p-4 sm:p-6 border-t border-gray-100 bg-gray-50/50 flex flex-wrap sm:flex-nowrap justify-end gap-2.5 sm:gap-3 shrink-0">
+          <button onClick={onClose} className="w-full sm:w-auto px-5 sm:px-6 py-2.5 bg-white border border-gray-200 text-gray-600 rounded-xl text-xs sm:text-sm font-bold hover:bg-gray-50 transition-all text-center">
             Close Preview
           </button>
           {candidate.resumeUrl ? (
@@ -581,14 +581,14 @@ const ViewCandidateDetailsModal = ({ isOpen, onClose, candidate }) => {
                 link.click();
                 document.body.removeChild(link);
               }}
-              className="px-6 py-2.5 bg-[#d81159] text-white rounded-xl text-sm font-bold hover:shadow-lg hover:shadow-pink-200 transition-all inline-flex items-center"
+              className="w-full sm:w-auto px-5 sm:px-6 py-2.5 bg-[#d81159] text-white rounded-xl text-xs sm:text-sm font-bold hover:shadow-lg hover:shadow-pink-200 transition-all inline-flex items-center justify-center text-center"
             >
               Download Resume
             </button>
           ) : (
             <button 
               disabled
-              className="px-6 py-2.5 bg-gray-300 text-gray-500 rounded-xl text-sm font-bold cursor-not-allowed inline-flex items-center"
+              className="w-full sm:w-auto px-5 sm:px-6 py-2.5 bg-gray-300 text-gray-500 rounded-xl text-xs sm:text-sm font-bold cursor-not-allowed inline-flex items-center justify-center text-center"
               title="Resume file not available"
             >
               Resume Unavailable

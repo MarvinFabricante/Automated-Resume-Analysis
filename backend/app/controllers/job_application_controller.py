@@ -23,7 +23,17 @@ async def create_job_application(application_in: JobApplicationCreate, db: Async
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
         
-    return await job_application_service.create_job_application(db, application_in, job.id)
+    res = await job_application_service.create_job_application(db, application_in, job.id)
+    
+    # Invalidate cache so HR immediately sees the new applicant
+    from app.utils.cache import delete_cache
+    await delete_cache("app_stats:{}")
+    await delete_cache("resume_count:{}")
+    await clear_cache_pattern("all_apps*")
+    await clear_cache_pattern("job_apps*")
+    await clear_cache_pattern("cand_apps*")
+    
+    return res
 
 @router.get("/", response_model=List[JobApplicationResponse])
 @cache_response("all_apps", ttl=60)

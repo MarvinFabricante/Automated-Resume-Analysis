@@ -241,35 +241,35 @@ const CompareCandidates = () => {
         </div>
 
         {/* AI Recommendation / Winner Banner */}
-        <div className="bg-gradient-to-r from-gray-900 via-slate-800 to-gray-950 text-white rounded-[32px] p-8 mb-8 shadow-xl relative overflow-hidden border border-gray-800">
+        <div className="bg-gradient-to-r from-gray-900 via-slate-800 to-gray-950 text-white rounded-2xl sm:rounded-[32px] p-5 sm:p-8 mb-6 sm:mb-8 shadow-xl relative overflow-hidden border border-gray-800">
           <div className="absolute -right-10 -top-10 w-40 h-40 bg-[#D60041]/10 rounded-full blur-3xl"></div>
           <div className="absolute -left-10 -bottom-10 w-40 h-40 bg-blue-500/10 rounded-full blur-3xl"></div>
 
-          <div className="relative flex flex-col lg:flex-row items-start lg:items-center justify-between gap-8">
+          <div className="relative flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6 sm:gap-8">
             <div className="flex-1">
-              <div className="inline-flex items-center gap-2 px-3.5 py-1.5 bg-[#D60041]/20 border border-[#D60041]/40 rounded-full text-xs font-bold text-[#FF3E74] uppercase tracking-wider mb-4">
+              <div className="inline-flex items-center gap-2 px-3 py-1 sm:px-3.5 sm:py-1.5 bg-[#D60041]/20 border border-[#D60041]/40 rounded-full text-xs font-bold text-[#FF3E74] uppercase tracking-wider mb-3 sm:mb-4">
                 <Trophy className="w-4 h-4 text-amber-400" />
                 Top Recommended Candidate
               </div>
-              <h2 className="text-2xl sm:text-3xl font-black tracking-tight leading-tight">
+              <h2 className="text-xl sm:text-2xl lg:text-3xl font-black tracking-tight leading-tight">
                 {winner.name} is the most qualified candidate!
               </h2>
-              <p className="text-gray-300 font-medium mt-2 max-w-3xl leading-relaxed text-sm sm:text-base">
+              <p className="text-gray-300 font-medium mt-2 max-w-3xl leading-relaxed text-xs sm:text-sm lg:text-base">
                 Based on our {winner.isRuleBased ? 'rule-based analysis' : 'semantic AI analysis'} of skills, experience, and educational background, <span className="text-white font-bold">{winner.name}</span> has the highest matching index of <span className="text-[#FF3E74] font-black">{winner.matchScore}%</span>.
                 {winner.ai_summary ? ` ${winner.ai_summary}` : ` They demonstrate strong alignment with the requirements for the position of ${winner.preferredJob}.`}
               </p>
             </div>
 
-            <div className="flex items-center gap-4 bg-white/5 border border-white/10 p-5 rounded-[24px] shrink-0">
-              <div className="text-center">
+            <div className="flex flex-wrap sm:flex-nowrap items-center gap-3 sm:gap-4 bg-white/5 border border-white/10 p-4 sm:p-5 rounded-2xl sm:rounded-[24px] shrink-0 w-full lg:w-auto">
+              <div className="text-center sm:text-left">
                 <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Top Score</p>
-                <p className="text-5xl font-black text-[#FF3E74] tracking-tight">{winner.matchScore}%</p>
+                <p className="text-4xl sm:text-5xl font-black text-[#FF3E74] tracking-tight">{winner.matchScore}%</p>
               </div>
-              <div className="w-px h-12 bg-white/10"></div>
+              <div className="hidden sm:block w-px h-12 bg-white/10"></div>
               <div>
                 <p className="text-xs font-bold text-white">{winner.name}</p>
                 <p className="text-[11px] text-gray-400 font-semibold mt-0.5">{winner.preferredJob}</p>
-                <div className="flex gap-1.5 mt-2">
+                <div className="flex flex-wrap gap-1.5 mt-2">
                   <span className="px-2 py-0.5 bg-blue-500/20 text-blue-300 rounded text-[9px] font-bold border border-blue-500/30">Skills: {winner.skillsScore}%</span>
                   <span className="px-2 py-0.5 bg-purple-500/20 text-purple-300 rounded text-[9px] font-bold border border-purple-500/30">Exp: {winner.experienceScore}%</span>
                   <span className="px-2 py-0.5 bg-amber-500/20 text-amber-300 rounded text-[9px] font-bold border border-amber-500/30">Certs: {winner.certificationsScore}%</span>
@@ -323,8 +323,8 @@ const CompareCandidates = () => {
         </div>
 
         {/* Side-by-Side Comparison Matrix */}
-        <div className="bg-white border border-gray-100 rounded-[32px] shadow-sm overflow-hidden">
-          <div className="overflow-x-auto">
+        <div className="bg-white border border-gray-100 rounded-2xl sm:rounded-[32px] shadow-sm overflow-hidden">
+          <div className="overflow-x-auto scrollbar-hide">
             <table className="w-full border-collapse">
               <thead>
                 <tr className="bg-gray-50/55 border-b border-gray-100">
@@ -584,28 +584,30 @@ const CompareCandidates = () => {
   };
 
   const renderSelectionView = () => (
-    <div className="animate-in fade-in duration-500 flex flex-col h-[calc(100vh-140px)]">
+    <div className="animate-in fade-in duration-500 flex flex-col min-h-0 lg:h-[calc(100vh-140px)]">
       {/* Top Search and Comparison Info */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6 shrink-0">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4 sm:mb-6 shrink-0">
         <div>
-          <h1 className="text-3xl font-black text-gray-900 tracking-tight">Compare Candidates</h1>
-          <p className="text-gray-500 font-medium mt-1">Select candidates on the list to view their full resume details, then compare side-by-side.</p>
+          <h1 className="text-2xl sm:text-3xl font-black text-gray-900 tracking-tight">Compare Candidates</h1>
+          <p className="text-xs sm:text-sm text-gray-500 font-medium mt-1">Select candidates on the list to view their full resume details, then compare side-by-side.</p>
         </div>
 
         {/* Floating / Active Compare Stats */}
-        <div className="flex items-center gap-3">
-          <div className="bg-white border border-gray-100 rounded-2xl px-5 py-3 shadow-sm flex items-center gap-3">
-            <div className="w-8 h-8 bg-pink-50 border border-pink-100 text-[#D60041] rounded-xl flex items-center justify-center font-black text-sm">
-              {selectedCandidateIds.length}
-            </div>
-            <div>
-              <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">To Compare</p>
-              <p className="text-xs font-bold text-gray-900">Candidates Selected</p>
+        <div className="flex flex-wrap sm:flex-nowrap items-center gap-2.5 sm:gap-3 w-full sm:w-auto">
+          <div className="bg-white border border-gray-100 rounded-xl sm:rounded-2xl px-3.5 sm:px-5 py-2.5 sm:py-3 shadow-sm flex items-center gap-2.5 sm:gap-3 flex-1 sm:flex-initial justify-between sm:justify-start">
+            <div className="flex items-center gap-2.5 sm:gap-3">
+              <div className="w-7 h-7 sm:w-8 sm:h-8 bg-pink-50 border border-pink-100 text-[#D60041] rounded-xl flex items-center justify-center font-black text-xs sm:text-sm shrink-0">
+                {selectedCandidateIds.length}
+              </div>
+              <div>
+                <p className="text-[9px] sm:text-[10px] font-black text-gray-400 uppercase tracking-widest">To Compare</p>
+                <p className="text-xs font-bold text-gray-900 truncate">Candidates Selected</p>
+              </div>
             </div>
             {selectedCandidateIds.length > 0 && (
               <button
                 onClick={clearSelected}
-                className="p-1.5 hover:bg-rose-50 text-rose-500 rounded-lg hover:text-rose-600 transition-colors ml-2"
+                className="p-1.5 hover:bg-rose-50 text-rose-500 rounded-lg hover:text-rose-600 transition-colors ml-1"
                 title="Clear Selection"
               >
                 <Trash2 className="w-4 h-4" />
@@ -616,22 +618,22 @@ const CompareCandidates = () => {
           <button
             disabled={selectedCandidateIds.length < 2}
             onClick={() => setIsComparing(true)}
-            className={`flex items-center gap-2 px-6 py-3.5 rounded-2xl font-bold text-sm transition-all shadow-sm ${selectedCandidateIds.length >= 2
+            className={`flex items-center justify-center gap-2 px-4 sm:px-6 py-2.5 sm:py-3.5 rounded-xl sm:rounded-2xl font-bold text-xs sm:text-sm transition-all shadow-sm flex-1 sm:flex-initial text-center ${selectedCandidateIds.length >= 2
               ? 'bg-gray-900 hover:bg-black text-white cursor-pointer hover:scale-[1.02] active:scale-[0.98]'
               : 'bg-gray-100 text-gray-400 cursor-not-allowed border border-gray-100'
               }`}
           >
-            <TrendingUp className="w-4 h-4 text-[#D60041]" />
-            Compare Now
+            <TrendingUp className="w-4 h-4 text-[#D60041] shrink-0" />
+            <span>Compare Now</span>
           </button>
         </div>
       </div>
 
       {/* Split-Screen Selection Area */}
-      <div className="flex flex-col lg:flex-row flex-1 gap-6 overflow-hidden min-h-0 mb-6">
+      <div className="flex flex-col lg:flex-row flex-1 gap-6 min-h-0 mb-6 lg:overflow-hidden">
 
         {/* LEFT COLUMN: Candidate Search and List */}
-        <div className="w-full lg:w-[380px] bg-white border border-gray-100 rounded-[28px] shadow-sm flex flex-col overflow-hidden shrink-0">
+        <div className="w-full lg:w-[380px] bg-white border border-gray-100 rounded-2xl sm:rounded-[28px] shadow-sm flex flex-col max-h-[440px] lg:max-h-none overflow-hidden shrink-0">
 
           <div className="p-4 border-b border-gray-50 bg-gray-50/40 shrink-0 space-y-3">
             <div>
@@ -800,11 +802,11 @@ const CompareCandidates = () => {
         </div>
 
         {/* RIGHT COLUMN: Full Resume Details (Detailed Profile View) */}
-        <div className="flex-1 bg-white border border-gray-100 rounded-[28px] shadow-sm flex flex-col overflow-hidden">
+        <div className="flex-1 bg-white border border-gray-100 rounded-2xl sm:rounded-[28px] shadow-sm flex flex-col min-h-0 lg:overflow-hidden">
           {activeCandidate ? (
-            <div className="flex-grow flex flex-col overflow-hidden h-full">
+            <div className="flex-grow flex flex-col min-h-0 lg:overflow-hidden lg:h-full">
               {/* Profile Card Header */}
-              <div className="p-6 sm:p-8 border-b border-gray-50 bg-gray-50/15 flex flex-col sm:flex-row sm:items-center justify-between gap-6 shrink-0">
+              <div className="p-4 sm:p-6 lg:p-8 border-b border-gray-50 bg-gray-50/15 flex flex-col sm:flex-row sm:items-center justify-between gap-4 sm:gap-6 shrink-0">
                 <div className="flex items-center gap-4">
                   <div className="w-16 h-16 rounded-xl overflow-hidden border border-pink-100 shadow-sm shrink-0 bg-pink-50">
                     <img
@@ -864,7 +866,7 @@ const CompareCandidates = () => {
               </div>
 
               {/* Scrollable Detail Body */}
-              <div className="flex-1 overflow-y-auto p-6 sm:p-8 space-y-8 scrollbar-hide">
+              <div className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 space-y-6 sm:space-y-8 scrollbar-hide">
                 {/* Score Breakdown Cards */}
                 <div>
                   <h4 className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-3.5">Score Breakdown</h4>
@@ -1063,9 +1065,9 @@ const CompareCandidates = () => {
 
       <Header />
 
-      <div className="flex flex-1">
+      <div className="flex flex-1 min-h-0">
         <Sidebar />
-        <main className="flex-1 w-full max-w-full px-4 sm:px-6 md:px-10 py-6 flex flex-col overflow-hidden">
+        <main className="flex-1 w-full max-w-full px-4 sm:px-6 md:px-10 py-6 flex flex-col min-h-0 overflow-y-auto lg:overflow-hidden">
           {isComparing ? renderComparisonView() : renderSelectionView()}
         </main>
       </div>

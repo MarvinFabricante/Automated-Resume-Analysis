@@ -8,10 +8,11 @@ import {
   User, Mail, Phone, MapPin,
   Briefcase, GraduationCap, Building2,
   FileText, Code, X, Plus,
-  ArrowLeft, Save
+  ArrowLeft, ArrowRight, Save
 } from 'lucide-react';
 import Header from '../../components/layout/Header';
 import Sidebar from '../../components/layout/Sidebar';
+import ApplicationProgressBar from '../../components/common/ApplicationProgressBar';
 import ApplicationSuccessModal from '../../components/modals/shared/ApplicationSuccessModal';
 import { useSubmitApplicationMutation } from '../../redux/api/apiSlice';
 
@@ -36,7 +37,7 @@ const CandidateProfileForm = () => {
     };
     if (jobId) {
       fetchJobTitle();
-      localStorage.setItem('draft_application_step', '3');
+      localStorage.setItem('draft_application_step', '2');
       localStorage.setItem('draft_application_job_id', jobId);
     }
   }, [jobId, location.state]);
@@ -173,55 +174,48 @@ const CandidateProfileForm = () => {
       return;
     }
 
-    const payload = {
-      job_id: jobId,
-      candidate_name: formData.fullName,
-      candidate_email: loggedInEmail || formData.email,
-      phone: formData.phone,
-      location: formData.location,
-      job_title: jobTitle,
-      company: formData.company,
-      relevance: formData.relevance,
-      degree: formData.degree,
-      college: formData.college,
-      skills: formData.skills,
-      match_score: matchScore,
-      skills_score: skillsScore,
-      experience_score: experienceScore,
-      education_score: educationScore,
-      skills_reason: skillsReason,
-      experience_reason: experienceReason,
-      education_reason: educationReason,
-      matched_skills: matchData?.matched_skills || [],
-      missing_skills: matchData?.missing_skills || [],
-      relevant_experience: matchData?.relevant_experience || "",
-      experience_gaps: matchData?.experience_gaps || "",
-      required_degree: matchData?.required_degree || "",
-      candidate_degree: matchData?.candidate_degree || "",
-      recommendations: matchData?.recommendations || [],
-      ai_summary: matchData?.ai_summary || "",
-      strengths: matchData?.strengths || [],
-      weaknesses: matchData?.weaknesses || [],
-      ai_powered: Boolean(matchData?.ai_powered),
-      profile_image_url: localStorage.getItem('profile_image_url'),
-      resume_url: location.state?.resumeUrl || null,
-    };
-
-    try {
-      await submitApplication(payload).unwrap();
-      // Clear draft as it's now submitted
-      localStorage.removeItem('draft_application_job_title');
-      localStorage.removeItem('draft_application_job_id');
-      localStorage.removeItem('draft_application_step');
-      setShowSuccessModal(true);
-    } catch (err) {
-      console.error("Failed to submit application:", err);
-      alert("Failed to submit application. Please try again.");
-    }
-  };
-
-  const handleFinalRedirect = () => {
-    navigate('/candidate/dashboard');
+    // Step 2 Submission -> NEXT is Step 3 Review in Candidate Portal
+    localStorage.setItem('draft_application_step', '3');
+    navigate(`/candidate/preview-profile/${jobId}`, {
+      state: {
+        job: { title: jobTitle, job_id: jobId },
+        fileName: location.state?.fileName,
+        formData,
+        extractedData: {
+          ...location.state?.extractedData,
+          fullname: formData.fullName,
+          email: loggedInEmail || formData.email,
+          phone: formData.phone,
+          location: formData.location,
+          job_title: formData.jobTitle,
+          company: formData.company,
+          relevance: formData.relevance,
+          degree: formData.degree,
+          college: formData.college,
+          skills: formData.skills.join(' | '),
+          skills_list: formData.skills,
+          resumeUrl: location.state?.resumeUrl || null
+        },
+        personal: {
+          name: formData.fullName,
+          email: loggedInEmail || formData.email,
+          phone: formData.phone,
+          location: formData.location
+        },
+        experience: {
+          title: formData.jobTitle,
+          company: formData.company,
+          relevance: formData.relevance
+        },
+        education: {
+          degree: formData.degree,
+          college: formData.college
+        },
+        skills: formData.skills,
+        matchData,
+        matchScore
+      }
+    });
   };
 
   return (
@@ -235,13 +229,16 @@ const CandidateProfileForm = () => {
       <div className="flex flex-1">
         <Sidebar />
         <main className="max-w-7xl mx-auto px-6 py-12 flex-grow">
+        {/* Reversal of action / Back to Upload */}
         <button
-          onClick={() => navigate(-1)}
-          className="flex items-center text-slate-500 hover:text-[#D10043] transition-all mb-8 font-semibold text-sm group"
+          onClick={() => navigate(jobId ? `/candidate/upload-resume/${jobId}` : '/candidate/upload-resume')}
+          className="flex items-center text-slate-500 hover:text-[#D10043] transition-all mb-6 font-semibold text-sm group"
         >
           <ArrowLeft size={18} className="mr-2 group-hover:-translate-x-1 transition-transform" />
-          Back to Review
+          Back to Resume Upload
         </button>
+
+        {jobId && <ApplicationProgressBar currentStep={2} />}
 
         <div className="mb-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
           <div>
@@ -441,25 +438,21 @@ const CandidateProfileForm = () => {
             </section>
           </div>
 
-          <div className="flex flex-col sm:flex-row justify-end gap-4 pt-6 border-t border-slate-200">
+          <div className="flex flex-col sm:flex-row justify-between items-center gap-4 pt-6 border-t border-slate-200">
             <button
               type="button"
-              onClick={() => navigate(-1)}
-              className="px-8 py-4 bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-700 rounded-[20px] font-bold transition-all"
+              onClick={() => navigate(jobId ? `/candidate/upload-resume/${jobId}` : '/candidate/upload-resume')}
+              className="w-full sm:w-auto px-8 py-4 bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-700 rounded-[20px] font-bold transition-all flex items-center justify-center gap-2 active:scale-95"
             >
-              Discard Changes
+              <ArrowLeft size={18} />
+              <span>Back to Resume Upload</span>
             </button>
             <button
               type="submit"
-              disabled={isSubmitting}
-              className="px-10 py-4 bg-[#D10043] hover:bg-slate-900 text-white rounded-[20px] font-bold flex items-center justify-center gap-3 transition-all shadow-xl shadow-pink-100 active:scale-[0.98] disabled:opacity-70 disabled:cursor-not-allowed"
+              className="w-full sm:w-auto px-10 py-4 bg-[#D10043] hover:bg-slate-900 text-white rounded-[20px] font-bold flex items-center justify-center gap-3 transition-all shadow-xl shadow-pink-100 active:scale-[0.98]"
             >
-              {isSubmitting ? (
-                <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-              ) : (
-                <Save size={20} />
-              )}
-              {isSubmitting ? 'Submitting...' : ((!jobId || jobId === 'smart') ? 'Find Job Matches' : 'Submit Final Application')}
+              <span>{(!jobId || jobId === 'smart') ? 'Find Job Matches' : 'Submit Application to Review'}</span>
+              <ArrowRight size={20} />
             </button>
           </div>
 

@@ -7,11 +7,11 @@ import {
   User, Mail, Phone, MapPin,
   Briefcase, GraduationCap, Building2,
   FileText, Code, X, Plus,
-  ArrowLeft, Save
+  ArrowLeft, ArrowRight, Save, ShieldCheck
 } from 'lucide-react';
 import Header from '../../../components/layout/Header';
 import Footer from '../../../components/layout/Footer';
-import ApplicationSuccessModal from '../../../components/modals/shared/ApplicationSuccessModal';
+import ApplicationProgressBar from '../../../components/common/ApplicationProgressBar';
 
 const ApplicationForm = () => {
   const navigate = useNavigate();
@@ -33,7 +33,6 @@ const ApplicationForm = () => {
 
   const [jobTitle, setJobTitle] = useState(location.state?.job?.title || "Position");
   const [currentSkill, setCurrentSkill] = useState("");
-  const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [matchScore, setMatchScore] = useState(location.state?.matchData?.match_percentage || 0);
   const [matchData, setMatchData] = useState(location.state?.matchData || null);
   const [, setIsCalculating] = useState(false);
@@ -109,9 +108,43 @@ const ApplicationForm = () => {
     }));
   };
 
-  const handleSubmit = async (e) => {
+  const handleBackToUpload = () => {
+    if (jobId && jobId !== 'smart') {
+      navigate(`/apply/${jobId}`, {
+        state: {
+          job: location.state?.job,
+          fileName: location.state?.fileName,
+          extractedData: {
+            ...location.state?.extractedData,
+            fullname: formData.fullName,
+            email: formData.email,
+            phone: formData.phone,
+            location: formData.location,
+            job_title: formData.jobTitle,
+            company: formData.company,
+            relevance: formData.relevance,
+            degree: formData.degree,
+            college: formData.college,
+            skills: formData.skills.join(' | '),
+            skills_list: formData.skills,
+            profile_image_url: location.state?.profile_image_url || location.state?.extractedData?.profile_image_url
+          },
+          matchData
+        }
+      });
+    } else {
+      navigate(-1);
+    }
+  };
+
+  const handleSubmit = (e) => {
     e.preventDefault();
     
+    if (!formData.fullName.trim() || !formData.email.trim()) {
+      alert("Please provide at least your full name and email address.");
+      return;
+    }
+
     if (jobId === 'smart') {
       const updatedExtractedData = {
         fullname: formData.fullName,
@@ -127,76 +160,58 @@ const ApplicationForm = () => {
         profile_image_url: location.state?.profile_image_url || null
       };
 
-      try {
-        const payload = {
-          skills: formData.skills.join(', '),
-          experience: formData.relevance,
-          education: formData.degree,
-          highest_degree: formData.degree,
-          fullname: formData.fullName,
-          location: formData.location
-        };
-        const matchRes = await candidateService.matchData(null, payload);
-        const matches = matchRes.data.results || [];
-        navigate(`/smart-matches`, {
-          state: {
-            matches,
-            extractedData: updatedExtractedData,
-            fileName: location.state?.fileName
-          }
-        });
-      } catch (err) {
-        console.error("Failed to fetch smart matches:", err);
-        alert("Failed to fetch job matches. Please try again.");
-      }
+      const runSmartMatch = async () => {
+        try {
+          const payload = {
+            skills: formData.skills.join(', '),
+            experience: formData.relevance,
+            education: formData.degree,
+            highest_degree: formData.degree,
+            fullname: formData.fullName,
+            location: formData.location
+          };
+          const matchRes = await candidateService.matchData(null, payload);
+          const matches = matchRes.data.results || [];
+          navigate(`/smart-matches`, {
+            state: {
+              matches,
+              extractedData: updatedExtractedData,
+              fileName: location.state?.fileName
+            }
+          });
+        } catch (err) {
+          console.error("Failed to fetch smart matches:", err);
+          alert("Failed to fetch job matches. Please try again.");
+        }
+      };
+      runSmartMatch();
       return;
     }
 
-    try {
-      await candidateService.submitApplication({
-        job_id: jobId,
-        candidate_name: formData.fullName,
-        candidate_email: formData.email,
-        phone: formData.phone,
-        location: formData.location,
-        job_title: formData.jobTitle,
-        company: formData.company,
-        relevance: formData.relevance,
-        degree: formData.degree,
-        college: formData.college,
-        skills: formData.skills,
-        match_score: matchScore,
-        skills_score: matchData?.skills_score || 0,
-        experience_score: matchData?.experience_score || 0,
-        education_score: matchData?.education_score || 0,
-        profile_image_url: location.state?.profile_image_url || null,
-        skills_reason: matchData?.skills_reason || "",
-        experience_reason: matchData?.experience_reason || "",
-        education_reason: matchData?.education_reason || "",
-        matched_skills: matchData?.matched_skills || [],
-        missing_skills: matchData?.missing_skills || [],
-        relevant_experience: matchData?.relevant_experience || "",
-        experience_gaps: matchData?.experience_gaps || "",
-        required_degree: matchData?.required_degree || "",
-        candidate_degree: matchData?.candidate_degree || "",
-        recommendations: matchData?.recommendations || [],
-        ai_summary: matchData?.ai_summary || "",
-        strengths: matchData?.strengths || [],
-        weaknesses: matchData?.weaknesses || [],
-        ai_powered: Boolean(matchData?.ai_powered)
-      });
-      setShowSuccessModal(true);
-    } catch (error) {
-      console.error("Failed to submit application:", error);
-      alert("Failed to submit application. Please try again.");
-    }
-  };
-
-  const handleFinalRedirect = () => {
-    navigate(`/submissionsuccess/${jobId}`, {
+    // Step 2 Submission -> NEXT is Step 3 Review
+    navigate(`/preview-and-verify/${jobId}`, {
       state: {
-        updatedData: formData,
-        fileName: location.state?.fileName
+        job: location.state?.job,
+        jobTitle,
+        fileName: location.state?.fileName,
+        formData,
+        extractedData: {
+          ...location.state?.extractedData,
+          fullname: formData.fullName,
+          email: formData.email,
+          phone: formData.phone,
+          location: formData.location,
+          job_title: formData.jobTitle,
+          company: formData.company,
+          relevance: formData.relevance,
+          degree: formData.degree,
+          college: formData.college,
+          skills: formData.skills.join(' | '),
+          skills_list: formData.skills,
+          profile_image_url: location.state?.profile_image_url || location.state?.extractedData?.profile_image_url
+        },
+        matchData,
+        matchScore
       }
     });
   };
@@ -210,20 +225,25 @@ const ApplicationForm = () => {
       <Header />
 
       <main className="max-w-7xl mx-auto px-6 py-12">
+        {/* Reversal of action: Back to Resume Upload */}
         <button
           id="btn-back"
-          onClick={() => navigate(-1)}
-          className="flex items-center text-slate-500 hover:text-[#D10043] transition-all mb-8 font-semibold text-sm group"
+          type="button"
+          onClick={handleBackToUpload}
+          className="flex items-center text-slate-500 hover:text-[#D10043] transition-all mb-6 font-semibold text-sm group"
         >
           <ArrowLeft size={18} className="mr-2 group-hover:-translate-x-1 transition-transform" />
-          Back to Review
+          Back to Resume Upload
         </button>
+
+        {/* Multi-step Application Progress Bar */}
+        <ApplicationProgressBar currentStep={2} />
 
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-10 gap-6">
           <div>
             <h1 className="text-3xl font-black text-slate-900 tracking-tight mb-2">Application Details</h1>
             <p className="text-slate-500 font-medium">
-              Update or manually enter your professional information below.
+              Update or manually enter your professional information below before proceeding to review.
             </p>
           </div>
         </div>
@@ -407,31 +427,27 @@ const ApplicationForm = () => {
             </section>
           </div>
 
-          <div className="flex flex-col sm:flex-row justify-end gap-4 pt-6 border-t border-slate-200">
+          <div className="flex flex-col sm:flex-row justify-between items-center gap-4 pt-6 border-t border-slate-200">
             <button
-              id="btn-cancel"
+              id="btn-back-bottom"
               type="button"
-              onClick={() => navigate(-1)}
-              className="px-8 py-4 bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-700 rounded-[20px] font-bold transition-all"
+              onClick={handleBackToUpload}
+              className="w-full sm:w-auto px-8 py-4 bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-700 rounded-[20px] font-bold transition-all flex items-center justify-center gap-2 active:scale-95"
             >
-              Cancel
+              <ArrowLeft size={18} />
+              <span>Back to Resume Upload</span>
             </button>
             <button
-              id="btn-save-application"
+              id="btn-submit-to-review"
               type="submit"
-              className="px-10 py-4 bg-[#D10043] hover:bg-slate-900 text-white rounded-[20px] font-bold flex items-center justify-center gap-3 transition-all shadow-xl shadow-pink-100 active:scale-[0.98]"
+              className="w-full sm:w-auto px-10 py-4 bg-[#D10043] hover:bg-slate-900 text-white rounded-[20px] font-bold flex items-center justify-center gap-3 transition-all shadow-xl shadow-pink-100 active:scale-[0.98]"
             >
-              <Save size={20} />
-              {jobId === 'smart' ? 'Find Job Matches' : 'Save Application Details'}
+              <span>{jobId === 'smart' ? 'Find Job Matches' : 'Submit Application to Review'}</span>
+              <ArrowRight size={20} />
             </button>
           </div>
 
         </form>
-
-        <ApplicationSuccessModal 
-          isOpen={showSuccessModal} 
-          onConfirm={handleFinalRedirect} 
-        />
       </main>
 
       <Footer />

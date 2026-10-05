@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import Header from '../../../components/layout/Header';
 import Footer from '../../../components/layout/Footer';
+import ApplicationProgressBar from '../../../components/common/ApplicationProgressBar';
 
 const SubmissionSuccessPage = () => {
   const navigate = useNavigate();
@@ -43,7 +44,11 @@ const SubmissionSuccessPage = () => {
 
       <Header />
 
-      <main className="max-w-7xl mx-auto px-6 py-20 flex flex-col items-center">
+      <main className="max-w-7xl mx-auto px-6 py-12 flex flex-col items-center">
+        {/* Progress Bar (Step 4 completed) */}
+        <div className="w-full max-w-4xl mb-4">
+          <ApplicationProgressBar currentStep={4} />
+        </div>
         <div className="relative mb-10">
           <div className="absolute inset-0 bg-[#D60041] opacity-20 blur-3xl rounded-full animate-pulse"></div>
           <div className="relative w-24 h-24 bg-white rounded-[32px] shadow-2xl shadow-pink-100 border border-slate-50 flex items-center justify-center text-[#D60041] animate-in zoom-in duration-700">

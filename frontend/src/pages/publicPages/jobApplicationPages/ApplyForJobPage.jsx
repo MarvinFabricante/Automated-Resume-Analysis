@@ -21,6 +21,7 @@ import {
 import Header from '../../../components/layout/Header';
 import Footer from '../../../components/layout/Footer';
 import RecruitmentTermsModal from '../../../components/modals/shared/RecruitmentTermsModal';
+import ApplicationProgressBar from '../../../components/common/ApplicationProgressBar';
 
 const STATIC_JOBS = [
   { job_id: "1", title: "Production Supervisor", department: "Manufacturing" },
@@ -96,6 +97,51 @@ const ApplyForJobPage = () => {
       return () => clearTimeout(timer);
     }
   }, [cooldown]);
+
+  // Restore previously extracted data if navigated back (reversal of action)
+  useEffect(() => {
+    if (location.state?.extractedData && !extractedData) {
+      setExtractedData(location.state.extractedData);
+      setIsComplete(true);
+      if (location.state.fileName) {
+        setFile({ name: location.state.fileName, size: 1024 * 1024 });
+      }
+      if (location.state.matchData) {
+        setMatchData(location.state.matchData);
+      }
+    }
+  }, [location.state, extractedData]);
+
+  const handleProceedToForm = () => {
+    if (!job?.job_id) return;
+    navigate(`/applicationform/${job.job_id}`, {
+      state: {
+        job,
+        fileName: file?.name || "Uploaded Resume",
+        extractedData,
+        matchData,
+        personal: {
+          name: extractedData?.fullname,
+          email: extractedData?.email,
+          phone: extractedData?.phone,
+          location: extractedData?.location
+        },
+        experience: {
+          title: extractedData?.job_title || (extractedData?.experience ? extractedData.experience.split('|')[0]?.trim() : ""),
+          company: extractedData?.company || (extractedData?.experience ? extractedData.experience.split('|')[1]?.trim() : "") || job?.department || "",
+          relevance: extractedData?.relevance || (extractedData?.years_experience ? `${extractedData.years_experience} years of experience` : "")
+        },
+        education: {
+          degree: extractedData?.degree || extractedData?.highest_degree || "",
+          college: extractedData?.institution || extractedData?.college || (extractedData?.education ? extractedData.education.split('|')[0]?.trim() : "")
+        },
+        skills: (Array.isArray(extractedData?.skills_list) && extractedData.skills_list.length > 0)
+          ? extractedData.skills_list
+          : (extractedData?.skills ? extractedData.skills.split(' | ').filter(Boolean) : []),
+        profile_image_url: extractedData?.profile_image_url || null
+      }
+    });
+  };
 
   const getMatchTier = (pct) => {
     if (pct >= 70) return 'Strong Match';
@@ -187,6 +233,17 @@ const ApplyForJobPage = () => {
       <Header />
 
       <main className="max-w-7xl mx-auto px-6 py-12">
+        {/* Reversal of action: Back to Job Details */}
+        <button
+          onClick={() => navigate(job?.job_id ? `/job-details/${job.job_id}` : '/careerspage')}
+          className="flex items-center text-slate-500 hover:text-[#D10043] transition-all mb-6 font-semibold text-sm group"
+        >
+          <ArrowLeft size={18} className="mr-2 group-hover:-translate-x-1 transition-transform" />
+          Back to Job Details
+        </button>
+
+        {/* Multi-step Application Progress Bar */}
+        <ApplicationProgressBar currentStep={1} />
 
         <div className="bg-white rounded-[40px] shadow-xl shadow-slate-200/60 border border-slate-100 overflow-hidden relative">
           <div className="absolute top-0 right-0 w-64 h-64 bg-red-50 rounded-bl-[200px] -mr-20 -mt-20 opacity-50"></div>
@@ -218,14 +275,14 @@ const ApplyForJobPage = () => {
             </p>
           </div>
 
-          <div className="p-8 md:p-12">
+          <div className="p-5 sm:p-8 md:p-12">
             {!file ? (
               <div
                 onDragOver={handleDrag}
                 onDragLeave={handleDrag}
                 onDrop={handleDrop}
                 onClick={() => fileInputRef.current.click()}
-                className={`group relative border-2 border-dashed rounded-[32px] p-12 text-center cursor-pointer transition-all duration-300 ${isDragging
+                className={`group relative border-2 border-dashed rounded-2xl sm:rounded-[32px] p-6 sm:p-12 text-center cursor-pointer transition-all duration-300 ${isDragging
                   ? "border-[#D60041] bg-pink-50/50"
                   : "border-slate-200 hover:border-[#D60041]/30 hover:bg-slate-50"
                   }`}
@@ -237,38 +294,38 @@ const ApplyForJobPage = () => {
                   className="hidden"
                   accept=".pdf,.doc,.docx"
                 />
-                <div className="w-20 h-20 bg-slate-100 text-slate-400 group-hover:text-[#D60041] group-hover:bg-pink-50 rounded-3xl mb-6 flex items-center justify-center mx-auto transition-all duration-300">
-                  <FileUp size={40} />
+                <div className="w-16 h-16 sm:w-20 sm:h-20 bg-slate-100 text-slate-400 group-hover:text-[#D60041] group-hover:bg-pink-50 rounded-2xl sm:rounded-3xl mb-4 sm:mb-6 flex items-center justify-center mx-auto transition-all duration-300">
+                  <FileUp size={32} />
                 </div>
-                <h3 className="text-lg font-bold mb-1">Upload Resume</h3>
-                <p className="text-slate-400 text-sm mb-8 font-medium">Drag and drop or click to browse (PDF or DOCX)</p>
-                <span className="inline-flex items-center bg-slate-900 text-white px-8 py-3.5 rounded-2xl font-bold text-sm hover:bg-[#D60041] transition-colors shadow-md">
+                <h3 className="text-base sm:text-lg font-bold mb-1">Upload Resume</h3>
+                <p className="text-slate-400 text-xs sm:text-sm mb-6 sm:mb-8 font-medium">Drag and drop or click to browse (PDF or DOCX)</p>
+                <span className="inline-flex items-center bg-slate-900 text-white px-6 sm:px-8 py-3 sm:py-3.5 rounded-xl sm:rounded-2xl font-bold text-xs sm:text-sm hover:bg-[#D60041] transition-colors shadow-md">
                   Select Document
                 </span>
               </div>
             ) : (
               <div className="space-y-6">
-                <div className="flex items-center p-6 bg-slate-50 rounded-[24px] border border-slate-100">
-                  <div className="p-4 bg-white rounded-xl text-[#D60041] shadow-sm mr-5">
-                    <FileText size={28} />
+                <div className="flex items-center p-4 sm:p-6 bg-slate-50 rounded-2xl sm:rounded-[24px] border border-slate-100">
+                  <div className="p-3 sm:p-4 bg-white rounded-xl text-[#D60041] shadow-sm mr-3 sm:mr-5 shrink-0">
+                    <FileText size={24} />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <h4 className="font-bold text-slate-900 truncate">{file.name}</h4>
-                    <p className="text-xs text-slate-500 font-medium">{(file.size / (1024 * 1024)).toFixed(2)} MB • Ready to submit</p>
+                    <h4 className="font-bold text-sm sm:text-base text-slate-900 truncate">{file.name}</h4>
+                    <p className="text-[11px] sm:text-xs text-slate-500 font-medium">{(file.size / (1024 * 1024)).toFixed(2)} MB • Ready to submit</p>
                   </div>
                   {!isUploading && !isComplete && (
                     <button
                       onClick={() => setFile(null)}
-                      className="p-2.5 hover:bg-white hover:text-red-500 rounded-full transition-all text-slate-400 border border-transparent hover:border-slate-100"
+                      className="p-2 sm:p-2.5 hover:bg-white hover:text-red-500 rounded-full transition-all text-slate-400 border border-transparent hover:border-slate-100 shrink-0 ml-2"
                     >
-                      <X size={20} />
+                      <X size={18} />
                     </button>
                   )}
                 </div>
 
                 {isUploading && (
                   <div className="px-2">
-                    <div className="flex justify-between text-sm font-bold text-slate-700 mb-3">
+                    <div className="flex justify-between text-xs sm:text-sm font-bold text-slate-700 mb-3">
                       <span className="flex items-center gap-2">
                         <span className="w-2 h-2 bg-[#D60041] rounded-full animate-pulse" />
                         Extracting resume details...
@@ -287,7 +344,7 @@ const ApplyForJobPage = () => {
                   <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
                     {/* Match Analysis Section */}
                     {matchData && (
-                      <div className="bg-white border border-slate-100 rounded-[32px] p-8 shadow-sm space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-700">
+                      <div className="bg-white border border-slate-100 rounded-2xl sm:rounded-[32px] p-5 sm:p-8 shadow-sm space-y-6 sm:space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-700">
                         <div className="flex items-center gap-3 text-[#D60041]">
                           <div className="p-2.5 bg-pink-50 rounded-xl">
                             <Target size={20} />
@@ -295,11 +352,11 @@ const ApplyForJobPage = () => {
                           <h2 className="font-bold uppercase tracking-widest text-xs">AI Match Analysis</h2>
                         </div>
 
-                        <div className="flex flex-col md:flex-row items-center gap-8">
+                        <div className="flex flex-col md:flex-row items-center gap-6 sm:gap-8">
                           {/* Gauge */}
                           <div className="flex flex-col items-center shrink-0">
-                            <div className="relative w-32 h-32">
-                              <svg className="w-32 h-32 -rotate-90" viewBox="0 0 100 100">
+                            <div className="relative w-28 h-28 sm:w-32 sm:h-32">
+                              <svg className="w-28 h-28 sm:w-32 sm:h-32 -rotate-90" viewBox="0 0 100 100">
                                 <circle cx="50" cy="50" r="42" fill="none" stroke="#f1f5f9" strokeWidth="10" />
                                 <circle
                                   cx="50" cy="50" r="42" fill="none"
@@ -311,14 +368,14 @@ const ApplyForJobPage = () => {
                                 />
                               </svg>
                               <div className="absolute inset-0 flex flex-col items-center justify-center">
-                                <span className="text-sm font-black text-slate-900 leading-none uppercase tracking-wider text-center px-2">Analyzed</span>
+                                <span className="text-xs sm:text-sm font-black text-slate-900 leading-none uppercase tracking-wider text-center px-2">Analyzed</span>
                               </div>
                             </div>
-                            <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 mt-3">Overall Match</span>
+                            <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 mt-2 sm:mt-3">Overall Match</span>
                           </div>
 
                           {/* Sub-Scores */}
-                          <div className="flex-1 grid grid-cols-3 gap-3 w-full">
+                          <div className="flex-1 grid grid-cols-1 sm:grid-cols-3 gap-2.5 sm:gap-3 w-full">
                             {[
                               { label: 'Skills', score: matchData.skills_score, color: 'text-blue-600', bgColor: 'bg-blue-50', icon: <Cpu size={14} /> },
                               { label: 'Experience', score: matchData.experience_score, color: 'text-purple-600', bgColor: 'bg-purple-50', icon: <Briefcase size={14} /> },
@@ -431,20 +488,29 @@ const ApplyForJobPage = () => {
                       </div>
                     </div>
 
-                    <button
-                      onClick={() => navigate(`/preview-and-verify/${job.job_id}`, { 
-                        state: { 
-                          job, 
-                          fileName: file.name,
-                          extractedData,
-                          matchData
-                        } 
-                      })}
-                      className="w-full bg-slate-900 hover:bg-[#D60041] text-white py-5 rounded-[24px] font-bold flex items-center justify-center gap-3 transition-all shadow-xl hover:shadow-pink-100 active:scale-95"
-                    >
-                      <span>Proceed to Review Information</span>
-                      <ArrowRight size={20} />
-                    </button>
+                    <div className="flex flex-col sm:flex-row gap-4 pt-4 border-t border-slate-100">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setFile(null);
+                          setExtractedData(null);
+                          setIsComplete(false);
+                          setMatchData(null);
+                        }}
+                        className="flex-1 bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-700 py-4 md:py-5 rounded-[24px] font-bold transition-all active:scale-95 flex items-center justify-center gap-2 text-sm"
+                      >
+                        <FileUp size={18} />
+                        <span>Upload Different Resume</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleProceedToForm}
+                        className="flex-[2] bg-[#D60041] hover:bg-slate-900 text-white py-4 md:py-5 rounded-[24px] font-bold flex items-center justify-center gap-3 transition-all shadow-xl shadow-pink-100 active:scale-95"
+                      >
+                        <span>Proceed to Application Details</span>
+                        <ArrowRight size={20} />
+                      </button>
+                    </div>
                   </div>
                 )}
 
@@ -474,7 +540,7 @@ const ApplyForJobPage = () => {
                         }`}
                     >
                       <ShieldCheck size={22} />
-                      <span>{cooldown > 0 ? `Wait ${cooldown}s` : 'Submit My Application'}</span>
+                      <span>{cooldown > 0 ? `Wait ${cooldown}s` : 'Process & Continue to Application'}</span>
                     </button>
                   </div>
                 )}
