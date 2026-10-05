@@ -17,7 +17,8 @@ const Sidebar = () => {
 
   const isAdminRole = userRole === 'ADMIN';
   const isHRRole = userRole === 'HR';
-  const isCandidateRole = userRole === 'CANDIDATE';
+  const isHRPage = location.pathname.startsWith('/hr');
+  const isHR = isHRRole || isHRPage;
 
   const getNavItems = () => {
     const items = [];
@@ -59,13 +60,15 @@ const Sidebar = () => {
   return (
     <>
       {/* Mobile Backdrop */}
-      <div 
-        className={`lg:hidden fixed inset-0 bg-gray-900/50 z-[35] transition-opacity duration-300 ${isSidebarOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
-        onClick={() => dispatch(closeSidebar())}
-      />
+      {!isHR && (
+        <div 
+          className={`lg:hidden fixed inset-0 bg-gray-900/50 z-[35] transition-opacity duration-300 ${isSidebarOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+          onClick={() => dispatch(closeSidebar())}
+        />
+      )}
       <aside
         className={`
-          flex fixed top-[81px] left-0 
+          ${isHR ? 'hidden lg:flex' : 'flex'} fixed top-[81px] left-0 
           bg-white border-r border-gray-100 
           h-[calc(100vh-81px)] 
           z-[40] flex-col transition-all duration-300 ease-in-out
