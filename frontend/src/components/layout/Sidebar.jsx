@@ -15,8 +15,10 @@ const Sidebar = () => {
   const { role: userRole } = useSelector(state => state.auth);
   const { isSidebarOpen } = useSelector(state => state.ui);
 
-  const isAdminRole = userRole === 'ADMIN';
-  const isHRRole = userRole === 'HR';
+  const normRole = (userRole || '').toUpperCase();
+  const isAdminRole = normRole === 'ADMIN';
+  const isHRRole = normRole === 'HR';
+  const isCandidateRole = normRole === 'CANDIDATE';
   const isHRPage = location.pathname.startsWith('/hr');
   const isHR = isHRRole || isHRPage;
 

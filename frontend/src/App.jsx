@@ -5,6 +5,7 @@ import { useEffect } from 'react';
 import ProtectedRoute from './ProtectedRoutes';
 import PublicRoute from './PublicRoute';
 import ScrollToTop from './components/layout/ScrollToTop';
+import ErrorBoundary from './components/common/ErrorBoundary';
 
 import Login from './pages/publicPages/authenticationPages/Login';
 import Register from './pages/publicPages/authenticationPages/Register';
@@ -60,75 +61,77 @@ const App = () => {
   }, []);
 
   return (
-    <HelmetProvider>
-      <ScrollToTop />
-      <Routes>
-        <Route path="/auth/callback" element={<GoogleCallback />} />
-        <Route element={<PublicRoute />}>
-          <Route path="/login" element={<Login />} />
-          <Route path="/register" element={<Register />} />
-          <Route path="/forgot-password" element={<ForgotPassword />} />
-          <Route path="/reset-password" element={<ResetPassword />} />
-          <Route path="/" element={<LandingPage />} />
-        </Route>
-        <Route path="/careerspage" element={<CareersPage />} />
-        <Route path="/aboutpage" element={<AboutPage />} />
-
-        <Route path="/smart-upload" element={<SmartUploadPage />} />
-        <Route path="/smart-matches" element={<SmartMatchResult />} />
-        <Route path="/apply/:jobId" element={<ApplyForJobPage />} />
-        <Route path="/job-details/:jobId" element={<JobDetailsPage />} />
-        <Route path="/preview-and-verify/:jobId" element={<PreviewAndVerifyPage />} />
-        <Route path="/applicationform/:jobId" element={<ApplicationForm />} />
-        <Route path="/submissionsuccess/:jobId" element={<SubmissionSuccessPage />} />
-
-        <Route element={<ProtectedRoute allowedRole="ADMIN" />}>
-          <Route path="/admin">
-            <Route path="dashboard" element={<AdminDashboard />} />
-            <Route path="users" element={<UsersPage />} />
-            <Route path="jobmanagement" element={<JobManagement />} />
-            <Route path="system-config" element={<SystemSettings />} />
-            <Route path="performance" element={<PerformanceStats />} />
-            <Route path="messages" element={<MessagesPage />} />
-            <Route path="settings" element={<AccountSettings />} />
-            <Route path="profile" element={<ViewProfile />} />
+    <ErrorBoundary>
+      <HelmetProvider>
+        <ScrollToTop />
+        <Routes>
+          <Route path="/auth/callback" element={<GoogleCallback />} />
+          <Route element={<PublicRoute />}>
+            <Route path="/login" element={<Login />} />
+            <Route path="/register" element={<Register />} />
+            <Route path="/forgot-password" element={<ForgotPassword />} />
+            <Route path="/reset-password" element={<ResetPassword />} />
+            <Route path="/" element={<LandingPage />} />
           </Route>
-        </Route>
+          <Route path="/careerspage" element={<CareersPage />} />
+          <Route path="/aboutpage" element={<AboutPage />} />
 
-        <Route element={<ProtectedRoute allowedRole="HR" />}>
-          <Route path="/hr">
-            <Route path="dashboard" element={<HRDashboard />} />
-            <Route path="screeningportal" element={<ScreeningPortal />} />
-            <Route path="scheduling" element={<HRSchedulingPage />} />
-            <Route path="comparecandidates" element={<CompareCandidates />} />
+          <Route path="/smart-upload" element={<SmartUploadPage />} />
+          <Route path="/smart-matches" element={<SmartMatchResult />} />
+          <Route path="/apply/:jobId" element={<ApplyForJobPage />} />
+          <Route path="/job-details/:jobId" element={<JobDetailsPage />} />
+          <Route path="/preview-and-verify/:jobId" element={<PreviewAndVerifyPage />} />
+          <Route path="/applicationform/:jobId" element={<ApplicationForm />} />
+          <Route path="/submissionsuccess/:jobId" element={<SubmissionSuccessPage />} />
 
-            <Route path="messages" element={<MessagesPage />} />
-            <Route path="settings" element={<AccountSettings />} />
-            <Route path="profile" element={<ViewProfile />} />
+          <Route element={<ProtectedRoute allowedRole="ADMIN" />}>
+            <Route path="/admin">
+              <Route path="dashboard" element={<AdminDashboard />} />
+              <Route path="users" element={<UsersPage />} />
+              <Route path="jobmanagement" element={<JobManagement />} />
+              <Route path="system-config" element={<SystemSettings />} />
+              <Route path="performance" element={<PerformanceStats />} />
+              <Route path="messages" element={<MessagesPage />} />
+              <Route path="settings" element={<AccountSettings />} />
+              <Route path="profile" element={<ViewProfile />} />
+            </Route>
           </Route>
-        </Route>
 
-        <Route element={<ProtectedRoute allowedRole="CANDIDATE" />}>
-          <Route path="/candidate">
-            <Route path="dashboard" element={<CandidateDashboard />} />
-            <Route path="findjobs" element={<FindJob />} />
-            <Route path="applicationtracking/:id" element={<ApplicationTracking />} />
-            <Route path="applicationtracking" element={<ApplicationTracking />} />
-            <Route path="messages" element={<MessagesPage />} />
-            <Route path="settings" element={<AccountSettings />} />
-            <Route path="profile" element={<ViewProfile />} />
-            <Route path="upload-resume/:jobId" element={<CandidateSmartUpload />} />
-            <Route path="upload-resume" element={<CandidateSmartUpload />} />
-            <Route path="preview-profile/:jobId" element={<CandidatePreviewAndVerify />} />
-            <Route path="preview-profile" element={<CandidatePreviewAndVerify />} />
-            <Route path="update-profile/:jobId" element={<CandidateProfileForm />} />
-            <Route path="update-profile" element={<CandidateProfileForm />} />
-            <Route path="smart-matches" element={<CandidateSmartMatchResult />} />
+          <Route element={<ProtectedRoute allowedRole="HR" />}>
+            <Route path="/hr">
+              <Route path="dashboard" element={<HRDashboard />} />
+              <Route path="screeningportal" element={<ScreeningPortal />} />
+              <Route path="scheduling" element={<HRSchedulingPage />} />
+              <Route path="comparecandidates" element={<CompareCandidates />} />
+
+              <Route path="messages" element={<MessagesPage />} />
+              <Route path="settings" element={<AccountSettings />} />
+              <Route path="profile" element={<ViewProfile />} />
+            </Route>
           </Route>
-        </Route>
-      </Routes>
-    </HelmetProvider>
-  )
+
+          <Route element={<ProtectedRoute allowedRole="CANDIDATE" />}>
+            <Route path="/candidate">
+              <Route path="dashboard" element={<CandidateDashboard />} />
+              <Route path="findjobs" element={<FindJob />} />
+              <Route path="applicationtracking/:id" element={<ApplicationTracking />} />
+              <Route path="applicationtracking" element={<ApplicationTracking />} />
+              <Route path="messages" element={<MessagesPage />} />
+              <Route path="settings" element={<AccountSettings />} />
+              <Route path="profile" element={<ViewProfile />} />
+              <Route path="upload-resume/:jobId" element={<CandidateSmartUpload />} />
+              <Route path="upload-resume" element={<CandidateSmartUpload />} />
+              <Route path="preview-profile/:jobId" element={<CandidatePreviewAndVerify />} />
+              <Route path="preview-profile" element={<CandidatePreviewAndVerify />} />
+              <Route path="update-profile/:jobId" element={<CandidateProfileForm />} />
+              <Route path="update-profile" element={<CandidateProfileForm />} />
+              <Route path="smart-matches" element={<CandidateSmartMatchResult />} />
+            </Route>
+          </Route>
+        </Routes>
+      </HelmetProvider>
+    </ErrorBoundary>
+  );
 }
 
 export default App;

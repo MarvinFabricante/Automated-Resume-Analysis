@@ -2,7 +2,7 @@ import { Navigate, Outlet } from 'react-router-dom';
 
 const PublicRoute = () => {
   const token = localStorage.getItem('token');
-  const userRole = localStorage.getItem('role');
+  const userRole = (localStorage.getItem('role') || '').toUpperCase();
 
   if (token && userRole) {
     if (userRole === 'ADMIN') {

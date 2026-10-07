@@ -7,16 +7,13 @@ import { XCircle, ArrowLeft } from 'lucide-react';
 const GoogleCallback = () => {
   const [searchParams] = useSearchParams();
   const dispatch = useDispatch();
-  const [error, setError] = useState(null);
+  const [error] = useState(() => {
+    const err = searchParams.get('error');
+    return err ? decodeURIComponent(err) : null;
+  });
 
   useEffect(() => {
-    const existingToken = localStorage.getItem('token');
-    const existingRole = localStorage.getItem('role');
-
-    if (existingToken && existingRole) {
-      setError(`An account (${existingRole.toLowerCase()}) is already logged in on this browser. Please log out first if you want to switch accounts.`);
-      return;
-    }
+    if (error) return;
 
     const token = searchParams.get('token');
     const role = searchParams.get('role');
@@ -26,7 +23,7 @@ const GoogleCallback = () => {
     const picture = searchParams.get('picture');
 
     if (token && role) {
-      // Store auth data
+      // Store auth data (cleanly overwrite any previous session)
       localStorage.setItem('token', token);
       localStorage.setItem('role', role);
       localStorage.setItem('saved_email', email || '');
@@ -43,20 +40,27 @@ const GoogleCallback = () => {
       }));
 
       // Redirect based on role
-      if (role.toUpperCase() === 'ADMIN') {
+      const normRole = (role || '').toUpperCase();
+      if (normRole === 'ADMIN') {
         window.location.href = '/admin/dashboard';
-      } else if (role.toUpperCase() === 'HR') {
+      } else if (normRole === 'HR') {
         window.location.href = '/hr/dashboard';
       } else {
         window.location.href = '/candidate/dashboard';
       }
     } else {
-      // If no token and no existing session, redirect to login
-      if (!existingToken) {
+      // Direct access with no token: if already authenticated, go to dashboard, else login
+      const existingToken = localStorage.getItem('token');
+      const existingRole = (localStorage.getItem('role') || '').toUpperCase();
+      if (existingToken && existingRole) {
+        if (existingRole === 'ADMIN') window.location.href = '/admin/dashboard';
+        else if (existingRole === 'HR') window.location.href = '/hr/dashboard';
+        else window.location.href = '/candidate/dashboard';
+      } else {
         window.location.href = '/login';
       }
     }
-  }, [searchParams, dispatch]);
+  }, [searchParams, dispatch, error]);
 
   if (error) {
     return (

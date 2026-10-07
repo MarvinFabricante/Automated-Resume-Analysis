@@ -203,11 +203,11 @@ class AuthService:
         fullname: str, 
         picture: str, 
         google_credentials: str, 
-        target_role: str = "candidate", 
+        target_role: str = "auto", 
         granted_scopes: list = None
     ):
         email = email.strip().lower()
-        target_role = (target_role or "candidate").strip().upper()
+        target_role = (target_role or "auto").strip().upper()
         if granted_scopes is None:
             granted_scopes = []
         
@@ -215,23 +215,29 @@ class AuthService:
         
         row = await AuthRepository.get_raw_user_by_email(db, email)
         if not row:
-            # Register new user with appropriate role based on portal and authorization
+            # Register new user with appropriate role based on authorization
             if target_role == "HR":
                 if email not in self.KNOWN_HR_EMAILS:
                     raise Exception(
                         "This Google account is not registered as authorized HR staff in Google Console. "
-                        "Please sign in through the Candidate portal or contact your administrator."
+                        "Please contact your administrator."
                     )
                 role = "HR"
             elif target_role == "ADMIN":
                 if email not in self.KNOWN_ADMIN_EMAILS:
                     raise Exception(
                         "This Google account is not authorized as an Administrator. "
-                        "Please sign in through the Candidate portal or contact support."
+                        "Please contact support."
                     )
                 role = "ADMIN"
             else:
-                role = "CANDIDATE"
+                # Automatic role assignment for new users based on pre-authorized staff lists
+                if email in self.KNOWN_ADMIN_EMAILS:
+                    role = "ADMIN"
+                elif email in self.KNOWN_HR_EMAILS:
+                    role = "HR"
+                else:
+                    role = "CANDIDATE"
 
             new_user = await self.register_user(db, email, "password", role, fullname)
             user_id = new_user.id
@@ -240,19 +246,20 @@ class AuthService:
             user_id = row.id
             actual_role = row.role.upper()
 
-            # Prevent a candidate from signing into HR or Admin portal
-            if target_role == "HR" and actual_role == "CANDIDATE":
-                raise Exception(
-                    "This Google account is registered as a Candidate. "
-                    "Please switch to the Candidate portal to sign in."
-                )
-            if target_role == "ADMIN" and actual_role != "ADMIN":
-                raise Exception(
-                    "This Google account does not have Administrator privileges. "
-                    f"It is registered as a {actual_role.capitalize()}. Please select the correct portal."
-                )
+            # Prevent a candidate from signing into HR or Admin portal if explicitly targeted
+            if target_role not in ["AUTO", "CANDIDATE"]:
+                if target_role == "HR" and actual_role != "HR":
+                    raise Exception(
+                        f"This Google account is registered as a {actual_role.capitalize()}. "
+                        "Please sign in using the correct portal."
+                    )
+                if target_role == "ADMIN" and actual_role != "ADMIN":
+                    raise Exception(
+                        f"This Google account is registered as a {actual_role.capitalize()}. "
+                        "Please sign in using the correct portal."
+                    )
 
-            # If HR or Admin signs in via candidate portal, route them to their actual role
+            # Auto-route to the account's registered role
             role = actual_role
 
         # Ensure polymorphic subclass table entry exists
@@ -452,7 +459,7 @@ async def login_with_google(
     fullname: str, 
     picture: str, 
     google_credentials: str,
-    target_role: str = "candidate",
+    target_role: str = "auto",
     granted_scopes: list = None
 ):
     return await auth_service.login_with_google(

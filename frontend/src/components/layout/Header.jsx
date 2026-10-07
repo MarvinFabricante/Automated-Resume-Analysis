@@ -36,10 +36,11 @@ const Header = () => {
   const { notifications, unreadCount } = useSelector(state => state.notifications);
   const { isSidebarOpen } = useSelector(state => state.ui);
 
-  const isCandidateRole = userRole === 'CANDIDATE';
-  const isHRRole = userRole === 'HR';
-  const isAdminRole = userRole === 'ADMIN';
-  const isGuest = userRole === 'Guest';
+  const normRole = (userRole || '').toUpperCase();
+  const isCandidateRole = normRole === 'CANDIDATE';
+  const isHRRole = normRole === 'HR';
+  const isAdminRole = normRole === 'ADMIN';
+  const isGuest = normRole === 'GUEST' || !userRole || userRole === 'Guest';
 
   useEffect(() => {
     if (window.innerWidth < 1024) {

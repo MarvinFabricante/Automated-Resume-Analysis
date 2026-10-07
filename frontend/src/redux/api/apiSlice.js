@@ -147,6 +147,7 @@ export const apiSlice = createApi({
       query: (email) => `/applications/candidate/${email}`,
       providesTags: ['Applications'],
       transformResponse: (response) => {
+        if (!Array.isArray(response)) return [];
         return response.map(app => {
           const uStatus = app.status ? app.status.toUpperCase() : 'PENDING';
           const formattedStatus = uStatus.split(' ').map(word => word.charAt(0) + word.slice(1).toLowerCase()).join(' ');

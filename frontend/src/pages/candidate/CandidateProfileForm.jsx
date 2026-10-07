@@ -218,6 +218,11 @@ const CandidateProfileForm = () => {
     });
   };
 
+  const handleFinalRedirect = () => {
+    setShowSuccessModal(false);
+    navigate('/candidate/dashboard');
+  };
+
   return (
     <div className="min-h-screen bg-[#F8FAFC] text-slate-900 antialiased font-['Inter',_sans-serif]">
       <Helmet>
