@@ -228,7 +228,7 @@ const CandidateProfileForm = () => {
 
       <div className="flex flex-1">
         <Sidebar />
-        <main className="max-w-7xl mx-auto px-6 py-12 flex-grow">
+        <main className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-12 flex-grow min-w-0 w-full overflow-hidden">
         {/* Reversal of action / Back to Upload */}
         <button
           onClick={() => navigate(jobId ? `/candidate/upload-resume/${jobId}` : '/candidate/upload-resume')}
@@ -240,32 +240,32 @@ const CandidateProfileForm = () => {
 
         {jobId && <ApplicationProgressBar currentStep={2} />}
 
-        <div className="mb-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
+        <div className="mb-8 sm:mb-10 flex flex-col md:flex-row md:items-center justify-between gap-4 sm:gap-6">
           <div>
-            <h1 className="text-3xl font-black text-slate-900 tracking-tight mb-2">Application Details</h1>
-            <p className="text-slate-500 font-medium">
+            <h1 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight mb-2 break-words">Application Details</h1>
+            <p className="text-slate-500 font-medium text-sm sm:text-base">
               Review and update your professional details for the <span className="font-bold text-slate-900">{jobTitle}</span> position.
             </p>
           </div>
           
-          <div className="flex items-center gap-4 bg-white p-3 pr-6 rounded-2xl border border-slate-100 shadow-sm">
-            <div className="w-16 h-16 rounded-xl bg-slate-50 border border-slate-100 overflow-hidden flex items-center justify-center text-slate-300">
+          <div className="flex items-center gap-3 sm:gap-4 bg-white p-3 pr-4 sm:pr-6 rounded-2xl border border-slate-100 shadow-sm w-full md:w-auto">
+            <div className="w-12 h-12 sm:w-16 sm:h-16 rounded-xl bg-slate-50 border border-slate-100 overflow-hidden flex items-center justify-center text-slate-300 shrink-0">
               {localStorage.getItem('profile_image_url') ? (
                 <img src={localStorage.getItem('profile_image_url')} alt="Profile" className="w-full h-full object-cover" />
               ) : (
-                <User size={32} />
+                <User size={28} className="sm:w-8 sm:h-8" />
               )}
             </div>
-            <div>
+            <div className="min-w-0 flex-1">
               <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Application Identity</p>
-              <p className="text-sm font-black text-slate-900">{formData.fullName}</p>
+              <p className="text-xs sm:text-sm font-black text-slate-900 truncate">{formData.fullName}</p>
             </div>
           </div>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-8">
+        <form onSubmit={handleSubmit} className="space-y-6 sm:space-y-8">
 
-          <section className="bg-white p-8 md:p-10 rounded-[32px] shadow-sm border border-slate-100">
+          <section className="bg-white p-5 sm:p-8 md:p-10 rounded-2xl sm:rounded-[32px] shadow-sm border border-slate-100">
             <div className="flex items-center gap-3 mb-8 text-[#D10043]">
               <div className="p-2.5 bg-pink-50 rounded-xl">
                 <User size={20} />
@@ -310,7 +310,7 @@ const CandidateProfileForm = () => {
             </div>
           </section>
 
-          <section className="bg-white p-8 md:p-10 rounded-[32px] shadow-sm border border-slate-100">
+          <section className="bg-white p-5 sm:p-8 md:p-10 rounded-2xl sm:rounded-[32px] shadow-sm border border-slate-100">
             <div className="flex items-center gap-3 mb-8 text-[#D10043]">
               <div className="p-2.5 bg-pink-50 rounded-xl">
                 <Briefcase size={20} />
@@ -357,8 +357,8 @@ const CandidateProfileForm = () => {
             </div>
           </section>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-            <section className="bg-white p-8 md:p-10 rounded-[32px] shadow-sm border border-slate-100">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 sm:gap-8">
+            <section className="bg-white p-5 sm:p-8 md:p-10 rounded-2xl sm:rounded-[32px] shadow-sm border border-slate-100">
               <div className="flex items-center gap-3 mb-8 text-[#D10043]">
                 <div className="p-2.5 bg-pink-50 rounded-xl">
                   <GraduationCap size={20} />
@@ -386,7 +386,7 @@ const CandidateProfileForm = () => {
               </div>
             </section>
 
-            <section className="bg-white p-8 md:p-10 rounded-[32px] shadow-sm border border-slate-100 flex flex-col">
+            <section className="bg-white p-5 sm:p-8 md:p-10 rounded-2xl sm:rounded-[32px] shadow-sm border border-slate-100 flex flex-col">
               <div className="flex items-center gap-3 mb-8 text-[#D10043]">
                 <div className="p-2.5 bg-pink-50 rounded-xl">
                   <Code size={20} />
