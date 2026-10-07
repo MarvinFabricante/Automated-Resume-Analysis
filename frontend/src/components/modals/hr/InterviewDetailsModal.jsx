@@ -132,6 +132,12 @@ const InterviewDetailsModal = ({ isOpen, onClose, interview, onStatusChanged }) 
     const endHour = parseInt(formData.endTime.split(':')[0], 10);
     const endMin = parseInt(formData.endTime.split(':')[1], 10);
 
+    const todayStr = toLocalDateString(new Date());
+    if (formData.date < todayStr) {
+      setErrorMsg('Cannot reschedule interview to a past date. This date is unavailable.');
+      return;
+    }
+
     if (startHour < 8 || endHour > 17 || (endHour === 17 && endMin > 0)) {
       setErrorMsg('Interviews must fall within working hours (8:00 AM – 5:00 PM).');
       return;
@@ -497,11 +503,17 @@ const InterviewDetailsModal = ({ isOpen, onClose, interview, onStatusChanged }) 
                   </label>
                   <input
                     type="date"
+                    min={toLocalDateString(new Date())}
                     value={formData.date}
                     onChange={(e) => setFormData({ ...formData, date: e.target.value })}
                     className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-2xl text-sm font-semibold text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#D60041]/20 focus:border-[#D60041]"
                     required
                   />
+                  {formData.date && formData.date < toLocalDateString(new Date()) && (
+                    <p className="text-[11px] text-rose-600 font-semibold mt-1 flex items-center gap-1">
+                      <AlertCircle size={12} /> This date is unavailable because it is in the past.
+                    </p>
+                  )}
                 </div>
 
                 <div>

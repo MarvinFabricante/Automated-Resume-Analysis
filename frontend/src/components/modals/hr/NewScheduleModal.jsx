@@ -91,7 +91,11 @@ const NewScheduleModal = ({ isOpen, onClose, initialDate, initialTime, initialIn
         setUseCustomTime(false);
       }
 
-      let defaultDate = initialDate || toLocalDateString(new Date());
+      const todayStr = toLocalDateString(new Date());
+      let defaultDate = initialDate || todayStr;
+      if (defaultDate < todayStr) {
+        defaultDate = todayStr;
+      }
       // Advance to next Monday if today or initialDate falls on weekend
       if (!isWeekday(defaultDate)) {
         const parts = defaultDate.split('-');
@@ -113,7 +117,8 @@ const NewScheduleModal = ({ isOpen, onClose, initialDate, initialTime, initialIn
 
   // Fetch available slots for the selected date AND selected HR interviewer
   useEffect(() => {
-    if (!date || !isWeekday(date)) {
+    const todayStr = toLocalDateString(new Date());
+    if (!date || !isWeekday(date) || date < todayStr) {
       setAvailableSlots([]);
       return;
     }
@@ -170,6 +175,12 @@ const NewScheduleModal = ({ isOpen, onClose, initialDate, initialTime, initialIn
     if (existingActive) {
       const interviewerName = existingActive.interviewer_name || existingActive.interviewer?.fullname || 'another HR';
       setErrorMsg(`Candidate '${selectedCandidate.candidate_name || selectedCandidate.name}' is already scheduled for an interview with ${interviewerName}. Another HR cannot schedule an interview for this candidate.`);
+      return;
+    }
+
+    const todayStr = toLocalDateString(new Date());
+    if (date < todayStr) {
+      setErrorMsg('This date is unavailable because it is in the past. Please select today or a future date.');
       return;
     }
 
@@ -474,12 +485,18 @@ const NewScheduleModal = ({ isOpen, onClose, initialDate, initialTime, initialIn
               </label>
               <input
                 type="date"
+                min={toLocalDateString(new Date())}
                 value={date}
                 onChange={(e) => setDate(e.target.value)}
                 className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-2xl text-sm font-semibold text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#D60041]/20 focus:border-[#D60041]"
                 required
               />
-              {date && !isWeekday(date) && (
+              {date && date < toLocalDateString(new Date()) && (
+                <p className="text-[11px] text-rose-600 font-semibold mt-1 flex items-center gap-1">
+                  <AlertCircle size={12} /> This date is unavailable because it is in the past.
+                </p>
+              )}
+              {date && date >= toLocalDateString(new Date()) && !isWeekday(date) && (
                 <p className="text-[11px] text-amber-600 font-medium mt-1">
                   Selected date falls on a weekend. Please choose a weekday.
                 </p>
