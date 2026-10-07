@@ -34,12 +34,19 @@ def get_database_url():
 
 DATABASE_URL = get_database_url()
 
+DB_POOL_SIZE = int(os.getenv("DB_POOL_SIZE", "50"))
+DB_MAX_OVERFLOW = int(os.getenv("DB_MAX_OVERFLOW", "30"))
+DB_POOL_TIMEOUT = int(os.getenv("DB_POOL_TIMEOUT", "60"))
+DB_POOL_RECYCLE = int(os.getenv("DB_POOL_RECYCLE", "1800"))
+
 engine = create_async_engine(
     DATABASE_URL,
     echo=False,
     pool_pre_ping=True,
-    pool_size=20,
-    max_overflow=10,
+    pool_size=DB_POOL_SIZE,
+    max_overflow=DB_MAX_OVERFLOW,
+    pool_timeout=DB_POOL_TIMEOUT,
+    pool_recycle=DB_POOL_RECYCLE,
     future=True,
 )
 

@@ -29,8 +29,50 @@ SCOPES = CALENDAR_SCOPES
 _BACKEND_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 CREDENTIALS_FILE = os.path.join(_BACKEND_DIR, 'credentials.json')
 
-# In-memory store for PKCE code_verifier, flow_type, role, and scopes, keyed by OAuth state
+import redis
+
+# Multi-worker store for PKCE code_verifier, flow_type, role, and scopes, keyed by OAuth state.
+# Uses Redis so any Uvicorn worker process can exchange the code, falling back to in-memory dict.
 _pending_flows: dict[str, dict] = {}
+_redis_sync_client = None
+
+def _get_redis_client():
+    global _redis_sync_client
+    if _redis_sync_client is None:
+        redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+        try:
+            client = redis.Redis.from_url(redis_url, decode_responses=True, socket_timeout=2)
+            client.ping()
+            _redis_sync_client = client
+        except Exception:
+            _redis_sync_client = False
+    return _redis_sync_client if _redis_sync_client is not False else None
+
+def _save_pending_flow(state: str, flow_info: dict):
+    _pending_flows[state] = flow_info
+    client = _get_redis_client()
+    if client:
+        try:
+            client.setex(f"oauth_flow:{state}", 900, json.dumps(flow_info))
+        except Exception as e:
+            print(f"Warning: Failed to cache OAuth state in Redis: {e}")
+
+def _pop_pending_flow(state: str) -> dict:
+    flow_info = None
+    client = _get_redis_client()
+    if client:
+        try:
+            raw = client.get(f"oauth_flow:{state}")
+            if raw:
+                client.delete(f"oauth_flow:{state}")
+                flow_info = json.loads(raw)
+        except Exception as e:
+            print(f"Warning: Failed to retrieve OAuth state from Redis: {e}")
+    if not flow_info:
+        flow_info = _pending_flows.pop(state, {})
+    else:
+        _pending_flows.pop(state, None)
+    return flow_info or {}
 
 
 def _client_config():
@@ -101,13 +143,13 @@ def get_candidate_google_auth_url(flow_type: str = "candidate_login", redirect_u
         access_type='online',
         prompt='select_account'
     )
-    _pending_flows[state] = {
+    _save_pending_flow(state, {
         "verifier": flow.code_verifier,
         "flow_type": flow_type,
         "role": "candidate",
         "scopes": CANDIDATE_AUTH_SCOPES,
         "redirect_uri": chosen_redirect_uri
-    }
+    })
     return auth_url, state
 
 
@@ -127,13 +169,13 @@ def get_hr_google_auth_url(flow_type: str = "hr_login", redirect_uri: str = None
         include_granted_scopes='true',
         prompt='consent'
     )
-    _pending_flows[state] = {
+    _save_pending_flow(state, {
         "verifier": flow.code_verifier,
         "flow_type": flow_type,
         "role": "hr",
         "scopes": CALENDAR_SCOPES,
         "redirect_uri": chosen_redirect_uri
-    }
+    })
     return auth_url, state
 
 
@@ -151,23 +193,27 @@ def get_admin_google_auth_url(flow_type: str = "admin_login", redirect_uri: str 
         access_type='online',
         prompt='select_account'
     )
-    _pending_flows[state] = {
+    _save_pending_flow(state, {
         "verifier": flow.code_verifier,
         "flow_type": flow_type,
         "role": "admin",
         "scopes": CANDIDATE_AUTH_SCOPES,
         "redirect_uri": chosen_redirect_uri
-    }
+    })
     return auth_url, state
 
 
-def get_google_auth_url(role: str = "candidate", flow_type: str = "login", redirect_uri: str = None, frontend_origin: str = None):
+def get_google_auth_url(role: str = "auto", flow_type: str = "login", redirect_uri: str = None, frontend_origin: str = None):
     """
     Generate Google OAuth URL based on the requested role and flow.
-    Routes candidate flows to candidate-only auth scopes (zero calendar permissions).
-    Staff/HR flows use CALENDAR_SCOPES.
+    - If role is 'auto' (default for login): uses CANDIDATE_AUTH_SCOPES (identity and profile)
+      so any user (Candidate, HR, Admin) can authenticate without calendar permissions
+      or Google Console access_denied restrictions. Role is automatically resolved on callback.
+    - If role is explicitly 'hr' or flow is 'hr_login': requests CALENDAR_SCOPES for Google Calendar sync.
+    - If role is explicitly 'admin': requests admin authentication scopes.
+    - Candidate flows: uses CANDIDATE_AUTH_SCOPES.
     """
-    norm_role = (role or "candidate").strip().lower()
+    norm_role = (role or "auto").strip().lower()
     norm_flow = (flow_type or "login").strip().lower()
 
     if norm_flow in ["candidate_register", "register"]:
@@ -176,18 +222,36 @@ def get_google_auth_url(role: str = "candidate", flow_type: str = "login", redir
         return get_hr_google_auth_url(flow_type="hr_login", redirect_uri=redirect_uri)
     elif norm_role == "admin" or norm_flow == "admin_login":
         return get_admin_google_auth_url(flow_type="admin_login", redirect_uri=redirect_uri)
-    else:
-        # Default: Candidate login with basic scopes (no calendar conflicts)
+    elif norm_role == "candidate":
         return get_candidate_google_auth_url(flow_type="candidate_login", redirect_uri=redirect_uri)
+    else:
+        # Universal login with automatic role detection
+        chosen_redirect_uri = redirect_uri or _get_redirect_uri()
+        flow = _create_flow(
+            scopes=CANDIDATE_AUTH_SCOPES,
+            redirect_uri=chosen_redirect_uri
+        )
+        auth_url, state = flow.authorization_url(
+            access_type='online',
+            prompt='select_account'
+        )
+        _save_pending_flow(state, {
+            "verifier": flow.code_verifier,
+            "flow_type": norm_flow,
+            "role": "auto",
+            "scopes": CANDIDATE_AUTH_SCOPES,
+            "redirect_uri": chosen_redirect_uri
+        })
+        return auth_url, state
 
 
 def exchange_code_for_credentials(code: str, state: str):
-    flow_info = _pending_flows.pop(state, {})
+    flow_info = _pop_pending_flow(state)
     redirect_uri = flow_info.get("redirect_uri") or _get_redirect_uri()
     scopes = flow_info.get("scopes", CANDIDATE_AUTH_SCOPES)
     code_verifier = flow_info.get("verifier")
     flow_type = flow_info.get("flow_type", "login")
-    role = flow_info.get("role", "candidate")
+    role = flow_info.get("role", "auto")
 
     flow = _create_flow(
         scopes=scopes,

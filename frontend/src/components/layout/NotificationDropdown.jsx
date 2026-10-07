@@ -32,7 +32,7 @@ const NotificationDropdown = ({ userRole, notifications, onMarkAllRead }) => {
   ] : notifications;
 
   return (
-    <div className="absolute right-0 sm:right-0 -right-4 sm:translate-x-0 top-[calc(100%+16px)] w-[calc(100vw-2rem)] sm:w-[380px] max-w-[380px] bg-white border border-gray-100 rounded-[32px] shadow-2xl py-6 z-[60] animate-in fade-in slide-in-from-top-4 duration-300">
+    <div className="desktop-dropdown absolute right-0 sm:right-0 -right-4 sm:translate-x-0 top-[calc(100%+16px)] w-[calc(100vw-2rem)] sm:w-[380px] max-w-[380px] bg-white border border-gray-100 rounded-[32px] shadow-2xl py-6 z-[60] animate-in fade-in slide-in-from-top-4 duration-300">
       <div className="px-6 sm:px-8 pb-6 border-b border-gray-50 flex justify-between items-center">
         <div>
           <h4 className="text-base font-black text-slate-900">

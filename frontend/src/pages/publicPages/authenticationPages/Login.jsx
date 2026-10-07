@@ -11,9 +11,6 @@ import {
   CheckCircle2,
   XCircle,
   ArrowLeft,
-  User,
-  Calendar,
-  ShieldCheck,
   Sparkles
 } from 'lucide-react';
 import logo from '../../../assets/logo.png';
@@ -25,7 +22,6 @@ const Login = () => {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [selectedRole, setSelectedRole] = useState('candidate'); // 'candidate' | 'hr' | 'admin'
   const [detectedRoleInfo, setDetectedRoleInfo] = useState(null);
   const [isDetectingRole, setIsDetectingRole] = useState(false);
   const dispatch = useDispatch();
@@ -94,12 +90,6 @@ const Login = () => {
             exists: data.exists,
             isAuthorizedStaff: data.is_authorized_staff
           });
-          // Automatically synchronize role tab if recognized
-          if (roleKey === 'hr' || roleKey === 'admin') {
-            setSelectedRole(roleKey);
-          } else if (roleKey === 'candidate') {
-            setSelectedRole('candidate');
-          }
         }
       } catch (err) {
         // Silently keep default
@@ -125,9 +115,9 @@ const Login = () => {
       return;
     }
 
-    // Role-specific Google login URL with separated scopes to avoid Google Console conflicts
+    // Universal Google login with automatic role detection upon callback
     const clientOrigin = typeof window !== 'undefined' ? window.location.origin : '';
-    window.location.href = `${API_BASE_URL}/auth/google/login?role=${selectedRole}&origin=${encodeURIComponent(clientOrigin)}`;
+    window.location.href = `${API_BASE_URL}/auth/google/login?origin=${encodeURIComponent(clientOrigin)}`;
   };
 
   const handleEmailChange = (e) => {
@@ -269,9 +259,7 @@ const Login = () => {
             </h1>
             
             <p className="text-sm sm:text-base font-normal text-gray-600 leading-relaxed mb-6">
-              {selectedRole === 'candidate' && "Sign in to view and track your job applications, assessments, and interview schedules."}
-              {selectedRole === 'hr' && "Human Resources portal to manage job postings, evaluate candidate resumes, and sync interview calendars."}
-              {selectedRole === 'admin' && "Administration console for system settings, user management, audit trails, and security."}
+              Sign in to access your Mariwasa portal account. You will be automatically routed to your Candidate, HR, or Administrator dashboard based on your registered account.
             </p>
           </div>
 
@@ -279,9 +267,7 @@ const Login = () => {
             <div className="flex items-center gap-2 text-xs font-medium text-gray-500">
               <Sparkles size={14} className="text-[#D60041]" />
               <span>
-                {selectedRole === 'candidate' && "Candidate Google accounts log in without Google Console restrictions."}
-                {selectedRole === 'hr' && "HR Google accounts integrate directly with Google Calendar."}
-                {selectedRole === 'admin' && "Authorized administrator authentication."}
+                Automatic portal detection for Candidate, HR, and Admin accounts.
               </span>
             </div>
           </div>
@@ -291,58 +277,6 @@ const Login = () => {
         <div className="w-full md:w-[58%] p-6 sm:p-10 md:p-12 flex flex-col justify-center">
           <div className="w-full max-w-[420px] mx-auto md:mx-0 md:ml-auto">
             
-            {/* Role Selection Tabs */}
-            <div className="mb-5">
-              <div className="text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-2 flex items-center justify-between">
-                <span>Select Login Role</span>
-                {detectedRoleInfo && (
-                  <span className="text-emerald-600 font-semibold normal-case tracking-normal flex items-center gap-1">
-                    ✓ Recognized as {detectedRoleInfo.roleName}
-                  </span>
-                )}
-              </div>
-              <div className="grid grid-cols-3 gap-1.5 p-1 bg-gray-100 rounded-xl">
-                <button
-                  type="button"
-                  onClick={() => setSelectedRole('candidate')}
-                  className={`flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-lg text-xs font-bold transition-all ${
-                    selectedRole === 'candidate'
-                      ? 'bg-white text-gray-900 shadow-sm'
-                      : 'text-gray-600 hover:text-gray-900 hover:bg-white/50'
-                  }`}
-                >
-                  <User size={13} className={selectedRole === 'candidate' ? 'text-[#D60041]' : 'text-gray-400'} />
-                  <span>Candidate</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setSelectedRole('hr')}
-                  className={`flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-lg text-xs font-bold transition-all ${
-                    selectedRole === 'hr'
-                      ? 'bg-white text-[#D60041] shadow-sm'
-                      : 'text-gray-600 hover:text-gray-900 hover:bg-white/50'
-                  }`}
-                >
-                  <Calendar size={13} className={selectedRole === 'hr' ? 'text-[#D60041]' : 'text-gray-400'} />
-                  <span>HR Staff</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setSelectedRole('admin')}
-                  className={`flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-lg text-xs font-bold transition-all ${
-                    selectedRole === 'admin'
-                      ? 'bg-white text-indigo-700 shadow-sm'
-                      : 'text-gray-600 hover:text-gray-900 hover:bg-white/50'
-                  }`}
-                >
-                  <ShieldCheck size={13} className={selectedRole === 'admin' ? 'text-indigo-600' : 'text-gray-400'} />
-                  <span>Admin</span>
-                </button>
-              </div>
-            </div>
-
             {/* Google OAuth Login Button */}
             <div className="mb-5">
               <button
@@ -351,30 +285,8 @@ const Login = () => {
                 className="w-full flex items-center justify-center gap-3 bg-white border border-gray-300 hover:bg-gray-50 hover:border-gray-400 text-gray-800 text-sm font-semibold px-5 py-3 rounded-full transition-all shadow-sm hover:shadow active:scale-[0.99] group"
               >
                 <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google Logo" className="w-5 h-5 group-hover:scale-105 transition-transform" />
-                <span>
-                  {selectedRole === 'candidate' && "Sign in with Google (Candidate)"}
-                  {selectedRole === 'hr' && "Sign in with Google (HR Portal)"}
-                  {selectedRole === 'admin' && "Sign in with Google (Admin Portal)"}
-                </span>
+                <span>Sign in with Google</span>
               </button>
-              
-              <p className="text-center text-[11px] text-gray-500 mt-2 font-medium px-2 leading-tight">
-                {selectedRole === 'candidate' && (
-                  <span className="text-gray-500">
-                    Candidate Portal: Log in with any Google account without Google Console conflicts.
-                  </span>
-                )}
-                {selectedRole === 'hr' && (
-                  <span className="text-amber-700 font-medium">
-                    HR Portal: Connects Google Calendar for authorized HR personnel registered in Google Console.
-                  </span>
-                )}
-                {selectedRole === 'admin' && (
-                  <span className="text-gray-500">
-                    Admin Portal: Dedicated sign-in for verified system administrators.
-                  </span>
-                )}
-              </p>
             </div>
 
             {/* Divider */}
@@ -434,9 +346,11 @@ const Login = () => {
                 <a href="/forgot-password" className="text-xs font-medium text-[#D60041] hover:underline transition-colors inline-block">
                   Forgot password?
                 </a>
-                <span className="text-[11px] text-gray-400 font-medium">
-                  Signing in as: <strong className="uppercase text-gray-600">{selectedRole}</strong>
-                </span>
+                {detectedRoleInfo && detectedRoleInfo.exists && (
+                  <span className="text-[11px] text-emerald-600 font-medium flex items-center gap-1">
+                    ✓ Recognized as <strong className="uppercase">{detectedRoleInfo.roleName}</strong>
+                  </span>
+                )}
               </div>
 
               <div className="flex flex-col-reverse sm:flex-row justify-between items-center gap-4 sm:gap-0 mt-6">

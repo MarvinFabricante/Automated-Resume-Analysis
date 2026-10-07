@@ -185,24 +185,29 @@ async def google_register(request: Request, origin: str = None):
     return await google_candidate_register(request, origin)
 
 @router.get("/google/login")
-async def google_login(request: Request, flow: str = "login", role: str = "candidate", origin: str = None):
+async def google_login(request: Request, flow: str = "login", role: str = "auto", origin: str = None):
     """
     Role-aware Google OAuth login endpoint.
-    - Candidate: requests ONLY basic profile scopes (no Google Calendar / Console restrictions).
+    - If role is 'auto' (default for universal login): requests basic profile scopes (no Google Calendar / Console restrictions),
+      allowing ANY Google account (Candidate, HR, Admin) to sign in seamlessly.
+      The user's actual role is automatically detected upon callback.
+    - Candidate: requests ONLY basic profile scopes.
     - HR: requests Calendar scopes for authorized HR accounts configured in Google Console.
-    - Admin: requests basic profile scopes for System Administrators.
+    - Admin: requests basic profile scopes.
     """
     base_origin = _public_origin_from_request(request, origin)
     redirect_uri = _redirect_uri_for_origin(base_origin)
-    norm_role = (role or "candidate").strip().lower()
+    norm_role = (role or "auto").strip().lower()
     if flow in ["candidate_register", "register"]:
         url, state = get_candidate_google_auth_url(flow_type="candidate_register", redirect_uri=redirect_uri)
     elif norm_role == "hr" or flow == "hr_login":
         url, state = get_hr_google_auth_url(flow_type="hr_login", redirect_uri=redirect_uri)
     elif norm_role == "admin" or flow == "admin_login":
         url, state = get_admin_google_auth_url(flow_type="admin_login", redirect_uri=redirect_uri)
-    else:
+    elif norm_role == "candidate":
         url, state = get_candidate_google_auth_url(flow_type="candidate_login", redirect_uri=redirect_uri)
+    else:
+        url, state = get_google_auth_url(role="auto", flow_type="login", redirect_uri=redirect_uri)
     
     return RedirectResponse(url)
 
@@ -210,12 +215,12 @@ async def google_login(request: Request, flow: str = "login", role: str = "candi
 async def google_callback(request: Request, code: str, state: str = "", db: AsyncSession = Depends(get_db)):
     base_url = _public_origin_from_request(request)
     flow_type = "login"
-    role_requested = "candidate"
+    role_requested = "auto"
     try:
         creds, flow_info = exchange_code_for_credentials(code, state)
         if isinstance(flow_info, dict):
             flow_type = flow_info.get("flow_type", "login")
-            role_requested = flow_info.get("role", "candidate")
+            role_requested = flow_info.get("role", "auto")
             flow_redirect = flow_info.get("redirect_uri")
             if flow_redirect:
                 try:
@@ -226,7 +231,7 @@ async def google_callback(request: Request, code: str, state: str = "", db: Asyn
                     pass
         else:
             flow_type = flow_info
-            role_requested = "candidate"
+            role_requested = "auto"
         
         # Get user info from Google
         user_info_response = requests.get(
