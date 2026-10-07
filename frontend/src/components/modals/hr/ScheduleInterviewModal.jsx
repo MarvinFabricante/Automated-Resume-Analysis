@@ -143,6 +143,11 @@ const ScheduleInterviewModal = ({ isOpen, onClose, candidate }) => {
       return;
     }
 
+    if (formData.date < todayISO) {
+      setErrorMsg('This date is unavailable because it is in the past. Please select today or a future date.');
+      return;
+    }
+
     let finalStart = '';
     let finalEnd = '';
 
@@ -386,6 +391,11 @@ const ScheduleInterviewModal = ({ isOpen, onClose, candidate }) => {
                         setHasAttemptedFetch(false);
                       }}
                     />
+                    {formData.date && formData.date < todayISO && (
+                      <p className="text-[11px] text-rose-600 font-semibold mt-1 flex items-center gap-1">
+                        <AlertCircle size={12} /> This date is unavailable because it is in the past.
+                      </p>
+                    )}
                     <p className="text-[9px] text-gray-400 font-medium flex items-center gap-1 mt-1">
                       <Clock size={10} /> Mon – Fri only &nbsp;•&nbsp; 8:00 AM – 5:00 PM
                     </p>

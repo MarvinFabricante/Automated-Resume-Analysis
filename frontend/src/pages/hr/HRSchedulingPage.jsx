@@ -129,6 +129,15 @@ const HRSchedulingPage = () => {
 
   const isToday = (d) => isSameDay(d, new Date());
 
+  const isPastDate = (d) => {
+    if (!d) return false;
+    const dateObj = d instanceof Date ? d : new Date(d);
+    const target = new Date(dateObj.getFullYear(), dateObj.getMonth(), dateObj.getDate());
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    return target.getTime() < today.getTime();
+  };
+
   // Navigation handlers
   const handlePrev = () => {
     if (viewMode === 'month' || viewMode === 'agenda') {
@@ -399,6 +408,9 @@ const HRSchedulingPage = () => {
   };
 
   const handleOpenNewSchedule = (dayDate, initialTime = '') => {
+    if (dayDate && isPastDate(dayDate)) {
+      return;
+    }
     setNewScheduleDate(toLocalDateString(dayDate || new Date()));
     setNewScheduleInitialTime(initialTime || '');
     setNewSchedulePreselectedHr(hrFilter !== 'ALL' ? hrFilter : null);
@@ -532,7 +544,10 @@ const HRSchedulingPage = () => {
 
                 {/* New Schedule Button */}
                 <button
-                  onClick={() => handleOpenNewSchedule(viewMode === 'day' ? selectedDayForDayView : new Date())}
+                  onClick={() => {
+                    const target = viewMode === 'day' ? selectedDayForDayView : new Date();
+                    handleOpenNewSchedule(isPastDate(target) ? new Date() : target);
+                  }}
                   className="px-3.5 py-1.5 sm:px-4 sm:py-2 bg-[#D60041] hover:bg-rose-700 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-[#D60041]/20 flex items-center gap-1.5 sm:gap-2 ml-auto lg:ml-0"
                 >
                   <Plus size={16} />
@@ -838,39 +853,63 @@ const HRSchedulingPage = () => {
                       {monthGridDays.map((dayObj, index) => {
                         const dayEvents = getEventsForDay(dayObj.date);
                         const dayIsToday = isToday(dayObj.date);
+                        const isPast = isPastDate(dayObj.date);
 
                         return (
                           <div
                             key={index}
-                            onClick={() => handleOpenNewSchedule(dayObj.date)}
-                            className={`min-h-[125px] p-2 flex flex-col justify-between transition-colors cursor-pointer group ${
-                              dayObj.isCurrentMonth ? 'bg-white hover:bg-gray-50/50' : 'bg-gray-50/30 text-gray-300'
+                            onClick={isPast ? undefined : () => handleOpenNewSchedule(dayObj.date)}
+                            className={`min-h-[125px] p-2 flex flex-col justify-between transition-colors ${
+                              isPast
+                                ? 'bg-gray-100/50 text-gray-400 cursor-not-allowed select-none'
+                                : dayObj.isCurrentMonth
+                                ? 'bg-white hover:bg-gray-50/50 cursor-pointer group'
+                                : 'bg-gray-50/30 text-gray-300 cursor-pointer group'
                             }`}
+                            title={isPast ? 'Unavailable: Date has passed' : 'Click to schedule an interview'}
                           >
                             {/* Day Number Header */}
                             <div className="flex items-center justify-between mb-1.5">
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setSelectedDayForDayView(dayObj.date);
-                                  setViewMode('day');
-                                }}
-                                className={`text-xs font-black w-6 h-6 rounded-full flex items-center justify-center transition-all hover:scale-110 ${
-                                  dayIsToday
-                                    ? 'bg-[#D60041] text-white shadow-sm shadow-[#D60041]/30'
-                                    : dayObj.isCurrentMonth
-                                    ? 'text-gray-800 hover:bg-pink-50 hover:text-[#D60041]'
-                                    : 'text-gray-300'
-                                }`}
-                                title="Open Day View"
-                              >
-                                {dayObj.date.getDate()}
-                              </button>
+                              {isPast ? (
+                                <span
+                                  className="text-xs font-black w-6 h-6 rounded-full flex items-center justify-center text-gray-400 select-none cursor-not-allowed"
+                                  title="Unavailable: Date has passed"
+                                >
+                                  {dayObj.date.getDate()}
+                                </span>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setSelectedDayForDayView(dayObj.date);
+                                    setViewMode('day');
+                                  }}
+                                  className={`text-xs font-black w-6 h-6 rounded-full flex items-center justify-center transition-all hover:scale-110 ${
+                                    dayIsToday
+                                      ? 'bg-[#D60041] text-white shadow-sm shadow-[#D60041]/30'
+                                      : dayObj.isCurrentMonth
+                                      ? 'text-gray-800 hover:bg-pink-50 hover:text-[#D60041]'
+                                      : 'text-gray-300'
+                                  }`}
+                                  title="Open Day View"
+                                >
+                                  {dayObj.date.getDate()}
+                                </button>
+                              )}
 
-                              <span className="opacity-0 group-hover:opacity-100 text-[#D60041] text-[10px] font-bold transition-opacity">
-                                + Add
-                              </span>
+                              {isPast ? (
+                                <span
+                                  className="text-[9px] font-bold tracking-tight text-gray-400 bg-gray-100 border border-gray-200/80 px-1.5 py-0.5 rounded select-none"
+                                  title="This date is unavailable because it is in the past"
+                                >
+                                  Unavailable
+                                </span>
+                              ) : (
+                                <span className="opacity-0 group-hover:opacity-100 text-[#D60041] text-[10px] font-bold transition-opacity">
+                                  + Add
+                                </span>
+                              )}
                             </div>
 
                             {/* Events List in Day Cell */}
@@ -953,31 +992,50 @@ const HRSchedulingPage = () => {
                     <div className="grid grid-cols-7 border-b border-gray-100 bg-gray-50/70 text-center divide-x divide-gray-100">
                       {currentWeekDays.map((d, i) => {
                         const isTod = isToday(d);
+                        const isPast = isPastDate(d);
                         const dayEvents = getEventsForDay(d);
                         return (
-                          <div key={i} className="py-3 px-2">
+                          <div key={i} className={`py-3 px-2 ${isPast ? 'bg-gray-100/30' : ''}`}>
                             <p className="text-[10px] font-black uppercase tracking-wider text-gray-400">
                               {DAYS_OF_WEEK[d.getDay()]}
                             </p>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setSelectedDayForDayView(d);
-                                setViewMode('day');
-                              }}
-                              className={`text-base font-black mt-0.5 inline-block px-2.5 py-0.5 rounded-full transition-all hover:scale-105 ${
-                                isTod ? 'bg-[#D60041] text-white shadow-sm' : 'text-gray-900 hover:text-[#D60041]'
-                              }`}
-                              title="View Day Schedule"
-                            >
-                              {d.getDate()}
-                            </button>
-                            <div className="mt-1 flex items-center justify-center gap-1">
-                              <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded-md ${
-                                dayEvents.length > 0 ? 'bg-pink-100 text-[#D60041]' : 'text-gray-400'
-                              }`}>
-                                {dayEvents.length} {dayEvents.length === 1 ? 'session' : 'sessions'}
+                            {isPast ? (
+                              <span
+                                className="text-base font-black mt-0.5 inline-block px-2.5 py-0.5 text-gray-400 select-none cursor-not-allowed"
+                                title="Unavailable: Date has passed"
+                              >
+                                {d.getDate()}
                               </span>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSelectedDayForDayView(d);
+                                  setViewMode('day');
+                                }}
+                                className={`text-base font-black mt-0.5 inline-block px-2.5 py-0.5 rounded-full transition-all hover:scale-105 ${
+                                  isTod ? 'bg-[#D60041] text-white shadow-sm' : 'text-gray-900 hover:text-[#D60041]'
+                                }`}
+                                title="View Day Schedule"
+                              >
+                                {d.getDate()}
+                              </button>
+                            )}
+                            <div className="mt-1 flex items-center justify-center gap-1">
+                              {isPast ? (
+                                <span
+                                  className="text-[9px] font-bold text-gray-400 bg-gray-100 border border-gray-200/60 px-1.5 py-0.5 rounded select-none"
+                                  title="Date is unavailable because it has passed"
+                                >
+                                  Unavailable
+                                </span>
+                              ) : (
+                                <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded-md ${
+                                  dayEvents.length > 0 ? 'bg-pink-100 text-[#D60041]' : 'text-gray-400'
+                                }`}>
+                                  {dayEvents.length} {dayEvents.length === 1 ? 'session' : 'sessions'}
+                                </span>
+                              )}
                             </div>
                           </div>
                         );
@@ -987,24 +1045,36 @@ const HRSchedulingPage = () => {
                     {/* 7-column Week Schedule Canvas */}
                     <div className="grid grid-cols-7 divide-x divide-gray-100 min-h-[550px]">
                       {currentWeekDays.map((dayDate, colIdx) => {
+                        const isPast = isPastDate(dayDate);
                         const dayEvents = getEventsForDay(dayDate).sort((a, b) => a.start - b.start);
                         return (
                           <div
                             key={colIdx}
-                            className="p-2.5 flex flex-col justify-between hover:bg-gray-50/30 transition-colors"
+                            className={`p-2.5 flex flex-col justify-between transition-colors ${
+                              isPast ? 'bg-gray-50/50' : 'hover:bg-gray-50/30'
+                            }`}
                           >
                             <div className="space-y-2 flex-1">
                               {dayEvents.length === 0 ? (
                                 <div className="h-36 flex flex-col items-center justify-center text-center p-2 text-gray-300">
                                   <CalendarIcon size={20} className="mb-1 opacity-50" />
                                   <span className="text-[11px] font-medium">No sessions</span>
-                                  <button
-                                    type="button"
-                                    onClick={() => handleOpenNewSchedule(dayDate)}
-                                    className="mt-2 text-[10px] font-bold text-[#D60041] hover:underline"
-                                  >
-                                    + Schedule
-                                  </button>
+                                  {isPast ? (
+                                    <span
+                                      className="mt-2 text-[10px] font-bold text-gray-400 bg-gray-100 border border-gray-200/80 px-2 py-0.5 rounded select-none cursor-not-allowed"
+                                      title="This date is unavailable because it is in the past"
+                                    >
+                                      Unavailable (Past)
+                                    </span>
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleOpenNewSchedule(dayDate)}
+                                      className="mt-2 text-[10px] font-bold text-[#D60041] hover:underline"
+                                    >
+                                      + Schedule
+                                    </button>
+                                  )}
                                 </div>
                               ) : (
                                 dayEvents.map((ev) => {
@@ -1068,13 +1138,22 @@ const HRSchedulingPage = () => {
                             </div>
 
                             {/* Quick Add footer button for this day */}
-                            <button
-                              type="button"
-                              onClick={() => handleOpenNewSchedule(dayDate)}
-                              className="mt-3 w-full py-1.5 border border-dashed border-gray-200 hover:border-[#D60041] text-gray-400 hover:text-[#D60041] hover:bg-pink-50/30 rounded-xl text-[11px] font-bold transition-all flex items-center justify-center gap-1"
-                            >
-                              <Plus size={12} /> Add
-                            </button>
+                            {isPast ? (
+                              <div
+                                className="mt-3 w-full py-1.5 border border-dashed border-gray-200 bg-gray-100/50 text-gray-400 rounded-xl text-[11px] font-medium flex items-center justify-center gap-1 cursor-not-allowed select-none"
+                                title="This date is unavailable because it is in the past"
+                              >
+                                <Clock size={11} className="text-gray-400" /> Unavailable (Past)
+                              </div>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => handleOpenNewSchedule(dayDate)}
+                                className="mt-3 w-full py-1.5 border border-dashed border-gray-200 hover:border-[#D60041] text-gray-400 hover:text-[#D60041] hover:bg-pink-50/30 rounded-xl text-[11px] font-bold transition-all flex items-center justify-center gap-1"
+                              >
+                                <Plus size={12} /> Add
+                              </button>
+                            )}
                           </div>
                         );
                       })}
@@ -1085,14 +1164,23 @@ const HRSchedulingPage = () => {
             )}
 
             {/* VIEW 3: DAY VIEW */}
-            {!isLoading && viewMode === 'day' && (
+            {!isLoading && viewMode === 'day' && (() => {
+              const isDayPast = isPastDate(selectedDayForDayView);
+              return (
               <div className="bg-white border border-gray-100 rounded-2xl sm:rounded-3xl shadow-sm p-4 sm:p-6 space-y-6">
                 {/* Day Header with Quick Date Selector */}
                 <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-4 border-b border-gray-100">
                   <div>
-                    <h4 className="text-lg sm:text-xl font-black text-gray-900">
-                      {selectedDayForDayView.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
-                    </h4>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h4 className="text-lg sm:text-xl font-black text-gray-900">
+                        {selectedDayForDayView.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
+                      </h4>
+                      {isDayPast && (
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-gray-100 text-gray-500 border border-gray-200 select-none">
+                          Unavailable (Past Date)
+                        </span>
+                      )}
+                    </div>
                     <p className="text-xs text-gray-500 font-medium mt-0.5">
                       {getEventsForDay(selectedDayForDayView).length} scheduled session(s) on this date
                     </p>
@@ -1113,12 +1201,23 @@ const HRSchedulingPage = () => {
                       className="px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-xs font-bold text-gray-800 focus:outline-none focus:ring-2 focus:ring-[#D60041]/20 cursor-pointer shadow-sm"
                     />
 
-                    <button
-                      onClick={() => handleOpenNewSchedule(selectedDayForDayView)}
-                      className="px-4 py-2 bg-[#D60041] hover:bg-rose-700 text-white rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5 shadow-sm shadow-[#D60041]/20"
-                    >
-                      <Plus size={14} /> Schedule for this day
-                    </button>
+                    {isDayPast ? (
+                      <button
+                        disabled
+                        className="px-4 py-2 bg-gray-100 border border-gray-200 text-gray-400 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-not-allowed select-none"
+                        title="Cannot schedule interviews on past dates"
+                      >
+                        <AlertCircle size={14} className="text-gray-400" />
+                        <span>Unavailable (Past Date)</span>
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => handleOpenNewSchedule(selectedDayForDayView)}
+                        className="px-4 py-2 bg-[#D60041] hover:bg-rose-700 text-white rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5 shadow-sm shadow-[#D60041]/20"
+                      >
+                        <Plus size={14} /> Schedule for this day
+                      </button>
+                    )}
                   </div>
                 </div>
 
@@ -1152,13 +1251,19 @@ const HRSchedulingPage = () => {
                               <span className="text-xs text-gray-400 font-medium">
                                 {slot.isLunch ? 'Lunch break reservation window' : 'No interviews scheduled — Slot available'}
                               </span>
-                              <button
-                                type="button"
-                                onClick={() => handleOpenNewSchedule(selectedDayForDayView, `${String(slot.hour).padStart(2, '0')}:00`)}
-                                className="px-3 py-1 bg-gray-50 hover:bg-pink-50 text-gray-600 hover:text-[#D60041] border border-gray-200 hover:border-pink-200 rounded-lg text-xs font-bold transition-colors flex items-center gap-1 group-hover:border-[#D60041]/40"
-                              >
-                                <Plus size={12} /> Schedule at {slot.label}
-                              </button>
+                              {isDayPast ? (
+                                <span className="px-3 py-1 bg-gray-100 text-gray-400 border border-gray-200 rounded-lg text-xs font-semibold cursor-not-allowed select-none">
+                                  Unavailable (Past)
+                                </span>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenNewSchedule(selectedDayForDayView, `${String(slot.hour).padStart(2, '0')}:00`)}
+                                  className="px-3 py-1 bg-gray-50 hover:bg-pink-50 text-gray-600 hover:text-[#D60041] border border-gray-200 hover:border-pink-200 rounded-lg text-xs font-bold transition-colors flex items-center gap-1 group-hover:border-[#D60041]/40"
+                                >
+                                  <Plus size={12} /> Schedule at {slot.label}
+                                </button>
+                              )}
                             </div>
                           ) : (
                             <div className="space-y-2">
@@ -1240,7 +1345,8 @@ const HRSchedulingPage = () => {
                   })}
                 </div>
               </div>
-            )}
+              );
+            })()}
 
             {/* VIEW 4: AGENDA / LIST VIEW */}
             {!isLoading && viewMode === 'agenda' && (
@@ -1309,15 +1415,25 @@ const HRSchedulingPage = () => {
                   <div className="space-y-6">
                     {groupedAgendaEvents.map((group) => {
                       const isGroupToday = isToday(group.date);
+                      const isGroupPast = isPastDate(group.date);
                       return (
                         <div key={toLocalDateString(group.date)} className="space-y-3">
                           {/* Date Section Header */}
                           <div className="flex items-center gap-3">
                             <div className={`px-3 py-1 rounded-xl text-xs font-black uppercase tracking-wider ${
-                              isGroupToday ? 'bg-[#D60041] text-white shadow-sm' : 'bg-gray-100 text-gray-700 border border-gray-200'
+                              isGroupToday
+                                ? 'bg-[#D60041] text-white shadow-sm'
+                                : isGroupPast
+                                ? 'bg-gray-100 text-gray-500 border border-gray-200'
+                                : 'bg-gray-100 text-gray-700 border border-gray-200'
                             }`}>
                               {isGroupToday ? 'Today — ' : ''}
                               {group.date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
+                              {isGroupPast && !isGroupToday && (
+                                <span className="ml-2 text-[10px] text-gray-400 font-bold lowercase tracking-normal">
+                                  (past)
+                                </span>
+                              )}
                             </div>
                             <div className="h-px bg-gray-100 flex-1" />
                             <span className="text-[11px] font-bold text-gray-400">
