@@ -18,12 +18,76 @@ import {
 } from 'lucide-react';
 import Header from '../../components/layout/Header';
 import Sidebar from '../../components/layout/Sidebar';
+import CandidateJobDetailsModal from '../../components/modals/candidate/CandidateJobDetailsModal';
+import jobService from '../../services/jobService';
 
 const CandidateSmartMatchResult = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { matches, extractedData, fileName } = location.state || {};
   const [expandedJobId, setExpandedJobId] = React.useState(null);
+  const [isDetailsOpen, setIsDetailsOpen] = React.useState(false);
+  const [selectedJobForModal, setSelectedJobForModal] = React.useState(null);
+
+  const handleOpenDetails = async (match) => {
+    try {
+      const response = await jobService.getJobById(match.job_id);
+      const data = response.data;
+      if (data) {
+        setSelectedJobForModal({
+          id: data.job_id || data.id || match.job_id,
+          job_id: data.job_id || match.job_id,
+          title: data.job_title || data.title || match.job_title,
+          department: data.department || match.department || 'General',
+          location: data.location || match.location || 'Sto. Tomas, Batangas',
+          job_type: data.job_type || match.job_type || 'Full-Time',
+          salary_range: data.salary_range || 'Competitive',
+          description: data.description || match.ai_summary || '',
+          skills_requirements: data.skills_requirements || (match.matched_skills || []).join(', '),
+          education_requirements: data.education_requirements || match.required_degree || '',
+          certifications_requirements: data.certifications_requirements || '',
+          experience_requirements: data.experience_requirements || match.relevant_experience || '',
+          is_active: data.is_active ?? true
+        });
+      }
+    } catch {
+      setSelectedJobForModal({
+        id: match.job_id,
+        job_id: match.job_id,
+        title: match.job_title,
+        department: match.department || 'General',
+        location: match.location || 'Sto. Tomas, Batangas',
+        job_type: match.job_type || 'Full-Time',
+        salary_range: 'Competitive',
+        description: match.ai_summary || '',
+        skills_requirements: (match.matched_skills || []).join(', '),
+        education_requirements: match.required_degree || '',
+        certifications_requirements: '',
+        experience_requirements: match.relevant_experience || '',
+        is_active: true
+      });
+    }
+    setIsDetailsOpen(true);
+  };
+
+  const handleApplyFromModal = (targetJobId) => {
+    setIsDetailsOpen(false);
+    const matchedJob = matches?.find((m) => String(m.job_id) === String(targetJobId));
+    navigate(`/candidate/preview-profile/${targetJobId}`, {
+      state: {
+        job: {
+          job_id: targetJobId,
+          title: matchedJob?.job_title || selectedJobForModal?.title,
+          department: matchedJob?.department || selectedJobForModal?.department,
+          location: matchedJob?.location || selectedJobForModal?.location,
+          job_type: matchedJob?.job_type || selectedJobForModal?.job_type
+        },
+        extractedData,
+        matchData: matchedJob,
+        fileName
+      }
+    });
+  };
 
   useEffect(() => {
     window.scrollTo(0, 0);
@@ -268,20 +332,7 @@ const CandidateSmartMatchResult = () => {
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
-                        navigate(`/job-details/${match.job_id}`, { 
-                          state: { 
-                            job: { 
-                              job_id: match.job_id, 
-                              title: match.job_title, 
-                              department: match.department, 
-                              location: match.location, 
-                              job_type: match.job_type 
-                            }, 
-                            extractedData, 
-                            matchData: match, 
-                            fileName 
-                          } 
-                        });
+                        handleOpenDetails(match);
                       }}
                       className="flex-1 py-4 rounded-2xl border border-slate-200 font-bold text-sm text-slate-700 hover:bg-slate-50 hover:border-slate-300 transition-all active:scale-95"
                     >
@@ -320,6 +371,15 @@ const CandidateSmartMatchResult = () => {
           </div>
         </main>
       </div>
+
+      {selectedJobForModal && (
+        <CandidateJobDetailsModal
+          isOpen={isDetailsOpen}
+          onClose={() => setIsDetailsOpen(false)}
+          job={selectedJobForModal}
+          onApply={handleApplyFromModal}
+        />
+      )}
     </div>
   );
 };
