@@ -53,6 +53,7 @@ async def update_hr_profile_details(hr_id: int, hr_update: HRUpdate, db: AsyncSe
     updated_profile = await hr_service.update_hr_profile(db, hr_id, hr_update)
     if not updated_profile:
         raise HTTPException(status_code=404, detail="HR profile not found")
+    await clear_cache_pattern(f"hr_profile:*\"hr_id\": {hr_id}*")
     return updated_profile
 
 @router.post("/upload-profile-image/{hr_id}")

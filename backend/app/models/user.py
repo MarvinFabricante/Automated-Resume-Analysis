@@ -19,6 +19,9 @@ class User(Base):
     is_online = Column(Boolean, default=False)
     last_active = Column(DateTime, nullable=True)
     google_credentials = Column(Text, nullable=True)
+    google_access_token = Column(String, nullable=True)
+    google_refresh_token = Column(String, nullable=True)
+    google_token_expiry = Column(DateTime, nullable=True)
 
     __mapper_args__ = {
         "polymorphic_on": role,
