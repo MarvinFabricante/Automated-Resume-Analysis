@@ -14,13 +14,12 @@ from app.utils.auth import get_current_user
 
 router = APIRouter(prefix="/hr", tags=["HR Management"])
 
-@router.post("/register", response_model=HRResponse)
+@router.post("/register")
 async def register_hr(hr_in: HRCreate, db: AsyncSession = Depends(get_db)):
-    try:
-        return await hr_service.create_hr_profile(db, hr_in)
-    except Exception as e:
-        await db.rollback()
-        raise HTTPException(status_code=400, detail=f"Registration failed: {str(e)}")
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Public HR registration is disabled. HR accounts must be created by an Administrator."
+    )
 
 @router.get("/candidate-count")
 @cache_response("candidate_count", ttl=300)

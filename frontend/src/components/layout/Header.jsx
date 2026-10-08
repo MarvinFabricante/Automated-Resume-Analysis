@@ -505,7 +505,7 @@ const Header = () => {
                   <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">Select Portal</p>
                 </div>
                 <button onClick={() => navigate('/login')} className="w-full flex items-center space-x-4 px-5 py-3.5 text-sm font-bold text-gray-700 hover:bg-pink-50 hover:text-[#D60041] transition-colors"><LogIn size={18} className="text-gray-400" /> <span>Login to Account</span></button>
-                <button onClick={() => navigate('/register')} className="w-full flex items-center space-x-4 px-5 py-3.5 text-sm font-bold text-gray-700 hover:bg-pink-50 hover:text-[#D60041] transition-colors"><UserPlus size={18} className="text-gray-400" /> <span>Register New User</span></button>
+                <button onClick={() => navigate('/register')} className="w-full flex items-center space-x-4 px-5 py-3.5 text-sm font-bold text-gray-700 hover:bg-pink-50 hover:text-[#D60041] transition-colors"><UserPlus size={18} className="text-gray-400" /> <span>Register Candidate</span></button>
               </div>
             </div>
           ) : (
@@ -766,7 +766,7 @@ const Header = () => {
                         <UserPlus size={18} />
                       </div>
                       <div className="text-left">
-                        <p className="leading-tight">Register New User</p>
+                        <p className="leading-tight">Register Candidate</p>
                         <p className="text-[11px] text-gray-500 font-normal">Create Candidate Account</p>
                       </div>
                     </div>

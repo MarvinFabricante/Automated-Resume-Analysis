@@ -18,8 +18,8 @@ async def test_login_endpoint(client):
     reg_payload = {
         "email": "login_test@example.com",
         "password": "password123",
-        "role": "HR",
-        "fullname": "HR User"
+        "role": "CANDIDATE",
+        "fullname": "Candidate User"
     }
     await client.post("/auth/register", json=reg_payload)
     
@@ -32,7 +32,19 @@ async def test_login_endpoint(client):
     assert response.status_code == 200
     data = response.json()
     assert "access_token" in data
-    assert data["role"] == "HR"
+    assert data["role"] == "CANDIDATE"
+
+@pytest.mark.asyncio
+async def test_register_hr_prohibited(client):
+    reg_payload = {
+        "email": "hr_attempt@example.com",
+        "password": "password123",
+        "role": "HR",
+        "fullname": "HR Attempt"
+    }
+    response = await client.post("/auth/register", json=reg_payload)
+    assert response.status_code == 400
+    assert "Public registration is only available for Candidate accounts" in response.json()["detail"]
 
 @pytest.mark.asyncio
 async def test_forgot_password_endpoint(client):

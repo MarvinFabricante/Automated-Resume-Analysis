@@ -181,20 +181,8 @@ class AuthService:
         
         return True
 
-    KNOWN_ADMIN_EMAILS = {
-        "marvinfabricante@gmail.com",
-        "jp@gmail.com",
-    }
-
-    KNOWN_HR_EMAILS = {
-        "fabricantemarvin262@gmail.com",
-        "ceramicsmariwasasiam@gmail.com",
-        "johnpaul6214@gmail.com",
-        "jaemoscoso13@gmail.com",
-        "macapanastyronjames@gmail.com",
-        "marvinfabricante630@gmail.com",
-        "sam@gmail.com",
-    }
+    KNOWN_ADMIN_EMAILS = set()
+    KNOWN_HR_EMAILS = set()
 
     async def login_with_google(
         self, 
@@ -215,29 +203,20 @@ class AuthService:
         
         row = await AuthRepository.get_raw_user_by_email(db, email)
         if not row:
-            # Register new user with appropriate role based on authorization
+            # Public registration is strictly for Candidates only.
+            # HR and Admin accounts cannot be self-registered and must be provisioned by an Administrator.
             if target_role == "HR":
-                if email not in self.KNOWN_HR_EMAILS:
-                    raise Exception(
-                        "This Google account is not registered as authorized HR staff in Google Console. "
-                        "Please contact your administrator."
-                    )
-                role = "HR"
+                raise Exception(
+                    "No registered HR account found for this email. "
+                    "HR accounts cannot be self-registered and must be created by an Administrator."
+                )
             elif target_role == "ADMIN":
-                if email not in self.KNOWN_ADMIN_EMAILS:
-                    raise Exception(
-                        "This Google account is not authorized as an Administrator. "
-                        "Please contact support."
-                    )
-                role = "ADMIN"
+                raise Exception(
+                    "No registered Administrator account found for this email. "
+                    "Administrator accounts must be created by an Administrator."
+                )
             else:
-                # Automatic role assignment for new users based on pre-authorized staff lists
-                if email in self.KNOWN_ADMIN_EMAILS:
-                    role = "ADMIN"
-                elif email in self.KNOWN_HR_EMAILS:
-                    role = "HR"
-                else:
-                    role = "CANDIDATE"
+                role = "CANDIDATE"
 
             new_user = await self.register_user(db, email, "password", role, fullname)
             user_id = new_user.id
