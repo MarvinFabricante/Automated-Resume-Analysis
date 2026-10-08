@@ -2,7 +2,7 @@ import React from 'react';
 import { 
   Clock, User, ShieldCheck, Briefcase, 
   AlertCircle, CheckCircle2, MessageSquare, ChevronRight,
-  UserPlus, FileText, Zap, Edit3, Radio, TrendingUp
+  UserPlus, FileText, Zap, Edit3, Radio, TrendingUp, Lock
 } from 'lucide-react';
 
 const NotificationDropdown = ({ userRole, notifications, onMarkAllRead }) => {
@@ -35,9 +35,14 @@ const NotificationDropdown = ({ userRole, notifications, onMarkAllRead }) => {
     <div className="desktop-dropdown absolute right-0 sm:right-0 -right-4 sm:translate-x-0 top-[calc(100%+16px)] w-[calc(100vw-2rem)] sm:w-[380px] max-w-[380px] bg-white border border-gray-100 rounded-[32px] shadow-2xl py-6 z-[60] animate-in fade-in slide-in-from-top-4 duration-300">
       <div className="px-6 sm:px-8 pb-6 border-b border-gray-50 flex justify-between items-center">
         <div>
-          <h4 className="text-base font-black text-slate-900">
-            {userRole === 'CANDIDATE' ? 'Your Updates' : userRole === 'HR' ? 'Recruitment Alerts' : 'System Console'}
-          </h4>
+          <div className="flex items-center gap-2">
+            <h4 className="text-base font-black text-slate-900">
+              {userRole === 'CANDIDATE' ? 'Your Updates' : userRole === 'HR' ? 'Recruitment Alerts' : 'System Console'}
+            </h4>
+            <span className="inline-flex items-center gap-1 text-[9px] font-black uppercase tracking-wider text-amber-700 bg-amber-50 border border-amber-200/80 px-2 py-0.5 rounded-full shadow-xs">
+              <Lock size={10} className="text-amber-600" /> Read-Only
+            </span>
+          </div>
           <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">
             {notifications.filter(n => !n.read).length} Unread {notifications.filter(n => !n.read).length === 1 ? 'Alert' : 'Alerts'}
           </p>

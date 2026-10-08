@@ -4,7 +4,7 @@ import {
   ChevronDown, LayoutDashboard, Users, Database, ShieldCheck, LogOut,
   Settings, Menu, X, FileText, Search, User, Building2, Info, Briefcase, LogIn, UserPlus,
   Bell, Clock, CheckCircle2, AlertCircle, MessageSquare, ChevronRight,
-  TrendingUp, Zap, Radio, Edit3, Calendar, Home, Scale
+  TrendingUp, Zap, Radio, Edit3, Calendar, Home, Scale, Lock
 } from 'lucide-react';
 import NotificationDropdown from './NotificationDropdown';
 import notificationService from '../../services/notificationService';
@@ -633,8 +633,11 @@ const Header = () => {
                       )}
                     </div>
                     <div>
-                      <p className="text-xs font-bold text-gray-900 flex items-center gap-2">
+                      <p className="text-xs font-bold text-gray-900 flex items-center gap-2 flex-wrap">
                         <span>{userRole === 'HR' ? 'Recruitment Alerts' : 'Notifications'}</span>
+                        <span className="inline-flex items-center gap-1 text-[8px] font-black uppercase tracking-wider text-amber-700 bg-amber-50 border border-amber-200/80 px-1.5 py-0.5 rounded-full">
+                          <Lock size={8} className="text-amber-600" /> Read-Only
+                        </span>
                         {unreadCount > 0 ? (
                           <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-red-100 text-[#D60041]">
                             {unreadCount} new

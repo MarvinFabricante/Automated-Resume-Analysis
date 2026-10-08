@@ -71,12 +71,12 @@ const HRDashboard = () => {
               </div>
 
               <div className="flex items-center gap-3 w-full sm:w-auto overflow-x-auto pb-2 sm:pb-0 scrollbar-hide">
-                <button className="whitespace-nowrap bg-white border border-gray-200 px-4 py-2 rounded-xl hover:border-pink-100 hover:text-[#D60041] hover:bg-pink-50 transition-all duration-300 text-[11px] md:text-xs font-bold text-gray-700 flex items-center shadow-sm shrink-0">
+                {/* <button className="whitespace-nowrap bg-white border border-gray-200 px-4 py-2 rounded-xl hover:border-pink-100 hover:text-[#D60041] hover:bg-pink-50 transition-all duration-300 text-[11px] md:text-xs font-bold text-gray-700 flex items-center shadow-sm shrink-0">
                   Real-time
                   <div className="w-2 h-2 bg-green-500 rounded-full ml-2 animate-pulse"></div>
-                </button>
+                </button> */}
 
-                <button 
+                <button
                   onClick={() => exportToCSV(applications, `Recruitment_Report_${new Date().toISOString().split('T')[0]}`)}
                   className="whitespace-nowrap bg-white border border-gray-200 px-4 py-2 rounded-xl hover:border-pink-100 hover:text-[#D60041] hover:bg-pink-50 transition-all duration-300 text-[11px] md:text-xs font-bold text-gray-700 flex items-center shadow-sm group shrink-0"
                 >
@@ -148,7 +148,7 @@ const HRDashboard = () => {
                 </div>
               </div>
 
-              <div 
+              <div
                 onClick={() => navigate('/hr/comparecandidates')}
                 className="bg-white border border-gray-100 rounded-2xl sm:rounded-[32px] p-5 sm:p-6 lg:p-8 shadow-sm hover:-translate-y-1 hover:shadow-xl hover:border-blue-100 transition-all duration-300 cursor-pointer flex flex-col items-start gap-4 sm:gap-6 group"
               >
