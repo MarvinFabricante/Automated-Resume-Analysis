@@ -92,7 +92,7 @@ const HRDashboard = () => {
               totalResumes={totalResumes}
               appStats={appStats}
             />
-            <ApplicationTrends />
+            <ApplicationTrends applications={applications} appStats={appStats} />
             <RecentSubmissions candidates={recentCandidates} />
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
