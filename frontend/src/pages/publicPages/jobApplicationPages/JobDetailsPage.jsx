@@ -377,7 +377,14 @@ const JobDetailsPage = () => {
                     </button>
                   ) : (
                     <button
-                      onClick={() => navigate(`/apply/${job.job_id || job.id}`, { state: { job } })}
+                      onClick={() => {
+                        const role = localStorage.getItem('role');
+                        if (role === 'CANDIDATE') {
+                          navigate(`/candidate/upload-resume/${job.job_id || job.id}`);
+                        } else {
+                          navigate(`/apply/${job.job_id || job.id}`, { state: { job } });
+                        }
+                      }}
                       className="w-full bg-[#D60041] text-white py-4 sm:py-5 rounded-xl sm:rounded-[24px] font-bold text-xs sm:text-sm hover:bg-white hover:text-slate-900 transition-all shadow-xl flex items-center justify-center gap-2 sm:gap-3 active:scale-95 relative z-10"
                     >
                       Apply Now

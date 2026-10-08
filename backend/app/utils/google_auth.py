@@ -127,7 +127,7 @@ def _create_flow(scopes: list[str], redirect_uri: str):
     )
 
 
-def get_candidate_google_auth_url(flow_type: str = "candidate_login", redirect_uri: str = None):
+def get_candidate_google_auth_url(flow_type: str = "candidate_login", redirect_uri: str = None, user_id: int = None):
     """
     Generate Google OAuth URL specifically for candidate login or registration.
     Uses CANDIDATE_AUTH_SCOPES (openid, email, profile) ONLY.
@@ -148,12 +148,13 @@ def get_candidate_google_auth_url(flow_type: str = "candidate_login", redirect_u
         "flow_type": flow_type,
         "role": "candidate",
         "scopes": CANDIDATE_AUTH_SCOPES,
-        "redirect_uri": chosen_redirect_uri
+        "redirect_uri": chosen_redirect_uri,
+        "user_id": user_id
     })
     return auth_url, state
 
 
-def get_hr_google_auth_url(flow_type: str = "hr_login", redirect_uri: str = None):
+def get_hr_google_auth_url(flow_type: str = "hr_login", redirect_uri: str = None, user_id: int = None):
     """
     Generate Google OAuth URL specifically for HR staff.
     Uses CALENDAR_SCOPES to allow Google Calendar synchronization for interview management.
@@ -174,12 +175,13 @@ def get_hr_google_auth_url(flow_type: str = "hr_login", redirect_uri: str = None
         "flow_type": flow_type,
         "role": "hr",
         "scopes": CALENDAR_SCOPES,
-        "redirect_uri": chosen_redirect_uri
+        "redirect_uri": chosen_redirect_uri,
+        "user_id": user_id
     })
     return auth_url, state
 
 
-def get_admin_google_auth_url(flow_type: str = "admin_login", redirect_uri: str = None):
+def get_admin_google_auth_url(flow_type: str = "admin_login", redirect_uri: str = None, user_id: int = None):
     """
     Generate Google OAuth URL specifically for System Administrators.
     Uses CANDIDATE_AUTH_SCOPES (identity and profile).
@@ -198,12 +200,13 @@ def get_admin_google_auth_url(flow_type: str = "admin_login", redirect_uri: str 
         "flow_type": flow_type,
         "role": "admin",
         "scopes": CANDIDATE_AUTH_SCOPES,
-        "redirect_uri": chosen_redirect_uri
+        "redirect_uri": chosen_redirect_uri,
+        "user_id": user_id
     })
     return auth_url, state
 
 
-def get_google_auth_url(role: str = "auto", flow_type: str = "login", redirect_uri: str = None, frontend_origin: str = None):
+def get_google_auth_url(role: str = "auto", flow_type: str = "login", redirect_uri: str = None, frontend_origin: str = None, user_id: int = None):
     """
     Generate Google OAuth URL based on the requested role and flow.
     - If role is 'auto' (default for login): uses CANDIDATE_AUTH_SCOPES (identity and profile)
@@ -217,13 +220,13 @@ def get_google_auth_url(role: str = "auto", flow_type: str = "login", redirect_u
     norm_flow = (flow_type or "login").strip().lower()
 
     if norm_flow in ["candidate_register", "register"]:
-        return get_candidate_google_auth_url(flow_type="candidate_register", redirect_uri=redirect_uri)
+        return get_candidate_google_auth_url(flow_type="candidate_register", redirect_uri=redirect_uri, user_id=user_id)
     elif norm_role == "hr" or norm_flow == "hr_login":
-        return get_hr_google_auth_url(flow_type="hr_login", redirect_uri=redirect_uri)
+        return get_hr_google_auth_url(flow_type="hr_login", redirect_uri=redirect_uri, user_id=user_id)
     elif norm_role == "admin" or norm_flow == "admin_login":
-        return get_admin_google_auth_url(flow_type="admin_login", redirect_uri=redirect_uri)
+        return get_admin_google_auth_url(flow_type="admin_login", redirect_uri=redirect_uri, user_id=user_id)
     elif norm_role == "candidate":
-        return get_candidate_google_auth_url(flow_type="candidate_login", redirect_uri=redirect_uri)
+        return get_candidate_google_auth_url(flow_type="candidate_login", redirect_uri=redirect_uri, user_id=user_id)
     else:
         # Universal login with automatic role detection
         chosen_redirect_uri = redirect_uri or _get_redirect_uri()
@@ -240,7 +243,8 @@ def get_google_auth_url(role: str = "auto", flow_type: str = "login", redirect_u
             "flow_type": norm_flow,
             "role": "auto",
             "scopes": CANDIDATE_AUTH_SCOPES,
-            "redirect_uri": chosen_redirect_uri
+            "redirect_uri": chosen_redirect_uri,
+            "user_id": user_id
         })
         return auth_url, state
 
@@ -252,6 +256,7 @@ def exchange_code_for_credentials(code: str, state: str):
     code_verifier = flow_info.get("verifier")
     flow_type = flow_info.get("flow_type", "login")
     role = flow_info.get("role", "auto")
+    user_id = flow_info.get("user_id")
 
     flow = _create_flow(
         scopes=scopes,
@@ -265,7 +270,8 @@ def exchange_code_for_credentials(code: str, state: str):
         "flow_type": flow_type,
         "role": role,
         "scopes": scopes,
-        "redirect_uri": redirect_uri
+        "redirect_uri": redirect_uri,
+        "user_id": user_id
     }
 
 

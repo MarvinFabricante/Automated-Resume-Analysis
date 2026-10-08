@@ -196,7 +196,14 @@ const CareersPage = () => {
             paginatedJobs.map((job) => (
               <div 
                 key={job.id} 
-                onClick={() => navigate(`/apply/${job.job_id}`, { state: { job } })}
+                onClick={() => {
+                  const role = localStorage.getItem('role');
+                  if (role === 'CANDIDATE') {
+                    navigate(`/candidate/upload-resume/${job.job_id}`);
+                  } else {
+                    navigate(`/apply/${job.job_id}`, { state: { job } });
+                  }
+                }}
                 className="bg-white p-5 sm:p-6 md:p-8 rounded-2xl sm:rounded-[32px] border border-gray-100 shadow-sm hover:shadow-md transition-all duration-300 group flex flex-col relative overflow-hidden cursor-pointer"
               >
                 <div className="absolute top-0 right-0 w-32 h-32 bg-red-50 rounded-bl-[100px] opacity-0 group-hover:opacity-50 transition-opacity duration-300"></div>
@@ -256,7 +263,12 @@ const CareersPage = () => {
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
-                      navigate(`/apply/${job.job_id}`, { state: { job } });
+                      const role = localStorage.getItem('role');
+                      if (role === 'CANDIDATE') {
+                        navigate(`/candidate/upload-resume/${job.job_id}`);
+                      } else {
+                        navigate(`/apply/${job.job_id}`, { state: { job } });
+                      }
                     }}
                     disabled={!job.is_active}
                     className="flex-[2] py-3 sm:py-3.5 rounded-full bg-[#1A1A1A] text-white font-medium text-xs sm:text-sm flex items-center justify-center gap-2 hover:bg-[#D60041] transition-colors disabled:opacity-50 disabled:cursor-not-allowed group/btn text-center"

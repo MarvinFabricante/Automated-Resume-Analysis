@@ -11,6 +11,7 @@ class HRCreate(BaseModel):
 
 class HRUpdate(BaseModel):
     fullname: Optional[str] = None
+    email: Optional[EmailStr] = None
     company_name: Optional[str] = None
     department: Optional[str] = None
     position: Optional[str] = None

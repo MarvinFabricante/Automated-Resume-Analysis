@@ -21,6 +21,15 @@ class CandidateService:
             return None
 
         update_data = candidate_update.dict(exclude_unset=True)
+        if "email" in update_data and update_data["email"]:
+            new_email = update_data["email"].strip().lower()
+            update_data["email"] = new_email
+            if new_email != candidate.email:
+                from app.repositories.auth_repository import AuthRepository
+                existing = await AuthRepository.get_raw_user_by_email(db, new_email)
+                if existing and existing.id != candidate_id:
+                    raise Exception("This email address is already in use by another account.")
+
         return await CandidateRepository.update(db, candidate, update_data)
 
     async def create_candidate_profile(self, db: AsyncSession, candidate_in: CandidateCreate):

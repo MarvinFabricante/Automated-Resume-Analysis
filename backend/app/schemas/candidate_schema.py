@@ -11,6 +11,7 @@ class CandidateCreate(BaseModel):
 
 class CandidateUpdate(BaseModel):
     fullname: Optional[str] = None
+    email: Optional[EmailStr] = None
     phone: Optional[str] = None
     location: Optional[str] = None
     current_job_title: Optional[str] = None
@@ -19,6 +20,7 @@ class CandidateUpdate(BaseModel):
     highest_degree: Optional[str] = None
     university: Optional[str] = None
     skills: Optional[List[str]] = None
+    experience_years: Optional[int] = None
     profile_image_url: Optional[str] = None
 
 class CandidateResponse(BaseModel):

@@ -20,6 +20,12 @@ const authService = {
   changePassword: (current_password, new_password) =>
     api.post('/auth/change-password', { current_password, new_password }),
 
+  getSecurityStatus: (userId) =>
+    api.get('/auth/security-status', { params: userId ? { user_id: userId } : {} }),
+
+  disconnectGoogle: (userId) =>
+    api.post('/auth/google/disconnect', null, { params: userId ? { user_id: userId } : {} }),
+
   checkRole: (email) =>
     api.get(`/auth/check-role?email=${encodeURIComponent(email)}`),
 };

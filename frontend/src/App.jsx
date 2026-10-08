@@ -29,6 +29,7 @@ import ApplicationTracking from './pages/candidate/ApplicationTracking';
 import CandidateDashboard from './pages/candidate/CandidateDashboard';
 import FindJob from './pages/candidate/FindJob';
 import CandidateSmartUpload from './pages/candidate/CandidateSmartUpload';
+import CandidateSmartUploadPage from './pages/candidate/CandidateSmartUploadPage';
 import CandidatePreviewAndVerify from './pages/candidate/CandidatePreviewAndVerify';
 import CandidateProfileForm from './pages/candidate/CandidateProfileForm';
 import CandidateSmartMatchResult from './pages/candidate/CandidateSmartMatchResult';
@@ -113,6 +114,7 @@ const App = () => {
             <Route path="/candidate">
               <Route path="dashboard" element={<CandidateDashboard />} />
               <Route path="findjobs" element={<FindJob />} />
+              <Route path="smart-upload" element={<CandidateSmartUploadPage />} />
               <Route path="applicationtracking/:id" element={<ApplicationTracking />} />
               <Route path="applicationtracking" element={<ApplicationTracking />} />
               <Route path="messages" element={<MessagesPage />} />

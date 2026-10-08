@@ -34,6 +34,15 @@ class AdminService:
             return None
 
         update_data = admin_update.dict(exclude_unset=True)
+        if "email" in update_data and update_data["email"]:
+            new_email = update_data["email"].strip().lower()
+            update_data["email"] = new_email
+            if new_email != admin.email:
+                from app.repositories.auth_repository import AuthRepository
+                existing = await AuthRepository.get_raw_user_by_email(db, new_email)
+                if existing and existing.id != admin_id:
+                    raise Exception("This email address is already in use by another account.")
+
         return await AdminRepository.update_admin(db, admin, update_data)
 
     async def toggle_user_archive_status(self, db: AsyncSession, user_id: int, archive_status: bool):

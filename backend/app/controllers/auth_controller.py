@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.utils.database import get_db
 
 from app.schemas.user_schema import Token, UserCreate, UserLogin, ForgotPasswordRequest, ResetPasswordRequest, ChangePasswordRequest
-from app.utils.auth import get_current_user
+from app.utils.auth import get_current_user, get_optional_current_user
 from app.services import auth_service
 
 
@@ -76,6 +76,83 @@ async def change_password(
         if str(e) == "Incorrect current password":
             raise HTTPException(status_code=401, detail=str(e))
         raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.get("/security-status")
+async def get_security_status(
+    user_id: int = None,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_optional_current_user)
+):
+    target_id = (current_user.get("id") if current_user else None) or user_id
+    if not target_id:
+        return {
+            "email": "",
+            "role": "",
+            "fullname": "",
+            "is_google_linked": False,
+            "google_email": None,
+            "has_calendar_sync": False,
+            "last_active": None
+        }
+    
+    from app.repositories.auth_repository import AuthRepository
+    user = await AuthRepository.get_user_by_id(db, target_id)
+    if not user:
+        return {
+            "email": "",
+            "role": "",
+            "fullname": "",
+            "is_google_linked": False,
+            "google_email": None,
+            "has_calendar_sync": False,
+            "last_active": None
+        }
+        
+    is_google_linked = bool(user.google_credentials or user.google_access_token)
+    has_calendar = bool(user.google_credentials and "calendar" in user.google_credentials)
+    
+    return {
+        "email": user.email,
+        "role": user.role,
+        "fullname": user.fullname,
+        "is_google_linked": is_google_linked,
+        "google_email": user.email if is_google_linked else None,
+        "has_calendar_sync": has_calendar,
+        "last_active": user.last_active.isoformat() if user.last_active else None
+    }
+
+
+@router.post("/google/disconnect")
+async def disconnect_google(
+    user_id: int = None,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_optional_current_user)
+):
+    target_id = (current_user.get("id") if current_user else None) or user_id
+    if not target_id:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    
+    from app.repositories.auth_repository import AuthRepository
+    user = await AuthRepository.get_user_by_id(db, target_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+        
+    user.google_credentials = None
+    user.google_access_token = None
+    user.google_refresh_token = None
+    user.google_token_expiry = None
+    await db.commit()
+    
+    from app.services.audit_service import record_activity
+    await record_activity(
+        db=db,
+        user_id=user.id,
+        action="DISCONNECT_GOOGLE",
+        details=f"User {user.email} unlinked their Google account"
+    )
+    
+    return {"message": "Google account unlinked successfully."}
 
 
 
@@ -185,9 +262,10 @@ async def google_register(request: Request, origin: str = None):
     return await google_candidate_register(request, origin)
 
 @router.get("/google/login")
-async def google_login(request: Request, flow: str = "login", role: str = "auto", origin: str = None):
+async def google_login(request: Request, flow: str = "login", role: str = "auto", origin: str = None, user_id: int = None):
     """
-    Role-aware Google OAuth login endpoint.
+    Role-aware Google OAuth login and account-linking endpoint.
+    - If flow is 'link_account': links Google credentials to an existing user session.
     - If role is 'auto' (default for universal login): requests basic profile scopes (no Google Calendar / Console restrictions),
       allowing ANY Google account (Candidate, HR, Admin) to sign in seamlessly.
       The user's actual role is automatically detected upon callback.
@@ -198,16 +276,24 @@ async def google_login(request: Request, flow: str = "login", role: str = "auto"
     base_origin = _public_origin_from_request(request, origin)
     redirect_uri = _redirect_uri_for_origin(base_origin)
     norm_role = (role or "auto").strip().lower()
-    if flow in ["candidate_register", "register"]:
-        url, state = get_candidate_google_auth_url(flow_type="candidate_register", redirect_uri=redirect_uri)
+    
+    if flow in ["link_account", "link_google"]:
+        if norm_role == "hr":
+            url, state = get_hr_google_auth_url(flow_type="link_account", redirect_uri=redirect_uri, user_id=user_id)
+        elif norm_role == "admin":
+            url, state = get_admin_google_auth_url(flow_type="link_account", redirect_uri=redirect_uri, user_id=user_id)
+        else:
+            url, state = get_candidate_google_auth_url(flow_type="link_account", redirect_uri=redirect_uri, user_id=user_id)
+    elif flow in ["candidate_register", "register"]:
+        url, state = get_candidate_google_auth_url(flow_type="candidate_register", redirect_uri=redirect_uri, user_id=user_id)
     elif norm_role == "hr" or flow == "hr_login":
-        url, state = get_hr_google_auth_url(flow_type="hr_login", redirect_uri=redirect_uri)
+        url, state = get_hr_google_auth_url(flow_type="hr_login", redirect_uri=redirect_uri, user_id=user_id)
     elif norm_role == "admin" or flow == "admin_login":
-        url, state = get_admin_google_auth_url(flow_type="admin_login", redirect_uri=redirect_uri)
+        url, state = get_admin_google_auth_url(flow_type="admin_login", redirect_uri=redirect_uri, user_id=user_id)
     elif norm_role == "candidate":
-        url, state = get_candidate_google_auth_url(flow_type="candidate_login", redirect_uri=redirect_uri)
+        url, state = get_candidate_google_auth_url(flow_type="candidate_login", redirect_uri=redirect_uri, user_id=user_id)
     else:
-        url, state = get_google_auth_url(role="auto", flow_type="login", redirect_uri=redirect_uri)
+        url, state = get_google_auth_url(role="auto", flow_type="login", redirect_uri=redirect_uri, user_id=user_id)
     
     return RedirectResponse(url)
 
@@ -248,6 +334,31 @@ async def google_callback(request: Request, code: str, state: str = "", db: Asyn
         
         creds_json = creds.to_json() if creds else ""
         granted_scopes = getattr(creds, 'scopes', [])
+
+        if flow_type in ["link_account", "link_google"]:
+            target_user_id = flow_info.get("user_id") if isinstance(flow_info, dict) else None
+            user = None
+            if target_user_id:
+                try:
+                    user = await AuthRepository.get_user_by_id(db, int(target_user_id))
+                except Exception:
+                    pass
+            if not user and email:
+                user = await AuthRepository.get_user_by_email(db, email)
+                
+            if user:
+                user.google_credentials = creds_json
+                if hasattr(creds, 'token') and creds.token:
+                    user.google_access_token = creds.token
+                if picture and not user.profile_image_url:
+                    user.profile_image_url = picture
+                await db.commit()
+                
+                role_path = (user.role or "candidate").lower()
+                return RedirectResponse(f"{base_url}/{role_path}/settings?tab=security&google_linked=success")
+            else:
+                role_path = (role_requested or "candidate").lower()
+                return RedirectResponse(f"{base_url}/{role_path}/settings?tab=security&google_linked=not_found")
 
         if flow_type in ["candidate_register", "register"]:
             # Pure user authentication and account creation for Candidate - no Google Calendar logic or linking
