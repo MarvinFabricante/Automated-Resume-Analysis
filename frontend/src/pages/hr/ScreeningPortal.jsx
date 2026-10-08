@@ -122,6 +122,8 @@ const ScreeningPortal = () => {
         // Show all including archived
       } else if (statusFilter === "All Status") {
         if (!includeArchived && candidateStatus === "archived") return false;
+      } else if (statusFilter === "Interview" || statusFilter === "In Interview") {
+        if (!['technical interview', 'final interview', 'interview'].includes(candidateStatus)) return false;
       } else {
         if (candidateStatus !== statusFilter.toLowerCase()) return false;
       }
@@ -218,24 +220,27 @@ const ScreeningPortal = () => {
   // KPI Card quick filter handler
   const handleKpiClick = (type) => {
     setCurrentPage(1);
+
+    // If clicking on the currently active filter card, toggle back to All Status
+    if (type === 'all' ||
+        (type === 'pending' && statusFilter === 'Pending') ||
+        (type === 'interview' && (statusFilter === 'Interview' || statusFilter === 'Technical Interview' || statusFilter === 'Final Interview')) ||
+        (type === 'accepted' && statusFilter === 'Accepted') ||
+        (type === 'archived' && statusFilter === 'Archived')) {
+      setStatusFilter("All Status");
+      setScoreFilter("All Scores");
+      setIncludeArchived(false);
+      return;
+    }
+
     switch (type) {
-      case 'all':
-        setStatusFilter("All Status");
-        setScoreFilter("All Scores");
-        setIncludeArchived(false);
-        break;
       case 'pending':
         setStatusFilter("Pending");
         setScoreFilter("All Scores");
         setIncludeArchived(false);
         break;
-      case 'highMatch':
-        setStatusFilter("All Status");
-        setScoreFilter("80+");
-        setIncludeArchived(false);
-        break;
       case 'interview':
-        setStatusFilter("Technical Interview");
+        setStatusFilter("Interview");
         setScoreFilter("All Scores");
         setIncludeArchived(false);
         break;
@@ -250,6 +255,9 @@ const ScreeningPortal = () => {
         setIncludeArchived(true);
         break;
       default:
+        setStatusFilter("All Status");
+        setScoreFilter("All Scores");
+        setIncludeArchived(false);
         break;
     }
   };

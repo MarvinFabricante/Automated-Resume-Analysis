@@ -24,10 +24,9 @@ const ScreeningHeader = ({
   onRefresh,
   isRefreshing = false
 }) => {
-  const isTotalActive = activeStatusFilter === 'All Status' && activeScoreFilter === 'All Scores';
+  const isTotalActive = (activeStatusFilter === 'All Status' || !activeStatusFilter) && (activeScoreFilter === 'All Scores' || !activeScoreFilter);
   const isPendingActive = activeStatusFilter === 'Pending';
-  const isHighMatchActive = activeScoreFilter === '80+';
-  const isInterviewActive = activeStatusFilter === 'Technical Interview' || activeStatusFilter === 'Final Interview';
+  const isInterviewActive = activeStatusFilter === 'Interview' || activeStatusFilter === 'In Interview' || activeStatusFilter === 'Technical Interview' || activeStatusFilter === 'Final Interview';
   const isAcceptedActive = activeStatusFilter === 'Accepted';
   const isArchivedActive = activeStatusFilter === 'Archived';
 
@@ -136,163 +135,242 @@ const ScreeningHeader = ({
       </div>
 
       {/* Interactive KPI Summary Stat Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-2.5 sm:gap-3.5">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5 sm:gap-3.5">
         
         {/* Total Candidates */}
-        <div
+        <button
+          type="button"
           onClick={() => onKpiClick('all')}
-          role="button"
-          tabIndex={0}
-          className={`relative p-3.5 sm:p-4 rounded-2xl border transition-all duration-200 cursor-pointer overflow-hidden group ${
+          aria-label="Filter by all candidate applications"
+          aria-pressed={isTotalActive}
+          className={`relative text-left w-full p-3.5 sm:p-4 rounded-2xl transition-all duration-200 cursor-pointer overflow-hidden group active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#D60041] ${
             isTotalActive
-              ? 'bg-gradient-to-br from-gray-900 to-gray-800 text-white border-gray-900 shadow-md ring-2 ring-gray-900/10'
-              : 'bg-white border-gray-200/80 hover:border-gray-400 hover:bg-gray-50/60 hover:shadow-xs text-gray-800'
+              ? 'bg-rose-50/90 border-2 border-[#D60041] ring-2 ring-[#D60041]/20 shadow-sm hover:bg-rose-100/80 hover:border-[#D60041]'
+              : 'bg-white border border-gray-200/90 shadow-xs hover:border-rose-300 hover:bg-rose-50/40 hover:shadow-md'
           }`}
         >
           <div className="flex items-center justify-between mb-2">
-            <span className={`text-[10px] font-bold uppercase tracking-wider ${isTotalActive ? 'text-gray-300' : 'text-gray-500'}`}>
+            <span className={`text-[10px] sm:text-[11px] font-bold uppercase tracking-wider transition-colors ${
+              isTotalActive ? 'text-[#D60041] font-black' : 'text-gray-600 group-hover:text-[#D60041]'
+            }`}>
               Total
             </span>
-            <div className={`p-1.5 rounded-lg ${isTotalActive ? 'bg-white/10 text-white' : 'bg-gray-100 text-gray-500'}`}>
-              <Users size={13} />
+            <div className={`p-1.5 rounded-lg transition-colors ${
+              isTotalActive 
+                ? 'bg-[#D60041] text-white shadow-xs' 
+                : 'bg-gray-100 text-gray-600 group-hover:bg-rose-100 group-hover:text-[#D60041]'
+            }`}>
+              <Users size={14} />
             </div>
           </div>
-          <p className="text-xl sm:text-2xl font-black tracking-tight">{stats.total}</p>
-          <div className="flex items-center justify-between mt-2 pt-2 border-t border-black/5 dark:border-white/10 text-[10px] font-semibold">
-            <span className={isTotalActive ? 'text-gray-300' : 'text-gray-400'}>Active pool</span>
-            {isTotalActive && <span className="w-1.5 h-1.5 rounded-full bg-rose-400"></span>}
+          <p className={`text-xl sm:text-2xl font-black tracking-tight mt-1 transition-colors ${
+            isTotalActive ? 'text-gray-950' : 'text-gray-900 group-hover:text-gray-950'
+          }`}>
+            {stats.total}
+          </p>
+          <div className={`flex items-center justify-between mt-2 pt-2 border-t text-[11px] font-semibold transition-colors ${
+            isTotalActive 
+              ? 'border-rose-200/80 text-rose-900' 
+              : 'border-gray-100 group-hover:border-rose-100 text-gray-500 group-hover:text-gray-800'
+          }`}>
+            <span>Active pool</span>
+            {isTotalActive ? (
+              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-[#D60041] text-white text-[9px] font-black uppercase tracking-wider shadow-2xs">
+                <Check size={10} strokeWidth={3} /> Active
+              </span>
+            ) : (
+              <ChevronRight size={13} className="text-gray-300 group-hover:text-[#D60041] group-hover:translate-x-0.5 transition-all" />
+            )}
           </div>
-        </div>
+        </button>
 
         {/* Pending Review */}
-        <div
+        <button
+          type="button"
           onClick={() => onKpiClick('pending')}
-          role="button"
-          tabIndex={0}
-          className={`relative p-3.5 sm:p-4 rounded-2xl border transition-all duration-200 cursor-pointer overflow-hidden group ${
+          aria-label="Filter by pending applications"
+          aria-pressed={isPendingActive}
+          className={`relative text-left w-full p-3.5 sm:p-4 rounded-2xl transition-all duration-200 cursor-pointer overflow-hidden group active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-amber-500 ${
             isPendingActive
-              ? 'bg-amber-50/80 border-amber-400 ring-2 ring-amber-400/20 text-amber-950 shadow-sm'
-              : 'bg-white border-gray-200/80 hover:border-amber-300 hover:bg-amber-50/40 hover:shadow-xs text-gray-800'
+              ? 'bg-amber-50/90 border-2 border-amber-500 ring-2 ring-amber-500/20 shadow-sm hover:bg-amber-100/80 hover:border-amber-500'
+              : 'bg-white border border-gray-200/90 shadow-xs hover:border-amber-300 hover:bg-amber-50/40 hover:shadow-md'
           }`}
         >
           <div className="flex items-center justify-between mb-2">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-amber-700">
+            <span className={`text-[10px] sm:text-[11px] font-bold uppercase tracking-wider transition-colors ${
+              isPendingActive ? 'text-amber-900 font-black' : 'text-amber-700 group-hover:text-amber-800'
+            }`}>
               Pending
             </span>
-            <div className={`p-1.5 rounded-lg ${isPendingActive ? 'bg-amber-200/70 text-amber-800' : 'bg-amber-50 text-amber-600'}`}>
-              <Clock size={13} />
+            <div className={`p-1.5 rounded-lg transition-colors ${
+              isPendingActive 
+                ? 'bg-amber-500 text-white shadow-xs' 
+                : 'bg-amber-50 text-amber-600 group-hover:bg-amber-100 group-hover:text-amber-700'
+            }`}>
+              <Clock size={14} />
             </div>
           </div>
-          <p className="text-xl sm:text-2xl font-black tracking-tight text-amber-950">{stats.pending}</p>
-          <div className="flex items-center justify-between mt-2 pt-2 border-t border-amber-200/50 text-[10px] font-semibold text-amber-700">
+          <p className={`text-xl sm:text-2xl font-black tracking-tight mt-1 transition-colors ${
+            isPendingActive ? 'text-amber-950' : 'text-gray-900 group-hover:text-amber-950'
+          }`}>
+            {stats.pending}
+          </p>
+          <div className={`flex items-center justify-between mt-2 pt-2 border-t text-[11px] font-semibold transition-colors ${
+            isPendingActive 
+              ? 'border-amber-200/80 text-amber-900' 
+              : 'border-gray-100 group-hover:border-amber-100 text-amber-700 group-hover:text-amber-800'
+          }`}>
             <span>Needs review</span>
-            {isPendingActive && <Check size={12} className="text-amber-700" />}
+            {isPendingActive ? (
+              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-amber-500 text-white text-[9px] font-black uppercase tracking-wider shadow-2xs">
+                <Check size={10} strokeWidth={3} /> Active
+              </span>
+            ) : (
+              <ChevronRight size={13} className="text-gray-300 group-hover:text-amber-600 group-hover:translate-x-0.5 transition-all" />
+            )}
           </div>
-        </div>
-
-        {/* Top Match (>=80%) */}
-        <div
-          onClick={() => onKpiClick('highMatch')}
-          role="button"
-          tabIndex={0}
-          className={`relative p-3.5 sm:p-4 rounded-2xl border transition-all duration-200 cursor-pointer overflow-hidden group ${
-            isHighMatchActive
-              ? 'bg-emerald-50/80 border-emerald-400 ring-2 ring-emerald-400/20 text-emerald-950 shadow-sm'
-              : 'bg-white border-gray-200/80 hover:border-emerald-300 hover:bg-emerald-50/40 hover:shadow-xs text-gray-800'
-          }`}
-        >
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 truncate pr-1">
-              Top Match
-            </span>
-            <div className={`p-1.5 rounded-lg ${isHighMatchActive ? 'bg-emerald-200/70 text-emerald-800' : 'bg-emerald-50 text-emerald-600'}`}>
-              <Sparkles size={13} />
-            </div>
-          </div>
-          <p className="text-xl sm:text-2xl font-black tracking-tight text-emerald-950">{stats.highMatch}</p>
-          <div className="flex items-center justify-between mt-2 pt-2 border-t border-emerald-200/50 text-[10px] font-semibold text-emerald-700">
-            <span>Score ≥ 80%</span>
-            {isHighMatchActive && <Check size={12} className="text-emerald-700" />}
-          </div>
-        </div>
+        </button>
 
         {/* In Interview */}
-        <div
+        <button
+          type="button"
           onClick={() => onKpiClick('interview')}
-          role="button"
-          tabIndex={0}
-          className={`relative p-3.5 sm:p-4 rounded-2xl border transition-all duration-200 cursor-pointer overflow-hidden group ${
+          aria-label="Filter by candidates in interview"
+          aria-pressed={isInterviewActive}
+          className={`relative text-left w-full p-3.5 sm:p-4 rounded-2xl transition-all duration-200 cursor-pointer overflow-hidden group active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-purple-500 ${
             isInterviewActive
-              ? 'bg-purple-50/80 border-purple-400 ring-2 ring-purple-400/20 text-purple-950 shadow-sm'
-              : 'bg-white border-gray-200/80 hover:border-purple-300 hover:bg-purple-50/40 hover:shadow-xs text-gray-800'
+              ? 'bg-purple-50/90 border-2 border-purple-500 ring-2 ring-purple-500/20 shadow-sm hover:bg-purple-100/80 hover:border-purple-500'
+              : 'bg-white border border-gray-200/90 shadow-xs hover:border-purple-300 hover:bg-purple-50/40 hover:shadow-md'
           }`}
         >
           <div className="flex items-center justify-between mb-2">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-purple-700 truncate pr-1">
+            <span className={`text-[10px] sm:text-[11px] font-bold uppercase tracking-wider truncate pr-1 transition-colors ${
+              isInterviewActive ? 'text-purple-900 font-black' : 'text-purple-700 group-hover:text-purple-800'
+            }`}>
               Interview
             </span>
-            <div className={`p-1.5 rounded-lg ${isInterviewActive ? 'bg-purple-200/70 text-purple-800' : 'bg-purple-50 text-purple-600'}`}>
-              <Clock size={13} />
+            <div className={`p-1.5 rounded-lg transition-colors ${
+              isInterviewActive 
+                ? 'bg-purple-600 text-white shadow-xs' 
+                : 'bg-purple-50 text-purple-600 group-hover:bg-purple-100 group-hover:text-purple-700'
+            }`}>
+              <Clock size={14} />
             </div>
           </div>
-          <p className="text-xl sm:text-2xl font-black tracking-tight text-purple-950">{stats.interview}</p>
-          <div className="flex items-center justify-between mt-2 pt-2 border-t border-purple-200/50 text-[10px] font-semibold text-purple-700">
+          <p className={`text-xl sm:text-2xl font-black tracking-tight mt-1 transition-colors ${
+            isInterviewActive ? 'text-purple-950' : 'text-gray-900 group-hover:text-purple-950'
+          }`}>
+            {stats.interview}
+          </p>
+          <div className={`flex items-center justify-between mt-2 pt-2 border-t text-[11px] font-semibold transition-colors ${
+            isInterviewActive 
+              ? 'border-purple-200/80 text-purple-900' 
+              : 'border-gray-100 group-hover:border-purple-100 text-purple-700 group-hover:text-purple-800'
+          }`}>
             <span>In process</span>
-            {isInterviewActive && <Check size={12} className="text-purple-700" />}
+            {isInterviewActive ? (
+              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-purple-600 text-white text-[9px] font-black uppercase tracking-wider shadow-2xs">
+                <Check size={10} strokeWidth={3} /> Active
+              </span>
+            ) : (
+              <ChevronRight size={13} className="text-gray-300 group-hover:text-purple-600 group-hover:translate-x-0.5 transition-all" />
+            )}
           </div>
-        </div>
+        </button>
 
         {/* Accepted / Hired */}
-        <div
+        <button
+          type="button"
           onClick={() => onKpiClick('accepted')}
-          role="button"
-          tabIndex={0}
-          className={`relative p-3.5 sm:p-4 rounded-2xl border transition-all duration-200 cursor-pointer overflow-hidden group ${
+          aria-label="Filter by accepted candidates"
+          aria-pressed={isAcceptedActive}
+          className={`relative text-left w-full p-3.5 sm:p-4 rounded-2xl transition-all duration-200 cursor-pointer overflow-hidden group active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-teal-500 ${
             isAcceptedActive
-              ? 'bg-teal-50/80 border-teal-400 ring-2 ring-teal-400/20 text-teal-950 shadow-sm'
-              : 'bg-white border-gray-200/80 hover:border-teal-300 hover:bg-teal-50/40 hover:shadow-xs text-gray-800'
+              ? 'bg-teal-50/90 border-2 border-teal-500 ring-2 ring-teal-500/20 shadow-sm hover:bg-teal-100/80 hover:border-teal-500'
+              : 'bg-white border border-gray-200/90 shadow-xs hover:border-teal-300 hover:bg-teal-50/40 hover:shadow-md'
           }`}
         >
           <div className="flex items-center justify-between mb-2">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-teal-700">
+            <span className={`text-[10px] sm:text-[11px] font-bold uppercase tracking-wider transition-colors ${
+              isAcceptedActive ? 'text-teal-900 font-black' : 'text-teal-700 group-hover:text-teal-800'
+            }`}>
               Accepted
             </span>
-            <div className={`p-1.5 rounded-lg ${isAcceptedActive ? 'bg-teal-200/70 text-teal-800' : 'bg-teal-50 text-teal-600'}`}>
-              <CheckCircle2 size={13} />
+            <div className={`p-1.5 rounded-lg transition-colors ${
+              isAcceptedActive 
+                ? 'bg-teal-600 text-white shadow-xs' 
+                : 'bg-teal-50 text-teal-600 group-hover:bg-teal-100 group-hover:text-teal-700'
+            }`}>
+              <CheckCircle2 size={14} />
             </div>
           </div>
-          <p className="text-xl sm:text-2xl font-black tracking-tight text-teal-950">{stats.accepted}</p>
-          <div className="flex items-center justify-between mt-2 pt-2 border-t border-teal-200/50 text-[10px] font-semibold text-teal-700">
+          <p className={`text-xl sm:text-2xl font-black tracking-tight mt-1 transition-colors ${
+            isAcceptedActive ? 'text-teal-950' : 'text-gray-900 group-hover:text-teal-950'
+          }`}>
+            {stats.accepted}
+          </p>
+          <div className={`flex items-center justify-between mt-2 pt-2 border-t text-[11px] font-semibold transition-colors ${
+            isAcceptedActive 
+              ? 'border-teal-200/80 text-teal-900' 
+              : 'border-gray-100 group-hover:border-teal-100 text-teal-700 group-hover:text-teal-800'
+          }`}>
             <span>Hired talent</span>
-            {isAcceptedActive && <Check size={12} className="text-teal-700" />}
+            {isAcceptedActive ? (
+              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-teal-600 text-white text-[9px] font-black uppercase tracking-wider shadow-2xs">
+                <Check size={10} strokeWidth={3} /> Active
+              </span>
+            ) : (
+              <ChevronRight size={13} className="text-gray-300 group-hover:text-teal-600 group-hover:translate-x-0.5 transition-all" />
+            )}
           </div>
-        </div>
+        </button>
 
         {/* Archived */}
-        <div
+        <button
+          type="button"
           onClick={() => onKpiClick('archived')}
-          role="button"
-          tabIndex={0}
-          className={`relative p-3.5 sm:p-4 rounded-2xl border transition-all duration-200 cursor-pointer overflow-hidden group ${
+          aria-label="Filter by archived applications"
+          aria-pressed={isArchivedActive}
+          className={`relative text-left w-full p-3.5 sm:p-4 rounded-2xl transition-all duration-200 cursor-pointer overflow-hidden group active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-gray-600 ${
             isArchivedActive
-              ? 'bg-gray-100 border-gray-400 ring-2 ring-gray-400/20 text-gray-900 shadow-sm'
-              : 'bg-white border-gray-200/80 hover:border-gray-300 hover:bg-gray-50/60 hover:shadow-xs text-gray-800'
+              ? 'bg-gray-100 border-2 border-gray-700 ring-2 ring-gray-700/20 shadow-sm hover:bg-gray-200/80 hover:border-gray-800'
+              : 'bg-white border border-gray-200/90 shadow-xs hover:border-gray-400 hover:bg-gray-50/70 hover:shadow-md'
           }`}
         >
           <div className="flex items-center justify-between mb-2">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-gray-500">
+            <span className={`text-[10px] sm:text-[11px] font-bold uppercase tracking-wider transition-colors ${
+              isArchivedActive ? 'text-gray-900 font-black' : 'text-gray-600 group-hover:text-gray-900'
+            }`}>
               Archived
             </span>
-            <div className={`p-1.5 rounded-lg ${isArchivedActive ? 'bg-gray-300 text-gray-900' : 'bg-gray-100 text-gray-500'}`}>
-              <Archive size={13} />
+            <div className={`p-1.5 rounded-lg transition-colors ${
+              isArchivedActive 
+                ? 'bg-gray-800 text-white shadow-xs' 
+                : 'bg-gray-100 text-gray-600 group-hover:bg-gray-200 group-hover:text-gray-900'
+            }`}>
+              <Archive size={14} />
             </div>
           </div>
-          <p className="text-xl sm:text-2xl font-black tracking-tight text-gray-900">{stats.archived}</p>
-          <div className="flex items-center justify-between mt-2 pt-2 border-t border-gray-200 text-[10px] font-semibold text-gray-500">
+          <p className={`text-xl sm:text-2xl font-black tracking-tight mt-1 transition-colors ${
+            isArchivedActive ? 'text-gray-950' : 'text-gray-900 group-hover:text-gray-950'
+          }`}>
+            {stats.archived}
+          </p>
+          <div className={`flex items-center justify-between mt-2 pt-2 border-t text-[11px] font-semibold transition-colors ${
+            isArchivedActive 
+              ? 'border-gray-300 text-gray-900' 
+              : 'border-gray-100 group-hover:border-gray-200 text-gray-600 group-hover:text-gray-900'
+          }`}>
             <span>Hidden records</span>
-            {isArchivedActive && <Check size={12} className="text-gray-700" />}
+            {isArchivedActive ? (
+              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-gray-800 text-white text-[9px] font-black uppercase tracking-wider shadow-2xs">
+                <Check size={10} strokeWidth={3} /> Active
+              </span>
+            ) : (
+              <ChevronRight size={13} className="text-gray-300 group-hover:text-gray-700 group-hover:translate-x-0.5 transition-all" />
+            )}
           </div>
-        </div>
+        </button>
 
       </div>
     </div>
