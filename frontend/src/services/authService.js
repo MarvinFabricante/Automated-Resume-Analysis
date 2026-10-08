@@ -4,11 +4,10 @@ const authService = {
   login: (email, password) =>
     api.post('/auth/login', { email, password }),
 
-  register: (role, payload) => {
-    let endpoint = '/candidate/register';
-    if (role === 'HR') endpoint = '/hr/register';
-    else if (role === 'ADMIN') endpoint = '/admins/register';
-    return api.post(endpoint, payload);
+  register: (roleOrPayload, payload) => {
+    // Registration is strictly for Candidates only
+    const actualPayload = payload ? payload : roleOrPayload;
+    return api.post('/candidate/register', actualPayload);
   },
 
   forgotPassword: (email) =>

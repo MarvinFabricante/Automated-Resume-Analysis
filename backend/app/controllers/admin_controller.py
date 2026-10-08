@@ -151,14 +151,15 @@ async def delete_user(
     await clear_cache_pattern("admin_users:*")
     return {"message": "User removed successfully"}
 
-@router.post("/register", response_model=AdminResponse, status_code=status.HTTP_200_OK)
+@router.post("/register")
 async def register_admin(
     admin_in: AdminCreate, 
     db: AsyncSession = Depends(get_db)
 ):
-
-    new_admin = await admin_service.create_admin_profile(db, admin_in)
-    return new_admin
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Public Administrator registration is disabled. Admin accounts must be created by an Administrator."
+    )
 
 @router.get("/profile/{admin_id}", response_model=AdminResponse)
 @cache_response("admin_profile", ttl=1800)

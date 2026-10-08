@@ -16,7 +16,6 @@ const Register = () => {
     email: '',
     password: '',
     confirmPassword: '',
-    managedRegion: '',
   });
 
   const [agreedToTerms, setAgreedToTerms] = useState(false);
@@ -130,27 +129,19 @@ const Register = () => {
       fullname: formData.fullName,
       email: formData.email.trim().toLowerCase(),
       password: formData.password,
+      resume_url: null,
+      experience_years: 0,
     };
 
-    if (role === 'HR') {
-      payload.company_name = "Mariwasa Siam Ceramics Inc.";
-      payload.department = "General";
-    } else if (role === 'ADMIN') {
-      payload.managed_region = formData.managedRegion || "Main Headquarters";
-    } else {
-      payload.resume_url = null;
-      payload.experience_years = 0;
-    }
-
     try {
-      const response = await authService.register(role, payload);
+      const response = await authService.register(payload);
 
       if (response.status === 200 || response.status === 201) {
         setModalState({
           isOpen: true,
           type: 'success',
           title: 'Account Created!',
-          message: `Your ${role === 'HR' ? 'HR Staff' : role === 'ADMIN' ? 'Admin' : 'Candidate'} account has been registered successfully.`
+          message: 'Your Candidate account has been registered successfully.'
         });
       }
     } catch (error) {
@@ -295,6 +286,9 @@ const Register = () => {
           <p className="text-sm sm:text-base font-normal text-gray-700 leading-relaxed mb-4 md:mb-0">
             to access the Mariwasa Resume Analysis System. Register with your Google account or type your Gmail address and password below.
           </p>
+          <div className="mt-5 p-3.5 bg-rose-50/80 border border-rose-100 rounded-xl text-xs text-rose-800 leading-relaxed hidden md:block">
+            <span className="font-semibold">Candidate Only:</span> Registration is exclusively for applicant and candidate accounts. HR and Administrator accounts cannot be registered publicly and are provisioned by the Administrator.
+          </div>
         </div>
 
         <div className="w-full md:w-[55%] p-6 sm:p-10 md:p-14 flex flex-col justify-center">
@@ -396,23 +390,6 @@ const Register = () => {
                 </div>
               </div>
               <p className="text-[11px] text-gray-600 ml-1 mt-1">Use 8 or more characters with a mix of letters & numbers</p>
-
-              {role === 'ADMIN' && (
-                <div className="relative mt-4 animate-in fade-in slide-in-from-top-2 duration-300">
-                  <input
-                    type="text"
-                    id="managedRegion"
-                    name="managedRegion"
-                    value={formData.managedRegion}
-                    onChange={handleChange}
-                    className="peer w-full px-4 py-3.5 border border-gray-400 rounded-[4px] text-base text-gray-900 focus:outline-none focus:border-[#D60041] focus:border-2 focus:py-[13px] focus:px-[15px] transition-all placeholder-transparent bg-transparent"
-                    placeholder="Managed Region / Office"
-                  />
-                  <label htmlFor="managedRegion" className="absolute left-3.5 -top-2.5 bg-white px-1 text-xs font-normal text-gray-600 peer-placeholder-shown:text-base peer-placeholder-shown:text-gray-600 peer-placeholder-shown:top-3.5 peer-focus:-top-2.5 peer-focus:text-xs peer-focus:text-[#D60041] transition-all cursor-text pointer-events-none">
-                    Managed Region (Optional)
-                  </label>
-                </div>
-              )}
             </div>
 
             <div className="flex items-start gap-3 mt-8 mb-10">

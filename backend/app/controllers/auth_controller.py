@@ -14,10 +14,18 @@ router = APIRouter(prefix="/auth", tags=["Authentication"])
 @router.post("/register")
 async def register(user: UserCreate, db: AsyncSession = Depends(get_db)):
     try:
+        requested_role = (user.role or "CANDIDATE").strip().upper()
+        if requested_role != "CANDIDATE":
+            raise HTTPException(
+                status_code=400,
+                detail="Public registration is only available for Candidate accounts. HR and Admin accounts must be created by an Administrator."
+            )
         new_user = await auth_service.register_user(
-            db, user.email, user.password, user.role, user.fullname
+            db, user.email, user.password, "CANDIDATE", user.fullname
         )
         return {"message": "User registered successfully"}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -236,12 +244,6 @@ async def check_email_role(email: str, db: AsyncSession = Depends(get_db)):
             "fullname": row.fullname or ""
         }
 
-    # If not registered yet in DB, check pre-authorized staff lists
-    if clean_email in auth_service.KNOWN_ADMIN_EMAILS:
-        return {"exists": False, "role": "ADMIN", "is_authorized_staff": True}
-    elif clean_email in auth_service.KNOWN_HR_EMAILS:
-        return {"exists": False, "role": "HR", "is_authorized_staff": True}
-    
     return {"exists": False, "role": "CANDIDATE", "is_authorized_staff": False}
 
 @router.get("/google/candidate-register")
