@@ -13,7 +13,7 @@ import BulkActionBar from '../../components/hr/screening/BulkActionBar';
 import CandidateList from '../../components/hr/screening/CandidateList';
 import Pagination from '../../components/hr/screening/Pagination';
 
-import { AlertCircle, CheckCircle2, X } from 'lucide-react';
+import { AlertCircle, CheckCircle2, X, Archive } from 'lucide-react';
 import { 
   useGetApplicationsQuery, 
   useUpdateApplicationStatusMutation, 
@@ -34,6 +34,7 @@ const ScreeningPortal = () => {
   const [scoreFilter, setScoreFilter] = useState("All Scores");
   const [sortBy, setSortBy] = useState("match_desc");
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const [includeArchived, setIncludeArchived] = useState(false);
 
   // View & Pagination states
   const [viewMode, setViewMode] = useState("cards"); // 'cards' | 'table'
@@ -90,6 +91,25 @@ const ScreeningPortal = () => {
     return Object.entries(counts).map(([title, count]) => ({ title, count }));
   }, [candidates]);
 
+  // Count hidden archived records that match current search query
+  const hiddenArchivedMatchCount = useMemo(() => {
+    if (!searchQuery.trim() || includeArchived || statusFilter === 'Archived' || statusFilter === 'All With Archived') {
+      return 0;
+    }
+    const q = searchQuery.toLowerCase().trim();
+    return candidates.filter(c => {
+      const isArchived = (c.status || '').toLowerCase() === 'archived';
+      if (!isArchived) return false;
+      const matchesName = c.name && c.name.toLowerCase().includes(q);
+      const matchesJob = c.preferredJob && c.preferredJob.toLowerCase().includes(q);
+      const matchesEmail = c.email && c.email.toLowerCase().includes(q);
+      const matchesLocation = c.location && c.location.toLowerCase().includes(q);
+      const matchesDegree = (c.degree || '').toLowerCase().includes(q) || (c.college || '').toLowerCase().includes(q);
+      const matchesSkills = Array.isArray(c.skills) && c.skills.some(s => (s || '').toLowerCase().includes(q));
+      return matchesName || matchesJob || matchesEmail || matchesLocation || matchesDegree || matchesSkills;
+    }).length;
+  }, [candidates, searchQuery, includeArchived, statusFilter]);
+
   // Filtering and sorting candidates
   const filteredCandidates = useMemo(() => {
     return candidates.filter(c => {
@@ -98,8 +118,10 @@ const ScreeningPortal = () => {
       // Status filtering
       if (statusFilter === "Archived") {
         if (candidateStatus !== "archived") return false;
+      } else if (statusFilter === "All With Archived") {
+        // Show all including archived
       } else if (statusFilter === "All Status") {
-        if (candidateStatus === "archived") return false;
+        if (!includeArchived && candidateStatus === "archived") return false;
       } else {
         if (candidateStatus !== statusFilter.toLowerCase()) return false;
       }
@@ -149,7 +171,7 @@ const ScreeningPortal = () => {
           return (b.matchScore || 0) - (a.matchScore || 0);
       }
     });
-  }, [candidates, statusFilter, jobFilter, scoreFilter, searchQuery, sortBy]);
+  }, [candidates, statusFilter, jobFilter, scoreFilter, searchQuery, sortBy, includeArchived]);
 
   // Paginated slice
   const paginatedCandidates = useMemo(() => {
@@ -178,7 +200,8 @@ const ScreeningPortal = () => {
     statusFilter !== "All Status" ||
     jobFilter !== "All Jobs" ||
     scoreFilter !== "All Scores" ||
-    sortBy !== "match_desc"
+    sortBy !== "match_desc" ||
+    includeArchived
   );
 
   // Reset all filters
@@ -188,6 +211,7 @@ const ScreeningPortal = () => {
     setJobFilter("All Jobs");
     setScoreFilter("All Scores");
     setSortBy("match_desc");
+    setIncludeArchived(false);
     setCurrentPage(1);
   };
 
@@ -198,26 +222,32 @@ const ScreeningPortal = () => {
       case 'all':
         setStatusFilter("All Status");
         setScoreFilter("All Scores");
+        setIncludeArchived(false);
         break;
       case 'pending':
         setStatusFilter("Pending");
         setScoreFilter("All Scores");
+        setIncludeArchived(false);
         break;
       case 'highMatch':
         setStatusFilter("All Status");
         setScoreFilter("80+");
+        setIncludeArchived(false);
         break;
       case 'interview':
         setStatusFilter("Technical Interview");
         setScoreFilter("All Scores");
+        setIncludeArchived(false);
         break;
       case 'accepted':
         setStatusFilter("Accepted");
         setScoreFilter("All Scores");
+        setIncludeArchived(false);
         break;
       case 'archived':
         setStatusFilter("Archived");
         setScoreFilter("All Scores");
+        setIncludeArchived(true);
         break;
       default:
         break;
@@ -404,7 +434,7 @@ const ScreeningPortal = () => {
   };
 
   return (
-    <div className="bg-[#FCFCFC] text-gray-800 antialiased min-h-screen font-['Inter'] flex flex-col">
+    <div className="bg-[#FCFCFC] text-gray-800 antialiased min-h-screen flex flex-col font-sans">
       <Helmet>
         <title>HR - Screening Portal</title>
       </Helmet>
@@ -413,7 +443,7 @@ const ScreeningPortal = () => {
       
       <div className="flex flex-1">
         <Sidebar />
-        <main className="flex-1 w-full max-w-full px-4 sm:px-6 md:px-10 py-6 md:py-8 animate-in fade-in duration-300">
+        <main className="flex-1 w-full max-w-full min-w-0 px-3.5 sm:px-6 md:px-8 lg:px-10 py-5 sm:py-7 md:py-8 animate-in fade-in duration-300 overflow-x-hidden">
           
           {/* Header & KPI Summary */}
           <ScreeningHeader 
@@ -460,25 +490,53 @@ const ScreeningPortal = () => {
             suggestions={suggestions}
             onResetFilters={handleResetFilters}
             isFiltered={isFiltered}
+            includeArchived={includeArchived}
+            setIncludeArchived={(val) => {
+              setIncludeArchived(val);
+              setCurrentPage(1);
+            }}
+            archivedCount={stats.archived}
+            hiddenArchivedMatchCount={hiddenArchivedMatchCount}
           />
+
+          {/* Active Banner when Archived candidates are visible alongside active */}
+          {includeArchived && statusFilter !== 'Archived' && (
+            <div className="mb-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 p-3.5 sm:p-4 bg-amber-50/90 border border-amber-200/90 rounded-2xl text-xs sm:text-sm text-amber-900 shadow-xs animate-in fade-in duration-200">
+              <div className="flex items-center gap-2.5">
+                <div className="p-1.5 bg-amber-100 rounded-xl text-amber-800 shrink-0">
+                  <Archive size={15} />
+                </div>
+                <div>
+                  <span className="font-bold">Archived records visible:</span> Both active and archived candidate applications are included in the screening view.
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIncludeArchived(false)}
+                className="px-3 py-1.5 bg-amber-100 hover:bg-amber-200 text-amber-900 font-bold rounded-xl text-xs transition-all cursor-pointer whitespace-nowrap self-end sm:self-auto shadow-xs"
+              >
+                Hide Archived
+              </button>
+            </div>
+          )}
 
           {/* Job Filter Indicator Banner */}
           {jobFilter !== "All Jobs" && (
-            <div className="mb-6 bg-pink-50 border border-pink-100 rounded-2xl p-4 flex items-center justify-between shadow-sm animate-in fade-in duration-200">
+            <div className="mb-5 bg-pink-50/70 border border-pink-200/70 rounded-2xl p-3.5 sm:p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs animate-in fade-in duration-200">
               <div>
-                <h3 className="text-base sm:text-lg font-bold text-gray-800">
+                <h3 className="text-sm sm:text-base font-bold text-gray-900">
                   Showing applicants for: <span className="text-[#D60041]">{jobFilter}</span>
                 </h3>
-                <p className="text-xs sm:text-sm text-gray-500 font-medium mt-0.5">
-                  Total Applicants matching filters: <span className="font-bold text-gray-700">{filteredCandidates.length}</span>
+                <p className="text-xs text-gray-500 font-medium mt-0.5">
+                  Total matching applicants: <span className="font-bold text-gray-800">{filteredCandidates.length}</span>
                 </p>
               </div>
               <button
                 type="button"
                 onClick={() => setJobFilter("All Jobs")}
-                className="px-3.5 py-1.5 bg-white hover:bg-gray-50 rounded-xl text-xs font-bold text-[#D60041] border border-pink-200 shadow-sm transition-all"
+                className="px-3 py-1.5 bg-white hover:bg-gray-50 rounded-xl text-xs font-bold text-[#D60041] border border-pink-200 shadow-xs transition-all cursor-pointer self-end sm:self-auto"
               >
-                Clear Job Filter
+                Clear Position
               </button>
             </div>
           )}
@@ -499,9 +557,10 @@ const ScreeningPortal = () => {
 
           {/* Candidates Content Area */}
           {isLoading ? (
-            <div className="flex flex-col items-center justify-center py-24 bg-white rounded-2xl border border-gray-100">
-              <div className="w-12 h-12 border-4 border-pink-100 border-t-[#D60041] rounded-full animate-spin mb-4"></div>
-              <p className="text-gray-500 font-bold text-sm">Loading candidate applications...</p>
+            <div className="flex flex-col items-center justify-center py-20 sm:py-24 bg-white rounded-2xl sm:rounded-3xl border border-gray-200/80 shadow-xs">
+              <div className="w-10 h-10 sm:w-12 sm:h-12 border-3 sm:border-4 border-pink-100 border-t-[#D60041] rounded-full animate-spin mb-4"></div>
+              <p className="text-gray-600 font-bold text-xs sm:text-sm">Loading candidates...</p>
+              <p className="text-gray-400 text-xs mt-1">Retrieving ATS match scores from database</p>
             </div>
           ) : (
             <>

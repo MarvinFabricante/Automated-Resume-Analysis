@@ -77,6 +77,7 @@ const SkillTag = ({ skill, type }) => (
 
 const ViewCandidateDetailsModal = ({ isOpen, onClose, candidate, onOpenInterview, onUpdateStatus }) => {
   const [copiedField, setCopiedField] = useState(null);
+  const [mobileTab, setMobileTab] = useState('overview'); // 'overview' | 'analysis' | 'resume'
 
   if (!isOpen || !candidate) return null;
 
@@ -117,22 +118,22 @@ const ViewCandidateDetailsModal = ({ isOpen, onClose, candidate, onOpenInterview
       <Helmet>
         <title>{candidate.name} | ATS Analysis</title>
       </Helmet>
-      <div className="bg-white w-full max-w-6xl max-h-[96vh] sm:max-h-[92vh] rounded-2xl sm:rounded-[32px] shadow-2xl overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-300">
+      <div className="bg-white w-full max-w-6xl max-h-[96vh] sm:max-h-[92vh] rounded-2xl sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-250">
         
         {/* ─── Header ─── */}
-        <div className="px-4 sm:px-8 py-3.5 sm:py-5 border-b border-gray-100 flex justify-between items-center bg-white sticky top-0 z-10 shrink-0">
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-2 px-3 py-1.5 bg-emerald-50 border border-emerald-100 rounded-xl">
-              <BarChart3 size={14} className="text-emerald-600 shrink-0" />
-              <span className="text-[10px] font-bold text-emerald-700 uppercase tracking-widest truncate">ATS Resume Analysis</span>
+        <div className="px-3.5 sm:px-6 py-3 sm:py-4 border-b border-gray-100 flex justify-between items-center bg-white sticky top-0 z-10 shrink-0">
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+            <div className="flex items-center gap-1.5 px-2.5 py-1 bg-emerald-50 border border-emerald-100 rounded-xl shrink-0">
+              <BarChart3 size={13} className="text-emerald-600 shrink-0" />
+              <span className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider truncate">ATS Analysis</span>
             </div>
             {onUpdateStatus && (
-              <div className="hidden sm:flex items-center gap-2 pl-3 border-l border-gray-100">
-                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Status:</span>
+              <div className="flex items-center gap-1.5 pl-2 border-l border-gray-100">
+                <span className="hidden sm:inline text-[10px] font-bold text-gray-400 uppercase tracking-wider">Status:</span>
                 <select
                   value={currentStatus}
                   onChange={(e) => onUpdateStatus(candidate.id, e.target.value)}
-                  className="px-2.5 py-1 bg-gray-50 border border-gray-200 rounded-lg text-xs font-bold text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#D60041]/20 cursor-pointer"
+                  className="px-2 py-0.5 bg-gray-50 border border-gray-200 rounded-lg text-xs font-bold text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#D60041]/20 cursor-pointer"
                 >
                   {['Pending', 'Reviewed', 'Technical Interview', 'Final Interview', 'Accepted', 'Rejected', 'Archived'].map((st) => (
                     <option key={st} value={st}>{st}</option>
@@ -141,14 +142,53 @@ const ViewCandidateDetailsModal = ({ isOpen, onClose, candidate, onOpenInterview
               </div>
             )}
           </div>
-          <button onClick={onClose} className="p-2 sm:p-2.5 hover:bg-gray-100 rounded-xl transition-colors text-gray-400 hover:text-gray-600">
+          <button onClick={onClose} className="p-1.5 sm:p-2 hover:bg-gray-100 rounded-xl transition-colors text-gray-400 hover:text-gray-600 cursor-pointer">
             <X size={18} />
+          </button>
+        </div>
+
+        {/* ─── Mobile Segment Switcher ─── */}
+        <div className="flex md:hidden border-b border-gray-100 bg-gray-50/80 p-1.5 gap-1 shrink-0">
+          <button
+            type="button"
+            onClick={() => setMobileTab('overview')}
+            className={`flex-1 py-1.5 text-xs font-bold rounded-xl transition-all cursor-pointer ${
+              mobileTab === 'overview'
+                ? 'bg-white text-[#D60041] shadow-xs'
+                : 'text-gray-500 hover:text-gray-900'
+            }`}
+          >
+            Overview
+          </button>
+          <button
+            type="button"
+            onClick={() => setMobileTab('analysis')}
+            className={`flex-1 py-1.5 text-xs font-bold rounded-xl transition-all cursor-pointer ${
+              mobileTab === 'analysis'
+                ? 'bg-white text-[#D60041] shadow-xs'
+                : 'text-gray-500 hover:text-gray-900'
+            }`}
+          >
+            Breakdown
+          </button>
+          <button
+            type="button"
+            onClick={() => setMobileTab('resume')}
+            className={`flex-1 py-1.5 text-xs font-bold rounded-xl transition-all cursor-pointer ${
+              mobileTab === 'resume'
+                ? 'bg-white text-[#D60041] shadow-xs'
+                : 'text-gray-500 hover:text-gray-900'
+            }`}
+          >
+            Resume Data
           </button>
         </div>
 
         <div className="flex flex-col md:flex-row flex-1 overflow-y-auto md:overflow-hidden min-h-0">
           {/* ─── LEFT SIDEBAR ─── */}
-          <div className="w-full md:w-[320px] bg-gradient-to-b from-gray-50/80 to-white border-b md:border-b-0 md:border-r border-gray-100 p-5 sm:p-7 md:overflow-y-auto shrink-0">
+          <div className={`w-full md:w-[320px] bg-gradient-to-b from-gray-50/80 to-white border-b md:border-b-0 md:border-r border-gray-100 p-4 sm:p-6 md:overflow-y-auto shrink-0 ${
+            mobileTab === 'overview' ? 'block' : 'hidden md:block'
+          }`}>
             {/* Candidate Profile */}
             <div className="text-center mb-6 sm:mb-7">
               <div className="w-20 h-20 rounded-2xl overflow-hidden border-4 border-white shadow-lg mx-auto mb-4 bg-pink-50">
@@ -220,33 +260,33 @@ const ViewCandidateDetailsModal = ({ isOpen, onClose, candidate, onOpenInterview
           </div>
 
           {/* ─── RIGHT: DETAILED ANALYSIS ─── */}
-          <div className="flex-1 p-4 sm:p-6 md:p-8 md:overflow-y-auto bg-white">
+          <div className={`flex-1 p-3.5 sm:p-6 md:p-8 md:overflow-y-auto bg-white ${mobileTab !== 'overview' ? 'block' : 'hidden md:block'}`}>
 
             {/* Formula Banner */}
-            <div className="bg-gradient-to-r from-gray-900 to-gray-800 text-white p-5 rounded-2xl mb-8 shadow-lg">
+            <div className={`bg-gradient-to-r from-gray-900 to-gray-800 text-white p-4 sm:p-5 rounded-2xl mb-6 sm:mb-8 shadow-lg ${mobileTab === 'analysis' ? 'block' : 'hidden md:block'}`}>
               <div className="flex items-center gap-2 mb-3">
                 <Target size={16} className="text-emerald-400" />
                 <span className="text-[10px] font-bold uppercase tracking-widest text-emerald-400">Score Explanation</span>
               </div>
               {candidate.ai_powered ? (
                 <>
-                  <p className="text-sm font-mono font-bold tracking-wide">
+                  <p className="text-xs sm:text-sm font-mono font-bold tracking-wide">
                     Overall = Gemini semantic analysis <span className="text-emerald-400">80%</span> + ATS rule validation <span className="text-blue-400">20%</span>
                   </p>
                   <div className="flex items-center gap-2 mt-3 pt-3 border-t border-white/10">
                     <span className="text-xs text-gray-400 font-semibold">Result:</span>
-                    <span className="text-lg font-black text-emerald-400">{Math.round(candidate.matchScore)}% final match</span>
-                    <span className="text-xs text-gray-400 font-semibold">based on skills, experience, education, and semantic role fit.</span>
+                    <span className="text-base sm:text-lg font-black text-emerald-400">{Math.round(candidate.matchScore)}% final match</span>
+                    <span className="text-xs text-gray-400 font-semibold hidden sm:inline">based on skills, experience, education, and semantic role fit.</span>
                   </div>
                 </>
               ) : (
                 <>
-                  <p className="text-sm font-mono font-bold tracking-wide">
+                  <p className="text-xs sm:text-sm font-mono font-bold tracking-wide">
                     Overall = (Skills <span className="text-blue-400">{Math.round(candidate.skillsScore)}%</span> × 0.40) + (Experience <span className="text-purple-400">{Math.round(candidate.experienceScore)}%</span> × 0.40) + (Education <span className="text-amber-400">{Math.round(candidate.educationScore)}%</span> × 0.20)
                   </p>
-                  <div className="flex items-center gap-2 mt-3 pt-3 border-t border-white/10">
+                  <div className="flex flex-wrap items-center gap-2 mt-3 pt-3 border-t border-white/10">
                     <span className="text-xs text-gray-400 font-semibold">Result:</span>
-                    <span className="text-lg font-black text-emerald-400">
+                    <span className="text-base sm:text-lg font-black text-emerald-400">
                       {skillsContribution}% + {experienceContribution}% + {educationContribution}% = {calculatedContributionTotal}%
                     </span>
                     {Math.round(candidate.matchScore) !== calculatedContributionTotal && (
@@ -258,7 +298,7 @@ const ViewCandidateDetailsModal = ({ isOpen, onClose, candidate, onOpenInterview
             </div>
 
             {/* ═══════ CANDIDATE RESUME DETAILS ═══════ */}
-            <section className="mb-8">
+            <section className={`mb-6 sm:mb-8 ${mobileTab === 'resume' ? 'block' : 'hidden md:block'}`}>
               <div className="flex items-center gap-2.5 mb-4">
                 <div className="flex items-center justify-center w-8 h-8 bg-gray-100 rounded-xl">
                   <Mail size={16} className="text-gray-700" />
@@ -318,7 +358,7 @@ const ViewCandidateDetailsModal = ({ isOpen, onClose, candidate, onOpenInterview
             </section>
 
             {/* ═══════ AI ASSESSMENT SUMMARY ═══════ */}
-            <section className="mb-8">
+            <section className={`mb-6 sm:mb-8 ${mobileTab === 'analysis' ? 'block' : 'hidden md:block'}`}>
               <div className="flex items-center gap-2.5 mb-4">
                 <div className="flex items-center justify-center w-8 h-8 bg-emerald-100 rounded-xl">
                   <BookOpen size={16} className="text-emerald-600" />
@@ -384,7 +424,7 @@ const ViewCandidateDetailsModal = ({ isOpen, onClose, candidate, onOpenInterview
             </section>
 
             {/* ═══════ 1. SKILLS MATCH BREAKDOWN ═══════ */}
-            <section className="mb-8">
+            <section className={`mb-6 sm:mb-8 ${mobileTab === 'analysis' ? 'block' : 'hidden md:block'}`}>
               <div className="flex items-center gap-2.5 mb-4">
                 <div className="flex items-center justify-center w-8 h-8 bg-blue-100 rounded-xl">
                   <Zap size={16} className="text-blue-600" />
@@ -441,7 +481,7 @@ const ViewCandidateDetailsModal = ({ isOpen, onClose, candidate, onOpenInterview
             </section>
 
             {/* ═══════ 2. EXPERIENCE MATCH BREAKDOWN ═══════ */}
-            <section className="mb-8">
+            <section className={`mb-6 sm:mb-8 ${mobileTab === 'analysis' ? 'block' : 'hidden md:block'}`}>
               <div className="flex items-center gap-2.5 mb-4">
                 <div className="flex items-center justify-center w-8 h-8 bg-purple-100 rounded-xl">
                   <Briefcase size={16} className="text-purple-600" />
@@ -488,7 +528,7 @@ const ViewCandidateDetailsModal = ({ isOpen, onClose, candidate, onOpenInterview
             </section>
 
             {/* ═══════ 3. EDUCATION MATCH BREAKDOWN ═══════ */}
-            <section className="mb-8">
+            <section className={`mb-6 sm:mb-8 ${mobileTab === 'analysis' ? 'block' : 'hidden md:block'}`}>
               <div className="flex items-center gap-2.5 mb-4">
                 <div className="flex items-center justify-center w-8 h-8 bg-amber-100 rounded-xl">
                   <GraduationCap size={16} className="text-amber-600" />
@@ -549,7 +589,7 @@ const ViewCandidateDetailsModal = ({ isOpen, onClose, candidate, onOpenInterview
             </section>
 
             {/* ═══════ OPTIMIZATION RECOMMENDATIONS ═══════ */}
-            <section className="mb-4">
+            <section className={`mb-6 ${mobileTab === 'analysis' ? 'block' : 'hidden md:block'}`}>
               <div className="flex items-center gap-2.5 mb-4">
                 <div className="flex items-center justify-center w-8 h-8 bg-gradient-to-br from-emerald-100 to-teal-100 rounded-xl">
                   <Lightbulb size={16} className="text-emerald-600" />
@@ -598,13 +638,13 @@ const ViewCandidateDetailsModal = ({ isOpen, onClose, candidate, onOpenInterview
             </section>
 
             {/* ─── Core Expertise Tags ─── */}
-            <section className="mb-4 pt-6 border-t border-gray-100">
+            <section className={`mb-4 pt-6 border-t border-gray-100 ${mobileTab === 'analysis' ? 'block' : 'hidden md:block'}`}>
               <h3 className="text-sm font-bold text-gray-900 uppercase tracking-tight mb-4 flex items-center gap-2">
                 <Star size={16} className="text-[#d81159]" /> Core Expertise
               </h3>
               <div className="flex flex-wrap gap-2">
                 {candidateSkills.map((skill, i) => (
-                  <span key={i} className="px-4 py-2 bg-gray-50 text-gray-700 rounded-xl border border-gray-100 text-sm font-medium hover:bg-pink-50 hover:border-pink-100 hover:text-[#d81159] transition-all duration-200 cursor-default">
+                  <span key={i} className="px-3.5 py-1.5 bg-gray-50 text-gray-700 rounded-xl border border-gray-100 text-xs font-semibold hover:bg-pink-50 hover:border-pink-100 hover:text-[#d81159] transition-all duration-150 cursor-default">
                     {skill}
                   </span>
                 ))}

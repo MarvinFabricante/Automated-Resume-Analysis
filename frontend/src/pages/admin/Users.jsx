@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Helmet } from 'react-helmet-async';
 import { 
   Search, 
@@ -66,6 +66,19 @@ const UsersPage = () => {
     if (statusFilter === 'ARCHIVED') return user.is_archived;
     return true;
   });
+
+  const hiddenArchivedUserMatchCount = useMemo(() => {
+    if (!searchQuery.trim() || statusFilter !== 'ACTIVE') return 0;
+    const q = searchQuery.toLowerCase().trim();
+    return users.filter(user => {
+      if (!user.is_archived) return false;
+      return (
+        user.fullname?.toLowerCase().includes(q) ||
+        user.email?.toLowerCase().includes(q) ||
+        user.role?.toLowerCase().includes(q)
+      );
+    }).length;
+  }, [users, searchQuery, statusFilter]);
 
   const handleArchive = async (userId) => {
     if (window.confirm("Are you sure you want to suspend this user account? They will no longer be able to log in.")) {
@@ -178,7 +191,7 @@ const UsersPage = () => {
               </p>
             </div>
 
-            <div className="flex flex-col sm:flex-row space-y-3 sm:space-y-0 sm:space-x-3 w-full lg:w-auto shrink-0">
+            <div className="flex flex-col sm:flex-row space-y-3 sm:space-y-0 sm:space-x-3 w-full lg:w-auto shrink-0 items-center">
               <div className="relative flex-1 sm:w-72 group">
                 <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-[#D10043] transition-colors duration-300" size={18} />
                 <input 
@@ -189,18 +202,60 @@ const UsersPage = () => {
                   className="w-full bg-white/80 backdrop-blur-sm border border-gray-200 hover:border-gray-300 rounded-2xl py-3 pl-11 pr-4 text-sm font-medium focus:ring-4 focus:ring-[#D10043]/10 focus:border-[#D10043] transition-all outline-none shadow-sm"
                 />
               </div>
+
+              {/* Archived Option in Search Bar */}
+              <button
+                type="button"
+                onClick={() => setStatusFilter(prev => prev === 'ARCHIVED' ? 'ALL' : 'ARCHIVED')}
+                className={`flex items-center gap-2 px-4 py-3 rounded-2xl text-xs font-bold transition-all border shadow-sm cursor-pointer whitespace-nowrap ${
+                  statusFilter === 'ARCHIVED'
+                    ? 'bg-orange-500 hover:bg-orange-600 text-white border-orange-500 shadow-orange-500/25 ring-2 ring-orange-500/20'
+                    : 'bg-white hover:bg-orange-50 text-gray-700 hover:text-orange-700 border-gray-200 hover:border-orange-200'
+                }`}
+                title="Toggle viewing archived / suspended user accounts"
+              >
+                <Archive size={15} className={statusFilter === 'ARCHIVED' ? 'text-white' : 'text-orange-500'} />
+                <span>{statusFilter === 'ARCHIVED' ? 'Viewing Archived' : 'Show Archived'}</span>
+                <span className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
+                  statusFilter === 'ARCHIVED' ? 'bg-black/20 text-white' : 'bg-orange-100 text-orange-800'
+                }`}>
+                  {users.filter(u => u.is_archived).length}
+                </span>
+              </button>
+
               <button 
                 onClick={() => {
                   setFormData({ fullname: '', email: '', role: 'HR', password: '' });
                   setIsCreateModalOpen(true);
                 }}
-                className="bg-gradient-to-r from-[#D10043] to-[#B00038] text-white px-6 py-3 rounded-2xl hover:scale-[1.02] active:scale-[0.98] transition-all duration-300 text-sm font-bold tracking-tight flex items-center justify-center shadow-lg shadow-red-500/25 group"
+                className="bg-gradient-to-r from-[#D10043] to-[#B00038] text-white px-6 py-3 rounded-2xl hover:scale-[1.02] active:scale-[0.98] transition-all duration-300 text-sm font-bold tracking-tight flex items-center justify-center shadow-lg shadow-red-500/25 group shrink-0"
               >
                 <UserPlus className="h-4 w-4 mr-2 group-hover:animate-bounce" />
                 Create Account
               </button>
             </div>
           </div>
+
+          {/* Dynamic Banner when Search matches archived users hidden under Active filter */}
+          {hiddenArchivedUserMatchCount > 0 && (
+            <div className="mb-6 flex items-center justify-between p-4 bg-orange-50/90 border border-orange-200 rounded-2xl text-xs sm:text-sm text-orange-900 shadow-sm animate-in fade-in duration-200">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-orange-100 rounded-xl text-orange-700">
+                  <Archive size={16} />
+                </div>
+                <div>
+                  <span className="font-bold">Notice:</span> Found <strong>{hiddenArchivedUserMatchCount}</strong> archived / suspended user(s) matching your search query.
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setStatusFilter("ARCHIVED")}
+                className="px-3.5 py-1.5 bg-orange-600 hover:bg-orange-700 text-white font-bold rounded-xl text-xs transition-all cursor-pointer whitespace-nowrap ml-2 shadow-sm"
+              >
+                Show Archived Users
+              </button>
+            </div>
+          )}
 
           <div className="grid grid-cols-1 xl:grid-cols-4 gap-8">
             
