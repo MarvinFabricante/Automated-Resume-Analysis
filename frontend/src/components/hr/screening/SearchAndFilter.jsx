@@ -230,6 +230,7 @@ const SearchAndFilter = ({
               <option value="Archived">Archived Applications Only {archivedCount > 0 ? `(${archivedCount})` : ''}</option>
               <option value="Pending">Pending Review</option>
               <option value="Reviewed">Reviewed</option>
+              <option value="Interview">All Interviews</option>
               <option value="Technical Interview">Technical Interview</option>
               <option value="Final Interview">Final Interview</option>
               <option value="Accepted">Accepted / Hired</option>

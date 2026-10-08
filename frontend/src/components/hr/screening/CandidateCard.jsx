@@ -263,7 +263,7 @@ const CandidateCard = ({
                   window.open(fullUrl, '_blank');
                 }}
                 title="View / Download Resume"
-                className="p-2 sm:p-2.5 bg-gray-50 border border-gray-200 text-gray-600 hover:bg-pink-50 hover:border-pink-200 hover:text-[#D60041] rounded-xl transition-all cursor-pointer shadow-xs"
+                className="p-2 sm:p-2.5 bg-gray-50 border border-gray-200 text-gray-600 hover:bg-pink-50 hover:border-pink-200 hover:text-[#D60041] rounded-xl transition-all cursor-pointer shadow-xs hover:shadow-sm"
               >
                 <FileText size={15} />
               </button>
@@ -275,7 +275,7 @@ const CandidateCard = ({
                 type="button"
                 onClick={() => onRestoreApplication ? onRestoreApplication(candidate.id) : onUpdateStatus(candidate.id, 'Pending')}
                 title="Restore Application"
-                className="p-2 sm:p-2.5 bg-emerald-50 border border-emerald-200 text-emerald-700 hover:bg-emerald-100 rounded-xl transition-all cursor-pointer shadow-xs"
+                className="p-2 sm:p-2.5 bg-emerald-50 border border-emerald-200 text-emerald-700 hover:bg-emerald-100 hover:border-emerald-300 rounded-xl transition-all cursor-pointer shadow-xs hover:shadow-sm"
               >
                 <RotateCcw size={15} />
               </button>
@@ -284,7 +284,7 @@ const CandidateCard = ({
                 type="button"
                 onClick={() => onArchiveApplication(candidate.id)}
                 title="Archive Candidate"
-                className="p-2 sm:p-2.5 bg-gray-50 border border-gray-200 text-gray-500 hover:bg-amber-50 hover:border-amber-200 hover:text-amber-700 rounded-xl transition-all cursor-pointer shadow-xs"
+                className="p-2 sm:p-2.5 bg-gray-50 border border-gray-200 text-gray-500 hover:bg-amber-50 hover:border-amber-200 hover:text-amber-700 rounded-xl transition-all cursor-pointer shadow-xs hover:shadow-sm"
               >
                 <Archive size={15} />
               </button>
@@ -295,7 +295,7 @@ const CandidateCard = ({
               type="button"
               onClick={() => onDeleteApplication(candidate.id)}
               title="Remove Candidate Application"
-              className="p-2 sm:p-2.5 bg-gray-50 border border-gray-200 text-gray-500 hover:bg-rose-50 hover:border-rose-200 hover:text-rose-700 rounded-xl transition-all cursor-pointer shadow-xs"
+              className="p-2 sm:p-2.5 bg-gray-50 border border-gray-200 text-gray-500 hover:bg-rose-50 hover:border-rose-200 hover:text-rose-700 rounded-xl transition-all cursor-pointer shadow-xs hover:shadow-sm"
             >
               <Trash2 size={15} />
             </button>
@@ -306,7 +306,7 @@ const CandidateCard = ({
                 type="button"
                 onClick={() => setIsDropdownOpen(!isDropdownOpen)}
                 disabled={isUpdating}
-                className={`w-full flex items-center justify-between gap-1.5 py-2 px-2.5 rounded-xl border text-[11px] font-bold uppercase tracking-wider transition-all cursor-pointer ${statusInfo.bg} ${statusInfo.color} ${statusInfo.border} ${isUpdating ? 'opacity-50 animate-pulse' : 'hover:shadow-xs'}`}
+                className={`w-full flex items-center justify-between gap-1.5 py-2 px-2.5 rounded-xl border text-[11px] font-bold uppercase tracking-wider transition-all cursor-pointer ${statusInfo.bg} ${statusInfo.color} ${statusInfo.border} hover:brightness-95 hover:shadow-xs ${isUpdating ? 'opacity-50 animate-pulse' : ''}`}
               >
                 <div className="flex items-center gap-1.5 truncate">
                   {statusInfo.icon}
@@ -331,7 +331,7 @@ const CandidateCard = ({
                           setTimeout(() => setIsUpdating(false), 500);
                         }}
                         className={`w-full flex items-center justify-between px-3.5 py-2 text-[11px] font-bold uppercase tracking-wider transition-colors cursor-pointer ${
-                          isCurrent ? info.bg + ' ' + info.color : 'text-gray-600 hover:bg-gray-50'
+                          isCurrent ? info.bg + ' ' + info.color : 'text-gray-600 hover:bg-pink-50 hover:text-[#D60041]'
                         }`}
                       >
                         <div className="flex items-center gap-2">
@@ -352,14 +352,14 @@ const CandidateCard = ({
             <button
               type="button"
               onClick={() => onOpenDetails(candidate)}
-              className="flex-1 sm:flex-none px-3.5 sm:px-4 py-2 bg-gray-50 hover:bg-gray-100 text-gray-700 rounded-xl text-xs font-bold transition-all border border-gray-200 hover:border-gray-300 text-center cursor-pointer"
+              className="flex-1 sm:flex-none px-3.5 sm:px-4 py-2 bg-gray-50 hover:bg-pink-50 text-gray-700 hover:text-[#D60041] rounded-xl text-xs font-bold transition-all border border-gray-200 hover:border-pink-200 text-center cursor-pointer shadow-xs hover:shadow-sm"
             >
               Details
             </button>
             <button
               type="button"
               onClick={() => onOpenInterview(candidate)}
-              className="flex-1 sm:flex-none px-3.5 sm:px-4 py-2 bg-[#D60041] hover:bg-[#B50037] text-white rounded-xl text-xs font-bold transition-all shadow-sm hover:shadow text-center cursor-pointer whitespace-nowrap"
+              className="flex-1 sm:flex-none px-3.5 sm:px-4 py-2 bg-[#D60041] hover:bg-[#B50037] text-white rounded-xl text-xs font-bold transition-all shadow-xs hover:shadow-md hover:shadow-pink-500/25 active:scale-[0.98] text-center cursor-pointer whitespace-nowrap"
             >
               Schedule
             </button>

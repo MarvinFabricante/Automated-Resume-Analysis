@@ -260,7 +260,7 @@ const CandidateTableView = ({
                             window.open(fullUrl, '_blank');
                           }}
                           title="View Resume"
-                          className="p-1.5 hover:bg-gray-100 text-gray-500 hover:text-gray-900 rounded-lg transition-colors cursor-pointer"
+                          className="p-1.5 hover:bg-pink-50 text-gray-500 hover:text-[#D60041] rounded-lg transition-colors cursor-pointer"
                         >
                           <FileText size={14} />
                         </button>

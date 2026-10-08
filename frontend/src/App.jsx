@@ -101,6 +101,7 @@ const App = () => {
             <Route path="/hr">
               <Route path="dashboard" element={<HRDashboard />} />
               <Route path="screeningportal" element={<ScreeningPortal />} />
+              <Route path="screening" element={<ScreeningPortal />} />
               <Route path="scheduling" element={<HRSchedulingPage />} />
               <Route path="comparecandidates" element={<CompareCandidates />} />
 
