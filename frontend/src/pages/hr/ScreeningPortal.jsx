@@ -13,7 +13,7 @@ import BulkActionBar from '../../components/hr/screening/BulkActionBar';
 import CandidateList from '../../components/hr/screening/CandidateList';
 import Pagination from '../../components/hr/screening/Pagination';
 
-import { AlertCircle, CheckCircle2, X } from 'lucide-react';
+import { AlertCircle, CheckCircle2, X, Archive } from 'lucide-react';
 import { 
   useGetApplicationsQuery, 
   useUpdateApplicationStatusMutation, 
@@ -34,6 +34,7 @@ const ScreeningPortal = () => {
   const [scoreFilter, setScoreFilter] = useState("All Scores");
   const [sortBy, setSortBy] = useState("match_desc");
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const [includeArchived, setIncludeArchived] = useState(false);
 
   // View & Pagination states
   const [viewMode, setViewMode] = useState("cards"); // 'cards' | 'table'
@@ -90,6 +91,25 @@ const ScreeningPortal = () => {
     return Object.entries(counts).map(([title, count]) => ({ title, count }));
   }, [candidates]);
 
+  // Count hidden archived records that match current search query
+  const hiddenArchivedMatchCount = useMemo(() => {
+    if (!searchQuery.trim() || includeArchived || statusFilter === 'Archived' || statusFilter === 'All With Archived') {
+      return 0;
+    }
+    const q = searchQuery.toLowerCase().trim();
+    return candidates.filter(c => {
+      const isArchived = (c.status || '').toLowerCase() === 'archived';
+      if (!isArchived) return false;
+      const matchesName = c.name && c.name.toLowerCase().includes(q);
+      const matchesJob = c.preferredJob && c.preferredJob.toLowerCase().includes(q);
+      const matchesEmail = c.email && c.email.toLowerCase().includes(q);
+      const matchesLocation = c.location && c.location.toLowerCase().includes(q);
+      const matchesDegree = (c.degree || '').toLowerCase().includes(q) || (c.college || '').toLowerCase().includes(q);
+      const matchesSkills = Array.isArray(c.skills) && c.skills.some(s => (s || '').toLowerCase().includes(q));
+      return matchesName || matchesJob || matchesEmail || matchesLocation || matchesDegree || matchesSkills;
+    }).length;
+  }, [candidates, searchQuery, includeArchived, statusFilter]);
+
   // Filtering and sorting candidates
   const filteredCandidates = useMemo(() => {
     return candidates.filter(c => {
@@ -98,8 +118,10 @@ const ScreeningPortal = () => {
       // Status filtering
       if (statusFilter === "Archived") {
         if (candidateStatus !== "archived") return false;
+      } else if (statusFilter === "All With Archived") {
+        // Show all including archived
       } else if (statusFilter === "All Status") {
-        if (candidateStatus === "archived") return false;
+        if (!includeArchived && candidateStatus === "archived") return false;
       } else {
         if (candidateStatus !== statusFilter.toLowerCase()) return false;
       }
@@ -149,7 +171,7 @@ const ScreeningPortal = () => {
           return (b.matchScore || 0) - (a.matchScore || 0);
       }
     });
-  }, [candidates, statusFilter, jobFilter, scoreFilter, searchQuery, sortBy]);
+  }, [candidates, statusFilter, jobFilter, scoreFilter, searchQuery, sortBy, includeArchived]);
 
   // Paginated slice
   const paginatedCandidates = useMemo(() => {
@@ -178,7 +200,8 @@ const ScreeningPortal = () => {
     statusFilter !== "All Status" ||
     jobFilter !== "All Jobs" ||
     scoreFilter !== "All Scores" ||
-    sortBy !== "match_desc"
+    sortBy !== "match_desc" ||
+    includeArchived
   );
 
   // Reset all filters
@@ -188,6 +211,7 @@ const ScreeningPortal = () => {
     setJobFilter("All Jobs");
     setScoreFilter("All Scores");
     setSortBy("match_desc");
+    setIncludeArchived(false);
     setCurrentPage(1);
   };
 
@@ -198,26 +222,32 @@ const ScreeningPortal = () => {
       case 'all':
         setStatusFilter("All Status");
         setScoreFilter("All Scores");
+        setIncludeArchived(false);
         break;
       case 'pending':
         setStatusFilter("Pending");
         setScoreFilter("All Scores");
+        setIncludeArchived(false);
         break;
       case 'highMatch':
         setStatusFilter("All Status");
         setScoreFilter("80+");
+        setIncludeArchived(false);
         break;
       case 'interview':
         setStatusFilter("Technical Interview");
         setScoreFilter("All Scores");
+        setIncludeArchived(false);
         break;
       case 'accepted':
         setStatusFilter("Accepted");
         setScoreFilter("All Scores");
+        setIncludeArchived(false);
         break;
       case 'archived':
         setStatusFilter("Archived");
         setScoreFilter("All Scores");
+        setIncludeArchived(true);
         break;
       default:
         break;
@@ -460,7 +490,35 @@ const ScreeningPortal = () => {
             suggestions={suggestions}
             onResetFilters={handleResetFilters}
             isFiltered={isFiltered}
+            includeArchived={includeArchived}
+            setIncludeArchived={(val) => {
+              setIncludeArchived(val);
+              setCurrentPage(1);
+            }}
+            archivedCount={stats.archived}
+            hiddenArchivedMatchCount={hiddenArchivedMatchCount}
           />
+
+          {/* Active Banner when Archived candidates are visible alongside active */}
+          {includeArchived && statusFilter !== 'Archived' && (
+            <div className="mb-6 flex items-center justify-between p-4 bg-amber-50/90 border border-amber-200 rounded-2xl text-xs sm:text-sm text-amber-900 shadow-sm animate-in fade-in duration-200">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-amber-100 rounded-xl text-amber-700">
+                  <Archive size={16} />
+                </div>
+                <div>
+                  <span className="font-bold">Archived candidates visible:</span> Both active and archived candidate applications are included in the screening view.
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIncludeArchived(false)}
+                className="px-3.5 py-1.5 bg-amber-100 hover:bg-amber-200 text-amber-900 font-bold rounded-xl text-xs transition-all cursor-pointer whitespace-nowrap ml-2 shadow-sm"
+              >
+                Hide Archived
+              </button>
+            </div>
+          )}
 
           {/* Job Filter Indicator Banner */}
           {jobFilter !== "All Jobs" && (

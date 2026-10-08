@@ -1,12 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from typing import List
+from typing import List, Optional
 
 from app.utils.database import get_db
 from app.schemas.job_application_schema import JobApplicationCreate, JobApplicationResponse, JobApplicationStatusUpdate
 from app.services import job_application_service
 from app.services.audit_service import record_activity
-from app.utils.auth import get_current_user
+from app.utils.auth import get_current_user, get_optional_current_user
 from app.utils.cache import cache_response, clear_cache_pattern
 
 
@@ -75,7 +75,8 @@ async def get_applications_for_candidate(email: str, db: AsyncSession = Depends(
 async def update_application_status(
     application_id: int, 
     status_update: JobApplicationStatusUpdate, 
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    current_user: Optional[dict] = Depends(get_optional_current_user)
 ):
     """
     Update the status of a job application.
@@ -87,9 +88,10 @@ async def update_application_status(
         raise HTTPException(status_code=404, detail="Application not found")
         
     # Record in audit log
+    user_id = current_user.get("id") if current_user else None
     await record_activity(
         db=db,
-        user_id=1,  # Default to 1 for now to bypass 401 issues
+        user_id=user_id,
         action="UPDATE_STATUS",
         target=f"Application ID: {application_id}",
         details=f"HR updated application status for {db_application.candidate_name} to {status_update.status}"
@@ -107,7 +109,8 @@ async def update_application_status(
 @router.delete("/{application_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_application(
     application_id: int,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    current_user: Optional[dict] = Depends(get_optional_current_user)
 ):
     """
     Remove/delete a job application.
@@ -117,9 +120,10 @@ async def delete_application(
         raise HTTPException(status_code=404, detail="Application not found")
     
     # Record in audit log
+    user_id = current_user.get("id") if current_user else None
     await record_activity(
         db=db,
-        user_id=1, # Default to 1 to bypass 401 issues
+        user_id=user_id,
         action="DELETE_APPLICATION",
         target=f"Application ID: {application_id}",
         details=f"HR deleted application for {db_application.candidate_name}"

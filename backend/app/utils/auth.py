@@ -41,6 +41,19 @@ def get_current_user(token: str = Depends(oauth2_scheme)):
         raise HTTPException(status_code=401, detail="Invalid token")
 
 
+from typing import Optional
+from fastapi import Header
+
+def get_optional_current_user(authorization: Optional[str] = Header(None)) -> Optional[dict]:
+    if not authorization:
+        return None
+    try:
+        token = authorization.replace("Bearer ", "").strip()
+        return jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+    except Exception:
+        return None
+
+
 def require_role(required_role: str):
     def role_checker(user=Depends(get_current_user)):
         if user.get("role") != required_role:

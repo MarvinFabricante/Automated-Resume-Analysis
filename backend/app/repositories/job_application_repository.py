@@ -55,6 +55,25 @@ async def update(db: AsyncSession, application: JobApplication) -> JobApplicatio
     return application
 
 async def delete(db: AsyncSession, application: JobApplication) -> None:
+    from sqlalchemy import text
+    await db.execute(
+        text("""
+            DELETE FROM interview_panelists 
+            WHERE interview_id IN (SELECT id FROM interviews WHERE job_application_id = :app_id)
+        """),
+        {"app_id": application.id}
+    )
+    await db.execute(
+        text("""
+            DELETE FROM interview_logs 
+            WHERE interview_id IN (SELECT id FROM interviews WHERE job_application_id = :app_id)
+        """),
+        {"app_id": application.id}
+    )
+    await db.execute(
+        text("DELETE FROM interviews WHERE job_application_id = :app_id"),
+        {"app_id": application.id}
+    )
     await db.delete(application)
     await db.commit()
 
