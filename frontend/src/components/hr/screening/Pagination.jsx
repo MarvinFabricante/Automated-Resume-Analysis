@@ -32,18 +32,18 @@ const Pagination = ({
   };
 
   return (
-    <div className="flex flex-col sm:flex-row items-center justify-between gap-4 mt-8 pt-6 border-t border-gray-100 text-xs text-gray-500 font-medium">
+    <div className="flex flex-col sm:flex-row items-center justify-between gap-3 sm:gap-4 mt-6 sm:mt-8 pt-4 sm:pt-6 border-t border-gray-200/80 text-xs text-gray-500 font-medium">
       
       {/* Left: Summary and Page Size */}
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-2.5 sm:gap-3 flex-wrap justify-center sm:justify-start">
         <span>
-          Showing <span className="font-bold text-gray-800">{startItem}</span> to <span className="font-bold text-gray-800">{endItem}</span> of <span className="font-bold text-gray-800">{totalItems}</span> candidates
+          Showing <span className="font-bold text-gray-900">{startItem}</span>–<span className="font-bold text-gray-900">{endItem}</span> of <span className="font-bold text-gray-900">{totalItems}</span>
         </span>
 
         <span className="text-gray-300">•</span>
 
         <div className="flex items-center gap-1.5">
-          <span>Show:</span>
+          <span className="text-gray-400">Rows:</span>
           <select
             value={itemsPerPage}
             onChange={(e) => onItemsPerPageChange(e.target.value === 'all' ? 'all' : parseInt(e.target.value, 10))}
@@ -65,37 +65,47 @@ const Pagination = ({
             type="button"
             onClick={() => onPageChange(currentPage - 1)}
             disabled={currentPage === 1}
-            className="p-1.5 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 disabled:opacity-40 disabled:hover:bg-transparent transition-colors"
+            className="p-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-30 disabled:hover:bg-transparent transition-colors cursor-pointer disabled:cursor-not-allowed"
+            title="Previous page"
           >
             <ChevronLeft size={16} />
           </button>
 
-          {getPageNumbers().map((p, idx) => {
-            if (p === '...') {
-              return <span key={idx} className="px-2 py-1 text-gray-400 font-bold">...</span>;
-            }
-            const isCurrent = p === currentPage;
-            return (
-              <button
-                key={idx}
-                type="button"
-                onClick={() => onPageChange(p)}
-                className={`min-w-[32px] h-8 rounded-lg text-xs font-bold transition-all ${
-                  isCurrent 
-                    ? 'bg-[#D60041] text-white shadow-sm' 
-                    : 'border border-gray-200 text-gray-700 hover:bg-gray-50'
-                }`}
-              >
-                {p}
-              </button>
-            );
-          })}
+          {/* Desktop full numbered page list */}
+          <div className="hidden sm:flex items-center gap-1">
+            {getPageNumbers().map((p, idx) => {
+              if (p === '...') {
+                return <span key={idx} className="px-1.5 py-1 text-gray-400 font-bold">...</span>;
+              }
+              const isCurrent = p === currentPage;
+              return (
+                <button
+                  key={idx}
+                  type="button"
+                  onClick={() => onPageChange(p)}
+                  className={`min-w-[32px] h-8 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                    isCurrent 
+                      ? 'bg-[#D60041] text-white shadow-xs' 
+                      : 'border border-gray-200 text-gray-700 hover:bg-gray-50'
+                  }`}
+                >
+                  {p}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Mobile compact indicator */}
+          <span className="sm:hidden px-3 py-1 text-xs font-bold text-gray-700 bg-gray-50 border border-gray-200 rounded-lg">
+            Page {currentPage} / {totalPages}
+          </span>
 
           <button
             type="button"
             onClick={() => onPageChange(currentPage + 1)}
             disabled={currentPage === totalPages}
-            className="p-1.5 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 disabled:opacity-40 disabled:hover:bg-transparent transition-colors"
+            className="p-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-30 disabled:hover:bg-transparent transition-colors cursor-pointer disabled:cursor-not-allowed"
+            title="Next page"
           >
             <ChevronRight size={16} />
           </button>

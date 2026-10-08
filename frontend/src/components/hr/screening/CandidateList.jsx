@@ -1,5 +1,5 @@
 import React from 'react';
-import { Search, RotateCcw, UserX } from 'lucide-react';
+import { UserX, RotateCcw } from 'lucide-react';
 import CandidateCard from './CandidateCard';
 import CandidateTableView from './CandidateTableView';
 
@@ -20,19 +20,19 @@ const CandidateList = ({
 }) => {
   if (candidates.length === 0) {
     return (
-      <div className="text-center py-20 px-6 bg-white rounded-2xl sm:rounded-[32px] border border-gray-100 shadow-sm animate-in fade-in duration-300">
-        <div className="w-16 h-16 bg-pink-50 text-[#D60041] rounded-2xl flex items-center justify-center mx-auto mb-4 border border-pink-100 shadow-sm">
-          <UserX className="w-8 h-8" />
+      <div className="text-center py-16 sm:py-20 px-4 sm:px-6 bg-white rounded-2xl sm:rounded-3xl border border-gray-200/80 shadow-sm animate-in fade-in duration-300">
+        <div className="w-14 h-14 sm:w-16 sm:h-16 bg-pink-50 text-[#D60041] rounded-2xl flex items-center justify-center mx-auto mb-3.5 border border-pink-100 shadow-xs">
+          <UserX className="w-7 h-7 sm:w-8 sm:h-8" />
         </div>
-        <h4 className="text-base sm:text-lg font-bold text-gray-900">No candidates match your filters</h4>
+        <h4 className="text-base sm:text-lg font-bold text-gray-900 tracking-tight">No candidates match your criteria</h4>
         <p className="text-xs sm:text-sm text-gray-500 mt-1 max-w-md mx-auto leading-relaxed">
-          We couldn't find any candidate applications matching your current search criteria, job selection, or status filter.
+          Try clearing your search query, adjusting the position or score filters, or checking the archived candidate list.
         </p>
         {onResetFilters && (
           <button
             type="button"
             onClick={onResetFilters}
-            className="mt-5 inline-flex items-center gap-2 px-5 py-2.5 bg-gray-50 hover:bg-pink-50 text-gray-700 hover:text-[#D60041] border border-gray-200 hover:border-pink-200 rounded-xl text-xs font-bold transition-all cursor-pointer shadow-sm"
+            className="mt-4 sm:mt-5 inline-flex items-center gap-2 px-4 py-2 sm:px-5 sm:py-2.5 bg-gray-50 hover:bg-pink-50 text-gray-700 hover:text-[#D60041] border border-gray-200 hover:border-pink-200 rounded-xl text-xs font-bold transition-all cursor-pointer shadow-xs"
           >
             <RotateCcw size={13} />
             <span>Reset All Filters</span>
@@ -61,7 +61,7 @@ const CandidateList = ({
   }
 
   return (
-    <div className="space-y-4 sm:space-y-5 animate-in fade-in duration-200">
+    <div className="space-y-3.5 sm:space-y-4 animate-in fade-in duration-200">
       {candidates.map((candidate) => (
         <CandidateCard 
           key={candidate.id} 

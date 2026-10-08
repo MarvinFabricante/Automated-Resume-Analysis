@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { 
   Calendar, MapPin, ChevronDown, CheckCircle2, XCircle, Clock, Search, 
-  Check, Archive, Trash2, RotateCcw, FileText, Download, Copy, Mail, Phone 
+  Check, Archive, Trash2, RotateCcw, FileText, Download, Copy, Mail, Phone,
+  Zap, Briefcase, GraduationCap, Sparkles
 } from 'lucide-react';
 import { getAssetUrl } from '../../../services/api';
 
@@ -27,7 +28,7 @@ const CandidateCard = ({
 
   const avatarUrl = candidate.profileImage
     ? getAssetUrl(candidate.profileImage)
-    : `https://ui-avatars.com/api/?name=${encodeURIComponent(candidate.name)}&background=fdf2f8&color=d81159&bold=true`;
+    : `https://ui-avatars.com/api/?name=${encodeURIComponent(candidate.name || 'Candidate')}&background=fdf2f8&color=d81159&bold=true`;
 
   const formatDate = (dateStr) => {
     if (!dateStr) return "N/A";
@@ -54,32 +55,46 @@ const CandidateCard = ({
 
   const getStatusInfo = (st) => {
     switch ((st || '').toLowerCase()) {
-      case 'accepted': return { icon: <CheckCircle2 className="w-4 h-4" />, color: 'text-emerald-600', bg: 'bg-emerald-50', border: 'border-emerald-200', label: 'Accepted' };
-      case 'rejected': return { icon: <XCircle className="w-4 h-4" />, color: 'text-rose-600', bg: 'bg-rose-50', border: 'border-rose-200', label: 'Rejected' };
-      case 'reviewed': return { icon: <Search className="w-4 h-4" />, color: 'text-blue-600', bg: 'bg-blue-50', border: 'border-blue-200', label: 'Reviewed' };
-      case 'technical interview': return { icon: <Clock className="w-4 h-4" />, color: 'text-purple-600', bg: 'bg-purple-50', border: 'border-purple-200', label: 'Technical Interview' };
-      case 'final interview': return { icon: <Clock className="w-4 h-4" />, color: 'text-indigo-600', bg: 'bg-indigo-50', border: 'border-indigo-200', label: 'Final Interview' };
-      case 'archived': return { icon: <Archive className="w-4 h-4" />, color: 'text-gray-600', bg: 'bg-gray-100', border: 'border-gray-200', label: 'Archived' };
-      default: return { icon: <Clock className="w-4 h-4" />, color: 'text-amber-600', bg: 'bg-amber-50', border: 'border-amber-200', label: 'Pending' };
+      case 'accepted': return { icon: <CheckCircle2 className="w-3.5 h-3.5" />, color: 'text-teal-700', bg: 'bg-teal-50', border: 'border-teal-200', label: 'Accepted' };
+      case 'rejected': return { icon: <XCircle className="w-3.5 h-3.5" />, color: 'text-rose-700', bg: 'bg-rose-50', border: 'border-rose-200', label: 'Rejected' };
+      case 'reviewed': return { icon: <Search className="w-3.5 h-3.5" />, color: 'text-blue-700', bg: 'bg-blue-50', border: 'border-blue-200', label: 'Reviewed' };
+      case 'technical interview': return { icon: <Clock className="w-3.5 h-3.5" />, color: 'text-purple-700', bg: 'bg-purple-50', border: 'border-purple-200', label: 'Tech Interview' };
+      case 'final interview': return { icon: <Clock className="w-3.5 h-3.5" />, color: 'text-indigo-700', bg: 'bg-indigo-50', border: 'border-indigo-200', label: 'Final Interview' };
+      case 'archived': return { icon: <Archive className="w-3.5 h-3.5" />, color: 'text-gray-700', bg: 'bg-gray-100', border: 'border-gray-200', label: 'Archived' };
+      default: return { icon: <Clock className="w-3.5 h-3.5" />, color: 'text-amber-700', bg: 'bg-amber-50', border: 'border-amber-200', label: 'Pending' };
     }
   };
 
   const statusInfo = getStatusInfo(candidate.status);
   const match = Math.round(candidate.matchScore || 0);
 
-  const getMatchBadgeStyle = () => {
-    if (match >= 80) return 'bg-emerald-600 text-white';
-    if (match >= 60) return 'bg-amber-500 text-white';
-    return 'bg-gray-700 text-white';
+  const getMatchTheme = () => {
+    if (match >= 80) return {
+      badge: 'bg-emerald-50 text-emerald-700 border-emerald-200 ring-1 ring-emerald-500/20',
+      dot: 'bg-emerald-500',
+      ring: '#10b981'
+    };
+    if (match >= 60) return {
+      badge: 'bg-amber-50 text-amber-700 border-amber-200 ring-1 ring-amber-500/20',
+      dot: 'bg-amber-500',
+      ring: '#f59e0b'
+    };
+    return {
+      badge: 'bg-rose-50 text-rose-700 border-rose-200 ring-1 ring-rose-500/20',
+      dot: 'bg-rose-500',
+      ring: '#f43f5e'
+    };
   };
 
+  const matchTheme = getMatchTheme();
+
   return (
-    <div className={`bg-white p-4 sm:p-6 md:p-8 rounded-2xl sm:rounded-[32px] border transition-all duration-300 group ${
+    <div className={`bg-white p-4 sm:p-5 md:p-6 rounded-2xl sm:rounded-3xl border transition-all duration-300 group ${
       isSelected 
         ? 'border-[#D60041] ring-2 ring-[#D60041]/10 shadow-md' 
-        : 'border-gray-100 shadow-sm hover:shadow-[0_20px_50px_rgba(0,0,0,0.04)] hover:-translate-y-0.5'
+        : 'border-gray-200/80 shadow-sm hover:shadow-md hover:border-gray-300'
     }`}>
-      <div className="flex flex-col lg:flex-row gap-5 sm:gap-6 lg:gap-8 items-start lg:items-center">
+      <div className="flex flex-col lg:flex-row gap-4 sm:gap-6 items-start lg:items-center">
         
         {/* Selection Checkbox & Avatar */}
         <div className="flex items-center gap-3 shrink-0">
@@ -88,23 +103,23 @@ const CandidateCard = ({
               type="checkbox"
               checked={isSelected}
               onChange={() => onToggleSelect(candidate.id)}
-              className="w-5 h-5 rounded border-gray-300 text-[#D60041] focus:ring-[#D60041] cursor-pointer"
-              title="Select for comparison or bulk actions"
+              className="w-4 h-4 rounded border-gray-300 text-[#D60041] focus:ring-[#D60041] cursor-pointer"
+              title="Select candidate"
             />
           )}
 
           <div className="relative shrink-0">
-            <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl overflow-hidden border-2 border-white shadow-md group-hover:scale-105 transition-transform duration-300 bg-pink-50">
+            <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl overflow-hidden border-2 border-white shadow-sm bg-pink-50">
               <img
                 src={avatarUrl}
                 alt={candidate.name}
                 className="w-full h-full object-cover"
                 onError={(e) => {
-                  e.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(candidate.name)}&background=fdf2f8&color=d81159&bold=true`;
+                  e.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(candidate.name || 'Candidate')}&background=fdf2f8&color=d81159&bold=true`;
                 }}
               />
             </div>
-            <div className={`absolute -bottom-1 -right-1 p-1.5 rounded-xl border-2 border-white shadow-sm ${statusInfo.bg} ${statusInfo.color}`}>
+            <div className={`absolute -bottom-1 -right-1 p-1 rounded-lg border-2 border-white shadow-xs ${statusInfo.bg} ${statusInfo.color}`}>
               {statusInfo.icon}
             </div>
           </div>
@@ -112,80 +127,103 @@ const CandidateCard = ({
 
         {/* Content Section */}
         <div className="flex-grow w-full min-w-0">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-4 mb-3 sm:mb-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2">
             <div>
-              <div className="flex flex-wrap items-center gap-2 sm:gap-3 mb-1">
+              <div className="flex flex-wrap items-center gap-2 mb-1">
                 <h3 
                   onClick={() => onOpenDetails(candidate)}
-                  className="text-lg sm:text-xl font-bold text-gray-900 tracking-tight leading-tight hover:text-[#D60041] cursor-pointer transition-colors"
+                  className="text-base sm:text-lg font-bold text-gray-900 tracking-tight hover:text-[#D60041] cursor-pointer transition-colors"
                 >
                   {candidate.name}
                 </h3>
-                <span className={`px-2.5 sm:px-3 py-0.5 sm:py-1 text-[10px] font-bold uppercase tracking-widest rounded-full shadow-sm ${getMatchBadgeStyle()}`}>
+                
+                {/* Match Score Badge */}
+                <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 text-[11px] font-black uppercase tracking-wider rounded-full border ${matchTheme.badge}`}>
+                  <span className={`w-1.5 h-1.5 rounded-full ${matchTheme.dot}`}></span>
                   {match}% Match
                 </span>
+
                 {candidate.ai_powered && (
-                  <span className="px-2 py-0.5 bg-gradient-to-r from-purple-50 to-pink-50 text-purple-700 border border-purple-100 text-[9px] font-black uppercase tracking-wider rounded-md">
-                    AI Analyzed
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-gradient-to-r from-purple-50 to-pink-50 text-purple-700 border border-purple-100 text-[10px] font-bold uppercase tracking-wider rounded-md">
+                    <Sparkles size={11} className="text-purple-600" />
+                    AI Verified
                   </span>
                 )}
               </div>
 
-              <div className="flex flex-wrap items-center gap-y-1 gap-x-3 text-xs sm:text-sm text-gray-500 font-semibold">
-                <span className="flex items-center gap-1.5">
+              <div className="flex flex-wrap items-center gap-y-1 gap-x-2 text-xs text-gray-500 font-semibold">
+                <span className="flex items-center gap-1.5 text-gray-700 font-bold">
                   <span className="w-1.5 h-1.5 bg-[#D60041] rounded-full shrink-0"></span>
                   <span className="truncate">{candidate.preferredJob}</span>
                 </span>
                 {candidate.company && candidate.company !== 'N/A' && (
                   <span className="text-gray-400 font-normal">
-                    • Previous: {candidate.company}
+                    • Prev: {candidate.company}
                   </span>
                 )}
+              </div>
+            </div>
+
+            {/* Mini Score Pillar Breakdown */}
+            <div className="flex items-center gap-2 self-start sm:self-auto bg-gray-50/80 px-2.5 py-1.5 rounded-xl border border-gray-100 shrink-0">
+              <div className="flex items-center gap-1 text-[10px] font-bold text-blue-700" title="Skills score (40% weight)">
+                <Zap size={11} className="text-blue-500" />
+                <span>{Math.round(candidate.skillsScore || 0)}%</span>
+              </div>
+              <span className="text-gray-300 text-xs">|</span>
+              <div className="flex items-center gap-1 text-[10px] font-bold text-purple-700" title="Experience score (40% weight)">
+                <Briefcase size={11} className="text-purple-500" />
+                <span>{Math.round(candidate.experienceScore || 0)}%</span>
+              </div>
+              <span className="text-gray-300 text-xs">|</span>
+              <div className="flex items-center gap-1 text-[10px] font-bold text-amber-700" title="Education score (20% weight)">
+                <GraduationCap size={11} className="text-amber-500" />
+                <span>{Math.round(candidate.educationScore || 0)}%</span>
               </div>
             </div>
           </div>
 
           {/* Skills Pills */}
-          <div className="flex flex-wrap gap-1.5 sm:gap-2 mb-4">
+          <div className="flex flex-wrap gap-1.5 mb-3">
             {(candidate.skills || []).slice(0, 5).map((skill, idx) => (
               <button
                 key={idx}
                 type="button"
                 onClick={() => onSkillClick && onSkillClick(skill)}
                 title={`Filter candidates by skill: ${skill}`}
-                className="bg-gray-50 border border-gray-100 hover:border-pink-200 hover:bg-pink-50/50 hover:text-[#D60041] text-gray-500 text-[10px] font-bold uppercase tracking-tight px-2.5 sm:px-3 py-1 rounded-xl transition-all duration-200 cursor-pointer"
+                className="bg-gray-50 hover:bg-pink-50 text-gray-600 hover:text-[#D60041] border border-gray-200/80 hover:border-pink-200 text-[10px] font-semibold uppercase tracking-tight px-2 py-0.8 rounded-lg transition-all duration-150 cursor-pointer"
               >
                 {skill}
               </button>
             ))}
             {(candidate.skills || []).length > 5 && (
-              <span className="bg-gray-50 text-gray-400 text-[10px] font-bold px-2 py-1 rounded-xl border border-gray-100">
+              <span className="bg-gray-50 text-gray-400 text-[10px] font-semibold px-1.5 py-0.8 rounded-lg border border-gray-200/70">
                 +{candidate.skills.length - 5}
               </span>
             )}
           </div>
 
           {/* Meta Info & Quick Contact */}
-          <div className="flex flex-wrap items-center gap-y-2 gap-x-5 pt-3 sm:pt-4 border-t border-gray-50 text-[11px] text-gray-400 font-medium">
-            <div className="flex items-center gap-1.5">
-              <Calendar className="w-3.5 h-3.5 text-gray-300 shrink-0" />
-              Applied {formatDate(candidate.date)}
+          <div className="flex flex-wrap items-center gap-y-1.5 gap-x-4 pt-2.5 border-t border-gray-100 text-[11px] text-gray-500 font-medium">
+            <div className="flex items-center gap-1">
+              <Calendar className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+              <span>Applied {formatDate(candidate.date)}</span>
             </div>
             
-            <div className="flex items-center gap-1.5">
-              <MapPin className="w-3.5 h-3.5 text-gray-300 shrink-0" />
-              {candidate.location}
+            <div className="flex items-center gap-1">
+              <MapPin className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+              <span className="truncate max-w-[140px]">{candidate.location || "N/A"}</span>
             </div>
 
             {candidate.email && candidate.email !== 'N/A' && (
-              <div className="flex items-center gap-1.5 text-gray-500 group/copy">
-                <Mail className="w-3.5 h-3.5 text-gray-300 shrink-0" />
-                <span className="truncate max-w-[170px]">{candidate.email}</span>
+              <div className="flex items-center gap-1 text-gray-600">
+                <Mail className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+                <span className="truncate max-w-[150px] sm:max-w-[180px]">{candidate.email}</span>
                 <button
                   type="button"
                   onClick={() => handleCopy(candidate.email, 'email')}
                   title="Copy email"
-                  className="hover:text-gray-900 transition-colors p-0.5"
+                  className="hover:text-gray-900 transition-colors p-0.5 cursor-pointer"
                 >
                   {copiedField === 'email' ? <Check size={11} className="text-emerald-500" /> : <Copy size={11} />}
                 </button>
@@ -193,14 +231,16 @@ const CandidateCard = ({
             )}
 
             {candidate.phone && candidate.phone !== 'N/A' && (
-              <div className="hidden sm:flex items-center gap-1.5 text-gray-500">
-                <Phone className="w-3.5 h-3.5 text-gray-300 shrink-0" />
-                <span>{candidate.phone}</span>
+              <div className="flex items-center gap-1 text-gray-600">
+                <Phone className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+                <a href={`tel:${candidate.phone}`} className="hover:text-[#D60041] transition-colors">
+                  {candidate.phone}
+                </a>
                 <button
                   type="button"
                   onClick={() => handleCopy(candidate.phone, 'phone')}
                   title="Copy phone"
-                  className="hover:text-gray-900 transition-colors p-0.5"
+                  className="hover:text-gray-900 transition-colors p-0.5 cursor-pointer"
                 >
                   {copiedField === 'phone' ? <Check size={11} className="text-emerald-500" /> : <Copy size={11} />}
                 </button>
@@ -209,9 +249,11 @@ const CandidateCard = ({
           </div>
         </div>
 
-        {/* Action Section */}
-        <div className="flex flex-wrap sm:flex-nowrap items-center gap-2 sm:gap-3 w-full lg:w-auto shrink-0 mt-4 sm:mt-6 lg:mt-0 pt-4 sm:pt-6 lg:pt-0 border-t lg:border-t-0 border-gray-50">
-          <div className="flex items-center gap-1.5 shrink-0">
+        {/* Action Section - Responsive Two-tier on mobile, inline on desktop */}
+        <div className="w-full lg:w-auto shrink-0 pt-3 lg:pt-0 border-t lg:border-t-0 border-gray-100 flex flex-col sm:flex-row lg:flex-row items-stretch sm:items-center gap-2">
+          
+          {/* Row 1 on mobile: Status Dropdown + Quick Icon Actions */}
+          <div className="flex items-center gap-2">
             {/* Direct Resume View/Download */}
             {candidate.resumeUrl && (
               <button
@@ -221,9 +263,9 @@ const CandidateCard = ({
                   window.open(fullUrl, '_blank');
                 }}
                 title="View / Download Resume"
-                className="p-2.5 sm:p-3 bg-gray-50 border border-gray-100 text-gray-500 hover:bg-pink-50 hover:border-pink-100 hover:text-[#D60041] rounded-xl transition-all duration-200 hover:shadow-sm"
+                className="p-2 sm:p-2.5 bg-gray-50 border border-gray-200 text-gray-600 hover:bg-pink-50 hover:border-pink-200 hover:text-[#D60041] rounded-xl transition-all cursor-pointer shadow-xs"
               >
-                <FileText size={16} />
+                <FileText size={15} />
               </button>
             )}
 
@@ -232,19 +274,19 @@ const CandidateCard = ({
               <button
                 type="button"
                 onClick={() => onRestoreApplication ? onRestoreApplication(candidate.id) : onUpdateStatus(candidate.id, 'Pending')}
-                title="Restore / Unarchive Candidate"
-                className="p-2.5 sm:p-3 bg-emerald-50 border border-emerald-100 text-emerald-600 hover:bg-emerald-100 rounded-xl transition-all duration-200 hover:shadow-sm"
+                title="Restore Application"
+                className="p-2 sm:p-2.5 bg-emerald-50 border border-emerald-200 text-emerald-700 hover:bg-emerald-100 rounded-xl transition-all cursor-pointer shadow-xs"
               >
-                <RotateCcw size={16} />
+                <RotateCcw size={15} />
               </button>
             ) : (
               <button
                 type="button"
                 onClick={() => onArchiveApplication(candidate.id)}
                 title="Archive Candidate"
-                className="p-2.5 sm:p-3 bg-gray-50 border border-gray-100 text-gray-400 hover:bg-amber-50 hover:border-amber-100 hover:text-amber-600 rounded-xl transition-all duration-200 hover:shadow-sm"
+                className="p-2 sm:p-2.5 bg-gray-50 border border-gray-200 text-gray-500 hover:bg-amber-50 hover:border-amber-200 hover:text-amber-700 rounded-xl transition-all cursor-pointer shadow-xs"
               >
-                <Archive size={16} />
+                <Archive size={15} />
               </button>
             )}
 
@@ -253,73 +295,76 @@ const CandidateCard = ({
               type="button"
               onClick={() => onDeleteApplication(candidate.id)}
               title="Remove Candidate Application"
-              className="p-2.5 sm:p-3 bg-gray-50 border border-gray-100 text-gray-400 hover:bg-rose-50 hover:border-rose-100 hover:text-rose-600 rounded-xl transition-all duration-200 hover:shadow-sm"
+              className="p-2 sm:p-2.5 bg-gray-50 border border-gray-200 text-gray-500 hover:bg-rose-50 hover:border-rose-200 hover:text-rose-700 rounded-xl transition-all cursor-pointer shadow-xs"
             >
-              <Trash2 size={16} />
-            </button>
-          </div>
-
-          {/* Custom Status Dropdown */}
-          <div className="relative flex-1 sm:flex-none sm:min-w-[130px] lg:min-w-[140px]" ref={dropdownRef}>
-            <button
-              type="button"
-              onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-              disabled={isUpdating}
-              className={`w-full flex items-center justify-center gap-2 py-2.5 sm:py-3 px-3 sm:px-4 rounded-xl border text-[10px] font-bold uppercase tracking-widest transition-all duration-200 ${statusInfo.bg} ${statusInfo.color} ${statusInfo.border} ${isUpdating ? 'opacity-50 animate-pulse' : 'hover:shadow-sm'}`}
-            >
-              {statusInfo.icon}
-              <span className="truncate">{statusInfo.label}</span>
-              <ChevronDown className={`w-3 h-3 shrink-0 transition-transform duration-200 ${isDropdownOpen ? 'rotate-180' : ''}`} />
+              <Trash2 size={15} />
             </button>
 
-            {isDropdownOpen && (
-              <div className="absolute top-full right-0 mt-2 w-48 bg-white border border-gray-100 rounded-2xl shadow-2xl z-50 py-2 animate-in fade-in slide-in-from-top-2 duration-150">
-                {['Pending', 'Reviewed', 'Technical Interview', 'Final Interview', 'Accepted', 'Rejected'].map((s) => {
-                  const info = getStatusInfo(s);
-                  const isCurrent = status === s.toLowerCase();
-                  return (
-                    <button
-                      key={s}
-                      type="button"
-                      onClick={async () => {
-                        setIsDropdownOpen(false);
-                        setIsUpdating(true);
-                        await onUpdateStatus(candidate.id, s);
-                        setTimeout(() => setIsUpdating(false), 600);
-                      }}
-                      className={`w-full flex items-center justify-between px-4 py-2.5 text-[10px] font-bold uppercase tracking-widest transition-colors ${
-                        isCurrent ? info.bg + ' ' + info.color : 'text-gray-500 hover:bg-gray-50'
-                      }`}
-                    >
-                      <div className="flex items-center gap-2">
-                        <span className={info.color}>{info.icon}</span>
-                        {s}
-                      </div>
-                      {isCurrent && <Check className="w-3 h-3" />}
-                    </button>
-                  );
-                })}
-              </div>
-            )}
+            {/* Status Dropdown */}
+            <div className="relative flex-1 sm:flex-none sm:min-w-[130px]" ref={dropdownRef}>
+              <button
+                type="button"
+                onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+                disabled={isUpdating}
+                className={`w-full flex items-center justify-between gap-1.5 py-2 px-2.5 rounded-xl border text-[11px] font-bold uppercase tracking-wider transition-all cursor-pointer ${statusInfo.bg} ${statusInfo.color} ${statusInfo.border} ${isUpdating ? 'opacity-50 animate-pulse' : 'hover:shadow-xs'}`}
+              >
+                <div className="flex items-center gap-1.5 truncate">
+                  {statusInfo.icon}
+                  <span className="truncate">{statusInfo.label}</span>
+                </div>
+                <ChevronDown className={`w-3.5 h-3.5 shrink-0 transition-transform duration-200 ${isDropdownOpen ? 'rotate-180' : ''}`} />
+              </button>
+
+              {isDropdownOpen && (
+                <div className="absolute top-full right-0 mt-1.5 w-48 bg-white border border-gray-100 rounded-2xl shadow-xl z-50 py-1.5 animate-in fade-in slide-in-from-top-1 duration-150">
+                  {['Pending', 'Reviewed', 'Technical Interview', 'Final Interview', 'Accepted', 'Rejected'].map((s) => {
+                    const info = getStatusInfo(s);
+                    const isCurrent = status === s.toLowerCase();
+                    return (
+                      <button
+                        key={s}
+                        type="button"
+                        onClick={async () => {
+                          setIsDropdownOpen(false);
+                          setIsUpdating(true);
+                          await onUpdateStatus(candidate.id, s);
+                          setTimeout(() => setIsUpdating(false), 500);
+                        }}
+                        className={`w-full flex items-center justify-between px-3.5 py-2 text-[11px] font-bold uppercase tracking-wider transition-colors cursor-pointer ${
+                          isCurrent ? info.bg + ' ' + info.color : 'text-gray-600 hover:bg-gray-50'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2">
+                          <span className={info.color}>{info.icon}</span>
+                          <span>{s}</span>
+                        </div>
+                        {isCurrent && <Check className="w-3.5 h-3.5" />}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           </div>
 
-          {/* Details & Schedule Action Buttons */}
-          <div className="flex items-center gap-2 flex-1 sm:flex-none">
+          {/* Row 2 on mobile: Details & Schedule Buttons */}
+          <div className="flex items-center gap-2">
             <button
               type="button"
               onClick={() => onOpenDetails(candidate)}
-              className="flex-1 sm:flex-none px-4 sm:px-5 py-2.5 sm:py-3 bg-gray-50 text-gray-700 rounded-xl text-[10px] font-bold uppercase tracking-widest hover:bg-gray-100 transition-all border border-gray-100 hover:border-gray-200 whitespace-nowrap text-center"
+              className="flex-1 sm:flex-none px-3.5 sm:px-4 py-2 bg-gray-50 hover:bg-gray-100 text-gray-700 rounded-xl text-xs font-bold transition-all border border-gray-200 hover:border-gray-300 text-center cursor-pointer"
             >
               Details
             </button>
             <button
               type="button"
               onClick={() => onOpenInterview(candidate)}
-              className="flex-1 sm:flex-none px-4 sm:px-5 py-2.5 sm:py-3 bg-[#D60041] text-white rounded-xl text-[10px] font-bold uppercase tracking-widest hover:bg-[#B50037] shadow-sm hover:shadow-md transition-all whitespace-nowrap text-center"
+              className="flex-1 sm:flex-none px-3.5 sm:px-4 py-2 bg-[#D60041] hover:bg-[#B50037] text-white rounded-xl text-xs font-bold transition-all shadow-sm hover:shadow text-center cursor-pointer whitespace-nowrap"
             >
               Schedule
             </button>
           </div>
+
         </div>
       </div>
     </div>
