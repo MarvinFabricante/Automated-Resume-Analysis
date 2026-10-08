@@ -28,7 +28,7 @@ const CandidateSmartMatchResult = () => {
   useEffect(() => {
     window.scrollTo(0, 0);
     if (!matches) {
-      navigate('/candidate/upload-resume');
+      navigate('/candidate/smart-upload');
     }
   }, [matches, navigate]);
 

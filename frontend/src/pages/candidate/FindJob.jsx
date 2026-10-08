@@ -17,6 +17,7 @@ import {
   List,
   Loader2,
   FileText,
+  FileUp,
   SlidersHorizontal,
   ChevronDown,
   Coins,
@@ -392,8 +393,17 @@ const FindJob = () => {
                       })}
                     </div>
 
-                    {/* Bookmarked Filter Pill */}
+                    {/* Quick Action Pills: Smart Match Upload & Saved Jobs */}
                     <div className="flex items-center gap-2 ml-auto shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => navigate('/candidate/smart-upload')}
+                        className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all bg-[#D10043]/10 hover:bg-[#D10043] text-[#D10043] hover:text-white border border-[#D10043]/20 shadow-2xs group"
+                      >
+                        <Sparkles size={13} className="text-[#D10043] group-hover:text-white animate-pulse" />
+                        Smart Match Upload
+                      </button>
+
                       <button
                         type="button"
                         onClick={() => setShowSavedOnly(!showSavedOnly)}
@@ -428,6 +438,41 @@ const FindJob = () => {
 
                   </div>
 
+                </div>
+
+                {/* DEDICATED SMART MATCH UPLOAD PROMO CARD */}
+                <div className="w-full mt-6 bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 text-white rounded-[28px] sm:rounded-[36px] p-6 sm:p-8 shadow-xl border border-slate-700/60 flex flex-col md:flex-row items-start md:items-center justify-between gap-6 relative overflow-hidden group">
+                  <div className="absolute top-0 right-0 w-80 h-80 bg-[#D10043]/15 rounded-full blur-3xl pointer-events-none group-hover:scale-125 transition-transform duration-700" />
+                  
+                  <div className="relative z-10 space-y-2 max-w-2xl">
+                    <div className="flex items-center gap-2">
+                      <span className="px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-[0.2em] bg-[#D10043]/20 text-rose-300 border border-[#D10043]/30 flex items-center gap-1.5">
+                        <Sparkles size={12} className="animate-pulse text-[#D10043]" />
+                        AI Smart Match
+                      </span>
+                      <span className="text-xs text-slate-400 font-semibold hidden sm:inline">• Automated Role Compatibility</span>
+                    </div>
+
+                    <h3 className="text-xl sm:text-2xl font-black tracking-tight text-white">
+                      Unsure which role matches your experience?
+                    </h3>
+                    
+                    <p className="text-xs sm:text-sm text-slate-300 font-normal leading-relaxed">
+                      Upload your resume to our AI engine to evaluate your skillset, experience, and credentials against every active vacancy at Mariwasa and discover your top-scoring positions.
+                    </p>
+                  </div>
+
+                  <div className="relative z-10 shrink-0 w-full md:w-auto">
+                    <button
+                      type="button"
+                      onClick={() => navigate('/candidate/smart-upload')}
+                      className="w-full md:w-auto px-7 py-4 rounded-2xl bg-[#D10043] hover:bg-white hover:text-slate-900 text-white font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2.5 transition-all shadow-xl shadow-[#D10043]/25 active:scale-[0.98]"
+                    >
+                      <FileUp size={16} />
+                      Smart Match Upload
+                      <ArrowRight size={16} />
+                    </button>
+                  </div>
                 </div>
 
               </div>
@@ -545,14 +590,25 @@ const FindJob = () => {
                 <p className="text-slate-500 text-sm sm:text-base font-medium max-w-md mx-auto mb-8 leading-relaxed">
                   We couldn't find any job opportunities matching your current search parameters. Try adjusting keywords or clearing active filters.
                 </p>
-                <button
-                  type="button"
-                  onClick={resetAllFilters}
-                  className="inline-flex items-center gap-2 px-7 py-3.5 bg-[#D10043] hover:bg-slate-900 text-white rounded-2xl font-black text-xs uppercase tracking-wider transition-all shadow-lg shadow-[#D10043]/20 active:scale-95"
-                >
-                  <RotateCcw size={15} />
-                  Reset all filters
-                </button>
+                <div className="flex flex-wrap items-center justify-center gap-3">
+                  <button
+                    type="button"
+                    onClick={resetAllFilters}
+                    className="inline-flex items-center gap-2 px-6 py-3.5 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-2xl font-black text-xs uppercase tracking-wider transition-all"
+                  >
+                    <RotateCcw size={15} />
+                    Reset all filters
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => navigate('/candidate/smart-upload')}
+                    className="inline-flex items-center gap-2 px-7 py-3.5 bg-[#D10043] hover:bg-slate-900 text-white rounded-2xl font-black text-xs uppercase tracking-wider transition-all shadow-lg shadow-[#D10043]/20 active:scale-95"
+                  >
+                    <Sparkles size={15} />
+                    Try Smart Match Upload
+                  </button>
+                </div>
               </div>
 
             ) : viewMode === 'grid' ? (

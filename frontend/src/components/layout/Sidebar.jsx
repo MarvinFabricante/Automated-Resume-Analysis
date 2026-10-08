@@ -82,6 +82,7 @@ const Sidebar = () => {
           items: [
             { label: 'Dashboard', path: '/candidate/dashboard', icon: <LayoutDashboard size={19} /> },
             { label: 'Find Jobs', path: '/candidate/findjobs', icon: <Search size={19} /> },
+            { label: 'Smart Match', path: '/candidate/smart-upload', icon: <Sparkles size={19} />, badge: 'AI' },
           ]
         },
         {
