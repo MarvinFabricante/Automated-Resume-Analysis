@@ -1,10 +1,11 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Helmet } from 'react-helmet-async';
 import { 
   X, MapPin, Briefcase, Star, GraduationCap, Mail, Phone, 
   Target, TrendingUp, Lightbulb, CheckCircle2, XCircle, AlertTriangle,
-  ChevronRight, Zap, BarChart3, BookOpen, Award
+  ChevronRight, Zap, BarChart3, BookOpen, Award, Copy, Check, Calendar, ExternalLink, Download
 } from 'lucide-react';
+import { getAssetUrl } from '../../../services/api';
 
 /* ─── Score Ring ─── */
 const ScoreRing = ({ score, size = 120, strokeWidth = 10, color }) => {
@@ -74,8 +75,17 @@ const SkillTag = ({ skill, type }) => (
   </span>
 );
 
-const ViewCandidateDetailsModal = ({ isOpen, onClose, candidate }) => {
+const ViewCandidateDetailsModal = ({ isOpen, onClose, candidate, onOpenInterview, onUpdateStatus }) => {
+  const [copiedField, setCopiedField] = useState(null);
+
   if (!isOpen || !candidate) return null;
+
+  const handleCopy = (text, field) => {
+    if (!text || text === 'N/A') return;
+    navigator.clipboard.writeText(text);
+    setCopiedField(field);
+    setTimeout(() => setCopiedField(null), 2000);
+  };
 
   const skillsContribution = Math.round((candidate.skillsScore || 0) * 0.40);
   const experienceContribution = Math.round((candidate.experienceScore || 0) * 0.40);
@@ -100,6 +110,8 @@ const ViewCandidateDetailsModal = ({ isOpen, onClose, candidate }) => {
     candidate.education_reason
   ].filter(Boolean).join(' ');
 
+  const currentStatus = candidate.status || 'Pending';
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-[#0c0d12]/60 backdrop-blur-sm">
       <Helmet>
@@ -114,6 +126,20 @@ const ViewCandidateDetailsModal = ({ isOpen, onClose, candidate }) => {
               <BarChart3 size={14} className="text-emerald-600 shrink-0" />
               <span className="text-[10px] font-bold text-emerald-700 uppercase tracking-widest truncate">ATS Resume Analysis</span>
             </div>
+            {onUpdateStatus && (
+              <div className="hidden sm:flex items-center gap-2 pl-3 border-l border-gray-100">
+                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Status:</span>
+                <select
+                  value={currentStatus}
+                  onChange={(e) => onUpdateStatus(candidate.id, e.target.value)}
+                  className="px-2.5 py-1 bg-gray-50 border border-gray-200 rounded-lg text-xs font-bold text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#D60041]/20 cursor-pointer"
+                >
+                  {['Pending', 'Reviewed', 'Technical Interview', 'Final Interview', 'Accepted', 'Rejected', 'Archived'].map((st) => (
+                    <option key={st} value={st}>{st}</option>
+                  ))}
+                </select>
+              </div>
+            )}
           </div>
           <button onClick={onClose} className="p-2 sm:p-2.5 hover:bg-gray-100 rounded-xl transition-colors text-gray-400 hover:text-gray-600">
             <X size={18} />
@@ -127,7 +153,7 @@ const ViewCandidateDetailsModal = ({ isOpen, onClose, candidate }) => {
             <div className="text-center mb-6 sm:mb-7">
               <div className="w-20 h-20 rounded-2xl overflow-hidden border-4 border-white shadow-lg mx-auto mb-4 bg-pink-50">
                 {candidate.profileImage ? (
-                  <img src={candidate.profileImage} alt={candidate.name} className="w-full h-full object-cover" />
+                  <img src={getAssetUrl(candidate.profileImage)} alt={candidate.name} className="w-full h-full object-cover" />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center text-[#d81159] text-2xl font-black bg-gradient-to-br from-pink-100 to-pink-50">
                     {candidate.name.charAt(0)}
@@ -160,13 +186,35 @@ const ViewCandidateDetailsModal = ({ isOpen, onClose, candidate }) => {
                 <MapPin size={14} className="text-gray-400 shrink-0" />
                 <span className="text-xs font-medium">{candidate.location}</span>
               </div>
-              <div className="flex items-center gap-3 text-gray-500">
-                <Mail size={14} className="text-gray-400 shrink-0" />
-                <span className="text-xs font-medium truncate">{candidate.email || "N/A"}</span>
+              <div className="flex items-center justify-between text-gray-500 group">
+                <div className="flex items-center gap-3 min-w-0">
+                  <Mail size={14} className="text-gray-400 shrink-0" />
+                  <span className="text-xs font-medium truncate">{candidate.email || "N/A"}</span>
+                </div>
+                {candidate.email && candidate.email !== "N/A" && (
+                  <button 
+                    onClick={() => handleCopy(candidate.email, 'email')}
+                    title="Copy Email"
+                    className="p-1 hover:bg-gray-100 rounded text-gray-400 hover:text-gray-700 transition-colors shrink-0 ml-2"
+                  >
+                    {copiedField === 'email' ? <Check size={12} className="text-emerald-500" /> : <Copy size={12} />}
+                  </button>
+                )}
               </div>
-              <div className="flex items-center gap-3 text-gray-500">
-                <Phone size={14} className="text-gray-400 shrink-0" />
-                <span className="text-xs font-medium">{candidate.phone || "N/A"}</span>
+              <div className="flex items-center justify-between text-gray-500 group">
+                <div className="flex items-center gap-3 min-w-0">
+                  <Phone size={14} className="text-gray-400 shrink-0" />
+                  <span className="text-xs font-medium">{candidate.phone || "N/A"}</span>
+                </div>
+                {candidate.phone && candidate.phone !== "N/A" && (
+                  <button 
+                    onClick={() => handleCopy(candidate.phone, 'phone')}
+                    title="Copy Phone"
+                    className="p-1 hover:bg-gray-100 rounded text-gray-400 hover:text-gray-700 transition-colors shrink-0 ml-2"
+                  >
+                    {copiedField === 'phone' ? <Check size={12} className="text-emerald-500" /> : <Copy size={12} />}
+                  </button>
+                )}
               </div>
             </div>
           </div>
@@ -570,27 +618,44 @@ const ViewCandidateDetailsModal = ({ isOpen, onClose, candidate }) => {
           <button onClick={onClose} className="w-full sm:w-auto px-5 sm:px-6 py-2.5 bg-white border border-gray-200 text-gray-600 rounded-xl text-xs sm:text-sm font-bold hover:bg-gray-50 transition-all text-center">
             Close Preview
           </button>
+          
+          {onOpenInterview && (
+            <button
+              onClick={() => {
+                onClose();
+                onOpenInterview(candidate);
+              }}
+              className="w-full sm:w-auto px-5 sm:px-6 py-2.5 bg-gray-900 text-white rounded-xl text-xs sm:text-sm font-bold hover:bg-gray-800 transition-all inline-flex items-center justify-center gap-2 text-center shadow-sm"
+            >
+              <Calendar size={15} />
+              Schedule Interview
+            </button>
+          )}
+
           {candidate.resumeUrl ? (
             <button 
               onClick={() => {
+                const fullUrl = getAssetUrl(candidate.resumeUrl);
                 const link = document.createElement('a');
-                link.href = candidate.resumeUrl;
+                link.href = fullUrl;
                 link.download = `${candidate.name.replace(/\s+/g, '_')}_Resume`;
                 link.target = '_blank';
                 document.body.appendChild(link);
                 link.click();
                 document.body.removeChild(link);
               }}
-              className="w-full sm:w-auto px-5 sm:px-6 py-2.5 bg-[#d81159] text-white rounded-xl text-xs sm:text-sm font-bold hover:shadow-lg hover:shadow-pink-200 transition-all inline-flex items-center justify-center text-center"
+              className="w-full sm:w-auto px-5 sm:px-6 py-2.5 bg-[#d81159] text-white rounded-xl text-xs sm:text-sm font-bold hover:shadow-lg hover:shadow-pink-200 transition-all inline-flex items-center justify-center gap-2 text-center"
             >
+              <Download size={15} />
               Download Resume
             </button>
           ) : (
             <button 
               disabled
-              className="w-full sm:w-auto px-5 sm:px-6 py-2.5 bg-gray-300 text-gray-500 rounded-xl text-xs sm:text-sm font-bold cursor-not-allowed inline-flex items-center justify-center text-center"
+              className="w-full sm:w-auto px-5 sm:px-6 py-2.5 bg-gray-200 text-gray-400 rounded-xl text-xs sm:text-sm font-bold cursor-not-allowed inline-flex items-center justify-center gap-2 text-center"
               title="Resume file not available"
             >
+              <Download size={15} />
               Resume Unavailable
             </button>
           )}
