@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Helmet } from 'react-helmet-async';
+import { useNavigate } from 'react-router-dom';
 import Header from '../../components/layout/Header';
 import Sidebar from '../../components/layout/Sidebar';
 import ScheduleInterviewModal from '../../components/modals/hr/ScheduleInterviewModal';
@@ -8,80 +9,41 @@ import ViewCandidateDetailsModal from '../../components/modals/hr/ViewCandidateD
 // Screening components
 import ScreeningHeader from '../../components/hr/screening/ScreeningHeader';
 import SearchAndFilter from '../../components/hr/screening/SearchAndFilter';
+import BulkActionBar from '../../components/hr/screening/BulkActionBar';
 import CandidateList from '../../components/hr/screening/CandidateList';
-
-const MOCK_CANDIDATES = [
-  {
-    id: 1,
-    name: "Sarah Jenkins",
-    status: "Reviewed",
-    preferredJob: "Senior Frontend Developer",
-    skills: ["React", "TypeScript", "Tailwind CSS", "Node.js"],
-    profileImage: null,
-    date: "2026-04-12T10:30:00",
-    location: "New York, NY",
-    matchScore: 94
-  },
-  {
-    id: 2,
-    name: "Marcus Chen",
-    status: "Pending",
-    preferredJob: "UI/UX Designer",
-    skills: ["Figma", "Adobe XD", "Prototyping", "User Research"],
-    profileImage: null,
-    date: "2026-04-14T14:20:00",
-    location: "San Francisco, CA",
-    matchScore: 88
-  },
-  {
-    id: 3,
-    name: "Elena Rodriguez",
-    status: "Reviewed",
-    preferredJob: "Product Manager",
-    skills: ["Agile", "Scrum", "Jira", "Market Analysis"],
-    profileImage: null,
-    date: "2026-04-15T09:00:00",
-    location: "Austin, TX",
-    matchScore: 82
-  },
-  {
-    id: 4,
-    name: "Tariq Mahmood",
-    status: "Pending",
-    preferredJob: "Backend Engineer",
-    skills: ["Python", "Django", "PostgreSQL", "AWS"],
-    profileImage: null,
-    date: "2026-04-15T11:00:00",
-    location: "Chicago, IL",
-    matchScore: 79
-  },
-  {
-    id: 5,
-    name: "Jessica Wu",
-    status: "Reviewed",
-    preferredJob: "Data Scientist",
-    skills: ["Python", "TensorFlow", "Pandas", "SQL"],
-    profileImage: null,
-    date: "2026-04-15T16:45:00",
-    location: "Seattle, WA",
-    matchScore: 91
-  },
-];
+import Pagination from '../../components/hr/screening/Pagination';
 
 import { AlertCircle, CheckCircle2, X } from 'lucide-react';
-import { useGetApplicationsQuery, useUpdateApplicationStatusMutation, useDeleteApplicationMutation } from '../../redux/api/apiSlice';
+import { 
+  useGetApplicationsQuery, 
+  useUpdateApplicationStatusMutation, 
+  useDeleteApplicationMutation 
+} from '../../redux/api/apiSlice';
 import { exportToCSV } from '../../utils/exportUtils';
 
 const ScreeningPortal = () => {
-  const { data: candidates = [], isLoading } = useGetApplicationsQuery();
+  const navigate = useNavigate();
+  const { data: candidates = [], isLoading, isFetching, refetch } = useGetApplicationsQuery();
   const [updateStatus] = useUpdateApplicationStatusMutation();
   const [deleteApplication] = useDeleteApplicationMutation();
   
+  // Filter & Search states
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("All Status");
   const [jobFilter, setJobFilter] = useState("All Jobs");
+  const [scoreFilter, setScoreFilter] = useState("All Scores");
+  const [sortBy, setSortBy] = useState("match_desc");
   const [showSuggestions, setShowSuggestions] = useState(false);
 
+  // View & Pagination states
+  const [viewMode, setViewMode] = useState("cards"); // 'cards' | 'table'
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
+
+  // Selection state for Batch Actions & Comparison
+  const [selectedIds, setSelectedIds] = useState([]);
+
+  // Modals state
   const [interviewModalOpen, setInterviewModalOpen] = useState(false);
   const [detailsModalOpen, setDetailsModalOpen] = useState(false);
   const [selectedCandidate, setSelectedCandidate] = useState(null);
@@ -104,10 +66,226 @@ const ScreeningPortal = () => {
     }, 4000);
   };
 
-  const handleExport = () => {
-    exportToCSV(candidates, `Candidate_List_${new Date().toISOString().split('T')[0]}`);
+  // Compute overall KPI statistics
+  const stats = useMemo(() => {
+    const nonArchived = candidates.filter(c => (c.status || '').toLowerCase() !== 'archived');
+    return {
+      total: nonArchived.length,
+      pending: candidates.filter(c => (c.status || '').toLowerCase() === 'pending').length,
+      interview: candidates.filter(c => ['technical interview', 'final interview'].includes((c.status || '').toLowerCase())).length,
+      accepted: candidates.filter(c => (c.status || '').toLowerCase() === 'accepted').length,
+      highMatch: nonArchived.filter(c => (c.matchScore || 0) >= 80).length,
+      archived: candidates.filter(c => (c.status || '').toLowerCase() === 'archived').length
+    };
+  }, [candidates]);
+
+  // Compute job position options with applicant count
+  const jobOptions = useMemo(() => {
+    const counts = {};
+    candidates.forEach(c => {
+      if (c.preferredJob) {
+        counts[c.preferredJob] = (counts[c.preferredJob] || 0) + 1;
+      }
+    });
+    return Object.entries(counts).map(([title, count]) => ({ title, count }));
+  }, [candidates]);
+
+  // Filtering and sorting candidates
+  const filteredCandidates = useMemo(() => {
+    return candidates.filter(c => {
+      const candidateStatus = (c.status || 'Pending').toLowerCase();
+
+      // Status filtering
+      if (statusFilter === "Archived") {
+        if (candidateStatus !== "archived") return false;
+      } else if (statusFilter === "All Status") {
+        if (candidateStatus === "archived") return false;
+      } else {
+        if (candidateStatus !== statusFilter.toLowerCase()) return false;
+      }
+
+      // Job position filtering
+      if (jobFilter !== "All Jobs" && c.preferredJob !== jobFilter) {
+        return false;
+      }
+
+      // Match Score filtering
+      const score = c.matchScore || 0;
+      if (scoreFilter === "90+" && score < 90) return false;
+      if (scoreFilter === "80+" && score < 80) return false;
+      if (scoreFilter === "60-79" && (score < 60 || score >= 80)) return false;
+      if (scoreFilter === "<60" && score >= 60) return false;
+
+      // Omnisearch
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase().trim();
+        const matchesName = c.name && c.name.toLowerCase().includes(q);
+        const matchesJob = c.preferredJob && c.preferredJob.toLowerCase().includes(q);
+        const matchesEmail = c.email && c.email.toLowerCase().includes(q);
+        const matchesLocation = c.location && c.location.toLowerCase().includes(q);
+        const matchesDegree = (c.degree || '').toLowerCase().includes(q) || (c.college || '').toLowerCase().includes(q);
+        const matchesSkills = Array.isArray(c.skills) && c.skills.some(s => (s || '').toLowerCase().includes(q));
+
+        if (!matchesName && !matchesJob && !matchesEmail && !matchesLocation && !matchesDegree && !matchesSkills) {
+          return false;
+        }
+      }
+
+      return true;
+    }).sort((a, b) => {
+      switch (sortBy) {
+        case 'match_asc':
+          return (a.matchScore || 0) - (b.matchScore || 0);
+        case 'date_desc':
+          return new Date(b.date || 0) - new Date(a.date || 0);
+        case 'date_asc':
+          return new Date(a.date || 0) - new Date(b.date || 0);
+        case 'name_asc':
+          return (a.name || '').localeCompare(b.name || '');
+        case 'name_desc':
+          return (b.name || '').localeCompare(a.name || '');
+        case 'match_desc':
+        default:
+          return (b.matchScore || 0) - (a.matchScore || 0);
+      }
+    });
+  }, [candidates, statusFilter, jobFilter, scoreFilter, searchQuery, sortBy]);
+
+  // Paginated slice
+  const paginatedCandidates = useMemo(() => {
+    if (itemsPerPage === 'all') return filteredCandidates;
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    return filteredCandidates.slice(startIndex, startIndex + itemsPerPage);
+  }, [filteredCandidates, currentPage, itemsPerPage]);
+
+  // Autocomplete suggestions based on search query
+  const suggestions = useMemo(() => {
+    if (!searchQuery.trim()) return [];
+    const q = searchQuery.toLowerCase().trim();
+    return candidates
+      .filter(c => (c.name || '').toLowerCase().includes(q))
+      .slice(0, 6)
+      .map(c => ({
+        name: c.name,
+        role: c.preferredJob,
+        score: Math.round(c.matchScore || 0)
+      }));
+  }, [candidates, searchQuery]);
+
+  // Check if any non-default filter is applied
+  const isFiltered = Boolean(
+    searchQuery.trim() ||
+    statusFilter !== "All Status" ||
+    jobFilter !== "All Jobs" ||
+    scoreFilter !== "All Scores" ||
+    sortBy !== "match_desc"
+  );
+
+  // Reset all filters
+  const handleResetFilters = () => {
+    setSearchQuery("");
+    setStatusFilter("All Status");
+    setJobFilter("All Jobs");
+    setScoreFilter("All Scores");
+    setSortBy("match_desc");
+    setCurrentPage(1);
   };
 
+  // KPI Card quick filter handler
+  const handleKpiClick = (type) => {
+    setCurrentPage(1);
+    switch (type) {
+      case 'all':
+        setStatusFilter("All Status");
+        setScoreFilter("All Scores");
+        break;
+      case 'pending':
+        setStatusFilter("Pending");
+        setScoreFilter("All Scores");
+        break;
+      case 'highMatch':
+        setStatusFilter("All Status");
+        setScoreFilter("80+");
+        break;
+      case 'interview':
+        setStatusFilter("Technical Interview");
+        setScoreFilter("All Scores");
+        break;
+      case 'accepted':
+        setStatusFilter("Accepted");
+        setScoreFilter("All Scores");
+        break;
+      case 'archived':
+        setStatusFilter("Archived");
+        setScoreFilter("All Scores");
+        break;
+      default:
+        break;
+    }
+  };
+
+  // Skill click filter
+  const handleSkillClick = (skill) => {
+    setSearchQuery(skill);
+    setCurrentPage(1);
+  };
+
+  // Selection toggle
+  const handleToggleSelect = (candidateId) => {
+    setSelectedIds(prev => 
+      prev.includes(candidateId) ? prev.filter(id => id !== candidateId) : [...prev, candidateId]
+    );
+  };
+
+  // Select all visible on current filtered set
+  const allFilteredSelected = filteredCandidates.length > 0 && filteredCandidates.every(c => selectedIds.includes(c.id));
+  const handleToggleSelectAll = () => {
+    if (allFilteredSelected) {
+      setSelectedIds([]);
+    } else {
+      setSelectedIds(filteredCandidates.map(c => c.id));
+    }
+  };
+
+  // Export helper
+  const exportCandidatesToCSV = (list, filename) => {
+    const formatted = list.map(c => ({
+      "Candidate Name": c.name || "N/A",
+      "Email": c.email || "N/A",
+      "Phone": c.phone || "N/A",
+      "Target Role": c.preferredJob || "N/A",
+      "Match Score (%)": Math.round(c.matchScore || 0),
+      "Skills Score (%)": Math.round(c.skillsScore || 0),
+      "Experience Score (%)": Math.round(c.experienceScore || 0),
+      "Education Score (%)": Math.round(c.educationScore || 0),
+      "Status": c.status || "Pending",
+      "Location": c.location || "N/A",
+      "Applied Date": c.date ? new Date(c.date).toLocaleDateString() : "N/A",
+      "Skills": Array.isArray(c.skills) ? c.skills.join(", ") : ""
+    }));
+    exportToCSV(formatted, filename);
+  };
+
+  const handleExport = () => {
+    const listToExport = filteredCandidates.length > 0 ? filteredCandidates : candidates;
+    exportCandidatesToCSV(listToExport, `Candidates_${jobFilter.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}`);
+  };
+
+  const handleBatchExport = () => {
+    const selectedList = candidates.filter(c => selectedIds.includes(c.id));
+    exportCandidatesToCSV(selectedList, `Selected_Candidates_${new Date().toISOString().split('T')[0]}`);
+  };
+
+  // Compare candidates navigation
+  const handleNavigateCompare = () => {
+    if (selectedIds.length > 0) {
+      navigate(`/hr/comparecandidates?ids=${selectedIds.join(',')}`);
+    } else {
+      navigate('/hr/comparecandidates');
+    }
+  };
+
+  // Modals openers
   const handleOpenInterview = (candidate) => {
     setSelectedCandidate(candidate);
     setInterviewModalOpen(true);
@@ -118,10 +296,15 @@ const ScreeningPortal = () => {
     setDetailsModalOpen(true);
   };
 
+  // Single candidate actions
   const handleUpdateStatus = async (candidateId, newStatus) => {
     try {
       await updateStatus({ id: candidateId, status: newStatus }).unwrap();
       showToastMessage(`Status updated to ${newStatus} successfully!`, 'success');
+      // If modal candidate is updated, sync local state
+      if (selectedCandidate && selectedCandidate.id === candidateId) {
+        setSelectedCandidate(prev => ({ ...prev, status: newStatus }));
+      }
     } catch (error) {
       console.error("Failed to update status:", error);
       showToastMessage("Failed to update status. Please try again.", 'error');
@@ -138,14 +321,25 @@ const ScreeningPortal = () => {
     }
   };
 
+  const handleRestoreApplication = async (candidateId) => {
+    try {
+      await updateStatus({ id: candidateId, status: "Pending" }).unwrap();
+      showToastMessage("Candidate application restored to Pending Review!", 'success');
+    } catch (error) {
+      console.error("Failed to restore application:", error);
+      showToastMessage("Failed to restore application. Please try again.", 'error');
+    }
+  };
+
   const handleDeleteApplication = async (candidateId) => {
     setConfirmModal({
       isOpen: true,
-      title: 'Remove Candidate',
-      message: 'Are you sure you want to remove this application? This action is permanent and cannot be undone.',
+      title: 'Remove Candidate Application',
+      message: 'Are you sure you want to permanently remove this candidate application? This action cannot be undone.',
       onConfirm: async () => {
         try {
           await deleteApplication(candidateId).unwrap();
+          setSelectedIds(prev => prev.filter(id => id !== candidateId));
           showToastMessage("Candidate application removed successfully!", 'success');
         } catch (error) {
           console.error("Failed to delete application:", error);
@@ -155,35 +349,59 @@ const ScreeningPortal = () => {
     });
   };
 
-  const filteredCandidates = candidates.filter(c => {
-    // Hide archived by default unless explicitly viewing archived
-    if (statusFilter !== "Archived" && c.status.toLowerCase() === "archived") {
-      return false;
+  // Batch actions
+  const handleBatchStatusUpdate = async (newStatus) => {
+    try {
+      for (const id of selectedIds) {
+        await updateStatus({ id, status: newStatus }).unwrap();
+      }
+      showToastMessage(`Updated ${selectedIds.length} candidates to ${newStatus}!`, 'success');
+      setSelectedIds([]);
+    } catch (error) {
+      console.error("Batch status update error:", error);
+      showToastMessage("Failed to update some candidates. Please retry.", 'error');
     }
+  };
 
-    const matchesStatus =
-      statusFilter === "All Status" ||
-      c.status.toLowerCase() === statusFilter.toLowerCase();
-      
-    const matchesJob = 
-      jobFilter === "All Jobs" || 
-      c.preferredJob === jobFilter;
+  const handleBatchArchive = () => {
+    setConfirmModal({
+      isOpen: true,
+      title: `Archive ${selectedIds.length} Candidates`,
+      message: `Are you sure you want to archive ${selectedIds.length} selected applications? You can view or restore them under the Archived status tab.`,
+      onConfirm: async () => {
+        try {
+          for (const id of selectedIds) {
+            await updateStatus({ id, status: "ARCHIVED" }).unwrap();
+          }
+          showToastMessage(`Successfully archived ${selectedIds.length} applications!`, 'success');
+          setSelectedIds([]);
+        } catch (error) {
+          console.error("Batch archive error:", error);
+          showToastMessage("Failed to archive some applications.", 'error');
+        }
+      }
+    });
+  };
 
-    const q = searchQuery.toLowerCase();
-    const matchesSearch =
-      !searchQuery ||
-      c.name.toLowerCase().includes(q) ||
-      (c.preferredJob && c.preferredJob.toLowerCase().includes(q)) ||
-      (c.skills && c.skills.some(s => s.toLowerCase().includes(q)));
-
-    return matchesStatus && matchesJob && matchesSearch;
-  }).sort((a, b) => (b.matchScore || 0) - (a.matchScore || 0));
-
-  const uniqueJobs = ["All Jobs", ...new Set(candidates.map(c => c.preferredJob).filter(Boolean))];
-
-  const suggestions = searchQuery.length > 0
-    ? candidates.filter(c => c.name.toLowerCase().includes(searchQuery.toLowerCase())).map(c => c.name)
-    : [];
+  const handleBatchDelete = () => {
+    setConfirmModal({
+      isOpen: true,
+      title: `Delete ${selectedIds.length} Candidates`,
+      message: `Are you sure you want to permanently remove ${selectedIds.length} selected applications? This cannot be undone.`,
+      onConfirm: async () => {
+        try {
+          for (const id of selectedIds) {
+            await deleteApplication(id).unwrap();
+          }
+          showToastMessage(`Successfully removed ${selectedIds.length} applications!`, 'success');
+          setSelectedIds([]);
+        } catch (error) {
+          console.error("Batch delete error:", error);
+          showToastMessage("Failed to delete some applications.", 'error');
+        }
+      }
+    });
+  };
 
   return (
     <div className="bg-[#FCFCFC] text-gray-800 antialiased min-h-screen font-['Inter'] flex flex-col">
@@ -195,70 +413,151 @@ const ScreeningPortal = () => {
       
       <div className="flex flex-1">
         <Sidebar />
-        <main className="flex-1 w-full max-w-full px-4 sm:px-6 md:px-10 py-6 md:py-8 animate-in fade-in duration-500">
-        <ScreeningHeader onExport={handleExport} />
-
-        <SearchAndFilter 
-          searchQuery={searchQuery}
-          setSearchQuery={setSearchQuery}
-          statusFilter={statusFilter}
-          setStatusFilter={setStatusFilter}
-          jobFilter={jobFilter}
-          setJobFilter={setJobFilter}
-          uniqueJobs={uniqueJobs}
-          showSuggestions={showSuggestions}
-          setShowSuggestions={setShowSuggestions}
-          suggestions={suggestions}
-        />
-
-        {jobFilter !== "All Jobs" && (
-          <div className="mb-6 bg-pink-50 border border-pink-100 rounded-2xl p-4 flex items-center justify-between shadow-sm">
-            <div>
-              <h3 className="text-lg font-bold text-gray-800">Showing applicants for: <span className="text-[#D60041]">{jobFilter}</span></h3>
-              <p className="text-sm text-gray-500 font-medium mt-1">
-                Total Applicants: {filteredCandidates.length}
-              </p>
-            </div>
-            <div className="px-4 py-2 bg-white rounded-xl text-xs font-bold text-[#D60041] border border-pink-100 shadow-sm uppercase tracking-wide">
-              Ranked by AI Score
-            </div>
-          </div>
-        )}
-
-        {isLoading ? (
-          <div className="flex flex-col items-center justify-center py-20">
-            <div className="w-12 h-12 border-4 border-pink-100 border-t-[#D60041] rounded-full animate-spin mb-4"></div>
-            <p className="text-gray-500 font-bold">Loading candidates...</p>
-          </div>
-        ) : (
-          <CandidateList 
-            candidates={filteredCandidates}
-            onOpenDetails={handleOpenDetails}
-            onOpenInterview={handleOpenInterview}
-            onUpdateStatus={handleUpdateStatus}
-            onArchiveApplication={handleArchiveApplication}
-            onDeleteApplication={handleDeleteApplication}
+        <main className="flex-1 w-full max-w-full px-4 sm:px-6 md:px-10 py-6 md:py-8 animate-in fade-in duration-300">
+          
+          {/* Header & KPI Summary */}
+          <ScreeningHeader 
+            stats={stats}
+            activeStatusFilter={statusFilter}
+            activeScoreFilter={scoreFilter}
+            onKpiClick={handleKpiClick}
+            onExport={handleExport}
+            onNavigateCompare={handleNavigateCompare}
+            selectedCount={selectedIds.length}
+            viewMode={viewMode}
+            setViewMode={setViewMode}
+            onRefresh={refetch}
+            isRefreshing={isFetching}
           />
-        )}
+
+          {/* Search, Position, Status, Score, and Sort Controls */}
+          <SearchAndFilter 
+            searchQuery={searchQuery}
+            setSearchQuery={(q) => {
+              setSearchQuery(q);
+              setCurrentPage(1);
+            }}
+            statusFilter={statusFilter}
+            setStatusFilter={(st) => {
+              setStatusFilter(st);
+              setCurrentPage(1);
+            }}
+            jobFilter={jobFilter}
+            setJobFilter={(job) => {
+              setJobFilter(job);
+              setCurrentPage(1);
+            }}
+            jobOptions={jobOptions}
+            scoreFilter={scoreFilter}
+            setScoreFilter={(sf) => {
+              setScoreFilter(sf);
+              setCurrentPage(1);
+            }}
+            sortBy={sortBy}
+            setSortBy={setSortBy}
+            showSuggestions={showSuggestions}
+            setShowSuggestions={setShowSuggestions}
+            suggestions={suggestions}
+            onResetFilters={handleResetFilters}
+            isFiltered={isFiltered}
+          />
+
+          {/* Job Filter Indicator Banner */}
+          {jobFilter !== "All Jobs" && (
+            <div className="mb-6 bg-pink-50 border border-pink-100 rounded-2xl p-4 flex items-center justify-between shadow-sm animate-in fade-in duration-200">
+              <div>
+                <h3 className="text-base sm:text-lg font-bold text-gray-800">
+                  Showing applicants for: <span className="text-[#D60041]">{jobFilter}</span>
+                </h3>
+                <p className="text-xs sm:text-sm text-gray-500 font-medium mt-0.5">
+                  Total Applicants matching filters: <span className="font-bold text-gray-700">{filteredCandidates.length}</span>
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setJobFilter("All Jobs")}
+                className="px-3.5 py-1.5 bg-white hover:bg-gray-50 rounded-xl text-xs font-bold text-[#D60041] border border-pink-200 shadow-sm transition-all"
+              >
+                Clear Job Filter
+              </button>
+            </div>
+          )}
+
+          {/* Bulk Action Bar (Visible when 1+ candidates selected) */}
+          <BulkActionBar
+            selectedCount={selectedIds.length}
+            totalFilteredCount={filteredCandidates.length}
+            allSelected={allFilteredSelected}
+            onToggleSelectAll={handleToggleSelectAll}
+            onClearSelection={() => setSelectedIds([])}
+            onCompare={handleNavigateCompare}
+            onBatchStatusUpdate={handleBatchStatusUpdate}
+            onBatchArchive={handleBatchArchive}
+            onBatchDelete={handleBatchDelete}
+            onBatchExport={handleBatchExport}
+          />
+
+          {/* Candidates Content Area */}
+          {isLoading ? (
+            <div className="flex flex-col items-center justify-center py-24 bg-white rounded-2xl border border-gray-100">
+              <div className="w-12 h-12 border-4 border-pink-100 border-t-[#D60041] rounded-full animate-spin mb-4"></div>
+              <p className="text-gray-500 font-bold text-sm">Loading candidate applications...</p>
+            </div>
+          ) : (
+            <>
+              <CandidateList 
+                candidates={paginatedCandidates}
+                viewMode={viewMode}
+                selectedIds={selectedIds}
+                onToggleSelect={handleToggleSelect}
+                onSelectAll={handleToggleSelectAll}
+                onOpenDetails={handleOpenDetails}
+                onOpenInterview={handleOpenInterview}
+                onUpdateStatus={handleUpdateStatus}
+                onArchiveApplication={handleArchiveApplication}
+                onRestoreApplication={handleRestoreApplication}
+                onDeleteApplication={handleDeleteApplication}
+                onSkillClick={handleSkillClick}
+                onResetFilters={handleResetFilters}
+              />
+
+              {/* Pagination Controls */}
+              <Pagination
+                currentPage={currentPage}
+                totalItems={filteredCandidates.length}
+                itemsPerPage={itemsPerPage}
+                onPageChange={setCurrentPage}
+                onItemsPerPageChange={(val) => {
+                  setItemsPerPage(val);
+                  setCurrentPage(1);
+                }}
+              />
+            </>
+          )}
+
         </main>
       </div>
 
+      {/* Schedule Interview Modal */}
       <ScheduleInterviewModal
         isOpen={interviewModalOpen}
         onClose={() => setInterviewModalOpen(false)}
         candidate={selectedCandidate}
       />
 
+      {/* View Candidate Details Modal */}
       <ViewCandidateDetailsModal
         isOpen={detailsModalOpen}
         onClose={() => setDetailsModalOpen(false)}
         candidate={selectedCandidate}
+        onOpenInterview={handleOpenInterview}
+        onUpdateStatus={handleUpdateStatus}
       />
 
-      {/* Confirm Modal */}
+      {/* Custom Confirmation Modal */}
       {confirmModal.isOpen && (
-        <div className="fixed inset-0 bg-[#0c0d12]/60 backdrop-blur-md flex items-center justify-center z-50 p-4 animate-in fade-in duration-300">
-          <div className="bg-white w-full max-w-md rounded-[32px] border border-gray-100 shadow-2xl overflow-hidden p-8 animate-in zoom-in-95 duration-300">
+        <div className="fixed inset-0 bg-[#0c0d12]/60 backdrop-blur-md flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
+          <div className="bg-white w-full max-w-md rounded-[32px] border border-gray-100 shadow-2xl overflow-hidden p-8 animate-in zoom-in-95 duration-200">
             <div className="flex items-center justify-center w-14 h-14 bg-rose-50 border-2 border-rose-100 rounded-2xl text-rose-600 mb-6 mx-auto">
               <AlertCircle className="w-6 h-6" />
             </div>
@@ -272,17 +571,19 @@ const ScreeningPortal = () => {
             
             <div className="flex gap-4">
               <button
+                type="button"
                 onClick={() => setConfirmModal({ ...confirmModal, isOpen: false })}
-                className="flex-1 py-3 px-5 border-2 border-gray-100 text-gray-500 rounded-xl text-xs font-bold uppercase tracking-wider hover:bg-gray-50 transition-all duration-300"
+                className="flex-1 py-3 px-5 border-2 border-gray-100 text-gray-500 rounded-xl text-xs font-bold uppercase tracking-wider hover:bg-gray-50 transition-all"
               >
                 Cancel
               </button>
               <button
+                type="button"
                 onClick={() => {
                   confirmModal.onConfirm();
                   setConfirmModal({ ...confirmModal, isOpen: false });
                 }}
-                className="flex-1 py-3 px-5 bg-rose-600 text-white rounded-xl text-xs font-bold uppercase tracking-wider hover:bg-rose-700 hover:shadow-lg hover:shadow-rose-100 transition-all duration-300"
+                className="flex-1 py-3 px-5 bg-rose-600 text-white rounded-xl text-xs font-bold uppercase tracking-wider hover:bg-rose-700 shadow-md shadow-rose-100 transition-all"
               >
                 Confirm
               </button>

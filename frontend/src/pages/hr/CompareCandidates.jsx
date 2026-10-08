@@ -1,4 +1,5 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
 import {
   Search, CheckCircle2, XCircle, Users, ArrowLeft, Award, TrendingUp, AlertTriangle,
@@ -124,6 +125,7 @@ const CompareCandidates = () => {
   const { data: candidates = [], isLoading } = useGetApplicationsQuery();
   const { data: jobs = [] } = useGetJobsQuery();
   const [searchQuery, setSearchQuery] = useState("");
+  const [searchParams] = useSearchParams();
   const [selectedCandidateIds, setSelectedCandidateIds] = useState([]);
   const [activeCandidateId, setActiveCandidateId] = useState(null);
   const [isComparing, setIsComparing] = useState(false);
@@ -133,6 +135,19 @@ const CompareCandidates = () => {
     experience: true,
     certifications: true
   });
+
+  // Pre-load candidates from query param (e.g., ?ids=1,2,3)
+  useEffect(() => {
+    const idsParam = searchParams.get('ids');
+    if (idsParam) {
+      const ids = idsParam.split(',').map(id => parseInt(id.trim(), 10)).filter(id => !isNaN(id));
+      if (ids.length > 0) {
+        setSelectedCandidateIds(ids);
+        setIsComparing(true);
+        setActiveCandidateId(ids[0]);
+      }
+    }
+  }, [searchParams]);
 
   // Filter candidates based on search
   const filteredCandidates = useMemo(() => {
