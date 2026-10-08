@@ -42,7 +42,6 @@ import AdminDashboard from './pages/admin/AdminDashboard';
 import UsersPage from './pages/admin/Users';
 import JobManagement from './pages/admin/JobManagement';
 import SystemSettings from './pages/admin/SystemSettings';
-import PerformanceStats from './pages/admin/PerformanceStats';
 
 import AccountSettings from './pages/shared/AccountSettings';
 import ViewProfile from './pages/shared/ViewProfile';
@@ -90,7 +89,6 @@ const App = () => {
               <Route path="users" element={<UsersPage />} />
               <Route path="jobmanagement" element={<JobManagement />} />
               <Route path="system-config" element={<SystemSettings />} />
-              <Route path="performance" element={<PerformanceStats />} />
               <Route path="messages" element={<MessagesPage />} />
               <Route path="settings" element={<AccountSettings />} />
               <Route path="profile" element={<ViewProfile />} />

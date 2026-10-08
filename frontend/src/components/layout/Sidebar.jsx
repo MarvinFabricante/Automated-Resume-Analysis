@@ -3,7 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Users, Building2, User, Settings, Search, Briefcase,
   HelpCircle, BookOpen, ChevronRight, MessageSquare, Menu, ChevronLeft, Scale,
-  Sliders, Activity, Calendar, Sparkles, CheckCircle2
+  Sliders, Calendar, Sparkles, CheckCircle2
 } from 'lucide-react';
 import { useSelector, useDispatch } from 'react-redux';
 import { toggleSidebar, closeSidebar } from '../../redux/slices/uiSlice';
@@ -30,7 +30,6 @@ const Sidebar = () => {
           title: 'ANALYTICS & METRICS',
           items: [
             { label: 'Dashboard', path: '/admin/dashboard', icon: <LayoutDashboard size={19} /> },
-            { label: 'Performance', path: '/admin/performance', icon: <Activity size={19} /> },
           ]
         },
         {
