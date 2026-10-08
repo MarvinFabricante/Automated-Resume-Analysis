@@ -146,7 +146,7 @@ const ScreeningHeader = ({
           className={`relative p-3.5 sm:p-4 rounded-2xl border transition-all duration-200 cursor-pointer overflow-hidden group ${
             isTotalActive
               ? 'bg-gradient-to-br from-gray-900 to-gray-800 text-white border-gray-900 shadow-md ring-2 ring-gray-900/10'
-              : 'bg-white border-gray-200/80 hover:border-gray-300 hover:shadow-sm text-gray-800'
+              : 'bg-white border-gray-200/80 hover:border-gray-400 hover:bg-gray-50/60 hover:shadow-xs text-gray-800'
           }`}
         >
           <div className="flex items-center justify-between mb-2">
@@ -172,7 +172,7 @@ const ScreeningHeader = ({
           className={`relative p-3.5 sm:p-4 rounded-2xl border transition-all duration-200 cursor-pointer overflow-hidden group ${
             isPendingActive
               ? 'bg-amber-50/80 border-amber-400 ring-2 ring-amber-400/20 text-amber-950 shadow-sm'
-              : 'bg-white border-gray-200/80 hover:border-amber-300 hover:shadow-sm text-gray-800'
+              : 'bg-white border-gray-200/80 hover:border-amber-300 hover:bg-amber-50/40 hover:shadow-xs text-gray-800'
           }`}
         >
           <div className="flex items-center justify-between mb-2">
@@ -198,7 +198,7 @@ const ScreeningHeader = ({
           className={`relative p-3.5 sm:p-4 rounded-2xl border transition-all duration-200 cursor-pointer overflow-hidden group ${
             isHighMatchActive
               ? 'bg-emerald-50/80 border-emerald-400 ring-2 ring-emerald-400/20 text-emerald-950 shadow-sm'
-              : 'bg-white border-gray-200/80 hover:border-emerald-300 hover:shadow-sm text-gray-800'
+              : 'bg-white border-gray-200/80 hover:border-emerald-300 hover:bg-emerald-50/40 hover:shadow-xs text-gray-800'
           }`}
         >
           <div className="flex items-center justify-between mb-2">
@@ -224,7 +224,7 @@ const ScreeningHeader = ({
           className={`relative p-3.5 sm:p-4 rounded-2xl border transition-all duration-200 cursor-pointer overflow-hidden group ${
             isInterviewActive
               ? 'bg-purple-50/80 border-purple-400 ring-2 ring-purple-400/20 text-purple-950 shadow-sm'
-              : 'bg-white border-gray-200/80 hover:border-purple-300 hover:shadow-sm text-gray-800'
+              : 'bg-white border-gray-200/80 hover:border-purple-300 hover:bg-purple-50/40 hover:shadow-xs text-gray-800'
           }`}
         >
           <div className="flex items-center justify-between mb-2">
@@ -250,7 +250,7 @@ const ScreeningHeader = ({
           className={`relative p-3.5 sm:p-4 rounded-2xl border transition-all duration-200 cursor-pointer overflow-hidden group ${
             isAcceptedActive
               ? 'bg-teal-50/80 border-teal-400 ring-2 ring-teal-400/20 text-teal-950 shadow-sm'
-              : 'bg-white border-gray-200/80 hover:border-teal-300 hover:shadow-sm text-gray-800'
+              : 'bg-white border-gray-200/80 hover:border-teal-300 hover:bg-teal-50/40 hover:shadow-xs text-gray-800'
           }`}
         >
           <div className="flex items-center justify-between mb-2">
@@ -276,7 +276,7 @@ const ScreeningHeader = ({
           className={`relative p-3.5 sm:p-4 rounded-2xl border transition-all duration-200 cursor-pointer overflow-hidden group ${
             isArchivedActive
               ? 'bg-gray-100 border-gray-400 ring-2 ring-gray-400/20 text-gray-900 shadow-sm'
-              : 'bg-white border-gray-200/80 hover:border-gray-300 hover:shadow-sm text-gray-800'
+              : 'bg-white border-gray-200/80 hover:border-gray-300 hover:bg-gray-50/60 hover:shadow-xs text-gray-800'
           }`}
         >
           <div className="flex items-center justify-between mb-2">
