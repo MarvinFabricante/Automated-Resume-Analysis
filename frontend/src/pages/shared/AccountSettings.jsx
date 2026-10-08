@@ -23,7 +23,8 @@ import {
   Building2,
   Users,
   TrendingUp,
-  Briefcase
+  Briefcase,
+  Info
 } from 'lucide-react';
 import Header from '../../components/layout/Header';
 import Sidebar from '../../components/layout/Sidebar';
@@ -273,6 +274,15 @@ const AccountSettings = () => {
                       {tab.icon}
                     </div>
                     <span className="text-xs font-black uppercase tracking-widest">{tab.label}</span>
+                    {tab.id === 'notifications' && (
+                      <span className={`text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full border transition-colors ${
+                        activeTab === tab.id 
+                          ? 'bg-amber-400/20 border-amber-300/40 text-amber-300' 
+                          : 'bg-amber-50 border-amber-200 text-amber-700'
+                      }`}>
+                        Read-Only
+                      </span>
+                    )}
                     {activeTab === tab.id && <ChevronRight size={14} className="ml-auto text-[#D10043]" />}
                   </button>
                 ))}
@@ -579,10 +589,23 @@ const AccountSettings = () => {
             {activeTab === 'notifications' && (
               <div className="space-y-10">
                 <div className="bg-white border border-slate-100 rounded-[48px] p-10 shadow-xl shadow-slate-200/40">
-                  <h3 className="text-xl font-black text-slate-900 tracking-tight mb-10 flex items-center gap-3">
-                    <Bell size={24} className="text-[#D10043]" />
-                    Channel Preferences
-                  </h3>
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+                    <h3 className="text-xl font-black text-slate-900 tracking-tight flex items-center gap-3">
+                      <Bell size={24} className="text-[#D10043]" />
+                      Channel Preferences
+                    </h3>
+                    <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-50 border border-amber-200 text-amber-800 text-[10px] font-black uppercase tracking-widest w-fit">
+                      <Lock size={12} className="text-amber-600" />
+                      Read-Only
+                    </div>
+                  </div>
+
+                  <div className="p-4 mb-8 rounded-2xl bg-amber-50/70 border border-amber-200/70 flex items-center gap-3 text-amber-800">
+                    <Info size={16} className="text-amber-600 shrink-0" />
+                    <p className="text-xs font-semibold">
+                      Notification channels are configured by system administrators and are currently in read-only mode.
+                    </p>
+                  </div>
 
                   <div className="space-y-6">
                     {[
@@ -591,40 +614,50 @@ const AccountSettings = () => {
                       { title: "Twilio AI Caller", desc: "Automated phone reminders and notifications.", icon: <Smartphone size={18} /> },
                       { title: "Direct Internal Chat", desc: "Notifications for real-time internal messages.", icon: <MessageSquare size={18} /> }
                     ].map((item, i) => (
-                      <div key={i} className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-6 p-6 hover:bg-slate-50 rounded-[32px] transition-all border border-transparent hover:border-slate-100 group">
+                      <div key={i} className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-6 p-6 hover:bg-slate-50/80 rounded-[32px] transition-all border border-transparent hover:border-slate-100 group opacity-90">
                         <div className="flex gap-5">
                           <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center text-slate-300 shadow-sm border border-slate-100 group-hover:text-[#D10043] transition-colors">
                             {item.icon}
                           </div>
                           <div>
-                            <h4 className="text-base font-black text-slate-900 leading-none mb-2">{item.title}</h4>
-                            <p className="text-[11px] text-slate-400 font-bold uppercase tracking-widest">{item.desc}</p>
+                            <div className="flex items-center gap-2">
+                              <h4 className="text-base font-black text-slate-900 leading-none">{item.title}</h4>
+                              <span className="text-[9px] font-black text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded uppercase tracking-wider">Read-Only</span>
+                            </div>
+                            <p className="text-[11px] text-slate-400 font-bold uppercase tracking-widest mt-2">{item.desc}</p>
                           </div>
                         </div>
-                        <label className="relative inline-flex items-center cursor-pointer">
-                          <input type="checkbox" className="sr-only peer" defaultChecked />
-                          <div className="w-12 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#D10043]"></div>
+                        <label className="relative inline-flex items-center cursor-not-allowed opacity-70" title="Read-only preference">
+                          <input type="checkbox" className="sr-only peer" defaultChecked disabled />
+                          <div className="w-12 h-6 bg-slate-200 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#D10043]"></div>
                         </label>
                       </div>
                     ))}
                   </div>
 
                   <div className="flex justify-end mt-10">
-                    <button className="px-10 py-4 bg-[#D10043] text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-900 transition-all shadow-xl shadow-pink-100 flex items-center gap-3">
-                      <Save size={16} /> Save Settings
+                    <button disabled className="px-10 py-4 bg-slate-100 text-slate-400 rounded-2xl text-[10px] font-black uppercase tracking-widest cursor-not-allowed flex items-center gap-3 border border-slate-200">
+                      <Lock size={14} className="text-slate-400" /> Preferences Saved (Read-Only)
                     </button>
                   </div>
                 </div>
 
                 <div className="bg-slate-50 rounded-[48px] p-10 border border-slate-100">
-                  <div className="flex items-center gap-4 mb-6">
-                    <Mail className="text-[#D10043]" size={20} />
-                    <h4 className="text-sm font-black text-slate-900 uppercase tracking-widest">Email Digest</h4>
+                  <div className="flex items-center justify-between gap-4 mb-6">
+                    <div className="flex items-center gap-4">
+                      <Mail className="text-[#D10043]" size={20} />
+                      <h4 className="text-sm font-black text-slate-900 uppercase tracking-widest">Email Digest</h4>
+                    </div>
+                    <span className="inline-flex items-center gap-1 text-[9px] font-black uppercase tracking-wider text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">
+                      <Lock size={10} className="text-amber-600" /> Read-Only
+                    </span>
                   </div>
                   <p className="text-xs text-slate-500 font-medium mb-8 max-w-lg">
                     Receive a weekly summary of your application activities, new job matches, and system updates directly in your inbox.
                   </p>
-                  <button className="px-6 py-3 bg-white border border-slate-200 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-[#D10043] hover:text-white hover:border-[#D10043] transition-all">Configure Digest</button>
+                  <button disabled className="px-6 py-3 bg-white text-slate-400 border border-slate-200 rounded-xl text-[10px] font-black uppercase tracking-widest cursor-not-allowed">
+                    Digest Active (Read-Only)
+                  </button>
                 </div>
               </div>
             )}
