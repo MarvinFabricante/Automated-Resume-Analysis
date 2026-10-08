@@ -1,9 +1,11 @@
 import React from 'react';
-import { Calendar, Clock, Mail, User } from 'lucide-react';
+import { Calendar, Clock, Mail, User, Video, CheckCircle2, ChevronRight, ShieldCheck } from 'lucide-react';
 import { useSelector } from 'react-redux';
+import { useNavigate } from 'react-router-dom';
 import { useGetCandidateInterviewsQuery } from '../../../redux/api/apiSlice';
 
 const UpcomingInterviews = () => {
+  const navigate = useNavigate();
   const { user: email } = useSelector((state) => state.auth);
   const { data: interviews = [], isLoading } = useGetCandidateInterviewsQuery(email, {
     skip: !email,
@@ -15,34 +17,42 @@ const UpcomingInterviews = () => {
     .sort((a, b) => new Date(a.start_time) - new Date(b.start_time));
 
   return (
-    <div className="bg-white border border-slate-100 rounded-[40px] p-8 sm:p-10 shadow-xl shadow-slate-200/40">
-      <div className="flex items-center justify-between mb-8">
-        <div className="flex items-center gap-4">
-          <div className="w-12 h-12 bg-pink-50 rounded-2xl flex items-center justify-center text-[#D10043] border border-pink-100 shadow-sm">
-            <Calendar size={22} />
+    <div className="bg-white border border-slate-200/80 rounded-[32px] p-6 sm:p-8 shadow-sm space-y-6">
+      
+      {/* HEADER */}
+      <div className="flex items-center justify-between pb-5 border-b border-slate-100">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 bg-[#D10043]/10 text-[#D10043] rounded-xl flex items-center justify-center shrink-0">
+            <Calendar size={20} />
           </div>
           <div>
-            <h3 className="text-xl font-black text-slate-900 tracking-tight">Interview Schedule</h3>
-            <p className="text-xs text-slate-400 font-semibold mt-0.5">Upcoming evaluation sessions</p>
+            <h3 className="text-lg sm:text-xl font-black text-slate-900 tracking-tight">Interview Schedule</h3>
+            <p className="text-xs text-slate-400 font-medium">Upcoming evaluation sessions</p>
           </div>
         </div>
+
         {activeInterviews.length > 0 && (
-          <span className="text-xs font-black text-[#D10043] bg-pink-50 border border-pink-200 px-3 py-1 rounded-full uppercase tracking-wider">
+          <span className="text-[10px] font-black text-[#D10043] bg-pink-50 border border-pink-200/60 px-3 py-1 rounded-full uppercase tracking-wider">
             {activeInterviews.length} Scheduled
           </span>
         )}
       </div>
 
+      {/* SKELETON / EMPTY / SESSIONS */}
       {isLoading ? (
-        <div className="bg-slate-50/50 rounded-[32px] p-8 border border-slate-100 text-center animate-pulse">
-          <div className="h-4 bg-slate-200 rounded w-1/3 mx-auto mb-3" />
+        <div className="bg-slate-50/60 rounded-2xl p-6 border border-slate-100 text-center animate-pulse space-y-3">
+          <div className="h-4 bg-slate-200 rounded w-1/3 mx-auto" />
           <div className="h-8 bg-slate-100 rounded w-1/2 mx-auto" />
         </div>
       ) : activeInterviews.length === 0 ? (
-        <div className="bg-slate-50/50 rounded-[32px] p-8 border border-slate-100 text-center space-y-2">
-          <Calendar size={28} className="mx-auto text-slate-300" />
-          <p className="text-sm text-slate-600 font-bold">No upcoming interviews scheduled yet.</p>
-          <p className="text-xs text-slate-400">Our HR panel is reviewing your applications. You will see your interview schedule here once scheduled.</p>
+        <div className="bg-slate-50/60 rounded-3xl p-7 border border-slate-100 text-center space-y-3">
+          <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center mx-auto text-slate-300 shadow-xs border border-slate-100">
+            <Calendar size={22} />
+          </div>
+          <h4 className="text-sm font-bold text-slate-800">No Pending Interviews</h4>
+          <p className="text-xs text-slate-400 leading-relaxed max-w-xs mx-auto">
+            Our HR panel reviews applications actively. Once your application advances to the interview stage, schedule details will appear here.
+          </p>
         </div>
       ) : (
         <div className="space-y-4">
@@ -53,55 +63,73 @@ const UpcomingInterviews = () => {
             return (
               <div
                 key={iv.id}
-                className="bg-slate-50/70 hover:bg-pink-50/30 rounded-[32px] p-6 border border-slate-100 hover:border-[#D10043]/20 relative group overflow-hidden transition-all shadow-sm"
+                className="bg-slate-50/70 hover:bg-white rounded-2xl p-5 border border-slate-200/70 hover:border-[#D10043]/30 hover:shadow-md transition-all duration-200 space-y-4 group"
               >
-                <div className="absolute top-0 right-0 w-2 h-full bg-[#D10043] opacity-0 group-hover:opacity-100 transition-opacity" />
-
-                <div className="flex items-center justify-between mb-3">
-                  <span className="bg-orange-100 text-orange-700 text-[9px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider">
-                    {iv.status || 'Upcoming'}
+                {/* Status Badges */}
+                <div className="flex items-center justify-between gap-2">
+                  <span className="bg-amber-100/80 text-amber-800 text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider">
+                    {iv.status || 'Scheduled'}
                   </span>
-                  <span className="bg-emerald-100 text-emerald-700 text-[9px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider flex items-center gap-1">
-                    <Mail size={10} /> Invitation Emailed
-                  </span>
-                </div>
-
-                <h4 className="font-black text-lg text-slate-900 mb-1 leading-tight tracking-tight">
-                  {iv.title}
-                </h4>
-
-                {iv.job_title && (
-                  <p className="text-xs text-slate-500 font-medium mb-2">
-                    Position: <strong className="text-slate-800">{iv.job_title}</strong>
-                  </p>
-                )}
-
-                {iv.interviewer_name && (
-                  <p className="text-xs text-[#D10043] font-bold flex items-center gap-1.5 mb-4">
-                    <User size={13} /> Panelist: {iv.interviewer_name}
-                  </p>
-                )}
-
-                <div className="flex flex-wrap items-center text-xs text-slate-700 font-bold mb-5 bg-white p-3 rounded-2xl border border-slate-100 shadow-sm gap-2">
-                  <Clock className="w-4 h-4 text-[#D10043] shrink-0" />
-                  <span>
-                    {startDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
-                  </span>
-                  <span className="text-slate-300">•</span>
-                  <span>
-                    {startDate.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true })} – {endDate.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true })}
+                  <span className="bg-emerald-50 text-emerald-700 border border-emerald-200/60 text-[9px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider flex items-center gap-1">
+                    <Mail size={10} /> Confirmed via Email
                   </span>
                 </div>
 
-                <div className="py-3.5 px-4 bg-emerald-50/80 border border-emerald-200/80 text-emerald-900 rounded-2xl text-xs font-semibold flex items-center justify-center gap-2.5 shadow-sm">
-                  <Mail size={15} className="text-emerald-600 shrink-0" />
-                  <span>Interview invitation & schedule details sent to your registered Gmail</span>
+                {/* Title & Role */}
+                <div>
+                  <h4 className="font-black text-base text-slate-900 group-hover:text-[#D10043] transition-colors leading-tight">
+                    {iv.title}
+                  </h4>
+                  {iv.job_title && (
+                    <p className="text-xs text-slate-500 font-semibold mt-0.5">
+                      Target Role: <strong className="text-slate-800">{iv.job_title}</strong>
+                    </p>
+                  )}
+                  {iv.interviewer_name && (
+                    <p className="text-xs text-slate-600 font-medium flex items-center gap-1 mt-1.5">
+                      <User size={13} className="text-[#D10043]" />
+                      Panelist: <span className="font-bold text-slate-800">{iv.interviewer_name}</span>
+                    </p>
+                  )}
                 </div>
+
+                {/* Date & Time Pill */}
+                <div className="bg-white p-3 rounded-xl border border-slate-200/80 flex items-center gap-2.5 text-xs font-bold text-slate-800 shadow-2xs">
+                  <Clock size={15} className="text-[#D10043] shrink-0" />
+                  <div className="min-w-0">
+                    <div>
+                      {startDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
+                    </div>
+                    <div className="text-[11px] text-slate-400 font-semibold">
+                      {startDate.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true })} – {endDate.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true })}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Email Confirmation Notice */}
+                <div className="p-3 bg-emerald-50/60 border border-emerald-100 rounded-xl text-[11px] text-emerald-800 flex items-center gap-2 font-medium">
+                  <Video size={14} className="text-emerald-600 shrink-0" />
+                  <span>Google Meet / Meeting coordinates delivered to your registered email</span>
+                </div>
+
               </div>
             );
           })}
         </div>
       )}
+
+      {/* Helpful Guidance Footer */}
+      <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-400 font-medium">
+        <span>Need to reschedule?</span>
+        <button
+          type="button"
+          onClick={() => navigate('/candidate/messages')}
+          className="text-[#D10043] hover:underline font-bold"
+        >
+          Message HR Coordinator
+        </button>
+      </div>
+
     </div>
   );
 };

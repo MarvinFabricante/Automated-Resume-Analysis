@@ -1,39 +1,87 @@
 import React from 'react';
-import { Zap, ShieldCheck } from 'lucide-react';
+import { ShieldCheck, CheckCircle2, ChevronRight, Sparkles, Award } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 const ProfileStrength = () => {
   const navigate = useNavigate();
 
+  const completionPercentage = 85;
+
+  const CHECKLIST = [
+    { label: "Personal Details & Contact", completed: true },
+    { label: "Primary Resume Uploaded", completed: true },
+    { label: "Work History & Education", completed: true },
+    { label: "Certifications & Licensure", completed: false }
+  ];
+
   return (
-    <div className="bg-slate-900 rounded-[40px] p-10 text-white flex flex-col md:flex-row justify-between items-center shadow-2xl shadow-slate-900/20 relative overflow-hidden group">
-      <div className="absolute top-0 right-0 w-64 h-64 bg-[#D10043]/10 rounded-full blur-3xl -mr-32 -mt-32 group-hover:scale-150 transition-transform duration-1000" />
+    <div className="bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-[32px] p-6 sm:p-8 shadow-md relative overflow-hidden space-y-6">
+      {/* Decorative ambient gradient */}
+      <div className="absolute -top-12 -right-12 w-44 h-44 bg-[#D10043]/20 rounded-full blur-2xl pointer-events-none" />
 
-      <div className="max-w-md relative z-10 text-center md:text-left">
-        <div className="flex items-center gap-2 bg-[#D10043] w-fit px-3 py-1 rounded-md text-[9px] font-black uppercase tracking-widest mb-6 mx-auto md:mx-0">
-          <Zap size={12} fill="white" />
-          High Impact
-        </div>
-        <h3 className="text-2xl font-black tracking-tight mb-3">Your profile is 85% complete.</h3>
-        <p className="text-slate-400 text-sm font-medium mb-8 leading-relaxed">
-          Adding your latest certifications could increase your visibility to top-tier recruiters by 40%.
-        </p>
-        <button
-          onClick={() => navigate('/candidate/settings')}
-          className="bg-white text-slate-900 px-8 py-4 rounded-2xl font-black uppercase tracking-widest text-[10px] hover:bg-[#D10043] hover:text-white transition-all shadow-xl active:scale-[0.95]"
-        >
-          Optimize Profile
-        </button>
-      </div>
-
-      <div className="mt-12 md:mt-0 relative z-10">
-        <div className="w-32 h-32 rounded-full border-8 border-slate-800 flex flex-col items-center justify-center relative bg-slate-900 shadow-2xl">
-          <span className="text-4xl font-black text-white leading-none">85<span className="text-lg">%</span></span>
-          <div className="absolute -bottom-2 -right-2 bg-green-500 p-2 rounded-xl shadow-lg border-4 border-slate-900">
-            <ShieldCheck size={16} strokeWidth={3} />
+      <div className="relative z-10 flex items-center justify-between">
+        <div className="flex items-center gap-2.5">
+          <div className="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center text-[#D10043]">
+            <Sparkles size={16} />
           </div>
+          <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-300">
+            Profile Readiness
+          </span>
         </div>
+        <span className="px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
+          <ShieldCheck size={12} />
+          Verified
+        </span>
       </div>
+
+      {/* Progress & Headline */}
+      <div className="relative z-10 space-y-2">
+        <div className="flex items-baseline justify-between">
+          <h4 className="text-xl font-black tracking-tight text-white">Profile Strength</h4>
+          <span className="text-2xl font-black text-[#D10043] font-mono">{completionPercentage}%</span>
+        </div>
+        
+        {/* Progress Bar */}
+        <div className="w-full bg-slate-700/60 h-2.5 rounded-full overflow-hidden p-0.5 border border-slate-700">
+          <div
+            style={{ width: `${completionPercentage}%` }}
+            className="h-full bg-gradient-to-r from-rose-500 to-[#D10043] rounded-full transition-all duration-700"
+          />
+        </div>
+        
+        <p className="text-xs text-slate-400 font-medium leading-relaxed pt-1">
+          A high completeness score improves automated job matching accuracy and recruiter visibility by up to 40%.
+        </p>
+      </div>
+
+      {/* Checklist items */}
+      <div className="relative z-10 space-y-2.5 pt-2 border-t border-slate-700/60">
+        {CHECKLIST.map((item, idx) => (
+          <div key={idx} className="flex items-center justify-between text-xs">
+            <span className={`font-medium ${item.completed ? 'text-slate-300' : 'text-slate-400'}`}>
+              {item.label}
+            </span>
+            {item.completed ? (
+              <CheckCircle2 size={15} className="text-emerald-400 shrink-0" />
+            ) : (
+              <span className="text-[10px] font-bold text-amber-400 bg-amber-400/10 px-2 py-0.5 rounded-md border border-amber-400/20">
+                +15%
+              </span>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {/* Action Button */}
+      <button
+        type="button"
+        onClick={() => navigate('/candidate/settings')}
+        className="w-full py-3 px-4 rounded-xl bg-white hover:bg-slate-100 text-slate-900 font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition-all shadow-sm active:scale-[0.98]"
+      >
+        Complete Profile Details
+        <ChevronRight size={14} />
+      </button>
+
     </div>
   );
 };
