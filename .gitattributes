@@ -1,0 +1,34 @@
+# ==============================================================================
+# GitHub Linguist Language Statistics Configuration
+# ==============================================================================
+# Exclude Shell, CSS, Dockerfile, JavaScript, HTML, configs from GitHub language stats
+# so that only TypeScript and Python are displayed on the repository.
+# ==============================================================================
+
+# Exclude non-target languages
+*.sh linguist-detectable=false
+*.bash linguist-detectable=false
+*.zsh linguist-detectable=false
+*.css linguist-detectable=false
+*.scss linguist-detectable=false
+*.less linguist-detectable=false
+*.js linguist-detectable=false
+*.mjs linguist-detectable=false
+*.cjs linguist-detectable=false
+*.html linguist-detectable=false
+*.htm linguist-detectable=false
+Dockerfile* linguist-detectable=false
+*Dockerfile* linguist-detectable=false
+*.conf linguist-detectable=false
+*.json linguist-detectable=false
+*.yaml linguist-detectable=false
+*.yml linguist-detectable=false
+*.xml linguist-detectable=false
+*.svg linguist-detectable=false
+*.txt linguist-detectable=false
+*.env* linguist-detectable=false
+
+# Explicitly count only TypeScript and Python
+*.ts linguist-detectable=true
+*.tsx linguist-detectable=true
+*.py linguist-detectable=true
