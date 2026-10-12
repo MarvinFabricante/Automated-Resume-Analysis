@@ -58,12 +58,12 @@ const ScreeningHeader = ({
         {/* Action Controls - Mobile Responsive Wrap */}
         <div className="flex items-center gap-2 sm:gap-2.5 self-start sm:self-auto shrink-0 w-full sm:w-auto justify-between sm:justify-end">
           {/* View Mode Switcher */}
-          <div className="bg-gray-100/80 p-1 rounded-xl flex items-center border border-gray-200/80 shadow-inner">
+          <div className="bg-gray-100/80 p-1 rounded-xl flex items-center border border-gray-200/80 shadow-inner h-9 sm:h-10">
             <button
               type="button"
               onClick={() => setViewMode('cards')}
               title="Cards View"
-              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all duration-200 cursor-pointer ${
+              className={`h-full flex items-center gap-1.5 px-2.5 sm:px-3 rounded-lg text-xs font-bold transition-all duration-200 cursor-pointer ${
                 viewMode === 'cards' 
                   ? 'bg-white text-[#D60041] shadow-sm' 
                   : 'text-gray-500 hover:text-gray-800'
@@ -76,7 +76,7 @@ const ScreeningHeader = ({
               type="button"
               onClick={() => setViewMode('table')}
               title="Table / Compact View"
-              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all duration-200 cursor-pointer ${
+              className={`h-full flex items-center gap-1.5 px-2.5 sm:px-3 rounded-lg text-xs font-bold transition-all duration-200 cursor-pointer ${
                 viewMode === 'table' 
                   ? 'bg-white text-[#D60041] shadow-sm' 
                   : 'text-gray-500 hover:text-gray-800'
@@ -87,12 +87,12 @@ const ScreeningHeader = ({
             </button>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 sm:gap-2">
             {/* Compare Candidates button */}
             <button
               type="button"
               onClick={onNavigateCompare}
-              className={`flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 sm:py-2.5 border rounded-xl text-xs font-bold transition-all duration-200 shadow-sm cursor-pointer ${
+              className={`h-9 sm:h-10 flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-4 border rounded-xl text-xs font-bold transition-all duration-200 shadow-sm cursor-pointer ${
                 selectedCount >= 2 
                   ? 'bg-purple-50 text-purple-700 border-purple-200 hover:bg-purple-100 shadow-purple-50' 
                   : 'bg-white border-gray-200/90 text-gray-700 hover:border-purple-200 hover:text-purple-600'
@@ -112,7 +112,7 @@ const ScreeningHeader = ({
             <button 
               type="button"
               onClick={onExport}
-              className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 sm:py-2.5 bg-white border border-gray-200/90 rounded-xl text-xs font-bold text-gray-700 hover:border-pink-200 hover:text-[#D60041] hover:bg-pink-50/50 transition-all duration-200 shadow-sm group cursor-pointer"
+              className="h-9 sm:h-10 flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-4 bg-white border border-gray-200/90 rounded-xl text-xs font-bold text-gray-700 hover:border-pink-200 hover:text-[#D60041] hover:bg-pink-50/50 transition-all duration-200 shadow-sm group cursor-pointer"
               title="Export visible candidates to CSV"
             >
               <Download className="w-4 h-4 text-gray-400 group-hover:text-[#D60041] transition-colors" />
@@ -125,7 +125,7 @@ const ScreeningHeader = ({
                 type="button"
                 onClick={onRefresh}
                 title="Refresh candidates"
-                className="p-2 sm:p-2.5 bg-white border border-gray-200/90 rounded-xl text-gray-500 hover:text-gray-900 hover:border-gray-300 transition-all shadow-sm cursor-pointer"
+                className="h-9 sm:h-10 w-9 sm:w-10 flex items-center justify-center bg-white border border-gray-200/90 rounded-xl text-gray-500 hover:text-gray-900 hover:border-gray-300 transition-all shadow-sm cursor-pointer"
               >
                 <RefreshCw size={15} className={isRefreshing ? 'animate-spin text-[#D60041]' : ''} />
               </button>
@@ -331,7 +331,7 @@ const ScreeningHeader = ({
           onClick={() => onKpiClick('archived')}
           aria-label="Filter by archived applications"
           aria-pressed={isArchivedActive}
-          className={`relative text-left w-full p-3.5 sm:p-4 rounded-2xl transition-all duration-200 cursor-pointer overflow-hidden group active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-gray-600 ${
+          className={`relative text-left w-full p-3.5 sm:p-4 rounded-2xl transition-all duration-200 cursor-pointer overflow-hidden group active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-gray-600 col-span-2 sm:col-span-1 ${
             isArchivedActive
               ? 'bg-gray-100 border-2 border-gray-700 ring-2 ring-gray-700/20 shadow-sm hover:bg-gray-200/80 hover:border-gray-800'
               : 'bg-white border border-gray-200/90 shadow-xs hover:border-gray-400 hover:bg-gray-50/70 hover:shadow-md'

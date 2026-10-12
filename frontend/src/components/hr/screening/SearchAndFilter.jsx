@@ -107,7 +107,7 @@ const SearchAndFilter = ({
                 if (setIncludeArchived) setIncludeArchived(!includeArchived);
               }
             }}
-            className={`flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3 sm:px-3.5 py-2.5 sm:py-3 rounded-xl sm:rounded-2xl text-xs font-bold transition-all border shadow-sm cursor-pointer whitespace-nowrap ${
+            className={`flex-1 sm:flex-none h-9 sm:h-10 flex items-center justify-center gap-1.5 px-2.5 sm:px-3.5 rounded-xl sm:rounded-2xl text-xs font-bold transition-all border shadow-sm cursor-pointer whitespace-nowrap ${
               includeArchived || statusFilter === 'Archived' || statusFilter === 'All With Archived'
                 ? 'bg-amber-500 hover:bg-amber-600 text-white border-amber-500 shadow-amber-500/20 ring-2 ring-amber-500/20'
                 : 'bg-white hover:bg-amber-50/70 text-gray-700 hover:text-amber-800 border-gray-200'
@@ -115,7 +115,8 @@ const SearchAndFilter = ({
             title="Toggle viewing archived candidates alongside active ones"
           >
             <Archive size={14} className={includeArchived || statusFilter === 'Archived' || statusFilter === 'All With Archived' ? 'text-white' : 'text-amber-500'} />
-            <span>{includeArchived ? 'Archived Visible' : (statusFilter === 'Archived' ? 'In Archive' : 'Show Archive')}</span>
+            <span className="hidden sm:inline">{includeArchived ? 'Archived Visible' : (statusFilter === 'Archived' ? 'In Archive' : 'Show Archive')}</span>
+            <span className="sm:hidden">{includeArchived ? 'Archived On' : (statusFilter === 'Archived' ? 'In Archive' : 'Archive')}</span>
             {archivedCount > 0 && (
               <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-black ${
                 includeArchived || statusFilter === 'Archived' || statusFilter === 'All With Archived'
@@ -136,14 +137,15 @@ const SearchAndFilter = ({
                 setStatusFilter('Archived');
               }
             }}
-            className={`flex-1 sm:flex-none flex items-center justify-center gap-1 px-3 py-2.5 sm:py-3 rounded-xl sm:rounded-2xl text-xs font-bold transition-all border shadow-sm cursor-pointer whitespace-nowrap ${
+            className={`flex-1 sm:flex-none h-9 sm:h-10 flex items-center justify-center gap-1 px-2.5 sm:px-3 rounded-xl sm:rounded-2xl text-xs font-bold transition-all border shadow-sm cursor-pointer whitespace-nowrap ${
               statusFilter === 'Archived'
                 ? 'bg-gray-800 text-white border-gray-800 ring-2 ring-gray-800/20'
                 : 'bg-gray-50 hover:bg-gray-100 text-gray-600 hover:text-gray-900 border-gray-200'
             }`}
             title="Filter directly to archived applications only"
           >
-            <span>{statusFilter === 'Archived' ? 'Exit Archived' : 'Archived Only'}</span>
+            <span className="hidden sm:inline">{statusFilter === 'Archived' ? 'Exit Archived' : 'Archived Only'}</span>
+            <span className="sm:hidden">{statusFilter === 'Archived' ? 'Exit' : 'Archive Only'}</span>
           </button>
         </div>
       </div>
@@ -170,21 +172,21 @@ const SearchAndFilter = ({
         </div>
       )}
 
-      {/* Bottom Controls Row: Job, Status, Score, and Sort Dropdowns */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3 pt-1">
+      {/* Bottom Controls Row: Job, Status, Score, and Sort Dropdowns (Clean 2x2 grid on mobile) */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3 pt-1">
         
         {/* 1. Job Position Filter */}
         <div className="relative">
-          <div className="flex items-center justify-between mb-1">
-            <label className="text-[10px] font-black uppercase tracking-wider text-gray-400">Position</label>
+          <div className="flex items-center justify-between mb-1.5">
+            <label className="text-[10px] sm:text-[11px] font-black uppercase tracking-wider text-gray-400">Position</label>
             {isJobActive && <span className="w-1.5 h-1.5 rounded-full bg-[#D60041]"></span>}
           </div>
           <div className="relative">
-            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+            <div className="absolute inset-y-0 left-0 pl-2.5 sm:pl-3 flex items-center pointer-events-none">
               <Filter className={`h-3.5 w-3.5 ${isJobActive ? 'text-[#D60041]' : 'text-gray-400'}`} />
             </div>
             <select
-              className={`w-full border pl-8.5 pr-8 py-2.5 rounded-xl text-xs font-bold text-gray-700 focus:outline-none focus:border-pink-300 focus:bg-white transition-all cursor-pointer appearance-none truncate ${
+              className={`w-full h-9 sm:h-10 border pl-7 sm:pl-8.5 pr-6 sm:pr-8 rounded-xl text-xs font-bold text-gray-700 focus:outline-none focus:border-pink-300 focus:bg-white transition-all cursor-pointer appearance-none truncate ${
                 isJobActive ? 'bg-pink-50/40 border-pink-200 text-[#D60041]' : 'bg-gray-50/70 border-gray-200'
               }`}
               value={jobFilter}
@@ -202,24 +204,24 @@ const SearchAndFilter = ({
                 );
               })}
             </select>
-            <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none text-gray-400">
-              <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
+            <div className="absolute inset-y-0 right-0 pr-2 sm:pr-3 flex items-center pointer-events-none text-gray-400">
+              <svg className="h-3 w-3 sm:h-3.5 sm:w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
             </div>
           </div>
         </div>
 
         {/* 2. Application Status Filter */}
         <div className="relative">
-          <div className="flex items-center justify-between mb-1">
-            <label className="text-[10px] font-black uppercase tracking-wider text-gray-400">Status</label>
+          <div className="flex items-center justify-between mb-1.5">
+            <label className="text-[10px] sm:text-[11px] font-black uppercase tracking-wider text-gray-400">Status</label>
             {isStatusActive && <span className="w-1.5 h-1.5 rounded-full bg-[#D60041]"></span>}
           </div>
           <div className="relative">
-            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+            <div className="absolute inset-y-0 left-0 pl-2.5 sm:pl-3 flex items-center pointer-events-none">
               <Filter className={`h-3.5 w-3.5 ${isStatusActive ? 'text-[#D60041]' : 'text-gray-400'}`} />
             </div>
             <select
-              className={`w-full border pl-8.5 pr-8 py-2.5 rounded-xl text-xs font-bold text-gray-700 focus:outline-none focus:border-pink-300 focus:bg-white transition-all cursor-pointer appearance-none truncate ${
+              className={`w-full h-9 sm:h-10 border pl-7 sm:pl-8.5 pr-6 sm:pr-8 rounded-xl text-xs font-bold text-gray-700 focus:outline-none focus:border-pink-300 focus:bg-white transition-all cursor-pointer appearance-none truncate ${
                 isStatusActive ? 'bg-pink-50/40 border-pink-200 text-[#D60041]' : 'bg-gray-50/70 border-gray-200'
               }`}
               value={statusFilter}
@@ -227,7 +229,7 @@ const SearchAndFilter = ({
             >
               <option value="All Status">All Active Statuses</option>
               <option value="All With Archived">All Applications (Include Archived)</option>
-              <option value="Archived">Archived Applications Only {archivedCount > 0 ? `(${archivedCount})` : ''}</option>
+              <option value="Archived">Archived Only {archivedCount > 0 ? `(${archivedCount})` : ''}</option>
               <option value="Pending">Pending Review</option>
               <option value="Reviewed">Reviewed</option>
               <option value="Interview">All Interviews</option>
@@ -236,67 +238,67 @@ const SearchAndFilter = ({
               <option value="Accepted">Accepted / Hired</option>
               <option value="Rejected">Rejected</option>
             </select>
-            <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none text-gray-400">
-              <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
+            <div className="absolute inset-y-0 right-0 pr-2 sm:pr-3 flex items-center pointer-events-none text-gray-400">
+              <svg className="h-3 w-3 sm:h-3.5 sm:w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
             </div>
           </div>
         </div>
 
         {/* 3. Match Score Tier Filter */}
         <div className="relative">
-          <div className="flex items-center justify-between mb-1">
-            <label className="text-[10px] font-black uppercase tracking-wider text-gray-400">AI Match Score</label>
+          <div className="flex items-center justify-between mb-1.5">
+            <label className="text-[10px] sm:text-[11px] font-black uppercase tracking-wider text-gray-400">AI Score</label>
             {isScoreActive && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>}
           </div>
           <div className="relative">
-            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+            <div className="absolute inset-y-0 left-0 pl-2.5 sm:pl-3 flex items-center pointer-events-none">
               <Sparkles className={`h-3.5 w-3.5 ${isScoreActive ? 'text-emerald-600' : 'text-gray-400'}`} />
             </div>
             <select
-              className={`w-full border pl-8.5 pr-8 py-2.5 rounded-xl text-xs font-bold text-gray-700 focus:outline-none focus:border-pink-300 focus:bg-white transition-all cursor-pointer appearance-none truncate ${
+              className={`w-full h-9 sm:h-10 border pl-7 sm:pl-8.5 pr-6 sm:pr-8 rounded-xl text-xs font-bold text-gray-700 focus:outline-none focus:border-pink-300 focus:bg-white transition-all cursor-pointer appearance-none truncate ${
                 isScoreActive ? 'bg-emerald-50/40 border-emerald-200 text-emerald-800' : 'bg-gray-50/70 border-gray-200'
               }`}
               value={scoreFilter}
               onChange={(e) => setScoreFilter(e.target.value)}
             >
-              <option value="All Scores">All Match Scores</option>
+              <option value="All Scores">All Scores</option>
               <option value="90+">Top Match (90% - 100%)</option>
               <option value="80+">Strong Fit (80% - 100%)</option>
               <option value="60-79">Moderate Fit (60% - 79%)</option>
               <option value="<60">Low Fit (Below 60%)</option>
             </select>
-            <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none text-gray-400">
-              <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
+            <div className="absolute inset-y-0 right-0 pr-2 sm:pr-3 flex items-center pointer-events-none text-gray-400">
+              <svg className="h-3 w-3 sm:h-3.5 sm:w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
             </div>
           </div>
         </div>
 
         {/* 4. Sort By Filter */}
         <div className="relative">
-          <div className="flex items-center justify-between mb-1">
-            <label className="text-[10px] font-black uppercase tracking-wider text-gray-400">Sort By</label>
+          <div className="flex items-center justify-between mb-1.5">
+            <label className="text-[10px] sm:text-[11px] font-black uppercase tracking-wider text-gray-400">Sort By</label>
             {isSortActive && <span className="w-1.5 h-1.5 rounded-full bg-purple-500"></span>}
           </div>
           <div className="relative">
-            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+            <div className="absolute inset-y-0 left-0 pl-2.5 sm:pl-3 flex items-center pointer-events-none">
               <ArrowUpDown className={`h-3.5 w-3.5 ${isSortActive ? 'text-purple-600' : 'text-gray-400'}`} />
             </div>
             <select
-              className={`w-full border pl-8.5 pr-8 py-2.5 rounded-xl text-xs font-bold text-gray-700 focus:outline-none focus:border-pink-300 focus:bg-white transition-all cursor-pointer appearance-none truncate ${
+              className={`w-full h-9 sm:h-10 border pl-7 sm:pl-8.5 pr-6 sm:pr-8 rounded-xl text-xs font-bold text-gray-700 focus:outline-none focus:border-pink-300 focus:bg-white transition-all cursor-pointer appearance-none truncate ${
                 isSortActive ? 'bg-purple-50/40 border-purple-200 text-purple-800' : 'bg-gray-50/70 border-gray-200'
               }`}
               value={sortBy}
               onChange={(e) => setSortBy(e.target.value)}
             >
-              <option value="match_desc">Match Score: High to Low</option>
-              <option value="match_asc">Match Score: Low to High</option>
-              <option value="date_desc">Applied: Newest First</option>
-              <option value="date_asc">Applied: Oldest First</option>
+              <option value="match_desc">Match: High to Low</option>
+              <option value="match_asc">Match: Low to High</option>
+              <option value="date_desc">Applied: Newest</option>
+              <option value="date_asc">Applied: Oldest</option>
               <option value="name_asc">Name: A to Z</option>
               <option value="name_desc">Name: Z to A</option>
             </select>
-            <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none text-gray-400">
-              <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
+            <div className="absolute inset-y-0 right-0 pr-2 sm:pr-3 flex items-center pointer-events-none text-gray-400">
+              <svg className="h-3 w-3 sm:h-3.5 sm:w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
             </div>
           </div>
         </div>
@@ -358,7 +360,7 @@ const SearchAndFilter = ({
           <button
             type="button"
             onClick={onResetFilters}
-            className="flex items-center gap-1.5 text-xs font-bold text-[#D60041] hover:text-[#B50037] hover:underline cursor-pointer ml-auto"
+            className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-bold text-[#D60041] hover:text-[#B50037] hover:bg-rose-50 active:scale-95 rounded-lg transition-all cursor-pointer ml-auto shrink-0"
           >
             <RotateCcw size={12} />
             <span>Reset All</span>

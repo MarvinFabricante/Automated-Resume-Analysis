@@ -165,19 +165,22 @@ const CandidateCard = ({
             </div>
 
             {/* Mini Score Pillar Breakdown */}
-            <div className="flex items-center gap-2 self-start sm:self-auto bg-gray-50/80 px-2.5 py-1.5 rounded-xl border border-gray-100 shrink-0">
-              <div className="flex items-center gap-1 text-[10px] font-bold text-blue-700" title="Skills score (40% weight)">
-                <Zap size={11} className="text-blue-500" />
+            <div className="grid grid-cols-3 sm:flex items-center gap-1.5 sm:gap-2 w-full sm:w-auto bg-gray-50/90 px-2.5 py-1.5 rounded-xl border border-gray-100 mt-2 sm:mt-0">
+              <div className="flex items-center justify-center sm:justify-start gap-1 text-[10px] font-bold text-blue-700" title="Skills score (40% weight)">
+                <Zap size={11} className="text-blue-500 shrink-0" />
+                <span className="text-[9px] uppercase tracking-wider text-gray-400 font-semibold sm:hidden">Skill</span>
                 <span>{Math.round(candidate.skillsScore || 0)}%</span>
               </div>
-              <span className="text-gray-300 text-xs">|</span>
-              <div className="flex items-center gap-1 text-[10px] font-bold text-purple-700" title="Experience score (40% weight)">
-                <Briefcase size={11} className="text-purple-500" />
+              <span className="hidden sm:inline text-gray-300 text-xs">|</span>
+              <div className="flex items-center justify-center sm:justify-start gap-1 text-[10px] font-bold text-purple-700" title="Experience score (40% weight)">
+                <Briefcase size={11} className="text-purple-500 shrink-0" />
+                <span className="text-[9px] uppercase tracking-wider text-gray-400 font-semibold sm:hidden">Exp</span>
                 <span>{Math.round(candidate.experienceScore || 0)}%</span>
               </div>
-              <span className="text-gray-300 text-xs">|</span>
-              <div className="flex items-center gap-1 text-[10px] font-bold text-amber-700" title="Education score (20% weight)">
-                <GraduationCap size={11} className="text-amber-500" />
+              <span className="hidden sm:inline text-gray-300 text-xs">|</span>
+              <div className="flex items-center justify-center sm:justify-start gap-1 text-[10px] font-bold text-amber-700" title="Education score (20% weight)">
+                <GraduationCap size={11} className="text-amber-500 shrink-0" />
+                <span className="text-[9px] uppercase tracking-wider text-gray-400 font-semibold sm:hidden">Edu</span>
                 <span>{Math.round(candidate.educationScore || 0)}%</span>
               </div>
             </div>
@@ -252,8 +255,8 @@ const CandidateCard = ({
         {/* Action Section - Responsive Two-tier on mobile, inline on desktop */}
         <div className="w-full lg:w-auto shrink-0 pt-3 lg:pt-0 border-t lg:border-t-0 border-gray-100 flex flex-col sm:flex-row lg:flex-row items-stretch sm:items-center gap-2">
           
-          {/* Row 1 on mobile: Status Dropdown + Quick Icon Actions */}
-          <div className="flex items-center gap-2">
+          {/* Row 1 on mobile: Quick Icon Actions + Status Dropdown */}
+          <div className="flex items-center gap-1.5 sm:gap-2 w-full sm:w-auto">
             {/* Direct Resume View/Download */}
             {candidate.resumeUrl && (
               <button
@@ -263,7 +266,7 @@ const CandidateCard = ({
                   window.open(fullUrl, '_blank');
                 }}
                 title="View / Download Resume"
-                className="p-2 sm:p-2.5 bg-gray-50 border border-gray-200 text-gray-600 hover:bg-pink-50 hover:border-pink-200 hover:text-[#D60041] rounded-xl transition-all cursor-pointer shadow-xs hover:shadow-sm"
+                className="w-9 h-9 sm:w-10 sm:h-10 flex items-center justify-center bg-gray-50 border border-gray-200 text-gray-600 hover:bg-pink-50 hover:border-pink-200 hover:text-[#D60041] rounded-xl transition-all cursor-pointer shadow-xs hover:shadow-sm shrink-0"
               >
                 <FileText size={15} />
               </button>
@@ -275,7 +278,7 @@ const CandidateCard = ({
                 type="button"
                 onClick={() => onRestoreApplication ? onRestoreApplication(candidate.id) : onUpdateStatus(candidate.id, 'Pending')}
                 title="Restore Application"
-                className="p-2 sm:p-2.5 bg-emerald-50 border border-emerald-200 text-emerald-700 hover:bg-emerald-100 hover:border-emerald-300 rounded-xl transition-all cursor-pointer shadow-xs hover:shadow-sm"
+                className="w-9 h-9 sm:w-10 sm:h-10 flex items-center justify-center bg-emerald-50 border border-emerald-200 text-emerald-700 hover:bg-emerald-100 hover:border-emerald-300 rounded-xl transition-all cursor-pointer shadow-xs hover:shadow-sm shrink-0"
               >
                 <RotateCcw size={15} />
               </button>
@@ -284,7 +287,7 @@ const CandidateCard = ({
                 type="button"
                 onClick={() => onArchiveApplication(candidate.id)}
                 title="Archive Candidate"
-                className="p-2 sm:p-2.5 bg-gray-50 border border-gray-200 text-gray-500 hover:bg-amber-50 hover:border-amber-200 hover:text-amber-700 rounded-xl transition-all cursor-pointer shadow-xs hover:shadow-sm"
+                className="w-9 h-9 sm:w-10 sm:h-10 flex items-center justify-center bg-gray-50 border border-gray-200 text-gray-500 hover:bg-amber-50 hover:border-amber-200 hover:text-amber-700 rounded-xl transition-all cursor-pointer shadow-xs hover:shadow-sm shrink-0"
               >
                 <Archive size={15} />
               </button>
@@ -295,7 +298,7 @@ const CandidateCard = ({
               type="button"
               onClick={() => onDeleteApplication(candidate.id)}
               title="Remove Candidate Application"
-              className="p-2 sm:p-2.5 bg-gray-50 border border-gray-200 text-gray-500 hover:bg-rose-50 hover:border-rose-200 hover:text-rose-700 rounded-xl transition-all cursor-pointer shadow-xs hover:shadow-sm"
+              className="w-9 h-9 sm:w-10 sm:h-10 flex items-center justify-center bg-gray-50 border border-gray-200 text-gray-500 hover:bg-rose-50 hover:border-rose-200 hover:text-rose-700 rounded-xl transition-all cursor-pointer shadow-xs hover:shadow-sm shrink-0"
             >
               <Trash2 size={15} />
             </button>
@@ -306,7 +309,7 @@ const CandidateCard = ({
                 type="button"
                 onClick={() => setIsDropdownOpen(!isDropdownOpen)}
                 disabled={isUpdating}
-                className={`w-full flex items-center justify-between gap-1.5 py-2 px-2.5 rounded-xl border text-[11px] font-bold uppercase tracking-wider transition-all cursor-pointer ${statusInfo.bg} ${statusInfo.color} ${statusInfo.border} hover:brightness-95 hover:shadow-xs ${isUpdating ? 'opacity-50 animate-pulse' : ''}`}
+                className={`w-full h-9 sm:h-10 flex items-center justify-between gap-1.5 px-2.5 rounded-xl border text-[11px] font-bold uppercase tracking-wider transition-all cursor-pointer ${statusInfo.bg} ${statusInfo.color} ${statusInfo.border} hover:brightness-95 hover:shadow-xs ${isUpdating ? 'opacity-50 animate-pulse' : ''}`}
               >
                 <div className="flex items-center gap-1.5 truncate">
                   {statusInfo.icon}
@@ -348,18 +351,18 @@ const CandidateCard = ({
           </div>
 
           {/* Row 2 on mobile: Details & Schedule Buttons */}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 w-full sm:w-auto">
             <button
               type="button"
               onClick={() => onOpenDetails(candidate)}
-              className="flex-1 sm:flex-none px-3.5 sm:px-4 py-2 bg-gray-50 hover:bg-pink-50 text-gray-700 hover:text-[#D60041] rounded-xl text-xs font-bold transition-all border border-gray-200 hover:border-pink-200 text-center cursor-pointer shadow-xs hover:shadow-sm"
+              className="flex-1 sm:flex-none h-9 sm:h-10 px-3.5 sm:px-4 flex items-center justify-center bg-gray-50 hover:bg-pink-50 text-gray-700 hover:text-[#D60041] rounded-xl text-xs font-bold transition-all border border-gray-200 hover:border-pink-200 text-center cursor-pointer shadow-xs hover:shadow-sm"
             >
               Details
             </button>
             <button
               type="button"
               onClick={() => onOpenInterview(candidate)}
-              className="flex-1 sm:flex-none px-3.5 sm:px-4 py-2 bg-[#D60041] hover:bg-[#B50037] text-white rounded-xl text-xs font-bold transition-all shadow-xs hover:shadow-md hover:shadow-pink-500/25 active:scale-[0.98] text-center cursor-pointer whitespace-nowrap"
+              className="flex-1 sm:flex-none h-9 sm:h-10 px-3.5 sm:px-4 flex items-center justify-center bg-[#D60041] hover:bg-[#B50037] text-white rounded-xl text-xs font-bold transition-all shadow-xs hover:shadow-md hover:shadow-pink-500/25 active:scale-[0.98] text-center cursor-pointer whitespace-nowrap"
             >
               Schedule
             </button>

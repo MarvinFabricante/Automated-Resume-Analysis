@@ -342,12 +342,12 @@ const ScheduleInterviewModal = ({ isOpen, onClose, candidate }) => {
 
               {/* Date & Time Availability */}
               <div>
-                <div className="flex items-center justify-between mb-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 mb-4">
                   <h3 className="text-sm font-bold text-gray-900 uppercase tracking-tight flex items-center gap-2">
                     <Clock size={16} className="text-[#d81159]" /> Schedule Date & Time
                   </h3>
 
-                  <div className="flex items-center gap-1 bg-gray-100 p-0.5 rounded-xl text-[11px] font-bold">
+                  <div className="flex items-center gap-1 bg-gray-100 p-0.5 rounded-xl text-[11px] font-bold self-start sm:self-auto">
                     <button
                       type="button"
                       onClick={() => setUseCustomTime(false)}
@@ -377,7 +377,7 @@ const ScheduleInterviewModal = ({ isOpen, onClose, candidate }) => {
                 </div>
                 
                 <div className="space-y-4">
-                  <div className="space-y-2 max-w-[250px]">
+                  <div className="space-y-2 w-full sm:max-w-[250px]">
                     <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Interview Date</label>
                     <input
                       required
@@ -419,7 +419,7 @@ const ScheduleInterviewModal = ({ isOpen, onClose, candidate }) => {
                           {isFetchingSlots ? (
                               <div className="py-4 text-sm text-gray-500 animate-pulse">Checking mutual availability with Google Calendar...</div>
                           ) : availableSlots.length > 0 ? (
-                              <div className="flex flex-wrap gap-3">
+                              <div className="grid grid-cols-2 sm:grid-cols-3 md:flex md:flex-wrap gap-2.5">
                                   {availableSlots.map((slot, idx) => (
                                       <button
                                           key={idx}
