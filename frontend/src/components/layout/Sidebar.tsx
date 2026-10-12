@@ -3,10 +3,11 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Users, Building2, User, Settings, Search, Briefcase,
   HelpCircle, BookOpen, MessageSquare, Scale, Sliders, Calendar, Sparkles,
-  PanelLeftClose, PanelLeftOpen, X
+  PanelLeftClose, PanelLeftOpen, X, LogOut
 } from 'lucide-react';
 import { useSelector, useDispatch } from 'react-redux';
 import { toggleSidebar, closeSidebar } from '../../redux/slices/uiSlice';
+import { logout as logoutAction } from '../../redux/slices/authSlice';
 import { RootState } from '../../redux/store';
 
 export interface NavItem {
@@ -28,6 +29,12 @@ const Sidebar: React.FC = () => {
   const dispatch = useDispatch();
   const { role: userRole } = useSelector((state: RootState) => state.auth);
   const { isSidebarOpen } = useSelector((state: RootState) => state.ui);
+
+  const handleLogout = () => {
+    dispatch(logoutAction());
+    navigate('/');
+    window.location.reload();
+  };
 
   const normRole = (userRole || '').toUpperCase();
   const isAdminRole = normRole === 'ADMIN';
@@ -382,6 +389,19 @@ const Sidebar: React.FC = () => {
                   <span>Help</span>
                 </button>
               </div>
+
+              {/* Sign Out Action */}
+              <div className="pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={handleLogout}
+                  className="w-full flex items-center justify-center space-x-2 py-2 px-3 rounded-xl text-xs font-bold text-rose-600 bg-rose-50/70 hover:bg-rose-100 hover:text-rose-700 transition-colors border border-rose-100 cursor-pointer active:scale-95"
+                  title="Secure Sign Out"
+                >
+                  <LogOut size={14} />
+                  <span>Sign Out</span>
+                </button>
+              </div>
             </div>
           ) : (
             <div className="flex flex-col items-center space-y-2 py-1">
@@ -411,6 +431,22 @@ const Sidebar: React.FC = () => {
                 </button>
                 <div className="absolute left-[calc(100%+12px)] top-1/2 -translate-y-1/2 px-2.5 py-1.5 bg-slate-900 text-white text-xs font-semibold rounded-lg shadow-xl whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity duration-150 pointer-events-none z-50 border border-slate-800">
                   Help Center
+                  <div className="absolute right-full top-1/2 -translate-y-1/2 border-4 border-transparent border-r-slate-900" />
+                </div>
+              </div>
+
+              {/* Collapsed Sign Out Shortcut */}
+              <div className="relative group">
+                <button
+                  type="button"
+                  onClick={handleLogout}
+                  className="p-2 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-xl transition-all cursor-pointer"
+                  aria-label="Sign Out"
+                >
+                  <LogOut size={18} />
+                </button>
+                <div className="absolute left-[calc(100%+12px)] top-1/2 -translate-y-1/2 px-2.5 py-1.5 bg-slate-900 text-white text-xs font-semibold rounded-lg shadow-xl whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity duration-150 pointer-events-none z-50 border border-slate-800">
+                  Sign Out
                   <div className="absolute right-full top-1/2 -translate-y-1/2 border-4 border-transparent border-r-slate-900" />
                 </div>
               </div>

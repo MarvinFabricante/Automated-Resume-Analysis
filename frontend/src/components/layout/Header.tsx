@@ -485,15 +485,15 @@ const Header: React.FC = () => {
             </button>
           )}
 
-          <div className="flex items-center space-x-2 sm:space-x-4 cursor-pointer group" onClick={() => navigate(isGuest ? '/' : location.pathname)}>
-            <div className={`w-8 h-8 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center overflow-hidden transition-all duration-300 ${!isGuest && 'group-hover:shadow-[0_0_15px_rgba(209,0,67,0.3)]'}`}>
+          <div className="flex items-center space-x-2 sm:space-x-4 cursor-pointer group min-w-0" onClick={() => navigate(isGuest ? '/' : location.pathname)}>
+            <div className={`w-8 h-8 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center overflow-hidden transition-all duration-300 shrink-0 ${!isGuest && 'group-hover:shadow-[0_0_15px_rgba(209,0,67,0.3)]'}`}>
               <img src={logo} alt="logo" className="w-full h-full object-contain" />
             </div>
-            <div>
-              <h1 className="text-sm sm:text-base font-black tracking-tight text-gray-900 leading-tight">
+            <div className="min-w-0">
+              <h1 className="text-sm sm:text-base font-black tracking-tight text-gray-900 leading-tight truncate">
                 {isPublicSitePage ? "Mariwasa" : isAdminRole ? "Admin Portal" : isHRRole ? "HR Portal" : isCandidateRole ? "Candidate Portal" : "Mariwasa"}
               </h1>
-              <p className={`text-[9px] sm:text-[10px] font-bold uppercase tracking-widest mt-0.5 ${isGuest || isPublicSitePage ? 'text-gray-400' : 'text-[#D60041]'}`}>
+              <p className={`text-[9px] sm:text-[10px] font-bold uppercase tracking-widest mt-0.5 truncate ${isGuest || isPublicSitePage ? 'text-gray-400' : 'text-[#D60041]'}`}>
                 {isGuest || isPublicSitePage ? "Siam Ceramics Inc." : "Resume Analysis System"}
               </p>
             </div>
@@ -525,19 +525,20 @@ const Header: React.FC = () => {
           )}
         </div>
 
-        <div className="hidden lg:flex items-center space-x-1.5 sm:space-x-4 relative shrink-0" ref={dropdownRef}>
+        <div className="flex items-center space-x-1.5 sm:space-x-3 md:space-x-4 relative shrink-0" ref={dropdownRef}>
 
           {isApplicationPage ? (
             <button
               onClick={() => navigate('/careerspage')}
-              className="hidden lg:flex items-center space-x-2 bg-white border border-gray-200 text-gray-600 px-6 py-2.5 rounded-full text-sm font-bold hover:bg-red-50 hover:text-[#D60041] hover:border-pink-200 transition-all shadow-sm active:scale-95"
+              className="flex items-center space-x-1.5 sm:space-x-2 bg-white border border-gray-200 text-gray-600 px-3 sm:px-6 py-1.5 sm:py-2.5 rounded-full text-xs sm:text-sm font-bold hover:bg-red-50 hover:text-[#D60041] hover:border-pink-200 transition-all shadow-sm active:scale-95 cursor-pointer"
             >
-              <X size={18} />
-              <span>Cancel Application</span>
+              <X size={16} />
+              <span className="hidden sm:inline">Cancel Application</span>
+              <span className="sm:hidden">Cancel</span>
             </button>
           ) : isGuest ? (
-            <div className="hidden lg:block relative group">
-              <button className="flex items-center space-x-2 bg-[#D60041] text-white px-6 py-3 rounded-full text-sm font-bold hover:bg-[#b50037] transition-all shadow-md shadow-pink-200">
+            <div className="hidden sm:block relative group">
+              <button className="flex items-center space-x-2 bg-[#D60041] text-white px-4 sm:px-6 py-2.5 sm:py-3 rounded-full text-xs sm:text-sm font-bold hover:bg-[#b50037] transition-all shadow-md shadow-pink-200 cursor-pointer">
                 <span>Access Portal</span>
                 <ChevronDown size={16} className="group-hover:rotate-180 transition-transform duration-300" />
               </button>
@@ -545,19 +546,22 @@ const Header: React.FC = () => {
                 <div className="px-5 py-2 mb-2 border-b border-gray-50">
                   <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">Select Portal</p>
                 </div>
-                <button onClick={() => navigate('/login')} className="w-full flex items-center space-x-4 px-5 py-3.5 text-sm font-bold text-gray-700 hover:bg-pink-50 hover:text-[#D60041] transition-colors"><LogIn size={18} className="text-gray-400" /> <span>Login to Account</span></button>
-                <button onClick={() => navigate('/register')} className="w-full flex items-center space-x-4 px-5 py-3.5 text-sm font-bold text-gray-700 hover:bg-pink-50 hover:text-[#D60041] transition-colors"><UserPlus size={18} className="text-gray-400" /> <span>Register Candidate</span></button>
+                <button onClick={() => navigate('/login')} className="w-full flex items-center space-x-4 px-5 py-3.5 text-sm font-bold text-gray-700 hover:bg-pink-50 hover:text-[#D60041] transition-colors cursor-pointer"><LogIn size={18} className="text-gray-400" /> <span>Login to Account</span></button>
+                <button onClick={() => navigate('/register')} className="w-full flex items-center space-x-4 px-5 py-3.5 text-sm font-bold text-gray-700 hover:bg-pink-50 hover:text-[#D60041] transition-colors cursor-pointer"><UserPlus size={18} className="text-gray-400" /> <span>Register Candidate</span></button>
               </div>
             </div>
           ) : (
             <>
-              <div className="relative mr-0 sm:mr-2" ref={notificationsRef}>
+              <div className="relative mr-0 sm:mr-1" ref={notificationsRef}>
                 <button
+                  type="button"
                   onClick={() => setIsNotificationsOpen(!isNotificationsOpen)}
-                  className={`desktop-icon-btn w-9 h-9 sm:w-11 sm:h-11 rounded-xl sm:rounded-2xl flex items-center justify-center transition-all duration-300 border ${pulse ? 'ring-4 ring-pink-100 scale-110' : ''} ${isNotificationsOpen
+                  className={`desktop-icon-btn w-9 h-9 sm:w-11 sm:h-11 rounded-xl sm:rounded-2xl flex items-center justify-center transition-all duration-300 border cursor-pointer ${pulse ? 'ring-4 ring-pink-100 scale-110' : ''} ${isNotificationsOpen
                       ? 'bg-slate-900 border-slate-900 shadow-xl'
                       : 'bg-white border-gray-200/80 hover:bg-gray-50 hover:border-pink-200 hover:shadow-md hover:scale-105 active:scale-95'
                     }`}
+                  title="Notifications"
+                  aria-label="Notifications"
                 >
                   <Bell size={18} className={`${pulse ? 'animate-bounce text-[#D60041]' : ''} ${isNotificationsOpen ? 'text-white' : 'text-gray-600'}`} />
                   {unreadCount > 0 && (
@@ -575,8 +579,14 @@ const Header: React.FC = () => {
                   />
                 )}
               </div>
-              <div onClick={() => setIsProfileOpen(!isProfileOpen)} className={`desktop-profile-pill flex items-center sm:space-x-4 border p-1 sm:px-2 sm:py-2 sm:pr-5 rounded-full cursor-pointer transition-all duration-300 group ${isProfileOpen ? 'bg-gray-50 border-gray-200 shadow-inner' : 'hover:border-pink-200 border-gray-200/80 hover:shadow-md hover:bg-gray-50 bg-white'}`}>
-                <div className={`w-9 h-9 rounded-full flex items-center justify-center border transition-all duration-300 overflow-hidden ${isProfileOpen ? 'bg-[#D60041] border-[#D60041] shadow-md shadow-pink-200' : 'bg-white border-gray-200 group-hover:border-pink-200'}`}>
+              <div
+                onClick={() => setIsProfileOpen(!isProfileOpen)}
+                className={`desktop-profile-pill flex items-center sm:space-x-3 border p-1 sm:px-2 sm:py-2 sm:pr-4 rounded-full cursor-pointer transition-all duration-300 group ${isProfileOpen ? 'bg-gray-50 border-gray-200 shadow-inner' : 'hover:border-pink-200 border-gray-200/80 hover:shadow-md hover:bg-gray-50 bg-white'}`}
+                title="Account menu"
+                role="button"
+                aria-label="Account menu"
+              >
+                <div className={`w-8 h-8 sm:w-9 sm:h-9 rounded-full flex items-center justify-center border transition-all duration-300 overflow-hidden shrink-0 ${isProfileOpen ? 'bg-[#D60041] border-[#D60041] shadow-md shadow-pink-200' : 'bg-white border-gray-200 group-hover:border-pink-200'}`}>
                   {profileImageUrl ? (
                     <img 
                       src={profileImageUrl} 
@@ -597,15 +607,27 @@ const Header: React.FC = () => {
                 </div>
                 <div className="hidden sm:flex flex-col items-start overflow-hidden">
                   <span className="text-[10px] text-gray-400 font-bold uppercase tracking-widest leading-none mb-0.5">{userRole}</span>
-                  <span className="text-xs font-bold text-gray-900 truncate max-w-[130px]">{userEmail}</span>
+                  <span className="text-xs font-bold text-gray-900 truncate max-w-[100px] md:max-w-[130px]">{userEmail}</span>
                 </div>
                 <ChevronDown size={14} className={`hidden sm:block text-gray-400 transition-transform duration-300 ml-1 ${isProfileOpen ? 'rotate-180 text-[#D60041]' : 'group-hover:text-gray-600'}`} />
               </div>
+
+              {/* Responsive Quick Sign Out Button in Navbar */}
+              <button
+                type="button"
+                onClick={handleLogout}
+                className="flex lg:hidden items-center space-x-1.5 p-2 sm:px-3 sm:py-2 text-rose-600 hover:text-white hover:bg-[#D60041] border border-rose-200 hover:border-[#D60041] bg-rose-50/80 hover:shadow-xs rounded-xl transition-all duration-200 active:scale-95 cursor-pointer text-xs font-bold shrink-0"
+                title="Sign Out"
+                aria-label="Sign Out"
+              >
+                <LogOut size={16} />
+                <span className="hidden sm:inline">Sign Out</span>
+              </button>
             </>
           )}
 
           {isProfileOpen && !isGuest && (
-            <div className="desktop-dropdown absolute right-0 top-[calc(100%+16px)] w-[calc(100vw-2rem)] sm:w-72 max-w-[288px] bg-white border border-gray-100 rounded-[24px] shadow-2xl py-3 z-[60] animate-in fade-in slide-in-from-top-4 duration-200">
+            <div className="desktop-dropdown absolute right-0 top-[calc(100%+12px)] w-[calc(100vw-2rem)] sm:w-72 max-w-[288px] bg-white border border-gray-100 rounded-[24px] shadow-2xl py-3 z-[60] animate-in fade-in slide-in-from-top-4 duration-200">
               <div className="px-4 sm:px-6 py-4 sm:py-5 border-b border-gray-50 mb-2 flex items-center gap-3 sm:gap-4">
                 <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-2xl overflow-hidden border border-gray-100 shrink-0 bg-gray-50 flex items-center justify-center">
                   {profileImageUrl ? (
@@ -619,13 +641,13 @@ const Header: React.FC = () => {
                   <p className="text-xs sm:text-sm font-bold text-gray-900 truncate">{userEmail}</p>
                 </div>
               </div>
-              <button onClick={() => { navigate(isAdminRole ? '/admin/profile' : isHRRole ? '/hr/profile' : '/candidate/profile'); setIsProfileOpen(false); }} className="w-full text-left px-4 sm:px-6 py-3 sm:py-3.5 text-sm font-bold text-gray-600 hover:bg-gray-50 hover:text-gray-900 flex items-center space-x-4 transition-all group">
+              <button onClick={() => { navigate(isAdminRole ? '/admin/profile' : isHRRole ? '/hr/profile' : '/candidate/profile'); setIsProfileOpen(false); }} className="w-full text-left px-4 sm:px-6 py-3 sm:py-3.5 text-sm font-bold text-gray-600 hover:bg-gray-50 hover:text-gray-900 flex items-center space-x-4 transition-all group cursor-pointer">
                 <User size={18} className="text-gray-400 group-hover:text-gray-600" /> <span>View Profile</span>
               </button>
-              <button onClick={() => { navigate(isAdminRole ? '/admin/settings' : isHRRole ? '/hr/settings' : '/candidate/settings'); setIsProfileOpen(false); }} className="w-full text-left px-4 sm:px-6 py-3 sm:py-3.5 text-sm font-bold text-gray-600 hover:bg-gray-50 hover:text-gray-900 flex items-center space-x-4 transition-all group">
+              <button onClick={() => { navigate(isAdminRole ? '/admin/settings' : isHRRole ? '/hr/settings' : '/candidate/settings'); setIsProfileOpen(false); }} className="w-full text-left px-4 sm:px-6 py-3 sm:py-3.5 text-sm font-bold text-gray-600 hover:bg-gray-50 hover:text-gray-900 flex items-center space-x-4 transition-all group cursor-pointer">
                 <Settings size={18} className="text-gray-400 group-hover:text-gray-600" /> <span>Account Settings</span>
               </button>
-              <button onClick={handleLogout} className="w-full text-left px-4 sm:px-6 py-3 sm:py-3.5 text-sm font-bold text-red-600 hover:bg-red-50 flex items-center space-x-4 transition-all">
+              <button onClick={handleLogout} className="w-full text-left px-4 sm:px-6 py-3 sm:py-3.5 text-sm font-bold text-red-600 hover:bg-red-50 flex items-center space-x-4 transition-all cursor-pointer">
                 <LogOut size={18} /> <span>Secure Sign Out</span>
               </button>
             </div>
