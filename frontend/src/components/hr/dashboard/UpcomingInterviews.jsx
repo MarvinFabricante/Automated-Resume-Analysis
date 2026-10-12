@@ -30,7 +30,7 @@ const UpcomingInterviews = ({ onScheduleClick }) => {
 
     const dateStr = isToday
       ? 'Today'
-      : dateObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric', weekday: 'short' });
+      : dateObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 
     const timeStr = dateObj.toLocaleTimeString('en-US', {
       hour: 'numeric',
@@ -42,24 +42,24 @@ const UpcomingInterviews = ({ onScheduleClick }) => {
   };
 
   return (
-    <div className="bg-white border border-slate-200/80 rounded-2xl sm:rounded-3xl p-5 sm:p-6 shadow-xs flex flex-col justify-between">
+    <div className="bg-white border border-slate-200/80 rounded-2xl sm:rounded-3xl p-4 sm:p-5 lg:p-6 shadow-xs flex flex-col justify-between">
       {/* Header */}
       <div>
-        <div className="flex items-center justify-between pb-4 border-b border-slate-100 mb-4">
+        <div className="flex items-center justify-between pb-3.5 sm:pb-4 border-b border-slate-100 mb-3.5 sm:mb-4">
           <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-xl bg-pink-50 text-[#D60041] flex items-center justify-center font-bold">
-              <Calendar size={18} />
+            <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-pink-50 text-[#D60041] flex items-center justify-center font-bold shrink-0">
+              <Calendar size={16} />
             </div>
             <div>
-              <h3 className="text-base font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
-                Upcoming Interviews
+              <h3 className="text-sm sm:text-base font-extrabold text-slate-900 tracking-tight flex items-center gap-1.5 sm:gap-2">
+                <span>Upcoming Interviews</span>
                 {upcomingInterviews.length > 0 && (
-                  <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-pink-50 text-[#D60041] border border-pink-100">
+                  <span className="text-[9px] sm:text-[10px] font-black px-2 py-0.5 rounded-full bg-pink-50 text-[#D60041] border border-pink-100">
                     {upcomingInterviews.length}
                   </span>
                 )}
               </h3>
-              <p className="text-[11px] text-slate-500 font-medium">Candidate evaluation schedule</p>
+              <p className="text-[10px] sm:text-[11px] text-slate-500 font-medium">Candidate evaluation schedule</p>
             </div>
           </div>
 
