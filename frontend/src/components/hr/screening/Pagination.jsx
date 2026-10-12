@@ -35,12 +35,12 @@ const Pagination = ({
     <div className="flex flex-col sm:flex-row items-center justify-between gap-3 sm:gap-4 mt-6 sm:mt-8 pt-4 sm:pt-6 border-t border-gray-200/80 text-xs text-gray-500 font-medium">
       
       {/* Left: Summary and Page Size */}
-      <div className="flex items-center gap-2.5 sm:gap-3 flex-wrap justify-center sm:justify-start">
+      <div className="flex items-center justify-between sm:justify-start gap-2.5 sm:gap-3 w-full sm:w-auto">
         <span>
           Showing <span className="font-bold text-gray-900">{startItem}</span>–<span className="font-bold text-gray-900">{endItem}</span> of <span className="font-bold text-gray-900">{totalItems}</span>
         </span>
 
-        <span className="text-gray-300">•</span>
+        <span className="text-gray-300 hidden sm:inline">•</span>
 
         <div className="flex items-center gap-1.5">
           <span className="text-gray-400">Rows:</span>
@@ -60,7 +60,7 @@ const Pagination = ({
 
       {/* Right: Page Buttons */}
       {totalPages > 1 && (
-        <div className="flex items-center gap-1">
+        <div className="flex items-center justify-center w-full sm:w-auto gap-1">
           <button
             type="button"
             onClick={() => onPageChange(currentPage - 1)}

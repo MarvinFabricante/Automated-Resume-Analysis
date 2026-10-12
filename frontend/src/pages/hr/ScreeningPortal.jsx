@@ -451,7 +451,7 @@ const ScreeningPortal = () => {
       
       <div className="flex flex-1">
         <Sidebar />
-        <main className="flex-1 w-full max-w-full min-w-0 px-3.5 sm:px-6 md:px-8 lg:px-10 py-5 sm:py-7 md:py-8 animate-in fade-in duration-300 overflow-x-hidden">
+        <main className="flex-1 w-full max-w-full min-w-0 px-3 sm:px-6 md:px-8 lg:px-10 py-4 sm:py-7 md:py-8 animate-in fade-in duration-300 overflow-x-hidden">
           
           {/* Header & KPI Summary */}
           <ScreeningHeader 
@@ -624,7 +624,7 @@ const ScreeningPortal = () => {
       {/* Custom Confirmation Modal */}
       {confirmModal.isOpen && (
         <div className="fixed inset-0 bg-[#0c0d12]/60 backdrop-blur-md flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
-          <div className="bg-white w-full max-w-md rounded-[32px] border border-gray-100 shadow-2xl overflow-hidden p-8 animate-in zoom-in-95 duration-200">
+          <div className="bg-white w-full max-w-md rounded-2xl sm:rounded-[32px] border border-gray-100 shadow-2xl overflow-hidden p-6 sm:p-8 animate-in zoom-in-95 duration-200">
             <div className="flex items-center justify-center w-14 h-14 bg-rose-50 border-2 border-rose-100 rounded-2xl text-rose-600 mb-6 mx-auto">
               <AlertCircle className="w-6 h-6" />
             </div>

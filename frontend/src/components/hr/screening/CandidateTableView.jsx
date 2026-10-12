@@ -108,6 +108,11 @@ const CandidateTableView = ({
 
   return (
     <div className="bg-white rounded-2xl sm:rounded-3xl border border-gray-200/80 shadow-sm overflow-hidden">
+      {/* Mobile Horizontal Scroll Indicator */}
+      <div className="sm:hidden px-3.5 py-2 bg-gray-50/90 border-b border-gray-100 flex items-center justify-between text-[11px] text-gray-500 font-semibold">
+        <span>Table view (scroll right for actions)</span>
+        <span className="text-[#D60041] font-bold">Swipe &rarr;</span>
+      </div>
       <div className="overflow-x-auto scrollbar-thin">
         <table className="w-full text-left border-collapse min-w-[760px]">
           <thead>

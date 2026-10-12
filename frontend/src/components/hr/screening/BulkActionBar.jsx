@@ -63,14 +63,14 @@ const BulkActionBar = ({
       </div>
 
       {/* Right: Actions */}
-      <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+      <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 w-full sm:w-auto">
         {/* Compare Candidates */}
         <button
           type="button"
           onClick={onCompare}
           disabled={selectedCount < 2}
           title={selectedCount < 2 ? "Select at least 2 candidates to compare" : "Compare selected candidates"}
-          className={`flex items-center gap-1.5 px-3 py-1.5 sm:py-2 rounded-xl text-xs font-bold transition-all ${
+          className={`flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3 py-1.5 sm:py-2 rounded-xl text-xs font-bold transition-all h-8.5 sm:h-9 ${
             selectedCount >= 2
               ? 'bg-[#D60041] text-white hover:bg-[#B50037] shadow-sm cursor-pointer'
               : 'bg-gray-800/60 text-gray-500 cursor-not-allowed border border-gray-700/60'
@@ -81,13 +81,13 @@ const BulkActionBar = ({
         </button>
 
         {/* Change Status Dropdown */}
-        <div className="relative" ref={statusMenuRef}>
+        <div className="relative flex-1 sm:flex-none" ref={statusMenuRef}>
           <button
             type="button"
             onClick={() => setStatusMenuOpen(!statusMenuOpen)}
-            className="flex items-center gap-1.5 px-3 py-1.5 sm:py-2 bg-gray-800 hover:bg-gray-700 text-gray-200 border border-gray-700 rounded-xl text-xs font-bold transition-all cursor-pointer"
+            className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 sm:py-2 bg-gray-800 hover:bg-gray-700 text-gray-200 border border-gray-700 rounded-xl text-xs font-bold transition-all cursor-pointer h-8.5 sm:h-9"
           >
-            <span>Update Status</span>
+            <span>Status</span>
             <ChevronDown size={12} className={`transition-transform duration-200 ${statusMenuOpen ? 'rotate-180' : ''}`} />
           </button>
 
@@ -118,7 +118,7 @@ const BulkActionBar = ({
           type="button"
           onClick={onBatchExport}
           title="Export selected candidates to CSV"
-          className="flex items-center gap-1.5 px-3 py-1.5 sm:py-2 bg-gray-800 hover:bg-gray-700 text-gray-200 border border-gray-700 rounded-xl text-xs font-bold transition-all cursor-pointer"
+          className="flex items-center justify-center gap-1.5 px-2.5 sm:px-3 py-1.5 sm:py-2 bg-gray-800 hover:bg-gray-700 text-gray-200 border border-gray-700 rounded-xl text-xs font-bold transition-all cursor-pointer h-8.5 sm:h-9"
         >
           <Download size={13} />
           <span>Export</span>
@@ -129,7 +129,7 @@ const BulkActionBar = ({
           type="button"
           onClick={onBatchArchive}
           title="Archive selected candidates"
-          className="flex items-center gap-1.5 px-3 py-1.5 sm:py-2 bg-gray-800 hover:bg-amber-950/40 text-amber-300 border border-gray-700 hover:border-amber-700/50 rounded-xl text-xs font-bold transition-all cursor-pointer"
+          className="flex items-center justify-center gap-1.5 px-2.5 sm:px-3 py-1.5 sm:py-2 bg-gray-800 hover:bg-amber-950/40 text-amber-300 border border-gray-700 hover:border-amber-700/50 rounded-xl text-xs font-bold transition-all cursor-pointer h-8.5 sm:h-9"
         >
           <Archive size={13} />
           <span className="hidden sm:inline">Archive</span>
@@ -140,7 +140,7 @@ const BulkActionBar = ({
           type="button"
           onClick={onBatchDelete}
           title="Remove selected candidates"
-          className="flex items-center gap-1.5 px-3 py-1.5 sm:py-2 bg-gray-800 hover:bg-rose-950/60 text-rose-300 border border-gray-700 hover:border-rose-800/50 rounded-xl text-xs font-bold transition-all cursor-pointer"
+          className="flex items-center justify-center gap-1.5 px-2.5 sm:px-3 py-1.5 sm:py-2 bg-gray-800 hover:bg-rose-950/60 text-rose-300 border border-gray-700 hover:border-rose-800/50 rounded-xl text-xs font-bold transition-all cursor-pointer h-8.5 sm:h-9"
         >
           <Trash2 size={13} />
           <span className="hidden sm:inline">Remove</span>
