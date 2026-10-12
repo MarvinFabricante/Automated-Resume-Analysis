@@ -447,24 +447,20 @@ const Header = () => {
       <div className="max-w-[1400px] mx-auto flex items-center justify-between">
 
         <div className="flex items-center space-x-2 sm:space-x-3 shrink-0">
-          {/* Sidebar Toggle for Portals (Desktop & Mobile) OR Mobile Menu for Guests */}
+          {/* Mobile Drawer Trigger (Mobile & Tablet only < 1024px) */}
           {hasSidebar ? (
             <button
               type="button"
               onClick={() => dispatch(toggleSidebar())}
-              className={`p-2 sm:p-2.5 rounded-xl transition-all duration-200 active:scale-95 border cursor-pointer ${
+              className={`lg:hidden p-2 sm:p-2.5 rounded-xl transition-all duration-200 active:scale-95 border cursor-pointer ${
                 isSidebarOpen
-                  ? 'bg-slate-100/90 text-slate-800 border-slate-200 hover:bg-slate-200/80 shadow-2xs'
-                  : 'bg-white text-slate-600 border-slate-200 hover:bg-rose-50 hover:text-[#D60041] hover:border-rose-200 shadow-2xs'
+                  ? 'bg-rose-50 text-[#D60041] border-rose-200'
+                  : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
               }`}
-              title={isSidebarOpen ? "Collapse sidebar (Ctrl+B)" : "Expand sidebar (Ctrl+B)"}
-              aria-label={isSidebarOpen ? "Collapse sidebar" : "Expand sidebar"}
+              title="Toggle navigation"
+              aria-label="Toggle navigation"
             >
-              {isSidebarOpen ? (
-                <PanelLeftClose size={20} className="transition-transform duration-200 text-slate-700" />
-              ) : (
-                <PanelLeft size={20} className="transition-transform duration-200 text-slate-700 hover:text-[#D60041]" />
-              )}
+              <Menu size={20} className="transition-transform duration-200" />
             </button>
           ) : (
             <button
