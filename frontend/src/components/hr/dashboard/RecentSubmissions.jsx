@@ -49,39 +49,54 @@ const CandidateCard = ({
     : 'Recent';
 
   return (
-    <div className="flex flex-col lg:flex-row lg:items-center justify-between p-4 sm:p-4.5 bg-white border border-slate-200/80 rounded-2xl hover:border-pink-200/90 hover:shadow-lg transition-all duration-200 group gap-4">
-      {/* Left: Avatar & Info */}
-      <div className="flex items-center gap-3.5 min-w-0 lg:w-[35%]">
-        <div className="relative shrink-0">
-          <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-2xl bg-pink-50 border border-pink-100/80 flex items-center justify-center overflow-hidden group-hover:scale-105 transition-transform duration-200 shadow-inner">
-            {profileImage ? (
-              <img src={getAssetUrl(profileImage)} alt={name} className="w-full h-full object-cover" />
-            ) : (
-              <span className="text-base font-black text-[#D60041]">
-                {(name || 'C').charAt(0).toUpperCase()}
-              </span>
-            )}
+    <div className="flex flex-col lg:flex-row lg:items-center justify-between p-3.5 sm:p-4.5 bg-white border border-slate-200/80 rounded-2xl hover:border-pink-200/90 hover:shadow-lg transition-all duration-200 group gap-3 sm:gap-4">
+      {/* Top / Left: Avatar & Candidate Identity with Mobile Status Badge */}
+      <div className="flex items-start sm:items-center justify-between gap-3 min-w-0 lg:w-[38%]">
+        <div className="flex items-start sm:items-center gap-3 min-w-0 flex-1">
+          <div className="relative shrink-0 mt-0.5 sm:mt-0">
+            <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl bg-pink-50 border border-pink-100/80 flex items-center justify-center overflow-hidden group-hover:scale-105 transition-transform duration-200 shadow-inner">
+              {profileImage ? (
+                <img src={getAssetUrl(profileImage)} alt={name} className="w-full h-full object-cover" />
+              ) : (
+                <span className="text-sm sm:text-base font-black text-[#D60041]">
+                  {(name || 'C').charAt(0).toUpperCase()}
+                </span>
+              )}
+            </div>
+            <span className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-full border-2 border-white ${statusDot[status?.toLowerCase()] || 'bg-amber-400'}`} />
           </div>
-          <span className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-white ${statusDot[status?.toLowerCase()] || 'bg-amber-400'}`} />
+
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+              <h4 className="font-extrabold text-sm sm:text-[15px] text-slate-900 truncate group-hover:text-[#D60041] transition-colors">
+                {name || 'Candidate'}
+              </h4>
+              <span className="text-[9px] sm:text-[10px] font-bold text-slate-400 bg-slate-50 border border-slate-100 px-1.5 py-0.5 rounded-md shrink-0">
+                {formattedDate}
+              </span>
+            </div>
+            <p className="text-[11px] sm:text-xs text-slate-500 font-semibold truncate mt-0.5">
+              {preferredJob || 'General Applicant'}
+            </p>
+            {/* Mobile Skills Snippet */}
+            <div className="flex md:hidden items-center gap-1 mt-1.5 flex-wrap">
+              {skillsList.slice(0, 2).map((skill, i) => (
+                <span key={i} className="px-2 py-0.5 bg-slate-50 rounded text-[9px] font-bold text-slate-500 border border-slate-100 truncate max-w-[120px]">
+                  {skill}
+                </span>
+              ))}
+            </div>
+          </div>
         </div>
 
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            <h4 className="font-extrabold text-sm sm:text-[15px] text-slate-900 truncate group-hover:text-[#D60041] transition-colors">
-              {name || 'Candidate'}
-            </h4>
-            <span className="hidden sm:inline-block text-[10px] font-bold text-slate-400 bg-slate-50 border border-slate-100 px-1.5 py-0.5 rounded-md">
-              {formattedDate}
-            </span>
-          </div>
-          <p className="text-xs text-slate-500 font-semibold truncate mt-0.5">
-            {preferredJob || 'General Applicant'}
-          </p>
-        </div>
+        {/* Mobile-Only Status Pill placed on top right for immediate visual identification */}
+        <span className={`lg:hidden px-2 sm:px-2.5 py-0.5 rounded-xl text-[9px] font-black uppercase tracking-wider border shrink-0 ${statusStyles[status?.toLowerCase()] || statusStyles.pending}`}>
+          {status || 'Pending'}
+        </span>
       </div>
 
-      {/* Middle: Skills & Experience */}
-      <div className="hidden md:flex items-center gap-1.5 flex-wrap lg:w-[30%]">
+      {/* Middle: Skills & Experience on Tablet / Desktop */}
+      <div className="hidden md:flex items-center gap-1.5 flex-wrap lg:w-[28%]">
         {skillsList.slice(0, 3).map((skill, i) => (
           <span 
             key={i} 
@@ -97,31 +112,31 @@ const CandidateCard = ({
         )}
       </div>
 
-      {/* Right: ATS Match Score, Status & Actions */}
-      <div className="flex items-center justify-between lg:justify-end gap-3 sm:gap-4 pt-3 lg:pt-0 border-t lg:border-t-0 border-slate-100">
-        {/* Match Score Badge */}
-        <div className="flex items-center gap-2">
-          <div className={`px-2.5 py-1 rounded-xl bg-gradient-to-br ${scoreBadgeColor} text-center shadow-xs`}>
+      {/* Bottom on Mobile / Right on Desktop: ATS Match Score & Action Buttons */}
+      <div className="flex items-center justify-between lg:justify-end gap-2.5 sm:gap-4 pt-2.5 lg:pt-0 border-t lg:border-t-0 border-slate-100 w-full lg:w-auto">
+        {/* ATS Score & Match Label */}
+        <div className="flex items-center gap-2 min-w-0">
+          <div className={`px-2 sm:px-2.5 py-1 rounded-xl bg-gradient-to-br ${scoreBadgeColor} text-center shadow-xs shrink-0`}>
             <span className="text-xs sm:text-sm font-black leading-none">{score}%</span>
           </div>
-          <div className="hidden sm:flex flex-col">
-            <span className="text-[9px] font-black uppercase tracking-wider text-slate-400">ATS Match</span>
-            <span className="text-[10px] font-bold text-slate-600">
+          <div className="flex flex-col min-w-0">
+            <span className="text-[8.5px] sm:text-[9px] font-black uppercase tracking-wider text-slate-400 leading-none">ATS Match</span>
+            <span className="text-[9.5px] sm:text-[10px] font-bold text-slate-600 mt-0.5 truncate">
               {score >= 80 ? 'High Match' : score >= 60 ? 'Moderate' : 'Basic'}
             </span>
           </div>
         </div>
 
-        {/* Status Pill */}
-        <span className={`px-2.5 sm:px-3 py-1 rounded-xl text-[10px] font-black uppercase tracking-wider border ${statusStyles[status?.toLowerCase()] || statusStyles.pending}`}>
+        {/* Desktop-Only Status Pill */}
+        <span className={`hidden lg:inline-flex px-2.5 sm:px-3 py-1 rounded-xl text-[9px] sm:text-[10px] font-black uppercase tracking-wider border shrink-0 ${statusStyles[status?.toLowerCase()] || statusStyles.pending}`}>
           {status || 'Pending'}
         </span>
 
-        {/* Quick Actions */}
+        {/* Quick Actions (Aligned and evenly proportioned) */}
         <div className="flex items-center gap-1.5 shrink-0">
           <button
             onClick={() => onQuickView(candidate)}
-            className="p-2 bg-slate-50 hover:bg-slate-100 hover:text-slate-900 text-slate-500 rounded-xl transition-colors"
+            className="p-2 bg-slate-50 hover:bg-slate-100 hover:text-slate-900 text-slate-500 rounded-xl transition-colors active:scale-95"
             title="Inspect Candidate ATS Analysis"
           >
             <Eye size={15} />
@@ -129,7 +144,7 @@ const CandidateCard = ({
 
           <button
             onClick={() => onSchedule(candidate)}
-            className="p-2 bg-slate-50 hover:bg-pink-50 hover:text-[#D60041] text-slate-500 rounded-xl transition-colors"
+            className="p-2 bg-slate-50 hover:bg-pink-50 hover:text-[#D60041] text-slate-500 rounded-xl transition-colors active:scale-95"
             title="Schedule Candidate Interview"
           >
             <Calendar size={15} />
@@ -137,7 +152,7 @@ const CandidateCard = ({
 
           <button
             onClick={() => onScreen(candidate)}
-            className="px-3 sm:px-4 py-2 bg-slate-900 hover:bg-[#D60041] text-white rounded-xl text-[11px] font-black uppercase tracking-wider transition-all shadow-xs active:scale-95 flex items-center gap-1"
+            className="px-3 sm:px-4 py-2 bg-slate-900 hover:bg-[#D60041] text-white rounded-xl text-[10px] sm:text-[11px] font-black uppercase tracking-wider transition-all shadow-xs active:scale-95 flex items-center justify-center gap-1"
           >
             <span>Screen</span>
             <ChevronRight size={13} />
@@ -180,19 +195,19 @@ const RecentSubmissions = ({ candidates = [] }) => {
   const displayedList = filteredCandidates.slice(0, 6);
 
   return (
-    <div className="bg-white border border-slate-200/80 rounded-2xl sm:rounded-3xl shadow-xs p-5 sm:p-6 lg:p-7 mb-6 sm:mb-8">
+    <div className="bg-white border border-slate-200/80 rounded-2xl sm:rounded-3xl shadow-xs p-4 sm:p-6 lg:p-7 mb-6 sm:mb-8">
       {/* Header Bar */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center pb-5 mb-5 border-b border-slate-100 gap-4">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center pb-4 mb-4 sm:pb-5 sm:mb-5 border-b border-slate-100 gap-3 sm:gap-4">
         <div>
-          <div className="flex items-center gap-2">
-            <h3 className="text-lg md:text-xl font-extrabold text-slate-900 tracking-tight">
+          <div className="flex items-center gap-2 flex-wrap">
+            <h3 className="text-base sm:text-lg md:text-xl font-extrabold text-slate-900 tracking-tight">
               Recent Submissions
             </h3>
             <span className="text-[10px] font-black px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700">
               {candidates.length} Total
             </span>
           </div>
-          <p className="text-xs text-slate-500 font-medium mt-0.5">
+          <p className="text-[11px] sm:text-xs text-slate-500 font-medium mt-0.5">
             Review incoming candidate applications with automated resume match scoring
           </p>
         </div>
@@ -231,22 +246,23 @@ const RecentSubmissions = ({ candidates = [] }) => {
         {/* Filter Pills */}
         <div className="flex items-center gap-1.5 overflow-x-auto w-full sm:w-auto scrollbar-hide py-1">
           {[
-            { id: 'ALL', label: 'All' },
-            { id: 'HIGH_MATCH', label: 'High Match (≥80%)' },
-            { id: 'PENDING', label: 'Pending' },
-            { id: 'REVIEWED', label: 'Screened' },
-            { id: 'ACCEPTED', label: 'Accepted' },
+            { id: 'ALL', label: 'All', mobileLabel: 'All' },
+            { id: 'HIGH_MATCH', label: 'High Match (≥80%)', mobileLabel: '≥80% Match' },
+            { id: 'PENDING', label: 'Pending', mobileLabel: 'Pending' },
+            { id: 'REVIEWED', label: 'Screened', mobileLabel: 'Screened' },
+            { id: 'ACCEPTED', label: 'Accepted', mobileLabel: 'Accepted' },
           ].map(tab => (
             <button
               key={tab.id}
               onClick={() => setSelectedFilter(tab.id)}
-              className={`px-3 py-1.5 rounded-xl text-[11px] font-bold whitespace-nowrap transition-all ${
+              className={`px-2.5 sm:px-3 py-1.5 rounded-xl text-[10.5px] sm:text-[11px] font-bold whitespace-nowrap transition-all ${
                 selectedFilter === tab.id
                   ? 'bg-slate-900 text-white shadow-xs'
                   : 'bg-slate-50 text-slate-600 hover:bg-slate-100 hover:text-slate-900'
               }`}
             >
-              {tab.label}
+              <span className="sm:hidden">{tab.mobileLabel}</span>
+              <span className="hidden sm:inline">{tab.label}</span>
             </button>
           ))}
         </div>

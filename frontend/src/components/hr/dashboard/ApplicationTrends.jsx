@@ -435,32 +435,32 @@ const ApplicationTrends = ({ applications = [], appStats = {} }) => {
       )}
 
       {/* 1. Main Trends Chart Card */}
-      <div className="bg-white border border-slate-200/80 rounded-2xl sm:rounded-3xl p-6 sm:p-8 lg:p-10 shadow-xs relative overflow-hidden group/container">
+      <div className="bg-white border border-slate-200/80 rounded-2xl sm:rounded-3xl p-4 sm:p-6 lg:p-8 shadow-xs relative overflow-hidden group/container">
         {/* Subtle Ambient Glow */}
         <div className="absolute top-0 right-0 -mr-20 -mt-20 w-80 h-80 bg-pink-50/40 rounded-full blur-3xl pointer-events-none group-hover/container:bg-pink-100/40 transition-colors duration-700" />
 
         {/* Top Header & Interactive Controls */}
-        <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-8 gap-6 relative z-20">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 sm:mb-8 gap-4 sm:gap-6 relative z-20">
           <div>
-            <div className="flex items-center gap-2.5 mb-1.5 flex-wrap">
-              <h3 className="text-xl md:text-2xl font-black tracking-tight text-gray-900">Application Trends</h3>
-              <span className="bg-emerald-50 text-emerald-700 text-[10px] font-black px-2.5 py-0.5 rounded-full flex items-center gap-1.5 border border-emerald-200/80 shadow-xs uppercase tracking-wider">
+            <div className="flex items-center gap-2 mb-1 flex-wrap">
+              <h3 className="text-lg sm:text-xl md:text-2xl font-black tracking-tight text-slate-900">Application Trends</h3>
+              <span className="bg-emerald-50 text-emerald-700 text-[9px] sm:text-[10px] font-black px-2 sm:px-2.5 py-0.5 rounded-full flex items-center gap-1 border border-emerald-200/80 shadow-xs uppercase tracking-wider">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                 Live Sync
               </span>
             </div>
-            <p className="text-xs md:text-sm text-gray-500 font-semibold tracking-tight">
-              Submission volume analysis • <span className="font-bold text-gray-700">{startDateLabel} — {endDateLabel}</span>
+            <p className="text-[11px] sm:text-xs md:text-sm text-slate-500 font-semibold tracking-tight">
+              Submission volume analysis • <span className="font-bold text-slate-700">{startDateLabel} — {endDateLabel}</span>
             </p>
           </div>
 
-          <div className="flex items-center gap-2.5 flex-wrap w-full lg:w-auto justify-between lg:justify-end">
+          <div className="flex items-center gap-2 flex-wrap w-full sm:w-auto justify-between sm:justify-end">
             {/* Range Selector Buttons (7D, 14D, 30D) */}
-            <div className="inline-flex bg-gray-50 p-1 rounded-2xl border border-gray-100">
+            <div className="inline-flex bg-slate-50 p-1 rounded-2xl border border-slate-100">
               {[
-                { id: '7D', label: '7 Days' },
-                { id: '14D', label: '14 Days' },
-                { id: '30D', label: '30 Days' }
+                { id: '7D', label: '7D', full: '7 Days' },
+                { id: '14D', label: '14D', full: '14 Days' },
+                { id: '30D', label: '30D', full: '30 Days' }
               ].map(tab => (
                 <button
                   key={tab.id}
@@ -468,13 +468,14 @@ const ApplicationTrends = ({ applications = [], appStats = {} }) => {
                     setTimeRange(tab.id);
                     setSelectedDay(null);
                   }}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all ${
+                  className={`px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-xl text-[11px] sm:text-xs font-black transition-all ${
                     timeRange === tab.id
-                      ? 'bg-slate-900 text-white shadow-md shadow-slate-900/10'
-                      : 'text-gray-500 hover:text-gray-900 hover:bg-white/80'
+                      ? 'bg-slate-900 text-white shadow-xs'
+                      : 'text-slate-500 hover:text-slate-900 hover:bg-white/80'
                   }`}
                 >
-                  {tab.label}
+                  <span className="sm:hidden">{tab.label}</span>
+                  <span className="hidden sm:inline">{tab.full}</span>
                 </button>
               ))}
             </div>
@@ -622,50 +623,50 @@ const ApplicationTrends = ({ applications = [], appStats = {} }) => {
         </div>
 
         {/* Detailed Metrics Overview Ribbon */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 p-4 sm:p-5 bg-gradient-to-br from-slate-50/80 to-pink-50/20 rounded-2xl sm:rounded-3xl border border-slate-200/70 mb-8 relative z-10">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-pink-100/70 text-[#D60041] flex items-center justify-center shrink-0">
-              <Zap size={18} />
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-4 p-3.5 sm:p-5 bg-gradient-to-br from-slate-50/80 to-pink-50/20 rounded-2xl sm:rounded-3xl border border-slate-200/70 mb-6 sm:mb-8 relative z-10">
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-pink-100/70 text-[#D60041] flex items-center justify-center shrink-0">
+              <Zap size={16} />
             </div>
-            <div>
-              <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Period Peak</p>
-              <p className="text-sm sm:text-base font-black text-gray-900">
-                {maxApps} <span className="text-xs text-gray-500 font-bold">{maxApps === 1 ? 'App' : 'Apps'}</span>
+            <div className="min-w-0">
+              <p className="text-[9px] sm:text-[10px] font-black text-slate-400 uppercase tracking-wider truncate">Period Peak</p>
+              <p className="text-xs sm:text-base font-black text-slate-900 truncate">
+                {maxApps} <span className="text-[10px] sm:text-xs text-slate-500 font-bold">{maxApps === 1 ? 'App' : 'Apps'}</span>
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-blue-100/70 text-blue-600 flex items-center justify-center shrink-0">
-              <TrendingUp size={18} />
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-blue-100/70 text-blue-600 flex items-center justify-center shrink-0">
+              <TrendingUp size={16} />
             </div>
-            <div>
-              <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Daily Average</p>
-              <p className="text-sm sm:text-base font-black text-gray-900">
-                {dailyAverage} <span className="text-xs text-gray-500 font-bold">/ day</span>
+            <div className="min-w-0">
+              <p className="text-[9px] sm:text-[10px] font-black text-slate-400 uppercase tracking-wider truncate">Daily Average</p>
+              <p className="text-xs sm:text-base font-black text-slate-900 truncate">
+                {dailyAverage} <span className="text-[10px] sm:text-xs text-slate-500 font-bold">/ day</span>
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-purple-100/70 text-purple-600 flex items-center justify-center shrink-0">
-              <Briefcase size={18} />
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-purple-100/70 text-purple-600 flex items-center justify-center shrink-0">
+              <Briefcase size={16} />
             </div>
-            <div>
-              <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Window Total</p>
-              <p className="text-sm sm:text-base font-black text-gray-900">
-                {totalAppsInPeriod} <span className="text-xs text-gray-500 font-bold">Total</span>
+            <div className="min-w-0">
+              <p className="text-[9px] sm:text-[10px] font-black text-slate-400 uppercase tracking-wider truncate">Window Total</p>
+              <p className="text-xs sm:text-base font-black text-slate-900 truncate">
+                {totalAppsInPeriod} <span className="text-[10px] sm:text-xs text-slate-500 font-bold">Total</span>
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-emerald-100/70 text-emerald-600 flex items-center justify-center shrink-0">
-              <Activity size={18} />
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-emerald-100/70 text-emerald-600 flex items-center justify-center shrink-0">
+              <Activity size={16} />
             </div>
-            <div>
-              <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Best Day</p>
-              <p className="text-sm sm:text-base font-black text-gray-900 truncate">
+            <div className="min-w-0">
+              <p className="text-[9px] sm:text-[10px] font-black text-slate-400 uppercase tracking-wider truncate">Best Day</p>
+              <p className="text-xs sm:text-base font-black text-slate-900 truncate">
                 {peakDay ? peakDay.date : 'N/A'}
               </p>
             </div>
@@ -717,189 +718,243 @@ const ApplicationTrends = ({ applications = [], appStats = {} }) => {
         )}
 
         {/* 2. Interactive Chart Canvas */}
-        <div className="overflow-x-auto scrollbar-hide pb-8 -mx-2 px-2 relative z-10">
-          <div className="min-w-[650px] h-[320px] relative mt-4 pl-12 pr-4">
-            {/* Y-Axis Labels */}
-            <div className="absolute left-0 top-0 h-full flex flex-col justify-between text-[11px] text-gray-400 font-black tracking-widest py-1 pr-3">
+        <div className="overflow-x-auto scrollbar-hide pb-2 -mx-2 px-2 relative z-10">
+          {timeRange !== '7D' && (
+            <div className="sm:hidden flex items-center justify-between text-[10px] text-slate-400 font-bold mb-1 px-1">
+              <span>Volume Trend ({timeRange})</span>
+              <span>Scroll chart →</span>
+            </div>
+          )}
+
+          <div className={`${
+            timeRange === '7D' 
+              ? 'w-full min-w-0' 
+              : timeRange === '14D' 
+              ? 'min-w-[480px] sm:min-w-[600px]' 
+              : 'min-w-[660px] sm:min-w-[820px]'
+          } h-[260px] sm:h-[300px] relative mt-2 sm:mt-4 flex`}>
+            
+            {/* Sticky Y-Axis Labels (Always pinned on left even when scrolling) */}
+            <div className="w-8 sm:w-10 h-full flex flex-col justify-between text-[10px] sm:text-[11px] text-slate-400 font-black tracking-widest py-1 pr-2 shrink-0 sticky left-0 bg-white/95 backdrop-blur-xs z-20 pb-9 border-r border-slate-100">
               <span>{displayMax}</span>
               <span>{label75}</span>
               <span>{label50}</span>
               <span>{label25}</span>
-              <span className="text-gray-300">0</span>
+              <span className="text-slate-300">0</span>
             </div>
 
-            {/* Optional Gridlines */}
-            {showGrid && (
-              <div className="absolute inset-0 pl-12 flex flex-col justify-between w-full h-full pointer-events-none">
-                {[1, 2, 3, 4, 5].map((i) => (
-                  <div key={i} className="border-t border-gray-100/90 w-full h-px relative" />
-                ))}
-              </div>
-            )}
-
-            {/* A. Bar Chart Visualization Mode */}
-            {chartView === 'bar' && (
-              <div className="w-full h-full flex items-end justify-between relative px-2">
-                {chartData.map((item, index) => {
-                  const isSelected = selectedDay?.date === item.date;
-                  const isHovered = hoveredDay?.date === item.date;
-
-                  return (
-                    <div
-                      key={index}
-                      className="flex flex-col items-center group h-full justify-end relative"
-                      style={{ width: `${Math.max(100 / chartData.length - 2, 2.5)}%` }}
-                      onMouseEnter={() => setHoveredDay(item)}
-                      onMouseLeave={() => setHoveredDay(null)}
-                      onClick={() => handleDayClick(item)}
-                    >
-                      {/* Detailed Tooltip on Hover */}
-                      <div
-                        className={`absolute -top-24 left-1/2 -translate-x-1/2 bg-slate-900 text-white p-3 rounded-2xl transition-all duration-200 pointer-events-none shadow-2xl z-30 min-w-[150px] ${
-                          isHovered ? 'opacity-100 -translate-y-2 scale-100' : 'opacity-0 scale-95 pointer-events-none'
-                        }`}
-                      >
-                        <div className="flex justify-between items-center mb-1">
-                          <span className="text-[10px] text-gray-400 font-bold uppercase">{item.day}, {item.date}</span>
-                          <span className={`text-[9px] font-black px-1.5 py-0.5 rounded ${
-                            item.growth.startsWith('+') ? 'text-emerald-400 bg-emerald-500/20' : 'text-red-400 bg-red-500/20'
-                          }`}>
-                            {item.growth}
-                          </span>
-                        </div>
-                        <div className="text-sm font-black text-white">{item.applications} Applications</div>
-                        <div className="text-[10px] text-gray-400 mt-0.5 font-medium">
-                          {item.percentageOfTotal}% of {timeRange} volume
-                        </div>
-                        <div className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-3 h-3 bg-slate-900 rotate-45" />
-                      </div>
-
-                      {/* Clickable Column Bar */}
-                      <div className="w-full flex flex-col items-center h-full justify-end cursor-pointer">
-                        {item.isPeak && (
-                          <div className="absolute top-0 flex flex-col items-center">
-                            <span className="text-[9px] font-black text-[#D60041] uppercase tracking-tighter bg-pink-50 px-2 py-0.5 rounded-full mb-1 border border-pink-100 shadow-2xs">
-                              Peak
-                            </span>
-                            <div className="w-px h-full bg-gradient-to-b from-[#D60041] to-transparent border-dashed border-l border-pink-300 opacity-60" />
-                          </div>
-                        )}
-
-                        <div
-                          className={`w-full max-w-[44px] rounded-t-[14px] transition-all duration-500 ease-out relative ${
-                            isSelected
-                              ? 'bg-gradient-to-t from-slate-900 to-slate-700 ring-4 ring-slate-300 shadow-xl'
-                              : item.isPeak
-                              ? 'bg-gradient-to-t from-[#D60041] to-[#ff4d7d] shadow-[0_4px_20px_rgba(214,0,65,0.25)]'
-                              : 'bg-gradient-to-t from-gray-100 to-gray-200 group-hover:from-pink-100 group-hover:to-[#D60041] group-hover:shadow-[0_4px_20px_rgba(214,0,65,0.2)]'
-                          }`}
-                          style={{ height: item.height }}
-                        >
-                          {/* Glossy top cap */}
-                          <div className="absolute inset-x-0 top-0 h-1/3 bg-white/20 rounded-t-[14px]" />
-                        </div>
-                      </div>
-
-                      {/* X-Axis Date / Day label */}
-                      <div className="absolute -bottom-8 flex flex-col items-center text-center">
-                        <span className={`text-[11px] font-black tracking-tight transition-colors ${
-                          isSelected ? 'text-[#D60041]' : 'text-gray-900 group-hover:text-[#D60041]'
-                        }`}>
-                          {item.day}
-                        </span>
-                        <span className="text-[9px] text-gray-400 font-bold leading-none mt-0.5 whitespace-nowrap">
-                          {item.date.split(' ')[1] || item.date}
-                        </span>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-
-            {/* B. Area / Line Curve Visualization Mode */}
-            {chartView === 'area' && (
-              <div className="w-full h-full relative">
-                <svg viewBox="0 0 800 240" preserveAspectRatio="none" className="w-full h-full overflow-visible">
-                  <defs>
-                    <linearGradient id="trendGradient" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#D60041" stopOpacity="0.35" />
-                      <stop offset="100%" stopColor="#D60041" stopOpacity="0.0" />
-                    </linearGradient>
-                  </defs>
-
-                  {/* Gradient Area Fill */}
-                  <path d={areaSvgData.area} fill="url(#trendGradient)" />
-
-                  {/* Main Stroke Curve */}
-                  <path
-                    d={areaSvgData.path}
-                    fill="none"
-                    stroke="#D60041"
-                    strokeWidth="3.5"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-
-                  {/* Nodes on each day */}
-                  {areaSvgData.points.map((pt, idx) => {
-                    const isSelected = selectedDay?.date === pt.data.date;
-                    const isPeak = pt.data.isPeak;
-
-                    return (
-                      <g key={idx} className="cursor-pointer" onClick={() => handleDayClick(pt.data)}>
-                        <circle
-                          cx={pt.x}
-                          cy={pt.y}
-                          r={isSelected ? 7 : isPeak ? 6 : 4.5}
-                          fill={isPeak ? '#D60041' : '#ffffff'}
-                          stroke={isPeak ? '#ffffff' : '#D60041'}
-                          strokeWidth={isSelected ? 3 : 2}
-                          className="transition-transform duration-200 hover:scale-150"
-                        />
-                      </g>
-                    );
-                  })}
-                </svg>
-
-                {/* X-Axis Labels beneath area curve */}
-                <div className="w-full flex justify-between absolute -bottom-8 px-1">
-                  {chartData.map((item, idx) => (
-                    <div
-                      key={idx}
-                      onClick={() => handleDayClick(item)}
-                      className="flex flex-col items-center cursor-pointer group text-center"
-                    >
-                      <span className="text-[11px] font-black text-gray-900 group-hover:text-[#D60041]">
-                        {item.day}
-                      </span>
-                      <span className="text-[9px] text-gray-400 font-bold">
-                        {item.date.split(' ')[1] || item.date}
-                      </span>
-                    </div>
+            {/* Main Visual Chart Area */}
+            <div className="flex-1 h-full min-w-0 relative flex flex-col pl-2 sm:pl-3">
+              {/* Optional Gridlines */}
+              {showGrid && (
+                <div className="absolute inset-0 pb-9 flex flex-col justify-between w-full pointer-events-none">
+                  {[1, 2, 3, 4, 5].map((i) => (
+                    <div key={i} className="border-t border-slate-100 w-full h-px relative" />
                   ))}
                 </div>
-              </div>
-            )}
+              )}
+
+              {/* A. Bar Chart Visualization Mode */}
+              {chartView === 'bar' && (
+                <div className="w-full h-full flex flex-col justify-between relative">
+                  {/* Bars Container */}
+                  <div className="w-full flex-1 flex items-end justify-between relative px-1 pb-1 border-b border-slate-100">
+                    {chartData.map((item, index) => {
+                      const isSelected = selectedDay?.date === item.date;
+                      const isHovered = hoveredDay?.date === item.date;
+
+                      return (
+                        <div
+                          key={index}
+                          className="flex flex-col items-center group h-full justify-end relative"
+                          style={{ width: `${Math.max(100 / chartData.length - (timeRange === '7D' ? 3 : 1.5), 2)}%` }}
+                          onMouseEnter={() => setHoveredDay(item)}
+                          onMouseLeave={() => setHoveredDay(null)}
+                          onClick={() => handleDayClick(item)}
+                        >
+                          {/* Detailed Tooltip on Hover */}
+                          <div
+                            className={`absolute -top-24 left-1/2 -translate-x-1/2 bg-slate-900 text-white p-3 rounded-2xl transition-all duration-200 pointer-events-none shadow-2xl z-30 min-w-[140px] ${
+                              isHovered ? 'opacity-100 -translate-y-2 scale-100' : 'opacity-0 scale-95 pointer-events-none'
+                            }`}
+                          >
+                            <div className="flex justify-between items-center mb-1">
+                              <span className="text-[10px] text-gray-400 font-bold uppercase">{item.day}, {item.date}</span>
+                              <span className={`text-[9px] font-black px-1.5 py-0.5 rounded ${
+                                item.growth.startsWith('+') ? 'text-emerald-400 bg-emerald-500/20' : 'text-red-400 bg-red-500/20'
+                              }`}>
+                                {item.growth}
+                              </span>
+                            </div>
+                            <div className="text-sm font-black text-white">{item.applications} Applications</div>
+                            <div className="text-[10px] text-gray-400 mt-0.5 font-medium">
+                              {item.percentageOfTotal}% of window
+                            </div>
+                            <div className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-3 h-3 bg-slate-900 rotate-45" />
+                          </div>
+
+                          {/* Clickable Column Bar */}
+                          <div className="w-full flex flex-col items-center h-full justify-end cursor-pointer">
+                            {item.isPeak && (
+                              <div className="absolute top-0 flex flex-col items-center">
+                                <span className="text-[8.5px] font-black text-[#D60041] uppercase tracking-tighter bg-pink-50 px-1.5 py-0.5 rounded-full mb-1 border border-pink-100 shadow-2xs">
+                                  Peak
+                                </span>
+                                <div className="w-px h-full bg-gradient-to-b from-[#D60041] to-transparent border-dashed border-l border-pink-300 opacity-60" />
+                              </div>
+                            )}
+
+                            <div
+                              className={`w-full max-w-[28px] sm:max-w-[40px] rounded-t-[10px] sm:rounded-t-[14px] transition-all duration-500 ease-out relative ${
+                                isSelected
+                                  ? 'bg-gradient-to-t from-slate-900 to-slate-700 ring-4 ring-slate-300 shadow-xl'
+                                  : item.isPeak
+                                  ? 'bg-gradient-to-t from-[#D60041] to-[#ff4d7d] shadow-[0_4px_20px_rgba(214,0,65,0.25)]'
+                                  : 'bg-gradient-to-t from-gray-100 to-gray-200 group-hover:from-pink-100 group-hover:to-[#D60041] group-hover:shadow-[0_4px_20px_rgba(214,0,65,0.2)]'
+                              }`}
+                              style={{ height: item.height }}
+                            >
+                              {/* Glossy top cap */}
+                              <div className="absolute inset-x-0 top-0 h-1/3 bg-white/20 rounded-t-[10px] sm:rounded-t-[14px]" />
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Dedicated X-Axis Date / Day Labels in Document Flow */}
+                  <div className="h-9 w-full flex items-center justify-between px-1 pt-1 shrink-0">
+                    {chartData.map((item, index) => {
+                      const isSelected = selectedDay?.date === item.date;
+                      const showLabel = 
+                        timeRange === '7D' || 
+                        (timeRange === '14D' && (index % 2 === 0 || index === chartData.length - 1)) ||
+                        (timeRange === '30D' && (index % 5 === 0 || index === chartData.length - 1));
+
+                      return (
+                        <div
+                          key={index}
+                          onClick={() => handleDayClick(item)}
+                          className={`flex flex-col items-center justify-center text-center cursor-pointer transition-colors ${
+                            showLabel ? 'visible' : 'invisible'
+                          }`}
+                          style={{ width: `${Math.max(100 / chartData.length - (timeRange === '7D' ? 3 : 1.5), 2)}%` }}
+                        >
+                          <span className={`text-[10px] sm:text-[11px] font-black tracking-tight leading-none ${
+                            isSelected ? 'text-[#D60041]' : 'text-slate-900 group-hover:text-[#D60041]'
+                          }`}>
+                            {item.day}
+                          </span>
+                          <span className="text-[8px] sm:text-[9px] text-slate-400 font-bold leading-none mt-0.5 whitespace-nowrap">
+                            {item.date.split(' ')[1] || item.date}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* B. Area / Line Curve Visualization Mode */}
+              {chartView === 'area' && (
+                <div className="w-full h-full flex flex-col justify-between relative">
+                  {/* Curve Drawing Area */}
+                  <div className="w-full flex-1 relative border-b border-slate-100 pb-1">
+                    <svg viewBox="0 0 800 240" preserveAspectRatio="none" className="w-full h-full overflow-visible">
+                      <defs>
+                        <linearGradient id="trendGradient" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor="#D60041" stopOpacity="0.35" />
+                          <stop offset="100%" stopColor="#D60041" stopOpacity="0.0" />
+                        </linearGradient>
+                      </defs>
+
+                      {/* Gradient Area Fill */}
+                      <path d={areaSvgData.area} fill="url(#trendGradient)" />
+
+                      {/* Main Stroke Curve */}
+                      <path
+                        d={areaSvgData.path}
+                        fill="none"
+                        stroke="#D60041"
+                        strokeWidth="3.5"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+
+                      {/* Nodes on each day */}
+                      {areaSvgData.points.map((pt, idx) => {
+                        const isSelected = selectedDay?.date === pt.data.date;
+                        const isPeak = pt.data.isPeak;
+
+                        return (
+                          <g key={idx} className="cursor-pointer" onClick={() => handleDayClick(pt.data)}>
+                            <circle
+                              cx={pt.x}
+                              cy={pt.y}
+                              r={isSelected ? 7 : isPeak ? 6 : 4.5}
+                              fill={isPeak ? '#D60041' : '#ffffff'}
+                              stroke={isPeak ? '#ffffff' : '#D60041'}
+                              strokeWidth={isSelected ? 3 : 2}
+                              className="transition-transform duration-200 hover:scale-150"
+                            />
+                          </g>
+                        );
+                      })}
+                    </svg>
+                  </div>
+
+                  {/* Dedicated X-Axis Labels beneath area curve */}
+                  <div className="h-9 w-full flex items-center justify-between px-1 pt-1 shrink-0">
+                    {chartData.map((item, idx) => {
+                      const isSelected = selectedDay?.date === item.date;
+                      const showLabel = 
+                        timeRange === '7D' || 
+                        (timeRange === '14D' && (idx % 2 === 0 || idx === chartData.length - 1)) ||
+                        (timeRange === '30D' && (idx % 5 === 0 || idx === chartData.length - 1));
+
+                      return (
+                        <div
+                          key={idx}
+                          onClick={() => handleDayClick(item)}
+                          className={`flex flex-col items-center justify-center text-center cursor-pointer transition-colors ${
+                            showLabel ? 'visible' : 'invisible'
+                          }`}
+                        >
+                          <span className={`text-[10px] sm:text-[11px] font-black leading-none ${
+                            isSelected ? 'text-[#D60041]' : 'text-slate-900 hover:text-[#D60041]'
+                          }`}>
+                            {item.day}
+                          </span>
+                          <span className="text-[8px] sm:text-[9px] text-slate-400 font-bold leading-none mt-0.5 whitespace-nowrap">
+                            {item.date.split(' ')[1] || item.date}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
         {/* Footer Meta Details */}
-        <div className="mt-14 flex flex-wrap items-center justify-between gap-4 pt-6 border-t border-gray-50 relative z-10 text-xs">
-          <div className="flex items-center gap-4 flex-wrap">
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded-full bg-gradient-to-br from-pink-400 to-[#D60041]" />
-              <span className="text-gray-600 font-bold">Total Submissions</span>
+        <div className="mt-6 sm:mt-8 flex flex-wrap items-center justify-between gap-3 pt-4 sm:pt-6 border-t border-slate-100 relative z-10 text-xs">
+          <div className="flex items-center gap-3 sm:gap-4 flex-wrap">
+            <div className="flex items-center gap-1.5 sm:gap-2">
+              <div className="w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-full bg-gradient-to-br from-pink-400 to-[#D60041]" />
+              <span className="text-slate-600 font-bold text-[11px] sm:text-xs">Submissions</span>
             </div>
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded-full bg-slate-900" />
-              <span className="text-gray-500 font-semibold">Selected Data Node</span>
+            <div className="flex items-center gap-1.5 sm:gap-2">
+              <div className="w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-full bg-slate-900" />
+              <span className="text-slate-500 font-semibold text-[11px] sm:text-xs">Selected Node</span>
             </div>
           </div>
 
-          <div className="flex items-center gap-2 text-gray-400 font-semibold">
-            <Calendar size={14} className="text-gray-400" />
-            <span>Updated: {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+          <div className="flex items-center gap-1.5 text-slate-400 font-semibold text-[10px] sm:text-xs">
+            <Calendar size={13} className="text-slate-400" />
+            <span>Updated: Live sync</span>
           </div>
         </div>
       </div>
@@ -907,29 +962,29 @@ const ApplicationTrends = ({ applications = [], appStats = {} }) => {
       {/* 3. Distribution Breakdown & Dynamic Hiring Insights Section */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Left 2 Cols: Distribution Card (Switchable by Dept / by Status) */}
-        <div className="lg:col-span-2 bg-white border border-slate-200/80 rounded-2xl sm:rounded-3xl p-6 sm:p-8 shadow-xs group/pie relative overflow-hidden flex flex-col justify-between">
+        <div className="lg:col-span-2 bg-white border border-slate-200/80 rounded-2xl sm:rounded-3xl p-4 sm:p-6 lg:p-8 shadow-xs group/pie relative overflow-hidden flex flex-col justify-between">
           <div className="absolute bottom-0 left-0 -ml-16 -mb-16 w-56 h-56 bg-blue-50/40 rounded-full blur-3xl pointer-events-none" />
 
           {/* Distribution Header & Tab Toggle */}
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8 gap-4 relative z-10">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 sm:mb-8 gap-3 sm:gap-4 relative z-10">
             <div>
-              <h3 className="text-xl font-black tracking-tight text-gray-900 flex items-center gap-2.5">
-                <PieIcon size={20} className="text-[#D60041]" />
+              <h3 className="text-lg sm:text-xl font-black tracking-tight text-slate-900 flex items-center gap-2">
+                <PieIcon size={18} className="text-[#D60041]" />
                 Application Distribution
               </h3>
-              <p className="text-xs text-gray-400 font-bold uppercase tracking-wider mt-1">
-                {distributionTab === 'department' ? 'Categorized by Department' : 'Categorized by Application Pipeline Status'}
+              <p className="text-[10px] sm:text-xs text-slate-400 font-bold uppercase tracking-wider mt-0.5 sm:mt-1">
+                {distributionTab === 'department' ? 'Categorized by Department' : 'Categorized by Pipeline Status'}
               </p>
             </div>
 
             {/* Segmented Switcher Button */}
-            <div className="inline-flex bg-gray-50 p-1 rounded-2xl border border-gray-100 self-end sm:self-auto">
+            <div className="inline-flex bg-slate-50 p-1 rounded-2xl border border-slate-100 self-end sm:self-auto">
               <button
                 onClick={() => setDistributionTab('department')}
                 className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all ${
                   distributionTab === 'department'
-                    ? 'bg-white text-slate-900 shadow-sm'
-                    : 'text-gray-400 hover:text-gray-700'
+                    ? 'bg-white text-slate-900 shadow-xs'
+                    : 'text-slate-400 hover:text-slate-700'
                 }`}
               >
                 Department
@@ -938,8 +993,8 @@ const ApplicationTrends = ({ applications = [], appStats = {} }) => {
                 onClick={() => setDistributionTab('status')}
                 className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all ${
                   distributionTab === 'status'
-                    ? 'bg-white text-slate-900 shadow-sm'
-                    : 'text-gray-400 hover:text-gray-700'
+                    ? 'bg-white text-slate-900 shadow-xs'
+                    : 'text-slate-400 hover:text-slate-700'
                 }`}
               >
                 Status
@@ -948,12 +1003,12 @@ const ApplicationTrends = ({ applications = [], appStats = {} }) => {
           </div>
 
           {/* Interactive Donut & Legend Items */}
-          <div className="flex flex-col md:flex-row items-center justify-around gap-8 sm:gap-12 relative z-10 my-auto">
+          <div className="flex flex-col md:flex-row items-center justify-around gap-6 sm:gap-10 relative z-10 my-auto">
             {/* Donut Chart */}
-            <div className="relative w-44 h-44 sm:w-52 sm:h-52 shrink-0">
-              <div className="absolute inset-0 rounded-full border-[18px] border-gray-50" />
+            <div className="relative w-36 h-36 sm:w-48 sm:h-48 shrink-0 my-2">
+              <div className="absolute inset-0 rounded-full border-[14px] sm:border-[18px] border-slate-50" />
               <div
-                className="absolute inset-0 rounded-full border-[18px] transition-transform duration-700 group-hover/pie:scale-105"
+                className="absolute inset-0 rounded-full border-[14px] sm:border-[18px] transition-transform duration-700 group-hover/pie:scale-105"
                 style={{
                   borderImageSource: conicGradientString,
                   borderImageSlice: 1,
@@ -961,21 +1016,21 @@ const ApplicationTrends = ({ applications = [], appStats = {} }) => {
                   background: conicGradientString,
                   WebkitMask: 'linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0)',
                   WebkitMaskComposite: 'xor',
-                  padding: '18px'
+                  padding: '16px'
                 }}
               />
               <div className="absolute inset-0 flex flex-col items-center justify-center">
-                <span className="text-3xl font-black text-gray-900 leading-none">
+                <span className="text-2xl sm:text-3xl font-black text-slate-900 leading-none">
                   {totalBackendApps}
                 </span>
-                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mt-1">
+                <span className="text-[9px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-wider mt-1">
                   Total Apps
                 </span>
               </div>
             </div>
 
             {/* List with Click-to-Filter */}
-            <div className="flex-grow w-full space-y-3.5">
+            <div className="flex-grow w-full space-y-2.5 sm:space-y-3">
               {activeDistribution.map((item, idx) => (
                 <div
                   key={idx}
@@ -986,22 +1041,21 @@ const ApplicationTrends = ({ applications = [], appStats = {} }) => {
                       navigate('/hr/screeningportal');
                     }
                   }}
-                  className="p-2.5 -mx-2.5 rounded-2xl hover:bg-slate-50 transition-all cursor-pointer group/row border border-transparent hover:border-gray-100"
+                  className="p-2 sm:p-2.5 rounded-xl sm:rounded-2xl hover:bg-slate-50 transition-all cursor-pointer group/row border border-transparent hover:border-slate-100"
                   title="Click to view applicants in screening portal"
                 >
-                  <div className="flex justify-between items-center mb-1.5">
-                    <div className="flex items-center gap-2.5">
+                  <div className="flex justify-between items-center mb-1 sm:mb-1.5 gap-2">
+                    <div className="flex items-center gap-2 min-w-0">
                       <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: item.color }} />
-                      <span className="text-xs sm:text-sm font-bold text-gray-700 group-hover/row:text-[#D60041] transition-colors flex items-center gap-1.5">
+                      <span className="text-xs sm:text-sm font-bold text-slate-700 group-hover/row:text-[#D60041] transition-colors truncate">
                         {item.label}
-                        <ArrowUpRight size={12} className="opacity-0 group-hover/row:opacity-100 text-[#D60041] transition-opacity" />
                       </span>
                     </div>
-                    <span className="text-xs sm:text-sm font-black text-gray-900">
-                      {item.percentage} <span className="text-gray-400 font-bold">({item.value})</span>
+                    <span className="text-xs sm:text-sm font-black text-slate-900 shrink-0">
+                      {item.percentage} <span className="text-slate-400 font-bold">({item.value})</span>
                     </span>
                   </div>
-                  <div className="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                  <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
                     <div
                       className="h-full rounded-full transition-all duration-1000 ease-out"
                       style={{ width: item.percentage, backgroundColor: item.color }}
@@ -1012,11 +1066,11 @@ const ApplicationTrends = ({ applications = [], appStats = {} }) => {
             </div>
           </div>
 
-          <div className="mt-6 pt-4 border-t border-gray-50 flex items-center justify-between text-xs text-gray-400 relative z-10">
-            <span className="font-medium">Click any category to open matching candidates</span>
+          <div className="mt-5 pt-3.5 border-t border-slate-100 flex items-center justify-between text-[11px] sm:text-xs text-slate-400 relative z-10">
+            <span className="font-medium truncate mr-2">Tap any category to filter applicants</span>
             <button
               onClick={() => navigate('/hr/screeningportal')}
-              className="text-[#D60041] font-bold hover:underline flex items-center gap-1"
+              className="text-[#D60041] font-bold hover:underline flex items-center gap-1 shrink-0"
             >
               <span>View All</span>
               <ChevronRight size={14} />
@@ -1025,54 +1079,54 @@ const ApplicationTrends = ({ applications = [], appStats = {} }) => {
         </div>
 
         {/* Right Col: Intelligent Recruitment Action Card */}
-        <div className="bg-gradient-to-br from-[#D60041] via-[#c2003b] to-[#8f0029] rounded-2xl sm:rounded-3xl p-6 sm:p-8 text-white shadow-xl shadow-pink-900/15 relative overflow-hidden flex flex-col justify-between">
+        <div className="bg-gradient-to-br from-[#D60041] via-[#c2003b] to-[#8f0029] rounded-2xl sm:rounded-3xl p-4 sm:p-6 lg:p-8 text-white shadow-xl shadow-pink-900/15 relative overflow-hidden flex flex-col justify-between">
           <div className="absolute top-0 right-0 p-8 opacity-15 pointer-events-none">
             <Briefcase size={100} />
           </div>
 
           <div className="relative z-10">
-            <div className="flex items-center justify-between mb-5">
-              <div className="bg-white/20 backdrop-blur-md w-11 h-11 rounded-2xl flex items-center justify-center shadow-inner">
-                <Sparkles size={20} className="text-pink-100" />
+            <div className="flex items-center justify-between mb-3.5 sm:mb-5">
+              <div className="bg-white/20 backdrop-blur-md w-9 h-9 sm:w-11 sm:h-11 rounded-xl sm:rounded-2xl flex items-center justify-center shadow-inner">
+                <Sparkles size={16} className="text-pink-100" />
               </div>
-              <span className="text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-full bg-white/15 border border-white/20 backdrop-blur-md">
+              <span className="text-[8.5px] sm:text-[10px] font-black uppercase tracking-widest px-2 sm:px-3 py-0.5 sm:py-1 rounded-full bg-white/15 border border-white/20 backdrop-blur-md">
                 {recommendation.badge}
               </span>
             </div>
 
-            <h4 className="text-2xl font-black tracking-tight mb-2.5 leading-tight">
+            <h4 className="text-lg sm:text-2xl font-black tracking-tight mb-2 sm:mb-2.5 leading-tight">
               {recommendation.title}
             </h4>
 
-            <p className="text-white/90 text-xs sm:text-sm font-medium leading-relaxed mb-6">
+            <p className="text-white/90 text-xs sm:text-sm font-medium leading-relaxed mb-4 sm:mb-6">
               {recommendation.description}
             </p>
 
             {/* Quick KPI Chips */}
-            <div className="grid grid-cols-3 gap-2.5 mb-6">
-              <div className="bg-black/15 backdrop-blur-md border border-white/10 rounded-2xl p-2.5 text-center">
-                <span className="text-[9px] uppercase font-black tracking-wider text-pink-200/90 block mb-0.5">Queue</span>
-                <span className="text-base font-black text-white">{pendingCount}</span>
+            <div className="grid grid-cols-3 gap-2 mb-4 sm:mb-5">
+              <div className="bg-black/15 backdrop-blur-md border border-white/10 rounded-xl sm:rounded-2xl p-2 sm:p-2.5 text-center min-w-0">
+                <span className="text-[8px] sm:text-[9px] uppercase font-black tracking-wider text-pink-200/90 block mb-0.5 truncate">Queue</span>
+                <span className="text-sm sm:text-base font-black text-white">{pendingCount}</span>
               </div>
-              <div className="bg-black/15 backdrop-blur-md border border-white/10 rounded-2xl p-2.5 text-center">
-                <span className="text-[9px] uppercase font-black tracking-wider text-pink-200/90 block mb-0.5">Top Match</span>
-                <span className="text-base font-black text-white">{topMatchScore > 0 ? `${topMatchScore}%` : 'N/A'}</span>
+              <div className="bg-black/15 backdrop-blur-md border border-white/10 rounded-xl sm:rounded-2xl p-2 sm:p-2.5 text-center min-w-0">
+                <span className="text-[8px] sm:text-[9px] uppercase font-black tracking-wider text-pink-200/90 block mb-0.5 truncate">Top Match</span>
+                <span className="text-sm sm:text-base font-black text-white">{topMatchScore > 0 ? `${topMatchScore}%` : 'N/A'}</span>
               </div>
-              <div className="bg-black/15 backdrop-blur-md border border-white/10 rounded-2xl p-2.5 text-center truncate">
-                <span className="text-[9px] uppercase font-black tracking-wider text-pink-200/90 block mb-0.5">Focus</span>
-                <span className="text-[11px] font-black text-white truncate block">{topDepartment}</span>
+              <div className="bg-black/15 backdrop-blur-md border border-white/10 rounded-xl sm:rounded-2xl p-2 sm:p-2.5 text-center min-w-0">
+                <span className="text-[8px] sm:text-[9px] uppercase font-black tracking-wider text-pink-200/90 block mb-0.5 truncate">Focus</span>
+                <span className="text-[10px] sm:text-[11px] font-black text-white truncate block">{topDepartment}</span>
               </div>
             </div>
           </div>
 
           {/* Targeted Action Button */}
-          <div className="relative z-10 pt-2">
+          <div className="relative z-10 pt-1">
             <button
               onClick={() => navigate(recommendation.targetUrl)}
-              className="w-full bg-white hover:bg-pink-50 text-[#D60041] py-3.5 px-5 rounded-2xl font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition-all shadow-lg shadow-black/15 active:scale-95 group"
+              className="w-full bg-white hover:bg-pink-50 text-[#D60041] py-3 sm:py-3.5 px-4 sm:px-5 rounded-2xl font-black text-[11px] sm:text-xs uppercase tracking-wider flex items-center justify-center gap-1.5 sm:gap-2 transition-all shadow-lg shadow-black/15 active:scale-95 group text-center leading-tight"
             >
-              <span>{recommendation.buttonLabel}</span>
-              <ChevronRight size={16} className="group-hover:translate-x-1 transition-transform" />
+              <span className="truncate">{recommendation.buttonLabel}</span>
+              <ChevronRight size={16} className="group-hover:translate-x-1 transition-transform shrink-0" />
             </button>
           </div>
         </div>
