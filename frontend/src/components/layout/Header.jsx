@@ -4,7 +4,8 @@ import {
   ChevronDown, LayoutDashboard, Users, Database, ShieldCheck, LogOut,
   Settings, Menu, X, FileText, Search, User, Building2, Info, Briefcase, LogIn, UserPlus,
   Bell, Clock, CheckCircle2, AlertCircle, MessageSquare, ChevronRight,
-  TrendingUp, Zap, Radio, Edit3, Calendar, Home, Scale, Lock
+  TrendingUp, Zap, Radio, Edit3, Calendar, Home, Scale, Lock,
+  PanelLeft, PanelLeftClose
 } from 'lucide-react';
 import NotificationDropdown from './NotificationDropdown';
 import notificationService from '../../services/notificationService';
@@ -339,6 +340,7 @@ const Header = () => {
     location.pathname === '/careerspage/';
 
   const isHRPage = location.pathname.startsWith('/hr');
+  const hasSidebar = !isGuest && !isPublicSitePage && !isApplicationPage;
 
   const handleLogout = () => {
     dispatch(logoutAction());
@@ -354,14 +356,25 @@ const Header = () => {
     setIsMobileNotifsOpen(false);
   }, [location.pathname]);
 
-  // Handle escape key and window resize
+  // Handle escape key, shortcut Ctrl+B, and window resize
   useEffect(() => {
     const handleKeyDown = (e) => {
+      // Toggle sidebar shortcut Ctrl+B / Cmd+B
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'b') {
+        if (hasSidebar) {
+          e.preventDefault();
+          dispatch(toggleSidebar());
+        }
+      }
+
       if (e.key === 'Escape') {
         setIsMobileMenuOpen(false);
         setIsProfileOpen(false);
         setIsNotificationsOpen(false);
         setIsMobileNotifsOpen(false);
+        if (window.innerWidth < 1024) {
+          dispatch(closeSidebar());
+        }
       }
     };
     const handleResize = () => {
@@ -375,7 +388,7 @@ const Header = () => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('resize', handleResize);
     };
-  }, []);
+  }, [hasSidebar, dispatch]);
 
   // Handle click outside to close dropdowns and mobile menu
   useEffect(() => {
@@ -433,32 +446,46 @@ const Header = () => {
     <header className="main-header relative bg-white border-b border-gray-100 px-4 sm:px-6 md:px-10 py-3 sm:py-4 sticky top-0 z-50 font-sans shadow-sm transition-colors duration-200">
       <div className="max-w-[1400px] mx-auto flex items-center justify-between">
 
-        <div className="flex items-center space-x-2 sm:space-x-4 shrink-0">
-          <button
-            ref={hamburgerBtnRef}
-            className={`lg:hidden relative p-2 sm:p-2.5 rounded-xl transition-all active:scale-95 -ml-1 ${isMobileMenuOpen
-                ? 'bg-red-50 text-[#D60041]'
-                : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+        <div className="flex items-center space-x-2 sm:space-x-3 shrink-0">
+          {/* Sidebar Toggle for Portals (Desktop & Mobile) OR Mobile Menu for Guests */}
+          {hasSidebar ? (
+            <button
+              type="button"
+              onClick={() => dispatch(toggleSidebar())}
+              className={`p-2 sm:p-2.5 rounded-xl transition-all duration-200 active:scale-95 border cursor-pointer ${
+                isSidebarOpen
+                  ? 'bg-slate-100/90 text-slate-800 border-slate-200 hover:bg-slate-200/80 shadow-2xs'
+                  : 'bg-white text-slate-600 border-slate-200 hover:bg-rose-50 hover:text-[#D60041] hover:border-rose-200 shadow-2xs'
               }`}
-            onClick={() => {
-              if (isAdminRole && !isPublicSitePage && !isApplicationPage && !isHRPage) {
-                dispatch(isSidebarOpen ? closeSidebar() : toggleSidebar());
-              } else {
-                setIsMobileMenuOpen(!isMobileMenuOpen);
-              }
-            }}
-            aria-label={isMobileMenuOpen ? "Close navigation menu" : "Open navigation menu"}
-            aria-expanded={isMobileMenuOpen}
-          >
-            {isMobileMenuOpen ? (
-              <X size={22} className="transition-transform duration-200" />
-            ) : (
-              <Menu size={22} className="transition-transform duration-200" />
-            )}
-            {!isMobileMenuOpen && unreadCount > 0 && !isGuest && (
-              <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-[#D60041] rounded-full border-2 border-white animate-pulse" />
-            )}
-          </button>
+              title={isSidebarOpen ? "Collapse sidebar (Ctrl+B)" : "Expand sidebar (Ctrl+B)"}
+              aria-label={isSidebarOpen ? "Collapse sidebar" : "Expand sidebar"}
+            >
+              {isSidebarOpen ? (
+                <PanelLeftClose size={20} className="transition-transform duration-200 text-slate-700" />
+              ) : (
+                <PanelLeft size={20} className="transition-transform duration-200 text-slate-700 hover:text-[#D60041]" />
+              )}
+            </button>
+          ) : (
+            <button
+              ref={hamburgerBtnRef}
+              type="button"
+              className={`lg:hidden relative p-2 sm:p-2.5 rounded-xl transition-all active:scale-95 -ml-1 cursor-pointer ${
+                isMobileMenuOpen
+                  ? 'bg-red-50 text-[#D60041]'
+                  : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+              }`}
+              onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+              aria-label={isMobileMenuOpen ? "Close navigation menu" : "Open navigation menu"}
+              aria-expanded={isMobileMenuOpen}
+            >
+              {isMobileMenuOpen ? (
+                <X size={22} className="transition-transform duration-200" />
+              ) : (
+                <Menu size={22} className="transition-transform duration-200" />
+              )}
+            </button>
+          )}
 
           <div className="flex items-center space-x-2 sm:space-x-4 cursor-pointer group" onClick={() => navigate(isGuest ? '/' : location.pathname)}>
             <div className={`w-8 h-8 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center overflow-hidden transition-all duration-300 ${!isGuest && 'group-hover:shadow-[0_0_15px_rgba(209,0,67,0.3)]'}`}>
