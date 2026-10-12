@@ -14,6 +14,7 @@ import { logout as logoutAction, updateProfileImage } from '../../redux/slices/a
 import { setNotifications, addNotification, markAllRead as markAllReadAction } from '../../redux/slices/notificationSlice';
 import { closeSidebar, toggleSidebar } from '../../redux/slices/uiSlice';
 import { WS_BASE_URL } from '../../services/api';
+import { formatNotificationTime } from '../../utils/notificationUtils';
 import logo from '../../assets/logo.png';
 
 const BRAND_RED = "#D60041";
@@ -99,20 +100,19 @@ const Header = () => {
               textColor = 'text-purple-600';
             }
 
-            const created = new Date(n.created_at);
-            const now = new Date();
-            const diffMs = now - created;
-            const diffMins = Math.floor(diffMs / 60000);
-            let timeStr = 'just now';
-            if (diffMins > 0 && diffMins < 60) timeStr = `${diffMins}m ago`;
-            else if (diffMins >= 60 && diffMins < 1440) timeStr = `${Math.floor(diffMins / 60)}h ago`;
-            else if (diffMins >= 1440) timeStr = `${Math.floor(diffMins / 1440)}d ago`;
+            const timeInfo = formatNotificationTime(n.created_at);
 
             return {
               id: n.id,
               title: n.title,
               desc: isAdminRole && n.sender_role ? `[Sender: ${n.sender_role}] ${n.message}` : n.message,
-              time: timeStr,
+              time: timeInfo.relativeTime,
+              relativeTime: timeInfo.relativeTime,
+              timeStr: timeInfo.timeStr,
+              dateStr: timeInfo.dateStr,
+              displayDateTime: timeInfo.displayDateTime,
+              fullDateTime: timeInfo.fullDateTime,
+              createdAt: timeInfo.date,
               type: n.type,
               icon: iconName,
               bgColor,
@@ -169,20 +169,19 @@ const Header = () => {
               }
             }
 
-            const created = new Date(n.created_at);
-            const now = new Date();
-            const diffMs = now - created;
-            const diffMins = Math.floor(diffMs / 60000);
-            let timeStr = 'just now';
-            if (diffMins > 0 && diffMins < 60) timeStr = `${diffMins}m ago`;
-            else if (diffMins >= 60 && diffMins < 1440) timeStr = `${Math.floor(diffMins / 60)}h ago`;
-            else if (diffMins >= 1440) timeStr = `${Math.floor(diffMins / 1440)}d ago`;
+            const timeInfo = formatNotificationTime(n.created_at);
 
             return {
               id: n.id,
               title: n.title,
               desc: isAdminRole && n.sender_role ? `[Sender: ${n.sender_role}] ${n.message}` : n.message,
-              time: timeStr,
+              time: timeInfo.relativeTime,
+              relativeTime: timeInfo.relativeTime,
+              timeStr: timeInfo.timeStr,
+              dateStr: timeInfo.dateStr,
+              displayDateTime: timeInfo.displayDateTime,
+              fullDateTime: timeInfo.fullDateTime,
+              createdAt: timeInfo.date,
               type: n.type,
               icon: iconName,
               bgColor,
@@ -262,9 +261,26 @@ const Header = () => {
             else if (n.type === 'hr_login') { iconName = 'Radio'; bgColor = 'bg-purple-50'; textColor = 'text-purple-600'; }
           }
 
+          const timeInfo = formatNotificationTime(n.created_at || new Date());
           const desc = isAdminRole && n.sender_role ? `[Sender: ${n.sender_role}] ${n.message}` : n.message;
           const formattedNewNotif = {
-            id: n.id, title: n.title, desc, time: 'just now', type: n.type, icon: iconName, bgColor, textColor, tag, tagColor, read: n.is_read
+            id: n.id,
+            title: n.title,
+            desc,
+            time: timeInfo.relativeTime,
+            relativeTime: timeInfo.relativeTime,
+            timeStr: timeInfo.timeStr,
+            dateStr: timeInfo.dateStr,
+            displayDateTime: timeInfo.displayDateTime,
+            fullDateTime: timeInfo.fullDateTime,
+            createdAt: timeInfo.date,
+            type: n.type,
+            icon: iconName,
+            bgColor,
+            textColor,
+            tag,
+            tagColor,
+            read: n.is_read
           };
 
           dispatch(addNotification(formattedNewNotif));
@@ -525,7 +541,14 @@ const Header = () => {
                     </span>
                   )}
                 </button>
-                {isNotificationsOpen && <NotificationDropdown userRole={userRole} notifications={notifications} onMarkAllRead={handleMarkAllRead} />}
+                {isNotificationsOpen && (
+                  <NotificationDropdown 
+                    userRole={userRole} 
+                    notifications={notifications} 
+                    onMarkAllRead={handleMarkAllRead} 
+                    onClose={() => setIsNotificationsOpen(false)}
+                  />
+                )}
               </div>
               <div onClick={() => setIsProfileOpen(!isProfileOpen)} className={`desktop-profile-pill flex items-center sm:space-x-4 border p-1 sm:px-2 sm:py-2 sm:pr-5 rounded-full cursor-pointer transition-all duration-300 group ${isProfileOpen ? 'bg-gray-50 border-gray-200 shadow-inner' : 'hover:border-pink-200 border-gray-200/80 hover:shadow-md hover:bg-gray-50 bg-white'}`}>
                 <div className={`w-9 h-9 rounded-full flex items-center justify-center border transition-all duration-300 overflow-hidden ${isProfileOpen ? 'bg-[#D60041] border-[#D60041] shadow-md shadow-pink-200' : 'bg-white border-gray-200 group-hover:border-pink-200'}`}>
@@ -682,25 +705,42 @@ const Header = () => {
                         <p className="text-[11px] text-gray-400">No new notifications</p>
                       </div>
                     ) : (
-                      notifications.slice(0, 5).map((n) => (
+                      notifications.slice(0, 8).map((n) => (
                         <div
                           key={n.id}
-                          className={`p-2.5 rounded-xl border transition-all ${!n.read
-                              ? 'bg-red-50/40 border-red-100'
-                              : 'bg-gray-50/60 border-gray-100'
-                            }`}
+                          className={`p-3 rounded-xl border transition-all ${
+                            !n.read
+                              ? 'bg-rose-50/40 border-rose-100/90 shadow-2xs'
+                              : 'bg-gray-50/70 border-gray-100'
+                          }`}
                         >
-                          <div className="flex items-start justify-between gap-2 mb-1">
-                            <p className="text-xs font-bold text-gray-900 truncate">
+                          <div className="flex items-start justify-between gap-1.5 mb-1">
+                            <p className={`text-xs truncate ${!n.read ? 'font-black text-gray-900' : 'font-bold text-gray-700'}`}>
                               {n.title}
                             </p>
-                            <span className="text-[9px] font-bold text-gray-400 shrink-0">
-                              {n.time}
-                            </span>
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              {n.tag && (
+                                <span className={`text-[8px] font-black px-1.5 py-0.5 rounded uppercase tracking-wider ${n.tagColor}`}>
+                                  {n.tag}
+                                </span>
+                              )}
+                              {!n.read && (
+                                <span className="w-1.5 h-1.5 rounded-full bg-[#D60041] shrink-0" />
+                              )}
+                            </div>
                           </div>
-                          <p className="text-[11px] text-gray-600 line-clamp-2 leading-relaxed">
+                          <p className="text-[11px] text-gray-600 line-clamp-2 leading-relaxed mb-2">
                             {n.desc}
                           </p>
+                          <div className="flex items-center justify-between gap-2 pt-1 border-t border-gray-100/80 text-[10px]">
+                            <div className="flex items-center gap-1 text-gray-600 font-semibold truncate" title={`Created: ${n.fullDateTime || n.displayDateTime}`}>
+                              <Clock size={10} className="text-[#D60041] shrink-0" />
+                              <span className="truncate">{n.displayDateTime || n.time}</span>
+                            </div>
+                            <span className="text-[9px] font-bold text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded-full shrink-0">
+                              {n.relativeTime || n.time}
+                            </span>
+                          </div>
                         </div>
                       ))
                     )}
