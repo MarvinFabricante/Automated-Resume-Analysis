@@ -1,39 +1,57 @@
-# Schemas (`/backend/app/schemas`)
+# Schemas (`app/schemas`)
 
-## Overview
-The `schemas` directory contains **Pydantic Models** (Data Transfer Objects or DTOs). They act as a strict contract for data entering and leaving the API.
+The `schemas` directory defines **Pydantic v2 Models** (Data Transfer Objects / DTOs). They establish strict type validation and serialization contracts for all data crossing the API boundary.
+
+## Architecture & Submodules
+
+```
+app/schemas/
+├── admin_schema.py             # Admin analytics, audits, and management schemas
+├── candidate_schema.py         # Candidate profile, education, and experience schemas
+├── hr_schema.py                # HR profile, stats, and team schemas
+├── interview_schema.py         # Interview scheduling, slot, and calendar schemas
+├── job_application_schema.py   # Job application submission and status schemas
+├── job_description_schema.py   # Job post creation, update, and search schemas
+├── job_matching_schema.py      # Match breakdown, score vectors, and missing skills
+├── message_schema.py           # Real-time chat message payloads
+├── notification_schema.py      # In-app notification DTOs
+├── resume_schema.py            # Resume upload responses and extracted entity schemas
+├── system_config_schema.py     # Runtime configuration schemas
+└── user_schema.py              # User authentication, token, and credential schemas
+```
 
 ## Responsibilities
-- **Request Validation**: Automatically validate incoming JSON body types, required fields, and constraints (e.g., email format, string length).
-- **Response Serialization**: Filter and format the data returned to the client (e.g., hiding password hashes).
-- **Type Hinting**: Provide strong typing for IDE autocompletion across the application.
 
-## What NOT to do here
-- **NO Database Logic**: Do not reference SQLAlchemy dependencies here.
-- **Keep it Simple**: Avoid writing heavy processing functions inside Pydantic classes; stick to `@validator`s for strict data formatting.
+- **Request Validation**: Automatically validate incoming JSON payloads (types, regex formats, required fields, constraints).
+- **Response Serialization**: Filter and shape data returned to clients (e.g. omitting password hashes and sensitive internal metadata).
+- **Type Safety & OpenAPI**: Power FastAPI automatic interactive OpenAPI / Swagger documentation and IDE autocompletion.
+
+## Best Practices & Prohibitions
+
+- **No Database Logic**: Never import or invoke SQLAlchemy sessions or database queries inside schemas.
+- **Separate Inbound and Outbound Schemas**: Keep `*Create`, `*Update`, and `*Response` schemas decoupled for clear security boundaries.
+- **Pydantic v2 Standards**: Use `ConfigDict(from_attributes=True)` for parsing SQLAlchemy ORM entities.
 
 ## Developer Guidelines & Example
-Always separate your Request (Create/Update) schemas from your Response schemas. Response schemas usually require `Config: from_attributes = True` to parse SQLAlchemy ORM objects.
 
 ```python
-from pydantic import BaseModel, EmailStr, Field
-from typing import Optional
+from datetime import datetime
+from pydantic import BaseModel, EmailStr, Field, ConfigDict
 
-# 1. Base Schema (Shared fields)
+# Base Schema (Common attributes)
 class UserBase(BaseModel):
     email: EmailStr
-    fullname: str
+    full_name: str = Field(..., min_length=2, max_length=100)
 
-# 2. Request Schema (Incoming data)
+# Request Schema (Incoming registration payload)
 class UserCreate(UserBase):
     password: str = Field(..., min_length=8)
 
-# 3. Response Schema (Outgoing data)
+# Response Schema (Outgoing serialized DTO)
 class UserResponse(UserBase):
     id: int
     is_active: bool
-    
-    # Required for SQLAlchemy ORM translation
-    class Config:
-        from_attributes = True
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
 ```

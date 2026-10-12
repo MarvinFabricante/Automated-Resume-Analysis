@@ -6,215 +6,153 @@
   </a>
 </p>
 
----
-
-## Introduction
-The **Automated Resume Analysis System** is an enterprise-grade recruitment ecosystem designed to streamline the hiring lifecycle for **Mariwasa Siam Ceramics Inc.** By leveraging advanced Natural Language Processing (NLP) and real-time data synchronization, ARAS transforms unstructured resume data into actionable insights, enabling HR teams to identify top talent with surgical precision.
+The **Automated Resume Analysis System** is an enterprise-grade recruitment ecosystem designed to streamline the hiring lifecycle for **Mariwasa Siam Ceramics Inc.** Leveraging Natural Language Processing (NLP), asynchronous task processing, and real-time synchronization, the system transforms unstructured resume documents into structured insights—enabling HR teams to screen talent with speed and precision.
 
 ---
 
 ## Core Ecosystem: The Three Portals
 
 ### 1. Candidate Portal
-*   **Smart Resume Upload Portal**: A revolutionary feature where candidates can upload their resume directly, and the system automatically identifies and recommends the most suitable job opening based on their parsed skills and experience.
-*   **Smart Upload (Job-Specific)**: Drag-and-drop resume upload for specific roles with instant AI parsing.
-*   **Preview & Verify**: A dedicated interface for candidates to review and correct AI-extracted data before final submission.
-*   **AI Match Scoring**: Immediate feedback on how well their profile aligns with the specific job requirements.
-*   **Application Tracking**: A real-time timeline view of application statuses (Pending, Under Review, Accepted, Rejected).
-*   **Unified Profile**: Centralized management of professional experience, education, and skills.
+- **Smart Resume Upload**: Upload a resume directly without selecting a job; the system parses credentials and automatically recommends the best-matching open positions.
+- **Job-Specific Application**: Drag-and-drop resume upload for specific roles with sub-second entity extraction.
+- **Preview & Verification**: Review and adjust AI-extracted data (skills, experience, education) prior to final submission.
+- **AI Match Scoring**: Instant transparency into candidate-job alignment and match percentages.
+- **Application Tracking**: Real-time status progression (Submitted, Under Review, Shortlisted, Interview Scheduled, Accepted, Rejected).
+- **Interactive Chat**: Direct messaging channel with HR recruiters.
 
 ### 2. HR Screening Portal
-*   **Intelligent Dashboard**: Real-time analytics on total resumes, application trends, and candidate distribution.
-*   **Advanced Screening**: A high-fidelity interface to view applicants sorted by AI Match Scores.
-*   **Job Management**: Full CRUD capabilities for job postings with the ability to Archive/Unarchive roles.
-*   **Deep Profile Analysis**: Detailed view of candidate skills (Matched vs. Missing), experience relevance, and education hierarchy.
-*   **Real-time Notifications**: Instant WebSocket alerts for new applications and registrations.
+- **Recruitment Dashboard**: Real-time analytics on total applicant volume, hiring funnels, and department distribution.
+- **Candidate Screening & Ranking**: High-fidelity interface displaying applicants sorted by AI Match Scores, skill overlap, and tenure.
+- **Job Posting Management**: Full CRUD capabilities for job descriptions, qualification requirements, and archive states.
+- **Deep Candidate Inspection**: Detailed inspection of matched vs. missing skills, relevant work history, and degree hierarchies.
+- **Interview Scheduling**: Integrated calendar slot management and Google Calendar synchronization.
+- **Real-Time Alerts**: Instant WebSocket alerts for incoming applications and candidate messages.
 
 ### 3. Admin Control Center
-*   **User Management**: Oversight of all accounts across the system.
-*   **Audit Logging**: Detailed tracking of system-wide activities for security and compliance.
-*   **System Health**: Monitoring of rate limits and background service performance.
+- **User & Role Management**: Centralized oversight of accounts, credentials, and role permissions (Admin, HR, Candidate).
+- **Audit Logging**: Comprehensive security audit trail recording system events, logins, and profile modifications.
+- **System Health & Config**: Live monitoring of service health, rate limit ceilings, and dynamic runtime configurations.
 
 ---
 
 ## AI Intelligence Layer
 
-### Resume Parsing Engine
-The system utilizes specialized extractors to transform PDF and DOCX files into structured JSON data:
-- **NER (Named Entity Recognition)**: Extracts contact details and personal information.
-- **Contextual Classifiers**: Categorizes professional experience and identifies education levels.
-- **Skill Aggregator**: Uses a weighted dictionary and pattern matching to identify technical and soft skills.
+### Deterministic Resume Parsing Engine
+Document ingestion processes PDF and DOCX files through a multi-stage deterministic pipeline without recurring LLM latency:
+- **Document Preprocessing**: PyMuPDF and python-docx extract plain text, formatting boundaries, and section headers.
+- **Named Entity Recognition (NER)**: Identifies contact details, candidate names, institutions, and dates.
+- **spaCy PhraseMatcher**: Scans text against curated skill taxonomies and technical term dictionaries.
+- **Contextual Classifiers**: Segments experience timelines, degree qualifications, and industry certifications.
 
-### Smart Matching Logic
-The "Match Score" is calculated using a multi-factor algorithm:
-1.  **Skills Alignment (50%)**: Direct comparison of candidate skills against required job competencies.
-2.  **Experience Relevance (30%)**: Analyzes years of experience and job title similarity.
-3.  **Education Hierarchy (20%)**: Weighted scoring based on the level of degree (Doctorate > Masters > Bachelors > Associate).
+### Multi-Factor Match Scoring Logic
+Candidate profiles are evaluated against job requirements using an algorithmic scoring model:
+1. **Skills Alignment (50%)**: Direct overlap between candidate technical/soft skills and required job competencies.
+2. **Experience Relevance (30%)**: Evaluation of total years of experience and job title semantic alignment.
+3. **Education Hierarchy (20%)**: Weighted scoring based on degree level (Doctorate > Master's > Bachelor's > Associate's).
 
 ---
 
 ## Technical Architecture
 
-### **The Stack**
-- **Frontend**: Next.js (TypeScript), **Redux Toolkit** (Global State Management), Tailwind CSS (Premium Glassmorphism Design).
-- **Backend**: FastAPI (Python 3.12), SQLAlchemy 2.0 (Async Engine).
-- **Database**: PostgreSQL (Relational Data).
-- **Security**: JWT (JSON Web Tokens), BCrypt Hashing, Role-Based Access Control (RBAC).
+| Layer | Technologies |
+|---|---|
+| **Frontend** | Next.js 15 (App Router), TypeScript, Tailwind CSS v4, Redux Toolkit, Nginx |
+| **Backend** | FastAPI (Python 3.12), SQLAlchemy 2.0 (Async), Pydantic v2, spaCy NLP |
+| **Worker Queue** | Celery, Redis 7 (Alpine) |
+| **Database** | PostgreSQL 16 (Alpine) with asyncpg connection pooling |
+| **Storage & Network** | Supabase Storage (Resume cloud repository), Cloudflare Quick Tunnel |
 
-### **Infrastructure Enhancements**
-- **In-Memory Caching**: Frequently accessed data (Job lists, HR metrics, Profiles) are cached in-memory to reduce database load and ensure <100ms response times.
-- **Rate Limiting**: Integrated `slowapi` with in-memory storage to prevent spamming of the AI parsing engine (5 uploads per minute limit).
-- **WebSocket Manager**: A dedicated service for real-time, role-aware notification broadcasting.
+---
+
+## Architecture & Project Structure
+
+```
+automated_resume_analysis/
+├── start.sh                    # Orchestration script for containers & Cloudflare tunnel
+├── docker-compose.yml          # Container configuration for full application stack
+├── .env                        # Central environment configuration
+├── backend/                    # FastAPI & Celery backend application
+│   ├── main.py                 # Local dev entrypoint runner
+│   ├── Dockerfile              # Python 3.12 production container
+│   ├── requirements.txt        # Backend dependencies
+│   ├── reset-db.sh             # Database migration and seed script
+│   └── app/
+│       ├── main.py             # FastAPI factory, middleware, and route mounting
+│       ├── celery_app.py       # Celery task queue initialization
+│       ├── tasks.py            # Celery background workers (AI processing)
+│       ├── controllers/        # Thin HTTP routers (Admin, Auth, HR, Candidate, Jobs)
+│       ├── services/           # Core domain business logic & third-party integrations
+│       ├── repositories/       # Asynchronous database access layer (SQLAlchemy 2.0)
+│       ├── models/             # Relational ORM models (PostgreSQL)
+│       ├── schemas/            # Pydantic v2 validation models & response DTOs
+│       ├── extractors/         # Deterministic resume parsing & spaCy NLP engine
+│       │   ├── content/        # Section parsers (skills, experience, education, contact)
+│       │   ├── file/           # File format readers (PDF, DOCX, TXT)
+│       │   └── nlp/            # spaCy singleton engine & PhraseMatcher pipeline
+│       └── utils/              # Infrastructure helpers (auth, DB session, cache, WebSockets)
+└── frontend/                   # Next.js 15 TypeScript frontend application
+    ├── dev.mjs                 # Dev server runner with port and host flag handling
+    ├── next.config.mjs         # Standalone configuration & reverse proxy API rewrites
+    ├── postcss.config.mjs      # Tailwind CSS PostCSS plugin configuration
+    ├── package.json            # Scripts & dependencies
+    ├── tsconfig.json           # TypeScript configuration with path aliases (@/*)
+    ├── public/                 # Static branding assets and illustrations
+    └── src/
+        ├── app/                # Next.js App Router route segments
+        │   ├── layout.tsx      # Root application layout
+        │   ├── providers.tsx   # Redux Toolkit, Toast, and Navigation providers
+        │   ├── globals.css     # Global styles & Tailwind imports
+        │   ├── (public)/       # Public routes (Landing, Careers, Smart Upload)
+        │   ├── (auth)/         # Authentication routes (Login, Register, Password Reset)
+        │   ├── admin/          # Admin portal routes
+        │   ├── hr/             # HR screening and management portal routes
+        │   └── candidate/      # Candidate portal routes
+        ├── views/              # Page view implementations
+        ├── components/         # Reusable UI component library
+        ├── redux/              # Redux Toolkit state store & RTK Query slices
+        ├── services/           # Axios HTTP clients and API services
+        ├── types/              # TypeScript interfaces and type definitions
+        └── utils/              # Navigation adapter, formatting, and file export helpers
+```
 
 ---
 
 ## Quick Start: One-Click Application & Cloudflare Tunnel
 
-To start the complete application ecosystem (PostgreSQL, Redis, FastAPI Backend, Celery AI Worker, Frontend Nginx, and Cloudflare Quick Tunnel) with automatic environment synchronization:
+To start the complete application ecosystem (PostgreSQL, Redis, FastAPI Backend, Celery AI Worker, Next.js Frontend, and Cloudflare Tunnel) with automatic environment synchronization:
 
 ```bash
 ./start.sh
 ```
 
-### Available Options:
+### CLI Command Options
+
 | Command | Description |
 |---|---|
-| `./start.sh` | Build & start all services, generate a live Cloudflare tunnel, and configure CORS/OAuth |
+| `./start.sh` | Build & start all services, generate a live Cloudflare tunnel, and configure CORS |
 | `./start.sh -q` or `--quick` | Fast start without rebuilding container images |
 | `./start.sh -b` or `--rebuild` | Force a clean rebuild of all containers (`--no-cache`) |
 | `./start.sh -r` or `--restart` | Restart all services and regenerate a fresh Cloudflare tunnel |
 | `./start.sh -s` or `--stop` | Stop all running services gracefully |
 | `./start.sh --status` | Check container health and verify live Cloudflare tunnel status |
-| `./start.sh --logs [service]` | Stream logs (e.g. `./start.sh --logs backend` or all) |
+| `./start.sh --logs [service]` | Stream service logs (e.g. `./start.sh --logs backend` or all) |
 | `./start.sh --seed` | Seed default Mariwasa job openings and HR staff accounts |
 
 ---
 
-## User Manual: Getting Started
+## Environment Variables
 
-### **For Candidates**
-1.  **Sign Up**: Create an account via the Registration page.
-2.  **Smart Resume Upload**: Use the global "Smart Upload" portal. Simply drop your resume, and let the AI find the best job for you!
-3.  **Verify**: Review the data the AI extracted. If the AI missed a skill, you can manually add it in the next step.
-4.  **Submit**: Confirm your application. You can track its progress in your Candidate Dashboard.
+Key parameters defined in `.env`:
 
-### **For HR Personnel**
-1.  **Dashboard**: Monitor the "Application Trends" chart to see hiring spikes.
-2.  **Screening**: Use the "Screening Portal" to see the "Best Match" candidates first.
-3.  **Manage Jobs**: Create new job descriptions via the "Job Management" portal. Use the "Archive" feature to temporarily hide filled roles.
-4.  **Notifications**: Keep an eye on the notification bell for instant updates on new applicants.
-
----
-
-## Design Standards
-ARAS follows a **Premium Enterprise Aesthetic**:
-- **Palette**: Mariwasa Ruby (#D60041) paired with Slate 900 for high-contrast professional feel.
-- **Glassmorphism**: Layers utilize backdrop blurs and subtle borders to establish depth.
-- **Micro-interactions**: Every button and card includes active scaling and hover transitions for a "living" UI.
+- `DATABASE_URL`: Asynchronous PostgreSQL connection string.
+- `REDIS_URL`: Redis broker and caching URI.
+- `SECRET_KEY`: Cryptographic signing secret for JWT tokens.
+- `FRONTEND_URL`: Permitted origins for backend CORS middleware.
+- `GEMINI_API_KEYS`: Comma-separated API keys for LLM candidate evaluation rotation pool.
+- `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`: Google Calendar OAuth 2.0 credentials for interview booking.
+- `SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY`: Supabase Storage credentials for resume persistence.
+- `NEXT_PUBLIC_API_URL`: Frontend API base path (defaults to `/api` in production).
 
 ---
 
-## Project Structure
-```text
-.
-├── backend
-│   ├── app
-│   │   ├── controllers
-│   │   │   ├── admin_controller.py
-│   │   │   ├── auth_controller.py
-│   │   │   ├── candidate_controller.py
-│   │   │   ├── hr_controller.py
-│   │   │   ├── job_application_controller.py
-│   │   │   ├── job_matching_controller.py
-│   │   │   ├── notification_controller.py
-│   │   │   └── resume_controller.py
-│   │   ├── extractors
-│   │   │   ├── content
-│   │   │   ├── file
-│   │   │   └── resume_processor.py
-│   │   ├── main.py
-│   │   ├── models
-│   │   │   ├── admin.py
-│   │   │   ├── candidate.py
-│   │   │   ├── hr.py
-│   │   │   ├── __init__.py
-│   │   │   ├── job_application.py
-│   │   │   ├── job_description.py
-│   │   │   ├── notification.py
-│   │   │   ├── resume.py
-│   │   │   └── user.py
-│   │   ├── schemas
-│   │   │   ├── admin_schema.py
-│   │   │   ├── candidate_schema.py
-│   │   │   ├── hr_schema.py
-│   │   │   ├── job_application_schema.py
-│   │   │   ├── job_description_schema.py
-│   │   │   ├── job_matching_schema.py
-│   │   │   ├── notification_schema.py
-│   │   │   ├── resume_schema.py
-│   │   │   └── user_schema.py
-│   │   ├── services
-│   │   │   ├── admin_service.py
-│   │   │   ├── auth_service.py
-│   │   │   ├── candidate_service.py
-│   │   │   ├── hr_service.py
-│   │   │   ├── job_application_service.py
-│   │   │   ├── job_description_service.py
-│   │   │   ├── job_matching_service.py
-│   │   │   ├── notification_service.py
-│   │   │   └── resume_service.py
-│   │   └── utils
-│   │       ├── auth.py
-│   │       ├── cache.py
-│   │       ├── database.py
-│   │       ├── limiter.py
-│   │       └── websocket_manager.py
-│   ├── Dockerfile
-│   ├── requirements.txt
-│   └── reset-db.sh
-├── frontend
-│   ├── eslint.config.js
-│   ├── index.html
-│   ├── package.json
-│   ├── package-lock.json
-│   ├── public
-│   │   ├── favicon.svg
-│   │   └── icons.svg
-│   ├── README.md
-│   ├── src
-│   │   ├── App.css
-│   │   ├── App.jsx
-│   │   ├── assets
-│   │   │   ├── banner2.jpg
-│   │   │   ├── banner3.jpg
-│   │   │   ├── banner.jpg
-│   │   │   ├── hero.png
-│   │   │   ├── logo.png
-│   │   │   ├── react.svg
-│   │   │   ├── sub header.jpg
-│   │   │   └── vite.svg
-│   │   ├── components
-│   │   │   ├── admin
-│   │   │   ├── candidate
-│   │   │   ├── hr
-│   │   │   ├── layout
-│   │   │   └── modals
-│   │   ├── data
-│   │   │   └── jobs.js
-│   │   ├── index.css
-│   │   ├── main.jsx
-│   │   ├── pages
-│   │   │   ├── admin
-│   │   │   ├── candidate
-│   │   │   ├── hr
-│   │   │   ├── publicPages
-│   │   │   └── shared
-│   │   ├── ProtectedRoutes.jsx
-│   │   └── redux
-│   │       ├── slices
-│   │       └── store.js
-│   └── vite.config.js
-└── README.md
-```
-
-© 2026 Mariwasa Siam Ceramics Inc. - STI CS Thesis Academic Project.
+© 2026 Mariwasa Siam Ceramics Inc. — STI CS Thesis Academic Project.

@@ -1,40 +1,62 @@
-# Services (`/backend/app/services`)
+# Services (`app/services`)
 
-## Overview
-The `services` directory contains the core **Business Logic** of the application. A Service acts as the brain of a specific domain (e.g., `JobMatchingService`, `AuthService`), orchestrating how data moves between the user, external APIs, and the database.
+The `services` directory contains the core **Domain & Business Logic** of the application. Services act as the orchestrator for all application rules, coordinating transactions, external integrations, AI evaluations, and data access.
+
+## Architecture & Submodules
+
+```
+app/services/
+├── admin_service.py                # Admin user management and system metrics
+├── ai_analysis_service.py          # AI resume deep analysis and strength/gap assessments
+├── ai_caller_service.py            # AI automated phone screening caller integration
+├── audit_service.py                # Security and operational audit log dispatch
+├── auth_service.py                 # Authentication workflows, JWT creation, and password hashing
+├── candidate_service.py            # Candidate profile management and application timelines
+├── chat_service.py                 # Messaging channels, unread counts, and notifications
+├── email_service.py                # Asynchronous transactional email dispatch
+├── gemini_service.py               # Google Gemini API key-rotation pool and client
+├── google_calendar_service.py      # Google Calendar OAuth 2.0 interview scheduling
+├── hr_service.py                   # HR recruitment pipelines, candidate stage transitions
+├── interview_service.py            # Interview coordination, status, and reminders
+├── job_application_service.py      # Application lifecycle, duplicate checks, and status changes
+├── job_description_service.py      # Job posting CRUD, activation, and archiving
+├── job_matching_service.py         # Multi-factor candidate-job match score algorithm
+├── notification_service.py         # Real-time WebSocket broadcasting and persistence
+├── resume_service.py               # Resume upload, Supabase cloud sync, and extraction
+└── system_config_service.py        # System flags, rate limiting rules, and settings
+```
 
 ## Responsibilities
-- **Enforcing Business Rules**: Applying validation rules, calculating scores, or deciding if a user has the right permissions to perform an action.
-- **Workflow Orchestration**: Coordinating multiple actions, such as saving a user to the database, dispatching a welcome email, and logging an audit event.
-- **External API Interaction**: Talking to LLMs (Gemini/Llama), Twilio, or Google Cloud services.
-- **Delegating Data Access**: Calling methods from the `repositories/` layer to read or write database records.
 
-## What NOT to do here
-- **NO HTTP Logic**: Do not import FastAPI `Request`, `Response`, or `HTTPException`. Return raw data or raise standard Python `Exception`s, which the Controller will catch.
-- **NO Direct Database Queries**: Avoid writing raw SQL or SQLAlchemy `select()` statements. Use `Repository` classes instead to keep logic decoupled.
+- **Enforce Business Invariants**: Validate domain constraints, check permissions, and calculate match scores.
+- **Workflow Orchestration**: Coordinate multi-step workflows (e.g. upload resume → extract data → calculate match score → notify HR).
+- **External API Integration**: Interact with Google Gemini, Google Calendar, Supabase Storage, and SMTP mail servers.
+- **Data Access Delegation**: Call `repositories/` for all database reads and writes.
+
+## Best Practices & Prohibitions
+
+- **No HTTP Concerns**: Do not import `Request`, `Response`, or raise `HTTPException` inside services. Services should raise standard Python domain exceptions (`ValueError`, `PermissionError`), allowing controllers to map them to HTTP status codes.
+- **No Direct Queries**: Avoid executing raw SQL or raw SQLAlchemy queries in services; delegate queries cleanly to `repositories/`.
 
 ## Developer Guidelines & Example
-When adding a new feature, write the logic as an asynchronous method in a Service class. 
 
 ```python
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.repositories.user_repository import UserRepository
+from app.repositories.auth_repository import AuthRepository
 from app.services.email_service import EmailService
 
 class UserService:
-    async def process_user_registration(self, db: AsyncSession, email: str, raw_password: str):
-        # 1. Enforce business rule
-        if await UserRepository.get_user_by_email(db, email):
-            raise ValueError("Email already registered.")
-            
-        # 2. Delegate to repository
-        hashed_pw = self.hash_password(raw_password)
-        new_user = await UserRepository.create_user(db, email, hashed_pw)
-        
-        # 3. Coordinate side-effects
-        await EmailService.send_welcome_email(new_user.email)
-        
-        return new_user
+    @staticmethod
+    async def register_user(db: AsyncSession, email: str, password_hash: str) -> dict:
+        # 1. Enforce domain constraint
+        existing = await AuthRepository.get_by_email(db, email)
+        if existing:
+            raise ValueError("Email is already registered.")
 
-user_service = UserService()
+        # 2. Delegate persistence
+        user = await AuthRepository.create(db, {"email": email, "password_hash": password_hash})
+
+        # 3. Trigger side-effects
+        await EmailService.send_welcome_email(user.email)
+        return user
 ```

@@ -1,22 +1,44 @@
-# Models (`/backend/app/models`)
+# Models (`app/models`)
 
-## Overview
-The `models` directory contains the **SQLAlchemy ORM Definitions**. These classes define the exact structure, constraints, and relationships of your relational database tables.
+The `models` directory contains the **SQLAlchemy 2.0 ORM Declarations**. These classes define the database schema, table relationships, foreign key constraints, and column data types for PostgreSQL.
+
+## Architecture & Submodules
+
+```
+app/models/
+├── __init__.py                 # Export and metadata registration for Alembic
+├── admin.py                    # Administrator profiles and permissions
+├── audit_log.py                # Security audit trail and action logs
+├── candidate.py                # Candidate demographic, contact, and profile models
+├── hr.py                       # HR personnel profiles and organizational metadata
+├── interview.py                # Interview schedules and Google Calendar synchronization
+├── job_application.py          # Candidate applications, review status, and stages
+├── job_description.py          # Job postings, required qualifications, and skills
+├── message.py                  # Real-time chat messages between candidates and HR
+├── notification.py             # User notification records and read states
+├── password_reset.py           # Temporary tokens for password recovery flows
+├── resume.py                   # Parsed resume records, skill vectors, and Supabase URLs
+├── system_config.py            # Dynamic runtime parameters and feature flags
+└── user.py                     # Unified user authentication entity and roles
+```
 
 ## Responsibilities
-- **Table Schemas**: Define column names, data types (String, Integer, JSON), constraints (Nullable, Unique), and default values.
-- **Relationships**: Define `relationship()` mappings for Foreign Keys to allow easy navigation between linked tables (e.g., `User.applications`).
-- **Database Initialization**: These files are scanned by Alembic (or SQLAlchemy `create_all`) to generate the database schema.
 
-## What NOT to do here
-- **NO Pydantic Schemas**: Do not confuse ORM Models with Pydantic schemas. Pydantic schemas go in `schemas/`.
-- **NO Database Queries**: Models should strictly be declarations. Do not write functions inside these files that execute queries.
+- **Table Schemas**: Define column definitions, data types (e.g. `String`, `Integer`, `JSONB`, `Boolean`), constraints, and default values.
+- **ORM Relationships**: Establish explicit bidirectional relationships (`relationship()`) between related entities.
+- **Database Migrations**: Provide declarative targets for Alembic automatic revision generation.
+
+## Best Practices & Prohibitions
+
+- **No Business Logic**: Models should be purely declarative declarations. Do not write workflow methods inside model classes.
+- **No Direct Queries**: Never execute queries inside model classes. Queries are strictly encapsulated in `repositories/`.
+- **SQLAlchemy 2.0 Conventions**: Use modern `Mapped[...]` and `mapped_column()` annotations for full type safety.
 
 ## Developer Guidelines & Example
-Models should inherit from the `Base` declarative class. Ensure you use `mapped_column` and typing correctly for modern SQLAlchemy 2.0.
 
 ```python
-from sqlalchemy import Integer, String, Boolean, ForeignKey
+from datetime import datetime
+from sqlalchemy import Integer, String, Boolean, ForeignKey, DateTime, func
 from sqlalchemy.orm import relationship, Mapped, mapped_column
 from app.utils.database import Base
 
@@ -24,13 +46,14 @@ class JobPosting(Base):
     __tablename__ = "job_postings"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    title: Mapped[str] = mapped_column(String, nullable=False)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
-    
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
     # Foreign Key
     created_by_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"))
-    
+
     # Relationships
     author = relationship("User", back_populates="job_postings")
-    applications = relationship("JobApplication", back_populates="job")
+    applications = relationship("JobApplication", back_populates="job", cascade="all, delete-orphan")
 ```
