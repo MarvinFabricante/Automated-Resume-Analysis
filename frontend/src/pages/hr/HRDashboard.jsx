@@ -1,172 +1,352 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Download, AlertCircle, Briefcase, BarChart3, Calendar } from 'lucide-react';
+import { 
+  Download, AlertCircle, Briefcase, BarChart3, Calendar, 
+  RefreshCw, Plus, Sparkles, CheckCircle2, ChevronRight,
+  TrendingUp, Users, ArrowUpRight, ShieldCheck, Zap
+} from 'lucide-react';
 import { Helmet } from 'react-helmet-async';
 import KeyMetrics from '../../components/hr/dashboard/KeyMetrics';
 import ApplicationTrends from '../../components/hr/dashboard/ApplicationTrends';
 import RecentSubmissions from '../../components/hr/dashboard/RecentSubmissions';
+import UpcomingInterviews from '../../components/hr/dashboard/UpcomingInterviews';
 import Header from '../../components/layout/Header';
 import Sidebar from '../../components/layout/Sidebar';
+import ChatWidget from '../../components/layout/ChatWidget';
+import ScheduleInterviewModal from '../../components/modals/hr/ScheduleInterviewModal';
 
 import {
   useGetDashboardStatsQuery,
   useGetCandidateCountQuery,
   useGetResumeCountQuery,
   useGetJobsQuery,
-  useGetApplicationsQuery
+  useGetApplicationsQuery,
+  useGetAllInterviewsQuery
 } from '../../redux/api/apiSlice';
-import ChatWidget from '../../components/layout/ChatWidget';
 import { exportToCSV } from '../../utils/exportUtils';
 
 const HRDashboard = () => {
   const navigate = useNavigate();
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
+  const [toastMessage, setToastMessage] = useState(null);
 
-  // Use RTK Query hooks instead of useEffect/axios
-  const { data: appStats = { pending: 0, reviewed: 0, accepted: 0, rejected: 0 }, isLoading: isStatsLoading } = useGetDashboardStatsQuery();
-  const { data: candidateCountData, isLoading: isCandidateLoading } = useGetCandidateCountQuery();
-  const { data: resumeCountData, isLoading: isResumeLoading } = useGetResumeCountQuery();
-  const { data: jobs = [], isLoading: isJobsLoading } = useGetJobsQuery();
-  const { data: applications = [], isLoading: isAppsLoading } = useGetApplicationsQuery();
+  // RTK Query hooks
+  const { data: appStats = { pending: 0, reviewed: 0, accepted: 0, rejected: 0 }, refetch: refetchStats } = useGetDashboardStatsQuery();
+  const { data: candidateCountData, refetch: refetchCandidates } = useGetCandidateCountQuery();
+  const { data: resumeCountData, refetch: refetchResumes } = useGetResumeCountQuery();
+  const { data: jobs = [], refetch: refetchJobs } = useGetJobsQuery();
+  const { data: applications = [], refetch: refetchApps } = useGetApplicationsQuery();
+  const { refetch: refetchInterviews } = useGetAllInterviewsQuery();
 
   const activeJobsCount = jobs.filter(j => j.is_active).length;
-  const totalCandidates = candidateCountData?.count || 0;
+  const totalCandidates = candidateCountData?.count || applications.length || 0;
   const totalResumes = resumeCountData?.count || 0;
 
-  // Get the 5 most recent applications
-  const recentCandidates = [...applications]
-    .sort((a, b) => new Date(b.date) - new Date(a.date))
-    .slice(0, 5);
+  const showToast = (msg) => {
+    setToastMessage(msg);
+    setTimeout(() => setToastMessage(null), 3000);
+  };
 
-  const isLoading = isStatsLoading || isCandidateLoading || isResumeLoading || isJobsLoading || isAppsLoading;
+  const handleRefreshAll = async () => {
+    setIsRefreshing(true);
+    try {
+      await Promise.allSettled([
+        refetchStats?.(),
+        refetchCandidates?.(),
+        refetchResumes?.(),
+        refetchJobs?.(),
+        refetchApps?.(),
+        refetchInterviews?.()
+      ]);
+      showToast('Dashboard analytics synchronized with live database');
+    } catch {
+      showToast('Dashboard data updated');
+    } finally {
+      setTimeout(() => setIsRefreshing(false), 600);
+    }
+  };
+
+  const handleExportFullReport = () => {
+    if (!applications.length) {
+      alert('No application data available to export.');
+      return;
+    }
+    const reportData = applications.map(app => ({
+      ID: app.id,
+      CandidateName: app.name,
+      PreferredRole: app.preferredJob,
+      Department: app.jobDepartment || 'General',
+      Status: app.status,
+      MatchScore: `${app.matchScore || 0}%`,
+      SkillsScore: `${app.skillsScore || 0}%`,
+      ExperienceScore: `${app.experienceScore || 0}%`,
+      EducationScore: `${app.educationScore || 0}%`,
+      ApplicationDate: app.date ? new Date(app.date).toISOString().split('T')[0] : 'N/A',
+      Location: app.location || 'N/A'
+    }));
+
+    exportToCSV(reportData, `Mariwasa_HR_Recruitment_Report_${new Date().toISOString().split('T')[0]}`);
+    showToast(`Exported ${reportData.length} candidate records to CSV`);
+  };
+
+  const userName = localStorage.getItem('fullname') || 'Recruitment Team';
+  const currentDateFormatted = new Date().toLocaleDateString('en-US', {
+    weekday: 'long',
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric'
+  });
 
   return (
-    <div className="bg-[#FCFCFC] text-gray-800 antialiased min-h-screen font-['Inter'] flex flex-col">
+    <div className="bg-[#F8FAFC] text-slate-800 antialiased min-h-screen font-sans flex flex-col selection:bg-rose-100 selection:text-[#D60041]">
       <Helmet>
-        <title>Dashboard | Mariwasa ARAS</title>
+        <title>HR Dashboard | Mariwasa ARAS</title>
       </Helmet>
+      
       <Header />
 
       <div className="flex flex-1">
         <Sidebar />
+
         <div className="flex-1 min-w-0 flex flex-col">
-          {isLoading && (
-            <div className="fixed inset-0 bg-white/60 backdrop-blur-sm z-[999] flex items-center justify-center">
-              <div className="flex flex-col items-center">
-                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#D60041] mb-4"></div>
-                <p className="text-sm font-bold text-gray-600 animate-pulse">Syncing dashboard data...</p>
-              </div>
+          {/* Toast Notification */}
+          {toastMessage && (
+            <div className="fixed bottom-8 right-8 bg-slate-900 text-white px-5 py-3.5 rounded-2xl shadow-2xl flex items-center gap-3 text-xs font-bold z-50 border border-slate-800 animate-in fade-in slide-in-from-bottom-4 duration-300">
+              <CheckCircle2 size={16} className="text-emerald-400" />
+              <span>{toastMessage}</span>
             </div>
           )}
 
-          <main className="w-full max-w-full px-4 sm:px-6 md:px-10 py-6 md:py-8">
+          {/* Sync Progress Bar */}
+          {isRefreshing && (
+            <div className="h-1 w-full bg-slate-100 overflow-hidden sticky top-0 z-40">
+              <div className="h-full bg-gradient-to-r from-rose-500 to-[#D60041] animate-pulse w-full"></div>
+            </div>
+          )}
 
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8 md:mb-10 gap-6">
-              <div>
-                <h2 className="text-2xl md:text-3xl font-black tracking-tight text-gray-900 leading-tight">
-                  Dashboard Overview
-                </h2>
-                <p className="text-sm text-gray-500 font-medium tracking-wide mt-1">
-                  Live recruitment analytics from database
-                </p>
-              </div>
+          <main className="w-full max-w-full px-4 sm:px-6 md:px-8 lg:px-10 py-6 md:py-8">
 
-              <div className="flex items-center gap-3 w-full sm:w-auto overflow-x-auto pb-2 sm:pb-0 scrollbar-hide">
-                {/* <button className="whitespace-nowrap bg-white border border-gray-200 px-4 py-2 rounded-xl hover:border-pink-100 hover:text-[#D60041] hover:bg-pink-50 transition-all duration-300 text-[11px] md:text-xs font-bold text-gray-700 flex items-center shadow-sm shrink-0">
-                  Real-time
-                  <div className="w-2 h-2 bg-green-500 rounded-full ml-2 animate-pulse"></div>
-                </button> */}
+            {/* 1. Executive Command Banner */}
+            <div className="relative mb-8 p-6 sm:p-8 bg-white border border-slate-200/80 rounded-2xl sm:rounded-3xl shadow-xs overflow-hidden">
+              {/* Subtle ambient brand mesh background */}
+              <div className="absolute top-0 right-0 w-96 h-96 bg-gradient-to-bl from-rose-50/70 via-pink-50/30 to-transparent rounded-full blur-3xl pointer-events-none" />
 
-                <button
-                  onClick={() => exportToCSV(applications, `Recruitment_Report_${new Date().toISOString().split('T')[0]}`)}
-                  className="whitespace-nowrap bg-white border border-gray-200 px-4 py-2 rounded-xl hover:border-pink-100 hover:text-[#D60041] hover:bg-pink-50 transition-all duration-300 text-[11px] md:text-xs font-bold text-gray-700 flex items-center shadow-sm group shrink-0"
-                >
-                  <Download className="h-4 w-4 mr-2 text-gray-400 group-hover:text-[#D60041]" />
-                  Export Report
-                </button>
+              <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6 relative z-10">
+                <div>
+                  <div className="flex items-center gap-3 mb-2 flex-wrap">
+                    <span className="px-3 py-1 rounded-full text-[11px] font-black uppercase tracking-wider bg-rose-50 text-[#D60041] border border-rose-100/90 flex items-center gap-1.5 shadow-2xs">
+                      <span className="w-2 h-2 rounded-full bg-[#D60041] animate-pulse" />
+                      Mariwasa ATS Engine Active
+                    </span>
+                    <span className="text-xs text-slate-400 font-bold">•</span>
+                    <span className="text-xs text-slate-500 font-semibold">
+                      {currentDateFormatted}
+                    </span>
+                  </div>
+
+                  <h1 className="text-2xl md:text-3xl lg:text-4xl font-extrabold tracking-tight text-slate-900 leading-tight">
+                    Welcome back, <span className="text-[#D60041]">{userName}</span>
+                  </h1>
+                  <p className="text-xs sm:text-sm text-slate-500 font-medium mt-1.5 max-w-2xl leading-relaxed">
+                    Live recruitment analytics, automated resume parsing, and candidate evaluation pipeline.
+                  </p>
+                </div>
+
+                {/* Command Actions Bar */}
+                <div className="flex items-center gap-2.5 flex-wrap w-full lg:w-auto">
+                  {/* Refresh live sync button */}
+                  <button
+                    onClick={handleRefreshAll}
+                    disabled={isRefreshing}
+                    className="p-2.5 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 border border-slate-200/80 rounded-2xl transition-all shadow-2xs active:scale-95 disabled:opacity-50"
+                    title="Refresh Live Data Feed"
+                  >
+                    <RefreshCw size={16} className={isRefreshing ? 'animate-spin text-[#D60041]' : ''} />
+                  </button>
+
+                  {/* Export CSV Report */}
+                  <button
+                    onClick={handleExportFullReport}
+                    className="px-4 py-2.5 bg-white hover:bg-slate-50 text-slate-700 hover:text-slate-900 border border-slate-200/90 rounded-2xl text-xs font-bold transition-all shadow-2xs flex items-center gap-2 group active:scale-95"
+                  >
+                    <Download size={15} className="text-slate-400 group-hover:text-[#D60041] transition-colors" />
+                    <span>Export Analytics</span>
+                  </button>
+
+                  {/* Quick Schedule Interview */}
+                  <button
+                    onClick={() => setIsScheduleModalOpen(true)}
+                    className="px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-2xl text-xs font-bold transition-all shadow-xs flex items-center gap-2 active:scale-95"
+                  >
+                    <Calendar size={15} />
+                    <span>Schedule Interview</span>
+                  </button>
+
+                  {/* Primary Screening Action */}
+                  <button
+                    onClick={() => navigate('/hr/screeningportal')}
+                    className="px-4 py-2.5 bg-gradient-to-r from-rose-600 to-[#D60041] hover:from-rose-700 hover:to-[#b50037] text-white rounded-2xl text-xs font-black uppercase tracking-wider transition-all shadow-md shadow-pink-900/20 flex items-center gap-2 active:scale-95"
+                  >
+                    <Sparkles size={15} />
+                    <span>Screen Applicants</span>
+                  </button>
+                </div>
               </div>
             </div>
 
+            {/* 2. Key Metrics Section */}
             <KeyMetrics
               activeJobsCount={activeJobsCount}
               totalCandidates={totalCandidates}
               totalResumes={totalResumes}
               appStats={appStats}
+              applications={applications}
             />
-            <ApplicationTrends applications={applications} appStats={appStats} />
-            <RecentSubmissions candidates={recentCandidates} />
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
+            {/* 3. Application Trends & Pipeline Distribution Analytics */}
+            <ApplicationTrends 
+              applications={applications} 
+              appStats={appStats} 
+            />
 
-              <div
-                onClick={() => navigate('/hr/screeningportal')}
-                className="bg-white border border-gray-100 rounded-2xl sm:rounded-[32px] p-5 sm:p-6 lg:p-8 shadow-sm hover:-translate-y-1 hover:shadow-xl hover:border-orange-100 transition-all duration-300 cursor-pointer flex flex-col items-start gap-4 sm:gap-6 group"
-              >
-                <div className="w-12 h-12 sm:w-14 sm:h-14 bg-gradient-to-br from-orange-50 to-orange-100/50 rounded-2xl flex items-center justify-center group-hover:scale-110 transition-transform duration-300 shadow-inner shrink-0">
-                  <AlertCircle className="text-orange-500 h-5 w-5 sm:h-6 sm:w-6" />
-                </div>
-                <div>
-                  <h4 className="text-lg sm:text-xl font-bold tracking-tight text-gray-900 group-hover:text-orange-600 transition-colors">
-                    Pending Reviews
-                  </h4>
-                  <p className="text-xs sm:text-sm text-gray-500 font-bold mt-1 sm:mt-2">
-                    {appStats.pending} applications waiting
-                  </p>
-                </div>
+            {/* 4. Split Operations Grid: Recent Submissions (2/3) + Upcoming Interviews (1/3) */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 sm:gap-8 mb-8">
+              {/* Left 2 Cols: Interactive Recent Submissions Queue */}
+              <div className="lg:col-span-2">
+                <RecentSubmissions candidates={applications} />
               </div>
 
-              <div
-                onClick={() => navigate('/hr/scheduling')}
-                className="bg-white border border-gray-100 rounded-2xl sm:rounded-[32px] p-5 sm:p-6 lg:p-8 shadow-sm hover:-translate-y-1 hover:shadow-xl hover:border-pink-100 transition-all duration-300 cursor-pointer flex flex-col items-start gap-4 sm:gap-6 group"
-              >
-                <div className="w-12 h-12 sm:w-14 sm:h-14 bg-gradient-to-br from-pink-50 to-rose-100/50 rounded-2xl flex items-center justify-center group-hover:scale-110 transition-transform duration-300 shadow-inner shrink-0">
-                  <Calendar className="text-[#D60041] h-5 w-5 sm:h-6 sm:w-6" />
-                </div>
-                <div>
-                  <h4 className="text-lg sm:text-xl font-bold tracking-tight text-gray-900 group-hover:text-[#D60041] transition-colors">
-                    Interview Scheduling
-                  </h4>
-                  <p className="text-xs sm:text-sm text-gray-500 font-bold mt-1 sm:mt-2">
-                    System calendar & Google sync
-                  </p>
-                </div>
+              {/* Right 1 Col: Live Upcoming Interviews Widget */}
+              <div className="lg:col-span-1">
+                <UpcomingInterviews onScheduleClick={() => navigate('/hr/scheduling')} />
               </div>
-
-              <div
-                onClick={() => navigate('/hr/screeningportal')}
-                className="bg-white border border-gray-100 rounded-2xl sm:rounded-[32px] p-5 sm:p-6 lg:p-8 shadow-sm hover:-translate-y-1 hover:shadow-xl hover:border-red-100 transition-all duration-300 cursor-pointer flex flex-col items-start gap-4 sm:gap-6 group"
-              >
-                <div className="w-12 h-12 sm:w-14 sm:h-14 bg-gradient-to-br from-pink-50 to-red-50 rounded-2xl flex items-center justify-center group-hover:scale-110 transition-transform duration-300 shadow-inner shrink-0">
-                  <Briefcase className="text-[#D60041] h-5 w-5 sm:h-6 sm:w-6" />
-                </div>
-                <div>
-                  <h4 className="text-lg sm:text-xl font-bold tracking-tight text-gray-900 group-hover:text-[#D60041] transition-colors">
-                    Active Positions
-                  </h4>
-                  <p className="text-xs sm:text-sm text-gray-500 font-bold mt-1 sm:mt-2">
-                    {activeJobsCount} roles currently open
-                  </p>
-                </div>
-              </div>
-
-              <div
-                onClick={() => navigate('/hr/comparecandidates')}
-                className="bg-white border border-gray-100 rounded-2xl sm:rounded-[32px] p-5 sm:p-6 lg:p-8 shadow-sm hover:-translate-y-1 hover:shadow-xl hover:border-blue-100 transition-all duration-300 cursor-pointer flex flex-col items-start gap-4 sm:gap-6 group"
-              >
-                <div className="w-12 h-12 sm:w-14 sm:h-14 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-2xl flex items-center justify-center group-hover:scale-110 transition-transform duration-300 shadow-inner shrink-0">
-                  <BarChart3 className="text-blue-500 h-5 w-5 sm:h-6 sm:w-6" />
-                </div>
-                <div>
-                  <h4 className="text-lg sm:text-xl font-bold tracking-tight text-gray-900 group-hover:text-blue-600 transition-colors">
-                    Compare Candidates
-                  </h4>
-                  <p className="text-xs sm:text-sm text-gray-500 font-bold mt-1 sm:mt-2">
-                    Side-by-side ATS analysis
-                  </p>
-                </div>
-              </div>
-
             </div>
+
+            {/* 5. Executive Module Navigation Hub (Bento Grid) */}
+            <div className="mb-8">
+              <div className="mb-4">
+                <h3 className="text-lg font-extrabold text-slate-900 tracking-tight">
+                  Recruitment Operations & Tools
+                </h3>
+                <p className="text-xs text-slate-500 font-medium">
+                  Direct shortcuts to candidate evaluation workflows and management modules
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5">
+                {/* 1. Pending Reviews */}
+                <div
+                  onClick={() => navigate('/hr/screeningportal?status=PENDING')}
+                  className="bg-white border border-slate-200/80 rounded-2xl sm:rounded-3xl p-5 sm:p-6 shadow-xs hover:-translate-y-1 hover:shadow-xl hover:border-amber-200 transition-all duration-300 cursor-pointer flex flex-col justify-between group"
+                >
+                  <div className="flex justify-between items-start mb-4">
+                    <div className="w-12 h-12 bg-amber-50 rounded-2xl flex items-center justify-center group-hover:scale-110 transition-transform duration-300 shadow-inner">
+                      <AlertCircle className="text-amber-500 h-6 w-6" />
+                    </div>
+                    <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200/60">
+                      {appStats.pending} Waiting
+                    </span>
+                  </div>
+
+                  <div>
+                    <h4 className="text-base sm:text-lg font-extrabold tracking-tight text-slate-900 group-hover:text-amber-600 transition-colors flex items-center justify-between">
+                      <span>Pending Reviews</span>
+                      <ChevronRight size={16} className="text-slate-400 group-hover:translate-x-1 group-hover:text-amber-600 transition-all" />
+                    </h4>
+                    <p className="text-xs text-slate-500 font-medium mt-1 leading-relaxed">
+                      Evaluate newly submitted resumes with automated ATS match analysis.
+                    </p>
+                  </div>
+                </div>
+
+                {/* 2. Interview Scheduling */}
+                <div
+                  onClick={() => navigate('/hr/scheduling')}
+                  className="bg-white border border-slate-200/80 rounded-2xl sm:rounded-3xl p-5 sm:p-6 shadow-xs hover:-translate-y-1 hover:shadow-xl hover:border-pink-200 transition-all duration-300 cursor-pointer flex flex-col justify-between group"
+                >
+                  <div className="flex justify-between items-start mb-4">
+                    <div className="w-12 h-12 bg-rose-50 rounded-2xl flex items-center justify-center group-hover:scale-110 transition-transform duration-300 shadow-inner">
+                      <Calendar className="text-[#D60041] h-6 w-6" />
+                    </div>
+                    <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-rose-50 text-[#D60041] border border-rose-200/60">
+                      Calendar Sync
+                    </span>
+                  </div>
+
+                  <div>
+                    <h4 className="text-base sm:text-lg font-extrabold tracking-tight text-slate-900 group-hover:text-[#D60041] transition-colors flex items-center justify-between">
+                      <span>Interview Scheduling</span>
+                      <ChevronRight size={16} className="text-slate-400 group-hover:translate-x-1 group-hover:text-[#D60041] transition-all" />
+                    </h4>
+                    <p className="text-xs text-slate-500 font-medium mt-1 leading-relaxed">
+                      Google Calendar synchronized slots, panel interviewers, and invitations.
+                    </p>
+                  </div>
+                </div>
+
+                {/* 3. Active Positions */}
+                <div
+                  onClick={() => navigate('/admin/jobmanagement')}
+                  className="bg-white border border-slate-200/80 rounded-2xl sm:rounded-3xl p-5 sm:p-6 shadow-xs hover:-translate-y-1 hover:shadow-xl hover:border-blue-200 transition-all duration-300 cursor-pointer flex flex-col justify-between group"
+                >
+                  <div className="flex justify-between items-start mb-4">
+                    <div className="w-12 h-12 bg-blue-50 rounded-2xl flex items-center justify-center group-hover:scale-110 transition-transform duration-300 shadow-inner">
+                      <Briefcase className="text-blue-600 h-6 w-6" />
+                    </div>
+                    <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200/60">
+                      {activeJobsCount} Open
+                    </span>
+                  </div>
+
+                  <div>
+                    <h4 className="text-base sm:text-lg font-extrabold tracking-tight text-slate-900 group-hover:text-blue-600 transition-colors flex items-center justify-between">
+                      <span>Active Positions</span>
+                      <ChevronRight size={16} className="text-slate-400 group-hover:translate-x-1 group-hover:text-blue-600 transition-all" />
+                    </h4>
+                    <p className="text-xs text-slate-500 font-medium mt-1 leading-relaxed">
+                      Manage job requisitions, requirements, and active hiring openings.
+                    </p>
+                  </div>
+                </div>
+
+                {/* 4. Compare Candidates */}
+                <div
+                  onClick={() => navigate('/hr/comparecandidates')}
+                  className="bg-white border border-slate-200/80 rounded-2xl sm:rounded-3xl p-5 sm:p-6 shadow-xs hover:-translate-y-1 hover:shadow-xl hover:border-purple-200 transition-all duration-300 cursor-pointer flex flex-col justify-between group"
+                >
+                  <div className="flex justify-between items-start mb-4">
+                    <div className="w-12 h-12 bg-purple-50 rounded-2xl flex items-center justify-center group-hover:scale-110 transition-transform duration-300 shadow-inner">
+                      <BarChart3 className="text-purple-600 h-6 w-6" />
+                    </div>
+                    <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-purple-50 text-purple-700 border border-purple-200/60">
+                      Matrix
+                    </span>
+                  </div>
+
+                  <div>
+                    <h4 className="text-base sm:text-lg font-extrabold tracking-tight text-slate-900 group-hover:text-purple-600 transition-colors flex items-center justify-between">
+                      <span>Compare Candidates</span>
+                      <ChevronRight size={16} className="text-slate-400 group-hover:translate-x-1 group-hover:text-purple-600 transition-all" />
+                    </h4>
+                    <p className="text-xs text-slate-500 font-medium mt-1 leading-relaxed">
+                      Side-by-side comparative analysis of skills, experience, and ATS matches.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Floating Chat Widget */}
             <ChatWidget />
+
+            {/* Quick Schedule Interview Modal */}
+            {isScheduleModalOpen && (
+              <ScheduleInterviewModal
+                isOpen={isScheduleModalOpen}
+                onClose={() => setIsScheduleModalOpen(false)}
+              />
+            )}
           </main>
         </div>
       </div>

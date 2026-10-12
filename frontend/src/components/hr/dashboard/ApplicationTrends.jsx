@@ -435,7 +435,7 @@ const ApplicationTrends = ({ applications = [], appStats = {} }) => {
       )}
 
       {/* 1. Main Trends Chart Card */}
-      <div className="bg-white border border-gray-100 rounded-[32px] p-6 sm:p-8 lg:p-10 shadow-sm relative overflow-hidden group/container">
+      <div className="bg-white border border-slate-200/80 rounded-2xl sm:rounded-3xl p-6 sm:p-8 lg:p-10 shadow-xs relative overflow-hidden group/container">
         {/* Subtle Ambient Glow */}
         <div className="absolute top-0 right-0 -mr-20 -mt-20 w-80 h-80 bg-pink-50/40 rounded-full blur-3xl pointer-events-none group-hover/container:bg-pink-100/40 transition-colors duration-700" />
 
@@ -622,7 +622,7 @@ const ApplicationTrends = ({ applications = [], appStats = {} }) => {
         </div>
 
         {/* Detailed Metrics Overview Ribbon */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 p-4 sm:p-5 bg-gradient-to-br from-slate-50/80 to-pink-50/20 rounded-2xl sm:rounded-3xl border border-gray-100 mb-8 relative z-10">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 p-4 sm:p-5 bg-gradient-to-br from-slate-50/80 to-pink-50/20 rounded-2xl sm:rounded-3xl border border-slate-200/70 mb-8 relative z-10">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-pink-100/70 text-[#D60041] flex items-center justify-center shrink-0">
               <Zap size={18} />
@@ -907,7 +907,7 @@ const ApplicationTrends = ({ applications = [], appStats = {} }) => {
       {/* 3. Distribution Breakdown & Dynamic Hiring Insights Section */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Left 2 Cols: Distribution Card (Switchable by Dept / by Status) */}
-        <div className="lg:col-span-2 bg-white border border-gray-100 rounded-[32px] p-6 sm:p-8 shadow-sm group/pie relative overflow-hidden flex flex-col justify-between">
+        <div className="lg:col-span-2 bg-white border border-slate-200/80 rounded-2xl sm:rounded-3xl p-6 sm:p-8 shadow-xs group/pie relative overflow-hidden flex flex-col justify-between">
           <div className="absolute bottom-0 left-0 -ml-16 -mb-16 w-56 h-56 bg-blue-50/40 rounded-full blur-3xl pointer-events-none" />
 
           {/* Distribution Header & Tab Toggle */}
@@ -1025,7 +1025,7 @@ const ApplicationTrends = ({ applications = [], appStats = {} }) => {
         </div>
 
         {/* Right Col: Intelligent Recruitment Action Card */}
-        <div className="bg-gradient-to-br from-[#D60041] via-[#c2003b] to-[#8f0029] rounded-[32px] p-6 sm:p-8 text-white shadow-xl shadow-pink-200/50 relative overflow-hidden flex flex-col justify-between">
+        <div className="bg-gradient-to-br from-[#D60041] via-[#c2003b] to-[#8f0029] rounded-2xl sm:rounded-3xl p-6 sm:p-8 text-white shadow-xl shadow-pink-900/15 relative overflow-hidden flex flex-col justify-between">
           <div className="absolute top-0 right-0 p-8 opacity-15 pointer-events-none">
             <Briefcase size={100} />
           </div>
