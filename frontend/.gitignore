@@ -22,3 +22,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+*.tsbuildinfo
+lint_output.txt
+lint.txt
