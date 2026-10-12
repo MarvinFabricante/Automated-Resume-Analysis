@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Briefcase, ArrowUpRight, ChevronRight, Calendar, Building2, Layers } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from '@/utils/navigation';
 
 const STAGE_LABELS = [
   'Submission',

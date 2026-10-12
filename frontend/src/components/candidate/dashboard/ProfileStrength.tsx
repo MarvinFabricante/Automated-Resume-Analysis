@@ -1,6 +1,6 @@
 import React from 'react';
 import { ShieldCheck, CheckCircle2, ChevronRight, Sparkles } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from '@/utils/navigation';
 
 const ProfileStrength: React.FC = () => {
   const navigate = useNavigate();

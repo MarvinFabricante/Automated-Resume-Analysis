@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from '@/utils/navigation';
 import { 
   Users, ArrowRight, User, Search, Filter, 
   Eye, Calendar, CheckCircle2, Clock, Sparkles, 

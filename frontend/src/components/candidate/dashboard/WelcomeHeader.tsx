@@ -1,5 +1,5 @@
 import React from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from '@/utils/navigation';
 import { Sparkles, Calendar, Search, ArrowRight, FileText } from 'lucide-react';
 
 interface WelcomeHeaderProps {

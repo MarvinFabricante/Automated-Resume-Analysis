@@ -2,13 +2,16 @@ import axios, { AxiosInstance, InternalAxiosRequestConfig } from 'axios';
 
 const getApiBaseUrl = (): string => {
   // If explicitly provided via build args or env (e.g., '/api')
-  if (import.meta.env.VITE_API_URL) {
-    return import.meta.env.VITE_API_URL;
+  if (typeof process !== 'undefined' && process.env && process.env.NEXT_PUBLIC_API_URL) {
+    return process.env.NEXT_PUBLIC_API_URL;
+  }
+  if (typeof process !== 'undefined' && process.env && (process.env as any).VITE_API_URL) {
+    return (process.env as any).VITE_API_URL;
   }
   // When running in the browser
   if (typeof window !== 'undefined') {
-    // Only Vite dev server (port 5173) connects directly to localhost:8000
-    if (window.location.port === '5173') {
+    // Only local dev servers (port 5173 or 3000) connect directly to localhost:8000
+    if (window.location.port === '5173' || window.location.port === '3000') {
       return 'http://localhost:8000';
     }
     // In production, docker container (port 8080/80), Cloudflare tunnel, etc.,
@@ -21,12 +24,15 @@ const getApiBaseUrl = (): string => {
 export const API_BASE_URL: string = getApiBaseUrl();
 
 const getWsBaseUrl = (): string => {
-  if (import.meta.env.VITE_WS_URL) {
-    return import.meta.env.VITE_WS_URL;
+  if (typeof process !== 'undefined' && process.env && process.env.NEXT_PUBLIC_WS_URL) {
+    return process.env.NEXT_PUBLIC_WS_URL;
+  }
+  if (typeof process !== 'undefined' && process.env && (process.env as any).VITE_WS_URL) {
+    return (process.env as any).VITE_WS_URL;
   }
   if (typeof window !== 'undefined') {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    if (window.location.port === '5173') {
+    if (window.location.port === '5173' || window.location.port === '3000') {
       return 'ws://localhost:8000';
     }
     return `${protocol}//${window.location.host}`;

@@ -1,16 +1,47 @@
-# React + Vite
+# Mariwasa Automated Resume Analysis — Frontend (Next.js TypeScript)
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+The frontend application is built with **Next.js (App Router)** and **TypeScript**, powered by Tailwind CSS v4 and Redux Toolkit.
 
-Currently, two official plugins are available:
+## Architecture & Project Structure
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+The project follows standard Next.js App Router conventions:
 
-## React Compiler
+```
+frontend/
+├── dev.mjs                 # Dev server runner with host/port flag handling
+├── next.config.mjs         # Next.js standalone configuration & API rewrites
+├── postcss.config.mjs      # Tailwind CSS PostCSS plugin configuration
+├── package.json            # Scripts & dependencies
+├── tsconfig.json           # TypeScript configuration with path aliases (@/*)
+├── public/                 # Static assets (images, icons, etc.)
+│   └── assets/             # Brand logos, banners, illustrations
+└── src/
+    ├── app/                # Next.js App Router route segments
+    │   ├── layout.tsx      # Root layout
+    │   ├── providers.tsx   # Redux, Navigation, Helmet, and Toast providers
+    │   ├── globals.css     # Global styles & Tailwind imports
+    │   ├── page.tsx        # Landing / Home page
+    │   ├── (public)/       # Public routes: /aboutpage, /careerspage, /smart-upload, etc.
+    │   ├── (auth)/         # Auth routes: /login, /register, /forgot-password, etc.
+    │   ├── admin/          # Admin portal routes: /admin/dashboard, /admin/users, etc.
+    │   ├── hr/             # HR portal routes: /hr/dashboard, /hr/screeningportal, etc.
+    │   └── candidate/      # Candidate portal routes: /candidate/dashboard, etc.
+    ├── views/              # Page view implementations
+    ├── components/         # Reusable UI components
+    ├── redux/              # Redux Toolkit store, slices, and RTK Query API slice
+    ├── services/           # Axios API services and backend endpoints
+    ├── types/              # TypeScript interfaces and type definitions
+    └── utils/              # Navigation adapter, formatting, and export helpers
+```
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## Available Scripts
 
-## Expanding the ESLint configuration
+- `npm run dev`: Starts the Next.js development server (default port: `5173`).
+- `npm run build`: Generates an optimized production build (`standalone`).
+- `npm run start`: Runs the production server on port `5173`.
+- `npm run lint`: Runs code linting.
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+## Environment Variables
+
+- `NEXT_PUBLIC_API_URL`: Backend API base path or URL (default: `/api` in production, `http://localhost:8000` in dev).
+- `NEXT_PUBLIC_WS_URL`: WebSocket base URL for real-time notifications and chat.

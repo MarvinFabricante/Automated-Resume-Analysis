@@ -1,5 +1,5 @@
 import React, { ReactNode } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation } from '@/utils/navigation';
 import {
   LayoutDashboard, Users, Building2, User, Settings, Search, Briefcase,
   HelpCircle, BookOpen, MessageSquare, Scale, Sliders, Calendar, Sparkles,

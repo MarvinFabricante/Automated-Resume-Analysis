@@ -1,6 +1,6 @@
 import React from 'react';
 import { Search, Sparkles, TrendingUp, Settings, ChevronRight } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from '@/utils/navigation';
 
 const QuickActions: React.FC = () => {
   const navigate = useNavigate();

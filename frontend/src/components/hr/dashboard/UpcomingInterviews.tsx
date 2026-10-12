@@ -1,5 +1,5 @@
 import React from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from '@/utils/navigation';
 import { 
   Calendar, Clock, Video, User, ChevronRight, 
   Plus, CheckCircle2, AlertCircle, ArrowUpRight, Sparkles 
@@ -21,7 +21,7 @@ const UpcomingInterviews: React.FC<UpcomingInterviewsProps> = ({ onScheduleClick
       const status = (item.status || '').toUpperCase();
       return status !== 'CANCELLED' && status !== 'REJECTED';
     })
-    .sort((a, b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime())
+    .sort((a, b) => new Date(a.start_time || 0).getTime() - new Date(b.start_time || 0).getTime())
     .slice(0, 4);
 
   const formatInterviewTime = (startStr?: string) => {

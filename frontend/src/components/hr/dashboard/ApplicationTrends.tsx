@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from '@/utils/navigation';
 import {
   MoreHorizontal, TrendingUp, Calendar, Zap,
   PieChart as PieIcon, Briefcase, ChevronRight,

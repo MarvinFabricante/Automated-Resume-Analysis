@@ -1,7 +1,7 @@
 import React from 'react';
 import { Calendar, Clock, Mail, User, Video } from 'lucide-react';
 import { useSelector } from 'react-redux';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from '@/utils/navigation';
 import { useGetCandidateInterviewsQuery } from '../../../redux/api/apiSlice';
 import { RootState } from '../../../redux/store';
 

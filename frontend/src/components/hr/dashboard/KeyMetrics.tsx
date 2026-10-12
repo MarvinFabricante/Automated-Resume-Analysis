@@ -2,7 +2,7 @@ import React from 'react';
 import { 
   FileText, Briefcase, Zap, Sparkles, ArrowUpRight, LucideIcon
 } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from '@/utils/navigation';
 
 interface StatCardProps {
   icon: LucideIcon;

@@ -2,7 +2,7 @@
 
 <p align="left">
   <a href="https://skillicons.dev">
-    <img src="https://skillicons.dev/icons?i=tailwind,javascript,react,redux,py,fastapi,postgres" />
+    <img src="https://skillicons.dev/icons?i=tailwind,typescript,nextjs,redux,py,fastapi,redis,postgres,celery,supabase,nginx,cloudflare" />
   </a>
 </p>
 
@@ -56,7 +56,7 @@ The "Match Score" is calculated using a multi-factor algorithm:
 ## Technical Architecture
 
 ### **The Stack**
-- **Frontend**: React 19 (Vite), **Redux Toolkit** (Global State Management), Tailwind CSS (Premium Glassmorphism Design).
+- **Frontend**: Next.js (TypeScript), **Redux Toolkit** (Global State Management), Tailwind CSS (Premium Glassmorphism Design).
 - **Backend**: FastAPI (Python 3.12), SQLAlchemy 2.0 (Async Engine).
 - **Database**: PostgreSQL (Relational Data).
 - **Security**: JWT (JSON Web Tokens), BCrypt Hashing, Role-Based Access Control (RBAC).

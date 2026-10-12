@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation } from '@/utils/navigation';
 import {
   ChevronDown, LayoutDashboard, Users, Database, ShieldCheck, LogOut,
   Settings, Menu, X, FileText, Search, User, Building2, Info, Briefcase, LogIn, UserPlus,
@@ -487,7 +487,7 @@ const Header: React.FC = () => {
 
           <div className="flex items-center space-x-2 sm:space-x-4 cursor-pointer group min-w-0" onClick={() => navigate(isGuest ? '/' : location.pathname)}>
             <div className={`w-8 h-8 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center overflow-hidden transition-all duration-300 shrink-0 ${!isGuest && 'group-hover:shadow-[0_0_15px_rgba(209,0,67,0.3)]'}`}>
-              <img src={logo} alt="logo" className="w-full h-full object-contain" />
+              <img src={(logo as any)?.src || logo} alt="logo" className="w-full h-full object-contain" />
             </div>
             <div className="min-w-0">
               <h1 className="text-sm sm:text-base font-black tracking-tight text-gray-900 leading-tight truncate">
