@@ -7,7 +7,51 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from dotenv import load_dotenv
 
+from app.utils.redis_client import redis_tx_manager, push_to_queue
+
 load_dotenv()
+
+
+async def _send_email_redis_first(to_email: str, subject: str, html_body: str, email_type: str = "general") -> bool:
+    """
+    Redis-First Email Dispatcher:
+    1. Stages an email transaction in Redis first with status 'PENDING'.
+    2. Pushes email metadata into the outgoing emails queue in Redis.
+    3. Attempts SMTP delivery to the destination.
+    4. Commits transaction in Redis as 'COMMITTED' / 'DELIVERED' or marks 'FAILED'.
+    """
+    tx_payload = {
+        "to_email": to_email,
+        "subject": subject,
+        "email_type": email_type,
+        "body_preview": html_body[:200] if html_body else "",
+    }
+    tx_id = await redis_tx_manager.stage_transaction(
+        target="email",
+        action="SEND",
+        payload=tx_payload,
+    )
+
+    # Push to Redis outgoing email queue for audit trail & async queueing
+    await push_to_queue("queue:outgoing_emails", {
+        "tx_id": tx_id,
+        "to_email": to_email,
+        "subject": subject,
+        "email_type": email_type,
+        "created_at": datetime.utcnow().isoformat(),
+    })
+
+    try:
+        success = await asyncio.to_thread(_send_smtp_sync, to_email, subject, html_body)
+        if success:
+            await redis_tx_manager.commit_transaction(tx_id, {"delivered": True})
+        else:
+            await redis_tx_manager.fail_transaction(tx_id, "SMTP delivery failed")
+        return success
+    except Exception as e:
+        await redis_tx_manager.fail_transaction(tx_id, str(e))
+        return False
+
 
 
 def _send_smtp_sync(to_email: str, subject: str, html_body: str) -> bool:
@@ -74,7 +118,7 @@ class EmailService:
             </body>
         </html>
         """
-        return await asyncio.to_thread(_send_smtp_sync, email, subject, body)
+        return await _send_email_redis_first(email, subject, body, "password_reset")
 
     @staticmethod
     async def send_interview_invitation_email(
@@ -196,7 +240,7 @@ class EmailService:
         </body>
         </html>
         """
-        return await asyncio.to_thread(_send_smtp_sync, to_email, subject, body)
+        return await _send_email_redis_first(to_email, subject, body, "interview_invitation")
 
     @staticmethod
     async def send_interview_rescheduled_email(
@@ -306,4 +350,4 @@ class EmailService:
         </body>
         </html>
         """
-        return await asyncio.to_thread(_send_smtp_sync, to_email, subject, body)
+        return await _send_email_redis_first(to_email, subject, body, "interview_rescheduled")

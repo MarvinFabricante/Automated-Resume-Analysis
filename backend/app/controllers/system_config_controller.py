@@ -164,3 +164,56 @@ async def get_system_performance(
     current_user: dict = Depends(require_role("ADMIN"))
 ):
     return await system_config_service.get_performance_stats(db)
+
+
+# ─── Redis-First Infrastructure & Transactions ────────────────────────────────
+
+@router.get("/redis/status")
+async def get_redis_status():
+    """
+    Check Redis connection status, health, and transaction statistics.
+    Provides observability into the Redis-first transaction layer.
+    """
+    import time
+    from app.utils.redis_client import is_redis_available, get_async_redis, redis_tx_manager, REDIS_URL
+
+    t0 = time.time()
+    available = await is_redis_available()
+    latency_ms = round((time.time() - t0) * 1000, 2)
+
+    stats = await redis_tx_manager.get_transaction_stats() if available else {}
+    memory_info = {}
+    if available:
+        try:
+            client = get_async_redis()
+            info = await client.info("memory")
+            memory_info = {
+                "used_memory_human": info.get("used_memory_human", "N/A"),
+                "used_memory_peak_human": info.get("used_memory_peak_human", "N/A"),
+                "total_system_memory_human": info.get("total_system_memory_human", "N/A"),
+            }
+        except Exception:
+            pass
+
+    return {
+        "status": "healthy" if available else "degraded",
+        "redis_available": available,
+        "latency_ms": latency_ms,
+        "redis_url": REDIS_URL.split("@")[-1] if "@" in REDIS_URL else REDIS_URL,
+        "transaction_stats": stats,
+        "memory": memory_info,
+    }
+
+
+@router.get("/redis/transactions")
+async def get_redis_transactions(limit: int = 50):
+    """
+    Retrieve the most recent transactions stored in Redis before the source of truth.
+    """
+    from app.utils.redis_client import redis_tx_manager
+    transactions = await redis_tx_manager.get_recent_transactions(limit=limit)
+    return {
+        "count": len(transactions),
+        "transactions": transactions,
+    }
+

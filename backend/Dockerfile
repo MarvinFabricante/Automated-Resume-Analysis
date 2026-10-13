@@ -35,5 +35,5 @@ RUN mkdir -p /app/uploads/resumes /app/uploads/resume_images
 EXPOSE 8000
 
 # Start the application with multi-worker concurrency and connection backlog
-CMD exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --workers ${WEB_CONCURRENCY:-4} --limit-concurrency 1000 --backlog 2048
+CMD exec uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000} --workers ${WEB_CONCURRENCY:-4} --limit-concurrency 1000 --backlog 2048
 

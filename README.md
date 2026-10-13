@@ -72,12 +72,11 @@ automated_resume_analysis/
 ├── docker-compose.yml          # Container configuration for full application stack
 ├── .env                        # Central environment configuration
 ├── backend/                    # FastAPI & Celery backend application
-│   ├── main.py                 # Local dev entrypoint runner
+│   ├── main.py                 # Single unified FastAPI application & startup runner
 │   ├── Dockerfile              # Python 3.12 production container
 │   ├── requirements.txt        # Backend dependencies
 │   ├── reset-db.sh             # Database migration and seed script
 │   └── app/
-│       ├── main.py             # FastAPI factory, middleware, and route mounting
 │       ├── celery_app.py       # Celery task queue initialization
 │       ├── tasks.py            # Celery background workers (AI processing)
 │       ├── controllers/        # Thin HTTP routers (Admin, Auth, HR, Candidate, Jobs)

@@ -179,3 +179,30 @@ def match_single_job_task(resume_data: dict, job_dict: dict, use_ai: bool = Fals
     return calculate_match_score(resume_data, mock_job, use_ai=use_ai)
 
 
+@celery_app.task(name="process_outgoing_email_queue_task")
+def process_outgoing_email_queue_task():
+    """Celery task to drain any queued emails from Redis and deliver them."""
+    from app.utils.redis_client import pop_from_queue, redis_tx_manager
+    from app.services.email_service import _send_smtp_sync
+    import asyncio
+
+    item = asyncio.run(pop_from_queue("queue:outgoing_emails"))
+    if not item:
+        return {"processed": False, "reason": "queue_empty"}
+
+    tx_id = item.get("tx_id")
+    to_email = item.get("to_email")
+    subject = item.get("subject")
+    html_body = item.get("html_body", "")
+
+    logger.info(f"[Celery] Processing queued email tx={tx_id} to={to_email}")
+    success = _send_smtp_sync(to_email, subject, html_body)
+    if tx_id:
+        if success:
+            redis_tx_manager.commit_transaction_sync(tx_id, {"delivered_via_worker": True})
+        else:
+            redis_tx_manager.fail_transaction_sync(tx_id, "Worker SMTP delivery failed")
+
+    return {"processed": True, "tx_id": tx_id, "success": success}
+
+

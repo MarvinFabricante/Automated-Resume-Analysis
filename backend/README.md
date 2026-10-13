@@ -8,12 +8,11 @@ The project follows a modular, layered enterprise architecture (Controllers → 
 
 ```
 backend/
-├── main.py                     # Local development entrypoint runner
+├── main.py                     # Single unified FastAPI application & startup runner
 ├── Dockerfile                  # Container build specification (Python 3.12-slim)
 ├── requirements.txt            # Python dependencies (FastAPI, SQLAlchemy, Celery, spaCy)
 ├── reset-db.sh                 # Database migration & seed script
 └── app/
-    ├── main.py                 # FastAPI application factory, middleware, & router setup
     ├── celery_app.py           # Celery distributed task queue configuration
     ├── tasks.py                # Asynchronous background tasks (AI parsing, notifications)
     ├── controllers/            # HTTP routers & route endpoints (Thin Controller pattern)
@@ -31,7 +30,7 @@ backend/
 ## Available Commands & Scripts
 
 - `python main.py`: Starts the FastAPI development server with hot reload (port `8000`).
-- `uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload`: Directly runs the Uvicorn ASGI server.
+- `uvicorn main:app --host 0.0.0.0 --port 8000 --reload`: Directly runs the Uvicorn ASGI server.
 - `celery -A app.celery_app.celery_app worker --loglevel=info`: Starts the Celery background worker.
 - `pytest`: Executes the automated test suite across controllers, services, and extractors.
 - `bash reset-db.sh`: Reinitializes the database tables and runs schema migrations.
@@ -52,3 +51,24 @@ backend/
 - `SUPABASE_BUCKET`: Storage bucket name for resume uploads (default: `resume storage`).
 - `WEB_CONCURRENCY`: Number of Uvicorn worker processes in production (default: `4`).
 - `CELERY_CONCURRENCY`: Number of concurrent worker threads for background task processing (default: `4`).
+
+## Redis-First Architecture
+
+To ensure high concurrency, ultra-low latency, and smooth application execution, all backend data operations and outside services use a **Redis-first pipeline**:
+
+1. **Transaction Staging (Pre-commit)**:
+   - When any mutation occurs (`create`, `update`, `delete`, or external call), the transaction is staged in Redis first with status `PENDING` via `RedisTransactionManager`.
+   - The transaction details (`tx_id`, `target`, `action`, `payload`, `timestamp`) are stored in Redis hash `tx:<tx_id>` and added to `transactions:pending` and `transactions:recent`.
+2. **Persistence to Source of Truth**:
+   - The operation is executed against the persistent source of truth (PostgreSQL database, Supabase Storage, Gmail SMTP, Google Calendar).
+3. **Commit & Cache Finalization**:
+   - Upon successful execution, the Redis transaction is marked as `COMMITTED` with timestamp and result metadata.
+   - If an error occurs, the transaction is marked as `FAILED` in Redis for auditing and recovery.
+4. **Read-Through Caching**:
+   - Database queries (`User`, `JobApplication`, `JobDescription`, `Resume`, `Interview`, `SystemConfig`, `AuditLog`) check Redis first before hitting PostgreSQL, eliminating database query bottlenecks.
+5. **Outside Services Integration**:
+   - **Supabase Storage**: Resume uploads are staged in Redis first; file downloads are served directly from Redis in-memory cache with 0ms network round-trip.
+   - **Email Service**: Outgoing emails are recorded as transactions in Redis first and queued in `queue:outgoing_emails` before SMTP delivery.
+   - **Google Calendar**: Calendar queries check Redis first; calendar mutations are staged in Redis first.
+   - **Rate Limiting**: Backed by Redis distributed storage via Slowapi.
+   - **Real-Time WebSockets**: Distributed cross-worker broadcasting using Redis Pub/Sub (`pubsub:ws_notifications`, `pubsub:ws_chat`, `pubsub:ws_status`).

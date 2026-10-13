@@ -3,7 +3,7 @@ import pytest
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.pool import StaticPool
 from httpx import ASGITransport, AsyncClient
-from app.main import app
+from main import app
 from app.utils.database import Base, get_db
 
 # Use SQLite in-memory for testing

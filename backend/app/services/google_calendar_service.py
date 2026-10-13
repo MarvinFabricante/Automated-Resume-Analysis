@@ -1,19 +1,74 @@
 """
-Google Calendar API service layer.
+Google Calendar API service layer with Redis-first architecture.
 
 Provides functions for interacting with real Google Calendar resources
 (calendars, events) using the pickle-based OAuth flow from google_auth.
+All write operations are staged in Redis first before executing against
+the Google Calendar API, and read operations check Redis cache first.
 """
 
-from app.utils.google_auth import get_calendar_service as get_google_calendar_service
+import hashlib
+import json
+import logging
+from typing import Optional, List, Dict, Any
 from googleapiclient.errors import HttpError
+
+from app.utils.google_auth import get_calendar_service as get_google_calendar_service
+from app.utils.redis_client import (
+    get_sync_redis,
+    redis_tx_manager,
+    sanitize_payload,
+)
+
+logger = logging.getLogger(__name__)
+
+
+def _cred_hash(credentials_json: str) -> str:
+    """Return a short hash of credentials string for cache partitioning."""
+    return hashlib.sha256(credentials_json.encode("utf-8")).hexdigest()[:16]
+
+
+def _sync_get_cache(key: str) -> Optional[Any]:
+    try:
+        r = get_sync_redis()
+        val = r.get(key)
+        if val:
+            return json.loads(val.decode("utf-8"))
+    except Exception:
+        pass
+    return None
+
+
+def _sync_set_cache(key: str, val: Any, ttl: int = 300):
+    try:
+        r = get_sync_redis()
+        r.setex(key, ttl, json.dumps(sanitize_payload(val)).encode("utf-8"))
+    except Exception:
+        pass
+
+
+def _sync_del_pattern(pattern: str):
+    try:
+        r = get_sync_redis()
+        clean = pattern.strip("*")
+        keys = list(r.scan_iter(match=f"*{clean}*"))
+        if keys:
+            r.delete(*keys)
+    except Exception:
+        pass
 
 
 # ── Calendar operations ──────────────────────────────────────────────────────
 
 
 def get_real_google_calendars(credentials_json: str):
-    """Fetch all calendars from the authenticated Google account."""
+    """Fetch all calendars from the authenticated Google account with Redis caching."""
+    cred_h = _cred_hash(credentials_json)
+    cache_key = f"google_cal:list:{cred_h}"
+    cached = _sync_get_cache(cache_key)
+    if cached is not None:
+        return cached
+
     service, _ = get_google_calendar_service(credentials_json)
     if not service:
         return None
@@ -62,16 +117,24 @@ def get_real_google_calendars(credentials_json: str):
                     "notify_daily_agenda": "None",
                 },
             })
+        _sync_set_cache(cache_key, results, ttl=300)
         return results
     except HttpError as err:
-        print(f"Google Calendar API Error: {err}")
+        logger.error(f"Google Calendar API Error: {err}")
         return None
 
 
 def create_real_google_calendar(credentials_json: str, summary: str, description: str = "", time_zone: str = "UTC"):
-    """Create a new secondary calendar on the authenticated account."""
+    """Create a new secondary calendar on the authenticated account (Redis-first)."""
+    tx_id = redis_tx_manager.stage_transaction_sync(
+        target="google_calendar",
+        action="CREATE_CALENDAR",
+        payload={"summary": summary, "description": description, "time_zone": time_zone},
+    )
+
     service, _ = get_google_calendar_service(credentials_json)
     if not service:
+        redis_tx_manager.fail_transaction_sync(tx_id, "Google service unavailable")
         return None
     try:
         cal_body = {
@@ -80,22 +143,35 @@ def create_real_google_calendar(credentials_json: str, summary: str, description
             'timeZone': time_zone,
         }
         created = service.calendars().insert(body=cal_body).execute()
+        redis_tx_manager.commit_transaction_sync(tx_id, created)
+        _sync_del_pattern(f"google_cal:list:{_cred_hash(credentials_json)}")
         return created
     except HttpError as err:
-        print(f"Google Calendar API Error creating calendar: {err}")
+        logger.error(f"Google Calendar API Error creating calendar: {err}")
+        redis_tx_manager.fail_transaction_sync(tx_id, str(err))
         return None
 
 
 def delete_real_google_calendar(credentials_json: str, calendar_id: str):
-    """Delete a calendar from the authenticated account."""
+    """Delete a calendar from the authenticated account (Redis-first)."""
+    tx_id = redis_tx_manager.stage_transaction_sync(
+        target="google_calendar",
+        action="DELETE_CALENDAR",
+        payload={"calendar_id": calendar_id},
+    )
+
     service, _ = get_google_calendar_service(credentials_json)
     if not service:
+        redis_tx_manager.fail_transaction_sync(tx_id, "Google service unavailable")
         return False
     try:
         service.calendars().delete(calendarId=calendar_id).execute()
+        redis_tx_manager.commit_transaction_sync(tx_id, {"deleted": True})
+        _sync_del_pattern(f"google_cal:list:{_cred_hash(credentials_json)}")
         return True
     except HttpError as err:
-        print(f"Google Calendar API Error deleting calendar: {err}")
+        logger.error(f"Google Calendar API Error deleting calendar: {err}")
+        redis_tx_manager.fail_transaction_sync(tx_id, str(err))
         return False
 
 
@@ -109,7 +185,13 @@ def get_real_google_events(
     time_min: str = None,
     time_max: str = None,
 ):
-    """List events from a specific calendar with optional date range filtering."""
+    """List events from a specific calendar with Redis caching."""
+    cred_h = _cred_hash(credentials_json)
+    cache_key = f"google_cal:events:{cred_h}:{calendar_id}:{time_min}:{time_max}:{max_results}"
+    cached = _sync_get_cache(cache_key)
+    if cached is not None:
+        return cached
+
     service, _ = get_google_calendar_service(credentials_json)
     if not service:
         return None
@@ -118,25 +200,26 @@ def get_real_google_events(
             "calendarId": calendar_id or 'primary',
             "maxResults": max_results,
             "singleEvents": True,
-            "orderBy": 'startTime',
+            "orderBy": "startTime",
         }
         if time_min:
-            kwargs["timeMin"] = time_min if (time_min.endswith('Z') or '+' in time_min) else f"{time_min}Z"
+            kwargs["timeMin"] = time_min
         if time_max:
-            kwargs["timeMax"] = time_max if (time_max.endswith('Z') or '+' in time_max) else f"{time_max}Z"
+            kwargs["timeMax"] = time_max
 
         events_result = service.events().list(**kwargs).execute()
-        items = events_result.get('items', [])
+        events = events_result.get('items', [])
         formatted = []
-        for ev in items:
-            start_obj = ev.get('start', {})
-            end_obj = ev.get('end', {})
-            start = start_obj.get('dateTime') or start_obj.get('date') or ""
-            end = end_obj.get('dateTime') or end_obj.get('date') or ""
-            is_all_day = bool(start_obj.get('date') and not start_obj.get('dateTime'))
+        for ev in events:
+            start_info = ev.get('start', {})
+            end_info = ev.get('end', {})
+            is_all_day = 'date' in start_info
+            start = start_info.get('dateTime') or start_info.get('date', '')
+            end = end_info.get('dateTime') or end_info.get('date', '')
+
             formatted.append({
                 "id": ev.get('id'),
-                "calendar_id": calendar_id or 'primary',
+                "calendar_id": calendar_id,
                 "summary": ev.get('summary', 'Untitled Event'),
                 "description": ev.get('description', ''),
                 "location": ev.get('location', ''),
@@ -150,11 +233,11 @@ def get_real_google_events(
                 "html_link": ev.get('htmlLink', ''),
                 "meet_link": "",
             })
+        _sync_set_cache(cache_key, formatted, ttl=180)
         return formatted
     except HttpError as err:
-        print(f"Google Calendar API Error listing events: {err}")
+        logger.error(f"Google Calendar API Error listing events: {err}")
         return None
-
 
 
 def create_real_google_event(
@@ -170,33 +253,30 @@ def create_real_google_event(
     create_meet_link: bool = False,
     interview_id: int = None,
 ):
-    """
-    Create a new event on the specified calendar.
+    """Create a new event on Google Calendar (Redis-first)."""
+    tx_id = redis_tx_manager.stage_transaction_sync(
+        target="google_calendar",
+        action="CREATE_EVENT",
+        payload={
+            "calendar_id": calendar_id,
+            "summary": summary,
+            "start_dt": start_dt,
+            "end_dt": end_dt,
+            "interview_id": interview_id,
+        },
+    )
 
-    Optionally attaches attendees to the calendar event.
-    """
     service, _ = get_google_calendar_service(credentials_json)
     if not service:
+        redis_tx_manager.fail_transaction_sync(tx_id, "Google service unavailable")
         return None
     try:
-        if is_all_day:
-            start_body = {'date': start_dt.split('T')[0]}
-            end_body = {'date': end_dt.split('T')[0]}
-        else:
-            # ensure ISO timezone
-            if not start_dt.endswith('Z') and '+' not in start_dt:
-                start_dt += 'Z'
-            if not end_dt.endswith('Z') and '+' not in end_dt:
-                end_dt += 'Z'
-            start_body = {'dateTime': start_dt, 'timeZone': 'UTC'}
-            end_body = {'dateTime': end_dt, 'timeZone': 'UTC'}
-
         body = {
             'summary': summary,
             'description': description,
             'location': location,
-            'start': start_body,
-            'end': end_body,
+            'start': {'date': start_dt} if is_all_day else {'dateTime': start_dt},
+            'end': {'date': end_dt} if is_all_day else {'dateTime': end_dt},
         }
 
         if attendees:
@@ -210,9 +290,12 @@ def create_real_google_event(
             kwargs['sendUpdates'] = 'all'
 
         created = service.events().insert(**kwargs).execute()
+        redis_tx_manager.commit_transaction_sync(tx_id, created)
+        _sync_del_pattern(f"google_cal:events:{_cred_hash(credentials_json)}")
         return created
     except HttpError as err:
-        print(f"Google Calendar API Error creating event: {err}")
+        logger.error(f"Google Calendar API Error creating event: {err}")
+        redis_tx_manager.fail_transaction_sync(tx_id, str(err))
         return None
 
 
@@ -227,9 +310,22 @@ def update_real_google_event(
     location: str = None,
     status: str = None,
 ):
-    """Update an existing event on Google Calendar using patch."""
+    """Update an existing event on Google Calendar (Redis-first)."""
+    tx_id = redis_tx_manager.stage_transaction_sync(
+        target="google_calendar",
+        action="UPDATE_EVENT",
+        payload={
+            "calendar_id": calendar_id,
+            "event_id": event_id,
+            "summary": summary,
+            "start_dt": start_dt,
+            "end_dt": end_dt,
+        },
+    )
+
     service, _ = get_google_calendar_service(credentials_json)
     if not service or not event_id:
+        redis_tx_manager.fail_transaction_sync(tx_id, "Google service unavailable or missing event_id")
         return None
     try:
         body = {}
@@ -240,66 +336,85 @@ def update_real_google_event(
         if location is not None:
             body['location'] = location
         if status is not None:
-            body['status'] = status
-        if start_dt is not None:
-            formatted_start = start_dt
-            if not formatted_start.endswith('Z') and '+' not in formatted_start:
-                formatted_start += 'Z'
-            body['start'] = {'dateTime': formatted_start, 'timeZone': 'UTC'}
-        if end_dt is not None:
-            formatted_end = end_dt
-            if not formatted_end.endswith('Z') and '+' not in formatted_end:
-                formatted_end += 'Z'
-            body['end'] = {'dateTime': formatted_end, 'timeZone': 'UTC'}
+            body['status'] = status.lower()
+        if start_dt:
+            body['start'] = {'dateTime': start_dt}
+        if end_dt:
+            body['end'] = {'dateTime': end_dt}
 
         updated = service.events().patch(
             calendarId=calendar_id or 'primary',
             eventId=event_id,
             body=body,
-            sendUpdates='all'
+            sendUpdates='all',
         ).execute()
+        redis_tx_manager.commit_transaction_sync(tx_id, updated)
+        _sync_del_pattern(f"google_cal:events:{_cred_hash(credentials_json)}")
         return updated
     except HttpError as err:
-        print(f"Google Calendar API Error updating event: {err}")
+        logger.error(f"Google Calendar API Error updating event {event_id}: {err}")
+        redis_tx_manager.fail_transaction_sync(tx_id, str(err))
         return None
 
 
 def get_single_google_event(credentials_json: str, calendar_id: str, event_id: str):
-    """Fetch a single event by eventId from Google Calendar."""
+    """Fetch a single event by ID with Redis caching."""
+    cred_h = _cred_hash(credentials_json)
+    cache_key = f"google_cal:event:{cred_h}:{calendar_id}:{event_id}"
+    cached = _sync_get_cache(cache_key)
+    if cached is not None:
+        return cached
+
     service, _ = get_google_calendar_service(credentials_json)
     if not service or not event_id:
         return None
     try:
-        return service.events().get(
+        ev = service.events().get(
             calendarId=calendar_id or 'primary',
             eventId=event_id,
         ).execute()
+        _sync_set_cache(cache_key, ev, ttl=300)
+        return ev
     except HttpError as err:
-        print(f"Google Calendar API Error fetching event {event_id}: {err}")
+        logger.error(f"Google Calendar API Error fetching event {event_id}: {err}")
         return None
 
 
 def delete_real_google_event(credentials_json: str, calendar_id: str, event_id: str):
-    """Delete a single event from a calendar."""
+    """Delete a single event from a calendar (Redis-first)."""
+    tx_id = redis_tx_manager.stage_transaction_sync(
+        target="google_calendar",
+        action="DELETE_EVENT",
+        payload={"calendar_id": calendar_id, "event_id": event_id},
+    )
+
     service, _ = get_google_calendar_service(credentials_json)
     if not service:
+        redis_tx_manager.fail_transaction_sync(tx_id, "Google service unavailable")
         return False
     try:
         service.events().delete(
             calendarId=calendar_id or 'primary',
             eventId=event_id,
         ).execute()
+        redis_tx_manager.commit_transaction_sync(tx_id, {"deleted": True})
+        _sync_del_pattern(f"google_cal:events:{_cred_hash(credentials_json)}")
         return True
     except HttpError as err:
-        print(f"Google Calendar API Error deleting event: {err}")
+        logger.error(f"Google Calendar API Error deleting event: {err}")
+        redis_tx_manager.fail_transaction_sync(tx_id, str(err))
         return False
 
 
 def query_freebusy(credentials_json: str, emails: list, time_min: str, time_max: str):
-    """
-    Query the freebusy API for a set of email addresses.
-    Returns the raw 'calendars' dict from the API response, or None on failure.
-    """
+    """Query freebusy API with Redis caching."""
+    cred_h = _cred_hash(credentials_json)
+    emails_str = ",".join(sorted(emails or []))
+    cache_key = f"google_cal:freebusy:{cred_h}:{emails_str}:{time_min}:{time_max}"
+    cached = _sync_get_cache(cache_key)
+    if cached is not None:
+        return cached
+
     service, _ = get_google_calendar_service(credentials_json)
     if not service:
         return None
@@ -310,7 +425,9 @@ def query_freebusy(credentials_json: str, emails: list, time_min: str, time_max:
             "items": [{"id": e} for e in emails],
         }
         result = service.freebusy().query(body=body).execute()
-        return result.get('calendars', {})
+        cal_data = result.get('calendars', {})
+        _sync_set_cache(cache_key, cal_data, ttl=120)
+        return cal_data
     except HttpError as err:
-        print(f"Google Calendar API Error querying freebusy: {err}")
+        logger.error(f"Google Calendar API Error querying freebusy: {err}")
         return None
