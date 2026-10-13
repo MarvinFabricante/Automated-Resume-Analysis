@@ -311,14 +311,5 @@ async def get_and_validate_job(db: AsyncSession, job_id: str):
     return job
 
 
-class JobApplicationService:
-    create_job_application = staticmethod(create_job_application)
-    get_applications_by_job = staticmethod(get_applications_by_job)
-    get_applications_by_email = staticmethod(get_applications_by_email)
-    get_all_applications = staticmethod(get_all_applications)
-    update_application_status = staticmethod(update_application_status)
-    delete_application = staticmethod(delete_application)
-    get_and_validate_job = staticmethod(get_and_validate_job)
-
-
-job_application_service = JobApplicationService()
+import sys
+job_application_service = sys.modules[__name__]

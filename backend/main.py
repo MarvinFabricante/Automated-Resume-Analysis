@@ -165,12 +165,10 @@ async def lifespan(app_instance: FastAPI):
     # Initialize Redis-first architecture and cross-worker real-time listeners
     from app.utils.redis_client import is_redis_available, close_redis_pools
     from app.utils.websocket_manager import manager as ws_manager
-    from app.utils.websocket import manager as chat_ws_manager
 
     if await is_redis_available():
         logger.info("[Redis-First] Redis connection established. Redis-first transaction layer active.")
         await ws_manager.start_redis_listener()
-        await chat_ws_manager.start_redis_listener()
     else:
         logger.warning("[Redis-First] Redis unreachable at startup. Operating with direct source-of-truth fallback.")
 
@@ -182,11 +180,6 @@ async def lifespan(app_instance: FastAPI):
             await ws_manager.stop_redis_listener()
         except Exception as e:
             logger.debug(f"Error stopping ws_manager listener: {e}")
-
-        try:
-            await chat_ws_manager.stop_redis_listener()
-        except Exception as e:
-            logger.debug(f"Error stopping chat_ws_manager listener: {e}")
 
         try:
             await close_redis_pools()

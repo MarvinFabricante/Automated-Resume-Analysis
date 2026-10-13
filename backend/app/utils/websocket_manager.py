@@ -1,162 +1,429 @@
+"""
+Unified WebSocket & Real-Time Connection Manager
+------------------------------------------------
+Provides function-based WebSocket connection management, channel partitioning,
+role-based and user-based messaging, and Redis Pub/Sub synchronization
+across multiple backend worker processes.
+
+Unified features:
+- Chat messaging & direct personal message delivery
+- Online presence tracking & status broadcast via Redis sets
+- Real-time notifications by role (ADMIN, HR, CANDIDATE) and email
+- Cross-worker real-time synchronization via Redis Pub/Sub channels:
+  - pubsub:ws_notifications
+  - pubsub:ws_chat
+  - pubsub:ws_status
+"""
+
+import sys
 import json
 import uuid
 import asyncio
 import logging
+from typing import Dict, Set, List, Optional, Any
 from fastapi import WebSocket
-from typing import List, Dict, Optional
 
 from app.utils.redis_client import get_async_redis, publish_event
 
 logger = logging.getLogger(__name__)
 
 # Unique ID per backend process instance to prevent self-echoing in Redis Pub/Sub
-INSTANCE_ID = uuid.uuid4().hex
+INSTANCE_ID: str = uuid.uuid4().hex
+
+# --- State (in-memory for local process) ---
+# Chat/presence: user_id -> Set[WebSocket]
+chat_connections: Dict[Any, Set[WebSocket]] = {}
+active_connections: Dict[Any, Set[WebSocket]] = chat_connections  # Alias for backward compatibility
+
+# Notifications: role -> List[WebSocket], email -> List[WebSocket]
+role_connections: Dict[str, List[WebSocket]] = {}
+email_connections: Dict[str, List[WebSocket]] = {}
+
+# Background listener task and pubsub client
+_listener_task: Optional[asyncio.Task] = None
+_pubsub = None
 
 
-class ConnectionManager:
-    def __init__(self):
-        # Store connections grouped by role
-        self.active_connections: Dict[str, List[WebSocket]] = {}
-        # Store connections grouped by email
-        self.email_connections: Dict[str, List[WebSocket]] = {}
-        self._listener_task: Optional[asyncio.Task] = None
-        self._pubsub = None
+# --- Helper ---
+def _normalize_uid(user_id: Any) -> Any:
+    try:
+        return int(user_id)
+    except (ValueError, TypeError):
+        return user_id
 
-    async def start_redis_listener(self):
-        """Start background task listening to Redis Pub/Sub for cross-worker messages."""
-        if self._listener_task and not self._listener_task.done():
-            return
-        self._listener_task = asyncio.create_task(self._listen_redis_pubsub())
 
-    async def stop_redis_listener(self):
-        """Gracefully stop background Redis pubsub listener."""
-        if self._listener_task and not self._listener_task.done():
-            self._listener_task.cancel()
+class _SyncOrAsyncNone:
+    """Helper enabling disconnect to be used synchronously or awaited cleanly."""
+    def __await__(self):
+        async def _noop():
+            return None
+        return _noop().__await__()
+
+
+# --- Chat & Presence Functions ---
+
+async def send_local_chat_message(message: dict, user_id: Any) -> None:
+    """Send message only to WebSockets connected to THIS instance for the given user."""
+    uid = _normalize_uid(user_id)
+    if uid in chat_connections:
+        dead_connections = []
+        for connection in list(chat_connections[uid]):
             try:
-                await self._listener_task
-            except asyncio.CancelledError:
+                await connection.send_json(message)
+            except Exception:
+                dead_connections.append(connection)
+
+        if dead_connections:
+            for dead in dead_connections:
+                if uid in chat_connections:
+                    chat_connections[uid].discard(dead)
+            if uid in chat_connections and not chat_connections[uid]:
+                del chat_connections[uid]
+
+
+async def send_personal_message(message: dict, user_id: Any) -> None:
+    """Deliver a chat message locally and publish to Redis for other workers."""
+    uid = _normalize_uid(user_id)
+    # 1. Deliver to local WebSockets
+    await send_local_chat_message(message, uid)
+
+    # 2. Publish to Redis so all other backend workers deliver to their clients
+    await publish_event("pubsub:ws_chat", {
+        "origin_id": INSTANCE_ID,
+        "user_id": uid,
+        "message": message,
+    })
+
+
+async def broadcast_status(user_id: Any, is_online: bool) -> None:
+    """Broadcast user presence status change to ALL users locally and via Redis."""
+    uid = _normalize_uid(user_id)
+    message = {"type": "status", "user_id": uid, "is_online": is_online}
+    for local_uid in list(chat_connections.keys()):
+        await send_local_chat_message(message, local_uid)
+
+    await publish_event("pubsub:ws_status", {
+        "origin_id": INSTANCE_ID,
+        "user_id": uid,
+        "is_online": is_online,
+    })
+
+
+async def connect_chat(websocket: WebSocket, user_id: Any) -> None:
+    """Accept and register a user's chat WebSocket connection."""
+    await websocket.accept()
+    uid = _normalize_uid(user_id)
+    if uid not in chat_connections:
+        chat_connections[uid] = set()
+    chat_connections[uid].add(websocket)
+
+    # Mark user online in Redis set
+    try:
+        client = get_async_redis()
+        await client.sadd("users:online", str(uid))
+    except Exception:
+        pass
+
+    await start_redis_listener()
+    await broadcast_status(uid, True)
+
+
+async def disconnect_chat(websocket: WebSocket, user_id: Any) -> None:
+    """Unregister a user's chat WebSocket connection and update online status."""
+    uid = _normalize_uid(user_id)
+    if uid in chat_connections:
+        chat_connections[uid].discard(websocket)
+        if not chat_connections[uid]:
+            del chat_connections[uid]
+            try:
+                client = get_async_redis()
+                await client.srem("users:online", str(uid))
+                if isinstance(uid, int):
+                    await client.srem("users:online", uid)
+            except Exception:
                 pass
-            except Exception as e:
-                logger.debug(f"Error stopping notifications listener: {e}")
-            self._listener_task = None
+            await broadcast_status(uid, False)
 
-    async def _listen_redis_pubsub(self):
-        """Listen to Redis channel for broadcasts from other workers."""
+
+async def is_user_online(user_id: Any) -> bool:
+    """Check presence via Redis set, falling back to local connections."""
+    uid = _normalize_uid(user_id)
+    try:
+        client = get_async_redis()
+        is_member = await client.sismember("users:online", str(uid))
+        if not is_member and isinstance(uid, int):
+            is_member = await client.sismember("users:online", uid)
+        if is_member:
+            return True
+    except Exception:
+        pass
+    return uid in chat_connections
+
+
+def get_online_count() -> int:
+    """Return the number of unique online users from Redis or local count."""
+    try:
+        from app.utils.redis_client import get_sync_redis, is_sync_redis_available
+        if is_sync_redis_available():
+            client = get_sync_redis()
+            count = client.scard("users:online")
+            if count is not None and count > 0:
+                return int(count)
+    except Exception:
+        pass
+    return len(chat_connections)
+
+
+async def get_online_count_async() -> int:
+    """Return the number of unique online users asynchronously."""
+    try:
+        client = get_async_redis()
+        count = await client.scard("users:online")
+        if count is not None and count > 0:
+            return int(count)
+    except Exception:
+        pass
+    return len(chat_connections)
+
+
+# --- Notification Functions ---
+
+async def connect_notification(websocket: WebSocket, role: str, email: Optional[str] = None) -> None:
+    """Accept and register a WebSocket for notification broadcasts by role and optional email."""
+    await websocket.accept()
+    if role not in role_connections:
+        role_connections[role] = []
+    role_connections[role].append(websocket)
+
+    if email:
+        if email not in email_connections:
+            email_connections[email] = []
+        email_connections[email].append(websocket)
+
+    await start_redis_listener()
+
+
+def disconnect_notification(websocket: WebSocket, role: str, email: Optional[str] = None) -> None:
+    """Unregister a notification WebSocket by role and optional email."""
+    if role in role_connections:
+        if websocket in role_connections[role]:
+            role_connections[role].remove(websocket)
+        if not role_connections[role]:
+            del role_connections[role]
+
+    if email and email in email_connections:
+        if websocket in email_connections[email]:
+            email_connections[email].remove(websocket)
+        if not email_connections[email]:
+            del email_connections[email]
+
+
+async def send_local_notification(message: str, target_role: Optional[str] = None, target_email: Optional[str] = None) -> None:
+    """Send notification message only to connections locally attached to this worker process."""
+    if target_email:
+        if target_email in email_connections:
+            dead_conns = []
+            for connection in list(email_connections[target_email]):
+                try:
+                    await connection.send_text(message)
+                except Exception:
+                    dead_conns.append(connection)
+            for dead in dead_conns:
+                if target_email in email_connections and dead in email_connections[target_email]:
+                    email_connections[target_email].remove(dead)
+    elif target_role:
+        if target_role in role_connections:
+            dead_conns = []
+            for connection in list(role_connections[target_role]):
+                try:
+                    await connection.send_text(message)
+                except Exception:
+                    dead_conns.append(connection)
+            for dead in dead_conns:
+                if target_role in role_connections and dead in role_connections[target_role]:
+                    role_connections[target_role].remove(dead)
+    else:
+        for role, role_conns in list(role_connections.items()):
+            dead_conns = []
+            for connection in list(role_conns):
+                try:
+                    await connection.send_text(message)
+                except Exception:
+                    dead_conns.append(connection)
+            for dead in dead_conns:
+                if role in role_connections and dead in role_connections[role]:
+                    role_connections[role].remove(dead)
+
+
+async def broadcast_notification(message: str, target_role: Optional[str] = None, target_email: Optional[str] = None) -> None:
+    """Broadcasts a notification message locally and across all worker processes via Redis Pub/Sub."""
+    # 1. Deliver to local WebSockets
+    await send_local_notification(message, target_role, target_email)
+
+    # 2. Publish to Redis so all other backend workers deliver to their clients
+    await publish_event("pubsub:ws_notifications", {
+        "origin_id": INSTANCE_ID,
+        "message": message,
+        "target_role": target_role,
+        "target_email": target_email,
+    })
+
+
+# --- Unified High-Level Dispatchers ---
+
+async def connect(websocket: WebSocket, identifier_or_role: Any, email: Optional[str] = None) -> None:
+    """
+    Unified connect handler.
+    Automatically routes to connect_notification when role/email is provided,
+    or connect_chat when user_id is provided.
+    """
+    if email is not None:
+        await connect_notification(websocket, role=str(identifier_or_role), email=email)
+    elif isinstance(identifier_or_role, int):
+        await connect_chat(websocket, user_id=identifier_or_role)
+    elif isinstance(identifier_or_role, str) and identifier_or_role.isdigit():
+        await connect_chat(websocket, user_id=int(identifier_or_role))
+    else:
+        await connect_notification(websocket, role=str(identifier_or_role), email=email)
+
+
+def disconnect(websocket: WebSocket, identifier_or_role: Any, email: Optional[str] = None):
+    """
+    Unified disconnect handler.
+    Routes to disconnect_notification (sync) or returns coroutine for disconnect_chat.
+    """
+    if email is not None or (isinstance(identifier_or_role, str) and not identifier_or_role.isdigit()):
+        disconnect_notification(websocket, role=str(identifier_or_role), email=email)
+        return _SyncOrAsyncNone()
+    else:
+        return disconnect_chat(websocket, user_id=identifier_or_role)
+
+
+async def broadcast(message: str, target_role: Optional[str] = None, target_email: Optional[str] = None) -> None:
+    """Broadcast notification message (alias for broadcast_notification)."""
+    await broadcast_notification(message, target_role=target_role, target_email=target_email)
+
+
+# Aliases for backward-compatibility with internal methods
+_send_local = send_local_notification
+_send_local_message = send_local_chat_message
+
+
+# --- Redis Pub/Sub Background Listener ---
+
+async def start_redis_listener() -> None:
+    """Start unified background task listening to Redis Pub/Sub for cross-worker messages."""
+    global _listener_task
+    if _listener_task and not _listener_task.done():
+        return
+    _listener_task = asyncio.create_task(_listen_redis_pubsub())
+
+
+async def stop_redis_listener() -> None:
+    """Gracefully stop background Redis pubsub listener."""
+    global _listener_task, _pubsub
+    if _listener_task and not _listener_task.done():
+        _listener_task.cancel()
         try:
-            client = get_async_redis()
-            self._pubsub = client.pubsub()
-            await self._pubsub.subscribe("pubsub:ws_notifications")
-            logger.info("[WebSocket Manager] Subscribed to Redis channel 'pubsub:ws_notifications'.")
-            async for message in self._pubsub.listen():
-                if message and message.get("type") == "message":
-                    try:
-                        raw_data = message.get("data")
-                        if isinstance(raw_data, bytes):
-                            raw_data = raw_data.decode("utf-8", errors="replace")
+            await _listener_task
+        except asyncio.CancelledError:
+            pass
+        except Exception as e:
+            logger.debug(f"Error stopping Redis listener: {e}")
+        _listener_task = None
 
-                        data = json.loads(raw_data)
 
-                        # Skip messages originated by this process to prevent duplicate local delivery
-                        if data.get("origin_id") == INSTANCE_ID:
-                            continue
+async def _listen_redis_pubsub() -> None:
+    """Listen to Redis channels for cross-worker notifications, chat, and status broadcasts."""
+    global _pubsub
+    try:
+        client = get_async_redis()
+        _pubsub = client.pubsub()
+        await _pubsub.subscribe("pubsub:ws_notifications", "pubsub:ws_chat", "pubsub:ws_status")
+        logger.info("[WebSocket Manager] Subscribed to Redis channels: pubsub:ws_notifications, pubsub:ws_chat, pubsub:ws_status")
 
-                        await self._send_local(
+        async for message in _pubsub.listen():
+            if message and message.get("type") == "message":
+                try:
+                    channel = message.get("channel")
+                    if isinstance(channel, bytes):
+                        channel = channel.decode("utf-8", errors="replace")
+
+                    raw_data = message.get("data")
+                    if isinstance(raw_data, bytes):
+                        raw_data = raw_data.decode("utf-8", errors="replace")
+
+                    data = json.loads(raw_data)
+
+                    # Self-echo deduplication: skip messages published by this worker instance
+                    if data.get("origin_id") == INSTANCE_ID:
+                        continue
+
+                    if channel == "pubsub:ws_notifications":
+                        await send_local_notification(
                             data.get("message", ""),
                             data.get("target_role"),
                             data.get("target_email"),
                         )
-                    except Exception as e:
-                        logger.debug(f"Error handling Redis WS notification: {e}")
-        except asyncio.CancelledError:
-            pass
-        except Exception as e:
-            logger.debug(f"Redis WS notifications listener stopped: {e}")
-        finally:
-            if self._pubsub:
-                try:
-                    await self._pubsub.unsubscribe("pubsub:ws_notifications")
-                    await self._pubsub.close()
-                except Exception:
-                    pass
-                self._pubsub = None
+                    elif channel == "pubsub:ws_chat":
+                        target_uid = data.get("user_id")
+                        msg = data.get("message")
+                        if target_uid is not None and msg:
+                            await send_local_chat_message(msg, target_uid)
+                    elif channel == "pubsub:ws_status":
+                        uid = data.get("user_id")
+                        is_online = data.get("is_online", False)
+                        if uid is not None:
+                            status_msg = {"type": "status", "user_id": uid, "is_online": is_online}
+                            for local_uid in list(chat_connections.keys()):
+                                await send_local_chat_message(status_msg, local_uid)
+                except Exception as e:
+                    logger.debug(f"Error handling Redis WS message: {e}")
+    except asyncio.CancelledError:
+        pass
+    except Exception as e:
+        logger.debug(f"Redis WS listener stopped: {e}")
+    finally:
+        if _pubsub:
+            try:
+                await _pubsub.unsubscribe("pubsub:ws_notifications", "pubsub:ws_chat", "pubsub:ws_status")
+                await _pubsub.close()
+            except Exception:
+                pass
+            _pubsub = None
 
-    async def connect(self, websocket: WebSocket, role: str, email: str = None):
-        await websocket.accept()
-        if role not in self.active_connections:
-            self.active_connections[role] = []
-        self.active_connections[role].append(websocket)
 
-        if email:
-            if email not in self.email_connections:
-                self.email_connections[email] = []
-            self.email_connections[email].append(websocket)
+# --- Backward Compatibility Class Proxy ---
 
-        # Ensure Redis listener is running
-        await self.start_redis_listener()
+class ConnectionManager:
+    """Proxy providing backward-compatibility for class-based references or tests."""
+    def __init__(self):
+        self.active_connections = chat_connections
+        self.email_connections = email_connections
+        self.role_connections = role_connections
 
-    def disconnect(self, websocket: WebSocket, role: str, email: str = None):
-        if role in self.active_connections:
-            if websocket in self.active_connections[role]:
-                self.active_connections[role].remove(websocket)
-            if not self.active_connections[role]:
-                del self.active_connections[role]
+    @property
+    def _listener_task(self):
+        return _listener_task
 
-        if email and email in self.email_connections:
-            if websocket in self.email_connections[email]:
-                self.email_connections[email].remove(websocket)
-            if not self.email_connections[email]:
-                del self.email_connections[email]
+    @_listener_task.setter
+    def _listener_task(self, val):
+        global _listener_task
+        _listener_task = val
 
-    async def _send_local(self, message: str, target_role: str = None, target_email: str = None):
-        """Send message only to connections locally attached to this worker process."""
-        if target_email:
-            if target_email in self.email_connections:
-                dead_conns = []
-                for connection in list(self.email_connections[target_email]):
-                    try:
-                        await connection.send_text(message)
-                    except Exception:
-                        dead_conns.append(connection)
-                for dead in dead_conns:
-                    if target_email in self.email_connections and dead in self.email_connections[target_email]:
-                        self.email_connections[target_email].remove(dead)
-        elif target_role:
-            if target_role in self.active_connections:
-                dead_conns = []
-                for connection in list(self.active_connections[target_role]):
-                    try:
-                        await connection.send_text(message)
-                    except Exception:
-                        dead_conns.append(connection)
-                for dead in dead_conns:
-                    if target_role in self.active_connections and dead in self.active_connections[target_role]:
-                        self.active_connections[target_role].remove(dead)
-        else:
-            for role, role_conns in list(self.active_connections.items()):
-                dead_conns = []
-                for connection in list(role_conns):
-                    try:
-                        await connection.send_text(message)
-                    except Exception:
-                        dead_conns.append(connection)
-                for dead in dead_conns:
-                    if role in self.active_connections and dead in self.active_connections[role]:
-                        self.active_connections[role].remove(dead)
-
-    async def broadcast(self, message: str, target_role: str = None, target_email: str = None):
-        """
-        Broadcasts a message locally and across all worker processes via Redis Pub/Sub.
-        """
-        # 1. Deliver to local WebSockets
-        await self._send_local(message, target_role, target_email)
-
-        # 2. Publish to Redis so all other backend workers deliver to their clients
-        await publish_event("pubsub:ws_notifications", {
-            "origin_id": INSTANCE_ID,
-            "message": message,
-            "target_role": target_role,
-            "target_email": target_email,
-        })
+    start_redis_listener = staticmethod(start_redis_listener)
+    stop_redis_listener = staticmethod(stop_redis_listener)
+    connect = staticmethod(connect)
+    disconnect = staticmethod(disconnect)
+    send_personal_message = staticmethod(send_personal_message)
+    broadcast_status = staticmethod(broadcast_status)
+    broadcast = staticmethod(broadcast)
+    is_user_online = staticmethod(is_user_online)
+    get_online_count = staticmethod(get_online_count)
+    get_online_count_async = staticmethod(get_online_count_async)
+    _send_local = staticmethod(send_local_notification)
+    _send_local_message = staticmethod(send_local_chat_message)
 
 
 manager = ConnectionManager()
+websocket_manager = sys.modules[__name__]

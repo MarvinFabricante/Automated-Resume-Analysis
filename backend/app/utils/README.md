@@ -12,8 +12,7 @@ app/utils/
 ├── google_auth.py          # Google OAuth 2.0 client credential helper
 ├── limiter.py              # Rate limiting middleware configuration (slowapi)
 ├── supabase_storage.py     # Supabase Storage bucket upload and URL retrieval client
-├── websocket.py            # WebSocket connection handlers and endpoint utilities
-└── websocket_manager.py    # Multi-client WebSocket connection manager & broadcast channels
+└── websocket_manager.py    # Unified multi-client WebSocket & Pub/Sub manager
 ```
 
 ## Responsibilities

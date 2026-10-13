@@ -208,7 +208,7 @@ def test_sync_transactions_and_queue():
 async def test_websocket_connection_manager_edge_cases():
     """Verify WebSocket connection manager handles connects, disconnects without KeyError, and online presence."""
     from unittest.mock import AsyncMock
-    from app.utils.websocket import ConnectionManager, INSTANCE_ID
+    from app.utils.websocket_manager import ConnectionManager, INSTANCE_ID
 
     manager = ConnectionManager()
     mock_ws = AsyncMock()

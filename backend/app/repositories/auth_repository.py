@@ -258,16 +258,6 @@ async def delete_password_reset(db: AsyncSession, reset_entry: PasswordReset) ->
         raise
 
 
-class AuthRepository:
-    check_email_exists_raw = staticmethod(check_email_exists_raw)
-    create_user = staticmethod(create_user)
-    get_raw_user_by_email = staticmethod(get_raw_user_by_email)
-    get_user_by_email_and_role = staticmethod(get_user_by_email_and_role)
-    update_online_status_raw = staticmethod(update_online_status_raw)
-    update_online_status_orm = staticmethod(update_online_status_orm)
-    get_user_by_email = staticmethod(get_user_by_email)
-    get_user_by_id = staticmethod(get_user_by_id)
-    create_password_reset = staticmethod(create_password_reset)
-    get_password_reset_by_token = staticmethod(get_password_reset_by_token)
-    update_user_password = staticmethod(update_user_password)
-    delete_password_reset = staticmethod(delete_password_reset)
+import sys
+auth_repository = sys.modules[__name__]
+AuthRepository = sys.modules[__name__]

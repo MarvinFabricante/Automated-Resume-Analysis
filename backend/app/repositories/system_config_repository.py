@@ -403,17 +403,6 @@ async def get_performance_stats(db: AsyncSession) -> Dict[str, Any]:
     return stats
 
 
-class SystemConfigRepository:
-    get_all_configs = staticmethod(get_all_configs)
-    get_configs_by_category = staticmethod(get_configs_by_category)
-    get_config_by_key = staticmethod(get_config_by_key)
-    upsert_config = staticmethod(upsert_config)
-    delete_config = staticmethod(delete_config)
-    update_user_role = staticmethod(update_user_role)
-    get_users_by_role = staticmethod(get_users_by_role)
-    get_all_templates = staticmethod(get_all_templates)
-    get_template_by_id = staticmethod(get_template_by_id)
-    create_template = staticmethod(create_template)
-    update_template = staticmethod(update_template)
-    delete_template = staticmethod(delete_template)
-    get_performance_stats = staticmethod(get_performance_stats)
+import sys
+system_config_repository = sys.modules[__name__]
+SystemConfigRepository = sys.modules[__name__]

@@ -182,13 +182,6 @@ async def create_message(db: AsyncSession, sender_id: int, receiver_id: int, con
         raise
 
 
-class ChatRepository:
-    get_user_by_email = staticmethod(get_user_by_email)
-    get_user_by_id = staticmethod(get_user_by_id)
-    get_contact_users = staticmethod(get_contact_users)
-    get_last_message_between = staticmethod(get_last_message_between)
-    get_unread_count = staticmethod(get_unread_count)
-    get_unread_messages = staticmethod(get_unread_messages)
-    mark_messages_as_read = staticmethod(mark_messages_as_read)
-    get_chat_history = staticmethod(get_chat_history)
-    create_message = staticmethod(create_message)
+import sys
+chat_repository = sys.modules[__name__]
+ChatRepository = sys.modules[__name__]

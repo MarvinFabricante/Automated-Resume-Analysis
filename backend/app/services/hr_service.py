@@ -156,15 +156,6 @@ async def get_dashboard_trends(db: AsyncSession):
     }
 
 
-class HRService:
-    create_hr_profile = staticmethod(create_hr_profile)
-    get_hr_profile = staticmethod(get_hr_profile)
-    update_hr_profile = staticmethod(update_hr_profile)
-    get_total_candidates_count = staticmethod(get_total_candidates_count)
-    get_total_resumes_count = staticmethod(get_total_resumes_count)
-    get_application_stats = staticmethod(get_application_stats)
-    get_dashboard_trends = staticmethod(get_dashboard_trends)
-
-
-hr_service = HRService()
+import sys
+hr_service = sys.modules[__name__]
 

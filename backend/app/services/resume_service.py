@@ -157,13 +157,5 @@ async def delete_resume(db: AsyncSession, resume_id: int) -> bool:
     return True
 
 
-class ResumeService:
-    parse_resume_file = staticmethod(parse_resume_file)
-    create_resume = staticmethod(create_resume)
-    get_resume = staticmethod(get_resume)
-    get_resumes_by_candidate = staticmethod(get_resumes_by_candidate)
-    update_resume = staticmethod(update_resume)
-    delete_resume = staticmethod(delete_resume)
-
-
-resume_service = ResumeService()
+import sys
+resume_service = sys.modules[__name__]

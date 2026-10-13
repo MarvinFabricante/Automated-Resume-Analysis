@@ -118,9 +118,6 @@ async def delete(db: AsyncSession, resume: Resume) -> None:
         raise
 
 
-class ResumeRepository:
-    create = staticmethod(create)
-    get_by_id = staticmethod(get_by_id)
-    get_by_candidate_id = staticmethod(get_by_candidate_id)
-    update = staticmethod(update)
-    delete = staticmethod(delete)
+import sys
+resume_repository = sys.modules[__name__]
+ResumeRepository = sys.modules[__name__]

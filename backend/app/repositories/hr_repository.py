@@ -172,13 +172,6 @@ async def get_distinct_departments(db: AsyncSession) -> List[str]:
     return depts
 
 
-class HRRepository:
-    create_hr = staticmethod(create_hr)
-    get_hr_by_id = staticmethod(get_hr_by_id)
-    update_hr = staticmethod(update_hr)
-    get_total_candidates_count = staticmethod(get_total_candidates_count)
-    get_total_resumes_count = staticmethod(get_total_resumes_count)
-    get_application_stats_by_status = staticmethod(get_application_stats_by_status)
-    get_daily_application_counts = staticmethod(get_daily_application_counts)
-    get_department_application_counts = staticmethod(get_department_application_counts)
-    get_distinct_departments = staticmethod(get_distinct_departments)
+import sys
+hr_repository = sys.modules[__name__]
+HRRepository = sys.modules[__name__]

@@ -229,17 +229,6 @@ async def delete_interview(db: AsyncSession, interview: Interview) -> None:
         raise
 
 
-class InterviewRepository:
-    get_job_application = staticmethod(get_job_application)
-    create_interview = staticmethod(create_interview)
-    update_interview = staticmethod(update_interview)
-    add_interview_log = staticmethod(add_interview_log)
-    commit_changes = staticmethod(commit_changes)
-    get_interview_by_id = staticmethod(get_interview_by_id)
-    get_all_interviews = staticmethod(get_all_interviews)
-    get_interview_by_google_event_id = staticmethod(get_interview_by_google_event_id)
-    get_interviews_for_application = staticmethod(get_interviews_for_application)
-    get_interviews_in_range = staticmethod(get_interviews_in_range)
-    get_interviews_in_range_excluding = staticmethod(get_interviews_in_range_excluding)
-    get_interviews_for_candidate = staticmethod(get_interviews_for_candidate)
-    delete_interview = staticmethod(delete_interview)
+import sys
+interview_repository = sys.modules[__name__]
+InterviewRepository = sys.modules[__name__]

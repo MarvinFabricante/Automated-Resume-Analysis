@@ -15,7 +15,7 @@ from app.services.google_calendar_service import (
     query_freebusy,
     get_real_google_events,
 )
-from app.services.email_service import EmailService
+from app.services import email_service
 
 def _populate_candidate_info(interview):
     """Helper to attach candidate details and interviewer info to the interview model."""
@@ -264,7 +264,7 @@ async def schedule_interview(db: AsyncSession, data: InterviewCreateSchema, user
     if application.candidate_email:
         try:
             interviewer_name = user.fullname if user and getattr(user, 'fullname', None) else None
-            email_sent = await EmailService.send_interview_invitation_email(
+            email_sent = await email_service.send_interview_invitation_email(
                 to_email=application.candidate_email,
                 candidate_name=application.candidate_name or "Candidate",
                 job_title=application.job_title or "Job Position",
@@ -390,7 +390,7 @@ async def update_interview(db: AsyncSession, interview_id: int, data: InterviewU
         if application.candidate_email:
             try:
                 interviewer_name = user.fullname if user and getattr(user, 'fullname', None) else None
-                email_sent = await EmailService.send_interview_rescheduled_email(
+                email_sent = await email_service.send_interview_rescheduled_email(
                     to_email=application.candidate_email,
                     candidate_name=application.candidate_name or "Candidate",
                     job_title=application.job_title or "Job Position",
@@ -595,24 +595,7 @@ async def get_interviews_for_candidate(db: AsyncSession, email: str):
     interviews = await InterviewRepository.get_interviews_for_candidate(db, email)
     return [_populate_candidate_info(iv) for iv in interviews]
 
-class InterviewService:
-    WORK_START_HOUR = WORK_START_HOUR
-    WORK_END_HOUR = WORK_END_HOUR
-    WORK_DAYS = WORK_DAYS
-
-    get_available_slots = staticmethod(get_available_slots)
-    schedule_interview = staticmethod(schedule_interview)
-    update_interview = staticmethod(update_interview)
-    delete_interview = staticmethod(delete_interview)
-    get_all_interviews = staticmethod(get_all_interviews)
-    get_calendar_feed = staticmethod(get_calendar_feed)
-    get_google_calendar_status = staticmethod(get_google_calendar_status)
-    get_calendar_events = staticmethod(get_calendar_events)
-    update_interview_status = staticmethod(update_interview_status)
-    get_interviews_for_application = staticmethod(get_interviews_for_application)
-    get_interviews_for_candidate = staticmethod(get_interviews_for_candidate)
-
-
-interview_service = InterviewService()
+import sys
+interview_service = sys.modules[__name__]
 
 

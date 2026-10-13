@@ -44,11 +44,6 @@ async def mark_all_as_read(db: AsyncSession, role: str = None, email: str = None
     return await NotificationRepository.mark_all_as_read(db, role=role, email=email)
 
 
-class NotificationService:
-    create_notification = staticmethod(create_notification)
-    get_all_notifications = staticmethod(get_all_notifications)
-    mark_all_as_read = staticmethod(mark_all_as_read)
-
-
-notification_service = NotificationService()
+import sys
+notification_service = sys.modules[__name__]
 

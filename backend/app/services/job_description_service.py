@@ -99,14 +99,7 @@ async def delete_job(db: AsyncSession, job_id: str):
     return db_job
 
 
-class JobService:
-    create_job = staticmethod(create_job)
-    get_job = staticmethod(get_job)
-    get_all_active_jobs = staticmethod(get_all_active_jobs)
-    update_job = staticmethod(update_job)
-    set_job_status = staticmethod(set_job_status)
-    delete_job = staticmethod(delete_job)
-
-
-job_service = JobService()
+import sys
+job_service = sys.modules[__name__]
+job_description_service = sys.modules[__name__]
 

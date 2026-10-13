@@ -189,11 +189,6 @@ async def delete(db: AsyncSession, application: JobApplication) -> None:
         raise
 
 
-class JobApplicationRepository:
-    create = staticmethod(create)
-    get_by_job_id = staticmethod(get_by_job_id)
-    get_by_email = staticmethod(get_by_email)
-    get_all = staticmethod(get_all)
-    get_by_id = staticmethod(get_by_id)
-    update = staticmethod(update)
-    delete = staticmethod(delete)
+import sys
+job_application_repository = sys.modules[__name__]
+JobApplicationRepository = sys.modules[__name__]

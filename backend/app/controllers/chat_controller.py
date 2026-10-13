@@ -6,7 +6,7 @@ from app.utils.database import get_db
 from app.utils.auth import get_current_user
 from app.models.user import User
 from app.schemas.message_schema import MessageCreate, MessageResponse, ChatContactResponse
-from app.utils.websocket import manager
+from app.utils.websocket_manager import manager
 from app.services import chat_service
 from app.repositories.auth_repository import AuthRepository
 

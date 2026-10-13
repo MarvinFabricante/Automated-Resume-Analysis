@@ -114,7 +114,6 @@ async def mark_all_as_read(db: AsyncSession, role: Optional[str] = None, email: 
         raise
 
 
-class NotificationRepository:
-    create = staticmethod(create)
-    get_all_by_criteria = staticmethod(get_all_by_criteria)
-    mark_all_as_read = staticmethod(mark_all_as_read)
+import sys
+notification_repository = sys.modules[__name__]
+NotificationRepository = sys.modules[__name__]

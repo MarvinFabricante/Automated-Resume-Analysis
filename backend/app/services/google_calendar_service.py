@@ -431,3 +431,7 @@ def query_freebusy(credentials_json: str, emails: list, time_min: str, time_max:
     except HttpError as err:
         logger.error(f"Google Calendar API Error querying freebusy: {err}")
         return None
+
+
+import sys
+google_calendar_service = sys.modules[__name__]

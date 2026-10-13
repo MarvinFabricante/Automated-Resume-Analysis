@@ -203,13 +203,6 @@ async def bulk_update_applications(
         raise
 
 
-class JobDescriptionRepository:
-    create = staticmethod(create)
-    get_by_job_id = staticmethod(get_by_job_id)
-    get_by_id = staticmethod(get_by_id)
-    get_all_active = staticmethod(get_all_active)
-    update = staticmethod(update)
-    set_status = staticmethod(set_status)
-    delete = staticmethod(delete)
-    get_applications_for_job = staticmethod(get_applications_for_job)
-    bulk_update_applications = staticmethod(bulk_update_applications)
+import sys
+job_description_repository = sys.modules[__name__]
+JobDescriptionRepository = sys.modules[__name__]

@@ -1,3 +1,5 @@
+import sys
+import types
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
@@ -110,17 +112,16 @@ async def get_user_by_id(db: AsyncSession, user_id: int) -> Optional[User]:
         )
         row = raw.fetchone()
         if row:
-            class _FallbackUser:
-                pass
-            user = _FallbackUser()
-            user.id = row.id
-            user.email = row.email
-            user.password = row.password
-            user.role = row.role
-            user.fullname = row.fullname
-            user.profile_image_url = row.profile_image_url
-            user.is_archived = row.is_archived
-            user.is_online = row.is_online
+            user = types.SimpleNamespace(
+                id=row.id,
+                email=row.email,
+                password=row.password,
+                role=row.role,
+                fullname=row.fullname,
+                profile_image_url=row.profile_image_url,
+                is_archived=row.is_archived,
+                is_online=row.is_online,
+            )
 
     if user:
         await set_cache(cache_key, user, ttl=1800)
@@ -235,13 +236,5 @@ async def get_system_stats(db: AsyncSession) -> Dict[str, Any]:
     return stats
 
 
-class AdminRepository:
-    get_all_users = staticmethod(get_all_users)
-    create_admin = staticmethod(create_admin)
-    get_admin_by_id = staticmethod(get_admin_by_id)
-    update_admin = staticmethod(update_admin)
-    get_user_by_id = staticmethod(get_user_by_id)
-    update_user_archive_status = staticmethod(update_user_archive_status)
-    update_user = staticmethod(update_user)
-    delete_user = staticmethod(delete_user)
-    get_system_stats = staticmethod(get_system_stats)
+admin_repository = sys.modules[__name__]
+AdminRepository = sys.modules[__name__]

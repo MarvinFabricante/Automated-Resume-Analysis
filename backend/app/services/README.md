@@ -42,20 +42,18 @@ app/services/
 ```python
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.repositories.auth_repository import AuthRepository
-from app.services.email_service import EmailService
+from app.services import email_service
 
-class UserService:
-    @staticmethod
-    async def register_user(db: AsyncSession, email: str, password_hash: str) -> dict:
-        # 1. Enforce domain constraint
-        existing = await AuthRepository.get_by_email(db, email)
-        if existing:
-            raise ValueError("Email is already registered.")
+async def register_user(db: AsyncSession, email: str, password_hash: str) -> dict:
+    # 1. Enforce domain constraint
+    existing = await AuthRepository.get_by_email(db, email)
+    if existing:
+        raise ValueError("Email is already registered.")
 
-        # 2. Delegate persistence
-        user = await AuthRepository.create(db, {"email": email, "password_hash": password_hash})
+    # 2. Delegate persistence
+    user = await AuthRepository.create(db, {"email": email, "password_hash": password_hash})
 
-        # 3. Trigger side-effects
-        await EmailService.send_welcome_email(user.email)
-        return user
+    # 3. Trigger side-effects
+    await email_service.send_welcome_email(user.email)
+    return user
 ```

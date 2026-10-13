@@ -103,21 +103,6 @@ async def get_performance_stats(db: AsyncSession):
     return await SystemConfigRepository.get_performance_stats(db)
 
 
-class SystemConfigService:
-    get_all_configs = staticmethod(get_all_configs)
-    get_configs_by_category = staticmethod(get_configs_by_category)
-    update_config = staticmethod(update_config)
-    get_matching_parameters = staticmethod(get_matching_parameters)
-    update_matching_parameters = staticmethod(update_matching_parameters)
-    get_users_by_role = staticmethod(get_users_by_role)
-    update_user_role = staticmethod(update_user_role)
-    get_all_templates = staticmethod(get_all_templates)
-    get_template_by_id = staticmethod(get_template_by_id)
-    create_template = staticmethod(create_template)
-    update_template = staticmethod(update_template)
-    delete_template = staticmethod(delete_template)
-    get_performance_stats = staticmethod(get_performance_stats)
-
-
-system_config_service = SystemConfigService()
-config_service = SystemConfigService()
+import sys
+system_config_service = sys.modules[__name__]
+config_service = sys.modules[__name__]

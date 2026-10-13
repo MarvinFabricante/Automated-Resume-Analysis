@@ -1,106 +1,87 @@
+import sys
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.schemas.admin_schema import AdminCreate, AdminUpdate
 from app.utils.auth import hash_password
 from app.repositories.admin_repository import AdminRepository
 
-class AdminService:
-    async def get_all_users(self, db: AsyncSession):
-        """
-        Fetches all users from the database.
-        """
-        return await AdminRepository.get_all_users(db)
-
-    async def create_admin_profile(self, db: AsyncSession, admin_in: AdminCreate):
-        """
-        Creates a new Admin profile.
-        SQLAlchemy handles the polymorphic 'users' table entry automatically.
-        """
-        email_lower = admin_in.email.strip().lower()
-        admin_data = {
-            "fullname": admin_in.fullname,
-            "email": email_lower,
-            "password": hash_password(admin_in.password),
-            "role": "ADMIN",
-            "managed_region": admin_in.managed_region
-        }
-        return await AdminRepository.create_admin(db, admin_data)
-
-    async def get_admin_profile(self, db: AsyncSession, admin_id: int):
-        return await AdminRepository.get_admin_by_id(db, admin_id)
-
-    async def update_admin_profile(self, db: AsyncSession, admin_id: int, admin_update: AdminUpdate):
-        admin = await AdminRepository.get_admin_by_id(db, admin_id)
-        if not admin:
-            return None
-
-        update_data = admin_update.dict(exclude_unset=True)
-        if "email" in update_data and update_data["email"]:
-            new_email = update_data["email"].strip().lower()
-            update_data["email"] = new_email
-            if new_email != admin.email:
-                from app.repositories.auth_repository import AuthRepository
-                existing = await AuthRepository.get_raw_user_by_email(db, new_email)
-                if existing and existing.id != admin_id:
-                    raise Exception("This email address is already in use by another account.")
-
-        return await AdminRepository.update_admin(db, admin, update_data)
-
-    async def toggle_user_archive_status(self, db: AsyncSession, user_id: int, archive_status: bool):
-        user = await AdminRepository.get_user_by_id(db, user_id)
-        if not user:
-            return None
-
-        return await AdminRepository.update_user_archive_status(db, user, archive_status)
-
-    async def update_user(self, db: AsyncSession, user_id: int, update_data: dict):
-        user = await AdminRepository.get_user_by_id(db, user_id)
-        if not user:
-            return None
-        
-        if 'password' in update_data and update_data['password']:
-            update_data['password'] = hash_password(update_data['password'])
-        
-        return await AdminRepository.update_user(db, user, update_data)
-
-    async def delete_user(self, db: AsyncSession, user_id: int):
-        user = await AdminRepository.get_user_by_id(db, user_id)
-        if not user:
-            return False
-        return await AdminRepository.delete_user(db, user)
-
-    async def get_user_by_id(self, db: AsyncSession, user_id: int):
-        return await AdminRepository.get_user_by_id(db, user_id)
-
-    async def get_system_stats(self, db: AsyncSession):
-        return await AdminRepository.get_system_stats(db)
-
-
-admin_service = AdminService()
-
 
 async def get_all_users(db: AsyncSession):
-    return await admin_service.get_all_users(db)
+    """
+    Fetches all users from the database.
+    """
+    return await AdminRepository.get_all_users(db)
 
 
 async def create_admin_profile(db: AsyncSession, admin_in: AdminCreate):
-    return await admin_service.create_admin_profile(db, admin_in)
+    """
+    Creates a new Admin profile.
+    SQLAlchemy handles the polymorphic 'users' table entry automatically.
+    """
+    email_lower = admin_in.email.strip().lower()
+    admin_data = {
+        "fullname": admin_in.fullname,
+        "email": email_lower,
+        "password": hash_password(admin_in.password),
+        "role": "ADMIN",
+        "managed_region": admin_in.managed_region
+    }
+    return await AdminRepository.create_admin(db, admin_data)
 
 
 async def get_admin_profile(db: AsyncSession, admin_id: int):
-    return await admin_service.get_admin_profile(db, admin_id)
+    return await AdminRepository.get_admin_by_id(db, admin_id)
 
 
 async def update_admin_profile(db: AsyncSession, admin_id: int, admin_update: AdminUpdate):
-    return await admin_service.update_admin_profile(db, admin_id, admin_update)
+    admin = await AdminRepository.get_admin_by_id(db, admin_id)
+    if not admin:
+        return None
+
+    update_data = admin_update.dict(exclude_unset=True)
+    if "email" in update_data and update_data["email"]:
+        new_email = update_data["email"].strip().lower()
+        update_data["email"] = new_email
+        if new_email != admin.email:
+            from app.repositories.auth_repository import AuthRepository
+            existing = await AuthRepository.get_raw_user_by_email(db, new_email)
+            if existing and existing.id != admin_id:
+                raise Exception("This email address is already in use by another account.")
+
+    return await AdminRepository.update_admin(db, admin, update_data)
 
 
 async def toggle_user_archive_status(db: AsyncSession, user_id: int, archive_status: bool):
-    return await admin_service.toggle_user_archive_status(db, user_id, archive_status)
+    user = await AdminRepository.get_user_by_id(db, user_id)
+    if not user:
+        return None
+
+    return await AdminRepository.update_user_archive_status(db, user, archive_status)
+
+
+async def update_user(db: AsyncSession, user_id: int, update_data: dict):
+    user = await AdminRepository.get_user_by_id(db, user_id)
+    if not user:
+        return None
+
+    if 'password' in update_data and update_data['password']:
+        update_data['password'] = hash_password(update_data['password'])
+
+    return await AdminRepository.update_user(db, user, update_data)
+
+
+async def delete_user(db: AsyncSession, user_id: int):
+    user = await AdminRepository.get_user_by_id(db, user_id)
+    if not user:
+        return False
+    return await AdminRepository.delete_user(db, user)
 
 
 async def get_user_by_id(db: AsyncSession, user_id: int):
-    return await admin_service.get_user_by_id(db, user_id)
+    return await AdminRepository.get_user_by_id(db, user_id)
 
 
 async def get_system_stats(db: AsyncSession):
-    return await admin_service.get_system_stats(db)
+    return await AdminRepository.get_system_stats(db)
+
+
+admin_service = sys.modules[__name__]

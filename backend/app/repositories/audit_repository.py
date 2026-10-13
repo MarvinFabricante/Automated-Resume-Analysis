@@ -73,7 +73,6 @@ async def get_all_activities(db: AsyncSession) -> List[AuditLog]:
     return logs
 
 
-class AuditRepository:
-    create_audit_log = staticmethod(create_audit_log)
-    get_recent_activities = staticmethod(get_recent_activities)
-    get_all_activities = staticmethod(get_all_activities)
+import sys
+audit_repository = sys.modules[__name__]
+AuditRepository = sys.modules[__name__]

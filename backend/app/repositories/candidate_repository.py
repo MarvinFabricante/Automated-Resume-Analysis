@@ -78,7 +78,6 @@ async def create(db: AsyncSession, candidate_data: dict) -> Candidate:
         raise
 
 
-class CandidateRepository:
-    get_by_id = staticmethod(get_by_id)
-    update = staticmethod(update)
-    create = staticmethod(create)
+import sys
+candidate_repository = sys.modules[__name__]
+CandidateRepository = sys.modules[__name__]
