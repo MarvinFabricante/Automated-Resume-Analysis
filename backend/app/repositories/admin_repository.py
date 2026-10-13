@@ -72,24 +72,31 @@ async def get_admin_by_id(db: AsyncSession, admin_id: int) -> Optional[Admin]:
 
 async def update_admin(db: AsyncSession, admin: Admin, update_data: dict) -> Admin:
     """Update admin (Redis-first transaction)."""
+    # Ensure Admin instance is persistent within the current session
+    result = await db.execute(select(Admin).where(Admin.id == admin.id))
+    current_admin = result.scalar_one_or_none()
+    if not current_admin:
+        current_admin = await db.merge(admin)
+
     tx_id = await redis_tx_manager.stage_transaction(
         target="admin",
         action="UPDATE",
-        payload={"id": admin.id, **update_data},
+        payload={"id": current_admin.id, **update_data},
     )
     try:
         for key, value in update_data.items():
-            setattr(admin, key, value)
+            if hasattr(current_admin, key):
+                setattr(current_admin, key, value)
         await db.commit()
-        await db.refresh(admin)
+        await db.refresh(current_admin)
 
-        await redis_tx_manager.commit_transaction(tx_id, {"id": admin.id})
+        await redis_tx_manager.commit_transaction(tx_id, {"id": current_admin.id})
 
-        await delete_cache(f"admin:id:{admin.id}")
-        await delete_cache(f"user:id:{admin.id}")
+        await delete_cache(f"admin:id:{current_admin.id}")
+        await delete_cache(f"user:id:{current_admin.id}")
         await clear_cache_pattern("users:all")
 
-        return admin
+        return current_admin
     except Exception as e:
         await redis_tx_manager.fail_transaction(tx_id, str(e))
         logger.error(f"[Redis-First] update_admin failed: {e}")

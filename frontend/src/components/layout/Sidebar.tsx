@@ -148,7 +148,7 @@ const Sidebar: React.FC = () => {
     return 'Resume Analysis';
   };
 
-  const settingsPath = isHR ? '/hr/settings' : isAdminRole ? '/admin/settings' : '/accountsettings';
+  const settingsPath = isHR ? '/hr/settings' : isAdminRole ? '/admin/settings' : '/candidate/settings';
 
   return (
     <>

@@ -1,6 +1,6 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Helmet } from 'react-helmet-async';
-import { useNavigate } from '@/utils/navigation';
+import { useNavigate, useSearchParams } from '@/utils/navigation';
 import Header from '../../components/layout/Header';
 import Sidebar from '../../components/layout/Sidebar';
 import ScheduleInterviewModal from '../../components/modals/hr/ScheduleInterviewModal';
@@ -35,6 +35,7 @@ interface ToastState {
 
 const ScreeningPortal: React.FC = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { data: candidates = [], isLoading, isFetching, refetch } = useGetApplicationsQuery();
   const [updateStatus] = useUpdateApplicationStatusMutation();
   const [deleteApplication] = useDeleteApplicationMutation();
@@ -47,6 +48,51 @@ const ScreeningPortal: React.FC = () => {
   const [sortBy, setSortBy] = useState<string>("match_desc");
   const [showSuggestions, setShowSuggestions] = useState<boolean>(false);
   const [includeArchived, setIncludeArchived] = useState<boolean>(false);
+
+  // Sync URL query params into state (e.g. from HR Dashboard links)
+  useEffect(() => {
+    const statusParam = searchParams.get('status');
+    const searchParam = searchParams.get('search');
+    const jobParam = searchParams.get('job');
+    const scoreParam = searchParams.get('score');
+    const candidateIdParam = searchParams.get('candidateId');
+
+    if (statusParam) {
+      const upper = statusParam.toUpperCase();
+      if (upper === 'PENDING') {
+        setStatusFilter('Pending');
+      } else if (upper === 'REVIEWED' || upper === 'SCREENED') {
+        setStatusFilter('Reviewed');
+      } else if (upper === 'ACCEPTED') {
+        setStatusFilter('Accepted');
+      } else if (upper === 'REJECTED' || upper === 'ARCHIVED') {
+        setStatusFilter('Archived');
+        setIncludeArchived(true);
+      } else if (upper === 'INTERVIEW') {
+        setStatusFilter('Interview');
+      }
+    }
+
+    if (searchParam) {
+      setSearchQuery(searchParam);
+    }
+
+    if (jobParam) {
+      setJobFilter(jobParam);
+    }
+
+    if (scoreParam) {
+      setScoreFilter(scoreParam);
+    }
+
+    if (candidateIdParam && candidates.length > 0) {
+      const found = candidates.find((c: any) => String(c.id) === String(candidateIdParam));
+      if (found) {
+        setSelectedCandidate(found);
+        setDetailsModalOpen(true);
+      }
+    }
+  }, [searchParams, candidates]);
 
   // View & Pagination states
   const [viewMode, setViewMode] = useState<"cards" | "table">("cards");
@@ -162,7 +208,10 @@ const ScreeningPortal: React.FC = () => {
         const matchesDegree = (c.degree || '').toLowerCase().includes(q) || (c.college || '').toLowerCase().includes(q);
         const matchesSkills = Array.isArray(c.skills) && c.skills.some((s: string) => (s || '').toLowerCase().includes(q));
 
-        if (!matchesName && !matchesJob && !matchesEmail && !matchesLocation && !matchesDegree && !matchesSkills) {
+        const matchesDept = c.jobDepartment && c.jobDepartment.toLowerCase().includes(q);
+        const matchesCompany = c.company && c.company.toLowerCase().includes(q);
+
+        if (!matchesName && !matchesJob && !matchesEmail && !matchesLocation && !matchesDegree && !matchesSkills && !matchesDept && !matchesCompany) {
           return false;
         }
       }

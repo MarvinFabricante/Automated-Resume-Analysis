@@ -67,6 +67,8 @@ services:
       - "8000:8000"
     volumes:
       - uploads_data:/app/uploads
+      - ./backend/app:/app/app
+      - ./backend/main.py:/app/main.py
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:8000/ || exit 1"]
       interval: 10s
@@ -102,6 +104,8 @@ services:
       - DB_MAX_OVERFLOW=${DB_MAX_OVERFLOW:-10}
     volumes:
       - uploads_data:/app/uploads
+      - ./backend/app:/app/app
+      - ./backend/main.py:/app/main.py
     networks:
       - app-network
 

@@ -55,25 +55,32 @@ async def get_hr_by_id(db: AsyncSession, hr_id: int) -> Optional[HR]:
 
 async def update_hr(db: AsyncSession, hr: HR, update_data: dict) -> HR:
     """Update HR (Redis-first transaction)."""
+    # Ensure HR instance is persistent within the current session
+    result = await db.execute(select(HR).where(HR.id == hr.id))
+    current_hr = result.scalar_one_or_none()
+    if not current_hr:
+        current_hr = await db.merge(hr)
+
     tx_id = await redis_tx_manager.stage_transaction(
         target="hr",
         action="UPDATE",
-        payload={"id": hr.id, **update_data},
+        payload={"id": current_hr.id, **update_data},
     )
     try:
         for key, value in update_data.items():
-            setattr(hr, key, value)
+            if hasattr(current_hr, key):
+                setattr(current_hr, key, value)
         await db.commit()
-        await db.refresh(hr)
+        await db.refresh(current_hr)
 
-        await redis_tx_manager.commit_transaction(tx_id, {"id": hr.id})
+        await redis_tx_manager.commit_transaction(tx_id, {"id": current_hr.id})
 
-        await delete_cache(f"hr:id:{hr.id}")
-        await delete_cache(f"user:id:{hr.id}")
-        if hr.email:
-            await delete_cache(f"user:email:{hr.email.lower()}")
+        await delete_cache(f"hr:id:{current_hr.id}")
+        await delete_cache(f"user:id:{current_hr.id}")
+        if current_hr.email:
+            await delete_cache(f"user:email:{current_hr.email.lower()}")
 
-        return hr
+        return current_hr
     except Exception as e:
         await redis_tx_manager.fail_transaction(tx_id, str(e))
         logger.error(f"[Redis-First] update_hr failed: {e}")

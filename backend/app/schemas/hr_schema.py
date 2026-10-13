@@ -33,5 +33,10 @@ class HRResponse(BaseModel):
     bio: Optional[str] = None
     profile_image_url: Optional[str] = None
 
+    # Live HR Metrics
+    screened_count: Optional[int] = 0
+    job_posts_count: Optional[int] = 0
+    reports_count: Optional[int] = 0
+
     class Config:
         from_attributes = True

@@ -162,12 +162,36 @@ async def register_admin(
     )
 
 @router.get("/profile/{admin_id}", response_model=AdminResponse)
-@cache_response("admin_profile", ttl=1800)
 async def get_admin_profile_details(admin_id: int, db: AsyncSession = Depends(get_db)):
     profile = await admin_service.get_admin_profile(db, admin_id)
     if not profile:
         raise HTTPException(status_code=404, detail="Admin profile not found")
-    return profile
+
+    users_count = 0
+    jobs_count = 0
+    audits_count = 0
+    try:
+        from app.models.user import User
+        from app.models.job_description import JobDescription
+        from app.models.audit_log import AuditLog
+        from sqlalchemy import select, func
+
+        users_res = await db.execute(select(func.count(User.id)).where(User.is_archived == False))
+        users_count = users_res.scalar() or 0
+
+        jobs_res = await db.execute(select(func.count(JobDescription.id)))
+        jobs_count = jobs_res.scalar() or 0
+
+        audits_res = await db.execute(select(func.count(AuditLog.id)))
+        audits_count = audits_res.scalar() or 0
+    except Exception as e:
+        print(f"Error computing Admin profile stats: {e}")
+
+    data = AdminResponse.from_orm(profile)
+    data.users_count = users_count
+    data.jobs_count = jobs_count
+    data.audits_count = audits_count
+    return data
 
 @router.put("/profile/{admin_id}", response_model=AdminResponse)
 async def update_admin_profile_details(
@@ -175,12 +199,16 @@ async def update_admin_profile_details(
     admin_update: AdminUpdate,
     db: AsyncSession = Depends(get_db),
 ):
-    updated_profile = await admin_service.update_admin_profile(db, admin_id, admin_update)
-    if updated_profile:
+    try:
+        updated_profile = await admin_service.update_admin_profile(db, admin_id, admin_update)
+        if not updated_profile:
+            raise HTTPException(status_code=404, detail="Admin profile not found")
         await clear_cache_pattern(f"admin_profile:*\"admin_id\": {admin_id}*")
-    if not updated_profile:
-        raise HTTPException(status_code=404, detail="Admin profile not found")
-    return updated_profile
+        return updated_profile
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 @router.post("/upload-profile-image/{admin_id}")
 async def upload_admin_profile_image(

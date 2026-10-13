@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate } from '@/utils/navigation';
 import { 
   Download, AlertCircle, Briefcase, BarChart3, Calendar, 
-  RefreshCw, Sparkles, CheckCircle2, ChevronRight
+  RefreshCw, Sparkles, CheckCircle2, ChevronRight, Zap
 } from 'lucide-react';
 import { Helmet } from 'react-helmet-async';
 import KeyMetrics from '../../components/hr/dashboard/KeyMetrics';
@@ -166,6 +166,16 @@ const HRDashboard: React.FC = () => {
 
                   {/* Secondary Action Row for Mobile / Inline on Desktop */}
                   <div className="flex items-center gap-2 w-full sm:w-auto">
+                    {/* Track Talent Pipeline Action */}
+                    <button
+                      onClick={() => navigate('/hr/screeningportal')}
+                      className="flex-1 sm:flex-none px-3 sm:px-4 py-2.5 bg-rose-50 hover:bg-rose-100/80 text-[#D60041] border border-rose-200/80 rounded-2xl text-xs font-black uppercase tracking-wider transition-all shadow-2xs flex items-center justify-center gap-1.5 sm:gap-2 active:scale-95 min-h-[42px] truncate cursor-pointer"
+                      title="Track Talent Recruitment Pipeline"
+                    >
+                      <Zap size={15} className="shrink-0" />
+                      <span className="truncate">Track Pipeline</span>
+                    </button>
+
                     {/* Quick Schedule Interview */}
                     <button
                       onClick={() => setIsScheduleModalOpen(true)}

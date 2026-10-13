@@ -83,8 +83,12 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response && error.response.status === 401) {
-      if (typeof localStorage !== 'undefined' && localStorage.getItem('token')) {
-        handleSessionExpired();
+      const url = error.config?.url || '';
+      // Don't auto-logout on password change, set-password, or login validation
+      if (!url.includes('/auth/login') && !url.includes('/auth/change-password') && !url.includes('/auth/set-password')) {
+        if (typeof localStorage !== 'undefined' && localStorage.getItem('token')) {
+          handleSessionExpired();
+        }
       }
     }
     return Promise.reject(error);

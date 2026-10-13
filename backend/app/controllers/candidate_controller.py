@@ -16,21 +16,59 @@ router = APIRouter(prefix="/candidate", tags=["Candidates"])
 
 
 @router.get("/profile/{candidate_id}", response_model=CandidateResponse)
-@cache_response("candidate_profile", ttl=1800)
 async def get_profile(candidate_id: int, db: AsyncSession = Depends(get_db)):
     profile = await candidate_service.get_candidate_profile(db, candidate_id)
     if not profile:
         raise HTTPException(status_code=404, detail="Candidate not found")
-    return profile
+
+    apps_count = 0
+    interviews_count = 0
+    offers_count = 0
+    try:
+        from app.models.job_application import JobApplication
+        from app.models.interview import Interview
+        from sqlalchemy import select, func
+
+        apps_res = await db.execute(
+            select(func.count(JobApplication.id)).where(JobApplication.candidate_email == profile.email)
+        )
+        apps_count = apps_res.scalar() or 0
+
+        offers_res = await db.execute(
+            select(func.count(JobApplication.id)).where(
+                JobApplication.candidate_email == profile.email,
+                JobApplication.status.in_(["ACCEPTED", "OFFER"])
+            )
+        )
+        offers_count = offers_res.scalar() or 0
+
+        interviews_res = await db.execute(
+            select(func.count(Interview.id))
+            .join(JobApplication, Interview.job_application_id == JobApplication.id)
+            .where(JobApplication.candidate_email == profile.email)
+        )
+        interviews_count = interviews_res.scalar() or 0
+    except Exception as e:
+        print(f"Error computing candidate profile stats: {e}")
+
+    data = CandidateResponse.from_orm(profile)
+    data.applications_count = apps_count
+    data.offers_count = offers_count
+    data.interviews_count = interviews_count
+    return data
 
 @router.put("/profile/{candidate_id}", response_model=CandidateResponse)
 async def update_profile(candidate_id: int, profile_in: CandidateUpdate, db: AsyncSession = Depends(get_db)):
-    updated_profile = await candidate_service.update_candidate_profile(db, candidate_id, profile_in)
-    if updated_profile:
+    try:
+        updated_profile = await candidate_service.update_candidate_profile(db, candidate_id, profile_in)
+        if not updated_profile:
+            raise HTTPException(status_code=404, detail="Candidate not found")
         await clear_cache_pattern(f"candidate_profile:*\"candidate_id\": {candidate_id}*")
-    if not updated_profile:
-        raise HTTPException(status_code=404, detail="Candidate not found")
-    return updated_profile
+        return updated_profile
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 @router.post("/upload-profile-image/{candidate_id}")
 async def upload_profile_image(

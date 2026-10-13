@@ -1043,6 +1043,8 @@ const ApplicationTrends: React.FC<ApplicationTrendsProps> = ({ applications = []
                   onClick={() => {
                     if (item.statusKey) {
                       navigate(`/hr/screeningportal?status=${item.statusKey}`);
+                    } else if (item.label && item.label !== 'No Data') {
+                      navigate(`/hr/screeningportal?search=${encodeURIComponent(item.label)}`);
                     } else {
                       navigate('/hr/screeningportal');
                     }

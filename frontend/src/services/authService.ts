@@ -19,6 +19,9 @@ const authService = {
   changePassword: (current_password: string, new_password: string) =>
     api.post('/auth/change-password', { current_password, new_password }),
 
+  setPassword: (new_password: string) =>
+    api.post('/auth/set-password', { new_password }),
+
   getSecurityStatus: (userId?: string | number | null) =>
     api.get('/auth/security-status', { params: userId ? { user_id: userId } : {} }),
 

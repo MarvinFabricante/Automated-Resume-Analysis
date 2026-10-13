@@ -41,6 +41,11 @@ class CandidateResponse(BaseModel):
     university: Optional[str] = None
     skills: Optional[List[str]] = None
     profile_image_url: Optional[str] = None
+    
+    # Live Application Metrics
+    applications_count: Optional[int] = 0
+    interviews_count: Optional[int] = 0
+    offers_count: Optional[int] = 0
 
     class Config:
         from_attributes = True

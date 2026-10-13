@@ -192,6 +192,34 @@ async def change_password(db: AsyncSession, user_id: int, current_password: str,
     return True
 
 
+async def set_password(db: AsyncSession, user_id: int, new_password: str):
+    user = await AuthRepository.get_user_by_id(db, user_id)
+    if not user:
+        raise Exception("User not found")
+        
+    await AuthRepository.update_user_password(db, user, hash_password(new_password))
+    
+    # Trigger notification
+    await create_notification(
+        db=db,
+        title="Password Established",
+        message="A new account password has been established for your account.",
+        type="system_alert",
+        target_role=user.role
+    )
+    
+    # Record in audit log
+    await record_activity(
+        db=db,
+        user_id=user.id,
+        action="SET_PASSWORD",
+        details=f"User {user.email} set their account password"
+    )
+    
+    return True
+
+
+
 async def login_with_google(
     db: AsyncSession, 
     email: str, 

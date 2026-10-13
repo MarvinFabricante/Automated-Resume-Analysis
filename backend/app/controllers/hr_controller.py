@@ -40,20 +40,49 @@ async def get_app_stats(db: AsyncSession = Depends(get_db)):
     return stats
 
 @router.get("/profile/{hr_id}", response_model=HRResponse)
-@cache_response("hr_profile", ttl=600)
 async def get_hr_profile_details(hr_id: int, db: AsyncSession = Depends(get_db)):
     profile = await hr_service.get_hr_profile(db, hr_id)
     if not profile:
         raise HTTPException(status_code=404, detail="HR profile not found")
-    return profile
+
+    screened_count = 0
+    job_posts_count = 0
+    reports_count = 0
+    try:
+        from app.models.job_application import JobApplication
+        from app.models.job_description import JobDescription
+        from app.models.interview import Interview
+        from sqlalchemy import select, func
+
+        apps_res = await db.execute(select(func.count(JobApplication.id)))
+        screened_count = apps_res.scalar() or 0
+
+        jobs_res = await db.execute(select(func.count(JobDescription.id)).where(JobDescription.is_active == True))
+        job_posts_count = jobs_res.scalar() or 0
+
+        interviews_res = await db.execute(select(func.count(Interview.id)))
+        reports_count = interviews_res.scalar() or 0
+    except Exception as e:
+        print(f"Error computing HR profile stats: {e}")
+
+    data = HRResponse.from_orm(profile)
+    data.screened_count = screened_count
+    data.job_posts_count = job_posts_count
+    data.reports_count = reports_count
+    return data
 
 @router.put("/profile/{hr_id}", response_model=HRResponse)
 async def update_hr_profile_details(hr_id: int, hr_update: HRUpdate, db: AsyncSession = Depends(get_db)):
-    updated_profile = await hr_service.update_hr_profile(db, hr_id, hr_update)
-    if not updated_profile:
-        raise HTTPException(status_code=404, detail="HR profile not found")
-    await clear_cache_pattern(f"hr_profile:*\"hr_id\": {hr_id}*")
-    return updated_profile
+    try:
+        updated_profile = await hr_service.update_hr_profile(db, hr_id, hr_update)
+        if not updated_profile:
+            raise HTTPException(status_code=404, detail="HR profile not found")
+        await clear_cache_pattern(f"hr_profile:*\"hr_id\": {hr_id}*")
+        return updated_profile
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 @router.post("/upload-profile-image/{hr_id}")
 async def upload_hr_profile_image(

@@ -1,11 +1,15 @@
+from datetime import datetime
 import os
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.utils.database import get_db
 
-from app.schemas.user_schema import Token, UserCreate, UserLogin, ForgotPasswordRequest, ResetPasswordRequest, ChangePasswordRequest
-from app.utils.auth import get_current_user, get_optional_current_user
+from app.schemas.user_schema import (
+    Token, UserCreate, UserLogin, ForgotPasswordRequest, 
+    ResetPasswordRequest, ChangePasswordRequest, SetPasswordRequest
+)
+from app.utils.auth import get_current_user, get_optional_current_user, verify_password
 from app.services import auth_service
 
 
@@ -82,7 +86,27 @@ async def change_password(
         return {"message": "Password successfully updated."}
     except Exception as e:
         if str(e) == "Incorrect current password":
-            raise HTTPException(status_code=401, detail=str(e))
+            raise HTTPException(status_code=400, detail="Incorrect current password. Please check your credentials and try again.")
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/set-password")
+async def set_password_endpoint(
+    request: SetPasswordRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    try:
+        user_id = current_user.get("id")
+        if not user_id:
+            raise HTTPException(status_code=401, detail="Authentication required")
+        if not request.new_password or len(request.new_password) < 8:
+            raise HTTPException(status_code=400, detail="New password must be at least 8 characters long.")
+        await auth_service.set_password(db, user_id, request.new_password)
+        return {"message": "Password successfully established."}
+    except HTTPException:
+        raise
+    except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
 
@@ -101,6 +125,7 @@ async def get_security_status(
             "is_google_linked": False,
             "google_email": None,
             "has_calendar_sync": False,
+            "has_custom_password": True,
             "last_active": None
         }
     
@@ -114,6 +139,7 @@ async def get_security_status(
             "is_google_linked": False,
             "google_email": None,
             "has_calendar_sync": False,
+            "has_custom_password": True,
             "last_active": None
         }
         
@@ -127,6 +153,14 @@ async def get_security_status(
     is_google_linked = bool((user.google_credentials or user.google_access_token) and not is_google_expired)
     has_calendar = bool(user.google_credentials and "calendar" in user.google_credentials and not is_google_expired)
     
+    # Check if user has non-default password
+    has_custom_password = True
+    try:
+        if verify_password("password", user.password):
+            has_custom_password = False
+    except Exception:
+        pass
+
     return {
         "email": user.email,
         "role": user.role,
@@ -135,6 +169,7 @@ async def get_security_status(
         "google_email": user.email if is_google_linked else None,
         "has_calendar_sync": has_calendar,
         "google_token_expired": is_google_expired,
+        "has_custom_password": has_custom_password,
         "last_active": user.last_active.isoformat() if user.last_active else None
     }
 

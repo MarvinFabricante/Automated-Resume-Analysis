@@ -26,26 +26,33 @@ async def get_by_id(db: AsyncSession, candidate_id: int) -> Optional[Candidate]:
 
 async def update(db: AsyncSession, candidate: Candidate, update_data: dict) -> Candidate:
     """Update candidate (Redis-first transaction)."""
+    # Ensure candidate instance is persistent within the current session
+    result = await db.execute(select(Candidate).where(Candidate.id == candidate.id))
+    current_candidate = result.scalar_one_or_none()
+    if not current_candidate:
+        current_candidate = await db.merge(candidate)
+
     tx_id = await redis_tx_manager.stage_transaction(
         target="candidate",
         action="UPDATE",
-        payload={"id": candidate.id, **update_data},
+        payload={"id": current_candidate.id, **update_data},
     )
     try:
         for key, value in update_data.items():
-            setattr(candidate, key, value)
+            if hasattr(current_candidate, key):
+                setattr(current_candidate, key, value)
         await db.commit()
-        await db.refresh(candidate)
+        await db.refresh(current_candidate)
 
-        await redis_tx_manager.commit_transaction(tx_id, {"id": candidate.id})
+        await redis_tx_manager.commit_transaction(tx_id, {"id": current_candidate.id})
 
         # Evict / Update Redis cache
-        await delete_cache(f"candidate:id:{candidate.id}")
-        await delete_cache(f"user:id:{candidate.id}")
-        if candidate.email:
-            await delete_cache(f"user:email:{candidate.email.lower()}")
+        await delete_cache(f"candidate:id:{current_candidate.id}")
+        await delete_cache(f"user:id:{current_candidate.id}")
+        if current_candidate.email:
+            await delete_cache(f"user:email:{current_candidate.email.lower()}")
 
-        return candidate
+        return current_candidate
     except Exception as e:
         await redis_tx_manager.fail_transaction(tx_id, str(e))
         logger.error(f"[Redis-First] candidate update failed: {e}")

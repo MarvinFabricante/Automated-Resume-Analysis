@@ -30,5 +30,10 @@ class AdminResponse(BaseModel):
     bio: Optional[str] = None
     profile_image_url: Optional[str] = None
 
+    # Live Admin Metrics
+    users_count: Optional[int] = 0
+    jobs_count: Optional[int] = 0
+    audits_count: Optional[int] = 0
+
     class Config:
         from_attributes = True
