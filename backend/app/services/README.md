@@ -14,7 +14,6 @@ app/services/
 ├── candidate_service.py            # Candidate profile management and application timelines
 ├── chat_service.py                 # Messaging channels, unread counts, and notifications
 ├── email_service.py                # Asynchronous transactional email dispatch
-├── gemini_service.py               # Google Gemini API key-rotation pool and client
 ├── google_calendar_service.py      # Google Calendar OAuth 2.0 interview scheduling
 ├── hr_service.py                   # HR recruitment pipelines, candidate stage transitions
 ├── interview_service.py            # Interview coordination, status, and reminders

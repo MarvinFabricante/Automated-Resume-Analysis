@@ -15,9 +15,7 @@ def process_resume(file_path: str, file_extension: str) -> dict:
        structured parsing) for immediate structured data.
     3. Extract profile image if available.
 
-    NOTE: Gemini AI is NOT used during extraction.
-          It is reserved exclusively for the analysis / candidate-job
-          matching stage (see gemini_analyze_match in gemini_service.py).
+    NOTE: Resume extraction is entirely rule- and NLP-based.
     """
     print(f"DEBUG: Processing file at {file_path}")
     text = extract_file_content(file_path, file_extension)
