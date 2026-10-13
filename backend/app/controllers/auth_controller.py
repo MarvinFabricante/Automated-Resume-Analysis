@@ -117,8 +117,15 @@ async def get_security_status(
             "last_active": None
         }
         
-    is_google_linked = bool(user.google_credentials or user.google_access_token)
-    has_calendar = bool(user.google_credentials and "calendar" in user.google_credentials)
+    # Check if Google OAuth token has expired (1 hour limit)
+    is_google_expired = False
+    if user.google_token_expiry:
+        from datetime import datetime
+        if user.google_token_expiry < datetime.utcnow():
+            is_google_expired = True
+
+    is_google_linked = bool((user.google_credentials or user.google_access_token) and not is_google_expired)
+    has_calendar = bool(user.google_credentials and "calendar" in user.google_credentials and not is_google_expired)
     
     return {
         "email": user.email,
@@ -127,8 +134,27 @@ async def get_security_status(
         "is_google_linked": is_google_linked,
         "google_email": user.email if is_google_linked else None,
         "has_calendar_sync": has_calendar,
+        "google_token_expired": is_google_expired,
         "last_active": user.last_active.isoformat() if user.last_active else None
     }
+
+
+@router.post("/logout")
+async def logout_user(
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_optional_current_user)
+):
+    """
+    Log out user: marks online status offline and updates last_active.
+    """
+    if current_user and current_user.get("id"):
+        from app.repositories.auth_repository import AuthRepository
+        user = await AuthRepository.get_user_by_id(db, current_user.get("id"))
+        if user:
+            user.is_online = False
+            user.last_active = datetime.utcnow()
+            await db.commit()
+    return {"message": "Logged out successfully"}
 
 
 @router.post("/google/disconnect")
@@ -337,6 +363,20 @@ async def google_callback(request: Request, code: str, state: str = "", db: Asyn
         creds_json = creds.to_json() if creds else ""
         granted_scopes = getattr(creds, 'scopes', [])
 
+        # Google OAuth credential tokens strictly expire in 1 hour
+        google_expiry = None
+        if hasattr(creds, 'expiry') and creds.expiry:
+            google_expiry = creds.expiry
+            if hasattr(google_expiry, 'tzinfo') and google_expiry.tzinfo is not None:
+                from datetime import timezone
+                google_expiry = google_expiry.astimezone(timezone.utc).replace(tzinfo=None)
+        if not google_expiry:
+            from datetime import datetime, timedelta
+            google_expiry = datetime.utcnow() + timedelta(hours=1)
+
+        google_access_tok = getattr(creds, 'token', None)
+        google_refresh_tok = getattr(creds, 'refresh_token', None)
+
         if flow_type in ["link_account", "link_google"]:
             target_user_id = flow_info.get("user_id") if isinstance(flow_info, dict) else None
             user = None
@@ -350,8 +390,9 @@ async def google_callback(request: Request, code: str, state: str = "", db: Asyn
                 
             if user:
                 user.google_credentials = creds_json
-                if hasattr(creds, 'token') and creds.token:
-                    user.google_access_token = creds.token
+                user.google_access_token = google_access_tok
+                user.google_refresh_token = google_refresh_tok
+                user.google_token_expiry = google_expiry
                 if picture and not user.profile_image_url:
                     user.profile_image_url = picture
                 await db.commit()
@@ -373,7 +414,10 @@ async def google_callback(request: Request, code: str, state: str = "", db: Asyn
                 picture=picture,
                 google_credentials=creds_json,
                 target_role=role_requested,
-                granted_scopes=granted_scopes
+                granted_scopes=granted_scopes,
+                google_access_token=google_access_tok,
+                google_refresh_token=google_refresh_tok,
+                google_token_expiry=google_expiry
             )
         
         # Redirect to frontend with token, role, email, and user details

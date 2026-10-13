@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import logo from '../../../assets/logo.png';
 import { Role } from '../../../types';
+import { isTokenExpired, clearAllAuthSessions } from '../../../utils/token';
 
 interface DetectedRoleInfo {
   role: string;
@@ -64,9 +65,32 @@ const Login: React.FC = () => {
   }, []);
 
   useEffect(() => {
+    // Check if redirected due to 1-hour session expiration
+    if (typeof window !== 'undefined' && window.location.search.includes('session_expired=1')) {
+      clearAllAuthSessions();
+      setModalState({
+        isOpen: true,
+        type: 'error',
+        title: 'Session Expired',
+        message: 'Your 1-hour session has expired. You have been automatically logged out for security. Please sign in again.'
+      });
+      try {
+        window.history.replaceState({}, '', window.location.pathname);
+      } catch (e) {
+        // ignore
+      }
+      return;
+    }
+
     const checkExistingSession = () => {
       const token = localStorage.getItem('token');
       const role = localStorage.getItem('role');
+
+      if (token && isTokenExpired(token)) {
+        clearAllAuthSessions();
+        return;
+      }
+
       if (token && role) {
         if (role.toUpperCase() === 'ADMIN') {
           window.location.href = '/admin/dashboard';
@@ -120,7 +144,9 @@ const Login: React.FC = () => {
     const existingToken = localStorage.getItem('token');
     const existingRole = localStorage.getItem('role');
     
-    if (existingToken && existingRole) {
+    if (existingToken && isTokenExpired(existingToken)) {
+      clearAllAuthSessions();
+    } else if (existingToken && existingRole) {
       setModalState({
         isOpen: true,
         type: 'error',
@@ -147,7 +173,9 @@ const Login: React.FC = () => {
     const existingToken = localStorage.getItem('token');
     const existingRole = localStorage.getItem('role');
     
-    if (existingToken && existingRole) {
+    if (existingToken && isTokenExpired(existingToken)) {
+      clearAllAuthSessions();
+    } else if (existingToken && existingRole) {
       setModalState({
         isOpen: true,
         type: 'error',

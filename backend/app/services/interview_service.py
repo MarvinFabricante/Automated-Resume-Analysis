@@ -62,6 +62,17 @@ def send_sms_notification_sync(to_phone: str, message: str):
             return False
     return False
 
+
+def _get_valid_credentials(user) -> Optional[str]:
+    """Return google_credentials only if not expired (1-hour lifespan limit)."""
+    if not user or not getattr(user, "google_credentials", None):
+        return None
+    expiry = getattr(user, "google_token_expiry", None)
+    if expiry and expiry < datetime.utcnow():
+        return None
+    return user.google_credentials
+
+
 # ── Working-hours constants ────────────────────────────────────────
 WORK_START_HOUR = 8   # 8:00 AM
 WORK_END_HOUR = 17    # 5:00 PM
@@ -81,7 +92,7 @@ async def get_available_slots(db: AsyncSession, start_date: datetime, end_date: 
     """
     from app.repositories.auth_repository import AuthRepository
     user = await AuthRepository.get_user_by_id(db, user_id)
-    credentials_json = user.google_credentials if user else None
+    credentials_json = _get_valid_credentials(user)
 
     # Strip timezone info so all comparisons are naive (local time)
     start_date = start_date.replace(tzinfo=None)
@@ -205,7 +216,7 @@ async def schedule_interview(db: AsyncSession, data: InterviewCreateSchema, user
 
     from app.repositories.auth_repository import AuthRepository
     user = await AuthRepository.get_user_by_id(db, interviewer_id)
-    credentials_json = user.google_credentials if user else None
+    credentials_json = _get_valid_credentials(user)
 
     # 2. Create Interview Record
     start = data.start_time.replace(tzinfo=None)
@@ -361,10 +372,10 @@ async def update_interview(db: AsyncSession, interview_id: int, data: InterviewU
     from app.repositories.auth_repository import AuthRepository
     interviewer_to_sync = interview.interviewer_id or user_id
     user = await AuthRepository.get_user_by_id(db, interviewer_to_sync)
-    credentials_json = user.google_credentials if user else None
+    credentials_json = _get_valid_credentials(user)
     if not credentials_json and interviewer_to_sync != user_id:
         user_fallback = await AuthRepository.get_user_by_id(db, user_id)
-        credentials_json = user_fallback.google_credentials if user_fallback else None
+        credentials_json = _get_valid_credentials(user_fallback)
 
     if credentials_json and interview.google_event_id:
         try:
@@ -440,10 +451,10 @@ async def delete_interview(db: AsyncSession, interview_id: int, user_id: int, us
     from app.repositories.auth_repository import AuthRepository
     interviewer_to_sync = interview.interviewer_id or user_id
     user = await AuthRepository.get_user_by_id(db, interviewer_to_sync)
-    credentials_json = user.google_credentials if user else None
+    credentials_json = _get_valid_credentials(user)
     if not credentials_json and interviewer_to_sync != user_id:
         user_fallback = await AuthRepository.get_user_by_id(db, user_id)
-        credentials_json = user_fallback.google_credentials if user_fallback else None
+        credentials_json = _get_valid_credentials(user_fallback)
 
     if credentials_json and interview.google_event_id:
         try:
@@ -476,7 +487,7 @@ async def get_calendar_feed(db: AsyncSession, user_id: int, time_min: str = None
     from app.repositories.auth_repository import AuthRepository
     sync_user_id = hr_id if hr_id else user_id
     user = await AuthRepository.get_user_by_id(db, sync_user_id)
-    credentials_json = user.google_credentials if user else None
+    credentials_json = _get_valid_credentials(user)
 
     # Fetch DB interviews
     db_interviews = await InterviewRepository.get_all_interviews(db)
@@ -546,6 +557,13 @@ async def get_google_calendar_status(db: AsyncSession, user_id: int):
             "email": None,
             "message": "Google Calendar is not connected. Connect your Google account to sync schedules."
         }
+    if user.google_token_expiry and user.google_token_expiry < datetime.utcnow():
+        return {
+            "connected": False,
+            "email": user.email,
+            "expired": True,
+            "message": "Google Calendar connection expired after 1-hour limit. Please reconnect your account."
+        }
     return {
         "connected": True,
         "email": user.email,
@@ -556,7 +574,7 @@ async def get_google_calendar_status(db: AsyncSession, user_id: int):
 async def get_calendar_events(db: AsyncSession, user_id: int):
     from app.repositories.auth_repository import AuthRepository
     user = await AuthRepository.get_user_by_id(db, user_id)
-    credentials_json = user.google_credentials if user else None
+    credentials_json = _get_valid_credentials(user)
     
     if credentials_json:
         events = await asyncio.to_thread(

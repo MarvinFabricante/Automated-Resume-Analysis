@@ -16,6 +16,9 @@ SECRET_KEY = os.getenv("SECRET_KEY")
 ALGORITHM = os.getenv("ALGORITHM")
 
 
+ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "60"))
+
+
 def hash_password(password: str):
     safe_password = password[:72] if len(password) > 72 else password
     return pwd_context.hash(safe_password)
@@ -25,10 +28,17 @@ def verify_password(plain, hashed):
         plain = plain[:72]
     return pwd_context.verify(plain, hashed)
 
-def create_access_token(data: dict, expires_minutes: int = 30):
+def create_access_token(data: dict, expires_minutes: int = None):
+    if expires_minutes is None:
+        expires_minutes = ACCESS_TOKEN_EXPIRE_MINUTES
     to_encode = data.copy()
-    expire = datetime.utcnow() + timedelta(minutes=expires_minutes)
-    to_encode.update({"exp": expire})
+    now = datetime.utcnow()
+    expire = now + timedelta(minutes=expires_minutes)
+    to_encode.update({
+        "exp": expire,
+        "iat": now,
+        "expires_in": expires_minutes * 60
+    })
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
 
@@ -37,6 +47,11 @@ def get_current_user(token: str = Depends(oauth2_scheme)):
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         return payload
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(
+            status_code=401, 
+            detail="Session expired: token has exceeded the 1-hour expiration window. Please sign in again."
+        )
     except JWTError:
         raise HTTPException(status_code=401, detail="Invalid token")
 

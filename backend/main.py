@@ -162,6 +162,22 @@ async def lifespan(app_instance: FastAPI):
     await create_tables()
     await seed_demo_data_if_enabled()
 
+    # Clean up stale user sessions (> 1 hour) and expired Google OAuth credentials on startup
+    try:
+        from datetime import datetime, timedelta
+        async with engine.begin() as conn:
+            one_hour_ago = datetime.utcnow() - timedelta(hours=1)
+            await conn.execute(
+                text("UPDATE users SET is_online = FALSE WHERE is_online = TRUE AND (last_active IS NULL OR last_active < :threshold)"),
+                {"threshold": one_hour_ago}
+            )
+            await conn.execute(
+                text("UPDATE users SET google_credentials = NULL, google_access_token = NULL, google_refresh_token = NULL WHERE google_token_expiry IS NOT NULL AND google_token_expiry < :now"),
+                {"now": datetime.utcnow()}
+            )
+    except Exception as e:
+        logger.warning(f"Could not clean up stale user sessions on startup: {e}")
+
     # Initialize Redis-first architecture and cross-worker real-time listeners
     from app.utils.redis_client import is_redis_available, close_redis_pools
     from app.utils.websocket_manager import manager as ws_manager

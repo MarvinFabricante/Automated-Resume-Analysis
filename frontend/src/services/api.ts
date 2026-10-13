@@ -51,20 +51,44 @@ export const getAssetUrl = (path?: string | null): string => {
   return normalizedPath;
 };
 
+import { isTokenExpired, handleSessionExpired } from '../utils/token';
+
 const api: AxiosInstance = axios.create({
   baseURL: API_BASE_URL,
 });
 
 // Automatically attach Authorization Bearer token for all outgoing axios requests
+// and enforce strict 1-hour expiration
 api.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
-    const token = localStorage.getItem('token');
-    if (token && !config.headers.Authorization) {
-      config.headers.Authorization = `Bearer ${token}`;
+    if (typeof localStorage !== 'undefined') {
+      const token = localStorage.getItem('token');
+      if (token) {
+        if (isTokenExpired(token)) {
+          handleSessionExpired();
+          return Promise.reject(new axios.Cancel('Session expired: 1-hour expiration limit reached.'));
+        }
+        if (!config.headers.Authorization) {
+          config.headers.Authorization = `Bearer ${token}`;
+        }
+      }
     }
     return config;
   },
   (error) => Promise.reject(error)
+);
+
+// Response interceptor: automatically log out accounts if 401 is received
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response && error.response.status === 401) {
+      if (typeof localStorage !== 'undefined' && localStorage.getItem('token')) {
+        handleSessionExpired();
+      }
+    }
+    return Promise.reject(error);
+  }
 );
 
 export default api;

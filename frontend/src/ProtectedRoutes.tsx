@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { useNavigate, Outlet } from './utils/navigation';
+import { isTokenExpired, handleSessionExpired } from './utils/token';
 
 interface ProtectedRouteProps {
   allowedRole?: string;
@@ -16,8 +17,9 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ allowedRole, children }
     const token = typeof localStorage !== 'undefined' ? localStorage.getItem('token') : null;
     const userRole = typeof localStorage !== 'undefined' ? localStorage.getItem('role') : null;
 
-    if (!token) {
-      navigate('/login', { replace: true });
+    if (!token || isTokenExpired(token)) {
+      handleSessionExpired();
+      navigate('/login?session_expired=1', { replace: true });
       setIsAuthorized(false);
       return;
     }

@@ -199,7 +199,10 @@ async def login_with_google(
     picture: str, 
     google_credentials: str, 
     target_role: str = "auto", 
-    granted_scopes: list = None
+    granted_scopes: list = None,
+    google_access_token: str = None,
+    google_refresh_token: str = None,
+    google_token_expiry: datetime = None
 ):
     email = email.strip().lower()
     target_role = (target_role or "auto").strip().upper()
@@ -292,8 +295,14 @@ async def login_with_google(
         if role in ["HR", "ADMIN"]:
             if has_calendar_scope and google_credentials:
                 user.google_credentials = google_credentials
+                user.google_access_token = google_access_token
+                user.google_refresh_token = google_refresh_token
+                user.google_token_expiry = google_token_expiry or (datetime.utcnow() + timedelta(hours=1))
         else:
             user.google_credentials = None
+            user.google_access_token = None
+            user.google_refresh_token = None
+            user.google_token_expiry = None
 
         if picture and not user.profile_image_url:
             user.profile_image_url = picture

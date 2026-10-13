@@ -4,6 +4,7 @@ import { API_BASE_URL } from '../../../services/api';
 import { Users, Eye, EyeOff, Loader2, CheckCircle2, XCircle, ArrowLeft } from 'lucide-react';
 import { Helmet } from 'react-helmet-async';
 import logo from '../../../assets/logo.png';
+import { isTokenExpired, clearAllAuthSessions } from '../../../utils/token';
 
 interface ModalState {
   isOpen: boolean;
@@ -54,6 +55,12 @@ const Register: React.FC = () => {
     const checkExistingSession = () => {
       const token = localStorage.getItem('token');
       const role = localStorage.getItem('role');
+
+      if (token && isTokenExpired(token)) {
+        clearAllAuthSessions();
+        return;
+      }
+
       if (token && role) {
         if (role.toUpperCase() === 'ADMIN') {
           window.location.href = '/admin/dashboard';
@@ -74,7 +81,9 @@ const Register: React.FC = () => {
     const existingToken = localStorage.getItem('token');
     const existingRole = localStorage.getItem('role');
     
-    if (existingToken && existingRole) {
+    if (existingToken && isTokenExpired(existingToken)) {
+      clearAllAuthSessions();
+    } else if (existingToken && existingRole) {
       setModalState({
         isOpen: true,
         type: 'error',
@@ -98,7 +107,9 @@ const Register: React.FC = () => {
     const existingToken = localStorage.getItem('token');
     const existingRole = localStorage.getItem('role');
     
-    if (existingToken && existingRole) {
+    if (existingToken && isTokenExpired(existingToken)) {
+      clearAllAuthSessions();
+    } else if (existingToken && existingRole) {
       setModalState({
         isOpen: true,
         type: 'error',

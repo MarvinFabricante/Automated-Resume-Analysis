@@ -4,6 +4,7 @@ import { useDispatch } from 'react-redux';
 import { setCredentials } from '../../../redux/slices/authSlice';
 import { XCircle, ArrowLeft } from 'lucide-react';
 import { Role } from '../../../types';
+import { isTokenExpired, clearAllAuthSessions } from '../../../utils/token';
 
 const GoogleCallback: React.FC = () => {
   const [searchParams] = useSearchParams();
@@ -24,7 +25,8 @@ const GoogleCallback: React.FC = () => {
     const picture = searchParams.get('picture');
 
     if (token && role) {
-      // Store auth data (cleanly overwrite any previous session)
+      // Cleanly clear any prior credentials and store new 1-hour session
+      clearAllAuthSessions();
       localStorage.setItem('token', token);
       localStorage.setItem('role', role);
       localStorage.setItem('saved_email', email || '');
@@ -53,11 +55,12 @@ const GoogleCallback: React.FC = () => {
       // Direct access with no token: if already authenticated, go to dashboard, else login
       const existingToken = localStorage.getItem('token');
       const existingRole = (localStorage.getItem('role') || '').toUpperCase();
-      if (existingToken && existingRole) {
+      if (existingToken && !isTokenExpired(existingToken) && existingRole) {
         if (existingRole === 'ADMIN') window.location.href = '/admin/dashboard';
         else if (existingRole === 'HR') window.location.href = '/hr/dashboard';
         else window.location.href = '/candidate/dashboard';
       } else {
+        clearAllAuthSessions();
         window.location.href = '/login';
       }
     }

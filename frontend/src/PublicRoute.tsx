@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { useNavigate, Outlet } from './utils/navigation';
+import { isTokenExpired, clearAllAuthSessions } from './utils/token';
 
 interface PublicRouteProps {
   children?: React.ReactNode;
@@ -14,6 +15,12 @@ const PublicRoute: React.FC<PublicRouteProps> = ({ children }) => {
   useEffect(() => {
     const token = typeof localStorage !== 'undefined' ? localStorage.getItem('token') : null;
     const userRole = (typeof localStorage !== 'undefined' ? (localStorage.getItem('role') || '') : '').toUpperCase();
+
+    if (token && isTokenExpired(token)) {
+      clearAllAuthSessions();
+      setCanRender(true);
+      return;
+    }
 
     if (token && userRole) {
       if (userRole === 'ADMIN') {

@@ -275,15 +275,47 @@ def exchange_code_for_credentials(code: str, state: str):
     }
 
 
-def get_calendar_service(credentials_json: str):
+def is_google_credentials_expired(credentials_json: str) -> bool:
+    """
+    Check if Google OAuth credentials have expired beyond the 1-hour limit.
+    """
     if not credentials_json:
-        return None
+        return True
     try:
+        from datetime import datetime, timezone
+        creds_data = json.loads(credentials_json) if isinstance(credentials_json, str) else credentials_json
+        expiry_val = creds_data.get('expiry')
+        if expiry_val:
+            clean_exp = str(expiry_val).replace("Z", "+00:00")
+            exp_dt = datetime.fromisoformat(clean_exp)
+            now_dt = datetime.now(timezone.utc) if exp_dt.tzinfo else datetime.utcnow()
+            return exp_dt <= now_dt
+        creds = Credentials.from_authorized_user_info(creds_data, SCOPES)
+        return bool(creds and creds.expired)
+    except Exception:
+        return True
+
+
+def get_calendar_service(credentials_json: str):
+    """
+    Build a Google Calendar API service client.
+    Google OAuth credential tokens strictly expire in 1 hour.
+    If the token has expired, do NOT auto-refresh via refresh_token;
+    the user must re-authenticate with Google.
+    """
+    if not credentials_json:
+        return None, None
+    try:
+        if is_google_credentials_expired(credentials_json):
+            print("Google OAuth credential token has expired (1-hour limit exceeded). Re-authentication required.")
+            return None, credentials_json
+
         creds_data = json.loads(credentials_json)
         creds = Credentials.from_authorized_user_info(creds_data, SCOPES)
         
-        if creds and creds.expired and creds.refresh_token:
-            creds.refresh(Request())
+        if not creds or creds.expired:
+            print("Google OAuth credentials expired or invalid.")
+            return None, credentials_json
             
         service = build('calendar', 'v3', credentials=creds)
         return service, creds.to_json()

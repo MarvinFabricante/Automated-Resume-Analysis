@@ -8,6 +8,7 @@ import { store } from '../redux/store';
 import { NavigationProvider } from '../utils/navigation';
 import ScrollToTop from '../components/layout/ScrollToTop';
 import ErrorBoundary from '../components/common/ErrorBoundary';
+import SessionTimeoutWatcher from '../components/common/SessionTimeoutWatcher';
 
 export default function Providers({ children }: { children: React.ReactNode }) {
   useEffect(() => {
@@ -27,6 +28,7 @@ export default function Providers({ children }: { children: React.ReactNode }) {
     <ErrorBoundary>
       <HelmetProvider>
         <Provider store={store}>
+          <SessionTimeoutWatcher />
           <NavigationProvider>
             <ScrollToTop />
             {children}
