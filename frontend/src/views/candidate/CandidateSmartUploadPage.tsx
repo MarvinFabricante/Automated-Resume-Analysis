@@ -1,6 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Helmet } from 'react-helmet-async';
 import { useNavigate } from '@/utils/navigation';
+import { useSelector } from 'react-redux';
+import { RootState } from '../../redux/store';
 import candidateService from '../../services/candidateService';
 import {
   FileUp,
@@ -13,25 +15,45 @@ import {
   Cpu,
   Sparkles,
   Zap,
-  Briefcase
+  Briefcase,
+  Layers,
+  Award,
+  GraduationCap,
+  Target,
+  RefreshCw,
+  Compass,
+  Building2,
+  ChevronRight
 } from 'lucide-react';
 import Header from '../../components/layout/Header';
 import Sidebar from '../../components/layout/Sidebar';
-import RecruitmentTermsModal from '../../components/modals/shared/RecruitmentTermsModal';
+
+const DIVISIONS = [
+  { id: 'ALL', label: 'All Divisions' },
+  { id: 'MANUFACTURING', label: 'Manufacturing & Operations' },
+  { id: 'ENGINEERING', label: 'Engineering & Maintenance' },
+  { id: 'QA', label: 'Quality Assurance' },
+  { id: 'ADMIN', label: 'Supply Chain & Corporate' }
+];
 
 const CandidateSmartUploadPage: React.FC = () => {
   const navigate = useNavigate();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Authenticated candidate state
+  const { user: email } = useSelector((state: RootState) => state.auth);
+  const fullname = typeof localStorage !== 'undefined' ? (localStorage.getItem('fullname') || 'Candidate') : 'Candidate';
+
+  // Component state
   const [file, setFile] = useState<File | null>(null);
+  const [selectedDivision, setSelectedDivision] = useState<string>('ALL');
   const [isDragging, setIsDragging] = useState<boolean>(false);
   const [isUploading, setIsUploading] = useState<boolean>(false);
   const [uploadProgress, setUploadProgress] = useState<number>(0);
   const [progressStage, setProgressStage] = useState<string>('');
   const [isComplete, setIsComplete] = useState<boolean>(false);
   const [cooldown, setCooldown] = useState<number>(0);
-  const [isTermsAccepted, setIsTermsAccepted] = useState<boolean>(false);
-  const [showTermsModal, setShowTermsModal] = useState<boolean>(false);
+  const [isTermsAccepted, setIsTermsAccepted] = useState<boolean>(true); // Pre-accepted for authenticated candidates
   const [extractedData, setExtractedData] = useState<any>(null);
   const [matchResults, setMatchResults] = useState<any[]>([]);
 
@@ -50,7 +72,17 @@ const CandidateSmartUploadPage: React.FC = () => {
       'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
     ];
 
-    if (selectedFile && (validTypes.includes(selectedFile.type) || selectedFile.name.endsWith('.pdf') || selectedFile.name.endsWith('.docx') || selectedFile.name.endsWith('.doc'))) {
+    if (
+      selectedFile &&
+      (validTypes.includes(selectedFile.type) ||
+        selectedFile.name.endsWith('.pdf') ||
+        selectedFile.name.endsWith('.docx') ||
+        selectedFile.name.endsWith('.doc'))
+    ) {
+      if (selectedFile.size > 10 * 1024 * 1024) {
+        alert('File size exceeds 10MB limit. Please upload a smaller document.');
+        return;
+      }
       setFile(selectedFile);
       setIsComplete(false);
       setUploadProgress(0);
@@ -82,7 +114,7 @@ const CandidateSmartUploadPage: React.FC = () => {
 
     setIsUploading(true);
     setUploadProgress(15);
-    setProgressStage('Uploading and parsing resume document...');
+    setProgressStage('Ingesting document into candidate ATS sandbox...');
 
     try {
       // Step 1: Parse Resume
@@ -97,13 +129,13 @@ const CandidateSmartUploadPage: React.FC = () => {
       const extracted = parseResponse.data;
       setExtractedData(extracted);
       setUploadProgress(65);
-      setProgressStage('Extracting technical competencies & work history...');
+      setProgressStage('Extracting competencies, tenure & academic degrees...');
 
       // Small delay for smooth visual transition
-      await new Promise(resolve => setTimeout(resolve, 600));
+      await new Promise((resolve) => setTimeout(resolve, 600));
 
       setUploadProgress(80);
-      setProgressStage('Evaluating compatibility across all open Mariwasa positions...');
+      setProgressStage('Evaluating compatibility across all open Mariwasa requisitions...');
 
       // Step 2: Match Resume against ALL active jobs
       let matches: any[] = [];
@@ -115,8 +147,9 @@ const CandidateSmartUploadPage: React.FC = () => {
           experience: extracted?.relevance || extracted?.experience || '',
           education: extracted?.degree || extracted?.highest_degree || '',
           highest_degree: extracted?.highest_degree || extracted?.degree || '',
-          fullname: extracted?.fullname || '',
-          location: extracted?.location || ''
+          fullname: extracted?.fullname || fullname || '',
+          location: extracted?.location || '',
+          preferred_department: selectedDivision !== 'ALL' ? selectedDivision : undefined
         };
 
         const matchResponse = await candidateService.matchData(null, payload);
@@ -126,17 +159,26 @@ const CandidateSmartUploadPage: React.FC = () => {
         console.error('Job matching error:', matchErr);
       }
 
-      setUploadProgress(100);
-      setProgressStage('AI matching complete!');
-      setIsComplete(true);
+      // Mark that candidate has an uploaded resume in local storage
+      try {
+        localStorage.setItem('candidate_resume_uploaded', 'true');
+        if (extracted?.fullname) localStorage.setItem('fullname', extracted.fullname);
+      } catch (storageErr) {
+        console.error('Failed to update local storage:', storageErr);
+      }
 
+      setUploadProgress(100);
+      setProgressStage('Candidate AI analysis complete!');
+      setIsComplete(true);
     } catch (error: any) {
-      console.error('Smart Upload error:', error);
+      console.error('Candidate Smart Upload error:', error);
       if (error.response?.status === 429) {
-        alert('High server volume! Please wait 30 seconds before attempting another scan.');
+        alert('Server processing limit reached. Please wait 30 seconds before another scan.');
         setCooldown(30);
       } else {
-        const detail = error.response?.data?.detail || 'Failed to analyze resume. Please ensure your document contains readable text.';
+        const detail =
+          error.response?.data?.detail ||
+          'Failed to analyze resume. Please ensure your document contains readable text.';
         alert(detail);
       }
       setCooldown(10);
@@ -155,6 +197,14 @@ const CandidateSmartUploadPage: React.FC = () => {
     });
   };
 
+  const handleReset = () => {
+    setFile(null);
+    setIsComplete(false);
+    setUploadProgress(0);
+    setExtractedData(null);
+    setMatchResults([]);
+  };
+
   return (
     <div className="bg-[#F8FAFC] text-slate-900 antialiased font-['Inter',_sans-serif] min-h-screen flex flex-col">
       <Helmet>
@@ -166,55 +216,151 @@ const CandidateSmartUploadPage: React.FC = () => {
       <div className="flex flex-1">
         <Sidebar />
 
-        <main className="flex-1 max-w-[1360px] mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12 w-full min-w-0">
+        <main className="flex-1 max-w-[1360px] mx-auto px-3.5 sm:px-6 lg:px-8 py-5 sm:py-8 w-full min-w-0">
           
-          {/* Back to Find Jobs */}
-          <button
-            type="button"
-            onClick={() => navigate('/candidate/findjobs')}
-            className="flex items-center text-xs font-black uppercase tracking-wider text-slate-400 hover:text-[#D10043] transition-colors mb-6 group"
-          >
-            <ArrowLeft size={16} className="mr-2 group-hover:-translate-x-1 transition-transform" />
-            Back to Find Jobs
-          </button>
+          {/* TOP BREADCRUMB & CANDIDATE CONTEXT */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
+            <div className="flex items-center gap-2 text-xs font-bold text-slate-400">
+              <button
+                type="button"
+                onClick={() => navigate('/candidate/dashboard')}
+                className="hover:text-slate-800 transition-colors cursor-pointer"
+              >
+                Dashboard
+              </button>
+              <span>/</span>
+              <span className="text-[#D10043]">AI Smart Match</span>
+            </div>
 
-          {/* MAIN SMART UPLOAD CONTAINER */}
-          <div className="bg-white rounded-[32px] sm:rounded-[40px] shadow-xl shadow-slate-200/50 border border-slate-100 overflow-hidden relative">
+            <div className="flex items-center gap-2">
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-semibold text-slate-600 bg-white border border-slate-200/80 shadow-2xs">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                Candidate Session: <strong className="text-slate-900">{email || fullname}</strong>
+              </span>
+            </div>
+          </div>
+
+          {/* MAIN DEDICATED CANDIDATE SMART UPLOAD CONTAINER */}
+          <div className="bg-white rounded-2xl sm:rounded-3xl shadow-xs border border-slate-200/80 overflow-hidden relative space-y-6 sm:space-y-8 p-5 sm:p-8 md:p-10">
             
-            {/* Ambient Graphic Accent */}
-            <div className="absolute top-0 right-0 w-80 h-80 bg-gradient-to-bl from-[#D10043]/10 via-rose-50/40 to-transparent rounded-bl-[300px] pointer-events-none" />
+            {/* Ambient Background Accent */}
+            <div className="absolute top-0 right-0 w-80 h-80 bg-gradient-to-bl from-[#D10043]/5 via-rose-50/30 to-transparent rounded-full blur-3xl pointer-events-none" />
 
-            {/* HEADER HERO */}
-            <div className="p-6 sm:p-10 md:p-14 border-b border-slate-100 bg-gradient-to-b from-slate-50/50 to-transparent relative z-10">
-              <div className="flex flex-col md:flex-row md:items-center gap-6 sm:gap-8">
-                
-                <div className="w-16 h-16 sm:w-20 sm:h-20 bg-slate-900 rounded-3xl flex items-center justify-center text-white shadow-xl shadow-slate-200 shrink-0">
-                  <Cpu size={36} className="text-[#D10043]" />
+            {/* HERO BANNER */}
+            <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6 pb-6 border-b border-slate-100">
+              <div className="flex items-start sm:items-center gap-4">
+                <div className="w-12 h-12 sm:w-16 sm:h-16 rounded-2xl bg-gradient-to-br from-slate-900 to-slate-800 text-white flex items-center justify-center shrink-0 shadow-sm shadow-slate-900/10">
+                  <Cpu size={28} className="text-[#D10043] sm:w-8 sm:h-8" />
                 </div>
 
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    <span className="px-3 py-1 bg-[#D10043]/10 text-[#D10043] rounded-full text-[10px] font-black uppercase tracking-widest flex items-center gap-1.5 border border-[#D10043]/15">
+                <div className="space-y-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-[#D10043]/10 text-[#D10043] border border-[#D10043]/15 flex items-center gap-1">
                       <Sparkles size={11} className="animate-pulse" />
-                      Candidate AI Matching
+                      Candidate AI Matching Engine
+                    </span>
+                    <span className="text-xs font-semibold text-slate-400 hidden sm:inline">
+                      • Automated ATS Alignment
                     </span>
                   </div>
 
-                  <h1 className="text-2xl sm:text-4xl md:text-5xl font-black text-slate-900 tracking-tight leading-tight">
+                  <h1 className="text-xl sm:text-2xl md:text-3xl font-black text-slate-900 tracking-tight leading-tight">
                     Smart Match <span className="text-[#D10043]">Upload</span>
                   </h1>
 
-                  <p className="text-xs sm:text-sm md:text-base text-slate-500 font-medium max-w-2xl leading-relaxed">
-                    Unsure which job opening fits your background best? Upload your resume and let Mariwasa's automated AI engine parse your skillset, experience, and education to match you with top-ranking career opportunities.
+                  <p className="text-xs sm:text-sm text-slate-500 font-medium max-w-2xl leading-relaxed">
+                    Upload your latest resume to automatically evaluate your competencies, work experience, and educational background across all open career requisitions at Mariwasa Siam Ceramics.
                   </p>
                 </div>
+              </div>
 
+              <div className="flex items-center gap-2 shrink-0 self-start md:self-center">
+                <button
+                  type="button"
+                  onClick={() => navigate('/candidate/findjobs')}
+                  className="px-4 py-2.5 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 transition-colors cursor-pointer"
+                >
+                  <Briefcase size={14} className="text-slate-400" />
+                  <span>Browse Jobs</span>
+                </button>
               </div>
             </div>
 
-            {/* BODY CONTENT */}
-            <div className="p-6 sm:p-10 md:p-14">
-              
+            {/* CANDIDATE DIVISION FOCUS SELECTOR */}
+            {!isComplete && !isUploading && (
+              <div className="space-y-2.5 bg-slate-50/50 p-4 rounded-2xl border border-slate-100">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                    <Compass size={14} className="text-[#D10043]" />
+                    Target Career Division (Optional):
+                  </span>
+                  <span className="text-[11px] text-slate-400 font-medium hidden sm:inline">
+                    Prioritizes roles in this operational area
+                  </span>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  {DIVISIONS.map((div) => (
+                    <button
+                      key={div.id}
+                      type="button"
+                      onClick={() => setSelectedDivision(div.id)}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                        selectedDivision === div.id
+                          ? 'bg-[#D10043] text-white shadow-2xs'
+                          : 'bg-white hover:bg-slate-100 text-slate-600 border border-slate-200/80'
+                      }`}
+                    >
+                      {div.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* ATS SCORING WEIGHTS CARD */}
+            {!isComplete && !isUploading && (
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="p-3.5 rounded-xl bg-slate-50/70 border border-slate-200/70 flex items-start gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-pink-50 text-[#D10043] flex items-center justify-center shrink-0 border border-pink-100">
+                    <Target size={16} />
+                  </div>
+                  <div>
+                    <h5 className="text-xs font-black text-slate-900">Skill Alignment (40%)</h5>
+                    <p className="text-[11px] text-slate-500 font-medium mt-0.5">
+                      Matches technical competencies and industry certifications.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="p-3.5 rounded-xl bg-slate-50/70 border border-slate-200/70 flex items-start gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center shrink-0 border border-blue-100">
+                    <Briefcase size={16} />
+                  </div>
+                  <div>
+                    <h5 className="text-xs font-black text-slate-900">Experience & Tenure (40%)</h5>
+                    <p className="text-[11px] text-slate-500 font-medium mt-0.5">
+                      Evaluates years of service and role relevance.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="p-3.5 rounded-xl bg-slate-50/70 border border-slate-200/70 flex items-start gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0 border border-emerald-100">
+                    <GraduationCap size={16} />
+                  </div>
+                  <div>
+                    <h5 className="text-xs font-black text-slate-900">Education Level (20%)</h5>
+                    <p className="text-[11px] text-slate-500 font-medium mt-0.5">
+                      Checks degree requirements and academic discipline.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* UPLOAD WORKSPACE */}
+            <div>
               {!file ? (
                 /* DRAG AND DROP ZONE */
                 <div
@@ -222,10 +368,10 @@ const CandidateSmartUploadPage: React.FC = () => {
                   onDragLeave={handleDrag}
                   onDrop={handleDrop}
                   onClick={() => fileInputRef.current?.click()}
-                  className={`border-2 border-dashed rounded-[32px] p-8 sm:p-14 text-center cursor-pointer transition-all duration-300 flex flex-col items-center justify-center min-h-[300px] sm:min-h-[380px] ${
+                  className={`border-2 border-dashed rounded-2xl sm:rounded-3xl p-8 sm:p-12 text-center cursor-pointer transition-all duration-300 flex flex-col items-center justify-center min-h-[260px] sm:min-h-[320px] ${
                     isDragging
                       ? 'border-[#D10043] bg-pink-50/40 scale-[0.99]'
-                      : 'border-slate-200 hover:border-[#D10043]/50 hover:bg-slate-50/60'
+                      : 'border-slate-200 hover:border-[#D10043]/50 hover:bg-slate-50/50'
                   }`}
                 >
                   <input
@@ -240,47 +386,45 @@ const CandidateSmartUploadPage: React.FC = () => {
                     }}
                   />
 
-                  <div className="w-20 h-20 rounded-3xl bg-slate-50 text-[#D10043] flex items-center justify-center mb-6 shadow-sm border border-slate-100 group-hover:scale-105 transition-transform">
-                    <FileUp size={36} />
+                  <div className="w-16 h-16 rounded-2xl bg-rose-50 text-[#D10043] flex items-center justify-center mb-4 shadow-2xs border border-rose-100">
+                    <FileUp size={30} />
                   </div>
 
-                  <h3 className="text-xl sm:text-2xl font-black text-slate-900 mb-2 tracking-tight">
-                    Drop your resume here, or <span className="text-[#D10043] underline underline-offset-4">browse files</span>
+                  <h3 className="text-lg sm:text-xl font-black text-slate-900 mb-1.5 tracking-tight">
+                    Select your resume file, or <span className="text-[#D10043] underline underline-offset-4">browse files</span>
                   </h3>
                   
-                  <p className="text-xs sm:text-sm text-slate-400 font-medium max-w-md mx-auto mb-6">
-                    Supports PDF and Word documents (.pdf, .docx, .doc) up to 10MB.
+                  <p className="text-xs text-slate-400 font-medium max-w-md mx-auto mb-5">
+                    Supports PDF and Microsoft Word documents (.pdf, .docx, .doc) up to 10MB.
                   </p>
 
-                  <div className="flex flex-wrap items-center justify-center gap-4 text-xs font-bold text-slate-500">
-                    <span className="flex items-center gap-1.5 bg-slate-100/80 px-3 py-1.5 rounded-full">
+                  <div className="flex flex-wrap items-center justify-center gap-3 text-xs font-semibold text-slate-500">
+                    <span className="flex items-center gap-1.5 bg-slate-100/90 px-3 py-1 rounded-xl">
                       <ShieldCheck size={14} className="text-emerald-500" />
-                      GDPR & Data Privacy Compliant
+                      Candidate Data Privacy Guarded
                     </span>
-                    <span className="flex items-center gap-1.5 bg-slate-100/80 px-3 py-1.5 rounded-full">
+                    <span className="flex items-center gap-1.5 bg-slate-100/90 px-3 py-1 rounded-xl">
                       <Zap size={14} className="text-amber-500" />
-                      Instant ATS Parsing
+                      Instant ARAS ATS Evaluation
                     </span>
                   </div>
                 </div>
-
               ) : (
-
                 /* FILE SELECTED STATE */
-                <div className="space-y-8">
+                <div className="space-y-6">
                   
                   {/* Selected File Card */}
-                  <div className="bg-slate-50 border border-slate-200/80 rounded-3xl p-5 sm:p-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-                    <div className="flex items-center gap-4 min-w-0">
-                      <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center text-[#D10043] shadow-xs border border-slate-100 shrink-0">
-                        <FileText size={24} />
+                  <div className="bg-slate-50/80 border border-slate-200/80 rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                    <div className="flex items-center gap-3.5 min-w-0">
+                      <div className="w-11 h-11 bg-white rounded-xl flex items-center justify-center text-[#D10043] shadow-2xs border border-slate-200/60 shrink-0">
+                        <FileText size={22} />
                       </div>
                       <div className="min-w-0">
                         <h4 className="text-sm sm:text-base font-black text-slate-900 truncate">
                           {file.name}
                         </h4>
-                        <p className="text-xs text-slate-400 font-semibold mt-0.5">
-                          {(file.size / (1024 * 1024)).toFixed(2)} MB • Ready for AI matching
+                        <p className="text-xs text-slate-400 font-medium mt-0.5">
+                          {(file.size / (1024 * 1024)).toFixed(2)} MB • Ready for algorithmic matching
                         </p>
                       </div>
                     </div>
@@ -288,18 +432,19 @@ const CandidateSmartUploadPage: React.FC = () => {
                     {!isUploading && !isComplete && (
                       <button
                         type="button"
-                        onClick={() => setFile(null)}
-                        className="p-2 text-slate-400 hover:text-rose-500 rounded-xl hover:bg-white transition-all self-end sm:self-auto"
-                        title="Remove file"
+                        onClick={handleReset}
+                        className="px-3 py-1.5 text-xs font-bold text-slate-500 hover:text-rose-600 hover:bg-white rounded-lg transition-colors flex items-center gap-1 border border-transparent hover:border-rose-100 self-end sm:self-auto cursor-pointer"
+                        title="Change file"
                       >
-                        <X size={18} />
+                        <X size={14} />
+                        <span>Change File</span>
                       </button>
                     )}
                   </div>
 
                   {/* UPLOADING & PROCESSING PROGRESS */}
                   {isUploading && (
-                    <div className="bg-white border border-slate-200/80 rounded-3xl p-6 sm:p-8 space-y-4 shadow-sm animate-in fade-in duration-300">
+                    <div className="bg-white border border-slate-200/80 rounded-2xl p-5 sm:p-7 space-y-4 shadow-2xs animate-in fade-in duration-300">
                       <div className="flex items-center justify-between text-xs sm:text-sm font-black">
                         <span className="text-slate-900 flex items-center gap-2">
                           <Cpu size={16} className="text-[#D10043] animate-spin" />
@@ -308,7 +453,7 @@ const CandidateSmartUploadPage: React.FC = () => {
                         <span className="text-[#D10043] font-mono">{uploadProgress}%</span>
                       </div>
 
-                      <div className="w-full bg-slate-100 h-3 rounded-full overflow-hidden p-0.5">
+                      <div className="w-full bg-slate-100 h-2.5 rounded-full overflow-hidden">
                         <div
                           style={{ width: `${uploadProgress}%` }}
                           className="bg-gradient-to-r from-rose-500 to-[#D10043] h-full rounded-full transition-all duration-500"
@@ -316,134 +461,165 @@ const CandidateSmartUploadPage: React.FC = () => {
                       </div>
 
                       <p className="text-[11px] text-slate-400 font-medium text-center">
-                        Please do not navigate away while our AI calculates role compatibility.
+                        Processing your document in candidate secure memory. Please wait a moment.
                       </p>
                     </div>
                   )}
 
                   {/* MATCH COMPLETED SUCCESS CARD */}
                   {isComplete && (
-                    <div className="space-y-6 animate-in fade-in zoom-in-95 duration-500">
+                    <div className="space-y-6 animate-in fade-in zoom-in-95 duration-400">
                       
-                      <div className="bg-emerald-50/70 border border-emerald-200 rounded-3xl p-6 sm:p-8 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6 shadow-xs">
-                        <div className="flex items-center gap-4">
-                          <div className="w-14 h-14 bg-white rounded-2xl flex items-center justify-center text-emerald-600 shadow-md shrink-0">
-                            <CheckCircle2 size={30} />
+                      <div className="bg-emerald-50/60 border border-emerald-200/80 rounded-2xl p-5 sm:p-7 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-5 shadow-2xs">
+                        <div className="flex items-start sm:items-center gap-4">
+                          <div className="w-12 h-12 bg-white rounded-xl flex items-center justify-center text-emerald-600 shadow-sm border border-emerald-100 shrink-0">
+                            <CheckCircle2 size={26} />
                           </div>
                           <div>
-                            <span className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-700">
-                              Analysis Complete
+                            <span className="text-[10px] font-black uppercase tracking-wider text-emerald-700">
+                              Candidate Analysis Complete
                             </span>
-                            <h3 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
+                            <h3 className="text-lg sm:text-xl font-black text-slate-900 tracking-tight">
                               {matchResults.length > 0
-                                ? `Discovered ${matchResults.length} Career Matches!`
-                                : 'Resume Parsed Successfully'}
+                                ? `Discovered ${matchResults.length} Matching Positions!`
+                                : 'Resume Credentials Extracted'}
                             </h3>
-                            <p className="text-xs sm:text-sm text-slate-600 font-medium mt-0.5">
+                            <p className="text-xs text-slate-600 font-medium mt-0.5">
                               {matchResults.length > 0
                                 ? `Top match scored at ${Math.round(matchResults[0].match_percentage)}% fit for ${matchResults[0].job_title}.`
-                                : 'Your credentials have been extracted and processed.'}
+                                : 'Your profile skills and experience have been stored.'}
                             </p>
                           </div>
                         </div>
 
-                        <button
-                          type="button"
-                          onClick={handleProceedToMatches}
-                          className="w-full sm:w-auto px-8 py-4 rounded-2xl bg-[#D10043] hover:bg-slate-900 text-white font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition-all shadow-xl shadow-[#D10043]/20 active:scale-[0.98] shrink-0"
-                        >
-                          View Matching Roles ({matchResults.length})
-                          <ArrowRight size={16} />
-                        </button>
+                        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 w-full sm:w-auto">
+                          <button
+                            type="button"
+                            onClick={handleProceedToMatches}
+                            className="px-6 py-3 rounded-xl bg-[#D10043] hover:bg-slate-900 text-white font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition-all shadow-sm shadow-[#D10043]/20 active:scale-[0.98] cursor-pointer"
+                          >
+                            <span>Review Match Rankings ({matchResults.length})</span>
+                            <ArrowRight size={14} />
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={handleReset}
+                            className="px-4 py-3 rounded-xl bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                          >
+                            <RefreshCw size={13} />
+                            <span>Re-scan</span>
+                          </button>
+                        </div>
                       </div>
 
                       {/* Extracted Profile Preview */}
                       {extractedData && (
-                        <div className="bg-white border border-slate-200/80 rounded-3xl p-6 sm:p-8 space-y-5">
-                          <div className="flex items-center justify-between pb-4 border-b border-slate-100">
-                            <h4 className="text-base font-black text-slate-900 tracking-tight flex items-center gap-2">
+                        <div className="bg-white border border-slate-200/80 rounded-2xl p-5 sm:p-7 space-y-4">
+                          <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                            <h4 className="text-sm sm:text-base font-black text-slate-900 tracking-tight flex items-center gap-2">
                               <Sparkles size={16} className="text-[#D10043]" />
-                              Extracted Profile Credentials
+                              Extracted Candidate Profile Summary
                             </h4>
-                            <span className="text-xs font-bold text-slate-400">AI Summary</span>
+                            <span className="text-[11px] font-bold text-slate-400">ATS Snapshot</span>
                           </div>
 
-                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                            <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-100">
-                              <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 block mb-1">Full Name</span>
-                              <p className="text-sm font-bold text-slate-900 truncate">{extractedData.fullname || 'Candidate'}</p>
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                            <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
+                              <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 block mb-0.5">
+                                Candidate Name
+                              </span>
+                              <p className="text-xs sm:text-sm font-bold text-slate-900 truncate">
+                                {extractedData.fullname || fullname}
+                              </p>
                             </div>
-                            <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-100">
-                              <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 block mb-1">Email</span>
-                              <p className="text-sm font-bold text-slate-900 truncate">{extractedData.email || 'N/A'}</p>
+                            <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
+                              <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 block mb-0.5">
+                                Email
+                              </span>
+                              <p className="text-xs sm:text-sm font-bold text-slate-900 truncate">
+                                {extractedData.email || email}
+                              </p>
                             </div>
-                            <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-100">
-                              <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 block mb-1">Experience</span>
-                              <p className="text-sm font-bold text-slate-900 truncate">{extractedData.years_experience ? `${extractedData.years_experience} Years` : 'Relevant Experience'}</p>
+                            <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
+                              <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 block mb-0.5">
+                                Experience
+                              </span>
+                              <p className="text-xs sm:text-sm font-bold text-slate-900 truncate">
+                                {extractedData.years_experience
+                                  ? `${extractedData.years_experience} Years`
+                                  : 'Experience Recorded'}
+                              </p>
                             </div>
-                            <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-100">
-                              <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 block mb-1">Highest Degree</span>
-                              <p className="text-sm font-bold text-slate-900 truncate">{extractedData.highest_degree || extractedData.degree || 'Degree'}</p>
+                            <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
+                              <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 block mb-0.5">
+                                Degree
+                              </span>
+                              <p className="text-xs sm:text-sm font-bold text-slate-900 truncate">
+                                {extractedData.highest_degree || extractedData.degree || 'Degree Recorded'}
+                              </p>
                             </div>
                           </div>
 
                           {/* Skills Preview */}
                           {extractedData.skills && (
                             <div className="pt-2">
-                              <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 block mb-2">Identified Skills</span>
+                              <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 block mb-2">
+                                Identified Skills & Competencies
+                              </span>
                               <div className="flex flex-wrap gap-1.5">
                                 {(typeof extractedData.skills === 'string'
                                   ? extractedData.skills.split(/[|,\n]+/)
                                   : Array.isArray(extractedData.skills)
                                   ? extractedData.skills
                                   : []
-                                ).slice(0, 8).map((skill: string, sIdx: number) => (
-                                  <span
-                                    key={sIdx}
-                                    className="px-2.5 py-1 rounded-lg text-xs font-bold bg-slate-100 text-slate-700"
-                                  >
-                                    {skill.trim()}
-                                  </span>
-                                ))}
+                                )
+                                  .filter(Boolean)
+                                  .slice(0, 10)
+                                  .map((skill: string, sIdx: number) => (
+                                    <span
+                                      key={sIdx}
+                                      className="px-2.5 py-0.5 rounded-lg text-xs font-semibold bg-slate-100 text-slate-700 border border-slate-200/50"
+                                    >
+                                      {skill.trim()}
+                                    </span>
+                                  ))}
                               </div>
                             </div>
                           )}
 
-                          <button
-                            type="button"
-                            onClick={handleProceedToMatches}
-                            className="w-full py-4 rounded-2xl bg-slate-900 hover:bg-[#D10043] text-white font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition-all"
-                          >
-                            Proceed to Career Match Results
-                            <ArrowRight size={16} />
-                          </button>
+                          <div className="pt-2">
+                            <button
+                              type="button"
+                              onClick={handleProceedToMatches}
+                              className="w-full py-3.5 rounded-xl bg-slate-900 hover:bg-[#D10043] text-white font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition-all active:scale-[0.98] cursor-pointer"
+                            >
+                              <span>Proceed to Full Ranked Matches</span>
+                              <ArrowRight size={14} />
+                            </button>
+                          </div>
                         </div>
                       )}
 
                     </div>
                   )}
 
-                  {/* TERMS & AUTHORIZATION (Before upload) */}
+                  {/* START ANALYSIS ACTION (Before upload) */}
                   {!isUploading && !isComplete && (
-                    <div className="space-y-6 pt-2">
-                      <div className="flex items-start gap-3.5 p-4 bg-slate-50/80 rounded-2xl border border-slate-200/60">
+                    <div className="space-y-4 pt-1">
+                      <div className="flex items-start gap-2.5 p-3.5 bg-slate-50/70 rounded-xl border border-slate-200/60">
                         <input
-                          id="candidate-terms"
+                          id="candidate-confirm"
                           type="checkbox"
                           checked={isTermsAccepted}
                           onChange={(e) => setIsTermsAccepted(e.target.checked)}
-                          className="w-5 h-5 mt-0.5 text-[#D10043] border-slate-300 rounded focus:ring-[#D10043] cursor-pointer"
+                          className="w-4 h-4 mt-0.5 text-[#D10043] border-slate-300 rounded focus:ring-[#D10043] cursor-pointer"
                         />
-                        <label htmlFor="candidate-terms" className="text-xs sm:text-sm text-slate-600 font-medium leading-relaxed cursor-pointer select-none">
-                          I confirm that this document represents my authentic credentials and authorize Mariwasa AI to analyze my resume to calculate position fit.{' '}
-                          <button
-                            type="button"
-                            onClick={() => setShowTermsModal(true)}
-                            className="text-[#D10043] hover:underline font-bold"
-                          >
-                            View Recruitment Terms
-                          </button>
-                          .
+                        <label
+                          htmlFor="candidate-confirm"
+                          className="text-xs text-slate-600 font-medium leading-relaxed cursor-pointer select-none"
+                        >
+                          I authorize Mariwasa ARAS AI to parse this document against all active job requisitions to calculate competency fit scores and recruitment rankings.
                         </label>
                       </div>
 
@@ -451,66 +627,30 @@ const CandidateSmartUploadPage: React.FC = () => {
                         type="button"
                         onClick={handleUploadAndMatch}
                         disabled={!isTermsAccepted || cooldown > 0}
-                        className={`w-full py-5 rounded-2xl font-black text-sm uppercase tracking-wider flex items-center justify-center gap-3 transition-all shadow-xl ${
+                        className={`w-full py-4 rounded-xl font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition-all shadow-sm ${
                           isTermsAccepted && cooldown === 0
-                            ? 'bg-[#D10043] hover:bg-slate-900 text-white shadow-[#D10043]/20 active:scale-[0.98]'
-                            : 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'
+                            ? 'bg-[#D10043] hover:bg-slate-900 text-white shadow-[#D10043]/20 active:scale-[0.98] cursor-pointer'
+                            : 'bg-slate-200 text-slate-400 cursor-not-allowed'
                         }`}
                       >
-                        <ShieldCheck size={20} />
-                        <span>{cooldown > 0 ? `Please wait ${cooldown}s` : 'Start Smart Match Analysis'}</span>
+                        <ShieldCheck size={18} />
+                        <span>
+                          {cooldown > 0
+                            ? `Please wait ${cooldown}s`
+                            : 'Run Candidate AI Smart Match'}
+                        </span>
                       </button>
                     </div>
                   )}
 
                 </div>
               )}
-
-              {/* Informative Stats Callout */}
-              <div className="mt-12 sm:mt-16 grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6 pt-8 border-t border-slate-100">
-                <div className="p-4 rounded-2xl bg-slate-50/60 border border-slate-100 flex items-start gap-3">
-                  <div className="w-8 h-8 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
-                    <Sparkles size={16} />
-                  </div>
-                  <div>
-                    <h5 className="text-xs font-black text-slate-900 uppercase tracking-wide">Multi-Factor Scoring</h5>
-                    <p className="text-[11px] text-slate-500 font-medium mt-0.5">Evaluates skills, tenure, degree relevance, and certifications.</p>
-                  </div>
-                </div>
-
-                <div className="p-4 rounded-2xl bg-slate-50/60 border border-slate-100 flex items-start gap-3">
-                  <div className="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
-                    <Briefcase size={16} />
-                  </div>
-                  <div>
-                    <h5 className="text-xs font-black text-slate-900 uppercase tracking-wide">Direct Applications</h5>
-                    <p className="text-[11px] text-slate-500 font-medium mt-0.5">Apply with one click to high-match positions directly from results.</p>
-                  </div>
-                </div>
-
-                <div className="p-4 rounded-2xl bg-slate-50/60 border border-slate-100 flex items-start gap-3">
-                  <div className="w-8 h-8 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center shrink-0">
-                    <ShieldCheck size={16} />
-                  </div>
-                  <div>
-                    <h5 className="text-xs font-black text-slate-900 uppercase tracking-wide">Encrypted & Secure</h5>
-                    <p className="text-[11px] text-slate-500 font-medium mt-0.5">Your resume data is stored confidentially and protected by privacy protocols.</p>
-                  </div>
-                </div>
-              </div>
-
             </div>
 
           </div>
 
         </main>
       </div>
-
-      <RecruitmentTermsModal
-        isOpen={showTermsModal}
-        onClose={() => setShowTermsModal(false)}
-        onAccept={() => setIsTermsAccepted(true)}
-      />
     </div>
   );
 };

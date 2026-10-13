@@ -1,71 +1,117 @@
-import React from 'react';
-import { ShieldCheck, CheckCircle2, ChevronRight, Sparkles } from 'lucide-react';
+import React, { useMemo } from 'react';
+import { ShieldCheck, CheckCircle2, ChevronRight, Sparkles, User, FileText, Briefcase, Award } from 'lucide-react';
 import { useNavigate } from '@/utils/navigation';
+import { useSelector } from 'react-redux';
+import { RootState } from '../../../redux/store';
 
 const ProfileStrength: React.FC = () => {
   const navigate = useNavigate();
+  const { user: email } = useSelector((state: RootState) => state.auth);
 
-  const completionPercentage = 85;
+  // Calculate dynamic completeness based on available candidate profile data
+  const { completionPercentage, checklist } = useMemo(() => {
+    const fullname = typeof localStorage !== 'undefined' ? localStorage.getItem('fullname') : null;
+    const phone = typeof localStorage !== 'undefined' ? localStorage.getItem('phone') : null;
+    const hasResume = typeof localStorage !== 'undefined' ? Boolean(localStorage.getItem('candidate_resume_uploaded') || localStorage.getItem('draft_application_job_id')) : false;
 
-  const CHECKLIST = [
-    { label: "Personal Details & Contact", completed: true },
-    { label: "Primary Resume Uploaded", completed: true },
-    { label: "Work History & Education", completed: true },
-    { label: "Certifications & Licensure", completed: false }
-  ];
+    const items = [
+      {
+        id: 'personal',
+        label: 'Personal Name & Account',
+        completed: Boolean(fullname && email),
+        points: 25,
+        icon: User
+      },
+      {
+        id: 'contact',
+        label: 'Contact & Phone Details',
+        completed: Boolean(phone && phone.length > 5),
+        points: 25,
+        icon: ShieldCheck
+      },
+      {
+        id: 'resume',
+        label: 'Primary Resume Uploaded',
+        completed: hasResume,
+        points: 25,
+        icon: FileText
+      },
+      {
+        id: 'experience',
+        label: 'Work History & Credentials',
+        completed: Boolean(fullname && hasResume),
+        points: 25,
+        icon: Briefcase
+      }
+    ];
+
+    const completedPoints = items.reduce((acc, item) => (item.completed ? acc + item.points : acc), 0);
+    // Ensure base score of at least 50% for logged-in candidates
+    const finalScore = Math.max(50, completedPoints);
+
+    return {
+      completionPercentage: finalScore,
+      checklist: items
+    };
+  }, [email]);
 
   return (
-    <div className="bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-[32px] p-6 sm:p-8 shadow-md relative overflow-hidden space-y-6">
-      {/* Decorative ambient gradient */}
-      <div className="absolute -top-12 -right-12 w-44 h-44 bg-[#D10043]/20 rounded-full blur-2xl pointer-events-none" />
-
-      <div className="relative z-10 flex items-center justify-between">
+    <div className="bg-white border border-slate-200/80 rounded-2xl sm:rounded-3xl p-5 sm:p-7 shadow-xs space-y-4">
+      
+      {/* Top Header */}
+      <div className="flex items-center justify-between pb-3 border-b border-slate-100">
         <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center text-[#D10043]">
-            <Sparkles size={16} />
+          <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0 border border-emerald-100">
+            <ShieldCheck size={16} />
           </div>
-          <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-300">
-            Profile Readiness
-          </span>
+          <div>
+            <h4 className="text-xs sm:text-sm font-black text-slate-900 tracking-tight">
+              Profile Readiness
+            </h4>
+            <p className="text-[10px] text-slate-400 font-medium">ATS candidate score</p>
+          </div>
         </div>
-        <span className="px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
-          <ShieldCheck size={12} />
-          Verified
+
+        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-50 text-emerald-700 border border-emerald-200/60 font-mono">
+          {completionPercentage}% Complete
         </span>
       </div>
 
-      {/* Progress & Headline */}
-      <div className="relative z-10 space-y-2">
-        <div className="flex items-baseline justify-between">
-          <h4 className="text-xl font-black tracking-tight text-white">Profile Strength</h4>
-          <span className="text-2xl font-black text-[#D10043] font-mono">{completionPercentage}%</span>
+      {/* Progress Bar & Value */}
+      <div className="space-y-1.5">
+        <div className="flex items-center justify-between text-xs">
+          <span className="font-bold text-slate-700">Completeness</span>
+          <span className="font-mono font-black text-[#D10043]">{completionPercentage}%</span>
         </div>
         
-        {/* Progress Bar */}
-        <div className="w-full bg-slate-700/60 h-2.5 rounded-full overflow-hidden p-0.5 border border-slate-700">
+        <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
           <div
             style={{ width: `${completionPercentage}%` }}
-            className="h-full bg-gradient-to-r from-rose-500 to-[#D10043] rounded-full transition-all duration-700"
+            className="h-full bg-gradient-to-r from-emerald-500 to-teal-500 rounded-full transition-all duration-500"
           />
         </div>
         
-        <p className="text-xs text-slate-400 font-medium leading-relaxed pt-1">
-          A high completeness score improves automated job matching accuracy and recruiter visibility by up to 40%.
+        <p className="text-[11px] text-slate-400 font-medium leading-relaxed pt-0.5">
+          A high readiness score improves automated ARAS job matching and HR evaluation priority.
         </p>
       </div>
 
       {/* Checklist items */}
-      <div className="relative z-10 space-y-2.5 pt-2 border-t border-slate-700/60">
-        {CHECKLIST.map((item, idx) => (
-          <div key={idx} className="flex items-center justify-between text-xs">
-            <span className={`font-medium ${item.completed ? 'text-slate-300' : 'text-slate-400'}`}>
+      <div className="space-y-2 pt-2 border-t border-slate-100">
+        {checklist.map((item) => (
+          <div
+            key={item.id}
+            onClick={() => navigate('/candidate/settings')}
+            className="flex items-center justify-between text-xs py-1 px-1.5 rounded-lg hover:bg-slate-50 transition-colors cursor-pointer group"
+          >
+            <span className={`font-semibold transition-colors ${item.completed ? 'text-slate-700' : 'text-slate-500 group-hover:text-[#D10043]'}`}>
               {item.label}
             </span>
             {item.completed ? (
-              <CheckCircle2 size={15} className="text-emerald-400 shrink-0" />
+              <CheckCircle2 size={15} className="text-emerald-500 shrink-0" />
             ) : (
-              <span className="text-[10px] font-bold text-amber-400 bg-amber-400/10 px-2 py-0.5 rounded-md border border-amber-400/20">
-                +15%
+              <span className="text-[9px] font-black text-amber-700 bg-amber-50 px-1.5 py-0.2 rounded border border-amber-200/80">
+                +{item.points}%
               </span>
             )}
           </div>
@@ -76,10 +122,10 @@ const ProfileStrength: React.FC = () => {
       <button
         type="button"
         onClick={() => navigate('/candidate/settings')}
-        className="w-full py-3 px-4 rounded-xl bg-white hover:bg-slate-100 text-slate-900 font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition-all shadow-sm active:scale-[0.98] cursor-pointer"
+        className="w-full py-2.5 px-4 rounded-xl bg-slate-900 hover:bg-[#D10043] text-white font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-1.5 transition-all active:scale-[0.98] cursor-pointer"
       >
-        Complete Profile Details
-        <ChevronRight size={14} />
+        <span>Manage Profile Details</span>
+        <ChevronRight size={13} />
       </button>
 
     </div>

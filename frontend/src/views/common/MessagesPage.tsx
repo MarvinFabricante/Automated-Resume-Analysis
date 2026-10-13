@@ -25,39 +25,41 @@ const MessagesPage: React.FC = () => {
             
             <Header />
             
-            <div className="flex flex-1">
+            <div className="flex flex-1 min-h-0">
                 <Sidebar />
-                <main className="flex-1 w-full max-w-full px-4 sm:px-6 md:px-10 py-6 sm:py-10 flex flex-col animate-in fade-in duration-500">
+                <main className="flex-1 min-w-0 w-full max-w-full px-3 sm:px-6 md:px-10 py-3 sm:py-6 md:py-8 flex flex-col animate-in fade-in duration-300">
                     
-                    <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-8 gap-4">
+                    {/* Page Header */}
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-3 sm:mb-6 gap-3">
                         <div>
-                            <div className="flex items-center gap-2 text-[10px] font-black text-[#D60041] uppercase tracking-[0.2em] mb-2">
-                                <Shield size={12} />
+                            <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-pink-50 border border-pink-100/80 text-[11px] font-bold text-[#D60041] uppercase tracking-wider mb-1 sm:mb-1.5">
+                                <Shield size={12} className="shrink-0" />
                                 <span>End-to-End Encrypted</span>
                             </div>
-                            <h1 className="text-3xl font-black text-gray-900 tracking-tight">Communication Center</h1>
-                            <p className="text-gray-500 font-medium mt-1 flex items-center gap-2">
-                                <Clock size={14} className="text-gray-400" />
-                                Real-time messaging with candidates and team members.
+                            <h1 className="text-xl sm:text-2xl md:text-3xl font-black text-gray-900 tracking-tight leading-tight">
+                                Communication Center
+                            </h1>
+                            <p className="text-xs sm:text-sm text-gray-500 font-medium mt-0.5 sm:mt-1 flex items-center gap-1.5">
+                                <Clock size={13} className="text-gray-400 shrink-0" />
+                                <span>Real-time messaging with candidates and team members</span>
                             </p>
                         </div>
                         
                         {showActiveWidget && (
-                            <div className="hidden lg:flex items-center gap-6 px-6 py-3 bg-white border border-gray-100 rounded-2xl shadow-sm">
-                                <div className="text-center">
-                                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Active Users</p>
-                                    <div className="flex items-center justify-center gap-1.5">
-                                        <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></div>
-                                        <span className="text-sm font-black text-gray-900">
-                                            {activeCount} {activeCount === 1 ? 'User' : 'Users'} Online
-                                        </span>
-                                    </div>
+                            <div className="flex items-center gap-2.5 px-3 py-1.5 sm:px-5 sm:py-2.5 bg-white border border-gray-100 rounded-full sm:rounded-2xl shadow-xs self-start sm:self-auto">
+                                <div className="w-2.5 h-2.5 bg-emerald-500 rounded-full animate-pulse shrink-0"></div>
+                                <div className="flex items-baseline gap-1.5">
+                                    <span className="text-xs sm:text-sm font-black text-gray-900">{activeCount}</span>
+                                    <span className="text-[11px] sm:text-xs font-semibold text-gray-500">
+                                        {activeCount === 1 ? 'User Online' : 'Users Online'}
+                                    </span>
                                 </div>
                             </div>
                         )}
                     </div>
 
-                    <div className="flex-1 min-h-[600px]">
+                    {/* Chat Module Container */}
+                    <div className="flex-1 min-h-0 flex flex-col">
                         <ChatLayout isFullPage={true} />
                     </div>
                 </main>

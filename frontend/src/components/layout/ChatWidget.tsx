@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { MessageSquare, Send, Search, ArrowLeft, X } from 'lucide-react';
+import { MessageSquare, Send, Search, ArrowLeft, X, Lock, CheckCheck, Clock } from 'lucide-react';
 import chatService from '../../services/chatService';
 import { useSelector } from 'react-redux';
 import { WS_BASE_URL } from '../../services/api';
@@ -387,15 +387,22 @@ const ChatWidget: React.FC = () => {
                                                     <div className={`absolute bottom-0 right-0 w-3 h-3 border-2 border-white rounded-full ${contact.is_online ? 'bg-green-500' : 'bg-gray-300'}`}></div>
                                                 </div>
                                                 <div className="flex-1 min-w-0">
-                                                    <div className="flex justify-between items-baseline mb-0.5">
-                                                        <h4 className="text-sm font-bold text-gray-900 truncate">{contact.fullname}</h4>
+                                                    <div className="flex items-center justify-between gap-1 mb-0.5">
+                                                        <div className="flex items-center gap-1.5 min-w-0">
+                                                            <h4 className="text-sm font-bold text-gray-900 truncate">{contact.fullname}</h4>
+                                                            {contact.role && (
+                                                                <span className="shrink-0 text-[9px] font-bold px-1.5 py-0.2 rounded uppercase tracking-wider bg-pink-50 text-[#D60041] border border-pink-100">
+                                                                    {contact.role}
+                                                                </span>
+                                                            )}
+                                                        </div>
                                                         {contact.last_message_time && (
-                                                            <span className="text-[10px] text-gray-400 font-medium">
+                                                            <span className="text-[10px] text-gray-400 font-medium shrink-0 ml-1">
                                                                 {new Date(contact.last_message_time).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
                                                             </span>
                                                         )}
                                                     </div>
-                                                    <p className="text-xs text-gray-500 truncate">{contact.last_message || `Role: ${contact.role}`}</p>
+                                                    <p className="text-xs text-gray-500 truncate">{contact.last_message || <span className="italic text-gray-400">No messages yet</span>}</p>
                                                 </div>
                                                 {Boolean(contact.unread_count && contact.unread_count > 0) && (
                                                     <div className="w-5 h-5 bg-[#D60041] rounded-full flex items-center justify-center text-[10px] text-white font-bold shadow-sm">
@@ -434,10 +441,20 @@ const ChatWidget: React.FC = () => {
                                             <div className={`absolute bottom-0 right-0 w-2.5 h-2.5 border-2 border-white rounded-full ${activeContact?.is_online ? 'bg-green-500' : 'bg-gray-300'}`}></div>
                                         </div>
                                         <div className="min-w-0">
-                                            <h4 className="text-sm font-bold text-gray-900 leading-tight truncate">{activeContact?.fullname}</h4>
-                                            <p className={`text-[10px] font-semibold uppercase tracking-wider ${activeContact?.is_online ? 'text-green-600' : 'text-gray-400'}`}>
-                                                {activeContact?.is_online ? 'Active Now' : 'Offline'}
-                                            </p>
+                                            <div className="flex items-center gap-1.5">
+                                                <h4 className="text-sm font-bold text-gray-900 leading-tight truncate">{activeContact?.fullname}</h4>
+                                                {activeContact?.role && (
+                                                    <span className="shrink-0 text-[9px] font-bold px-1.5 py-0.2 rounded uppercase tracking-wider bg-pink-50 text-[#D60041] border border-pink-100">
+                                                        {activeContact.role}
+                                                    </span>
+                                                )}
+                                            </div>
+                                            <div className="flex items-center gap-1 mt-0.5">
+                                                <span className={`w-1.5 h-1.5 rounded-full ${activeContact?.is_online ? 'bg-emerald-500 animate-pulse' : 'bg-gray-300'}`} />
+                                                <p className={`text-[11px] font-semibold ${activeContact?.is_online ? 'text-emerald-600' : 'text-gray-400'}`}>
+                                                    {activeContact?.is_online ? 'Active Now' : 'Offline'}
+                                                </p>
+                                            </div>
                                         </div>
                                     </div>
                                     <div className="flex items-center gap-1">
@@ -476,17 +493,27 @@ const ChatWidget: React.FC = () => {
                                                         </div>
 
                                                         <div className="group flex flex-col">
-                                                            <div className={`px-4 py-2 rounded-[18px] text-[13px] font-semibold shadow-sm transition-all hover:shadow-md ${isMe
+                                                            <div className={`px-4 py-2 rounded-[18px] text-[13px] font-medium shadow-2xs transition-all hover:shadow-xs ${isMe
                                                                     ? 'bg-[#D60041] text-white rounded-tr-none'
                                                                     : 'bg-white text-gray-800 border border-gray-100 rounded-tl-none'
                                                                 }`}>
                                                                 {msg.content}
                                                             </div>
-                                                            {showAvatar && (
-                                                                <p className={`text-[8px] mt-1 font-bold uppercase tracking-widest text-gray-400 ${isMe ? 'text-right' : 'text-left'}`}>
-                                                                    {msg.is_optimistic ? 'Sending...' : new Date(msg.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
-                                                                </p>
-                                                            )}
+                                                            <div className={`flex items-center gap-1 mt-1 px-1 ${isMe ? 'justify-end' : 'justify-start'}`}>
+                                                                <span className="text-[10px] sm:text-[11px] font-medium text-gray-400">
+                                                                    {new Date(msg.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                                                                </span>
+                                                                {isMe && (
+                                                                    msg.is_optimistic ? (
+                                                                        <span className="text-[10px] font-semibold text-pink-600 flex items-center gap-0.5">
+                                                                            <Clock size={10} className="animate-spin" />
+                                                                            <span>Sending</span>
+                                                                        </span>
+                                                                    ) : (
+                                                                        <CheckCheck size={11} className="text-[#D60041]" />
+                                                                    )
+                                                                )}
+                                                            </div>
                                                         </div>
                                                     </div>
                                                 </div>
@@ -498,7 +525,7 @@ const ChatWidget: React.FC = () => {
 
                                 {/* Input Area */}
                                 {currentUserRole.toUpperCase() !== 'CANDIDATE' ? (
-                                    <div className="p-4 bg-white border-t border-gray-100">
+                                    <div className="p-3.5 sm:p-4 bg-white border-t border-gray-100">
                                         <div className="relative flex items-center gap-2">
                                             <input
                                                 type="text"
@@ -506,20 +533,25 @@ const ChatWidget: React.FC = () => {
                                                 onChange={(e) => setInputMessage(e.target.value)}
                                                 onKeyDown={handleKeyDown}
                                                 placeholder="Type a message..."
-                                                className="w-full bg-gray-100 border-none rounded-2xl py-3 px-4 text-sm focus:ring-2 focus:ring-pink-100 transition-all outline-none font-medium placeholder:text-gray-400"
+                                                aria-label="Type a message"
+                                                className="w-full bg-gray-50 border border-gray-200/80 rounded-2xl py-2.5 px-3.5 text-xs sm:text-sm focus:ring-2 focus:ring-pink-100 focus:bg-white transition-all outline-none font-medium placeholder:text-gray-400"
                                             />
                                             <button 
                                                 onClick={sendMessage}
                                                 disabled={!inputMessage.trim()}
-                                                className="p-2.5 bg-[#D60041] hover:bg-[#b50037] text-white rounded-xl transition-all shadow-md shadow-pink-100 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                                                aria-label="Send message"
+                                                className="p-2.5 bg-[#D60041] hover:bg-[#b50037] text-white rounded-xl transition-all shadow-md shadow-pink-100 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer shrink-0"
                                             >
                                                 <Send className="h-4 w-4" />
                                             </button>
                                         </div>
                                     </div>
                                 ) : (
-                                    <div className="p-4 bg-white border-t border-gray-100 flex items-center justify-center">
-                                        <p className="text-xs font-bold text-gray-400">Read-only conversation. Only HR can message.</p>
+                                    <div className="p-3 bg-gray-50/80 border-t border-gray-100 flex items-center justify-center">
+                                        <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white border border-gray-200/80 text-gray-600 text-xs font-semibold shadow-2xs">
+                                            <Lock className="w-3.5 h-3.5 text-[#D60041] shrink-0" />
+                                            <span>Read-only conversation. Only HR can message.</span>
+                                        </div>
                                     </div>
                                 )}
                             </>

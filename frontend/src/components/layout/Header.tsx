@@ -325,13 +325,17 @@ const Header: React.FC = () => {
     dispatch(markAllReadAction());
   };
 
+  const isCandidateRoute = location.pathname.startsWith('/candidate');
+
   const isApplicationPage =
-    location.pathname.includes('/job-details/') ||
-    location.pathname.includes('/apply/') ||
-    location.pathname.includes('/smart-upload') ||
-    location.pathname.includes('/preview-and-verify/') ||
-    location.pathname.includes('/applicationform/') ||
-    location.pathname.includes('/submissionsuccess/');
+    !isCandidateRoute && (
+      location.pathname.includes('/job-details/') ||
+      location.pathname.includes('/apply/') ||
+      location.pathname.includes('/smart-upload') ||
+      location.pathname.includes('/preview-and-verify/') ||
+      location.pathname.includes('/applicationform/') ||
+      location.pathname.includes('/submissionsuccess/')
+    );
 
   const isPublicSitePage =
     location.pathname === '/' ||

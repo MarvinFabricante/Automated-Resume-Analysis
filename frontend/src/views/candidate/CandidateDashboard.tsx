@@ -8,17 +8,16 @@ import {
   ChevronRight,
   Calendar,
   Bookmark,
-  ShieldCheck,
+  TrendingUp,
   Search,
-  ArrowRight,
-  X,
-  Sparkles
+  X
 } from 'lucide-react';
 
 import Header from '../../components/layout/Header';
 import Sidebar from '../../components/layout/Sidebar';
 import WelcomeHeader from '../../components/candidate/dashboard/WelcomeHeader';
 import ApplicationList from '../../components/candidate/dashboard/ApplicationList';
+import RecommendedJobs from '../../components/candidate/dashboard/RecommendedJobs';
 import ProfileStrength from '../../components/candidate/dashboard/ProfileStrength';
 import UpcomingInterviews from '../../components/candidate/dashboard/UpcomingInterviews';
 import QuickActions from '../../components/candidate/dashboard/QuickActions';
@@ -50,7 +49,16 @@ const CandidateDashboard: React.FC = () => {
     return interviews.filter((i: any) => i.status !== 'CANCELED' && i.status !== 'COMPLETED');
   }, [interviews]);
 
-  // Bookmarked jobs count
+  // In Evaluation calculation
+  const inReviewCount = useMemo(() => {
+    return applications.filter((app: any) => {
+      const s = (app.status || '').toUpperCase();
+      return s !== 'REJECTED' && s !== 'ACCEPTED';
+    }).length;
+  }, [applications]);
+
+  // Bookmarked jobs state & sync
+  const [bookmarkTrigger, setBookmarkTrigger] = useState(0);
   const bookmarkedCount = useMemo(() => {
     try {
       const saved = localStorage.getItem('candidate_bookmarked_jobs');
@@ -58,7 +66,7 @@ const CandidateDashboard: React.FC = () => {
     } catch {
       return 0;
     }
-  }, []);
+  }, [bookmarkTrigger]);
 
   // Draft Application State
   const [hasDraft, setHasDraft] = useState(() => {
@@ -93,7 +101,7 @@ const CandidateDashboard: React.FC = () => {
   return (
     <div className="bg-[#F8FAFC] text-slate-900 antialiased min-h-screen font-['Inter',_sans-serif] flex flex-col">
       <Helmet>
-        <title>Candidate Portal | Mariwasa Career Hub</title>
+        <title>Candidate Dashboard | Mariwasa Career Hub</title>
       </Helmet>
 
       <Header />
@@ -101,7 +109,7 @@ const CandidateDashboard: React.FC = () => {
       <div className="flex flex-1">
         <Sidebar />
         
-        <main className="flex-1 max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-10 w-full flex-grow min-w-0">
+        <main className="flex-1 max-w-[1440px] mx-auto px-3.5 sm:px-6 lg:px-8 py-5 sm:py-8 w-full flex-grow min-w-0">
           
           {/* WELCOME BANNER */}
           <WelcomeHeader
@@ -110,100 +118,101 @@ const CandidateDashboard: React.FC = () => {
           />
 
           {/* EXECUTIVE KPI STATS ROW */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-5 mb-8 sm:mb-10">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4 mb-6 sm:mb-8">
             
             {/* KPI 1: Active Applications */}
             <div
               onClick={() => navigate('/candidate/applicationtracking')}
-              className="bg-white border border-slate-200/80 rounded-2xl sm:rounded-3xl p-4 sm:p-6 shadow-2xs hover:shadow-md hover:border-[#D10043]/30 transition-all duration-200 cursor-pointer group"
+              className="bg-white border border-slate-200/80 rounded-2xl sm:rounded-3xl p-3.5 sm:p-5 shadow-2xs hover:shadow-md hover:border-[#D10043]/30 transition-all duration-200 cursor-pointer group"
             >
-              <div className="flex items-center justify-between mb-3">
-                <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">
                   Applications
                 </span>
-                <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-slate-50 group-hover:bg-[#D10043]/10 text-slate-400 group-hover:text-[#D10043] flex items-center justify-center transition-colors">
-                  <Briefcase size={18} />
+                <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-slate-50 group-hover:bg-[#D10043]/10 text-slate-400 group-hover:text-[#D10043] flex items-center justify-center transition-colors">
+                  <Briefcase size={16} className="sm:w-[18px] sm:h-[18px]" />
                 </div>
               </div>
-              <div className="flex items-baseline gap-2">
-                <span className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight font-mono">
+              <div className="flex items-baseline gap-1.5">
+                <span className="text-xl sm:text-3xl font-black text-slate-900 tracking-tight font-mono">
                   {applications.length}
                 </span>
-                <span className="text-xs font-bold text-slate-400">Total</span>
+                <span className="text-[10px] sm:text-xs font-bold text-slate-400">Total</span>
               </div>
               <p className="text-[11px] text-slate-500 font-medium mt-1 truncate">
-                {applications.length > 0 ? 'Active in recruitment pipeline' : 'No submissions yet'}
+                {applications.length > 0 ? 'Active in pipeline' : 'No submissions yet'}
               </p>
             </div>
 
             {/* KPI 2: Interview Schedules */}
             <div
-              className="bg-white border border-slate-200/80 rounded-2xl sm:rounded-3xl p-4 sm:p-6 shadow-2xs hover:shadow-md hover:border-purple-200 transition-all duration-200"
+              onClick={() => navigate('/candidate/applicationtracking')}
+              className="bg-white border border-slate-200/80 rounded-2xl sm:rounded-3xl p-3.5 sm:p-5 shadow-2xs hover:shadow-md hover:border-purple-200 transition-all duration-200 cursor-pointer group"
             >
-              <div className="flex items-center justify-between mb-3">
-                <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">
                   Interviews
                 </span>
-                <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center">
-                  <Calendar size={18} />
+                <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-purple-50 group-hover:bg-purple-100 text-purple-600 flex items-center justify-center transition-colors">
+                  <Calendar size={16} className="sm:w-[18px] sm:h-[18px]" />
                 </div>
               </div>
-              <div className="flex items-baseline gap-2">
-                <span className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight font-mono">
+              <div className="flex items-baseline gap-1.5">
+                <span className="text-xl sm:text-3xl font-black text-slate-900 tracking-tight font-mono">
                   {activeInterviews.length}
                 </span>
-                <span className="text-xs font-bold text-purple-600">Upcoming</span>
+                <span className="text-[10px] sm:text-xs font-bold text-purple-600">Upcoming</span>
               </div>
               <p className="text-[11px] text-slate-500 font-medium mt-1 truncate">
-                {activeInterviews.length > 0 ? 'Sessions pending evaluation' : 'No sessions pending'}
+                {activeInterviews.length > 0 ? 'Sessions pending' : 'No sessions pending'}
               </p>
             </div>
 
             {/* KPI 3: Saved Roles */}
             <div
               onClick={() => navigate('/candidate/findjobs')}
-              className="bg-white border border-slate-200/80 rounded-2xl sm:rounded-3xl p-4 sm:p-6 shadow-2xs hover:shadow-md hover:border-amber-200 transition-all duration-200 cursor-pointer group"
+              className="bg-white border border-slate-200/80 rounded-2xl sm:rounded-3xl p-3.5 sm:p-5 shadow-2xs hover:shadow-md hover:border-amber-200 transition-all duration-200 cursor-pointer group"
             >
-              <div className="flex items-center justify-between mb-3">
-                <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">
                   Saved Jobs
                 </span>
-                <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-amber-50 group-hover:bg-amber-100 text-amber-600 flex items-center justify-center transition-colors">
-                  <Bookmark size={18} className={bookmarkedCount > 0 ? "fill-amber-500" : ""} />
+                <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-amber-50 group-hover:bg-amber-100 text-amber-600 flex items-center justify-center transition-colors">
+                  <Bookmark size={16} className={`sm:w-[18px] sm:h-[18px] ${bookmarkedCount > 0 ? 'fill-amber-500' : ''}`} />
                 </div>
               </div>
-              <div className="flex items-baseline gap-2">
-                <span className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight font-mono">
+              <div className="flex items-baseline gap-1.5">
+                <span className="text-xl sm:text-3xl font-black text-slate-900 tracking-tight font-mono">
                   {bookmarkedCount}
                 </span>
-                <span className="text-xs font-bold text-slate-400">Bookmarked</span>
+                <span className="text-[10px] sm:text-xs font-bold text-slate-400">Bookmarked</span>
               </div>
               <p className="text-[11px] text-slate-500 font-medium mt-1 truncate">
-                Saved for quick application
+                Saved for quick apply
               </p>
             </div>
 
-            {/* KPI 4: Profile Strength */}
+            {/* KPI 4: Under Evaluation */}
             <div
-              onClick={() => navigate('/candidate/settings')}
-              className="bg-white border border-slate-200/80 rounded-2xl sm:rounded-3xl p-4 sm:p-6 shadow-2xs hover:shadow-md hover:border-emerald-200 transition-all duration-200 cursor-pointer group"
+              onClick={() => navigate('/candidate/applicationtracking')}
+              className="bg-white border border-slate-200/80 rounded-2xl sm:rounded-3xl p-3.5 sm:p-5 shadow-2xs hover:shadow-md hover:border-emerald-200 transition-all duration-200 cursor-pointer group"
             >
-              <div className="flex items-center justify-between mb-3">
-                <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
-                  Readiness
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">
+                  In Evaluation
                 </span>
-                <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-emerald-50 group-hover:bg-emerald-100 text-emerald-600 flex items-center justify-center transition-colors">
-                  <ShieldCheck size={18} />
+                <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-emerald-50 group-hover:bg-emerald-100 text-emerald-600 flex items-center justify-center transition-colors">
+                  <TrendingUp size={16} className="sm:w-[18px] sm:h-[18px]" />
                 </div>
               </div>
-              <div className="flex items-baseline gap-2">
-                <span className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight font-mono">
-                  85%
+              <div className="flex items-baseline gap-1.5">
+                <span className="text-xl sm:text-3xl font-black text-slate-900 tracking-tight font-mono">
+                  {inReviewCount}
                 </span>
-                <span className="text-xs font-bold text-emerald-600">Strong</span>
+                <span className="text-[10px] sm:text-xs font-bold text-emerald-600">Active</span>
               </div>
               <p className="text-[11px] text-slate-500 font-medium mt-1 truncate">
-                Candidate ATS matching rating
+                Under HR evaluation
               </p>
             </div>
 
@@ -211,48 +220,48 @@ const CandidateDashboard: React.FC = () => {
 
           {/* DRAFT APPLICATION NOTICE */}
           {hasDraft && draftJobId && (
-            <div className="bg-white border border-rose-200/80 rounded-[28px] p-5 sm:p-7 shadow-sm mb-8 sm:mb-10 relative overflow-hidden">
-              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-5">
+            <div className="bg-white border border-rose-200/80 rounded-2xl sm:rounded-3xl p-4 sm:p-6 shadow-xs mb-6 sm:mb-8 relative overflow-hidden">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                 
-                <div className="flex items-start gap-4">
-                  <div className="w-11 h-11 rounded-2xl bg-rose-50 text-[#D10043] flex items-center justify-center shrink-0 border border-rose-100">
-                    <Zap size={20} className="animate-pulse" />
+                <div className="flex items-start gap-3.5">
+                  <div className="w-10 h-10 rounded-xl bg-rose-50 text-[#D10043] flex items-center justify-center shrink-0 border border-rose-100">
+                    <Zap size={18} className="animate-pulse" />
                   </div>
                   <div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-[10px] font-black uppercase tracking-[0.2em] text-[#D10043]">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-[10px] font-black uppercase tracking-wider text-[#D10043]">
                         Application In Progress
                       </span>
                       <span className="text-slate-300">•</span>
-                      <span className="text-xs font-semibold text-slate-400">
+                      <span className="text-xs font-semibold text-slate-500">
                         {draftProgress.text}
                       </span>
                     </div>
-                    <h3 className="text-lg sm:text-xl font-black text-slate-900 tracking-tight mt-0.5">
+                    <h3 className="text-base sm:text-lg font-black text-slate-900 tracking-tight mt-0.5">
                       {draftJobTitle}
                     </h3>
                     <p className="text-xs text-slate-500 font-medium mt-0.5">
-                      Mariwasa Siam Ceramics • Complete your submission to proceed to recruitment review
+                      Mariwasa Siam Ceramics • Complete submission to proceed to recruitment review
                     </p>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2.5 w-full sm:w-auto justify-end">
+                <div className="flex items-center gap-2.5 w-full sm:w-auto justify-end pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-100">
                   <button
                     type="button"
                     onClick={handleDismissDraft}
                     title="Dismiss Draft"
-                    className="p-3 text-slate-400 hover:text-slate-600 rounded-xl hover:bg-slate-100 transition-colors"
+                    className="p-2.5 text-slate-400 hover:text-slate-600 rounded-xl hover:bg-slate-100 transition-colors cursor-pointer"
                   >
-                    <X size={18} />
+                    <X size={16} />
                   </button>
 
                   <button
                     type="button"
                     onClick={() => navigate(getDraftRoute())}
-                    className="px-6 py-3 rounded-xl bg-[#D10043] hover:bg-slate-900 text-white font-black text-xs uppercase tracking-wider flex items-center gap-2 transition-all shadow-md shadow-[#D10043]/20 active:scale-[0.98]"
+                    className="px-5 py-2.5 rounded-xl bg-[#D10043] hover:bg-slate-900 text-white font-black text-xs uppercase tracking-wider flex items-center gap-1.5 transition-all shadow-sm shadow-[#D10043]/20 active:scale-[0.98] cursor-pointer"
                   >
-                    Continue Application
+                    <span>Continue</span>
                     <ChevronRight size={14} />
                   </button>
                 </div>
@@ -262,27 +271,27 @@ const CandidateDashboard: React.FC = () => {
           )}
 
           {/* MAIN 2-COLUMN DASHBOARD GRID */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 sm:gap-10">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 sm:gap-8">
 
-            {/* LEFT 2 COLUMNS: APPLICATIONS & OPPORTUNITIES */}
-            <div className="lg:col-span-2 space-y-8 sm:space-y-10">
+            {/* LEFT 2 COLUMNS: APPLICATIONS & RECOMMENDED JOBS */}
+            <div className="lg:col-span-2 space-y-6 sm:space-y-8">
               
               {/* Application List Component */}
               {isLoadingApps ? (
-                <div className="bg-white border border-slate-200/80 rounded-[32px] p-8 shadow-sm space-y-4 animate-pulse">
-                  <div className="h-6 bg-slate-200 rounded w-1/4 mb-6" />
-                  <div className="h-28 bg-slate-50 rounded-2xl" />
-                  <div className="h-28 bg-slate-50 rounded-2xl" />
+                <div className="bg-white border border-slate-200/80 rounded-2xl sm:rounded-3xl p-6 shadow-xs space-y-4 animate-pulse">
+                  <div className="h-6 bg-slate-200 rounded w-1/4 mb-4" />
+                  <div className="h-24 bg-slate-50 rounded-2xl" />
+                  <div className="h-24 bg-slate-50 rounded-2xl" />
                 </div>
               ) : applications.length > 0 ? (
                 <ApplicationList applications={applications} />
               ) : (
-                <div className="bg-white border border-slate-200/80 rounded-[32px] p-8 sm:p-12 shadow-sm text-center space-y-5">
-                  <div className="w-16 h-16 bg-slate-50 rounded-2xl flex items-center justify-center mx-auto text-slate-300 border border-slate-100">
-                    <Briefcase size={32} />
+                <div className="bg-white border border-slate-200/80 rounded-2xl sm:rounded-3xl p-6 sm:p-10 shadow-xs text-center space-y-4">
+                  <div className="w-14 h-14 bg-slate-50 rounded-2xl flex items-center justify-center mx-auto text-slate-300 border border-slate-100">
+                    <Briefcase size={28} />
                   </div>
-                  <div className="max-w-md mx-auto space-y-2">
-                    <h3 className="text-xl font-black text-slate-900 tracking-tight">No Active Applications</h3>
+                  <div className="max-w-md mx-auto space-y-1.5">
+                    <h3 className="text-lg sm:text-xl font-black text-slate-900 tracking-tight">No Active Applications</h3>
                     <p className="text-slate-500 text-xs sm:text-sm font-medium leading-relaxed">
                       You haven't submitted any job applications yet. Browse open positions across Mariwasa to jumpstart your career.
                     </p>
@@ -290,47 +299,28 @@ const CandidateDashboard: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => navigate('/candidate/findjobs')}
-                    className="inline-flex items-center gap-2 px-7 py-3.5 bg-[#D10043] hover:bg-slate-900 text-white rounded-2xl font-black text-xs uppercase tracking-wider transition-all shadow-lg shadow-[#D10043]/20 active:scale-95"
+                    className="inline-flex items-center gap-2 px-6 py-3 bg-[#D10043] hover:bg-slate-900 text-white rounded-xl font-black text-xs uppercase tracking-wider transition-all shadow-sm shadow-[#D10043]/20 active:scale-95 cursor-pointer"
                   >
-                    <Search size={15} />
-                    Explore Open Opportunities
+                    <Search size={14} />
+                    <span>Explore Open Opportunities</span>
                   </button>
                 </div>
               )}
 
-              {/* RECOMMENDED OPPORTUNITIES PROMO BANNER */}
-              <div className="bg-white border border-slate-200/80 rounded-[32px] p-6 sm:p-8 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6 relative overflow-hidden">
-                <div className="space-y-1.5 max-w-lg">
-                  <span className="text-[10px] font-black uppercase tracking-[0.2em] text-[#D10043] flex items-center gap-1.5">
-                    <Sparkles size={12} />
-                    Talent Discovery
-                  </span>
-                  <h4 className="text-lg sm:text-xl font-black text-slate-900 tracking-tight">
-                    Explore More Roles Matching Your Profile
-                  </h4>
-                  <p className="text-slate-500 text-xs sm:text-sm font-medium leading-relaxed">
-                    Mariwasa is actively recruiting across Manufacturing, Engineering, Quality Assurance, and Administrative divisions.
-                  </p>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => navigate('/candidate/findjobs')}
-                  className="px-6 py-3.5 rounded-2xl bg-slate-900 hover:bg-[#D10043] text-white font-black text-xs uppercase tracking-wider flex items-center gap-2 transition-all shrink-0 active:scale-[0.98]"
-                >
-                  Find Jobs <ArrowRight size={14} />
-                </button>
-              </div>
+              {/* RECOMMENDED OPENINGS COMPONENT */}
+              <RecommendedJobs
+                onBookmarkChange={() => setBookmarkTrigger((p) => p + 1)}
+              />
 
             </div>
 
-            {/* RIGHT COLUMN: INTERVIEWS, PROFILE STRENGTH, QUICK ACTIONS */}
-            <div className="space-y-8 sm:space-y-10">
+            {/* RIGHT COLUMN: INTERVIEWS, PROFILE READINESS, QUICK ACTIONS */}
+            <div className="space-y-6 sm:space-y-8">
               
               {/* Upcoming Interviews Schedule */}
               <UpcomingInterviews />
 
-              {/* Profile Strength & ATS Completeness */}
+              {/* Profile Strength & ATS Readiness */}
               <ProfileStrength />
 
               {/* Quick Actions Hub */}
