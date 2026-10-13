@@ -18,6 +18,16 @@ const chatService = {
       { content },
       { headers: token ? { Authorization: `Bearer ${token}` } : {} }
     ),
+
+  deleteConversation: (contactId: string | number, token?: string | null) =>
+    api.delete(`/chat/messages/${contactId}`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    }),
+
+  deleteMessage: (messageId: string | number, token?: string | null) =>
+    api.delete(`/chat/message/${messageId}`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    }),
 };
 
 export default chatService;

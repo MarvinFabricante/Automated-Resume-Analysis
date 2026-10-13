@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
-    Search, Send, ArrowLeft, MoreVertical, Paperclip, Smile, 
-    Phone, Video, X, Lock, CheckCheck, Clock, MessageSquare 
+    Search, Send, ArrowLeft, X, Lock, CheckCheck, Clock, 
+    MessageSquare, Archive, ArchiveRestore, Trash2, AlertTriangle 
 } from 'lucide-react';
+import toast from 'react-hot-toast';
 import chatService from '../../services/chatService';
 import { useSelector } from 'react-redux';
 import { WS_BASE_URL } from '../../services/api';
@@ -100,6 +101,11 @@ const ChatLayout: React.FC<ChatLayoutProps> = ({ isFullPage = true }) => {
     const [messages, setMessages] = useState<ChatMessageItem[]>([]);
     const [inputMessage, setInputMessage] = useState('');
     const [loading, setLoading] = useState(false);
+    const [activeTab, setActiveTab] = useState<'all' | 'archived'>('all');
+    const [archivedContactIds, setArchivedContactIds] = useState<number[]>([]);
+    const [showDeleteModal, setShowDeleteModal] = useState(false);
+    const [isDeleting, setIsDeleting] = useState(false);
+
     const wsRef = useRef<WebSocket | null>(null);
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const activeContactRef = useRef<ChatContactItem | null>(null);
@@ -107,6 +113,34 @@ const ChatLayout: React.FC<ChatLayoutProps> = ({ isFullPage = true }) => {
     const token = typeof localStorage !== 'undefined' ? localStorage.getItem('token') : null;
     const currentUserId = typeof localStorage !== 'undefined' ? parseInt(localStorage.getItem('user_id') || '0', 10) : 0;
     const currentUserRole = typeof localStorage !== 'undefined' ? (localStorage.getItem('role') || 'Guest') : 'Guest';
+
+    // Load archived contact IDs from localStorage
+    useEffect(() => {
+        if (!currentUserId) return;
+        try {
+            const saved = localStorage.getItem(`archived_contacts_${currentUserId}`);
+            if (saved) {
+                setArchivedContactIds(JSON.parse(saved));
+            }
+        } catch (e) {
+            console.error("Failed to load archived contacts", e);
+        }
+    }, [currentUserId]);
+
+    const toggleArchiveContact = (contactId: number, e?: React.MouseEvent) => {
+        if (e) e.stopPropagation();
+        setArchivedContactIds(prev => {
+            const isArchived = prev.includes(contactId);
+            const next = isArchived ? prev.filter(id => id !== contactId) : [...prev, contactId];
+            try {
+                localStorage.setItem(`archived_contacts_${currentUserId}`, JSON.stringify(next));
+            } catch (err) {
+                console.error("Failed to save archived contacts", err);
+            }
+            toast.success(isArchived ? "Conversation moved to active inbox" : "Conversation archived");
+            return next;
+        });
+    };
 
     // Sync ref with state
     useEffect(() => {
@@ -267,15 +301,53 @@ const ChatLayout: React.FC<ChatLayoutProps> = ({ isFullPage = true }) => {
         }
     };
 
+    const handleDeleteConversation = async () => {
+        if (!activeContact) return;
+        setIsDeleting(true);
+        try {
+            await chatService.deleteConversation(activeContact.id, token);
+            setMessages([]);
+            setContacts(prev => prev.map(c => 
+                c.id === activeContact.id ? { ...c, last_message: undefined, last_message_time: undefined, unread_count: 0 } : c
+            ));
+            toast.success("Conversation deleted");
+            setShowDeleteModal(false);
+        } catch (error) {
+            console.error("Failed to delete conversation", error);
+            toast.error("Failed to delete conversation");
+        } finally {
+            setIsDeleting(false);
+        }
+    };
+
+    const handleDeleteSingleMessage = async (messageId?: string | number) => {
+        if (!messageId) return;
+        try {
+            await chatService.deleteMessage(messageId, token);
+            setMessages(prev => prev.filter(m => m.id !== messageId));
+            toast.success("Message deleted");
+        } catch (error) {
+            console.error("Failed to delete message", error);
+            toast.error("Could not delete message");
+        }
+    };
+
+    const filteredContacts = contacts.filter(contact => {
+        const isArchived = archivedContactIds.includes(contact.id);
+        return activeTab === 'archived' ? isArchived : !isArchived;
+    });
+
+    const activeCount = contacts.filter(c => !archivedContactIds.includes(c.id)).length;
+    const archivedCount = contacts.filter(c => archivedContactIds.includes(c.id)).length;
     const totalUnread = contacts.reduce((sum, c) => sum + (c.unread_count || 0), 0);
 
     return (
-        <div className={`flex bg-white rounded-2xl sm:rounded-3xl md:rounded-[32px] border border-gray-100 shadow-xs overflow-hidden font-['Inter'] w-full ${isFullPage ? 'h-[calc(100dvh-175px)] sm:h-[calc(100dvh-200px)] md:h-[calc(100vh-210px)] min-h-[460px] max-h-full' : 'h-[600px]'}`}>
+        <div className={`flex bg-white rounded-2xl sm:rounded-3xl md:rounded-[32px] border border-gray-100 shadow-xs overflow-hidden font-['Inter'] w-full relative ${isFullPage ? 'h-[calc(100dvh-175px)] sm:h-[calc(100dvh-200px)] md:h-[calc(100vh-210px)] min-h-[460px] max-h-full' : 'h-[600px]'}`}>
             {/* Sidebar: Contacts List */}
             <div className={`w-full md:w-[340px] lg:w-[380px] flex flex-col border-r border-gray-100 shrink-0 bg-white transition-all duration-300 ${view === 'chat' ? 'hidden md:flex' : 'flex'}`}>
                 {/* Contacts Header */}
                 <div className="p-3.5 sm:p-5 border-b border-gray-100 bg-white">
-                    <div className="flex items-center justify-between mb-3 sm:mb-4">
+                    <div className="flex items-center justify-between mb-3">
                         <div className="flex items-center gap-2">
                             <h3 className="text-lg sm:text-xl font-black text-gray-900 tracking-tight">Messages</h3>
                             <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
@@ -289,6 +361,7 @@ const ChatLayout: React.FC<ChatLayoutProps> = ({ isFullPage = true }) => {
                         )}
                     </div>
 
+                    {/* Search Bar */}
                     <div className="relative">
                         <label htmlFor="contact-search-input" className="sr-only">Search contacts</label>
                         <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 h-4 w-4 pointer-events-none" />
@@ -298,7 +371,7 @@ const ChatLayout: React.FC<ChatLayoutProps> = ({ isFullPage = true }) => {
                             placeholder="Search contacts..." 
                             value={search}
                             onChange={(e) => setSearch(e.target.value)}
-                            className="w-full bg-gray-50 border border-gray-100 rounded-xl sm:rounded-2xl py-2.5 pl-10 pr-9 text-xs sm:text-sm focus:bg-white focus:border-[#D60041] focus:ring-2 focus:ring-pink-100 transition-all outline-none font-medium placeholder:text-gray-400 text-gray-800"
+                            className="w-full bg-gray-50 border border-gray-100 rounded-xl sm:rounded-2xl py-2 pl-10 pr-9 text-xs sm:text-sm focus:bg-white focus:border-[#D60041] focus:ring-2 focus:ring-pink-100 transition-all outline-none font-medium placeholder:text-gray-400 text-gray-800"
                         />
                         {search && (
                             <button 
@@ -310,82 +383,135 @@ const ChatLayout: React.FC<ChatLayoutProps> = ({ isFullPage = true }) => {
                             </button>
                         )}
                     </div>
+
+                    {/* Filter Tabs: All vs Archived */}
+                    <div className="flex items-center gap-1 p-1 bg-gray-100/80 rounded-xl mt-3">
+                        <button
+                            onClick={() => setActiveTab('all')}
+                            className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                                activeTab === 'all'
+                                    ? 'bg-white text-gray-900 shadow-2xs'
+                                    : 'text-gray-500 hover:text-gray-800'
+                            }`}
+                        >
+                            <span>Inbox</span>
+                            <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-gray-200/60 text-gray-600">
+                                {activeCount}
+                            </span>
+                        </button>
+                        <button
+                            onClick={() => setActiveTab('archived')}
+                            className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                                activeTab === 'archived'
+                                    ? 'bg-white text-gray-900 shadow-2xs'
+                                    : 'text-gray-500 hover:text-gray-800'
+                            }`}
+                        >
+                            <Archive size={12} className={activeTab === 'archived' ? 'text-amber-600' : 'text-gray-400'} />
+                            <span>Archived</span>
+                            {archivedCount > 0 && (
+                                <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-amber-100 text-amber-800 font-bold">
+                                    {archivedCount}
+                                </span>
+                            )}
+                        </button>
+                    </div>
                 </div>
 
                 {/* Contacts Scrollable List */}
                 <div className="flex-1 overflow-y-auto divide-y divide-gray-50 bg-white">
-                    {contacts.length > 0 ? (
-                        contacts.map(contact => (
-                            <div 
-                                key={contact.id} 
-                                onClick={() => openChat(contact)}
-                                className={`p-3.5 sm:p-4 flex items-center gap-3 sm:gap-3.5 cursor-pointer transition-all relative ${
-                                    activeContact?.id === contact.id ? 'bg-pink-50/50' : 'hover:bg-gray-50/80 active:bg-gray-100/60'
-                                }`}
-                            >
-                                <div className="relative shrink-0">
-                                    {contact.profile_image_url ? (
-                                        <img 
-                                            src={contact.profile_image_url} 
-                                            alt={contact.fullname} 
-                                            className="w-11 h-11 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl object-cover border border-gray-100 shadow-2xs" 
+                    {filteredContacts.length > 0 ? (
+                        filteredContacts.map(contact => {
+                            const isArchived = archivedContactIds.includes(contact.id);
+                            return (
+                                <div 
+                                    key={contact.id} 
+                                    onClick={() => openChat(contact)}
+                                    className={`p-3.5 sm:p-4 flex items-center gap-3 sm:gap-3.5 cursor-pointer transition-all relative group ${
+                                        activeContact?.id === contact.id ? 'bg-pink-50/50' : 'hover:bg-gray-50/80 active:bg-gray-100/60'
+                                    }`}
+                                >
+                                    <div className="relative shrink-0">
+                                        {contact.profile_image_url ? (
+                                            <img 
+                                                src={contact.profile_image_url} 
+                                                alt={contact.fullname} 
+                                                className="w-11 h-11 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl object-cover border border-gray-100 shadow-2xs" 
+                                            />
+                                        ) : (
+                                            <div className="w-11 h-11 sm:w-12 sm:h-12 bg-gradient-to-br from-pink-50 to-red-50 rounded-xl sm:rounded-2xl flex items-center justify-center text-[#D60041] font-black text-base sm:text-lg shadow-inner">
+                                                {contact.fullname ? contact.fullname.charAt(0).toUpperCase() : 'U'}
+                                            </div>
+                                        )}
+                                        <div 
+                                            className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 sm:w-3.5 sm:h-3.5 border-2 border-white rounded-full ${
+                                                contact.is_online ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.4)]' : 'bg-gray-300'
+                                            }`}
+                                            title={contact.is_online ? 'Online' : 'Offline'}
                                         />
-                                    ) : (
-                                        <div className="w-11 h-11 sm:w-12 sm:h-12 bg-gradient-to-br from-pink-50 to-red-50 rounded-xl sm:rounded-2xl flex items-center justify-center text-[#D60041] font-black text-base sm:text-lg shadow-inner">
-                                            {contact.fullname ? contact.fullname.charAt(0).toUpperCase() : 'U'}
-                                        </div>
-                                    )}
-                                    <div 
-                                        className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 sm:w-3.5 sm:h-3.5 border-2 border-white rounded-full ${
-                                            contact.is_online ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.4)]' : 'bg-gray-300'
-                                        }`}
-                                        title={contact.is_online ? 'Online' : 'Offline'}
-                                    />
-                                </div>
-
-                                <div className="flex-1 min-w-0">
-                                    <div className="flex items-center justify-between gap-1.5 mb-1">
-                                        <div className="flex items-center gap-1.5 min-w-0">
-                                            <h4 className="text-xs sm:text-sm font-bold text-gray-900 truncate tracking-tight">
-                                                {contact.fullname}
-                                            </h4>
-                                            {getRoleBadge(contact.role)}
-                                        </div>
-                                        {contact.last_message_time && (
-                                            <span className="text-[10px] sm:text-[11px] text-gray-400 font-semibold shrink-0 ml-1">
-                                                {formatContactDate(contact.last_message_time)}
-                                            </span>
-                                        )}
                                     </div>
 
-                                    <div className="flex items-center justify-between gap-2">
-                                        <p className={`text-xs truncate ${
-                                            (contact.unread_count || 0) > 0 ? 'text-gray-900 font-bold' : 'text-gray-500 font-normal'
-                                        }`}>
-                                            {contact.last_message || (
-                                                <span className="italic text-gray-400">Tap to start chatting</span>
+                                    <div className="flex-1 min-w-0">
+                                        <div className="flex items-center justify-between gap-1.5 mb-1">
+                                            <div className="flex items-center gap-1.5 min-w-0">
+                                                <h4 className="text-xs sm:text-sm font-bold text-gray-900 truncate tracking-tight">
+                                                    {contact.fullname}
+                                                </h4>
+                                                {getRoleBadge(contact.role)}
+                                            </div>
+                                            {contact.last_message_time && (
+                                                <span className="text-[10px] sm:text-[11px] text-gray-400 font-semibold shrink-0 ml-1">
+                                                    {formatContactDate(contact.last_message_time)}
+                                                </span>
                                             )}
-                                        </p>
-                                        {Boolean(contact.unread_count && contact.unread_count > 0) && (
-                                            <span className="shrink-0 min-w-[18px] h-[18px] bg-[#D60041] rounded-full flex items-center justify-center text-[10px] text-white font-black px-1.5 shadow-sm shadow-pink-200">
-                                                {contact.unread_count}
-                                            </span>
-                                        )}
-                                    </div>
-                                </div>
+                                        </div>
 
-                                {activeContact?.id === contact.id && (
-                                    <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-8 bg-[#D60041] rounded-r-full hidden md:block"></div>
-                                )}
-                            </div>
-                        ))
+                                        <div className="flex items-center justify-between gap-2">
+                                            <p className={`text-xs truncate ${
+                                                (contact.unread_count || 0) > 0 ? 'text-gray-900 font-bold' : 'text-gray-500 font-normal'
+                                            }`}>
+                                                {contact.last_message || (
+                                                    <span className="italic text-gray-400">Tap to start chatting</span>
+                                                )}
+                                            </p>
+                                            
+                                            <div className="flex items-center gap-1.5 shrink-0">
+                                                {/* Quick Archive / Unarchive Button */}
+                                                <button
+                                                    onClick={(e) => toggleArchiveContact(contact.id, e)}
+                                                    className="opacity-0 group-hover:opacity-100 sm:opacity-0 focus:opacity-100 p-1 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-200/60 transition-all cursor-pointer"
+                                                    title={isArchived ? "Unarchive" : "Archive"}
+                                                    aria-label={isArchived ? "Unarchive" : "Archive"}
+                                                >
+                                                    {isArchived ? <ArchiveRestore size={13} /> : <Archive size={13} />}
+                                                </button>
+
+                                                {Boolean(contact.unread_count && contact.unread_count > 0) && (
+                                                    <span className="min-w-[18px] h-[18px] bg-[#D60041] rounded-full flex items-center justify-center text-[10px] text-white font-black px-1.5 shadow-sm shadow-pink-200">
+                                                        {contact.unread_count}
+                                                    </span>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {activeContact?.id === contact.id && (
+                                        <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-8 bg-[#D60041] rounded-r-full hidden md:block"></div>
+                                    )}
+                                </div>
+                            );
+                        })
                     ) : (
                         <div className="p-8 sm:p-12 text-center">
                             <div className="w-12 h-12 sm:w-14 sm:h-14 bg-gray-50 rounded-2xl flex items-center justify-center mx-auto mb-3 text-gray-300">
-                                <Search size={22} />
+                                {activeTab === 'archived' ? <Archive size={22} /> : <Search size={22} />}
                             </div>
-                            <p className="text-xs sm:text-sm text-gray-500 font-bold mb-1">No contacts found</p>
-                            <p className="text-[11px] text-gray-400 font-medium">Try searching by name or role</p>
+                            <p className="text-xs sm:text-sm text-gray-500 font-bold mb-1">
+                                {activeTab === 'archived' ? 'No archived conversations' : 'No contacts found'}
+                            </p>
+                            <p className="text-[11px] text-gray-400 font-medium">
+                                {activeTab === 'archived' ? 'Conversations you archive will appear here' : 'Try searching by name or role'}
+                            </p>
                         </div>
                     )}
                 </div>
@@ -434,6 +560,11 @@ const ChatLayout: React.FC<ChatLayoutProps> = ({ isFullPage = true }) => {
                                             {activeContact.fullname}
                                         </h4>
                                         {getRoleBadge(activeContact.role)}
+                                        {archivedContactIds.includes(activeContact.id) && (
+                                            <span className="shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded-md uppercase tracking-wider bg-amber-50 text-amber-700 border border-amber-200">
+                                                Archived
+                                            </span>
+                                        )}
                                     </div>
                                     <div className="flex items-center gap-1.5 mt-0.5 sm:mt-1">
                                         <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${activeContact.is_online ? 'bg-emerald-500 animate-pulse' : 'bg-gray-300'}`}></div>
@@ -444,27 +575,41 @@ const ChatLayout: React.FC<ChatLayoutProps> = ({ isFullPage = true }) => {
                                 </div>
                             </div>
 
-                            <div className="flex items-center gap-1 sm:gap-2 shrink-0">
+                            {/* Header Actions: Archive & Delete (replaces call, video, 3-dots) */}
+                            <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+                                {/* Archive / Unarchive Button */}
                                 <button 
-                                    className="p-2 sm:p-2.5 hover:bg-gray-50 rounded-xl text-gray-400 hover:text-gray-600 transition-all hidden sm:block cursor-pointer"
-                                    title="Start voice call"
-                                    aria-label="Start voice call"
+                                    onClick={(e) => toggleArchiveContact(activeContact.id, e)}
+                                    className={`p-2 sm:p-2.5 rounded-xl transition-all cursor-pointer flex items-center gap-1.5 text-xs font-semibold ${
+                                        archivedContactIds.includes(activeContact.id)
+                                            ? 'bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200/80 shadow-2xs'
+                                            : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100'
+                                    }`}
+                                    title={archivedContactIds.includes(activeContact.id) ? "Unarchive conversation" : "Archive conversation"}
+                                    aria-label={archivedContactIds.includes(activeContact.id) ? "Unarchive conversation" : "Archive conversation"}
                                 >
-                                    <Phone size={18} />
+                                    {archivedContactIds.includes(activeContact.id) ? (
+                                        <>
+                                            <ArchiveRestore size={17} className="shrink-0" />
+                                            <span className="hidden sm:inline">Unarchive</span>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Archive size={17} className="shrink-0" />
+                                            <span className="hidden sm:inline">Archive</span>
+                                        </>
+                                    )}
                                 </button>
+
+                                {/* Delete Conversation Button */}
                                 <button 
-                                    className="p-2 sm:p-2.5 hover:bg-gray-50 rounded-xl text-gray-400 hover:text-gray-600 transition-all hidden sm:block cursor-pointer"
-                                    title="Start video call"
-                                    aria-label="Start video call"
+                                    onClick={() => setShowDeleteModal(true)}
+                                    className="p-2 sm:p-2.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all cursor-pointer flex items-center gap-1.5 text-xs font-semibold"
+                                    title="Delete conversation"
+                                    aria-label="Delete conversation"
                                 >
-                                    <Video size={18} />
-                                </button>
-                                <button 
-                                    className="p-2 sm:p-2.5 hover:bg-gray-50 rounded-xl text-gray-400 hover:text-gray-600 transition-all cursor-pointer"
-                                    title="More conversation options"
-                                    aria-label="More conversation options"
-                                >
-                                    <MoreVertical size={18} />
+                                    <Trash2 size={17} className="shrink-0" />
+                                    <span className="hidden sm:inline">Delete</span>
                                 </button>
                             </div>
                         </div>
@@ -505,7 +650,7 @@ const ChatLayout: React.FC<ChatLayoutProps> = ({ isFullPage = true }) => {
                                                 </div>
                                             )}
 
-                                            <div className={`flex ${isMe ? 'justify-end' : 'justify-start'} ${isFirstInCluster ? 'mt-4' : 'mt-1'} animate-in fade-in duration-200`}>
+                                            <div className={`flex ${isMe ? 'justify-end' : 'justify-start'} ${isFirstInCluster ? 'mt-4' : 'mt-1'} animate-in fade-in duration-200 group`}>
                                                 <div className={`flex items-end gap-2 max-w-[88%] sm:max-w-[75%] md:max-w-[70%] ${isMe ? 'flex-row-reverse' : 'flex-row'}`}>
                                                     {/* Avatar for other user */}
                                                     {!isMe && (
@@ -536,7 +681,7 @@ const ChatLayout: React.FC<ChatLayoutProps> = ({ isFullPage = true }) => {
                                                         )}
 
                                                         {/* Bubble */}
-                                                        <div className={`px-4 py-2.5 sm:px-5 sm:py-3 rounded-[20px] text-xs sm:text-sm font-medium shadow-2xs leading-relaxed break-words ${
+                                                        <div className={`px-4 py-2.5 sm:px-5 sm:py-3 rounded-[20px] text-xs sm:text-sm font-medium shadow-2xs leading-relaxed break-words relative ${
                                                             isMe 
                                                                 ? 'bg-[#D60041] text-white rounded-br-sm' 
                                                                 : 'bg-white text-gray-800 border border-gray-100/90 rounded-bl-sm'
@@ -544,8 +689,8 @@ const ChatLayout: React.FC<ChatLayoutProps> = ({ isFullPage = true }) => {
                                                             {msg.content}
                                                         </div>
 
-                                                        {/* Timestamp & Status Label */}
-                                                        <div className={`flex items-center gap-1 mt-1 px-1 ${isMe ? 'justify-end' : 'justify-start'}`}>
+                                                        {/* Timestamp, Status & Delete Message Option */}
+                                                        <div className={`flex items-center gap-1.5 mt-1 px-1 ${isMe ? 'justify-end' : 'justify-start'}`}>
                                                             <span className="text-[10px] sm:text-[11px] font-medium text-gray-400 tracking-tight">
                                                                 {formatMessageTime(msg.timestamp)}
                                                             </span>
@@ -561,6 +706,17 @@ const ChatLayout: React.FC<ChatLayoutProps> = ({ isFullPage = true }) => {
                                                                     </span>
                                                                 )
                                                             )}
+                                                            {/* Option to delete individual message */}
+                                                            {msg.id && !msg.is_optimistic && (isMe || currentUserRole.toUpperCase() === 'ADMIN') && (
+                                                                <button
+                                                                    onClick={() => handleDeleteSingleMessage(msg.id)}
+                                                                    className="opacity-0 group-hover:opacity-100 text-gray-300 hover:text-red-500 p-0.5 transition-opacity cursor-pointer ml-0.5"
+                                                                    title="Delete message"
+                                                                    aria-label="Delete message"
+                                                                >
+                                                                    <Trash2 size={11} />
+                                                                </button>
+                                                            )}
                                                         </div>
                                                     </div>
                                                 </div>
@@ -572,26 +728,10 @@ const ChatLayout: React.FC<ChatLayoutProps> = ({ isFullPage = true }) => {
                             <div ref={messagesEndRef} />
                         </div>
 
-                        {/* Input Area */}
+                        {/* Input Area (Clean & focused: dummy emoji and paperclip removed) */}
                         {currentUserRole.toUpperCase() !== 'CANDIDATE' ? (
                             <div className="p-2.5 sm:p-4 md:p-5 bg-white border-t border-gray-100">
-                                <div className="max-w-4xl mx-auto bg-gray-50 rounded-2xl sm:rounded-3xl p-1.5 sm:p-2 flex items-center gap-1 sm:gap-2 border border-gray-200/80 focus-within:bg-white focus-within:border-[#D60041] focus-within:ring-2 focus-within:ring-pink-100/50 transition-all">
-                                    <button 
-                                        type="button" 
-                                        className="p-2 sm:p-2.5 text-gray-400 hover:text-[#D60041] hover:bg-gray-100 rounded-xl transition-colors cursor-pointer shrink-0"
-                                        title="Insert emoji"
-                                        aria-label="Insert emoji"
-                                    >
-                                        <Smile size={18} />
-                                    </button>
-                                    <button 
-                                        type="button" 
-                                        className="p-2 sm:p-2.5 text-gray-400 hover:text-[#D60041] hover:bg-gray-100 rounded-xl transition-colors cursor-pointer shrink-0"
-                                        title="Attach file"
-                                        aria-label="Attach file"
-                                    >
-                                        <Paperclip size={18} />
-                                    </button>
+                                <div className="max-w-4xl mx-auto bg-gray-50 rounded-2xl sm:rounded-3xl p-1.5 sm:p-2 flex items-center gap-2 border border-gray-200/80 focus-within:bg-white focus-within:border-[#D60041] focus-within:ring-2 focus-within:ring-pink-100/50 transition-all">
                                     <input
                                         type="text"
                                         value={inputMessage}
@@ -599,7 +739,7 @@ const ChatLayout: React.FC<ChatLayoutProps> = ({ isFullPage = true }) => {
                                         onKeyDown={handleKeyDown}
                                         placeholder="Write your message..."
                                         aria-label="Write your message"
-                                        className="flex-1 bg-transparent border-none py-2 sm:py-2.5 px-1 sm:px-2 text-xs sm:text-sm focus:ring-0 outline-none font-medium text-gray-900 placeholder:text-gray-400 min-w-0"
+                                        className="flex-1 bg-transparent border-none py-2 sm:py-2.5 px-3 text-xs sm:text-sm focus:ring-0 outline-none font-medium text-gray-900 placeholder:text-gray-400 min-w-0"
                                     />
                                     <button 
                                         onClick={sendMessage}
@@ -635,9 +775,42 @@ const ChatLayout: React.FC<ChatLayoutProps> = ({ isFullPage = true }) => {
                     </div>
                 )}
             </div>
+
+            {/* Conversation Deletion Confirmation Modal */}
+            {showDeleteModal && activeContact && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs animate-in fade-in duration-200">
+                    <div className="bg-white rounded-3xl max-w-sm w-full p-6 shadow-2xl border border-gray-100 flex flex-col items-center text-center animate-in zoom-in-95 duration-200">
+                        <div className="w-14 h-14 rounded-2xl bg-red-50 flex items-center justify-center text-red-600 mb-4 border border-red-100">
+                            <AlertTriangle size={28} />
+                        </div>
+                        <h3 className="text-lg font-black text-gray-900 mb-1">Delete Conversation?</h3>
+                        <p className="text-xs sm:text-sm text-gray-500 leading-relaxed mb-6">
+                            This will permanently remove all messages with <span className="font-bold text-gray-800">{activeContact.fullname}</span>. This action cannot be undone.
+                        </p>
+                        <div className="flex items-center gap-3 w-full">
+                            <button
+                                onClick={() => setShowDeleteModal(false)}
+                                disabled={isDeleting}
+                                className="flex-1 py-2.5 px-4 rounded-xl border border-gray-200 text-xs sm:text-sm font-bold text-gray-700 hover:bg-gray-50 active:scale-95 transition-all cursor-pointer"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={handleDeleteConversation}
+                                disabled={isDeleting}
+                                className="flex-1 py-2.5 px-4 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs sm:text-sm font-bold shadow-md shadow-red-200 active:scale-95 transition-all cursor-pointer flex items-center justify-center gap-1.5 disabled:opacity-50"
+                            >
+                                <Trash2 size={15} />
+                                <span>{isDeleting ? 'Deleting...' : 'Delete'}</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
 
 export default ChatLayout;
+
 

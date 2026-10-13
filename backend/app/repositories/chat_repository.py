@@ -1,5 +1,5 @@
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, or_, and_, desc, update
+from sqlalchemy import select, or_, and_, desc, update, delete
 from typing import List, Optional
 import logging
 
@@ -180,6 +180,49 @@ async def create_message(db: AsyncSession, sender_id: int, receiver_id: int, con
         await redis_tx_manager.fail_transaction(tx_id, str(e))
         logger.error(f"[Redis-First] create_message failed: {e}")
         raise
+
+
+async def delete_messages_between(db: AsyncSession, user1_id: int, user2_id: int):
+    """Delete all messages exchanged between two users and evict caches."""
+    query = delete(Message).where(
+        or_(
+            and_(Message.sender_id == user1_id, Message.receiver_id == user2_id),
+            and_(Message.sender_id == user2_id, Message.receiver_id == user1_id)
+        )
+    )
+    await db.execute(query)
+    await db.commit()
+
+    u1, u2 = min(user1_id, user2_id), max(user1_id, user2_id)
+    await delete_cache(f"chat:history:{u1}_{u2}")
+    await delete_cache(f"chat:last_msg:{u1}_{u2}")
+    await delete_cache(f"chat:unread_cnt:{user1_id}_{user2_id}")
+    await delete_cache(f"chat:unread_cnt:{user2_id}_{user1_id}")
+    await clear_cache_pattern(f"contacts:{user1_id}:")
+    await clear_cache_pattern(f"contacts:{user2_id}:")
+
+
+async def delete_message_by_id(db: AsyncSession, message_id: int, user_id: int, user_role: str) -> bool:
+    """Delete a single message if the user is the sender or an admin."""
+    query = select(Message).where(Message.id == message_id)
+    result = await db.execute(query)
+    msg = result.scalar_one_or_none()
+    if not msg:
+        return False
+    if msg.sender_id != user_id and user_role.upper() != "ADMIN":
+        return False
+
+    sender_id, receiver_id = msg.sender_id, msg.receiver_id
+    await db.delete(msg)
+    await db.commit()
+
+    u1, u2 = min(sender_id, receiver_id), max(sender_id, receiver_id)
+    await delete_cache(f"chat:history:{u1}_{u2}")
+    await delete_cache(f"chat:last_msg:{u1}_{u2}")
+    await delete_cache(f"chat:unread_cnt:{sender_id}_{receiver_id}")
+    await clear_cache_pattern(f"contacts:{sender_id}:")
+    await clear_cache_pattern(f"contacts:{receiver_id}:")
+    return True
 
 
 import sys

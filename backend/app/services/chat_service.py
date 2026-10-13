@@ -194,4 +194,15 @@ async def handle_websocket_message(db_factory, sender_id: int, data: dict):
         logging.error(f"Error handling WS message: {e}")
 
 
+async def delete_conversation(db: AsyncSession, current_user_id: int, other_user_id: int):
+    """Deletes all messages exchanged between current user and contact."""
+    await ChatRepository.delete_messages_between(db, current_user_id, other_user_id)
+
+
+async def delete_single_message(db: AsyncSession, current_user: User, message_id: int) -> bool:
+    """Deletes a single message if user is sender or admin."""
+    return await ChatRepository.delete_message_by_id(db, message_id, current_user.id, current_user.role)
+
+
 chat_service = sys.modules[__name__]
+

@@ -60,6 +60,26 @@ async def send_message(
         raise HTTPException(status_code=403, detail="You cannot message this user.")
     return new_msg
 
+@router.delete("/messages/{other_user_id}")
+async def delete_conversation(
+    other_user_id: int,
+    current_user: User = Depends(get_current_user_obj),
+    db: AsyncSession = Depends(get_db)
+):
+    await chat_service.delete_conversation(db, current_user.id, other_user_id)
+    return {"detail": "Conversation deleted successfully"}
+
+@router.delete("/message/{message_id}")
+async def delete_single_message(
+    message_id: int,
+    current_user: User = Depends(get_current_user_obj),
+    db: AsyncSession = Depends(get_db)
+):
+    success = await chat_service.delete_single_message(db, current_user, message_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Message not found or unauthorized")
+    return {"detail": "Message deleted successfully"}
+
 @router.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket, token: str = Query(...)):
     from app.utils.database import AsyncSessionLocal
