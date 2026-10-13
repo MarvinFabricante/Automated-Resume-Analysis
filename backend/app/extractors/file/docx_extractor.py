@@ -114,7 +114,19 @@ def extract_image_from_docx(file_path: str) -> str | None:
                 f.write(best['bytes'])
                 
             print(f"DEBUG: Extracted DOCX profile image: {image_name} (score: {best['score']:.2f})")
-            return image_path
+
+            # Upload to Supabase resume_images bucket (path: resumeimages/)
+            try:
+                from app.utils.supabase_storage import upload_resume_image_sync
+                sb_res = upload_resume_image_sync(
+                    file_bytes=best['bytes'],
+                    original_filename=image_name,
+                )
+                print(f"DEBUG: Uploaded DOCX profile image to Supabase: {sb_res['public_url']}")
+                return sb_res["public_url"]
+            except Exception as sb_err:
+                print(f"Supabase DOCX profile image upload fallback to local: {sb_err}")
+                return image_path
             
     except Exception as e:
         print(f"Error extracting image from DOCX: {e}")

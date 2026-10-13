@@ -168,3 +168,130 @@ async def list_stored_resumes():
             status_code=500,
             detail=f"Failed to list resumes: {str(e)}"
         )
+
+
+@router.get("/storage/profile-images/list", tags=["Resumes"])
+@cache_response("storage_profile_images", ttl=300)
+async def list_stored_profile_images():
+    """
+    List all profile images stored in Supabase Storage (bucket: profile_images, path: profiles/).
+    """
+    try:
+        from app.utils.supabase_storage import list_profile_images, get_profile_image_url, SUPABASE_PROFILE_PATH
+        files = await list_profile_images()
+
+        result = []
+        for f in files:
+            file_info = {
+                "name": f.get("name"),
+                "id": f.get("id"),
+                "created_at": f.get("created_at"),
+                "updated_at": f.get("updated_at"),
+                "metadata": f.get("metadata"),
+            }
+            if f.get("id") and f.get("name") != ".emptyFolderPlaceholder":
+                file_info["public_url"] = get_profile_image_url(f"{SUPABASE_PROFILE_PATH}/{f['name']}")
+                result.append(file_info)
+
+        return {"files": result, "count": len(result)}
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to list profile images: {str(e)}"
+        )
+
+
+@router.get("/storage/resume-images/list", tags=["Resumes"])
+@cache_response("storage_resume_images", ttl=300)
+async def list_stored_resume_images():
+    """
+    List all resume images stored in Supabase Storage (bucket: resume_images, path: resumeimages/).
+    """
+    try:
+        from app.utils.supabase_storage import list_resume_images, get_resume_image_url, SUPABASE_RESUME_IMAGES_PATH
+        files = await list_resume_images()
+
+        result = []
+        for f in files:
+            file_info = {
+                "name": f.get("name"),
+                "id": f.get("id"),
+                "created_at": f.get("created_at"),
+                "updated_at": f.get("updated_at"),
+                "metadata": f.get("metadata"),
+            }
+            if f.get("id") and f.get("name") != ".emptyFolderPlaceholder":
+                file_info["public_url"] = get_resume_image_url(f"{SUPABASE_RESUME_IMAGES_PATH}/{f['name']}")
+                result.append(file_info)
+
+        return {"files": result, "count": len(result)}
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to list resume images: {str(e)}"
+        )
+
+
+@router.get("/storage/profile-images/download/{storage_path:path}", tags=["Resumes"])
+async def download_profile_image_file(storage_path: str):
+    """
+    Download a profile image file from Supabase Storage bucket profile_images.
+    """
+    try:
+        from app.utils.supabase_storage import download_profile_image
+        file_bytes = await download_profile_image(storage_path)
+
+        import os
+        filename = os.path.basename(storage_path)
+        ext = os.path.splitext(filename)[1].lower()
+        mime_map = {
+            ".png": "image/png",
+            ".jpg": "image/jpeg",
+            ".jpeg": "image/jpeg",
+            ".webp": "image/webp",
+        }
+        content_type = mime_map.get(ext, "application/octet-stream")
+
+        return StreamingResponse(
+            io.BytesIO(file_bytes),
+            media_type=content_type,
+            headers={"Content-Disposition": f'inline; filename="{filename}"'},
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Profile image not found: {str(e)}"
+        )
+
+
+@router.get("/storage/resume-images/download/{storage_path:path}", tags=["Resumes"])
+async def download_resume_image_file(storage_path: str):
+    """
+    Download a resume image file from Supabase Storage bucket resume_images.
+    """
+    try:
+        from app.utils.supabase_storage import download_resume_image
+        file_bytes = await download_resume_image(storage_path)
+
+        import os
+        filename = os.path.basename(storage_path)
+        ext = os.path.splitext(filename)[1].lower()
+        mime_map = {
+            ".png": "image/png",
+            ".jpg": "image/jpeg",
+            ".jpeg": "image/jpeg",
+            ".webp": "image/webp",
+        }
+        content_type = mime_map.get(ext, "application/octet-stream")
+
+        return StreamingResponse(
+            io.BytesIO(file_bytes),
+            media_type=content_type,
+            headers={"Content-Disposition": f'inline; filename="{filename}"'},
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Resume image not found: {str(e)}"
+        )
+

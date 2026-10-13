@@ -123,7 +123,18 @@ def extract_image_from_pdf(file_path: str) -> str:
                     f.write(best['bytes'])
                 
                 doc.close()
-                return image_path
+
+                # Upload to Supabase resume_images bucket (path: resumeimages/)
+                try:
+                    from app.utils.supabase_storage import upload_resume_image_sync
+                    sb_res = upload_resume_image_sync(
+                        file_bytes=best['bytes'],
+                        original_filename=image_name,
+                    )
+                    return sb_res["public_url"]
+                except Exception as sb_err:
+                    print(f"Supabase resume image upload fallback to local: {sb_err}")
+                    return image_path
                 
         doc.close()
     except Exception as e:

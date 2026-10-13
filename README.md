@@ -60,7 +60,7 @@ Candidate profiles are evaluated against job requirements using an algorithmic s
 | **Backend** | FastAPI (Python 3.12), SQLAlchemy 2.0 (Async), Pydantic v2, spaCy NLP |
 | **Worker Queue** | Celery, Redis 7 (Alpine) |
 | **Database** | PostgreSQL 16 (Alpine) with asyncpg connection pooling |
-| **Storage & Network** | Supabase Storage (Resume cloud repository), Cloudflare Quick Tunnel |
+| **Storage & Network** | Supabase Storage (Resumes, Profile Images & Resume Photos), Cloudflare Quick Tunnel |
 
 ---
 
@@ -149,7 +149,7 @@ Key parameters defined in `.env`:
 - `FRONTEND_URL`: Permitted origins for backend CORS middleware.
 - `GEMINI_API_KEYS`: Comma-separated API keys for LLM candidate evaluation rotation pool.
 - `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`: Google Calendar OAuth 2.0 credentials for interview booking.
-- `SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY`: Supabase Storage credentials for resume persistence.
+- `SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY`: Supabase Storage credentials for resumes, profile images (`profile_images`), and resume images (`resume_images`).
 - `NEXT_PUBLIC_API_URL`: Frontend API base path (defaults to `/api` in production).
 
 ---

@@ -72,6 +72,23 @@ async def parse_resume_file(db: AsyncSession, file: UploadFile) -> dict:
             if storage_path:
                 extracted_data["storage_path"] = storage_path
 
+            # Ensure extracted profile image is uploaded to Supabase resume_images bucket
+            if extracted_data.get("profile_image_url") and not extracted_data["profile_image_url"].startswith("http"):
+                try:
+                    local_rel_path = extracted_data["profile_image_url"].lstrip("/")
+                    if os.path.exists(local_rel_path):
+                        from app.utils.supabase_storage import upload_resume_image
+                        with open(local_rel_path, "rb") as f_img:
+                            img_bytes = f_img.read()
+                        img_result = await upload_resume_image(
+                            file_bytes=img_bytes,
+                            original_filename=os.path.basename(local_rel_path)
+                        )
+                        extracted_data["profile_image_url"] = img_result["public_url"]
+                        logger.info(f"Uploaded extracted resume image to Supabase: {img_result['public_url']}")
+                except Exception as e_img:
+                    logger.warning(f"Failed to upload extracted resume image to Supabase: {e_img}")
+
         # Trigger notification
         name = extracted_data.get("fullname", "A candidate") if extracted_data else "A candidate"
         await create_notification(

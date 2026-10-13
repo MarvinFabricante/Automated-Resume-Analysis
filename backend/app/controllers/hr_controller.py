@@ -61,21 +61,35 @@ async def upload_hr_profile_image(
     file: UploadFile = File(...),
     db: AsyncSession = Depends(get_db),
 ):
-    upload_dir = "uploads/profile_images"
-    if not os.path.exists(upload_dir):
-        os.makedirs(upload_dir)
-    
-    file_extension = os.path.splitext(file.filename)[1]
-    file_name = f"hr_{hr_id}{file_extension}"
-    file_path = os.path.join(upload_dir, file_name)
-    
-    with open(file_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
-    
-    import time
-    image_url = f"/{file_path}?t={int(time.time())}"
+    file_bytes = await file.read()
+    image_url = None
+
+    # 1. Upload to Supabase Storage (bucket: profile_images, path: profiles/)
+    try:
+        from app.utils.supabase_storage import upload_profile_image as sb_upload_profile_image
+        result = await sb_upload_profile_image(
+            file_bytes=file_bytes,
+            original_filename=file.filename or f"hr_{hr_id}.png",
+            user_role="hr",
+            user_id=hr_id,
+        )
+        image_url = result["public_url"]
+        print(f"Uploaded HR {hr_id} profile image to Supabase: {image_url}")
+    except Exception as e:
+        print(f"Supabase HR profile upload failed, falling back to local: {e}")
+        upload_dir = "uploads/profile_images"
+        if not os.path.exists(upload_dir):
+            os.makedirs(upload_dir)
+        file_extension = os.path.splitext(file.filename or "")[1] or ".png"
+        file_name = f"hr_{hr_id}{file_extension}"
+        file_path = os.path.join(upload_dir, file_name)
+        with open(file_path, "wb") as buffer:
+            buffer.write(file_bytes)
+        import time
+        image_url = f"/{file_path}?t={int(time.time())}"
+
     await hr_service.update_hr_profile(db, hr_id, HRUpdate(profile_image_url=image_url))
-    
+    await clear_cache_pattern(f"hr_profile:*\"hr_id\": {hr_id}*")
     return {"image_url": image_url}
     
 

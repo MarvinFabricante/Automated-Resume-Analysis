@@ -30,6 +30,10 @@ logger = logging.getLogger(__name__)
 SUPABASE_URL = os.getenv("SUPABASE_URL", "")
 SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
 SUPABASE_BUCKET = os.getenv("SUPABASE_BUCKET", "resume storage")
+SUPABASE_PROFILE_BUCKET = os.getenv("SUPABASE_PROFILE_BUCKET", "profile_images")
+SUPABASE_PROFILE_PATH = os.getenv("SUPABASE_PROFILE_PATH", "profiles")
+SUPABASE_RESUME_IMAGES_BUCKET = os.getenv("SUPABASE_RESUME_IMAGES_BUCKET", "resume_images")
+SUPABASE_RESUME_IMAGES_PATH = os.getenv("SUPABASE_RESUME_IMAGES_PATH", "resumeimages")
 
 _supabase_client = None
 
@@ -59,6 +63,9 @@ def _content_type(filename: str) -> str:
         ".png": "image/png",
         ".jpg": "image/jpeg",
         ".jpeg": "image/jpeg",
+        ".webp": "image/webp",
+        ".gif": "image/gif",
+        ".svg": "image/svg+xml",
     }
     return mime_map.get(ext, "application/octet-stream")
 
@@ -243,3 +250,352 @@ async def list_resumes(prefix: str = "resumes/") -> list[dict]:
     except Exception as e:
         logger.error(f"Supabase list failed for {prefix}: {e}")
         return []
+
+
+# ── Profile Images Object Storage ───────────────────────────────────
+
+
+async def upload_profile_image(
+    file_bytes: bytes,
+    original_filename: str,
+    user_role: str = "candidate",
+    user_id: Optional[int] = None,
+) -> dict:
+    """
+    Upload a user profile image to Supabase Storage (bucket: profile_images, path: profiles/)
+    using Redis-first architecture:
+    1. Stages upload transaction in Redis.
+    2. Caches raw image in Redis.
+    3. Persists to Supabase Storage bucket.
+    4. Commits transaction and returns public URL.
+    """
+    timestamp = int(time.time())
+    safe_name = os.path.basename(original_filename).replace(" ", "_")
+    if user_id is not None:
+        storage_path = f"{SUPABASE_PROFILE_PATH}/{user_role}_{user_id}_{timestamp}_{safe_name}"
+    else:
+        storage_path = f"{SUPABASE_PROFILE_PATH}/{timestamp}_{safe_name}"
+
+    mime = _content_type(original_filename)
+
+    tx_payload = {
+        "storage_path": storage_path,
+        "bucket": SUPABASE_PROFILE_BUCKET,
+        "filename": original_filename,
+        "content_type": mime,
+        "user_role": user_role,
+        "user_id": user_id,
+        "size_bytes": len(file_bytes),
+    }
+    tx_id = await redis_tx_manager.stage_transaction(
+        target="supabase_profile_storage",
+        action="UPLOAD",
+        payload=tx_payload,
+    )
+
+    try:
+        redis_c = get_async_redis()
+        await redis_c.setex(f"storage:file:{SUPABASE_PROFILE_BUCKET}:{storage_path}", 86400, file_bytes)
+        await set_cache(f"storage:meta:{SUPABASE_PROFILE_BUCKET}:{storage_path}", tx_payload, ttl=86400)
+    except Exception as cache_err:
+        logger.warning(f"Failed to pre-cache profile image in Redis: {cache_err}")
+
+    try:
+        client = _get_client()
+        client.storage.from_(SUPABASE_PROFILE_BUCKET).upload(
+            path=storage_path,
+            file=file_bytes,
+            file_options={"content-type": mime, "upsert": "true"},
+        )
+        public_url = client.storage.from_(SUPABASE_PROFILE_BUCKET).get_public_url(storage_path)
+
+        await set_cache(f"storage:url:{SUPABASE_PROFILE_BUCKET}:{storage_path}", public_url, ttl=604800)
+        await clear_cache_pattern(f"storage:list:{SUPABASE_PROFILE_BUCKET}:*")
+
+        result_meta = {
+            "storage_path": storage_path,
+            "public_url": public_url,
+            "filename": os.path.basename(storage_path),
+            "bucket": SUPABASE_PROFILE_BUCKET,
+        }
+        await redis_tx_manager.commit_transaction(tx_id, result_meta)
+        logger.info(f"[Redis-First] Uploaded profile image to Supabase & cached in Redis: {storage_path}")
+        return result_meta
+    except Exception as e:
+        logger.error(f"[Redis-First] Profile image upload failed for {storage_path}: {e}")
+        await redis_tx_manager.fail_transaction(tx_id, str(e))
+        raise
+
+
+def upload_profile_image_sync(
+    file_bytes: bytes,
+    original_filename: str,
+    user_role: str = "candidate",
+    user_id: Optional[int] = None,
+) -> dict:
+    """Synchronous upload for profile images when called in non-async contexts."""
+    timestamp = int(time.time())
+    safe_name = os.path.basename(original_filename).replace(" ", "_")
+    if user_id is not None:
+        storage_path = f"{SUPABASE_PROFILE_PATH}/{user_role}_{user_id}_{timestamp}_{safe_name}"
+    else:
+        storage_path = f"{SUPABASE_PROFILE_PATH}/{timestamp}_{safe_name}"
+    mime = _content_type(original_filename)
+
+    client = _get_client()
+    client.storage.from_(SUPABASE_PROFILE_BUCKET).upload(
+        path=storage_path,
+        file=file_bytes,
+        file_options={"content-type": mime, "upsert": "true"},
+    )
+    public_url = client.storage.from_(SUPABASE_PROFILE_BUCKET).get_public_url(storage_path)
+    return {
+        "storage_path": storage_path,
+        "public_url": public_url,
+        "filename": os.path.basename(storage_path),
+        "bucket": SUPABASE_PROFILE_BUCKET,
+    }
+
+
+async def download_profile_image(storage_path: str) -> bytes:
+    """Download a profile image with Redis cache fallback."""
+    try:
+        redis_c = get_async_redis()
+        cached_bytes = await redis_c.get(f"storage:file:{SUPABASE_PROFILE_BUCKET}:{storage_path}")
+        if cached_bytes:
+            return cached_bytes
+    except Exception as cache_err:
+        logger.warning(f"Redis lookup failed for profile image {storage_path}: {cache_err}")
+
+    client = _get_client()
+    try:
+        response = client.storage.from_(SUPABASE_PROFILE_BUCKET).download(storage_path)
+        try:
+            redis_c = get_async_redis()
+            await redis_c.setex(f"storage:file:{SUPABASE_PROFILE_BUCKET}:{storage_path}", 86400, response)
+        except Exception:
+            pass
+        return response
+    except Exception as e:
+        logger.error(f"Supabase profile image download failed for {storage_path}: {e}")
+        raise
+
+
+def get_profile_image_url(storage_path: str) -> str:
+    """Return public URL for a profile image."""
+    client = _get_client()
+    return client.storage.from_(SUPABASE_PROFILE_BUCKET).get_public_url(storage_path)
+
+
+async def delete_profile_image(storage_path: str) -> bool:
+    """Delete a profile image from Supabase Storage and Redis."""
+    tx_id = await redis_tx_manager.stage_transaction(
+        target="supabase_profile_storage",
+        action="DELETE",
+        payload={"storage_path": storage_path, "bucket": SUPABASE_PROFILE_BUCKET},
+    )
+    try:
+        redis_c = get_async_redis()
+        await redis_c.delete(f"storage:file:{SUPABASE_PROFILE_BUCKET}:{storage_path}")
+        await delete_cache(f"storage:meta:{SUPABASE_PROFILE_BUCKET}:{storage_path}")
+        await delete_cache(f"storage:url:{SUPABASE_PROFILE_BUCKET}:{storage_path}")
+        await clear_cache_pattern(f"storage:list:{SUPABASE_PROFILE_BUCKET}:*")
+    except Exception as cache_err:
+        logger.warning(f"Failed to evict profile image from Redis: {cache_err}")
+
+    client = _get_client()
+    try:
+        client.storage.from_(SUPABASE_PROFILE_BUCKET).remove([storage_path])
+        await redis_tx_manager.commit_transaction(tx_id, {"deleted": True})
+        logger.info(f"[Redis-First] Deleted profile image from Supabase: {storage_path}")
+        return True
+    except Exception as e:
+        logger.error(f"Supabase delete failed for profile image {storage_path}: {e}")
+        await redis_tx_manager.fail_transaction(tx_id, str(e))
+        return False
+
+
+async def list_profile_images(prefix: str = SUPABASE_PROFILE_PATH) -> list[dict]:
+    """List all profile images in the profile_images bucket."""
+    cache_key = f"storage:list:{SUPABASE_PROFILE_BUCKET}:{prefix}"
+    cached = await get_cache(cache_key)
+    if cached is not None:
+        return cached
+
+    client = _get_client()
+    try:
+        files = client.storage.from_(SUPABASE_PROFILE_BUCKET).list(prefix)
+        await set_cache(cache_key, files, ttl=600)
+        return files
+    except Exception as e:
+        logger.error(f"Supabase list failed for {SUPABASE_PROFILE_BUCKET}/{prefix}: {e}")
+        return []
+
+
+# ── Resume Images Object Storage ────────────────────────────────────
+
+
+async def upload_resume_image(
+    file_bytes: bytes,
+    original_filename: str,
+) -> dict:
+    """
+    Upload an extracted resume image to Supabase Storage (bucket: resume_images, path: resumeimages/)
+    using Redis-first architecture:
+    1. Stages upload transaction in Redis.
+    2. Caches raw image in Redis.
+    3. Persists to Supabase Storage bucket.
+    4. Commits transaction and returns public URL.
+    """
+    timestamp = int(time.time())
+    safe_name = os.path.basename(original_filename).replace(" ", "_")
+    storage_path = f"{SUPABASE_RESUME_IMAGES_PATH}/{timestamp}_{safe_name}"
+
+    mime = _content_type(original_filename)
+
+    tx_payload = {
+        "storage_path": storage_path,
+        "bucket": SUPABASE_RESUME_IMAGES_BUCKET,
+        "filename": original_filename,
+        "content_type": mime,
+        "size_bytes": len(file_bytes),
+    }
+    tx_id = await redis_tx_manager.stage_transaction(
+        target="supabase_resume_images_storage",
+        action="UPLOAD",
+        payload=tx_payload,
+    )
+
+    try:
+        redis_c = get_async_redis()
+        await redis_c.setex(f"storage:file:{SUPABASE_RESUME_IMAGES_BUCKET}:{storage_path}", 86400, file_bytes)
+        await set_cache(f"storage:meta:{SUPABASE_RESUME_IMAGES_BUCKET}:{storage_path}", tx_payload, ttl=86400)
+    except Exception as cache_err:
+        logger.warning(f"Failed to pre-cache resume image in Redis: {cache_err}")
+
+    try:
+        client = _get_client()
+        client.storage.from_(SUPABASE_RESUME_IMAGES_BUCKET).upload(
+            path=storage_path,
+            file=file_bytes,
+            file_options={"content-type": mime, "upsert": "true"},
+        )
+        public_url = client.storage.from_(SUPABASE_RESUME_IMAGES_BUCKET).get_public_url(storage_path)
+
+        await set_cache(f"storage:url:{SUPABASE_RESUME_IMAGES_BUCKET}:{storage_path}", public_url, ttl=604800)
+        await clear_cache_pattern(f"storage:list:{SUPABASE_RESUME_IMAGES_BUCKET}:*")
+
+        result_meta = {
+            "storage_path": storage_path,
+            "public_url": public_url,
+            "filename": os.path.basename(storage_path),
+            "bucket": SUPABASE_RESUME_IMAGES_BUCKET,
+        }
+        await redis_tx_manager.commit_transaction(tx_id, result_meta)
+        logger.info(f"[Redis-First] Uploaded resume image to Supabase & cached in Redis: {storage_path}")
+        return result_meta
+    except Exception as e:
+        logger.error(f"[Redis-First] Resume image upload failed for {storage_path}: {e}")
+        await redis_tx_manager.fail_transaction(tx_id, str(e))
+        raise
+
+
+def upload_resume_image_sync(
+    file_bytes: bytes,
+    original_filename: str,
+) -> dict:
+    """Synchronous upload for resume images when called inside extractors."""
+    timestamp = int(time.time())
+    safe_name = os.path.basename(original_filename).replace(" ", "_")
+    storage_path = f"{SUPABASE_RESUME_IMAGES_PATH}/{timestamp}_{safe_name}"
+    mime = _content_type(original_filename)
+
+    client = _get_client()
+    client.storage.from_(SUPABASE_RESUME_IMAGES_BUCKET).upload(
+        path=storage_path,
+        file=file_bytes,
+        file_options={"content-type": mime, "upsert": "true"},
+    )
+    public_url = client.storage.from_(SUPABASE_RESUME_IMAGES_BUCKET).get_public_url(storage_path)
+    return {
+        "storage_path": storage_path,
+        "public_url": public_url,
+        "filename": os.path.basename(storage_path),
+        "bucket": SUPABASE_RESUME_IMAGES_BUCKET,
+    }
+
+
+async def download_resume_image(storage_path: str) -> bytes:
+    """Download a resume image with Redis cache fallback."""
+    try:
+        redis_c = get_async_redis()
+        cached_bytes = await redis_c.get(f"storage:file:{SUPABASE_RESUME_IMAGES_BUCKET}:{storage_path}")
+        if cached_bytes:
+            return cached_bytes
+    except Exception as cache_err:
+        logger.warning(f"Redis lookup failed for resume image {storage_path}: {cache_err}")
+
+    client = _get_client()
+    try:
+        response = client.storage.from_(SUPABASE_RESUME_IMAGES_BUCKET).download(storage_path)
+        try:
+            redis_c = get_async_redis()
+            await redis_c.setex(f"storage:file:{SUPABASE_RESUME_IMAGES_BUCKET}:{storage_path}", 86400, response)
+        except Exception:
+            pass
+        return response
+    except Exception as e:
+        logger.error(f"Supabase resume image download failed for {storage_path}: {e}")
+        raise
+
+
+def get_resume_image_url(storage_path: str) -> str:
+    """Return public URL for an extracted resume image."""
+    client = _get_client()
+    return client.storage.from_(SUPABASE_RESUME_IMAGES_BUCKET).get_public_url(storage_path)
+
+
+async def delete_resume_image(storage_path: str) -> bool:
+    """Delete an extracted resume image from Supabase Storage and Redis."""
+    tx_id = await redis_tx_manager.stage_transaction(
+        target="supabase_resume_images_storage",
+        action="DELETE",
+        payload={"storage_path": storage_path, "bucket": SUPABASE_RESUME_IMAGES_BUCKET},
+    )
+    try:
+        redis_c = get_async_redis()
+        await redis_c.delete(f"storage:file:{SUPABASE_RESUME_IMAGES_BUCKET}:{storage_path}")
+        await delete_cache(f"storage:meta:{SUPABASE_RESUME_IMAGES_BUCKET}:{storage_path}")
+        await delete_cache(f"storage:url:{SUPABASE_RESUME_IMAGES_BUCKET}:{storage_path}")
+        await clear_cache_pattern(f"storage:list:{SUPABASE_RESUME_IMAGES_BUCKET}:*")
+    except Exception as cache_err:
+        logger.warning(f"Failed to evict resume image from Redis: {cache_err}")
+
+    client = _get_client()
+    try:
+        client.storage.from_(SUPABASE_RESUME_IMAGES_BUCKET).remove([storage_path])
+        await redis_tx_manager.commit_transaction(tx_id, {"deleted": True})
+        logger.info(f"[Redis-First] Deleted resume image from Supabase: {storage_path}")
+        return True
+    except Exception as e:
+        logger.error(f"Supabase delete failed for resume image {storage_path}: {e}")
+        await redis_tx_manager.fail_transaction(tx_id, str(e))
+        return False
+
+
+async def list_resume_images(prefix: str = SUPABASE_RESUME_IMAGES_PATH) -> list[dict]:
+    """List all resume images in the resume_images bucket."""
+    cache_key = f"storage:list:{SUPABASE_RESUME_IMAGES_BUCKET}:{prefix}"
+    cached = await get_cache(cache_key)
+    if cached is not None:
+        return cached
+
+    client = _get_client()
+    try:
+        files = client.storage.from_(SUPABASE_RESUME_IMAGES_BUCKET).list(prefix)
+        await set_cache(cache_key, files, ttl=600)
+        return files
+    except Exception as e:
+        logger.error(f"Supabase list failed for {SUPABASE_RESUME_IMAGES_BUCKET}/{prefix}: {e}")
+        return []
+

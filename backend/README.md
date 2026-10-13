@@ -49,6 +49,10 @@ backend/
 - `SUPABASE_URL`: Supabase project URL for cloud document storage.
 - `SUPABASE_SERVICE_ROLE_KEY`: Supabase service role secret key for storage bucket uploads.
 - `SUPABASE_BUCKET`: Storage bucket name for resume uploads (default: `resume storage`).
+- `SUPABASE_PROFILE_BUCKET`: Storage bucket name for profile images (default: `profile_images`).
+- `SUPABASE_PROFILE_PATH`: Folder path inside the profile images bucket (default: `profiles`).
+- `SUPABASE_RESUME_IMAGES_BUCKET`: Storage bucket name for extracted resume images (default: `resume_images`).
+- `SUPABASE_RESUME_IMAGES_PATH`: Folder path inside the resume images bucket (default: `resumeimages`).
 - `WEB_CONCURRENCY`: Number of Uvicorn worker processes in production (default: `4`).
 - `CELERY_CONCURRENCY`: Number of concurrent worker threads for background task processing (default: `4`).
 

@@ -38,31 +38,38 @@ async def upload_profile_image(
     file: UploadFile = File(...),
     db: AsyncSession = Depends(get_db),
 ):
-    # Create directory if it doesn't exist
-    upload_dir = "uploads/profile_images"
-    if not os.path.exists(upload_dir):
-        os.makedirs(upload_dir)
-    
-    # Generate file path
-    file_extension = os.path.splitext(file.filename)[1]
-    file_name = f"candidate_{candidate_id}{file_extension}"
-    file_path = os.path.join(upload_dir, file_name)
-    
-    # Save file
-    print(f"Uploading image for candidate {candidate_id}: {file.filename}")
-    with open(file_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
-    print(f"File saved to {file_path}")
-    
-    # Update database with a cache-busting timestamp
-    import time
-    image_url = f"/{file_path}?t={int(time.time())}"
-    print(f"Updating database with image_url: {image_url}")
+    file_bytes = await file.read()
+    image_url = None
+
+    # 1. Upload to Supabase Storage (bucket: profile_images, path: profiles/)
+    try:
+        from app.utils.supabase_storage import upload_profile_image as sb_upload_profile_image
+        result = await sb_upload_profile_image(
+            file_bytes=file_bytes,
+            original_filename=file.filename or f"candidate_{candidate_id}.png",
+            user_role="candidate",
+            user_id=candidate_id,
+        )
+        image_url = result["public_url"]
+        print(f"Uploaded candidate {candidate_id} profile image to Supabase: {image_url}")
+    except Exception as e:
+        print(f"Supabase profile upload failed, falling back to local: {e}")
+        upload_dir = "uploads/profile_images"
+        if not os.path.exists(upload_dir):
+            os.makedirs(upload_dir)
+        file_extension = os.path.splitext(file.filename or "")[1] or ".png"
+        file_name = f"candidate_{candidate_id}{file_extension}"
+        file_path = os.path.join(upload_dir, file_name)
+        with open(file_path, "wb") as buffer:
+            buffer.write(file_bytes)
+        import time
+        image_url = f"/{file_path}?t={int(time.time())}"
+
+    # Update database and clear cache
     await candidate_service.update_candidate_profile(db, candidate_id, CandidateUpdate(profile_image_url=image_url))
     await clear_cache_pattern(f"candidate_profile:*\"candidate_id\": {candidate_id}*")
-    print("Database updated successfully")
-    
     return {"image_url": image_url}
+
 
 @router.post("/register", response_model=CandidateResponse, status_code=status.HTTP_200_OK)
 async def register_candidate(
