@@ -2,7 +2,7 @@
 
 <p align="left">
   <a href="https://skillicons.dev">
-    <img src="https://skillicons.dev/icons?i=tailwind,typescript,nextjs,redux,py,fastapi,redis,postgres,supabase,nginx,cloudflare" />
+    <img src="https://skillicons.dev/icons?i=tailwind,typescript,nextjs,redux,py,fastapi,redis,postgres,supabase,nginx,cloudflare,docker,linux" />
   </a>
 </p>
 
