@@ -615,18 +615,6 @@ const Header: React.FC = () => {
                 </div>
                 <ChevronDown size={14} className={`hidden sm:block text-gray-400 transition-transform duration-300 ml-1 ${isProfileOpen ? 'rotate-180 text-[#D60041]' : 'group-hover:text-gray-600'}`} />
               </div>
-
-              {/* Responsive Quick Sign Out Button in Navbar */}
-              <button
-                type="button"
-                onClick={handleLogout}
-                className="flex lg:hidden items-center space-x-1.5 p-2 sm:px-3 sm:py-2 text-rose-600 hover:text-white hover:bg-[#D60041] border border-rose-200 hover:border-[#D60041] bg-rose-50/80 hover:shadow-xs rounded-xl transition-all duration-200 active:scale-95 cursor-pointer text-xs font-bold shrink-0"
-                title="Sign Out"
-                aria-label="Sign Out"
-              >
-                <LogOut size={16} />
-                <span className="hidden sm:inline">Sign Out</span>
-              </button>
             </>
           )}
 
