@@ -2,7 +2,7 @@ import React, { ReactNode } from 'react';
 import { useNavigate, useLocation } from '@/utils/navigation';
 import {
   LayoutDashboard, Users, Building2, User, Settings, Search, Briefcase,
-  HelpCircle, BookOpen, MessageSquare, Scale, Sliders, Calendar, Sparkles,
+  BookOpen, MessageSquare, Scale, Sliders, Calendar, Sparkles,
   PanelLeftClose, PanelLeftOpen, X, LogOut
 } from 'lucide-react';
 import { useSelector, useDispatch } from 'react-redux';
@@ -365,28 +365,17 @@ const Sidebar: React.FC = () => {
                   Online
                 </span>
               </div>
-              <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-slate-500">
+              <div className="pt-2 border-t border-slate-100">
                 <button
                   onClick={() => {
                     navigate(settingsPath);
                     if (window.innerWidth < 1024) dispatch(closeSidebar());
                   }}
-                  className="flex items-center space-x-1.5 text-[11px] font-bold hover:text-[#D60041] transition-colors py-1 px-1.5 rounded-lg hover:bg-slate-50 cursor-pointer"
+                  className="w-full flex items-center space-x-2 text-xs font-bold text-slate-600 hover:text-[#D60041] hover:bg-slate-50 transition-colors py-1.5 px-2 rounded-xl cursor-pointer"
                   title="Account Settings"
                 >
-                  <Settings size={13} />
-                  <span>Settings</span>
-                </button>
-                <button
-                  onClick={() => {
-                    navigate('/aboutpage');
-                    if (window.innerWidth < 1024) dispatch(closeSidebar());
-                  }}
-                  className="flex items-center space-x-1.5 text-[11px] font-bold hover:text-[#D60041] transition-colors py-1 px-1.5 rounded-lg hover:bg-slate-50 cursor-pointer"
-                  title="Documentation & Help"
-                >
-                  <HelpCircle size={13} />
-                  <span>Help</span>
+                  <Settings size={14} />
+                  <span>Account Settings</span>
                 </button>
               </div>
 
@@ -420,20 +409,6 @@ const Sidebar: React.FC = () => {
                 </div>
               </div>
 
-              {/* Collapsed Help Shortcut */}
-              <div className="relative group">
-                <button
-                  onClick={() => navigate('/aboutpage')}
-                  className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all cursor-pointer"
-                  aria-label="Help"
-                >
-                  <HelpCircle size={18} />
-                </button>
-                <div className="absolute left-[calc(100%+12px)] top-1/2 -translate-y-1/2 px-2.5 py-1.5 bg-slate-900 text-white text-xs font-semibold rounded-lg shadow-xl whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity duration-150 pointer-events-none z-50 border border-slate-800">
-                  Help Center
-                  <div className="absolute right-full top-1/2 -translate-y-1/2 border-4 border-transparent border-r-slate-900" />
-                </div>
-              </div>
 
               {/* Collapsed Sign Out Shortcut */}
               <div className="relative group">
