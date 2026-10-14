@@ -9,6 +9,7 @@ import { useSelector } from 'react-redux';
 import { WS_BASE_URL } from '../../services/api';
 import { RootState } from '../../redux/store';
 import { ChatContactItem, ChatMessageItem } from '../layout/ChatWidget';
+import { decodeToken } from '../../utils/token';
 
 interface ChatLayoutProps {
   isFullPage?: boolean;
@@ -111,35 +112,86 @@ const ChatLayout: React.FC<ChatLayoutProps> = ({ isFullPage = true }) => {
     const activeContactRef = useRef<ChatContactItem | null>(null);
 
     const token = typeof localStorage !== 'undefined' ? localStorage.getItem('token') : null;
-    const currentUserId = typeof localStorage !== 'undefined' ? parseInt(localStorage.getItem('user_id') || '0', 10) : 0;
+    const decodedToken = decodeToken(token);
+    const currentUserId = typeof localStorage !== 'undefined' 
+        ? (parseInt(localStorage.getItem('user_id') || '0', 10) || decodedToken?.id || 0) 
+        : (decodedToken?.id || 0);
     const currentUserRole = typeof localStorage !== 'undefined' ? (localStorage.getItem('role') || 'Guest') : 'Guest';
 
-    // Load archived contact IDs from localStorage
+    // Load archived contact IDs from localStorage and backend
     useEffect(() => {
-        if (!currentUserId) return;
-        try {
-            const saved = localStorage.getItem(`archived_contacts_${currentUserId}`);
-            if (saved) {
-                setArchivedContactIds(JSON.parse(saved));
+        if (currentUserId) {
+            try {
+                const saved = localStorage.getItem(`archived_contacts_${currentUserId}`);
+                if (saved) {
+                    setArchivedContactIds(JSON.parse(saved));
+                }
+            } catch (e) {
+                console.error("Failed to load archived contacts from localStorage", e);
             }
-        } catch (e) {
-            console.error("Failed to load archived contacts", e);
         }
-    }, [currentUserId]);
 
-    const toggleArchiveContact = (contactId: number, e?: React.MouseEvent) => {
+        if (token) {
+            chatService.getArchivedConversations(token)
+                .then(res => {
+                    if (res?.data?.archived_contact_ids && Array.isArray(res.data.archived_contact_ids)) {
+                        setArchivedContactIds(prev => {
+                            const merged = Array.from(new Set([...prev, ...res.data.archived_contact_ids]));
+                            if (currentUserId) {
+                                try {
+                                    localStorage.setItem(`archived_contacts_${currentUserId}`, JSON.stringify(merged));
+                                } catch (err) {
+                                    console.error("Failed to save to localStorage", err);
+                                }
+                            }
+                            return merged;
+                        });
+                    }
+                })
+                .catch(err => {
+                    console.error("Failed to load archived conversations from backend", err);
+                });
+        }
+    }, [currentUserId, token]);
+
+    const toggleArchiveContact = async (contactId: number, e?: React.MouseEvent) => {
         if (e) e.stopPropagation();
-        setArchivedContactIds(prev => {
-            const isArchived = prev.includes(contactId);
-            const next = isArchived ? prev.filter(id => id !== contactId) : [...prev, contactId];
+        const isArchived = archivedContactIds.includes(contactId);
+        const next = isArchived ? archivedContactIds.filter(id => id !== contactId) : [...archivedContactIds, contactId];
+
+        // Optimistic UI updates
+        setArchivedContactIds(next);
+        setContacts(prev => prev.map(c => c.id === contactId ? { ...c, is_archived: !isArchived } : c));
+        if (currentUserId) {
             try {
                 localStorage.setItem(`archived_contacts_${currentUserId}`, JSON.stringify(next));
             } catch (err) {
                 console.error("Failed to save archived contacts", err);
             }
-            toast.success(isArchived ? "Conversation moved to active inbox" : "Conversation archived");
-            return next;
-        });
+        }
+        toast.success(isArchived ? "Conversation moved to active inbox" : "Conversation archived");
+
+        // Persist to backend database
+        try {
+            if (isArchived) {
+                await chatService.unarchiveConversation(contactId, token);
+            } else {
+                await chatService.archiveConversation(contactId, token);
+            }
+        } catch (err) {
+            console.error("Failed to sync archive status with backend", err);
+            toast.error("Could not sync archive status with server");
+            // Revert state if backend call failed
+            setArchivedContactIds(prev => isArchived ? [...prev, contactId] : prev.filter(id => id !== contactId));
+            setContacts(prev => prev.map(c => c.id === contactId ? { ...c, is_archived: isArchived } : c));
+            if (currentUserId) {
+                try {
+                    localStorage.setItem(`archived_contacts_${currentUserId}`, JSON.stringify(archivedContactIds));
+                } catch (e) {
+                    console.error("Failed to revert localStorage", e);
+                }
+            }
+        }
     };
 
     // Sync ref with state
@@ -222,7 +274,26 @@ const ChatLayout: React.FC<ChatLayoutProps> = ({ isFullPage = true }) => {
     const fetchContacts = async () => {
         try {
             const res = await chatService.getContacts(token, search);
-            setContacts(res.data.users || []);
+            const userList: ChatContactItem[] = res.data.users || [];
+            setContacts(userList);
+
+            // Synchronize archived contact IDs from backend contacts
+            const backendArchivedIds = userList.filter(c => c.is_archived).map(c => c.id);
+            setArchivedContactIds(prev => {
+                const activeIds = userList.filter(c => c.is_archived === false).map(c => c.id);
+                const nextList = Array.from(new Set([
+                    ...prev.filter(id => !activeIds.includes(id)),
+                    ...backendArchivedIds
+                ]));
+                if (currentUserId) {
+                    try {
+                        localStorage.setItem(`archived_contacts_${currentUserId}`, JSON.stringify(nextList));
+                    } catch (e) {
+                        console.error("Failed to sync archived contacts to localStorage", e);
+                    }
+                }
+                return nextList;
+            });
         } catch (error) {
             console.error("Failed to fetch contacts", error);
         }

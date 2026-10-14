@@ -14,6 +14,7 @@ export interface ChatContactItem {
   last_message?: string;
   last_message_time?: string;
   unread_count?: number;
+  is_archived?: boolean;
 }
 
 export interface ChatMessageItem {
@@ -369,8 +370,8 @@ const ChatWidget: React.FC = () => {
 
                                 {/* Contacts List */}
                                 <div className="flex-1 overflow-y-auto">
-                                    {contacts.length > 0 ? (
-                                        contacts.map(contact => (
+                                    {contacts.filter(c => !c.is_archived).length > 0 ? (
+                                        contacts.filter(c => !c.is_archived).map(contact => (
                                             <div 
                                                 key={contact.id} 
                                                 onClick={() => openChat(contact)}

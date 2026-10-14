@@ -127,6 +127,36 @@ async def ensure_application_analysis_columns(conn):
             logger.warning(f"Could not ensure users.{col_name}: {e}")
 
 
+async def ensure_archived_conversations_table(conn):
+    """
+    Ensure the archived_conversations table exists in PostgreSQL or SQLite.
+    """
+    try:
+        dialect = conn.dialect.name
+        if dialect == "sqlite":
+            await conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS archived_conversations (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    contact_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    archived_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    CONSTRAINT uq_user_contact_archive UNIQUE (user_id, contact_id)
+                )
+            """))
+        else:
+            await conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS archived_conversations (
+                    id SERIAL PRIMARY KEY,
+                    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    contact_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    archived_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+                    CONSTRAINT uq_user_contact_archive UNIQUE (user_id, contact_id)
+                )
+            """))
+    except Exception as e:
+        logger.warning(f"Could not ensure archived_conversations table: {e}")
+
+
 async def create_tables():
     from app.models.user import User
     from app.models.candidate import Candidate
@@ -135,14 +165,18 @@ async def create_tables():
     from app.models.resume import Resume
     from app.models.job_application import JobApplication
     from app.models.notification import Notification
-    from app.models.message import Message
+    from app.models.message import Message, ArchivedConversation
     from app.models.password_reset import PasswordReset
     from app.models.interview import Interview, InterviewLog
     from app.models.system_config import SystemConfig, FormTemplate
 
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-        await ensure_application_analysis_columns(conn)
+    try:
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+            await ensure_application_analysis_columns(conn)
+            await ensure_archived_conversations_table(conn)
+    except Exception as e:
+        logger.debug(f"Table creation notice (concurrent worker init): {e}")
 
 
 async def seed_demo_data_if_enabled():

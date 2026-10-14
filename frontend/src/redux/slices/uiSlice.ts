@@ -5,7 +5,7 @@ export interface UIState {
 }
 
 const initialState: UIState = {
-  isSidebarOpen: true,
+  isSidebarOpen: false,
 };
 
 const uiSlice = createSlice({

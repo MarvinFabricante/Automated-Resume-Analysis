@@ -25,6 +25,16 @@ class ChatUser(BaseModel):
     last_message: Optional[str] = None
     last_message_time: Optional[datetime] = None
     unread_count: Optional[int] = 0
+    is_archived: Optional[bool] = False
 
 class ChatContactResponse(BaseModel):
     users: List[ChatUser]
+
+class ArchiveConversationResponse(BaseModel):
+    success: bool
+    contact_id: int
+    is_archived: bool
+    message: str
+
+class ArchivedContactsResponse(BaseModel):
+    archived_contact_ids: List[int]

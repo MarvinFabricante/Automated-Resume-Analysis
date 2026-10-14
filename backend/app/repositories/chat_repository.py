@@ -4,7 +4,7 @@ from typing import List, Optional
 import logging
 
 from app.models.user import User
-from app.models.message import Message
+from app.models.message import Message, ArchivedConversation
 from app.utils.redis_client import redis_tx_manager
 from app.utils.cache import get_cache, set_cache, delete_cache, clear_cache_pattern
 
@@ -225,6 +225,75 @@ async def delete_message_by_id(db: AsyncSession, message_id: int, user_id: int, 
     return True
 
 
+async def get_archived_contact_ids(db: AsyncSession, user_id: int) -> List[int]:
+    """Get list of contact IDs archived by user_id (checks Redis cache first)."""
+    cache_key = f"chat:archived:{user_id}"
+    cached = await get_cache(cache_key)
+    if cached is not None:
+        return cached
+
+    query = select(ArchivedConversation.contact_id).where(ArchivedConversation.user_id == user_id)
+    result = await db.execute(query)
+    archived_ids = [row[0] for row in result.fetchall()]
+    await set_cache(cache_key, archived_ids, ttl=300)
+    return archived_ids
+
+
+async def archive_conversation(db: AsyncSession, user_id: int, contact_id: int) -> bool:
+    """Archive a conversation between user_id and contact_id (Redis-first transaction)."""
+    tx_id = await redis_tx_manager.stage_transaction(
+        target="chat_archive",
+        action="ARCHIVE",
+        payload={"user_id": user_id, "contact_id": contact_id},
+    )
+    try:
+        query = select(ArchivedConversation).where(
+            ArchivedConversation.user_id == user_id,
+            ArchivedConversation.contact_id == contact_id
+        )
+        result = await db.execute(query)
+        existing = result.scalar_one_or_none()
+        if not existing:
+            new_archive = ArchivedConversation(user_id=user_id, contact_id=contact_id)
+            db.add(new_archive)
+            await db.commit()
+
+        await redis_tx_manager.commit_transaction(tx_id, {"status": "archived"})
+        await delete_cache(f"chat:archived:{user_id}")
+        await clear_cache_pattern(f"contacts:{user_id}:")
+        return True
+    except Exception as e:
+        await redis_tx_manager.fail_transaction(tx_id, str(e))
+        logger.error(f"[Redis-First] archive_conversation failed: {e}")
+        raise
+
+
+async def unarchive_conversation(db: AsyncSession, user_id: int, contact_id: int) -> bool:
+    """Unarchive a conversation between user_id and contact_id (Redis-first transaction)."""
+    tx_id = await redis_tx_manager.stage_transaction(
+        target="chat_archive",
+        action="UNARCHIVE",
+        payload={"user_id": user_id, "contact_id": contact_id},
+    )
+    try:
+        query = delete(ArchivedConversation).where(
+            ArchivedConversation.user_id == user_id,
+            ArchivedConversation.contact_id == contact_id
+        )
+        await db.execute(query)
+        await db.commit()
+
+        await redis_tx_manager.commit_transaction(tx_id, {"status": "unarchived"})
+        await delete_cache(f"chat:archived:{user_id}")
+        await clear_cache_pattern(f"contacts:{user_id}:")
+        return True
+    except Exception as e:
+        await redis_tx_manager.fail_transaction(tx_id, str(e))
+        logger.error(f"[Redis-First] unarchive_conversation failed: {e}")
+        raise
+
+
 import sys
 chat_repository = sys.modules[__name__]
 ChatRepository = sys.modules[__name__]
+

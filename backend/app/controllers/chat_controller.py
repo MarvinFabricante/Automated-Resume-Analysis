@@ -5,7 +5,13 @@ from typing import List, Optional
 from app.utils.database import get_db
 from app.utils.auth import get_current_user
 from app.models.user import User
-from app.schemas.message_schema import MessageCreate, MessageResponse, ChatContactResponse
+from app.schemas.message_schema import (
+    MessageCreate,
+    MessageResponse,
+    ChatContactResponse,
+    ArchiveConversationResponse,
+    ArchivedContactsResponse,
+)
 from app.utils.websocket_manager import manager
 from app.services import chat_service
 from app.repositories.auth_repository import AuthRepository
@@ -79,6 +85,45 @@ async def delete_single_message(
     if not success:
         raise HTTPException(status_code=404, detail="Message not found or unauthorized")
     return {"detail": "Message deleted successfully"}
+
+@router.get("/archived-conversations", response_model=ArchivedContactsResponse)
+async def get_archived_conversations(
+    current_user: User = Depends(get_current_user_obj),
+    db: AsyncSession = Depends(get_db)
+):
+    archived_ids = await chat_service.get_archived_contact_ids(db, current_user.id)
+    return ArchivedContactsResponse(archived_contact_ids=archived_ids)
+
+@router.post("/conversations/{other_user_id}/archive", response_model=ArchiveConversationResponse)
+@router.patch("/conversations/{other_user_id}/archive", response_model=ArchiveConversationResponse)
+async def archive_conversation(
+    other_user_id: int,
+    current_user: User = Depends(get_current_user_obj),
+    db: AsyncSession = Depends(get_db)
+):
+    success = await chat_service.archive_conversation(db, current_user.id, other_user_id)
+    return ArchiveConversationResponse(
+        success=success,
+        contact_id=other_user_id,
+        is_archived=True,
+        message="Conversation archived successfully"
+    )
+
+@router.post("/conversations/{other_user_id}/unarchive", response_model=ArchiveConversationResponse)
+@router.delete("/conversations/{other_user_id}/archive", response_model=ArchiveConversationResponse)
+async def unarchive_conversation(
+    other_user_id: int,
+    current_user: User = Depends(get_current_user_obj),
+    db: AsyncSession = Depends(get_db)
+):
+    success = await chat_service.unarchive_conversation(db, current_user.id, other_user_id)
+    return ArchiveConversationResponse(
+        success=success,
+        contact_id=other_user_id,
+        is_archived=False,
+        message="Conversation unarchived successfully"
+    )
+
 
 @router.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket, token: str = Query(...)):

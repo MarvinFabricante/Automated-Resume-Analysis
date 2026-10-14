@@ -177,4 +177,5 @@ export interface ChatContact {
   last_message?: string;
   last_message_time?: string;
   profile_image_url?: string | null;
+  is_archived?: boolean;
 }

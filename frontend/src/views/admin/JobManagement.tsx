@@ -179,7 +179,7 @@ const JobManagementPage: React.FC = () => {
       
       <div className="flex flex-1">
         <Sidebar />
-        <main className="flex-1 w-full max-w-full px-4 sm:px-6 md:px-10 py-6 md:py-8 animate-in fade-in duration-500">
+        <main className="flex-1 w-full max-w-full px-3 sm:px-6 md:px-10 py-4 sm:py-6 md:py-8 min-w-0 overflow-x-hidden animate-in fade-in duration-500">
         <JobManagementHeader onCreateJob={() => setModalState({ type: 'create', selectedJob: null })} />
 
         <JobSearchAndFilter
@@ -217,36 +217,36 @@ const JobManagementPage: React.FC = () => {
             
             {/* Pagination Controls */}
             {totalPages > 1 && (
-              <div className="mt-12 flex flex-col md:flex-row items-center justify-between gap-6 bg-white px-8 py-6 rounded-[32px] shadow-sm border border-gray-100">
-                <div className="text-sm text-gray-500 font-medium">
-                  Showing <span className="font-bold text-gray-900">{((currentPage - 1) * itemsPerPage) + 1}</span> to <span className="font-bold text-gray-900">{Math.min(currentPage * itemsPerPage, filteredJobs.length)}</span> of <span className="font-bold text-gray-900">{filteredJobs.length}</span> jobs
+              <div className="mt-8 sm:mt-12 flex flex-col md:flex-row items-center justify-between gap-4 sm:gap-6 bg-white px-5 sm:px-8 py-4 sm:py-5 rounded-2xl sm:rounded-3xl md:rounded-[32px] shadow-sm border border-gray-100">
+                <div className="text-xs sm:text-sm text-slate-600 font-medium text-center md:text-left">
+                  Showing <span className="font-bold text-slate-900">{((currentPage - 1) * itemsPerPage) + 1}</span> to <span className="font-bold text-slate-900">{Math.min(currentPage * itemsPerPage, filteredJobs.length)}</span> of <span className="font-bold text-slate-900">{filteredJobs.length}</span> positions
                 </div>
                 
-                <div className="flex items-center gap-6">
+                <div className="flex flex-wrap items-center justify-center gap-2.5 sm:gap-4 w-full md:w-auto">
                   <button
                     onClick={handlePrevPage}
                     disabled={currentPage === 1}
-                    className="group flex items-center gap-2 px-6 py-3 rounded-full bg-white border border-gray-100 shadow-sm text-sm font-semibold text-gray-600 hover:bg-gray-50 hover:border-gray-200 disabled:opacity-40 disabled:cursor-not-allowed transition-all active:scale-95"
+                    className="group flex items-center gap-1.5 sm:gap-2 px-4 sm:px-5 py-2.5 rounded-xl bg-white border border-slate-200 shadow-2xs text-xs sm:text-sm font-bold text-slate-700 hover:bg-slate-50 hover:border-slate-300 disabled:opacity-40 disabled:cursor-not-allowed transition-all active:scale-95 cursor-pointer min-h-[40px]"
                   >
-                    <ArrowRight size={18} className="rotate-180 group-hover:-translate-x-1 transition-transform" />
-                    Previous
+                    <ArrowRight size={16} className="rotate-180 group-hover:-translate-x-1 transition-transform" />
+                    <span>Previous</span>
                   </button>
                   
-                  <div className="flex items-center gap-3">
-                    <span className="text-xs font-bold text-gray-400 uppercase tracking-widest">Page</span>
-                    <div className="px-4 py-2 rounded-xl bg-white border border-gray-100 shadow-inner font-black text-[#D60041] text-sm">
+                  <div className="flex items-center gap-1.5 sm:gap-2 px-2">
+                    <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Page</span>
+                    <div className="px-3.5 py-1.5 rounded-lg bg-slate-100 border border-slate-200 font-black text-[#D60041] text-xs sm:text-sm shadow-inner">
                       {currentPage}
                     </div>
-                    <span className="text-xs font-bold text-gray-400 uppercase tracking-widest">of {totalPages}</span>
+                    <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">of {totalPages}</span>
                   </div>
 
                   <button
                     onClick={handleNextPage}
                     disabled={currentPage === totalPages}
-                    className="group flex items-center gap-2 px-6 py-3 rounded-full bg-[#1A1A1A] text-white shadow-lg text-sm font-semibold hover:bg-[#D60041] disabled:opacity-40 disabled:cursor-not-allowed transition-all active:scale-95"
+                    className="group flex items-center gap-1.5 sm:gap-2 px-4 sm:px-5 py-2.5 rounded-xl bg-[#1A1A1A] text-white shadow-xs text-xs sm:text-sm font-bold hover:bg-[#D60041] disabled:opacity-40 disabled:cursor-not-allowed transition-all active:scale-95 cursor-pointer min-h-[40px]"
                   >
-                    Next
-                    <ArrowRight size={18} className="group-hover:translate-x-1 transition-transform" />
+                    <span>Next</span>
+                    <ArrowRight size={16} className="group-hover:translate-x-1 transition-transform" />
                   </button>
                 </div>
               </div>
@@ -278,22 +278,22 @@ const JobManagementPage: React.FC = () => {
       {/* Confirm Modal */}
       {confirmModal.isOpen && (
         <div className="fixed inset-0 bg-[#0c0d12]/60 backdrop-blur-md flex items-center justify-center z-50 p-4 animate-in fade-in duration-300">
-          <div className="bg-white w-full max-w-md rounded-[32px] border border-gray-100 shadow-2xl overflow-hidden p-8 animate-in zoom-in-95 duration-300">
-            <div className="flex items-center justify-center w-14 h-14 bg-rose-50 border-2 border-rose-100 rounded-2xl text-rose-600 mb-6 mx-auto">
-              <AlertCircle className="w-6 h-6" />
+          <div className="bg-white w-full max-w-md rounded-2xl sm:rounded-3xl md:rounded-[32px] border border-gray-100 shadow-2xl overflow-hidden p-5 sm:p-8 animate-in zoom-in-95 duration-300">
+            <div className="flex items-center justify-center w-12 h-12 sm:w-14 sm:h-14 bg-rose-50 border-2 border-rose-100 rounded-2xl text-rose-600 mb-4 sm:mb-6 mx-auto">
+              <AlertCircle className="w-5 h-5 sm:w-6 sm:h-6" />
             </div>
             
-            <h3 className="text-lg font-bold text-gray-900 text-center uppercase tracking-wider mb-2">
+            <h3 className="text-base sm:text-lg font-bold text-gray-900 text-center uppercase tracking-wider mb-2">
               {confirmModal.title}
             </h3>
-            <p className="text-sm text-gray-500 text-center font-medium leading-relaxed mb-8">
+            <p className="text-xs sm:text-sm text-gray-500 text-center font-medium leading-relaxed mb-6 sm:mb-8">
               {confirmModal.message}
             </p>
             
-            <div className="flex gap-4">
+            <div className="flex gap-3 sm:gap-4">
               <button
                 onClick={() => setConfirmModal({ ...confirmModal, isOpen: false })}
-                className="flex-1 py-3 px-5 border-2 border-gray-100 text-gray-500 rounded-xl text-xs font-bold uppercase tracking-wider hover:bg-gray-50 transition-all duration-300"
+                className="flex-1 py-2.5 sm:py-3 px-4 sm:px-5 border-2 border-gray-100 text-gray-500 rounded-xl text-xs font-bold uppercase tracking-wider hover:bg-gray-50 transition-all duration-300 cursor-pointer"
               >
                 Cancel
               </button>
@@ -304,7 +304,7 @@ const JobManagementPage: React.FC = () => {
                   }
                   setConfirmModal({ ...confirmModal, isOpen: false });
                 }}
-                className="flex-1 py-3 px-5 bg-rose-600 text-white rounded-xl text-xs font-bold uppercase tracking-wider hover:bg-rose-700 hover:shadow-lg hover:shadow-rose-100 transition-all duration-300"
+                className="flex-1 py-2.5 sm:py-3 px-4 sm:px-5 bg-rose-600 text-white rounded-xl text-xs font-bold uppercase tracking-wider hover:bg-rose-700 hover:shadow-lg hover:shadow-rose-100 transition-all duration-300 cursor-pointer"
               >
                 Confirm
               </button>
@@ -315,7 +315,7 @@ const JobManagementPage: React.FC = () => {
 
       {/* Toast Notification */}
       {toast && (
-        <div className={`fixed bottom-6 right-6 flex items-center gap-3 px-5 py-4 rounded-2xl shadow-2xl border animate-in slide-in-from-bottom-5 duration-300 z-50 ${
+        <div className={`fixed bottom-4 sm:bottom-6 right-4 sm:right-6 left-4 sm:left-auto max-w-md flex items-center gap-3 px-4 sm:px-5 py-3 sm:py-4 rounded-xl sm:rounded-2xl shadow-2xl border animate-in slide-in-from-bottom-5 duration-300 z-50 ${
           toast.type === 'success' 
             ? 'bg-emerald-50 border-emerald-100 text-emerald-800' 
             : 'bg-rose-50 border-rose-100 text-rose-800'
@@ -325,8 +325,8 @@ const JobManagementPage: React.FC = () => {
           ) : (
             <AlertCircle className="w-5 h-5 text-rose-600 shrink-0" />
           )}
-          <span className="text-xs font-bold uppercase tracking-wider">{toast.message}</span>
-          <button onClick={() => setToast(null)} className="ml-2 hover:opacity-75">
+          <span className="text-xs font-bold uppercase tracking-wider flex-1">{toast.message}</span>
+          <button onClick={() => setToast(null)} className="ml-2 hover:opacity-75 cursor-pointer">
             <X className="w-4 h-4" />
           </button>
         </div>

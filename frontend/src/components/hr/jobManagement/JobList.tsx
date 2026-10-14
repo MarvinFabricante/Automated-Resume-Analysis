@@ -15,9 +15,9 @@ interface JobListProps {
 const JobList: React.FC<JobListProps> = ({ jobs, onEdit, onView, onArchive, onUnarchive, onDelete }) => {
   if (jobs.length === 0) {
     return (
-      <div className="text-center py-16 px-4 bg-white rounded-[32px] border border-gray-100 shadow-sm">
-        <div className="w-14 h-14 bg-gray-50 rounded-2xl flex items-center justify-center mx-auto mb-3 border border-gray-100">
-          <Search className="w-6 h-6 text-gray-300" />
+      <div className="text-center py-12 sm:py-16 px-4 bg-white rounded-2xl sm:rounded-3xl md:rounded-[32px] border border-gray-100 shadow-sm">
+        <div className="w-12 h-12 sm:w-14 sm:h-14 bg-gray-50 rounded-2xl flex items-center justify-center mx-auto mb-3 border border-gray-100">
+          <Search className="w-5 h-5 sm:w-6 sm:h-6 text-gray-300" />
         </div>
         <h4 className="text-sm font-bold text-gray-900">No jobs found</h4>
         <p className="text-xs text-gray-400 mt-1">Try adjusting your filters or search query.</p>
@@ -26,7 +26,7 @@ const JobList: React.FC<JobListProps> = ({ jobs, onEdit, onView, onArchive, onUn
   }
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-3.5 sm:space-y-5">
       {jobs.map(job => (
         <JobCard
           key={job.id || job.job_id}

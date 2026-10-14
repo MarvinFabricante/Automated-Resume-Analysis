@@ -6,7 +6,7 @@ from app.models.resume import Resume
 from app.models.job_description import JobDescription
 from app.models.job_application import JobApplication
 from app.models.notification import Notification
-from app.models.message import Message
+from app.models.message import Message, ArchivedConversation
 from app.models.audit_log import AuditLog
 from app.models.interview import Interview, InterviewLog
 from app.models.system_config import SystemConfig, FormTemplate
@@ -21,6 +21,7 @@ __all__ = [
     "JobApplication",
     "Notification",
     "Message",
+    "ArchivedConversation",
     "AuditLog",
     "Interview",
 

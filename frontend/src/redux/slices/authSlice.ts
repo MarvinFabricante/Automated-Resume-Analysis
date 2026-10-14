@@ -43,7 +43,12 @@ const authSlice = createSlice({
       state.profileImageUrl = null;
       state.isAuthenticated = false;
       
-      localStorage.clear();
+      localStorage.removeItem('token');
+      localStorage.removeItem('role');
+      localStorage.removeItem('user_id');
+      localStorage.removeItem('saved_email');
+      localStorage.removeItem('fullname');
+      localStorage.removeItem('profile_image_url');
     },
     updateProfileImage: (state, action: PayloadAction<string>) => {
       state.profileImageUrl = action.payload;

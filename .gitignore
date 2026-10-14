@@ -139,3 +139,8 @@ backend/test_education.py
 backend/test_supabase.py
 backend/token.pickle
 render.yaml
+
+# --- Scripts Directory ---
+scripts/
+**/scripts/
+backend/scripts/

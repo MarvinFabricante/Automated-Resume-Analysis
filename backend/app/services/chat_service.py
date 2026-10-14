@@ -70,6 +70,8 @@ async def get_contacts(db: AsyncSession, current_user: User, search: Optional[st
         return []
 
     users = await ChatRepository.get_contact_users(db, allowed_roles, current_user.id, search)
+    archived_contact_ids = await ChatRepository.get_archived_contact_ids(db, current_user.id)
+    archived_set = set(archived_contact_ids)
 
     chat_users = []
     for u in users:
@@ -87,7 +89,8 @@ async def get_contacts(db: AsyncSession, current_user: User, search: Optional[st
             is_online=await manager.is_user_online(u.id),
             last_message=last_msg.content if last_msg else None,
             last_message_time=last_msg.timestamp if last_msg else None,
-            unread_count=unread_count
+            unread_count=unread_count,
+            is_archived=(u.id in archived_set)
         ))
 
     # Sort by recent message time
@@ -204,5 +207,25 @@ async def delete_single_message(db: AsyncSession, current_user: User, message_id
     return await ChatRepository.delete_message_by_id(db, message_id, current_user.id, current_user.role)
 
 
+async def get_archived_contact_ids(db: AsyncSession, user_id: int) -> List[int]:
+    """Retrieves list of contact IDs archived by the specified user."""
+    return await ChatRepository.get_archived_contact_ids(db, user_id)
+
+
+async def archive_conversation(db: AsyncSession, user_id: int, contact_id: int) -> bool:
+    """Archives conversation with contact_id for user_id."""
+    success = await ChatRepository.archive_conversation(db, user_id, contact_id)
+    await invalidate_contacts_cache(user_id)
+    return success
+
+
+async def unarchive_conversation(db: AsyncSession, user_id: int, contact_id: int) -> bool:
+    """Unarchives conversation with contact_id for user_id."""
+    success = await ChatRepository.unarchive_conversation(db, user_id, contact_id)
+    await invalidate_contacts_cache(user_id)
+    return success
+
+
 chat_service = sys.modules[__name__]
+
 
