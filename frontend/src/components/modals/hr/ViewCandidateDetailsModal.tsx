@@ -183,6 +183,43 @@ const ViewCandidateDetailsModal: React.FC<ViewCandidateDetailsModalProps> = ({
       label: type || 'Full-time'
     };
   };
+
+  const getEduLevelBadge = (level?: string) => {
+    const l = (level || '').toLowerCase();
+    if (l.includes('postgraduate') || l.includes('master') || l.includes('doctor')) {
+      return { bg: 'bg-purple-50 text-purple-700 border-purple-200', label: level || 'Postgraduate' };
+    }
+    if (l.includes('tertiary') || l.includes('college') || l.includes('bachelor')) {
+      return { bg: 'bg-blue-50 text-blue-700 border-blue-200', label: level || 'Tertiary / College' };
+    }
+    if (l.includes('vocational') || l.includes('tesda') || l.includes('technical')) {
+      return { bg: 'bg-teal-50 text-teal-700 border-teal-200', label: level || 'Vocational / Technical (TESDA)' };
+    }
+    if (l.includes('senior high') || l.includes('shs')) {
+      return { bg: 'bg-orange-50 text-orange-700 border-orange-200', label: level || 'Senior High School (SHS)' };
+    }
+    if (l.includes('secondary') || l.includes('junior high') || l.includes('high school')) {
+      return { bg: 'bg-slate-50 text-slate-700 border-slate-200', label: level || 'Secondary / High School' };
+    }
+    if (l.includes('primary') || l.includes('elementary')) {
+      return { bg: 'bg-emerald-50 text-emerald-700 border-emerald-200', label: level || 'Primary / Elementary' };
+    }
+    return { bg: 'bg-gray-50 text-gray-700 border-gray-200', label: level || 'Education' };
+  };
+
+  const getEduStatusBadge = (status?: string) => {
+    const s = (status || '').toLowerCase();
+    if (s.includes('undergrad') || s.includes('college level')) {
+      return { bg: 'bg-amber-50 text-amber-700 border-amber-200', label: status || 'Undergraduate / College Level' };
+    }
+    if (s.includes('ongoing') || s.includes('enrolled')) {
+      return { bg: 'bg-blue-50 text-blue-700 border-blue-200', label: status || 'Ongoing' };
+    }
+    if (s.includes('completed') || s.includes('completer')) {
+      return { bg: 'bg-teal-50 text-teal-700 border-teal-200', label: status || 'Completed' };
+    }
+    return { bg: 'bg-emerald-50 text-emerald-700 border-emerald-200', label: status || 'Graduated' };
+  };
   const hasStoredBreakdown = Boolean(
     matchedSkills.length ||
     missingSkills.length ||
@@ -417,7 +454,14 @@ const ViewCandidateDetailsModal: React.FC<ViewCandidateDetailsModalProps> = ({
                   <p className="text-xs font-bold text-gray-800">{candidate.company || "Not provided"}</p>
                 </div>
                 <div className="bg-white p-3 rounded-xl border border-gray-100">
-                  <p className="text-[9px] font-bold text-gray-400 uppercase mb-1">Education</p>
+                  <div className="flex items-center justify-between mb-1">
+                    <p className="text-[9px] font-bold text-gray-400 uppercase">Education</p>
+                    {candidate.highest_educational_attainment && (
+                      <span className="text-[9px] font-bold text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">
+                        {candidate.highest_educational_attainment}
+                      </span>
+                    )}
+                  </div>
                   <p className="text-xs font-bold text-gray-800">
                     {[candidate.degree, candidate.college].filter(Boolean).join(" - ") || "Not provided"}
                   </p>
@@ -732,38 +776,146 @@ const ViewCandidateDetailsModal: React.FC<ViewCandidateDetailsModalProps> = ({
 
             {/* ═══════ 3. EDUCATION MATCH BREAKDOWN ═══════ */}
             <section className={`mb-6 sm:mb-8 ${mobileTab === 'analysis' ? 'block' : 'hidden md:block'}`}>
-              <div className="flex items-center gap-2.5 mb-4">
-                <div className="flex items-center justify-center w-8 h-8 bg-amber-100 rounded-xl">
-                  <GraduationCap size={16} className="text-amber-600" />
+              <div className="flex items-center justify-between gap-2.5 mb-4">
+                <div className="flex items-center gap-2.5">
+                  <div className="flex items-center justify-center w-8 h-8 bg-amber-100 rounded-xl">
+                    <GraduationCap size={16} className="text-amber-600" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-black text-gray-900 uppercase tracking-tight">3. Education & Certification Breakdown</h3>
+                    <p className="text-[10px] font-semibold text-amber-600">{Math.round(candidate.educationScore || 0)}% — Contributes 20% to overall</p>
+                  </div>
                 </div>
-                <div>
-                  <h3 className="text-sm font-black text-gray-900 uppercase tracking-tight">3. Education & Certification Breakdown</h3>
-                  <p className="text-[10px] font-semibold text-amber-600">{Math.round(candidate.educationScore || 0)}% — Contributes 20% to overall</p>
-                </div>
+                {candidate.highest_educational_attainment && (
+                  <div className="flex items-center gap-1.5 px-3 py-1 bg-amber-50 rounded-full border border-amber-200">
+                    <GraduationCap size={13} className="text-amber-600" />
+                    <span className="text-xs font-bold text-amber-800">
+                      {candidate.highest_educational_attainment}
+                    </span>
+                  </div>
+                )}
               </div>
 
               <div className="bg-gray-50/80 rounded-2xl border border-gray-100 p-5 space-y-4">
-                {/* Qualifications Met */}
-                <div>
-                  <div className="flex items-center gap-1.5 mb-2">
-                    <Award size={13} className="text-emerald-500" />
-                    <span className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider">Target Qualifications Met</span>
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="bg-white p-3 rounded-xl border border-gray-100">
-                      <p className="text-[9px] font-bold text-gray-400 uppercase mb-0.5">Candidate Degree</p>
-                      <p className="text-sm font-bold text-gray-800">
-                        {candidate.candidate_degree || candidate.degree || "Not specified"}
-                      </p>
+                {/* Structured Education History */}
+                {candidate.education_entries && candidate.education_entries.length > 0 ? (
+                  <div>
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-1.5">
+                        <GraduationCap size={13} className="text-amber-600" />
+                        <span className="text-[10px] font-bold text-amber-800 uppercase tracking-wider">
+                          Educational History & Certifications ({candidate.education_entries.length})
+                        </span>
+                      </div>
+                      {candidate.highest_educational_attainment && (
+                        <span className="text-[10px] font-semibold text-gray-500">
+                          Highest: <span className="text-amber-700 font-bold">{candidate.highest_educational_attainment}</span>
+                        </span>
+                      )}
                     </div>
-                    <div className="bg-white p-3 rounded-xl border border-gray-100">
-                      <p className="text-[9px] font-bold text-gray-400 uppercase mb-0.5">Required Degree</p>
-                      <p className="text-sm font-bold text-gray-800">
-                        {candidate.required_degree || "Any"}
-                      </p>
+
+                    <div className="space-y-3">
+                      {candidate.education_entries.map((edu: any, idx: number) => {
+                        const levelBadge = getEduLevelBadge(edu.education_level);
+                        const statusBadge = getEduStatusBadge(edu.status);
+                        const displayDegree = edu.degree_or_course || edu.raw_degree_or_course || "Degree / Course";
+                        const yearsDisplay = [edu.start_year, edu.end_year].filter(Boolean).join(' – ');
+
+                        return (
+                          <div 
+                            key={idx}
+                            className="bg-white p-4 rounded-xl border border-gray-200/80 shadow-[0_1px_3px_rgba(0,0,0,0.04)] hover:border-amber-200 transition-colors"
+                          >
+                            {/* Card Header: Level Badge & Status Badge & Years */}
+                            <div className="flex flex-wrap items-start justify-between gap-2 mb-2">
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${levelBadge.bg}`}>
+                                  {levelBadge.label}
+                                </span>
+                                {edu.status && (
+                                  <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${statusBadge.bg}`}>
+                                    {statusBadge.label}
+                                  </span>
+                                )}
+                              </div>
+                              {yearsDisplay && (
+                                <div className="text-right flex items-center gap-1 text-xs font-semibold text-gray-600">
+                                  <Calendar size={11} className="text-gray-400" />
+                                  <span>{yearsDisplay}</span>
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Degree or Course */}
+                            <h4 className="text-sm font-bold text-gray-900 leading-snug">
+                              {displayDegree}
+                            </h4>
+
+                            {/* Major or Specialization */}
+                            {edu.major_or_specialization && (
+                              <p className="text-xs text-amber-700 font-medium mt-0.5">
+                                Major / Specialization: <span className="font-semibold">{edu.major_or_specialization}</span>
+                              </p>
+                            )}
+
+                            {/* Institution & Location */}
+                            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-600 mt-2">
+                              {edu.institution_name && (
+                                <div className="flex items-center gap-1.5 font-medium text-gray-700">
+                                  <Building2 size={13} className="text-gray-400" />
+                                  <span>{edu.institution_name}</span>
+                                </div>
+                              )}
+                              {edu.location && (
+                                <div className="flex items-center gap-1.5 text-gray-500">
+                                  <MapPin size={12} className="text-gray-400" />
+                                  <span>{edu.location}</span>
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Honors & Awards */}
+                            {edu.honors_and_awards && edu.honors_and_awards.length > 0 && (
+                              <div className="mt-2.5 pt-2 border-t border-gray-100 flex flex-wrap items-center gap-1.5">
+                                <Award size={12} className="text-amber-500 shrink-0" />
+                                {edu.honors_and_awards.map((honor: string, hIdx: number) => (
+                                  <span 
+                                    key={hIdx}
+                                    className="text-[10px] font-bold text-amber-800 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200/80"
+                                  >
+                                    {honor}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
-                </div>
+                ) : (
+                  /* Fallback when no structured entries exist */
+                  <div>
+                    <div className="flex items-center gap-1.5 mb-2">
+                      <Award size={13} className="text-emerald-500" />
+                      <span className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider">Target Qualifications Met</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="bg-white p-3 rounded-xl border border-gray-100">
+                        <p className="text-[9px] font-bold text-gray-400 uppercase mb-0.5">Candidate Degree</p>
+                        <p className="text-sm font-bold text-gray-800">
+                          {candidate.candidate_degree || candidate.degree || "Not specified"}
+                        </p>
+                      </div>
+                      <div className="bg-white p-3 rounded-xl border border-gray-100">
+                        <p className="text-[9px] font-bold text-gray-400 uppercase mb-0.5">Required Degree</p>
+                        <p className="text-sm font-bold text-gray-800">
+                          {candidate.required_degree || "Any"}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 {/* Qualifications Lacking */}
                 {(candidate.educationScore || 0) < 100 && (

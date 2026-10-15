@@ -45,6 +45,8 @@ def _resume_data_from_application(app: JobApplication) -> dict:
         "years_experience": years_experience,
         "education": " - ".join(part for part in [app.degree, app.college] if part),
         "highest_degree": app.degree or "",
+        "highest_educational_attainment": getattr(app, "highest_educational_attainment", None) or app.degree or "",
+        "education_entries": getattr(app, "education_entries", []) or [],
     }
 
 
@@ -170,6 +172,18 @@ def _enrich_applications(apps: list[JobApplication]) -> list[JobApplication]:
                     if structured.get("work_experiences"):
                         app.work_experiences = structured["work_experiences"]
                         app.total_experience_months = structured.get("total_experience_months", 0)
+                except Exception:
+                    pass
+
+        if not getattr(app, "education_entries", None):
+            edu_source = " \n ".join(part for part in [app.candidate_degree, app.degree, app.college] if part)
+            if edu_source and len(edu_source.strip()) > 3:
+                try:
+                    from app.extractors.content.education_extractor import extract_structured_education
+                    structured_edu = extract_structured_education(edu_source)
+                    if structured_edu.get("education_entries"):
+                        app.education_entries = structured_edu["education_entries"]
+                        app.highest_educational_attainment = structured_edu.get("highest_educational_attainment")
                 except Exception:
                     pass
     return apps
