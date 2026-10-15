@@ -11,7 +11,7 @@ from .education_extractor import (
     extract_education, extract_highest_degree, extract_education_entries,
     extract_degree_title, extract_institution, extract_structured_education
 )
-from .skills_extractor import extract_skills, extract_skills_list
+from .skills_extractor import extract_skills, extract_skills_list, extract_structured_skills
 from .certifications_extractor import extract_certifications
 from .section_parser import split_into_sections
 from ..nlp.nlp_engine import extract_all as nlp_extract_all
@@ -283,6 +283,7 @@ def extract_content(text: str) -> dict:
 
     skills_str = extract_skills(text)
     skills_list = extract_skills_list(text)
+    skills_details = extract_structured_skills(text)
     relevance = extract_relevance(text, years_experience, job_title, skills_str)
 
     degree_title = extract_degree_title(text, edu_entries)
@@ -328,6 +329,7 @@ def extract_content(text: str) -> dict:
         # Skills & Certifications
         "skills": skills_str,
         "skills_list": skills_list,
+        "skills_details": skills_details,
         "certifications": certifications_str,
     }
 
