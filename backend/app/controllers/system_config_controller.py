@@ -44,6 +44,11 @@ async def update_matching_weights(
         db=db, user_id=current_user.get("id"), action="UPDATE_CONFIG", target="Matching Weights", details="Updated matching algorithm weights"
     )
     await clear_cache_pattern("matching_config*")
+    await clear_cache_pattern("ai_analysis:*")
+    await clear_cache_pattern("job_matches:*")
+    await clear_cache_pattern("job_comparison:*")
+    await clear_cache_pattern("app_stats:*")
+    await clear_cache_pattern("screening:*")
     return result
 
 
@@ -60,6 +65,32 @@ async def update_matching_thresholds(
         db=db, user_id=current_user.get("id"), action="UPDATE_CONFIG", target="Matching Thresholds", details="Updated matching algorithm thresholds"
     )
     await clear_cache_pattern("matching_config*")
+    await clear_cache_pattern("ai_analysis:*")
+    await clear_cache_pattern("job_matches:*")
+    await clear_cache_pattern("job_comparison:*")
+    await clear_cache_pattern("app_stats:*")
+    await clear_cache_pattern("screening:*")
+    return result
+
+
+@router.post("/matching/recalculate")
+async def recalculate_matching_scores(
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(require_role("ADMIN"))
+):
+    result = await system_config_service.recalculate_all_applications(db)
+    await audit_service.record_activity(
+        db=db,
+        user_id=current_user.get("id"),
+        action="RECALCULATE_SCORES",
+        target="Job Applications",
+        details=f"Recalculated match scores for {result.get('updated_applications', 0)} applications based on updated matching parameters"
+    )
+    await clear_cache_pattern("ai_analysis:*")
+    await clear_cache_pattern("job_matches:*")
+    await clear_cache_pattern("job_comparison:*")
+    await clear_cache_pattern("app_stats:*")
+    await clear_cache_pattern("screening:*")
     return result
 
 
