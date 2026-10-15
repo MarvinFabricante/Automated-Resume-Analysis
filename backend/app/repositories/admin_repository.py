@@ -106,7 +106,7 @@ async def update_admin(db: AsyncSession, admin: Admin, update_data: dict) -> Adm
 
 
 async def get_user_by_id(db: AsyncSession, user_id: int) -> Optional[User]:
-    """Get user by ID with raw fallback (checks Redis cache first)."""
+    """Get user by ID with polymorphic repair fallback (checks Redis cache first)."""
     cache_key = f"user:id:{user_id}"
     cached = await get_cache(cache_key)
     if cached is not None:
@@ -116,21 +116,29 @@ async def get_user_by_id(db: AsyncSession, user_id: int) -> Optional[User]:
     user = result.scalar_one_or_none()
     if user is None:
         raw = await db.execute(
-            text("SELECT id, email, password, role, fullname, profile_image_url, is_archived, is_online FROM users WHERE id = :id"),
+            text("SELECT id, email, password, role, fullname, profile_image_url, phone, location, bio, is_archived, is_online FROM users WHERE id = :id"),
             {"id": user_id}
         )
         row = raw.fetchone()
         if row:
-            user = types.SimpleNamespace(
-                id=row.id,
-                email=row.email,
-                password=row.password,
-                role=row.role,
-                fullname=row.fullname,
-                profile_image_url=row.profile_image_url,
-                is_archived=row.is_archived,
-                is_online=row.is_online,
-            )
+            if row.role == "HR":
+                await db.execute(
+                    text("INSERT INTO hr_staffs (id, company_name) VALUES (:uid, 'Company') ON CONFLICT (id) DO NOTHING"),
+                    {"uid": user_id}
+                )
+            elif row.role == "CANDIDATE":
+                await db.execute(
+                    text("INSERT INTO candidates (id, experience_years) VALUES (:uid, 0) ON CONFLICT (id) DO NOTHING"),
+                    {"uid": user_id}
+                )
+            elif row.role == "ADMIN":
+                await db.execute(
+                    text("INSERT INTO admins (id) VALUES (:uid) ON CONFLICT (id) DO NOTHING"),
+                    {"uid": user_id}
+                )
+            await db.commit()
+            result = await db.execute(select(User).where(User.id == user_id))
+            user = result.scalar_one_or_none()
 
     if user:
         await set_cache(cache_key, user, ttl=1800)
@@ -139,23 +147,29 @@ async def get_user_by_id(db: AsyncSession, user_id: int) -> Optional[User]:
 
 async def update_user_archive_status(db: AsyncSession, user: User, is_archived: bool) -> User:
     """Update user archive status (Redis-first transaction)."""
+    user_id = user.id
+    email = (user.email or "").strip().lower() if hasattr(user, "email") and user.email else ""
     tx_id = await redis_tx_manager.stage_transaction(
         target="user",
         action="UPDATE_ARCHIVE_STATUS",
-        payload={"id": user.id, "is_archived": is_archived},
+        payload={"id": user_id, "is_archived": is_archived},
     )
     try:
         await db.execute(
             text("UPDATE users SET is_archived = :is_archived WHERE id = :uid"),
-            {"is_archived": is_archived, "uid": user.id}
+            {"is_archived": is_archived, "uid": user_id}
         )
         await db.commit()
-        user.is_archived = is_archived
+        if hasattr(user, "is_archived"):
+            user.is_archived = is_archived
 
-        await redis_tx_manager.commit_transaction(tx_id, {"id": user.id, "is_archived": is_archived})
+        await redis_tx_manager.commit_transaction(tx_id, {"id": user_id, "is_archived": is_archived})
 
-        await delete_cache(f"user:id:{user.id}")
-        await clear_cache_pattern("users:all")
+        await delete_cache(f"user:id:{user_id}")
+        if email:
+            await delete_cache(f"user:email:{email}")
+        await clear_cache_pattern("users:")
+        await clear_cache_pattern("admin_users")
         await clear_cache_pattern("admin:stats")
 
         return user
@@ -166,26 +180,78 @@ async def update_user_archive_status(db: AsyncSession, user: User, is_archived: 
 
 
 async def update_user(db: AsyncSession, user: User, update_data: dict) -> User:
-    """Update user fields (Redis-first transaction)."""
+    """Update user fields directly with session-safe SQL and polymorphic role handling."""
+    user_id = user.id
+    old_email = (user.email or "").strip().lower() if hasattr(user, "email") and user.email else ""
+
     tx_id = await redis_tx_manager.stage_transaction(
         target="user",
         action="UPDATE",
-        payload={"id": user.id, **update_data},
+        payload={"id": user_id, **update_data},
     )
     try:
-        for key, value in update_data.items():
-            setattr(user, key, value)
-        await db.commit()
-        await db.refresh(user)
+        # Check email uniqueness if email is changed
+        new_email = update_data.get("email")
+        if new_email:
+            new_email = new_email.strip().lower()
+            update_data["email"] = new_email
+            if new_email != old_email:
+                raw_check = await db.execute(
+                    text("SELECT id FROM users WHERE email = :email AND id != :uid"),
+                    {"email": new_email, "uid": user_id}
+                )
+                if raw_check.fetchone():
+                    raise ValueError(f"Email '{new_email}' is already registered to another user.")
 
-        await redis_tx_manager.commit_transaction(tx_id, {"id": user.id})
+        # Handle polymorphic child tables if role changed
+        new_role = update_data.get("role")
+        if new_role:
+            new_role = new_role.upper()
+            update_data["role"] = new_role
+            if new_role == "HR":
+                await db.execute(
+                    text("INSERT INTO hr_staffs (id, company_name) VALUES (:uid, 'Company') ON CONFLICT (id) DO NOTHING"),
+                    {"uid": user_id}
+                )
+            elif new_role == "CANDIDATE":
+                await db.execute(
+                    text("INSERT INTO candidates (id, experience_years) VALUES (:uid, 0) ON CONFLICT (id) DO NOTHING"),
+                    {"uid": user_id}
+                )
 
-        await delete_cache(f"user:id:{user.id}")
-        if user.email:
-            await delete_cache(f"user:email:{user.email.lower()}")
-        await clear_cache_pattern("users:all")
+        allowed_columns = ["fullname", "email", "role", "password", "phone", "location", "bio", "profile_image_url"]
+        fields_to_update = {k: v for k, v in update_data.items() if k in allowed_columns}
 
-        return user
+        if fields_to_update:
+            set_clauses = [f"{k} = :{k}" for k in fields_to_update.keys()]
+            await db.execute(
+                text(f"UPDATE users SET {', '.join(set_clauses)} WHERE id = :uid"),
+                {**fields_to_update, "uid": user_id}
+            )
+            await db.commit()
+
+        # Re-query persistent user in this session
+        result = await db.execute(select(User).where(User.id == user_id))
+        updated_user = result.scalar_one_or_none()
+        if not updated_user:
+            raise Exception("Failed to retrieve updated user record")
+
+        await redis_tx_manager.commit_transaction(tx_id, {"id": user_id})
+
+        await delete_cache(f"user:id:{user_id}")
+        if old_email:
+            await delete_cache(f"user:email:{old_email}")
+            await delete_cache(f"user:exists:{old_email}")
+            await clear_cache_pattern(f"user:email_role:{old_email}")
+        if new_email and new_email != old_email:
+            await delete_cache(f"user:email:{new_email}")
+            await delete_cache(f"user:exists:{new_email}")
+            await clear_cache_pattern(f"user:email_role:{new_email}")
+        await clear_cache_pattern("users:")
+        await clear_cache_pattern("admin_users")
+        await clear_cache_pattern("admin:stats")
+
+        return updated_user
     except Exception as e:
         await redis_tx_manager.fail_transaction(tx_id, str(e))
         logger.error(f"[Redis-First] update_user failed: {e}")
@@ -193,24 +259,47 @@ async def update_user(db: AsyncSession, user: User, update_data: dict) -> User:
 
 
 async def delete_user(db: AsyncSession, user: User) -> bool:
-    """Delete user (Redis-first transaction)."""
+    """Delete user permanently and clear all cascading relationships & caches."""
+    user_id = user.id
+    email = (user.email or "").strip().lower() if hasattr(user, "email") and user.email else ""
+
     tx_id = await redis_tx_manager.stage_transaction(
         target="user",
         action="DELETE",
-        payload={"id": user.id, "email": user.email},
+        payload={"id": user_id, "email": email},
     )
     try:
-        uid = user.id
-        email = user.email
-        await db.delete(user)
+        # Clean up user notifications and password resets
+        if email:
+            await db.execute(
+                text("DELETE FROM notifications WHERE target_email = :email"),
+                {"email": email}
+            )
+            await db.execute(
+                text("DELETE FROM password_resets WHERE email = :email"),
+                {"email": email}
+            )
+
+        # Deleting from users cascades to candidates, hr_staffs, messages, archived_conversations,
+        # resumes, interview_panelists; sets null for audit_logs & interviews
+        await db.execute(
+            text("DELETE FROM users WHERE id = :uid"),
+            {"uid": user_id}
+        )
         await db.commit()
 
-        await redis_tx_manager.commit_transaction(tx_id, {"deleted_id": uid})
+        await redis_tx_manager.commit_transaction(tx_id, {"deleted_id": user_id})
 
-        await delete_cache(f"user:id:{uid}")
+        await delete_cache(f"user:id:{user_id}")
         if email:
-            await delete_cache(f"user:email:{email.lower()}")
-        await clear_cache_pattern("users:all")
+            await delete_cache(f"user:email:{email}")
+            await delete_cache(f"user:exists:{email}")
+            await clear_cache_pattern(f"user:email_role:{email}")
+        await clear_cache_pattern(f"candidate:id:{user_id}")
+        await clear_cache_pattern(f"hr:id:{user_id}")
+        await clear_cache_pattern(f"admin:id:{user_id}")
+        await clear_cache_pattern("users:")
+        await clear_cache_pattern("admin_users")
         await clear_cache_pattern("admin:stats")
 
         return True

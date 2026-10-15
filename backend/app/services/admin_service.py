@@ -63,8 +63,12 @@ async def update_user(db: AsyncSession, user_id: int, update_data: dict):
     if not user:
         return None
 
-    if 'password' in update_data and update_data['password']:
-        update_data['password'] = hash_password(update_data['password'])
+    if 'password' in update_data:
+        pwd = update_data['password']
+        if pwd and isinstance(pwd, str) and pwd.strip():
+            update_data['password'] = hash_password(pwd.strip())
+        else:
+            del update_data['password']
 
     return await AdminRepository.update_user(db, user, update_data)
 

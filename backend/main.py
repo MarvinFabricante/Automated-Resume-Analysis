@@ -157,6 +157,43 @@ async def ensure_archived_conversations_table(conn):
         logger.warning(f"Could not ensure archived_conversations table: {e}")
 
 
+async def ensure_cascade_delete_constraints(conn):
+    """
+    Ensure foreign key constraints referencing users have appropriate ON DELETE CASCADE or SET NULL rules.
+    """
+    if conn.dialect.name != "postgresql":
+        return
+
+    fk_definitions = [
+        ("candidates", "candidates_id_fkey", "FOREIGN KEY (id) REFERENCES users(id) ON DELETE CASCADE"),
+        ("hr_staffs", "hr_staffs_id_fkey", "FOREIGN KEY (id) REFERENCES users(id) ON DELETE CASCADE"),
+        ("admins", "admins_id_fkey", "FOREIGN KEY (id) REFERENCES users(id) ON DELETE CASCADE"),
+        ("messages", "messages_sender_id_fkey", "FOREIGN KEY (sender_id) REFERENCES users(id) ON DELETE CASCADE"),
+        ("messages", "messages_receiver_id_fkey", "FOREIGN KEY (receiver_id) REFERENCES users(id) ON DELETE CASCADE"),
+        ("audit_logs", "audit_logs_user_id_fkey", "FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL"),
+        ("interviews", "interviews_interviewer_id_fkey", "FOREIGN KEY (interviewer_id) REFERENCES users(id) ON DELETE SET NULL"),
+        ("interview_panelists", "interview_panelists_user_id_fkey", "FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE"),
+        ("resumes", "resumes_candidate_id_fkey", "FOREIGN KEY (candidate_id) REFERENCES candidates(id) ON DELETE CASCADE"),
+    ]
+
+    for table, constraint_name, fk_def in fk_definitions:
+        try:
+            res = await conn.execute(text(f"""
+                SELECT rc.delete_rule 
+                FROM information_schema.referential_constraints rc
+                WHERE rc.constraint_name = '{constraint_name}';
+            """))
+            row = res.fetchone()
+            expected_rule = "CASCADE" if "CASCADE" in fk_def else "SET NULL"
+            if row and row[0] == expected_rule:
+                continue
+
+            await conn.execute(text(f"ALTER TABLE {table} DROP CONSTRAINT IF EXISTS {constraint_name};"))
+            await conn.execute(text(f"ALTER TABLE {table} ADD CONSTRAINT {constraint_name} {fk_def};"))
+        except Exception as e:
+            logger.debug(f"Notice on ensuring FK {constraint_name}: {e}")
+
+
 async def create_tables():
     from app.models.user import User
     from app.models.candidate import Candidate
@@ -175,6 +212,7 @@ async def create_tables():
             await conn.run_sync(Base.metadata.create_all)
             await ensure_application_analysis_columns(conn)
             await ensure_archived_conversations_table(conn)
+            await ensure_cascade_delete_constraints(conn)
     except Exception as e:
         logger.debug(f"Table creation notice (concurrent worker init): {e}")
 

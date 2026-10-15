@@ -1,5 +1,5 @@
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, update, delete
+from sqlalchemy import select, func, update, delete, text
 from typing import List, Optional, Dict, Any
 from datetime import datetime, timedelta
 import logging
@@ -126,27 +126,52 @@ async def delete_config(db: AsyncSession, key: str) -> bool:
 
 async def update_user_role(db: AsyncSession, user_id: int, new_role: str) -> Optional[User]:
     """Update user role (Redis-first transaction)."""
+    new_role = new_role.upper()
     tx_id = await redis_tx_manager.stage_transaction(
         target="user_role",
         action="UPDATE_ROLE",
         payload={"user_id": user_id, "new_role": new_role},
     )
     try:
-        result = await db.execute(select(User).where(User.id == user_id))
-        user = result.scalar_one_or_none()
-        if not user:
+        result = await db.execute(text("SELECT id, email, role FROM users WHERE id = :uid"), {"uid": user_id})
+        row = result.fetchone()
+        if not row:
             await redis_tx_manager.fail_transaction(tx_id, "User not found")
             return None
-        user.role = new_role
+
+        email = (row.email or "").strip().lower()
+
+        # Ensure child table entry exists for the polymorphic role
+        if new_role == "HR":
+            await db.execute(
+                text("INSERT INTO hr_staffs (id, company_name) VALUES (:uid, 'Company') ON CONFLICT (id) DO NOTHING"),
+                {"uid": user_id}
+            )
+        elif new_role == "CANDIDATE":
+            await db.execute(
+                text("INSERT INTO candidates (id, experience_years) VALUES (:uid, 0) ON CONFLICT (id) DO NOTHING"),
+                {"uid": user_id}
+            )
+
+        # Update users role directly via SQL
+        await db.execute(
+            text("UPDATE users SET role = :new_role WHERE id = :uid"),
+            {"new_role": new_role, "uid": user_id}
+        )
         await db.commit()
-        await db.refresh(user)
+
+        # Re-fetch updated user
+        user_res = await db.execute(select(User).where(User.id == user_id))
+        user = user_res.scalar_one_or_none()
 
         await redis_tx_manager.commit_transaction(tx_id, {"user_id": user_id, "new_role": new_role})
 
         await delete_cache(f"user:id:{user_id}")
-        if user.email:
-            await delete_cache(f"user:email:{user.email.lower()}")
+        if email:
+            await delete_cache(f"user:email:{email}")
+            await clear_cache_pattern(f"user:email_role:{email}")
         await clear_cache_pattern("users:")
+        await clear_cache_pattern("admin_users")
         await clear_cache_pattern("admin:stats")
 
         return user

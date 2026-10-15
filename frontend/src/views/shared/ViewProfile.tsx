@@ -60,6 +60,10 @@ interface UserProfileData {
   users_count?: number | string;
   jobs_count?: number | string;
   audits_count?: number | string;
+  governance_scope?: string;
+  resumes_count?: number | string;
+  active_hr_count?: number | string;
+  active_candidates_count?: number | string;
 }
 
 const ViewProfile: React.FC = () => {
@@ -103,15 +107,16 @@ const ViewProfile: React.FC = () => {
 
   const profileData = {
     name: profile?.fullname || (isCandidate ? "Candidate User" : isHR ? "HR Recruiter" : "System Administrator"),
-    title: profile?.current_job_title || profile?.position || (isCandidate ? "Job Seeker" : isHR ? "Talent Acquisition Officer" : "Platform Administrator"),
-    location: profile?.location || "Location not set",
+    title: profile?.position || profile?.current_job_title || (isCandidate ? "Job Seeker" : isHR ? "Talent Acquisition Officer" : "Lead Platform Administrator"),
+    department: profile?.department || (isAdmin ? "IT Platform & Security Operations" : isHR ? "Human Resources" : ""),
+    location: profile?.location || (isAdmin ? "Sto. Tomas Plant & Enterprise HQ, Batangas" : "Location not set"),
     phone: profile?.phone || "",
     bio: profile?.bio || (isCandidate
       ? "Welcome to your Mariwasa candidate profile. Add your professional summary and core skills in settings to maximize your job match score."
       : isHR
       ? "HR Recruitment Specialist managing talent pipelines, automated resume screening, and candidate interview schedules at Mariwasa."
-      : "Mariwasa Enterprise System Administrator responsible for platform governance, RBAC security, and operational monitoring."),
-    since: isCandidate ? "Joined Career Portal" : "Active Member",
+      : "Enterprise System Administrator supervising platform access control, AI resume screening algorithm calibration, and recruitment pipeline compliance across Mariwasa Siam Ceramics."),
+    since: isCandidate ? "Joined Career Portal" : isAdmin ? "System Governance" : "Active Member",
     stats: isCandidate ? [
       { label: "Applications", value: profile?.applications_count ?? 0, icon: <FileText size={18} /> },
       { label: "Interviews", value: profile?.interviews_count ?? 0, icon: <Calendar size={18} /> },
@@ -121,9 +126,9 @@ const ViewProfile: React.FC = () => {
       { label: "Job Openings", value: profile?.job_posts_count ?? 0, icon: <Briefcase size={18} /> },
       { label: "Interviews", value: profile?.reports_count ?? 0, icon: <Calendar size={18} /> }
     ] : [
-      { label: "Total Users", value: profile?.users_count ?? 0, icon: <Users size={18} /> },
-      { label: "Job Posts", value: profile?.jobs_count ?? 0, icon: <Briefcase size={18} /> },
-      { label: "Audit Logs", value: profile?.audits_count ?? 0, icon: <TrendingUp size={18} /> }
+      { label: "Directory Users", value: profile?.users_count ?? 0, icon: <Users size={18} /> },
+      { label: "Job Requisitions", value: profile?.jobs_count ?? 0, icon: <Briefcase size={18} /> },
+      { label: "Resumes Indexed", value: profile?.resumes_count ?? 0, icon: <FileText size={18} /> }
     ]
   };
 
@@ -162,19 +167,19 @@ const ViewProfile: React.FC = () => {
     }
   ] : [
     {
-      label: "HQ Region",
-      value: profile?.managed_region || "Main HQ - Sto. Tomas",
-      icon: <MapPin size={16} />
+      label: "Operational HQ",
+      value: profile?.managed_region || "Main Plant & Enterprise HQ",
+      icon: <Building2 size={16} />
     },
     {
-      label: "Access Tier",
-      value: "Tier 1 Root Admin",
+      label: "Administrative Dept",
+      value: profile?.department || "IT & Platform Operations",
+      icon: <Briefcase size={16} />
+    },
+    {
+      label: "Governance Scope",
+      value: profile?.governance_scope || "Full Platform Governance",
       icon: <ShieldCheck size={16} />
-    },
-    {
-      label: "System Status",
-      value: "Active & Monitored",
-      icon: <Zap size={16} />
     }
   ];
 
@@ -271,13 +276,13 @@ const ViewProfile: React.FC = () => {
                   <div className="pt-4 sm:pt-6 mt-4 sm:mt-6 border-t border-slate-100 space-y-2.5 sm:space-y-3">
                     <div className="flex items-center justify-between text-xs font-bold text-slate-400 uppercase tracking-wider">
                       <span>Role Scope</span>
-                      <span className="text-slate-900 font-extrabold">{userRole}</span>
+                      <span className="text-slate-900 font-extrabold">{isAdmin ? "Full System Governance" : userRole}</span>
                     </div>
                     <div className="flex items-center justify-between text-xs font-bold text-slate-400 uppercase tracking-wider">
                       <span>Status</span>
                       <span className="text-green-600 font-extrabold flex items-center gap-1">
                         <CheckCircle2 size={13} className="text-green-500" />
-                        Verified Account
+                        {isAdmin ? "Root Administrator" : "Verified Account"}
                       </span>
                     </div>
                     <div className="flex items-center justify-between text-xs font-bold text-slate-400 uppercase tracking-wider">
@@ -369,10 +374,10 @@ const ViewProfile: React.FC = () => {
                     </div>
                     <div>
                       <h3 className="text-base sm:text-lg font-black text-slate-900 tracking-tight">
-                        {isCandidate ? 'Candidate Professional Overview' : isHR ? 'Talent Operations Focus' : 'System Governance Overview'}
+                        {isCandidate ? 'Candidate Professional Overview' : isHR ? 'Talent Operations Focus' : 'System Governance & Platform Oversight'}
                       </h3>
                       <p className="text-[10px] sm:text-xs text-slate-400 font-bold uppercase tracking-wider">
-                        Personal profile summary & credentials
+                        {isAdmin ? 'Administrative parameters, module authority & operational objectives' : 'Personal profile summary & credentials'}
                       </p>
                     </div>
                   </div>
@@ -392,48 +397,62 @@ const ViewProfile: React.FC = () => {
                     ))}
                   </div>
 
-                  {/* Candidate Skills & Academic Badges */}
-                  {isCandidate && (
-                    <div className="mt-5 sm:mt-7 pt-5 sm:pt-7 border-t border-slate-100 space-y-4">
-                      {/* Skills Tag Cloud */}
-                      <div>
-                        <div className="flex items-center justify-between mb-2.5">
-                          <span className="text-[10px] sm:text-xs font-black text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
-                            <Sparkles size={14} className="text-[#D10043]" />
-                            Core Skills & Competencies ({profile?.skills?.length || 0})
-                          </span>
-                          <button
-                            onClick={() => navigate(settingsPath)}
-                            className="text-[10px] font-black text-[#D10043] hover:underline cursor-pointer"
-                          >
-                            + Manage Skills
-                          </button>
+                  {/* Administrator Operational Pillars */}
+                  {isAdmin && (
+                    <div className="mt-5 sm:mt-7 pt-5 sm:pt-7 border-t border-slate-100">
+                      <div className="flex items-center justify-between mb-3">
+                        <span className="text-[10px] sm:text-xs font-black text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
+                          <ShieldCheck size={14} className="text-[#D10043]" />
+                          System Governance Capabilities
+                        </span>
+                        <button
+                          onClick={() => navigate(settingsPath)}
+                          className="text-[10px] font-black text-[#D10043] hover:underline cursor-pointer"
+                        >
+                          + Update Authority
+                        </button>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                        <div className="p-3 bg-slate-50 border border-slate-100 rounded-xl flex items-start gap-2.5">
+                          <div className="p-1.5 rounded-lg bg-pink-100/50 text-[#D10043] shrink-0 mt-0.5">
+                            <Users size={14} />
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-xs font-black text-slate-800">RBAC User Directory</p>
+                            <p className="text-[11px] text-slate-500 font-medium">HR and Candidate account privileges and status regulation</p>
+                          </div>
                         </div>
-                        <div className="flex flex-wrap gap-1.5 sm:gap-2">
-                          {profile?.skills && profile.skills.length > 0 ? (
-                            profile.skills.map((skill, index) => (
-                              <span
-                                key={index}
-                                className="px-2.5 py-1 sm:px-3 sm:py-1.5 bg-slate-50 border border-slate-200/80 rounded-lg text-[11px] sm:text-xs font-bold text-slate-700"
-                              >
-                                {skill}
-                              </span>
-                            ))
-                          ) : (
-                            <p className="text-xs text-slate-400 italic">
-                              No core skills listed yet. Add skills in settings to enhance automatic job recommendations.
-                            </p>
-                          )}
+
+                        <div className="p-3 bg-slate-50 border border-slate-100 rounded-xl flex items-start gap-2.5">
+                          <div className="p-1.5 rounded-lg bg-indigo-100/50 text-indigo-600 shrink-0 mt-0.5">
+                            <Zap size={14} />
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-xs font-black text-slate-800">AI Scoring Calibration</p>
+                            <p className="text-[11px] text-slate-500 font-medium">Matching weights, qualification thresholds & parsing rules</p>
+                          </div>
+                        </div>
+
+                        <div className="p-3 bg-slate-50 border border-slate-100 rounded-xl flex items-start gap-2.5">
+                          <div className="p-1.5 rounded-lg bg-emerald-100/50 text-emerald-600 shrink-0 mt-0.5">
+                            <Briefcase size={14} />
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-xs font-black text-slate-800">Job Requisitions</p>
+                            <p className="text-[11px] text-slate-500 font-medium">Plant vacancy lifecycle, departmental requirements & salaries</p>
+                          </div>
+                        </div>
+
+                        <div className="p-3 bg-slate-50 border border-slate-100 rounded-xl flex items-start gap-2.5">
+                          <div className="p-1.5 rounded-lg bg-amber-100/50 text-amber-600 shrink-0 mt-0.5">
+                            <TrendingUp size={14} />
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-xs font-black text-slate-800">Security Audit Logs</p>
+                            <p className="text-[11px] text-slate-500 font-medium">Real-time audit tracking, system events & worker tasks</p>
+                          </div>
                         </div>
                       </div>
-
-                      {/* University / Academic */}
-                      {profile?.university && (
-                        <div className="flex items-center gap-2 text-xs font-bold text-slate-600 bg-slate-50 px-3 py-2 rounded-xl border border-slate-100">
-                          <Award size={15} className="text-[#D10043] shrink-0" />
-                          <span className="truncate">Attended {profile.university}</span>
-                        </div>
-                      )}
                     </div>
                   )}
                 </div>
@@ -588,6 +607,52 @@ const ViewProfile: React.FC = () => {
                           </div>
 
                           <div 
+                            onClick={() => navigate('/admin/system-config')}
+                            className="p-4 sm:p-5 bg-white/5 border border-white/10 rounded-xl sm:rounded-2xl hover:bg-white/10 transition-all cursor-pointer group/item flex flex-col justify-between"
+                          >
+                            <div>
+                              <div className="flex justify-between items-start mb-2.5">
+                                <div className="w-8 h-8 sm:w-9 sm:h-9 bg-[#D10043]/20 rounded-xl flex items-center justify-center text-[#D10043]">
+                                  <Zap size={16} />
+                                </div>
+                                <ChevronRight size={15} className="text-white/30 group-hover/item:text-white transition-colors group-hover/item:translate-x-0.5" />
+                              </div>
+                              <h4 className="font-black text-xs sm:text-sm uppercase tracking-wider mb-1 text-white">
+                                AI Screening Calibration
+                              </h4>
+                              <p className="text-[11px] sm:text-xs text-white/60 font-medium leading-relaxed">
+                                Fine-tune AI resume scoring weights, matching thresholds, and automated evaluation criteria.
+                              </p>
+                            </div>
+                            <span className="text-[10px] font-black uppercase tracking-wider text-[#D10043] mt-3 inline-flex items-center gap-1">
+                              Tune System Config <ChevronRight size={11} />
+                            </span>
+                          </div>
+
+                          <div 
+                            onClick={() => navigate('/admin/jobmanagement')}
+                            className="p-4 sm:p-5 bg-white/5 border border-white/10 rounded-xl sm:rounded-2xl hover:bg-white/10 transition-all cursor-pointer group/item flex flex-col justify-between"
+                          >
+                            <div>
+                              <div className="flex justify-between items-start mb-2.5">
+                                <div className="w-8 h-8 sm:w-9 sm:h-9 bg-[#D10043]/20 rounded-xl flex items-center justify-center text-[#D10043]">
+                                  <Briefcase size={16} />
+                                </div>
+                                <ChevronRight size={15} className="text-white/30 group-hover/item:text-white transition-colors group-hover/item:translate-x-0.5" />
+                              </div>
+                              <h4 className="font-black text-xs sm:text-sm uppercase tracking-wider mb-1 text-white">
+                                Job Requisitions
+                              </h4>
+                              <p className="text-[11px] sm:text-xs text-white/60 font-medium leading-relaxed">
+                                Create, configure, publish, and oversee open job descriptions across plant departments.
+                              </p>
+                            </div>
+                            <span className="text-[10px] font-black uppercase tracking-wider text-[#D10043] mt-3 inline-flex items-center gap-1">
+                              Manage Openings <ChevronRight size={11} />
+                            </span>
+                          </div>
+
+                          <div 
                             onClick={() => navigate('/admin/dashboard')}
                             className="p-4 sm:p-5 bg-white/5 border border-white/10 rounded-xl sm:rounded-2xl hover:bg-white/10 transition-all cursor-pointer group/item flex flex-col justify-between"
                           >
@@ -599,7 +664,7 @@ const ViewProfile: React.FC = () => {
                                 <ChevronRight size={15} className="text-white/30 group-hover/item:text-white transition-colors group-hover/item:translate-x-0.5" />
                               </div>
                               <h4 className="font-black text-xs sm:text-sm uppercase tracking-wider mb-1 text-white">
-                                Platform Analytics & Health
+                                Platform Analytics & Logs
                               </h4>
                               <p className="text-[11px] sm:text-xs text-white/60 font-medium leading-relaxed">
                                 Monitor system metrics, application submission rates, database activity, and audit logs.
