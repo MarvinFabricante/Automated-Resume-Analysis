@@ -24,7 +24,14 @@ def _populate_candidate_info(interview):
         setattr(interview, "candidate_name", getattr(app, "candidate_name", None))
         setattr(interview, "candidate_email", getattr(app, "candidate_email", None))
         setattr(interview, "candidate_phone", getattr(app, "phone", None))
-        real_job_title = getattr(getattr(app, "job", None), "job_title", None) or getattr(app, "job_title", None)
+        real_job_title = None
+        try:
+            if "job" in getattr(app, "__dict__", {}) and app.job:
+                real_job_title = getattr(app.job, "job_title", None)
+        except Exception:
+            pass
+        if not real_job_title:
+            real_job_title = getattr(app, "job_title", None)
         setattr(interview, "job_title", real_job_title)
         setattr(interview, "job_id", getattr(app, "job_id", None) or getattr(app, "job_description_id", None))
 

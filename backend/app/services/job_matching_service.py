@@ -1170,10 +1170,10 @@ def calculate_match_score(resume_data: dict, job, use_ai: bool = False, matching
         "relevant_experience": relevant_experience,
         "experience_gaps": f"Required: {experience_result.get('required_years', 0)} yrs | Candidate: {experience_result.get('candidate_years', 0)} yrs",
         # ── Education / Certifications ──
-        "required_degree": education_result.get("required_certifications", "None"),
-        "candidate_degree": education_result.get("candidate_certifications", "None"),
-        "required_certifications": education_result.get("required_certifications", "None"),
-        "candidate_certifications": education_result.get("candidate_certifications", "None"),
+        "required_degree": education_result.get("required_education", "Not specified"),
+        "candidate_degree": education_result.get("candidate_education", "Not specified"),
+        "required_certifications": certs_result.get("required_certifications", "None"),
+        "candidate_certifications": certs_result.get("candidate_certifications", "None"),
         # ── NLP Insights ──
         "recommendations": final_recommendations,
         "ai_summary": ai_summary,

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Helmet } from 'react-helmet-async';
 import { 
   X, MapPin, Briefcase, Star, GraduationCap, Mail, Phone, 
@@ -220,6 +220,66 @@ const ViewCandidateDetailsModal: React.FC<ViewCandidateDetailsModalProps> = ({
     }
     return { bg: 'bg-emerald-50 text-emerald-700 border-emerald-200', label: status || 'Graduated' };
   };
+
+  const getCertCategoryBadge = (category?: string) => {
+    const c = (category || '').toLowerCase();
+    if (c.includes('prc') || c.includes('government') || c.includes('license')) {
+      return { bg: 'bg-rose-50 text-rose-700 border-rose-200', label: category || 'PRC / Government License' };
+    }
+    if (c.includes('tesda') || c.includes('nc') || c.includes('vocational')) {
+      return { bg: 'bg-teal-50 text-teal-700 border-teal-200', label: category || 'TESDA National Certificate' };
+    }
+    if (c.includes('safety') || c.includes('dole') || c.includes('oshc') || c.includes('first aid') || c.includes('bls') || c.includes('bosh')) {
+      return { bg: 'bg-orange-50 text-orange-700 border-orange-200', label: category || 'Safety & Compliance' };
+    }
+    if (c.includes('it') || c.includes('tech') || c.includes('aws') || c.includes('cisco') || c.includes('microsoft')) {
+      return { bg: 'bg-blue-50 text-blue-700 border-blue-200', label: category || 'IT & Technical Certification' };
+    }
+    return { bg: 'bg-purple-50 text-purple-700 border-purple-200', label: category || 'Professional Certification' };
+  };
+
+  const extractedCertifications = useMemo(() => {
+    if (candidate.certifications_details?.certifications && candidate.certifications_details.certifications.length > 0) {
+      return candidate.certifications_details.certifications;
+    }
+    const raw = candidate.certifications || candidate.candidate_certifications || "";
+    if (!raw) return [];
+    const list = typeof raw === 'string'
+      ? raw.split('|').map((s: string) => s.trim()).filter(Boolean)
+      : (Array.isArray(raw) ? raw : []);
+
+    return list.map((item: any) => {
+      if (typeof item === 'object' && item !== null) return item;
+      const name = String(item).trim();
+      const lower = name.toLowerCase();
+      let category = "Professional Certification";
+      let issuer = "Accredited Body";
+
+      if (lower.includes("prc") || lower.includes("registered engineer") || lower.includes("cpa") || lower.includes("lpt") || lower.includes("master plumber") || lower.includes("registered")) {
+        category = "PRC / Government License";
+        issuer = "PRC";
+      } else if (lower.includes("tesda") || lower.includes("nc i") || lower.includes("nc ii") || lower.includes("nc iii")) {
+        category = "TESDA National Certificate";
+        issuer = "TESDA";
+      } else if (lower.includes("bosh") || lower.includes("cosh") || lower.includes("dole") || lower.includes("first aid") || lower.includes("bls")) {
+        category = "Safety & Compliance";
+        issuer = lower.includes("red cross") ? "Philippine Red Cross" : "DOLE-OSHC";
+      } else if (lower.includes("driver") || lower.includes("lto")) {
+        category = "Government License";
+        issuer = "LTO";
+      } else if (lower.includes("civil service") || lower.includes("csc")) {
+        category = "Civil Service Eligibility";
+        issuer = "CSC";
+      }
+
+      return {
+        canonical_name: name,
+        category,
+        issuing_organization: issuer,
+        status: "Verified / Active"
+      };
+    });
+  }, [candidate.certifications_details, candidate.certifications, candidate.candidate_certifications]);
   const hasStoredBreakdown = Boolean(
     matchedSkills.length ||
     missingSkills.length ||
@@ -341,6 +401,10 @@ const ViewCandidateDetailsModal: React.FC<ViewCandidateDetailsModalProps> = ({
                 color="text-purple-600" bgColor="bg-purple-50/70" borderColor="border-purple-100" icon={Briefcase} />
               <PillarBar label="Education" score={candidate.educationScore || 0} weight={20}
                 color="text-amber-600" bgColor="bg-amber-50/70" borderColor="border-amber-100" icon={GraduationCap} />
+              {candidate.certificationsScore !== undefined && candidate.certificationsScore > 0 && (
+                <PillarBar label="Certifications" score={candidate.certificationsScore} weight={10}
+                  color="text-rose-600" bgColor="bg-rose-50/70" borderColor="border-rose-100" icon={Award} />
+              )}
             </div>
 
             {/* Contact Info */}
@@ -492,6 +556,33 @@ const ViewCandidateDetailsModal: React.FC<ViewCandidateDetailsModalProps> = ({
                       <span className="text-xs text-gray-400 italic">No skills were stored for this application.</span>
                     )}
                   </div>
+                </div>
+                <div className="md:col-span-2 bg-white p-3 rounded-xl border border-gray-100">
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-[9px] font-bold text-gray-400 uppercase">Licenses, Eligibility & Certifications</p>
+                    {extractedCertifications.length > 0 && (
+                      <span className="text-[10px] font-bold text-rose-700 bg-rose-50 px-2 py-0.5 rounded-full border border-rose-200">
+                        {extractedCertifications.length} {extractedCertifications.length === 1 ? 'credential' : 'credentials'}
+                      </span>
+                    )}
+                  </div>
+                  {extractedCertifications.length > 0 ? (
+                    <div className="flex flex-wrap gap-1.5">
+                      {extractedCertifications.map((c: any, i: number) => (
+                        <span key={i} className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-rose-50 text-rose-700 rounded-xl border border-rose-200 text-[11px] font-bold shadow-xs">
+                          <Award size={12} className="text-rose-500 shrink-0" />
+                          <span>{c.canonical_name || c}</span>
+                          {c.issuing_organization && (
+                            <span className="text-[9px] text-rose-500 font-semibold bg-white/80 px-1.5 py-0.5 rounded border border-rose-100">
+                              {c.issuing_organization}
+                            </span>
+                          )}
+                        </span>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-gray-400 italic">No specific licenses or certifications listed in resume.</p>
+                  )}
                 </div>
               </div>
             </section>
@@ -782,7 +873,7 @@ const ViewCandidateDetailsModal: React.FC<ViewCandidateDetailsModalProps> = ({
                     <GraduationCap size={16} className="text-amber-600" />
                   </div>
                   <div>
-                    <h3 className="text-sm font-black text-gray-900 uppercase tracking-tight">3. Education & Certification Breakdown</h3>
+                    <h3 className="text-sm font-black text-gray-900 uppercase tracking-tight">3. Educational Background & Academic Attainment</h3>
                     <p className="text-[10px] font-semibold text-amber-600">{Math.round(candidate.educationScore || 0)}% — Contributes 20% to overall</p>
                   </div>
                 </div>
@@ -940,6 +1031,101 @@ const ViewCandidateDetailsModal: React.FC<ViewCandidateDetailsModalProps> = ({
                     {candidate.education_reason || "Education was analyzed based on degree level and field of study."}
                   </p>
                 </div>
+              </div>
+            </section>
+
+            {/* ═══════ 4. LICENSES, ELIGIBILITY & CERTIFICATIONS ═══════ */}
+            <section className={`mb-6 sm:mb-8 ${mobileTab === 'analysis' ? 'block' : 'hidden md:block'}`}>
+              <div className="flex items-center justify-between gap-2.5 mb-4">
+                <div className="flex items-center gap-2.5">
+                  <div className="flex items-center justify-center w-8 h-8 bg-rose-100 rounded-xl">
+                    <Award size={16} className="text-rose-600" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-black text-gray-900 uppercase tracking-tight">4. Licenses, Eligibility & Certifications</h3>
+                    <p className="text-[10px] font-semibold text-rose-600">
+                      PRC Licenses, TESDA National Certificates, Safety, Civil Service & Professional Credentials
+                    </p>
+                  </div>
+                </div>
+                {extractedCertifications.length > 0 && (
+                  <div className="flex items-center gap-1.5 px-3 py-1 bg-rose-50 rounded-full border border-rose-200">
+                    <Award size={13} className="text-rose-600" />
+                    <span className="text-xs font-bold text-rose-800">
+                      {extractedCertifications.length} {extractedCertifications.length === 1 ? 'Credential' : 'Credentials'}
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              <div className="bg-gray-50/80 rounded-2xl border border-gray-100 p-5 space-y-4">
+                {extractedCertifications.length > 0 ? (
+                  <div className="space-y-3">
+                    {extractedCertifications.map((c: any, idx: number) => {
+                      const catBadge = getCertCategoryBadge(c.category);
+                      return (
+                        <div
+                          key={idx}
+                          className="bg-white p-4 rounded-xl border border-gray-200/80 shadow-[0_1px_3px_rgba(0,0,0,0.04)] hover:border-rose-200 transition-colors"
+                        >
+                          <div className="flex flex-wrap items-start justify-between gap-2 mb-2">
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${catBadge.bg}`}>
+                                {catBadge.label}
+                              </span>
+                              {c.status && (
+                                <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full border bg-emerald-50 text-emerald-700 border-emerald-200">
+                                  {c.status}
+                                </span>
+                              )}
+                            </div>
+                            {c.issue_date && (
+                              <div className="text-right flex items-center gap-1 text-xs font-semibold text-gray-600">
+                                <Calendar size={11} className="text-gray-400" />
+                                <span>{c.issue_date}</span>
+                              </div>
+                            )}
+                          </div>
+
+                          <h4 className="text-sm font-bold text-gray-900 leading-snug">
+                            {c.canonical_name || c}
+                          </h4>
+
+                          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-600 mt-2">
+                            {c.issuing_organization && (
+                              <div className="flex items-center gap-1.5 font-medium text-gray-700">
+                                <Building2 size={13} className="text-gray-400" />
+                                <span>Issuer: {c.issuing_organization}</span>
+                              </div>
+                            )}
+                            {c.credential_id_or_details && (
+                              <div className="flex items-center gap-1.5 text-rose-600 font-medium">
+                                <Award size={12} className="text-rose-400" />
+                                <span>{c.credential_id_or_details}</span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="bg-white p-5 rounded-xl border border-gray-100 text-center py-6">
+                    <Award size={26} className="text-gray-300 mx-auto mb-2" />
+                    <p className="text-xs font-bold text-gray-700">No Specific Licenses or Certifications Detected</p>
+                    <p className="text-[11px] text-gray-400 mt-0.5">The candidate did not list formal government licenses or certificates on this resume.</p>
+                  </div>
+                )}
+
+                {/* Justification if provided */}
+                {candidate.certifications_reason && (
+                  <div className="pt-3 border-t border-gray-200/60">
+                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Assessment Justification</p>
+                    <p className="text-xs text-gray-600 font-medium leading-relaxed">
+                      {candidate.certifications_reason}
+                    </p>
+                  </div>
+                )}
               </div>
             </section>
 
