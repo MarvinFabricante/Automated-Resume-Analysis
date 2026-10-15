@@ -122,10 +122,9 @@ const CareersPage: React.FC = () => {
       .map(job => (job.title || job.job_title || '') as string))]
     : [];
 
-  // GSAP Animations
+  // 1. Hero Entrance Animation - Runs ONCE on mount
   useGSAP(
     () => {
-      // 1. Hero Entrance Animation
       const heroTl = gsap.timeline({ defaults: { ease: 'power3.out' } });
 
       heroTl
@@ -153,7 +152,7 @@ const CareersPage: React.FC = () => {
           '-=0.5'
         );
 
-      // Subtle floating effect on hero badge
+      // Continuous subtle floating effect on hero badge
       gsap.to('.careers-hero-badge', {
         y: -4,
         duration: 2.5,
@@ -162,30 +161,56 @@ const CareersPage: React.FC = () => {
         ease: 'sine.inOut',
         delay: 1.2,
       });
+    },
+    { scope: containerRef, dependencies: [] }
+  );
 
-      // 2. Animate Job Cards when loaded or page changes
-      if (!isLoading && paginatedJobs.length > 0) {
-        gsap.fromTo(
-          '.job-card',
-          { y: 35, opacity: 0 },
-          {
-            y: 0,
-            opacity: 1,
-            duration: 0.7,
-            stagger: 0.08,
-            ease: 'power3.out',
-            clearProps: 'all',
-          }
-        );
+  // 2. Job Cards & Results Transitions - Runs when jobs list updates or page changes
+  useGSAP(
+    () => {
+      if (isLoading) return;
 
+      const cards = containerRef.current?.querySelectorAll<HTMLElement>('.job-card');
+      if (cards && cards.length > 0) {
         gsap.fromTo(
-          '.careers-pagination-bar',
+          cards,
           { y: 25, opacity: 0 },
           {
             y: 0,
             opacity: 1,
-            duration: 0.7,
-            ease: 'power3.out',
+            duration: 0.45,
+            stagger: 0.05,
+            ease: 'power2.out',
+            clearProps: 'all',
+          }
+        );
+      }
+
+      const emptyState = containerRef.current?.querySelector<HTMLElement>('.careers-empty-state');
+      if (emptyState) {
+        gsap.fromTo(
+          emptyState,
+          { y: 20, opacity: 0 },
+          {
+            y: 0,
+            opacity: 1,
+            duration: 0.4,
+            ease: 'power2.out',
+            clearProps: 'all',
+          }
+        );
+      }
+
+      const paginationBar = containerRef.current?.querySelector<HTMLElement>('.careers-pagination-bar');
+      if (paginationBar) {
+        gsap.fromTo(
+          paginationBar,
+          { y: 15, opacity: 0 },
+          {
+            y: 0,
+            opacity: 1,
+            duration: 0.5,
+            ease: 'power2.out',
             clearProps: 'all',
           }
         );
@@ -193,7 +218,7 @@ const CareersPage: React.FC = () => {
 
       ScrollTrigger.refresh();
     },
-    { scope: containerRef, dependencies: [isLoading, currentPage, filteredJobs.length] }
+    { scope: containerRef, dependencies: [isLoading, currentPage, filteredJobs] }
   );
 
   return (
@@ -387,7 +412,7 @@ const CareersPage: React.FC = () => {
               </div>
             ))
           ) : (
-            <div className="col-span-full py-16 sm:py-24 text-center bg-white rounded-2xl sm:rounded-[32px] border border-dashed border-gray-200 shadow-sm px-4">
+            <div className="careers-empty-state col-span-full py-16 sm:py-24 text-center bg-white rounded-2xl sm:rounded-[32px] border border-dashed border-gray-200 shadow-sm px-4 will-change-transform">
               <div className="w-16 h-16 sm:w-20 sm:h-20 bg-gray-50 text-gray-300 rounded-full flex items-center justify-center mx-auto mb-4 sm:mb-6">
                 <Search size={28} />
               </div>
