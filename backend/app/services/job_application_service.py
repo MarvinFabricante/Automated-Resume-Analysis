@@ -22,13 +22,16 @@ def _resume_data_from_application(app: JobApplication) -> dict:
     )
 
     years_experience = 0
-    try:
-        import re
-        matches = re.findall(r"(\d+)\+?\s*(?:years?|yrs?)", app.relevance or "", re.IGNORECASE)
-        if matches:
-            years_experience = max(int(match) for match in matches)
-    except Exception:
-        years_experience = 0
+    if getattr(app, "total_experience_months", 0):
+        years_experience = max(1, round(app.total_experience_months / 12.0))
+    else:
+        try:
+            import re
+            matches = re.findall(r"(\d+)\+?\s*(?:years?|yrs?)", app.relevance or "", re.IGNORECASE)
+            if matches:
+                years_experience = max(int(match) for match in matches)
+        except Exception:
+            years_experience = 0
 
     return {
         "fullname": app.candidate_name,
@@ -37,6 +40,8 @@ def _resume_data_from_application(app: JobApplication) -> dict:
         "location": app.location or "",
         "skills": skills_text,
         "experience": experience_text,
+        "work_experiences": getattr(app, "work_experiences", []) or [],
+        "total_experience_months": getattr(app, "total_experience_months", 0) or 0,
         "years_experience": years_experience,
         "education": " - ".join(part for part in [app.degree, app.college] if part),
         "highest_degree": app.degree or "",
@@ -156,6 +161,17 @@ def _enrich_applications(apps: list[JobApplication]) -> list[JobApplication]:
     for app in apps:
         _apply_transient_analysis(app)
         _enrich_resume_url(app)
+        if not getattr(app, "work_experiences", None):
+            exp_source = app.relevant_experience or app.relevance or ""
+            if exp_source and len(exp_source.strip()) > 5:
+                try:
+                    from app.extractors.content.experience_extractor import extract_structured_experience
+                    structured = extract_structured_experience(exp_source)
+                    if structured.get("work_experiences"):
+                        app.work_experiences = structured["work_experiences"]
+                        app.total_experience_months = structured.get("total_experience_months", 0)
+                except Exception:
+                    pass
     return apps
 
 async def create_job_application(db: AsyncSession, application_in: JobApplicationCreate, db_job_id: int):

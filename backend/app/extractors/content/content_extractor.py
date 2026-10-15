@@ -5,7 +5,7 @@ from .phone_extractor import extract_phone, extract_all_phones, _clean_phone, is
 from .location_extractor import extract_location
 from .experience_extractor import (
     extract_experience, extract_years_experience, extract_experience_entries,
-    extract_job_title, extract_company, extract_relevance
+    extract_job_title, extract_company, extract_relevance, extract_structured_experience
 )
 from .education_extractor import (
     extract_education, extract_highest_degree, extract_education_entries,
@@ -253,6 +253,9 @@ def extract_content(text: str) -> dict:
     sections = split_into_sections(text)
 
     # Structured entries
+    structured_exp = extract_structured_experience(text)
+    work_experiences = structured_exp.get("work_experiences", [])
+    total_experience_months = structured_exp.get("total_experience_months", 0)
     exp_entries = extract_experience_entries(text)
     edu_entries = extract_education_entries(text)
 
@@ -298,6 +301,8 @@ def extract_content(text: str) -> dict:
         "company": company,
         "experience": experience_str,
         "experience_details": exp_entries,
+        "work_experiences": work_experiences,
+        "total_experience_months": total_experience_months,
         "years_experience": years_experience,
         "relevance": relevance,
 

@@ -3,7 +3,8 @@ import { Helmet } from 'react-helmet-async';
 import { 
   X, MapPin, Briefcase, Star, GraduationCap, Mail, Phone, 
   Target, TrendingUp, Lightbulb, CheckCircle2, XCircle, AlertTriangle,
-  ChevronRight, Zap, BarChart3, BookOpen, Award, Copy, Check, Calendar, Download
+  ChevronRight, Zap, BarChart3, BookOpen, Award, Copy, Check, Calendar, Download,
+  Building2, Clock
 } from 'lucide-react';
 import { getAssetUrl } from '../../../services/api';
 
@@ -137,6 +138,51 @@ const ViewCandidateDetailsModal: React.FC<ViewCandidateDetailsModalProps> = ({
   const missingSkills = candidate.missing_skills || [];
   const candidateSkills = (candidate.skills && candidate.skills.length > 0) ? candidate.skills : matchedSkills;
   const calculatedContributionTotal = skillsContribution + experienceContribution + educationContribution;
+
+  const formatMonths = (months?: number) => {
+    if (!months || months <= 0) return null;
+    const years = Math.floor(months / 12);
+    const remainingMonths = months % 12;
+    if (years > 0 && remainingMonths > 0) {
+      return `${years} yr${years > 1 ? 's' : ''} ${remainingMonths} mo${remainingMonths > 1 ? 's' : ''}`;
+    }
+    if (years > 0) {
+      return `${years} year${years > 1 ? 's' : ''}`;
+    }
+    return `${months} month${months > 1 ? 's' : ''}`;
+  };
+
+  const getEmpTypeBadge = (type?: string) => {
+    const t = (type || 'Full-time').toLowerCase();
+    if (t.includes('ojt') || t.includes('intern') || t.includes('practicum') || t.includes('trainee')) {
+      return {
+        bg: 'bg-orange-50 text-orange-700 border-orange-200',
+        label: type || 'OJT / Internship'
+      };
+    }
+    if (t.includes('contract') || t.includes('endo') || t.includes('agency')) {
+      return {
+        bg: 'bg-amber-50 text-amber-700 border-amber-200',
+        label: type || 'Contractual'
+      };
+    }
+    if (t.includes('part-time') || t.includes('part time')) {
+      return {
+        bg: 'bg-blue-50 text-blue-700 border-blue-200',
+        label: type || 'Part-time'
+      };
+    }
+    if (t.includes('seasonal')) {
+      return {
+        bg: 'bg-purple-50 text-purple-700 border-purple-200',
+        label: type || 'Seasonal'
+      };
+    }
+    return {
+      bg: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+      label: type || 'Full-time'
+    };
+  };
   const hasStoredBreakdown = Boolean(
     matchedSkills.length ||
     missingSkills.length ||
@@ -377,7 +423,16 @@ const ViewCandidateDetailsModal: React.FC<ViewCandidateDetailsModalProps> = ({
                   </p>
                 </div>
                 <div className="md:col-span-2 bg-white p-3 rounded-xl border border-gray-100">
-                  <p className="text-[9px] font-bold text-gray-400 uppercase mb-1">Resume Experience / Relevance</p>
+                  <div className="flex items-center justify-between mb-1">
+                    <p className="text-[9px] font-bold text-gray-400 uppercase">Resume Experience / Relevance</p>
+                    {candidate.total_experience_months ? (
+                      <span className="text-[10px] font-bold text-purple-600 bg-purple-50 px-2 py-0.5 rounded-md border border-purple-100 flex items-center gap-1">
+                        <Clock size={10} />
+                        {formatMonths(candidate.total_experience_months)}
+                        {candidate.work_experiences?.length ? ` • ${candidate.work_experiences.length} ${candidate.work_experiences.length === 1 ? 'role' : 'roles'}` : ''}
+                      </span>
+                    ) : null}
+                  </div>
                   <p className="text-xs font-medium text-gray-700 leading-relaxed">
                     {candidate.relevance || candidate.relevant_experience || "Not provided"}
                   </p>
@@ -522,27 +577,135 @@ const ViewCandidateDetailsModal: React.FC<ViewCandidateDetailsModalProps> = ({
 
             {/* ═══════ 2. EXPERIENCE MATCH BREAKDOWN ═══════ */}
             <section className={`mb-6 sm:mb-8 ${mobileTab === 'analysis' ? 'block' : 'hidden md:block'}`}>
-              <div className="flex items-center gap-2.5 mb-4">
-                <div className="flex items-center justify-center w-8 h-8 bg-purple-100 rounded-xl">
-                  <Briefcase size={16} className="text-purple-600" />
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2.5">
+                  <div className="flex items-center justify-center w-8 h-8 bg-purple-100 rounded-xl">
+                    <Briefcase size={16} className="text-purple-600" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-black text-gray-900 uppercase tracking-tight">2. Experience Match Breakdown</h3>
+                    <p className="text-[10px] font-semibold text-purple-600">{Math.round(candidate.experienceScore || 0)}% — Contributes 40% to overall</p>
+                  </div>
                 </div>
-                <div>
-                  <h3 className="text-sm font-black text-gray-900 uppercase tracking-tight">2. Experience Match Breakdown</h3>
-                  <p className="text-[10px] font-semibold text-purple-600">{Math.round(candidate.experienceScore || 0)}% — Contributes 40% to overall</p>
-                </div>
+                {/* Tenure Pill / Summary Pill */}
+                {candidate.total_experience_months ? (
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-purple-50 text-purple-700 rounded-full border border-purple-200 text-xs font-bold shadow-xs">
+                    <Clock size={12} className="text-purple-600" />
+                    {formatMonths(candidate.total_experience_months)} Total
+                  </span>
+                ) : candidate.experience ? (
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-purple-50 text-purple-700 rounded-full border border-purple-200 text-xs font-bold shadow-xs">
+                    <Clock size={12} className="text-purple-600" />
+                    {candidate.experience} {Number(candidate.experience) === 1 ? 'year' : 'years'}
+                  </span>
+                ) : null}
               </div>
 
               <div className="bg-gray-50/80 rounded-2xl border border-gray-100 p-5 space-y-4">
-                {/* Relevant Experience */}
-                <div>
-                  <div className="flex items-center gap-1.5 mb-2">
-                    <TrendingUp size={13} className="text-purple-500" />
-                    <span className="text-[10px] font-bold text-purple-700 uppercase tracking-wider">Relevant Experience Found</span>
+                {/* Structured Work Experience Timeline */}
+                {candidate.work_experiences && candidate.work_experiences.length > 0 ? (
+                  <div>
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-1.5">
+                        <TrendingUp size={13} className="text-purple-500" />
+                        <span className="text-[10px] font-bold text-purple-700 uppercase tracking-wider">
+                          Extracted Work History ({candidate.work_experiences.length} {candidate.work_experiences.length === 1 ? 'Role' : 'Roles'})
+                        </span>
+                      </div>
+                    </div>
+                    
+                    <div className="space-y-3">
+                      {candidate.work_experiences.map((exp: any, idx: number) => {
+                        const badge = getEmpTypeBadge(exp.employment_type);
+                        const durationFormatted = formatMonths(exp.duration_months);
+                        return (
+                          <div 
+                            key={idx} 
+                            className="bg-white rounded-xl border border-gray-100/80 p-4 shadow-xs hover:border-purple-200 transition-all duration-200"
+                          >
+                            {/* Role Header */}
+                            <div className="flex flex-wrap items-start justify-between gap-2 mb-2">
+                              <div>
+                                <h4 className="text-xs sm:text-sm font-bold text-gray-900 flex items-center gap-2">
+                                  {exp.job_title}
+                                  {badge && (
+                                    <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-semibold border ${badge.bg}`}>
+                                      {badge.label}
+                                    </span>
+                                  )}
+                                </h4>
+                                {exp.raw_job_title && exp.raw_job_title.toLowerCase() !== exp.job_title.toLowerCase() && (
+                                  <p className="text-[11px] text-gray-400 italic">
+                                    Resume title: "{exp.raw_job_title}"
+                                  </p>
+                                )}
+                              </div>
+
+                              {/* Dates & Duration */}
+                              {(exp.start_date || exp.end_date || durationFormatted) && (
+                                <div className="text-right flex flex-col items-end">
+                                  <span className="text-xs font-semibold text-gray-700">
+                                    {[exp.start_date, exp.end_date || 'Present'].filter(Boolean).join(' – ')}
+                                  </span>
+                                  {durationFormatted && (
+                                    <span className="text-[10px] font-medium text-purple-600 flex items-center gap-1">
+                                      <Clock size={10} />
+                                      {durationFormatted}
+                                    </span>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Employer & Location */}
+                            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-600 mb-3">
+                              {exp.company_name && (
+                                <div className="flex items-center gap-1.5 font-medium text-gray-700">
+                                  <Building2 size={13} className="text-gray-400" />
+                                  <span>{exp.company_name}</span>
+                                </div>
+                              )}
+                              {exp.location && (
+                                <div className="flex items-center gap-1.5 text-gray-500">
+                                  <MapPin size={12} className="text-gray-400" />
+                                  <span>{exp.location}</span>
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Duties / Responsibilities */}
+                            {exp.responsibilities && exp.responsibilities.length > 0 && (
+                              <div className="mt-2.5 pt-2.5 border-t border-gray-100">
+                                <p className="text-[9px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">
+                                  Key Duties & Achievements
+                                </p>
+                                <ul className="space-y-1">
+                                  {exp.responsibilities.map((duty: string, dIdx: number) => (
+                                    <li key={dIdx} className="text-xs text-gray-600 flex items-start gap-2 leading-relaxed">
+                                      <span className="text-purple-400 mt-1 shrink-0">•</span>
+                                      <span>{duty}</span>
+                                    </li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
-                  <p className="text-xs text-gray-700 font-medium leading-relaxed bg-white p-3 rounded-xl border border-gray-100">
-                    {candidate.relevant_experience || "Experience details extracted from resume parsing."}
-                  </p>
-                </div>
+                ) : (
+                  /* Fallback when no structured experiences are found */
+                  <div>
+                    <div className="flex items-center gap-1.5 mb-2">
+                      <TrendingUp size={13} className="text-purple-500" />
+                      <span className="text-[10px] font-bold text-purple-700 uppercase tracking-wider">Relevant Experience Found</span>
+                    </div>
+                    <p className="text-xs text-gray-700 font-medium leading-relaxed bg-white p-3 rounded-xl border border-gray-100">
+                      {candidate.relevant_experience || "Experience details extracted from resume parsing."}
+                    </p>
+                  </div>
+                )}
 
                 {/* Experience Gaps */}
                 <div>

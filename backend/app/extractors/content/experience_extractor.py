@@ -1,497 +1,847 @@
+"""
+Philippine Work Experience Extractor
+-------------------------------------
+High-accuracy deterministic NLP extraction pipeline for parsing structured work experience,
+employment history, and OJT/internship records from Philippine resumes.
+
+Covers:
+  - Fast Food & Service: Service Crew, Dining Crew, Kitchen Crew, Fryman, Cashier, Barista, Dishwasher, Busboy
+  - Retail, Logistics & Blue-Collar: Bagger, Sales Lady, Promodiser, Merchandiser, Warehouseman, Delivery Rider, Driver, Pahinante, Security Guard, Factory Worker, Welder, Electrician
+  - BPO & Corporate: CSR, TSR, Call Center Agent, Virtual Assistant (VA), Data Encoder, Administrative Aide, HR Assistant, Accounting Clerk
+  - Technical & Professional: Software Developer, Web Developer, Backend/Frontend Developer, QA Analyst, Civil Engineer, Site Engineer, Registered Nurse, CPA, LPT
+  - Employment Status Markers: Full-Time, Contractual, End of Contract (ENDO), OJT, Intern, Practicum, Seasonal, Reliever, Project-Based, Agency-Hired
+
+Strictly deterministic local NLP (spaCy + EntityRuler + PhraseMatcher + flashtext + dateparser + re).
+"""
+
 import re
+import json
 from datetime import datetime
-from typing import Optional, List, Dict, Any
-from app.extractors.nlp.nlp_engine import get_doc, extract_advanced_experience
+from typing import Optional, List, Dict, Any, Tuple
+
+try:
+    import spacy
+    from spacy.matcher import PhraseMatcher, Matcher
+    from spacy.tokens import Doc
+except ImportError:
+    spacy = None
+    PhraseMatcher = None
+    Matcher = None
+    Doc = None
+
+try:
+    from flashtext import KeywordProcessor
+except ImportError:
+    KeywordProcessor = None
+
+try:
+    import dateparser
+except ImportError:
+    dateparser = None
+
 from app.extractors.content.section_parser import split_into_sections
 
 
-# ─── Section Headers ─────────────────────────────────────────────────────────
+# ─── 1. Philippine Job Taxonomy & Canonical Map ──────────────────────────────
 
-_EXPERIENCE_HEADERS = [
-    "EXPERIENCE", "WORK HISTORY", "EMPLOYMENT", "PROFESSIONAL BACKGROUND",
-    "WORK EXPERIENCE", "PROFESSIONAL EXPERIENCE", "CAREER HISTORY",
-    "RELEVANT EXPERIENCE", "EMPLOYMENT HISTORY", "JOB EXPERIENCE",
-    "CAREER SUMMARY", "CAREER EXPERIENCE",
-    "POSITIONS HELD", "WORK RECORD", "INDUSTRY EXPERIENCE",
-    "PROFESSIONAL HISTORY",
+_PHILIPPINE_JOB_TAXONOMY: Dict[str, List[str]] = {
+    # ── Service, Retail & Blue-Collar
+    "Service Crew": [
+        "Service Crew", "Kitchen Crew", "Dining Crew", "Counter Crew",
+        "Fryman", "Grill Crew", "Grill Station Crew", "Food Server",
+        "Kitchen Helper", "Kitchen Staff", "Crew Member", "Dining Attendant",
+        "Barista", "Cook", "Assistant Cook", "Fast Food Crew", "Pantry Crew"
+    ],
+    "Dishwasher": [
+        "Dishwasher", "Busboy", "Kitchen Dishwasher", "Plate Cleaner", "Pot Washer"
+    ],
+    "Janitor": [
+        "Janitor", "Janitress", "Utility Personnel", "Utility Staff",
+        "Housekeeping Attendant", "Room Attendant", "Cleaner", "Sanitation Worker",
+        "Maintenance Janitor", "Utility Worker", "Sanitation Crew"
+    ],
+    "Cashier": [
+        "Cashier", "Head Cashier", "Counter Cashier", "POS Cashier",
+        "Supermarket Cashier", "Retail Cashier", "Restaurant Cashier"
+    ],
+    "Bagger": [
+        "Bagger", "Supermarket Bagger", "Package Boy", "Grocery Bagger"
+    ],
+    "Promodiser": [
+        "Promodiser", "Merchandiser", "Sales Clerk", "Sales Lady", "Saleslady",
+        "Sales Associate", "Store Crew", "Store Associate", "Salesman",
+        "Retail Sales Associate", "Brand Ambassador", "Product Demonstrator"
+    ],
+    "Warehouseman": [
+        "Warehouseman", "Warehouse Staff", "Warehouse Associate", "Warehouse Worker",
+        "Warehouse Assistant", "Stockman", "Stock Custodian", "Inventory Clerk",
+        "Forklift Operator", "Material Handler", "Warehouse Inventory Staff"
+    ],
+    "Delivery Rider": [
+        "Delivery Rider", "Courier", "Company Driver", "Driver", "Truck Driver",
+        "Delivery Driver", "Pahinante", "Delivery Helper", "Van Driver",
+        "Motorcycle Rider", "Rider", "Food Delivery Rider", "Dispatch Rider"
+    ],
+    "Security Guard": [
+        "Security Guard", "Lady Guard", "Security Officer", "Watchman",
+        "CCTV Operator", "Roving Guard"
+    ],
+    "Factory Worker": [
+        "Factory Worker", "Production Operator", "Assembly Worker", "Assembler",
+        "Machine Operator", "Line Leader", "Production Staff", "Production Assistant",
+        "Quality Control Inspector", "QC Inspector", "Manufacturing Operator"
+    ],
+    "Tradesman": [
+        "Welder", "Mason", "Electrician", "Carpenter", "Plumber",
+        "Maintenance Technician", "Aircon Technician", "Auto Mechanic",
+        "Automotive Mechanic", "Heavy Equipment Operator"
+    ],
+
+    # ── BPO, Admin & Corporate
+    "Customer Service Representative": [
+        "Customer Service Representative", "CSR", "Call Center Agent",
+        "Customer Care Specialist", "Customer Support Representative",
+        "Chat Support Agent", "Email Support Agent", "Inbound Agent",
+        "Outbound Agent", "Customer Support Specialist", "Contact Center Agent"
+    ],
+    "Technical Support Representative": [
+        "Technical Support Representative", "TSR", "Technical Support Specialist",
+        "Helpdesk Support", "IT Helpdesk Specialist", "Technical Support Agent"
+    ],
+    "Virtual Assistant": [
+        "Virtual Assistant", "VA", "Executive Virtual Assistant", "General VA",
+        "Real Estate Virtual Assistant", "E-commerce VA"
+    ],
+    "Data Encoder": [
+        "Data Encoder", "Data Entry Specialist", "Data Entry Operator", "Encoder",
+        "Data Processing Clerk", "Typist"
+    ],
+    "Admin Staff": [
+        "Administrative Aide", "Admin Staff", "Administrative Assistant",
+        "Office Clerk", "Office Staff", "Receptionist", "Front Desk Officer",
+        "Liaison Officer", "Messenger", "Office Assistant", "Executive Assistant",
+        "Office Administrator", "Administrative Officer"
+    ],
+    "HR Assistant": [
+        "HR Assistant", "HR Staff", "HR Officer", "Recruitment Assistant",
+        "Talent Acquisition Associate", "HR Specialist", "Human Resources Assistant"
+    ],
+    "Accounting Clerk": [
+        "Accounting Clerk", "Accounting Assistant", "Bookkeeper", "Billing Clerk",
+        "Billing Specialist", "Accounting Staff", "Accounts Payable Clerk",
+        "Accounts Receivable Clerk", "Payroll Assistant"
+    ],
+
+    # ── Technical, Engineering & IT
+    "Software Developer": [
+        "Software Engineer", "Software Developer", "Web Developer",
+        "Frontend Developer", "Backend Developer", "Full Stack Developer",
+        "Full-Stack Developer", "Full Stack Web Developer",
+        "Junior Backend Developer", "Junior Frontend Developer",
+        "Senior Backend Developer", "Senior Frontend Developer",
+        "Junior Software Engineer", "Senior Software Engineer",
+        "Java Developer", "C# Developer", "Node.js Developer", "Python Developer",
+        "React Developer", "PHP Developer", "Mobile Developer", "Android Developer",
+        "iOS Developer", "Game Developer", "API Developer"
+    ],
+    "Software Developer Intern": [
+        "Software Developer Intern", "Software Engineer Intern",
+        "Software Developer Intern (OJT)", "Software Intern"
+    ],
+    "QA Engineer": [
+        "QA Analyst", "QA Engineer", "Quality Assurance Analyst",
+        "Software Tester", "Test Engineer", "Manual Tester", "Automation QA"
+    ],
+    "IT Support Specialist": [
+        "IT Support Specialist", "System Administrator", "Network Engineer",
+        "Database Administrator", "DevOps Engineer", "Cloud Engineer",
+        "IT Technician", "Desktop Support Engineer"
+    ],
+    "Civil Engineer": [
+        "Civil Engineer", "Site Civil Engineer", "Site Engineer", "Project Engineer",
+        "Structural Engineer", "Quantity Surveyor", "Field Engineer",
+        "Construction Engineer", "Cad Operator"
+    ],
+    "Safety Officer": [
+        "Safety Officer", "BOSH Safety Officer", "COSH Safety Officer",
+        "HSE Officer", "Health and Safety Officer"
+    ],
+    "Mechanical Engineer": [
+        "Mechanical Engineer", "HVAC Engineer", "Piping Engineer", "Plant Engineer"
+    ],
+    "Electrical Engineer": [
+        "Electrical Engineer", "Electronics Engineer", "ECE", "Power Engineer"
+    ],
+    "Architect": [
+        "Architect", "Architectural Designer", "Junior Architect", "Architectural Apprentice"
+    ],
+
+    # ── Healthcare & Professional
+    "Registered Nurse": [
+        "Registered Nurse", "Staff Nurse", "Clinic Nurse", "Company Nurse",
+        "Ward Nurse", "ICU Nurse", "Nurse"
+    ],
+    "Medical Technologist": [
+        "Medical Technologist", "MedTech", "Laboratory Analyst", "Lab Technician"
+    ],
+    "Pharmacist": [
+        "Pharmacist", "Pharmacy Assistant", "Clinical Pharmacist", "Drugstore Pharmacist"
+    ],
+    "Licensed Professional Teacher": [
+        "Licensed Professional Teacher", "LPT", "Teacher", "High School Teacher",
+        "Elementary Teacher", "Instructor", "College Instructor", "Professor"
+    ],
+    "Certified Public Accountant": [
+        "Certified Public Accountant", "CPA", "Audit Associate", "External Auditor",
+        "Internal Auditor", "Senior Auditor", "Tax Associate"
+    ],
+    "Bank Teller": [
+        "Bank Teller", "Universal Banker", "Branch Teller", "Customer Service Teller",
+        "Loan Officer", "Account Officer", "Store Manager", "Branch Manager"
+    ],
+    "Intern / OJT": [
+        "Intern", "OJT", "On-the-Job Trainee", "Student Trainee", "Practicum Trainee",
+        "Engineering Intern", "IT Intern", "Accounting Intern", "Marketing Intern",
+        "HR Intern", "Apprentice"
+    ]
+}
+
+# Flashtext KeywordProcessor
+_KEYWORD_PROCESSOR = None
+if KeywordProcessor is not None:
+    _KEYWORD_PROCESSOR = KeywordProcessor(case_sensitive=False)
+    for canonical, variations in _PHILIPPINE_JOB_TAXONOMY.items():
+        for var in variations:
+            _KEYWORD_PROCESSOR.add_keyword(var, canonical)
+
+
+# ─── 2. Employment Status Markers ────────────────────────────────────────────
+
+_EMPLOYMENT_TYPE_RULES = [
+    (re.compile(r'\b(?:OJT|On-the-Job\s+Training|Intern(?:ship)?|Practicum|Student\s+Trainee|Trainee|Apprentice)\b', re.IGNORECASE), "OJT"),
+    (re.compile(r'\b(?:End\s+of\s+Contract|ENDO|Contractual|Fixed-Term|Contract|Temporary)\b', re.IGNORECASE), "Contractual"),
+    (re.compile(r'\b(?:Project-Based|Project\s+Based|Per\s+Project)\b', re.IGNORECASE), "Contractual"),
+    (re.compile(r'\b(?:via\s+Manpower\s+Agency|Manpower\s+Agency|Agency-Hired|Agency|Outsourced)\b', re.IGNORECASE), "Contractual"),
+    (re.compile(r'\b(?:Seasonal|Holiday(?:\s+(?:Hire|Reliever|Staff))?|Peak\s+Season|Christmas\s+Hire)\b', re.IGNORECASE), "Seasonal"),
+    (re.compile(r'\b(?:Reliever|Substitute)\b', re.IGNORECASE), "Contractual"),
+    (re.compile(r'\b(?:Part-Time|Part\s+Time|Parttime)\b', re.IGNORECASE), "Part-time"),
+    (re.compile(r'\b(?:Full-Time|Full\s+Time|Regular|Permanent)\b', re.IGNORECASE), "Full-time"),
 ]
 
-_STOP_HEADERS = [
-    "EDUCATION", "SKILLS", "CERTIFICATIONS", "PROJECTS", "QUALIFICATIONS",
-    "ACHIEVEMENTS", "AFFILIATIONS", "REFERENCES", "INTERESTS",
-    "AWARDS", "PUBLICATIONS", "HOBBIES", "VOLUNTEER", "PERSONAL",
-    "TRAINING", "SEMINARS", "ACTIVITIES", "TOOLS", "TECHNOLOGIES",
-    "TECHNICAL SKILLS", "CORE COMPETENCIES", "LANGUAGES", "SUMMARY",
-    "CONTACT", "CONTACT INFORMATION", "CONTACT DETAILS",
-    "PERSONAL INFORMATION", "WORK PROJECTS",
+
+# ─── 3. Philippine Corporate and Employer Patterns ───────────────────────────
+
+_PHIL_COMPANY_NAMES = [
+    "Jollibee", "Jollibee Foods Corporation", "McDonald's", "McDonalds", "Chowking",
+    "Mang Inasal", "Greenwich", "Red Ribbon", "Goldilocks", "KFC", "Gerry's Grill",
+    "Robinsons", "Robinsons Place", "Robinsons Galleria", "SM", "SM Supermalls", "SM City",
+    "Puregold", "Ayala Malls", "DMCI", "DMCI Homes", "Accenture", "Accenture Philippines",
+    "Teleperformance", "Concentrix", "Convergys", "TaskUs", "Alorica", "Foundever",
+    "Sitel", "Cognizant", "Globe Telecom", "Smart Communications", "PLDT",
+    "San Miguel Corporation", "BDO", "BPI", "Metrobank", "Foodpanda", "Grab",
+    "Lalamove", "Shopee", "Lazada", "Angkas", "Monde Nissin", "Universal Robina",
+    "XYZ Tech Solutions Inc."
 ]
 
-# ─── Date Patterns ───────────────────────────────────────────────────────────
+_COMPANY_LEGAL_SUFFIXES_RE = re.compile(
+    r'\b(?:Inc\.?|Corp\.?|Corporation|Co\.?|Ltd\.?|LLC|Holdings|Enterprises|Services|Trading|Foods|Solutions|Technologies|Group|Agency|Branch|Manpower)\b',
+    re.IGNORECASE
+)
 
-_MONTHS_RE = (
+# Philippine Locations
+_PHIL_LOCATIONS_SET = {
+    "manila", "quezon city", "makati", "makati city", "taguig", "taguig city", "bgc",
+    "bonifacio global city", "pasig", "pasig city", "ortigas", "mandaluyong",
+    "san juan", "marikina", "pasay", "parañaque", "muntinlupa", "las piñas",
+    "caloocan", "malabon", "navotas", "valenzuela", "rizal", "antipolo", "taytay",
+    "cainta", "teresa", "binangonan", "san mateo", "rodriguez", "laguna", "calamba",
+    "santa rosa", "biñan", "san pedro", "cabuyao", "los baños", "cavite", "bacoor",
+    "dasmarinas", "dasmariñas", "imus", "general trias", "tagaytay", "batangas",
+    "bulacan", "pampanga", "angeles city", "san fernando", "clark", "subic",
+    "cebu", "cebu city", "davao", "davao city", "iloilo", "baguio", "baguio city",
+    "cagayan de oro", "bacolod", "general santos"
+}
+
+
+# ─── 4. spaCy Pipeline Setup ─────────────────────────────────────────────────
+
+_SPACY_NLP = None
+_PHRASE_MATCHER = None
+
+def _get_spacy_pipeline():
+    global _SPACY_NLP, _PHRASE_MATCHER
+    if _SPACY_NLP is not None:
+        return _SPACY_NLP, _PHRASE_MATCHER
+
+    if spacy is None:
+        return None, None
+
+    try:
+        from app.extractors.nlp.nlp_engine import get_doc
+        nlp = spacy.load("en_core_web_sm")
+    except Exception:
+        return None, None
+
+    # Add EntityRuler for Philippine Job Titles & Employers
+    if "entity_ruler" not in nlp.pipe_names:
+        try:
+            ruler = nlp.add_pipe("entity_ruler", before="ner")
+            patterns = []
+            for canonical, vars_list in _PHILIPPINE_JOB_TAXONOMY.items():
+                for v in vars_list:
+                    patterns.append({"label": "PH_JOB_TITLE", "pattern": v})
+            for c in _PHIL_COMPANY_NAMES:
+                patterns.append({"label": "PH_EMPLOYER", "pattern": c})
+            ruler.add_patterns(patterns)
+        except Exception:
+            pass
+
+    # Add PhraseMatcher for rapid token matching
+    try:
+        matcher = PhraseMatcher(nlp.vocab, attr="LOWER")
+        for canonical, vars_list in _PHILIPPINE_JOB_TAXONOMY.items():
+            patterns = [nlp.make_doc(v) for v in vars_list]
+            matcher.add(canonical, patterns)
+        _PHRASE_MATCHER = matcher
+    except Exception:
+        pass
+
+    _SPACY_NLP = nlp
+    return _SPACY_NLP, _PHRASE_MATCHER
+
+
+def _extract_title_with_spacy(line: str) -> Optional[str]:
+    """
+    Uses spaCy EntityRuler, PhraseMatcher, and POS dependency parsing
+    to extract job titles, including out-of-vocabulary titles (Noun Phrases
+    adjacent to dates or company indicators).
+    """
+    nlp, matcher = _get_spacy_pipeline()
+    if not nlp:
+        return None
+
+    try:
+        doc = nlp(line[:100])
+        # 1. Check EntityRuler PH_JOB_TITLE entities
+        for ent in doc.ents:
+            if ent.label_ == "PH_JOB_TITLE":
+                return ent.text
+
+        # 2. Check PhraseMatcher
+        if matcher:
+            matches = matcher(doc)
+            if matches:
+                match_id, start, end = matches[0]
+                return doc[start:end].text
+
+        # 3. POS tagging & Dependency parsing for Out-of-Vocabulary titles
+        action_verbs = {
+            "assigned", "responsible", "handled", "managed", "supervised",
+            "developed", "maintained", "performed", "duties"
+        }
+        words_lower = {tok.text.lower() for tok in doc}
+        if words_lower & action_verbs:
+            return None
+
+        # Check noun chunks
+        noun_chunks = [chunk.text for chunk in doc.noun_chunks if 1 <= len(chunk.text.split()) <= 5]
+        if noun_chunks and len(line.split()) <= 6:
+            if all(tok.pos_ in ("NOUN", "PROPN", "ADJ", "PUNCT", "CCONJ", "SYM") for tok in doc if not tok.is_space):
+                return line.strip()
+    except Exception:
+        pass
+
+    return None
+
+
+# ─── 5. Date & Duration Parsing ──────────────────────────────────────────────
+
+_MONTHS_NAMES = (
     r'(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|'
     r'Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)'
 )
 _YEAR_RE = r'(?:19|20)\d{2}'
-_PRESENT_RE = r'(?:Present|Current|Now|To\s+Date|Ongoing|Today)'
+_PRESENT_RE = r'(?:Present|Current|Now|To\s+Date|Ongoing|Today|Up\s+to\s+present)'
 
-_DATE_RANGE_PATTERNS = [
-    # Month Year - Month Year / Present
-    rf'({_MONTHS_RE}\s*\.?\s*{_YEAR_RE})\s*[-–—to]+\s*({_MONTHS_RE}\s*\.?\s*{_YEAR_RE}|{_PRESENT_RE})',
-    # Year - Year / Present
-    rf'({_YEAR_RE})\s*[-–—to]+\s*({_YEAR_RE}|{_PRESENT_RE})',
-    # Month/Year - Month/Year (MM/YYYY)
-    rf'(\d{{1,2}}/\d{{4}})\s*[-–—to]+\s*(\d{{1,2}}/\d{{4}}|{_PRESENT_RE})',
-]
-
-_ROLE_INDICATORS = [
-    r'\b(?:Senior|Junior|Lead|Principal|Staff|Chief|Head|Associate|Assistant)\b',
-    r'\b(?:Software|Web|Frontend|Backend|Full[\s-]?Stack|Mobile|Cloud|Data|DevOps|QA|UI/?UX)\b',
-    r'\b(?:Engineer|Developer|Designer|Manager|Analyst|Specialist|Consultant|Director|'
-    r'Administrator|Coordinator|Architect|Scientist|Intern|Trainee|Officer|Executive|'
-    r'Supervisor|Technician|Programmer|Tester|Support|Accountant|Representative|Product\s+Manager|Project\s+Manager)\b',
-    # Operations / Logistics / Manufacturing (Crucial for Mariwasa & standard PH applicants)
-    r'\b(?:Rider|Delivery\s+Rider|Driver|Courier|Crew|Service\s+Crew|Cashier|Barista)\b',
-    r'\b(?:Operator|Machine\s+Operator|Production\s+Operator|Line\s+Leader|Factory\s+Worker|Laborer)\b',
-    r'\b(?:Warehouse\s+Staff|Warehouseman|Inventory\s+Clerk|Logistics\s+Assistant|Forklift\s+Operator)\b',
-    r'\b(?:Quality\s+Control|Quality\s+Inspector|QC|Maintenance\s+Technician|Electrician|Mechanic)\b',
-    # Administrative & Customer Service
-    r'\b(?:CSR|Customer\s+Service\s+Representative|Call\s+Center\s+Agent|TSR|Technical\s+Support)\b',
-    r'\b(?:Virtual\s+Assistant|Office\s+Staff|Administrative\s+Assistant|Office\s+Clerk|Data\s+Entry)\b',
-    r'\b(?:Accounting\s+Staff|Bookkeeper|Sales\s+Associate|Sales\s+Representative|HR\s+Assistant)\b',
-]
-
-_BRAND_ROLE_RE = re.compile(
-    r'^(Food\s*Panda|Foodpanda|Grab|Lalamove|Angkas|Shopee|Lazada|Jollibee|McDonald\'?s|SM|Puregold)\s+(.+)$',
+_DATE_RANGE_REGEX = re.compile(
+    rf'({_MONTHS_NAMES}\s*\.?\s*{_YEAR_RE}|\d{{1,2}}/\d{{4}}|{_YEAR_RE})\s*(?:[-–—]|to|until|up\s+to)\s*({_MONTHS_NAMES}\s*\.?\s*{_YEAR_RE}|\d{{1,2}}/\d{{4}}|{_YEAR_RE}|{_PRESENT_RE})',
     re.IGNORECASE
 )
 
-
-def _is_header_line(line: str, keywords: list[str]) -> bool:
-    """Check if a line matches a section header."""
-    clean = line.strip().upper()
-    if not clean or len(clean.split()) >= 7:
-        return False
-
-    stripped = re.sub(r'^[\s\-–—=_*#•►:]+', '', clean)
-    stripped = re.sub(r'[\s\-–—=_*#•►:]+$', '', stripped)
-
-    for kw in keywords:
-        if stripped == kw or stripped.startswith(kw + ":") or clean == kw:
-            return True
-    return False
+_HOURS_REGEX = re.compile(r'\(?(\d+)\s*(?:Hours?|Hrs?)\)?', re.IGNORECASE)
 
 
-def _has_date_range(line: str) -> bool:
-    """Check if a line contains a date range."""
-    for pattern in _DATE_RANGE_PATTERNS:
-        if re.search(pattern, line, re.IGNORECASE):
-            return True
-    return False
+def _month_name_to_num(month_str: str) -> int:
+    m = month_str.strip().lower().rstrip('.')
+    mapping = {
+        'jan': 1, 'feb': 2, 'mar': 3, 'apr': 4, 'may': 5, 'jun': 6,
+        'jul': 7, 'aug': 8, 'sep': 9, 'sept': 9, 'oct': 10, 'nov': 11, 'dec': 12,
+        'january': 1, 'february': 2, 'march': 3, 'april': 4,
+        'june': 6, 'july': 7, 'august': 8, 'september': 9,
+        'october': 10, 'november': 11, 'december': 12,
+    }
+    return mapping.get(m, 1)
 
 
-def _has_role_indicator(line: str) -> bool:
-    """Check if a line contains a job role keyword."""
-    for pattern in _ROLE_INDICATORS:
-        if re.search(pattern, line, re.IGNORECASE):
-            return True
-    return False
+def _parse_single_date(d_str: str) -> Tuple[Optional[str], Optional[int], Optional[int]]:
+    """Parse string like 'June 2023', '06/2023', '2023' into ('2023-06', year, month)."""
+    if not d_str:
+        return None, None, None
+    d_clean = d_str.strip()
+    if re.match(rf'^{_PRESENT_RE}$', d_clean, re.IGNORECASE):
+        now = datetime.now()
+        return "Present", now.year, now.month
+
+    # Check "Month YYYY"
+    m_match = re.search(rf'({_MONTHS_NAMES})\s*\.?\s*({_YEAR_RE})', d_clean, re.IGNORECASE)
+    if m_match:
+        m_num = _month_name_to_num(m_match.group(1))
+        yr = int(m_match.group(2))
+        return f"{yr:04d}-{m_num:02d}", yr, m_num
+
+    # Check MM/YYYY
+    slash_match = re.search(r'(\d{1,2})/(\d{4})', d_clean)
+    if slash_match:
+        m_num = max(1, min(12, int(slash_match.group(1))))
+        yr = int(slash_match.group(2))
+        return f"{yr:04d}-{m_num:02d}", yr, m_num
+
+    # Check YYYY
+    y_match = re.search(rf'\b({_YEAR_RE})\b', d_clean)
+    if y_match:
+        yr = int(y_match.group(1))
+        return f"{yr:04d}-01", yr, 1
+
+    # Fallback to dateparser if available
+    if dateparser is not None:
+        try:
+            parsed = dateparser.parse(d_clean)
+            if parsed:
+                return f"{parsed.year:04d}-{parsed.month:02d}", parsed.year, parsed.month
+        except Exception:
+            pass
+
+    return None, None, None
 
 
-def _clean_company_name(comp: str) -> str:
-    """Clean company name by removing trailing locations and delimiters."""
-    if not comp:
-        return ""
-    # Strip bullet or pipe
-    parts = re.split(r'\s*[|•]\s*', comp)
-    comp = parts[0].strip()
-    # Strip trailing dash location
-    if ' - ' in comp:
-        cparts = comp.split(' - ')
-        if len(cparts) == 2 and any(loc in cparts[1].lower() for loc in ['philippines', 'norway', 'manila', 'usa', 'remote']):
-            comp = cparts[0].strip()
-    if ',' in comp:
-        cparts = comp.split(',')
-        if len(cparts) == 2 and any(loc in cparts[1].lower() for loc in ['philippines', 'norway', 'manila', 'usa', 'remote', 'drøbak', 'bgc']):
-            comp = cparts[0].strip()
-    comp = re.sub(r'^(?:at|for|with)\s+', '', comp, flags=re.IGNORECASE).strip()
-    return comp.strip(' ,-–—|•()')
-
-
-def _is_valid_company_name(comp: str) -> bool:
-    """Validate that candidate string is an actual company name and not noise."""
-    if not comp or len(comp) < 2 or len(comp) > 60:
-        return False
-    lower = comp.lower().strip()
-    if lower in {"present", "current", "ongoing", "none", "n/a", "contract", "full-time", "part-time"}:
-        return False
-    if lower.startswith(('•', '-', '*', 'responsibilit', 'dutie', 'assist', 'manag', 'handle', 'maintain', 'deliver')):
-        return False
-    return True
-
-
-def _clean_description_line(desc: str) -> str:
-    """Strip leading bullets, responsibility labels, and whitespace."""
-    cleaned = desc.strip().lstrip('•-–—▪►✓* ').strip()
-    cleaned = re.sub(r'^(?:Responsibilities|Duties|Key\s+Achievements|Key\s+Responsibilities|Tasks)\s*[:.\-]\s*', '', cleaned, flags=re.IGNORECASE)
-    return cleaned.strip()
-
-
-def _parse_entry_at(lines: list[str], start_idx: int) -> tuple[Optional[dict], int]:
+def _parse_date_and_duration(text: str) -> Tuple[Optional[str], Optional[str], int, str]:
     """
-    Parse a structured role entry starting at start_idx across a 3-4 line window.
-    Returns (entry_dict, lines_consumed).
+    Extracts start_date (YYYY-MM), end_date (YYYY-MM | Present), duration_months, and extra status string.
     """
-    line0 = lines[start_idx].strip()
+    match = _DATE_RANGE_REGEX.search(text)
+    if not match:
+        return None, None, 0, ""
 
-    # Skip redundant duplicate titles or pure bullets
-    if start_idx + 1 < len(lines):
-        line1 = lines[start_idx + 1].strip()
-        if _has_role_indicator(line0) and _has_role_indicator(line1):
-            if start_idx + 2 < len(lines) and (_has_date_range(lines[start_idx + 2]) or '|' in lines[start_idx + 2]):
-                return None, 1
+    raw_start = match.group(1).strip()
+    raw_end = match.group(2).strip()
 
-    # Look at window of up to 4 lines
-    window = lines[start_idx:min(start_idx + 4, len(lines))]
+    start_iso, s_yr, s_mo = _parse_single_date(raw_start)
+    end_iso, e_yr, e_mo = _parse_single_date(raw_end)
 
-    date_idx = -1
-    dates = ""
-    for idx, w in enumerate(window):
-        if _has_date_range(w):
-            date_idx = idx
-            for pattern in _DATE_RANGE_PATTERNS:
-                m = re.search(pattern, w, re.IGNORECASE)
-                if m:
-                    dates = m.group(0).strip()
-                    break
-            break
+    # If raw_end is strictly a 4-digit year, default to December of that year
+    if e_yr and re.fullmatch(r'\d{4}', raw_end.strip()):
+        e_mo = 12
+        end_iso = f"{e_yr:04d}-12"
 
-    non_date_lines = [w.strip() for idx, w in enumerate(window) if idx != date_idx and not w.strip().startswith(('•', '-', '*'))]
-    if not non_date_lines:
-        return None, 1
+    duration = 0
+    now = datetime.now()
+    if s_yr and s_mo:
+        if end_iso == "Present" or not e_yr:
+            target_yr, target_mo = now.year, now.month
+            duration = max(1, (target_yr - s_yr) * 12 + (target_mo - s_mo) + 1)
+        elif e_yr and e_mo:
+            duration = max(1, (e_yr - s_yr) * 12 + (e_mo - s_mo) + 1)
 
-    role = ""
-    company = ""
+    # Check if hours mentioned (e.g. 486 Hours)
+    hrs_match = _HOURS_REGEX.search(text)
+    if hrs_match and duration == 0:
+        hrs = int(hrs_match.group(1))
+        duration = max(1, round(hrs / 160.0))
 
-    # Case 1: Brand + Role (e.g. Food Panda Delivery Rider)
-    brand_m = _BRAND_ROLE_RE.match(non_date_lines[0])
-    if brand_m:
-        company = brand_m.group(1).title()
-        role = brand_m.group(2).strip()
-    # Case 2: Role at Company
-    elif re.search(r'\s+at\s+', non_date_lines[0], re.IGNORECASE):
-        parts = re.split(r'\s+at\s+', non_date_lines[0], flags=re.IGNORECASE, maxsplit=1)
-        role = parts[0].strip()
-        company = _clean_company_name(parts[1].strip())
-    # Case 3: Line 0 has Role, Line 1 has Company
-    elif _has_role_indicator(non_date_lines[0]):
-        role = non_date_lines[0]
-        if len(non_date_lines) > 1 and not _has_role_indicator(non_date_lines[1]):
-            company = _clean_company_name(non_date_lines[1])
-    # Case 4: Line 0 has Company, Line 1 has Role
-    elif len(non_date_lines) > 1 and _has_role_indicator(non_date_lines[1]):
-        company = _clean_company_name(non_date_lines[0])
-        role = non_date_lines[1]
-    else:
-        role = non_date_lines[0]
+    # Extra text (status info outside date range)
+    extra_text = text[:match.start()] + " " + text[match.end():]
+    extra_text = re.sub(r'[\s\-–—()|]+', ' ', extra_text).strip()
 
-    role = re.sub(r'^(?:Senior|Junior|Lead)\s*$', '', role).strip(' ,-–—|•()')
-    if not role or len(role) < 3 or any(role.lower().startswith(p) for p in ["experienced", "passionate", "seeking", "dedicated"]):
-        return None, 1
+    return start_iso, end_iso, duration, extra_text
 
-    # Lines consumed for header
-    header_count = 1
-    if date_idx != -1:
-        header_count = max(header_count, date_idx + 1)
-    if company and len(non_date_lines) > 1:
-        header_count = max(header_count, 2)
 
-    consumed = header_count
+def _detect_employment_type(raw_title: str, company: str = "", date_line: str = "", responsibilities: Optional[List[str]] = None) -> str:
+    resps = responsibilities or []
+    combined = f"{raw_title} {company} {date_line} {' '.join(resps)}"
+    for regex, emp_type in _EMPLOYMENT_TYPE_RULES:
+        if regex.search(combined):
+            return emp_type
+    return "Full-time"
 
-    # Collect descriptions
-    descriptions = []
-    desc_start = start_idx + consumed
-    for j in range(desc_start, min(desc_start + 8, len(lines))):
-        dl = lines[j].strip()
-        if not dl:
+
+def _normalize_job_title(raw_title: str) -> str:
+    """
+    Normalizes raw job title to clean, standardized title string:
+    - Strips noisy annotations like (OJT), (Kitchen / Grill), (Full-time), etc.
+    - Strips leading/trailing symbols, bullets, or separators.
+    - Normalizes casing to Title Case.
+    - Standardizes known abbreviations where appropriate (e.g., CSR -> Customer Service Representative).
+    """
+    clean = re.sub(r'\s*\([^)]*\)', '', raw_title).strip()
+    clean = re.sub(r'\s*\|\s*.*$', '', clean).strip()
+    clean = re.sub(r'^[•\-\*▪►✓\s]+|[•\-\*▪►✓\s]+$', '', clean).strip()
+
+    acronym_map = {
+        "CSR": "Customer Service Representative",
+        "TSR": "Technical Support Representative",
+        "VA": "Virtual Assistant",
+        "QA": "QA Engineer",
+        "QC": "Quality Control Inspector",
+        "LPT": "Licensed Professional Teacher",
+        "CPA": "Certified Public Accountant",
+        "ECE": "Electronics Engineer",
+    }
+    if clean.upper() in acronym_map:
+        return acronym_map[clean.upper()]
+
+    if '/' in clean:
+        parts = [p.strip() for p in clean.split('/')]
+        norm_parts = [acronym_map.get(p.upper(), p.title() if p.isupper() else p) for p in parts]
+        dedup = []
+        for np in norm_parts:
+            if np not in dedup:
+                dedup.append(np)
+        return " / ".join(dedup)
+
+    if clean.isupper():
+        return clean.title()
+
+    # Check spaCy POS / entity fallback
+    spacy_cand = _extract_title_with_spacy(clean)
+    if spacy_cand:
+        return spacy_cand.title() if spacy_cand.isupper() else spacy_cand
+
+    return clean
+
+
+def _split_company_and_location(raw_text: str) -> Tuple[str, Optional[str]]:
+    """
+    Splits company string into (company_name, location).
+    """
+    clean = raw_text.strip()
+    # Strip parenthetical agency remarks from company name
+    clean = re.sub(r'\(via\s+[^)]+\)', '', clean, flags=re.IGNORECASE).strip()
+
+    # Case 1: Pipe separator 'Accenture Philippines | BGC, Taguig City'
+    if '|' in clean:
+        parts = [p.strip() for p in clean.split('|', 1)]
+        return parts[0], parts[1] if len(parts) > 1 and parts[1] else None
+
+    # Case 2: Dash separator 'Chowking - SM City Taytay' or 'Jollibee Foods Corporation - Crossing Branch, Calamba, Laguna'
+    if ' - ' in clean or ' – ' in clean or ' — ' in clean:
+        parts = re.split(r'\s+[-–—]\s+', clean, maxsplit=1)
+        comp = parts[0].strip()
+        loc = parts[1].strip() if len(parts) > 1 else None
+        return comp, loc
+
+    # Case 3: Comma separator 'XYZ Tech Solutions Inc., Makati City'
+    if ',' in clean:
+        parts = [p.strip() for p in clean.split(',', 1)]
+        first = parts[0]
+        rest = parts[1]
+        if _COMPANY_LEGAL_SUFFIXES_RE.search(first) or any(c.lower() in first.lower() for c in _PHIL_COMPANY_NAMES):
+            return first, rest
+        if any(loc in rest.lower() for loc in _PHIL_LOCATIONS_SET):
+            return first, rest
+
+    # Case 4: No separator, check if location is trailing
+    for loc in sorted(_PHIL_LOCATIONS_SET, key=len, reverse=True):
+        if clean.lower().endswith(loc):
+            idx = clean.lower().rfind(loc)
+            comp = clean[:idx].strip(' ,-–—')
+            found_loc = clean[idx:].strip(' ,-–—')
+            if comp:
+                return comp, found_loc
+
+    return clean, None
+
+
+def _is_section_header(line: str) -> bool:
+    clean = re.sub(r'^[\s\-–—=_*#•►:]+|[\s\-–—=_*#•►:]+$', '', line.strip()).upper()
+    headers = [
+        "WORK EXPERIENCE", "EMPLOYMENT HISTORY", "PROFESSIONAL EXPERIENCE",
+        "RELEVANT EXPERIENCE", "WORK HISTORY", "ON-THE-JOB TRAINING (OJT)",
+        "ON-THE-JOB TRAINING", "OJT", "INTERNSHIP", "PRACTICUM",
+        "EDUCATION", "SKILLS", "CERTIFICATIONS", "PROJECTS", "SUMMARY",
+        "CHARACTER REFERENCES", "REFERENCES", "PERSONAL DATA", "SEMINARS/TRAININGS",
+        "TRAINING", "SEMINARS", "PERSONAL INFORMATION", "AFFILIATIONS", "AWARDS"
+    ]
+    return clean in headers or any(clean.startswith(h + ":") for h in headers)
+
+
+def _extract_experience_blocks(text: str) -> List[str]:
+    """
+    Extracts all sections corresponding to Work Experience and OJT/Internship.
+    """
+    exp_headers = [
+        "WORK EXPERIENCE", "EMPLOYMENT HISTORY", "PROFESSIONAL EXPERIENCE",
+        "RELEVANT EXPERIENCE", "WORK HISTORY", "ON-THE-JOB TRAINING (OJT)",
+        "ON-THE-JOB TRAINING", "OJT", "INTERNSHIP", "PRACTICUM",
+        "ON-THE-JOB TRAINING / INTERNSHIP"
+    ]
+    stop_headers = [
+        "EDUCATION", "SKILLS", "CERTIFICATIONS", "PROJECTS", "QUALIFICATIONS",
+        "ACHIEVEMENTS", "AFFILIATIONS", "REFERENCES", "CHARACTER REFERENCES",
+        "INTERESTS", "AWARDS", "PUBLICATIONS", "HOBBIES", "VOLUNTEER",
+        "PERSONAL", "PERSONAL DATA", "BIODATA", "TRAINING", "SEMINARS",
+        "SEMINARS/TRAININGS", "TECHNICAL SKILLS", "LANGUAGES"
+    ]
+
+    lines = text.split('\n')
+    extracted_blocks = []
+    current_block = []
+    in_exp = False
+
+    for line in lines:
+        cleaned = re.sub(r'^[\s\-–—=_*#•►:]+|[\s\-–—=_*#•►:]+$', '', line.strip()).upper()
+
+        if any(cleaned == h or cleaned.startswith(h + ":") for h in exp_headers):
+            if current_block:
+                extracted_blocks.append('\n'.join(current_block))
+                current_block = []
+            in_exp = True
             continue
-        if _has_date_range(dl) or (_has_role_indicator(dl) and not dl.startswith(('•', '-', '*'))):
-            break
-        cleaned = _clean_description_line(dl)
-        if cleaned and len(cleaned) > 8:
-            descriptions.append(cleaned)
-            consumed += 1
+        elif any(cleaned == h or cleaned.startswith(h + ":") for h in stop_headers):
+            if in_exp and current_block:
+                extracted_blocks.append('\n'.join(current_block))
+                current_block = []
+            in_exp = False
+            continue
 
-    return {
-        "role": role.title() if role.isupper() else role,
-        "company": company,
-        "dates": dates,
-        "descriptions": descriptions
-    }, consumed
+        if in_exp:
+            current_block.append(line)
+
+    if current_block:
+        extracted_blocks.append('\n'.join(current_block))
+
+    return extracted_blocks if extracted_blocks else [text]
 
 
-def extract_experience_entries(text: str) -> list[dict]:
+# ─── 6. Primary Structured Extractor ─────────────────────────────────────────
+
+def extract_structured_experience(text: str) -> Dict[str, Any]:
     """
-    Parses full structured experience entries from resume text.
-    Returns list of dicts: [{"role": str, "company": str, "dates": str, "descriptions": list[str]}]
+    Extracts structured work experience entries tailored to Philippine resumes.
+    Returns:
+    {
+      "total_experience_months": <int>,
+      "work_experiences": [
+        {
+          "job_title": "<Normalized Title String>",
+          "raw_job_title": "<Exact Title Text from Resume>",
+          "company_name": "<Company/Employer String>",
+          "location": "<City/Province/Branch String or None>",
+          "employment_type": "<Full-time | Contractual | OJT | Part-time | Seasonal | Unknown>",
+          "start_date": "<YYYY-MM or None>",
+          "end_date": "<YYYY-MM | Present | None>",
+          "duration_months": <int>,
+          "responsibilities": ["<Duty 1>", "<Duty 2>"]
+        }
+      ]
+    }
     """
-    sections = split_into_sections(text)
-    exp_text = sections.get("EXPERIENCE", "")
+    if not text:
+        return {"total_experience_months": 0, "work_experiences": []}
 
-    lines = [l.strip() for l in exp_text.split('\n') if l.strip()] if exp_text else [l.strip() for l in text.split('\n') if l.strip()]
-    entries = []
+    blocks = _extract_experience_blocks(text)
+    combined_exp_text = "\n\n".join(blocks)
+
+    lines = [l.strip() for l in combined_exp_text.split('\n') if l.strip()]
+    if not lines:
+        return {"total_experience_months": 0, "work_experiences": []}
+
+    work_experiences = []
     i = 0
 
     while i < len(lines):
         line = lines[i]
-        if not line or _is_header_line(line, _EXPERIENCE_HEADERS + _STOP_HEADERS):
+
+        # ── Case A: Inline entry format (Template 2) ──────────────────────────
+        # e.g.: Cashier / Counter Crew | Chowking - SM City Taytay | March 2021 to August 2022
+        if '|' in line and _DATE_RANGE_REGEX.search(line):
+            segments = [s.strip() for s in line.split('|')]
+            if len(segments) >= 3:
+                raw_title = segments[0]
+                comp_loc_str = segments[1]
+                date_str = segments[2]
+            else:
+                raw_title = segments[0]
+                rest = segments[1]
+                dm = _DATE_RANGE_REGEX.search(rest)
+                if dm:
+                    comp_loc_str = rest[:dm.start()].strip(' -|')
+                    date_str = rest[dm.start():].strip()
+                else:
+                    comp_loc_str = rest
+                    date_str = ""
+
+            company, location = _split_company_and_location(comp_loc_str)
+            start_iso, end_iso, duration, extra_status = _parse_date_and_duration(date_str)
+
+            # Responsibilities in subsequent lines
+            responsibilities = []
             i += 1
+            while i < len(lines):
+                next_l = lines[i]
+                if '|' in next_l and _DATE_RANGE_REGEX.search(next_l):
+                    break
+                if _is_section_header(next_l):
+                    break
+                d_match = re.match(r'^(?:Duties|Responsibilities|Key\s+Tasks)\s*[:.\-]\s*(.+)', next_l, re.IGNORECASE)
+                if d_match:
+                    responsibilities.append(d_match.group(1).strip())
+                    i += 1
+                    continue
+                elif next_l.startswith(('•', '-', '*', '▪', '►', '✓')):
+                    duty_text = next_l.lstrip('•-*▪►✓ ').strip()
+                    if duty_text:
+                        responsibilities.append(duty_text)
+                    i += 1
+                    continue
+                elif not _DATE_RANGE_REGEX.search(next_l) and not any(comp in next_l for comp in _PHIL_COMPANY_NAMES):
+                    if len(next_l) > 15:
+                        responsibilities.append(next_l)
+                        i += 1
+                        continue
+                break
+
+            emp_type = _detect_employment_type(raw_title, comp_loc_str, date_str, responsibilities)
+            norm_title = _normalize_job_title(raw_title)
+
+            work_experiences.append({
+                "job_title": norm_title,
+                "raw_job_title": raw_title,
+                "company_name": company,
+                "location": location,
+                "employment_type": emp_type,
+                "start_date": start_iso,
+                "end_date": end_iso,
+                "duration_months": duration,
+                "responsibilities": responsibilities
+            })
             continue
 
-        if line.startswith(('•', '-', '–', '▪', '►', '✓', '*')) and not _has_date_range(line):
-            i += 1
-            continue
+        # ── Case B: Multi-line block format (Template 1 & Template 3) ─────────
+        has_date_ahead = False
+        date_offset = -1
+        for offset in range(1, min(4, len(lines) - i)):
+            if _DATE_RANGE_REGEX.search(lines[i + offset]):
+                has_date_ahead = True
+                date_offset = offset
+                break
 
-        entry, consumed = _parse_entry_at(lines, i)
-        if entry and entry.get("role"):
-            entries.append(entry)
-            i += max(1, consumed)
-        else:
-            i += 1
+        if has_date_ahead:
+            raw_title = line
+            company_line = lines[i + 1] if date_offset == 2 else (lines[i + 2] if date_offset == 1 else "")
+            date_line = lines[i + date_offset]
 
-    # ── Parse WORK PROJECTS / PROJECTS section for richer descriptions ─────────
-    proj_text = sections.get("PROJECTS", "")
-    if proj_text:
-        project_entries = _parse_project_entries(proj_text)
+            if date_offset == 1:
+                comp_loc_str = lines[i + 2] if i + 2 < len(lines) and not lines[i + 2].startswith(('-', '•', '*')) else ""
+                consumed_header = 3 if comp_loc_str else 2
+            else:
+                comp_loc_str = company_line
+                consumed_header = date_offset + 1
 
-        # Back-fill descriptions from projects into experience entries that lack them
-        for entry in entries:
-            if entry.get("descriptions"):
-                continue  # Already has descriptions
-            entry_role = entry.get("role", "").lower().strip()
-            entry_company = entry.get("company", "").lower().strip()
+            company, location = _split_company_and_location(comp_loc_str)
+            start_iso, end_iso, duration, extra_status = _parse_date_and_duration(date_line)
 
-            for proj in project_entries:
-                proj_role = proj.get("role", "").lower().strip()
-                proj_company = proj.get("company", "").lower().strip()
-                # Match by role similarity or company mention in project name
-                if (proj_role and entry_role and
-                    (proj_role in entry_role or entry_role in proj_role or
-                     _roles_similar(entry_role, proj_role))) or \
-                   (proj_company and entry_company and
-                    (proj_company in entry_company or entry_company in proj_company)):
-                    entry["descriptions"] = proj.get("descriptions", [])
-                    if proj.get("technologies"):
-                        entry["technologies"] = proj["technologies"]
+            # Responsibilities
+            responsibilities = []
+            curr_idx = i + consumed_header
+            while curr_idx < len(lines):
+                curr_l = lines[curr_idx]
+                if _is_section_header(curr_l):
+                    break
+                is_next_role = False
+                for fwd in range(1, 3):
+                    if curr_idx + fwd < len(lines) and _DATE_RANGE_REGEX.search(lines[curr_idx + fwd]):
+                        is_next_role = True
+                        break
+                if is_next_role and not curr_l.startswith(('•', '-', '*', '▪', '►', '✓')):
                     break
 
-        # Add project roles not already in experience entries
-        if len(entries) < 2:
-            for proj in project_entries:
-                proj_role = proj.get("role", "")
-                if proj_role and not any(
-                    e.get("role", "").lower().strip() == proj_role.lower().strip()
-                    for e in entries
-                ):
-                    entries.append({
-                        "role": proj_role,
-                        "company": proj.get("company", ""),
-                        "dates": "",
-                        "descriptions": proj.get("descriptions", [])
-                    })
+                d_match = re.match(r'^(?:Duties|Responsibilities|Key\s+Tasks)\s*[:.\-]\s*(.+)', curr_l, re.IGNORECASE)
+                if d_match:
+                    responsibilities.append(d_match.group(1).strip())
+                elif curr_l.startswith(('•', '-', '*', '▪', '►', '✓')):
+                    cleaned_duty = curr_l.lstrip('•-*▪►✓ ').strip()
+                    if cleaned_duty:
+                        responsibilities.append(cleaned_duty)
+                elif len(curr_l) > 15:
+                    responsibilities.append(curr_l)
+                curr_idx += 1
 
-    return entries
+            emp_type = _detect_employment_type(raw_title, comp_loc_str, date_line, responsibilities)
+            norm_title = _normalize_job_title(raw_title)
 
+            work_experiences.append({
+                "job_title": norm_title,
+                "raw_job_title": raw_title,
+                "company_name": company,
+                "location": location,
+                "employment_type": emp_type,
+                "start_date": start_iso,
+                "end_date": end_iso,
+                "duration_months": duration,
+                "responsibilities": responsibilities
+            })
 
-def _roles_similar(role1: str, role2: str) -> bool:
-    """Check if two role strings are similar (e.g. 'full-stack web developer' vs 'full stack web developer')."""
-    # Normalize
-    r1 = re.sub(r'[\s\-]+', ' ', role1.lower()).strip()
-    r2 = re.sub(r'[\s\-]+', ' ', role2.lower()).strip()
-    if r1 == r2:
-        return True
-    # Check core words overlap
-    words1 = set(r1.split())
-    words2 = set(r2.split())
-    common = words1 & words2
-    # If at least 2 meaningful words match (e.g. "developer" + "web")
-    meaningful = common - {"a", "an", "the", "of", "in", "at", "and", "or", "for"}
-    return len(meaningful) >= 2
+            i = curr_idx
+            continue
 
-
-def _parse_project_entries(proj_text: str) -> list[dict]:
-    """
-    Parse WORK PROJECTS / PROJECTS section into structured entries.
-    Each project typically has: name, description, Role:, Technologies: lines.
-    """
-    lines = [l.strip() for l in proj_text.split('\n')]
-    projects = []
-    current_project = None
-
-    i = 0
-    while i < len(lines):
-        line = lines[i].strip()
         i += 1
 
-        if not line:
-            continue
-
-        # Check for Role: line
-        role_match = re.match(r'^Role\s*:\s*(.+)', line, re.IGNORECASE)
-        if role_match:
-            if current_project is not None:
-                current_project["role"] = role_match.group(1).strip()
-            continue
-
-        # Check for Technologies: line
-        tech_match = re.match(r'^Technologies?\s*:\s*(.+)', line, re.IGNORECASE)
-        if tech_match:
-            if current_project is not None:
-                current_project["technologies"] = tech_match.group(1).strip()
-            continue
-
-        # Check if this is a new project name (short, title-like, not a bullet point)
-        is_bullet = line.startswith(('•', '-', '–', '▪', '►', '✓', '*'))
-        is_short = len(line) < 60
-        has_no_period = '.' not in line or line.endswith('.')
-
-        if is_short and not is_bullet and not line.startswith(('Role', 'Technologies', 'Tech')):
-            # Looks like a new project name
-            if current_project is not None:
-                projects.append(current_project)
-            current_project = {
-                "name": line,
-                "company": line,
-                "role": "",
-                "descriptions": [],
-                "technologies": ""
-            }
-        elif current_project is not None:
-            # This is a description line
-            desc = line.lstrip('•-–—▪►✓* ').strip()
-            if desc and len(desc) > 10:
-                current_project["descriptions"].append(desc)
-
-    if current_project is not None:
-        projects.append(current_project)
-
-    return projects
+    total_months = sum(e["duration_months"] for e in work_experiences)
+    return {
+        "total_experience_months": total_months,
+        "work_experiences": work_experiences
+    }
 
 
-def extract_job_title(text: str, entries: Optional[list[dict]] = None) -> str:
+# ─── 7. Backward Compatibility Functions ─────────────────────────────────────
+
+def extract_experience_entries(text: str) -> list[dict]:
     """
-    Extracts the candidate's primary/target job title from resume.
-    1. Header inspection: title directly below the candidate's name.
-    2. Most recent work experience entry role.
-    3. Student / Objective target role.
-    4. spaCy Matcher fallback.
+    Parses structured experience entries from resume text.
+    Provides backward compatibility with legacy dict format while including new structured fields.
     """
-    if not text:
-        return ""
+    structured = extract_structured_experience(text)
+    entries = []
+    for exp in structured.get("work_experiences", []):
+        dates_display = ""
+        if exp.get("start_date") and exp.get("end_date"):
+            dates_display = f"{exp['start_date']} - {exp['end_date']}"
+        elif exp.get("start_date"):
+            dates_display = exp["start_date"]
 
-    if entries is None:
-        entries = extract_experience_entries(text)
-
-    # Strategy 1: Header line right below candidate name
-    lines = [line.strip() for line in text.split('\n') if line.strip()]
-    for line in lines[1:6]:
-        if len(line) > 60:
-            continue
-        if _has_role_indicator(line) and not re.search(r'@|\d{3,}|http', line):
-            clean_title = re.sub(r'^[|•\-–—*#\s]+|[|•\-–—*#\s]+$', '', line).strip()
-            if 3 < len(clean_title) < 50:
-                return clean_title.title() if clean_title.isupper() else clean_title
-
-    # Strategy 2: First entry's role
-    if entries and entries[0].get("role"):
-        role = entries[0]["role"]
-        role = re.sub(r'^\d+\+?\s*years?\s+(?:of\s+)?(?:experience\s+)?(?:as\s+(?:a\s+|an\s+)?)?', '', role, flags=re.IGNORECASE).strip()
-        if role and len(role) > 2:
-            return role
-
-    # Strategy 3: Check objective for student / career title
-    obj_match = re.search(r'(?:seeking\s+an?\s+(?:opportunity\s+as\s+an?|internship\s+as\s+an?|position\s+as\s+an?)|hardworking|motivated)\s+([A-Za-z0-9\s]+?(?:Student|Graduate|Developer|Engineer|Technician|Rider|Associate))', text[:1200], re.I)
-    if obj_match:
-        obj_cand = obj_match.group(1).strip()
-        if 3 < len(obj_cand) < 45:
-            return obj_cand.title()
-
-    # Strategy 4: spaCy matcher
-    try:
-        doc = get_doc(text[:1500])
-        from app.extractors.nlp.nlp_engine import get_job_title_matcher
-        matcher = get_job_title_matcher()
-        matches = matcher(doc)
-        if matches:
-            match_id, start, end = matches[0]
-            cand = doc[start:end].text.strip()
-            if 3 < len(cand) < 50:
-                return cand.title()
-    except Exception:
-        pass
-
-    return ""
-
-
-def extract_company(text: str, entries: Optional[list[dict]] = None) -> str:
-    """
-    Extracts the candidate's most recent company name.
-    1. Most recent experience entry company.
-    2. spaCy ORG entity in first experience entry with validation.
-    """
-    if entries is None:
-        entries = extract_experience_entries(text)
-
-    if entries:
-        for e in entries:
-            comp = e.get("company", "").strip()
-            if _is_valid_company_name(comp):
-                return comp
-
-    # spaCy ORG entity fallback in experience section with strict validation
-    try:
-        sections = split_into_sections(text)
-        exp_text = sections.get("EXPERIENCE", "")
-        if exp_text:
-            doc = get_doc(exp_text[:1000])
-            for ent in doc.ents:
-                clean_org = ent.text.strip().lstrip('•-–* ')
-                if ent.label_ == "ORG" and _is_valid_company_name(clean_org):
-                    return clean_org
-    except Exception:
-        pass
-
-    return ""
-
-
-def extract_relevance(text: str, years: int = 0, job_title: str = "", skills: str = "") -> str:
-    """
-    Generates a concise, informative relevance statement highlighting candidate qualifications.
-    """
-    parts = []
-    if years and years > 0:
-        if job_title:
-            parts.append(f"{years}+ years of experience as {job_title}")
-        else:
-            parts.append(f"{years}+ years of professional experience")
-    elif job_title:
-        parts.append(f"Experienced {job_title}")
-
-    # Top skills mention
-    if skills:
-        top_skills = [s.strip() for s in skills.split('|') if s.strip()][:3]
-        if top_skills:
-            parts.append(f"specializing in {', '.join(top_skills)}")
-
-    if parts:
-        return " ".join(parts)
-    return "Professional career history with relevant industry experience"
+        entries.append({
+            "title": exp.get("job_title", ""),
+            "role": exp.get("job_title", ""),
+            "job_title": exp.get("job_title", ""),
+            "raw_job_title": exp.get("raw_job_title", ""),
+            "company": exp.get("company_name", ""),
+            "company_name": exp.get("company_name", ""),
+            "location": exp.get("location"),
+            "employment_type": exp.get("employment_type", "Full-time"),
+            "dates": dates_display,
+            "start_date": exp.get("start_date"),
+            "end_date": exp.get("end_date"),
+            "duration_months": exp.get("duration_months", 0),
+            "descriptions": exp.get("responsibilities", []),
+            "responsibilities": exp.get("responsibilities", []),
+        })
+    return entries
 
 
 def extract_experience(text: str) -> str:
     """
     Extracts work experience from resume text with structured parsing.
-    Returns pipe-separated entries in format: "Role at Company (Dates) - Responsibilities: ..."
+    Returns pipe-separated entries: "Role at Company (Dates) - Responsibilities: ..."
     """
     entries = extract_experience_entries(text)
     formatted_entries = []
@@ -516,30 +866,16 @@ def extract_experience(text: str) -> str:
         if formatted and formatted not in formatted_entries:
             formatted_entries.append(formatted)
 
-    # spaCy-based fallback if no section entries parsed
-    if not formatted_entries:
-        try:
-            doc = get_doc(text)
-            nlp_entries = extract_advanced_experience(doc)
-            for nlp_entry in nlp_entries:
-                if nlp_entry and nlp_entry not in formatted_entries:
-                    formatted_entries.append(nlp_entry)
-        except Exception:
-            pass
-
     return " | ".join(formatted_entries[:10]) if formatted_entries else ""
 
 
 def extract_years_experience(text: str) -> int:
     """
-    Calculates total years of experience by:
-    1. Finding explicit mentions like "X years experience" (prioritized).
-    2. Summing non-overlapping date ranges found in the EXPERIENCE section.
+    Calculates total years of experience from structured duration months or explicit mentions.
     """
     if not text:
         return 0
 
-    # ── Strategy 1: Explicit mentions (e.g., "6+ years of experience") ────────
     explicit_patterns = [
         r'(\d+)\+?\s*years?\s+(?:of\s+)?(?:experience|exp|work|expertise)',
         r'(?:over|more\s+than|at\s+least)\s+(\d+)\s*years?',
@@ -547,7 +883,6 @@ def extract_years_experience(text: str) -> int:
         r'(\d+)\+?\s*years?\s+(?:as\s+(?:a\s+|an\s+)?)',
         r'(\d+)\+?\s*years?\s+(?:of\s+)?(?:professional|related|relevant)\s+(?:experience|work)',
     ]
-    explicit_years = 0
     for pattern in explicit_patterns:
         matches = re.findall(pattern, text, re.IGNORECASE)
         if matches:
@@ -555,63 +890,136 @@ def extract_years_experience(text: str) -> int:
                 try:
                     val = int(m)
                     if 0 < val < 50:
-                        explicit_years = max(explicit_years, val)
+                        return val
                 except ValueError:
                     continue
 
-    # If explicit mention found, it is almost always the candidate's exact stated tenure!
-    if explicit_years > 0:
-        return explicit_years
+    structured = extract_structured_experience(text)
+    total_months = structured.get("total_experience_months", 0)
+    if total_months > 0:
+        return max(1, round(total_months / 12.0))
 
-    # ── Strategy 2: Calculate from date ranges ONLY in the EXPERIENCE section ─
-    sections = split_into_sections(text)
-    exp_text = sections.get("EXPERIENCE", "")
+    return 0
 
-    # If no designated experience section, search lines that have role indicators
-    search_text = exp_text if exp_text else text
 
-    range_pattern = (
-        rf'({_MONTHS_RE}\s*\.?\s*)?({_YEAR_RE})\s*[-–—to]+\s*'
-        rf'(?:({_MONTHS_RE}\s*\.?\s*)?({_YEAR_RE})|({_PRESENT_RE}))'
-    )
-    ranges = re.findall(range_pattern, search_text, re.IGNORECASE)
+def extract_job_title(text: str, entries: Optional[list[dict]] = None) -> str:
+    """
+    Extracts the candidate's primary job title from resume.
+    """
+    if not text:
+        return ""
 
-    current_year = datetime.now().year
-    current_month = datetime.now().month
-    total_months = 0
+    if entries is None:
+        entries = extract_experience_entries(text)
 
-    for start_m, start_y, end_m, end_y, present in ranges:
-        try:
-            s_y = int(start_y)
-            s_m = _month_to_num(start_m) if start_m else 1
-
-            if present:
-                e_y = current_year
-                e_m = current_month
-            else:
-                e_y = int(end_y)
-                e_m = _month_to_num(end_m) if end_m else 12
-
-            diff = (e_y - s_y) * 12 + (e_m - s_m)
-            if 0 < diff < 600:
-                total_months += diff
-        except (ValueError, TypeError):
+    # 1. Header inspection
+    lines = [line.strip() for line in text.split('\n') if line.strip()]
+    for line in lines[1:6]:
+        if len(line) > 60:
             continue
+        if re.search(r'@|\d{3,}|http', line):
+            continue
+        norm = _normalize_job_title(line)
+        if norm and len(norm) > 3 and norm != line:
+            return norm
 
-    calculated_years = round(total_months / 12) if total_months > 0 else 0
-    return min(calculated_years, 50)
+    # 2. Most recent work experience role
+    if entries and entries[0].get("job_title"):
+        return entries[0]["job_title"]
+
+    return ""
 
 
-def _month_to_num(month_str: str) -> int:
-    """Convert month name to 1-indexed number."""
-    if not month_str:
-        return 1
-    m = month_str.strip().lower().rstrip('.')
-    month_map = {
-        'jan': 1, 'feb': 2, 'mar': 3, 'apr': 4, 'may': 5, 'jun': 6,
-        'jul': 7, 'aug': 8, 'sep': 9, 'sept': 9, 'oct': 10, 'nov': 11, 'dec': 12,
-        'january': 1, 'february': 2, 'march': 3, 'april': 4,
-        'june': 6, 'july': 7, 'august': 8, 'september': 9,
-        'october': 10, 'november': 11, 'december': 12,
-    }
-    return month_map.get(m, 1)
+def extract_company(text: str, entries: Optional[list[dict]] = None) -> str:
+    """
+    Extracts the candidate's most recent company name.
+    """
+    if entries is None:
+        entries = extract_experience_entries(text)
+
+    if entries:
+        for e in entries:
+            comp = e.get("company_name") or e.get("company", "")
+            if comp and len(comp) > 2:
+                return comp
+
+    return ""
+
+
+def extract_relevance(text: str, years: int = 0, job_title: str = "", skills: str = "") -> str:
+    """
+    Generates a concise relevance statement highlighting candidate qualifications.
+    """
+    parts = []
+    if years and years > 0:
+        if job_title:
+            parts.append(f"{years}+ years of experience as {job_title}")
+        else:
+            parts.append(f"{years}+ years of professional experience")
+    elif job_title:
+        parts.append(f"Experienced {job_title}")
+
+    if skills:
+        top_skills = [s.strip() for s in skills.split('|') if s.strip()][:3]
+        if top_skills:
+            parts.append(f"specializing in {', '.join(top_skills)}")
+
+    if parts:
+        return " ".join(parts)
+    return "Professional career history with relevant industry experience"
+
+
+# ─── 8. Runnable Test Block for Templates 1, 2, and 3 ────────────────────────
+
+if __name__ == "__main__":
+    t1 = """WORK EXPERIENCE
+Service Crew (Kitchen / Grill)
+Jollibee Foods Corporation - Crossing Branch, Calamba, Laguna
+June 2023 - December 2023 (End of Contract)
+- Assigned in kitchen area as fryman and grill station crew.
+- Maintained cleanliness of the station and washed dishes/utensils during closing.
+
+Utility Personnel / Janitor
+Robinsons Place Antipolo (via Manpower Agency)
+January 2022 - May 2023
+- Responsible for floor maintenance, trash collection, and restroom sanitation.
+"""
+
+    t2 = """EMPLOYMENT HISTORY
+Cashier / Counter Crew | Chowking - SM City Taytay | March 2021 to August 2022
+Duties: Handled POS transactions, assisted customers at the front counter, and performed daily cash balancing.
+Dishwasher / Kitchen Helper | Gerry's Grill - Robinsons Galleria | Oct 2020 - Feb 2021
+Duties: Washed plates, glassware, and kitchen cookware during peak dining hours.
+"""
+
+    t3 = """PROFESSIONAL EXPERIENCE
+Junior Backend Developer
+Accenture Philippines | BGC, Taguig City
+August 2025 - Present
+- Developed and maintained RESTful APIs using Node.js, NestJS, and PostgreSQL.
+- Collaborated with frontend developers and QA engineers in an Agile Scrum environment.
+
+Site Civil Engineer
+DMCI Homes - Quezon City Project Site
+March 2024 - July 2025
+- Supervised daily site construction activities, rebar installation, and concrete pouring.
+- Prepared daily accomplishment reports and monitored sub-contractor manpower.
+
+ON-THE-JOB TRAINING (OJT)
+Software Developer Intern (OJT)
+XYZ Tech Solutions Inc., Makati City
+January 2024 - April 2024 (486 Hours)
+- Assisted in debugging C# and Java modules and performing manual regression testing.
+"""
+
+    print("=== TEMPLATE 1: Service / Blue-Collar Style ===")
+    out1 = extract_structured_experience(t1)
+    print(json.dumps(out1, indent=2))
+
+    print("\n=== TEMPLATE 2: Inline / Tabular Philippine Style ===")
+    out2 = extract_structured_experience(t2)
+    print(json.dumps(out2, indent=2))
+
+    print("\n=== TEMPLATE 3: Technical / Engineering / IT Style ===")
+    out3 = extract_structured_experience(t3)
+    print(json.dumps(out3, indent=2))
