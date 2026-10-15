@@ -80,7 +80,7 @@ interface UserFormData {
 
 const UsersPage: React.FC = () => {
   const { data: usersData = [], isLoading } = useGetUsersQuery();
-  const users = usersData as ExtendedUser[];
+  const users = useMemo(() => (usersData as ExtendedUser[]).filter(u => u.role !== 'ADMIN'), [usersData]);
 
   const [archiveUser] = useArchiveUserMutation();
   const [unarchiveUser] = useUnarchiveUserMutation();
@@ -94,7 +94,7 @@ const UsersPage: React.FC = () => {
   
   // Filter & Search States
   const [searchQuery, setSearchQuery] = useState<string>("");
-  const [roleFilter, setRoleFilter] = useState<string>("ALL"); // ALL, ADMIN, HR, CANDIDATE
+  const [roleFilter, setRoleFilter] = useState<string>("ALL"); // ALL, HR, CANDIDATE
   const [statusFilter, setStatusFilter] = useState<string>("ALL"); // ALL, ACTIVE, ARCHIVED
   const [sortBy, setSortBy] = useState<string>("RECENT"); // RECENT, NAME_ASC, NAME_DESC, ROLE
   
@@ -154,12 +154,11 @@ const UsersPage: React.FC = () => {
     const total = users.length;
     const active = users.filter(u => !u.is_archived).length;
     const archived = users.filter(u => u.is_archived).length;
-    const admins = users.filter(u => u.role === 'ADMIN').length;
     const hr = users.filter(u => u.role === 'HR').length;
     const candidates = users.filter(u => u.role === 'CANDIDATE').length;
     const online = users.filter(u => u.is_online && !u.is_archived).length;
 
-    return { total, active, archived, admins, hr, candidates, online };
+    return { total, active, archived, hr, candidates, online };
   }, [users]);
 
   // Filtering & Sorting
@@ -494,7 +493,7 @@ const UsersPage: React.FC = () => {
           </div>
 
           {/* KPI Metrics Cards (Interactive Quick Filters) */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3.5">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3.5">
             {/* Card: Total */}
             <div 
               onClick={() => { setRoleFilter("ALL"); setStatusFilter("ALL"); }}
@@ -534,25 +533,6 @@ const UsersPage: React.FC = () => {
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
                 {metrics.online} online now
               </div>
-            </div>
-
-            {/* Card: Administrators */}
-            <div 
-              onClick={() => { setRoleFilter("ADMIN"); setStatusFilter("ALL"); }}
-              className={`p-4 rounded-2xl border transition-all cursor-pointer relative overflow-hidden group ${
-                roleFilter === "ADMIN" 
-                  ? "bg-white border-purple-500 shadow-md shadow-purple-500/10 ring-2 ring-purple-500/10" 
-                  : "bg-white/90 border-gray-200/70 hover:border-gray-300 hover:shadow-xs"
-              }`}
-            >
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-[11px] font-bold text-purple-600 uppercase tracking-wider">Admins</span>
-                <span className="p-1.5 rounded-xl bg-purple-50 text-purple-600 group-hover:scale-110 transition-transform">
-                  <ShieldCheck size={14} />
-                </span>
-              </div>
-              <div className="text-2xl font-black text-gray-900">{isLoading ? '—' : metrics.admins}</div>
-              <div className="text-[11px] font-medium text-gray-400 mt-0.5">System owners</div>
             </div>
 
             {/* Card: HR Specialists */}
@@ -647,7 +627,6 @@ const UsersPage: React.FC = () => {
                   className="bg-gray-50/80 hover:bg-gray-50 border border-gray-200 text-gray-700 text-xs font-bold rounded-2xl pl-3.5 pr-8 py-2.5 outline-none focus:ring-3 focus:ring-[#D10043]/10 focus:border-[#D10043] transition-all cursor-pointer appearance-none"
                 >
                   <option value="ALL">All Roles ({metrics.total})</option>
-                  <option value="ADMIN">Administrators ({metrics.admins})</option>
                   <option value="HR">HR Specialists ({metrics.hr})</option>
                   <option value="CANDIDATE">Candidates ({metrics.candidates})</option>
                 </select>
@@ -946,7 +925,7 @@ const UsersPage: React.FC = () => {
                                       Assign Role
                                     </div>
 
-                                    {['ADMIN', 'HR', 'CANDIDATE'].map((role) => (
+                                    {['HR', 'CANDIDATE'].map((role) => (
                                       user.role !== role && (
                                         <button
                                           key={role}
@@ -957,7 +936,7 @@ const UsersPage: React.FC = () => {
                                           }}
                                           className="w-full px-4 py-1.5 text-xs font-semibold text-gray-600 hover:bg-indigo-50 hover:text-indigo-700 flex items-center justify-between transition-colors cursor-pointer"
                                         >
-                                          <span>Set as {role === 'ADMIN' ? 'Administrator' : role === 'HR' ? 'HR Specialist' : 'Candidate'}</span>
+                                          <span>Set as {role === 'HR' ? 'HR Specialist' : 'Candidate'}</span>
                                         </button>
                                       )
                                     ))}
@@ -1414,7 +1393,6 @@ const UsersPage: React.FC = () => {
                     className="w-full bg-gray-50/80 border border-gray-200 rounded-xl px-4 py-2.5 text-sm font-bold text-gray-900 focus:bg-white focus:ring-3 focus:ring-[#D10043]/10 focus:border-[#D10043] transition-all outline-none appearance-none cursor-pointer"
                   >
                     <option value="HR">HR Specialist — Candidates, Screening & Scheduling</option>
-                    <option value="ADMIN">System Administrator — Full Platform Controls</option>
                     <option value="CANDIDATE">Candidate — Career Portal & Applications</option>
                   </select>
                   <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={16} />
@@ -1507,7 +1485,6 @@ const UsersPage: React.FC = () => {
                     className="w-full bg-gray-50/80 border border-gray-200 rounded-xl px-4 py-2.5 text-sm font-bold text-gray-900 focus:bg-white focus:ring-3 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all outline-none appearance-none cursor-pointer"
                   >
                     <option value="HR">HR Specialist</option>
-                    <option value="ADMIN">System Administrator</option>
                     <option value="CANDIDATE">Candidate</option>
                   </select>
                   <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={16} />

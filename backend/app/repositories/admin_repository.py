@@ -18,13 +18,15 @@ logger = logging.getLogger(__name__)
 
 
 async def get_all_users(db: AsyncSession) -> List[User]:
-    """Get all users (checks Redis cache first)."""
-    cache_key = "users:all:list"
+    """Get all non-admin users (HR and CANDIDATE) for the user directory (checks Redis cache first)."""
+    cache_key = "users:all:directory:list"
     cached = await get_cache(cache_key)
     if cached is not None:
         return cached
 
-    result = await db.execute(select(User))
+    result = await db.execute(
+        select(User).where(User.role.in_(['HR', 'CANDIDATE'])).order_by(User.id.desc())
+    )
     users = result.scalars().all()
     await set_cache(cache_key, users, ttl=600)
     return users
