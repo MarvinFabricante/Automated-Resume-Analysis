@@ -537,16 +537,7 @@ const Header: React.FC = () => {
 
         <div className="flex items-center space-x-1.5 sm:space-x-3 md:space-x-4 relative shrink-0" ref={dropdownRef}>
 
-          {isApplicationPage ? (
-            <button
-              onClick={() => navigate('/careerspage')}
-              className="flex items-center space-x-1.5 sm:space-x-2 bg-white border border-gray-200 text-gray-600 px-3 sm:px-6 py-1.5 sm:py-2.5 rounded-full text-xs sm:text-sm font-bold hover:bg-red-50 hover:text-[#D60041] hover:border-pink-200 transition-all shadow-sm active:scale-95 cursor-pointer"
-            >
-              <X size={16} />
-              <span className="hidden sm:inline">Cancel Application</span>
-              <span className="sm:hidden">Cancel</span>
-            </button>
-          ) : isGuest ? (
+          {isGuest ? (
             <div className="hidden sm:block relative group">
               <button className="flex items-center space-x-2 bg-[#D60041] text-white px-4 sm:px-6 py-2.5 sm:py-3 rounded-full text-xs sm:text-sm font-bold hover:bg-[#b50037] transition-all shadow-md shadow-pink-200 cursor-pointer">
                 <span>Access Portal</span>
@@ -807,23 +798,7 @@ const Header: React.FC = () => {
               </div>
             )}
 
-            {/* 3. Application Cancel (if in application flow) */}
-            {isApplicationPage && (
-              <div className="px-4 py-3">
-                <button
-                  onClick={() => {
-                    navigate('/careerspage');
-                    setIsMobileMenuOpen(false);
-                  }}
-                  className="w-full flex items-center justify-center space-x-2 bg-white border border-gray-200 text-gray-700 px-4 py-3 rounded-2xl text-sm font-bold hover:bg-red-50 hover:text-[#D60041] transition-all shadow-xs"
-                >
-                  <X size={18} />
-                  <span>Cancel Application</span>
-                </button>
-              </div>
-            )}
-
-            {/* 4. Access Portal (Login Account, Register User) */}
+            {/* 3. Access Portal (Login Account, Register User) */}
             {isGuest ? (
               <div className="px-4 py-3 bg-gray-50/60">
                 <div className="flex items-center space-x-2 mb-3 px-2">
