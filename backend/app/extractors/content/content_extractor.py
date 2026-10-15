@@ -9,7 +9,7 @@ from .experience_extractor import (
 )
 from .education_extractor import (
     extract_education, extract_highest_degree, extract_education_entries,
-    extract_degree_title, extract_institution
+    extract_degree_title, extract_institution, extract_structured_education
 )
 from .skills_extractor import extract_skills, extract_skills_list
 from .certifications_extractor import extract_certifications
@@ -257,6 +257,10 @@ def extract_content(text: str) -> dict:
     work_experiences = structured_exp.get("work_experiences", [])
     total_experience_months = structured_exp.get("total_experience_months", 0)
     exp_entries = extract_experience_entries(text)
+
+    structured_edu = extract_structured_education(text)
+    education_entries = structured_edu.get("education_entries", [])
+    highest_educational_attainment = structured_edu.get("highest_educational_attainment", "Unknown")
     edu_entries = extract_education_entries(text)
 
     # Core extractions
@@ -313,6 +317,8 @@ def extract_content(text: str) -> dict:
         "college": institution,  # alias for frontend/DB compatibility
         "education": education_str,
         "education_details": edu_entries,
+        "education_entries": education_entries,
+        "highest_educational_attainment": highest_educational_attainment,
 
         # Skills & Certifications
         "skills": skills_str,

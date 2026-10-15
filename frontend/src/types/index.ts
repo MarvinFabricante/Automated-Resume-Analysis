@@ -86,6 +86,8 @@ export interface Application {
   experience_gaps?: string | null;
   work_experiences?: WorkExperienceItem[];
   total_experience_months?: number;
+  highest_educational_attainment?: string | null;
+  education_entries?: EducationEntryItem[];
   required_degree?: string | null;
   candidate_degree?: string | null;
   recommendations?: string[];
@@ -107,6 +109,19 @@ export interface WorkExperienceItem {
   end_date?: string | null;
   duration_months?: number;
   responsibilities?: string[];
+}
+
+export interface EducationEntryItem {
+  education_level: string;
+  degree_or_course?: string | null;
+  raw_degree_or_course?: string | null;
+  major_or_specialization?: string | null;
+  institution_name: string;
+  location?: string | null;
+  status: 'Graduated' | 'Undergraduate / College Level' | 'Ongoing' | 'Completed' | string;
+  start_year?: string | null;
+  end_year?: string | null;
+  honors_and_awards?: string[];
 }
 
 export interface CandidateApplicationView {
