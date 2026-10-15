@@ -248,7 +248,7 @@ const ApplicationTracking: React.FC = () => {
   }
 
   const jobDetails = {
-    role: activeApplication.role || activeApplication.originalData?.job_title || "Position",
+    role: activeApplication.role || activeApplication.job?.job_title || activeApplication.originalData?.job?.job_title || activeApplication.originalData?.job_title || "Position",
     company: activeApplication.company || "Mariwasa Siam Ceramics",
     location: activeApplication.originalData?.location || "Sto. Tomas, Batangas",
     appliedDate: activeApplication.appliedDate || new Date().toLocaleDateString(),

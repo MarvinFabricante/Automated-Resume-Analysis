@@ -142,7 +142,7 @@ const PreviewAndVerifyPage: React.FC = () => {
         candidate_email: extractedData.personal.email,
         phone: extractedData.personal.phone,
         location: extractedData.personal.location,
-        job_title: extractedData.experience.title || "Applicant",
+        job_title: state?.job?.title || state?.jobTitle || extractedData.experience.title || "Applicant",
         company: extractedData.experience.company || "General",
         relevance: extractedData.experience.relevance || "",
         degree: extractedData.education.degree || "",

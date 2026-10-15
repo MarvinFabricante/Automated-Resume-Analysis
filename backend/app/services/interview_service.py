@@ -24,8 +24,9 @@ def _populate_candidate_info(interview):
         setattr(interview, "candidate_name", getattr(app, "candidate_name", None))
         setattr(interview, "candidate_email", getattr(app, "candidate_email", None))
         setattr(interview, "candidate_phone", getattr(app, "phone", None))
-        setattr(interview, "job_title", getattr(app, "job_title", None))
-        setattr(interview, "job_id", getattr(app, "job_description_id", None))
+        real_job_title = getattr(getattr(app, "job", None), "job_title", None) or getattr(app, "job_title", None)
+        setattr(interview, "job_title", real_job_title)
+        setattr(interview, "job_id", getattr(app, "job_id", None) or getattr(app, "job_description_id", None))
 
     interviewer = getattr(interview, "interviewer", None)
     if interviewer:
@@ -271,6 +272,17 @@ async def schedule_interview(db: AsyncSession, data: InterviewCreateSchema, user
         interview.meeting_link = None
         await InterviewRepository.commit_changes(db)
 
+    # Resolve real target position title
+    applied_job = getattr(application, 'job', None)
+    job_name = applied_job.job_title if (applied_job and applied_job.job_title) else None
+    if not job_name and getattr(application, 'job_id', None):
+        from app.repositories.job_description_repository import JobDescriptionRepository
+        job_desc = await JobDescriptionRepository.get_by_id(db, application.job_id)
+        if job_desc and job_desc.job_title:
+            job_name = job_desc.job_title
+    if not job_name:
+        job_name = application.job_title or "Job Position"
+
     # 4. Email Candidate on their Gmail account
     if application.candidate_email:
         try:
@@ -278,7 +290,7 @@ async def schedule_interview(db: AsyncSession, data: InterviewCreateSchema, user
             email_sent = await email_service.send_interview_invitation_email(
                 to_email=application.candidate_email,
                 candidate_name=application.candidate_name or "Candidate",
-                job_title=application.job_title or "Job Position",
+                job_title=job_name,
                 interview_title=data.title,
                 start_time=data.start_time,
                 end_time=data.end_time,
@@ -296,7 +308,7 @@ async def schedule_interview(db: AsyncSession, data: InterviewCreateSchema, user
     # 5. Send SMS Notification (if phone configured)
     if application.phone:
         message = (
-            f"Hi {application.candidate_name}, your interview for {application.job_title} is scheduled on "
+            f"Hi {application.candidate_name}, your interview for {job_name} is scheduled on "
             f"{data.start_time.strftime('%Y-%m-%d %H:%M')}. Please check your email ({application.candidate_email}) for interview details."
         )
         sent = await asyncio.to_thread(send_sms_notification_sync, application.phone, message)
@@ -311,7 +323,6 @@ async def schedule_interview(db: AsyncSession, data: InterviewCreateSchema, user
     try:
         from app.services.notification_service import create_notification
         time_str = data.start_time.strftime('%b %d, %Y at %I:%M %p')
-        job_name = application.job_title or "Job Position"
 
         # Dedicated notification for Candidate
         if application.candidate_email:
@@ -426,13 +437,24 @@ async def update_interview(db: AsyncSession, interview_id: int, data: InterviewU
     # If rescheduled time changed, notify candidate via email and SMS
     application = await InterviewRepository.get_job_application(db, interview.job_application_id)
     if time_changed and application:
+        # Resolve real target position title
+        applied_job = getattr(application, 'job', None)
+        job_name = applied_job.job_title if (applied_job and applied_job.job_title) else None
+        if not job_name and getattr(application, 'job_id', None):
+            from app.repositories.job_description_repository import JobDescriptionRepository
+            job_desc = await JobDescriptionRepository.get_by_id(db, application.job_id)
+            if job_desc and job_desc.job_title:
+                job_name = job_desc.job_title
+        if not job_name:
+            job_name = application.job_title or "Job Position"
+
         if application.candidate_email:
             try:
                 interviewer_name = user.fullname if user and getattr(user, 'fullname', None) else None
                 email_sent = await email_service.send_interview_rescheduled_email(
                     to_email=application.candidate_email,
                     candidate_name=application.candidate_name or "Candidate",
-                    job_title=application.job_title or "Job Position",
+                    job_title=job_name,
                     interview_title=interview.title,
                     start_time=interview.start_time,
                     end_time=interview.end_time,
@@ -449,7 +471,7 @@ async def update_interview(db: AsyncSession, interview_id: int, data: InterviewU
 
         if application.phone:
             message = (
-                f"Hi {application.candidate_name}, your interview for {application.job_title} has been rescheduled to "
+                f"Hi {application.candidate_name}, your interview for {job_name} has been rescheduled to "
                 f"{interview.start_time.strftime('%Y-%m-%d %H:%M')}. Please check your email for complete details."
             )
             sent = await asyncio.to_thread(send_sms_notification_sync, application.phone, message)
@@ -461,7 +483,6 @@ async def update_interview(db: AsyncSession, interview_id: int, data: InterviewU
         try:
             from app.services.notification_service import create_notification
             time_str = interview.start_time.strftime('%b %d, %Y at %I:%M %p')
-            job_name = application.job_title or "Job Position"
 
             if application.candidate_email:
                 await create_notification(
