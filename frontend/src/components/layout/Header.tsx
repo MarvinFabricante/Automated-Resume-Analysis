@@ -18,6 +18,7 @@ import { WS_BASE_URL } from '../../services/api';
 import { formatNotificationTime } from '../../utils/notificationUtils';
 import logo from '../../assets/logo.png';
 import { RootState } from '../../redux/store';
+import { clearAllAuthSessions } from '../../utils/token';
 
 const BRAND_RED = "#D60041";
 
@@ -352,6 +353,7 @@ const Header: React.FC = () => {
   const hasSidebar = !isGuest && !isPublicSitePage && !isApplicationPage;
 
   const handleLogout = () => {
+    clearAllAuthSessions();
     dispatch(logoutAction());
     navigate('/');
     window.location.reload();

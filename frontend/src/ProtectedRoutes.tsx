@@ -25,7 +25,8 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ allowedRole, children }
     }
 
     if (allowedRole && (userRole || '').toUpperCase() !== allowedRole.toUpperCase()) {
-      navigate('/', { replace: true });
+      // Role mismatch caused by another account logging in on another window
+      navigate('/login?session_switched=1', { replace: true });
       setIsAuthorized(false);
       return;
     }

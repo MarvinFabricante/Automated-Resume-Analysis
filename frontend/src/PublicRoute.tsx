@@ -23,6 +23,12 @@ const PublicRoute: React.FC<PublicRouteProps> = ({ children }) => {
     }
 
     if (token && userRole) {
+      // Allow rendering /login so users can switch accounts or sign in to another account without redirection conflicts
+      if (typeof window !== 'undefined' && (window.location.pathname.startsWith('/login') || window.location.pathname.startsWith('/register'))) {
+        setCanRender(true);
+        return;
+      }
+
       if (userRole === 'ADMIN') {
         navigate('/admin/dashboard', { replace: true });
       } else if (userRole === 'HR') {

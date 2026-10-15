@@ -4,7 +4,8 @@ import { useDispatch } from 'react-redux';
 import { setCredentials } from '../../../redux/slices/authSlice';
 import { XCircle, ArrowLeft } from 'lucide-react';
 import { Role } from '../../../types';
-import { isTokenExpired, clearAllAuthSessions } from '../../../utils/token';
+import { isTokenExpired, clearAllAuthSessions, broadcastAuthLogin } from '../../../utils/token';
+import { apiSlice } from '../../../redux/api/apiSlice';
 
 const GoogleCallback: React.FC = () => {
   const [searchParams] = useSearchParams();
@@ -25,8 +26,10 @@ const GoogleCallback: React.FC = () => {
     const picture = searchParams.get('picture');
 
     if (token && role) {
-      // Cleanly clear any prior credentials and store new 1-hour session
-      clearAllAuthSessions();
+      // Clear previous query state
+      dispatch(apiSlice.util.resetApiState());
+
+      // Store new credentials in localStorage
       localStorage.setItem('token', token);
       localStorage.setItem('role', role);
       localStorage.setItem('saved_email', email || '');
@@ -39,8 +42,12 @@ const GoogleCallback: React.FC = () => {
       dispatch(setCredentials({
         user: email || fullname || 'Google User',
         role: role as Role,
+        userId: userId ? Number(userId) : null,
         profileImageUrl: picture || null,
       }));
+
+      // Broadcast login to notify all other open windows/tabs to log out immediately
+      broadcastAuthLogin(userId ? Number(userId) : null, email || '', role);
 
       // Redirect based on role
       const normRole = (role || '').toUpperCase();

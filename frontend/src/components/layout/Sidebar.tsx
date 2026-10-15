@@ -9,6 +9,7 @@ import { useSelector, useDispatch } from 'react-redux';
 import { toggleSidebar, closeSidebar } from '../../redux/slices/uiSlice';
 import { logout as logoutAction } from '../../redux/slices/authSlice';
 import { RootState } from '../../redux/store';
+import { clearAllAuthSessions } from '../../utils/token';
 
 export interface NavItem {
   label: string;
@@ -31,6 +32,7 @@ const Sidebar: React.FC = () => {
   const { isSidebarOpen } = useSelector((state: RootState) => state.ui);
 
   const handleLogout = () => {
+    clearAllAuthSessions();
     dispatch(logoutAction());
     navigate('/');
     window.location.reload();
