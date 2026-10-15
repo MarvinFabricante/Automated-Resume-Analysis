@@ -174,22 +174,43 @@ async def create_job_application(db: AsyncSession, application_in: JobApplicatio
 
     # Trigger notifications
     try:
-        job_title = application_in.job_title if application_in.job_title else "a position"
+        # Resolve the exact job title of the position applied for
+        applied_job_title = None
+        if new_application and getattr(new_application, "job", None) and new_application.job.job_title:
+            applied_job_title = new_application.job.job_title
+        else:
+            from app.repositories.job_description_repository import JobDescriptionRepository
+            job_desc = await JobDescriptionRepository.get_by_id(db, db_job_id)
+            if job_desc and job_desc.job_title:
+                applied_job_title = job_desc.job_title
+
+        if not applied_job_title:
+            applied_job_title = application_in.job_title or "the position"
+
         # 1. Alert HR team
         await create_notification(
             db=db,
             title="New Application Submitted",
-            message=f"{application_in.candidate_name} applied for {job_title}.",
+            message=f"{application_in.candidate_name} applied for {applied_job_title}.",
             type="application",
             target_role="HR",
             sender_role="CANDIDATE"
         )
-        # 2. Personal confirmation for Candidate
+        # 2. Alert Admin team
+        await create_notification(
+            db=db,
+            title="New Application Submitted",
+            message=f"{application_in.candidate_name} applied for {applied_job_title}.",
+            type="application",
+            target_role="ADMIN",
+            sender_role="CANDIDATE"
+        )
+        # 3. Personal confirmation for Candidate
         if application_in.candidate_email:
             await create_notification(
                 db=db,
                 title="Application Submitted",
-                message=f"You successfully applied for {job_title}.",
+                message=f"You successfully applied for {applied_job_title}.",
                 type="application",
                 target_role="CANDIDATE",
                 target_email=application_in.candidate_email,
@@ -260,7 +281,16 @@ async def update_application_status(db: AsyncSession, application_id: int, new_s
         )
 
         # Notify Candidate (Targeted to their email)
-        job_title = db_application.job.job_title if (db_application.job and db_application.job.job_title) else (db_application.job_title or "Position")
+        job_title = None
+        if db_application.job and db_application.job.job_title:
+            job_title = db_application.job.job_title
+        elif getattr(db_application, "job_id", None):
+            from app.repositories.job_description_repository import JobDescriptionRepository
+            job_desc = await JobDescriptionRepository.get_by_id(db, db_application.job_id)
+            if job_desc and job_desc.job_title:
+                job_title = job_desc.job_title
+        if not job_title:
+            job_title = db_application.job_title or "Position"
 
         if status_upper == "ACCEPTED":
             title = "Application Accepted 🎉"

@@ -88,7 +88,7 @@ const CandidatePreviewAndVerify: React.FC = () => {
       candidate_email: extractedData.personal.email,
       phone: extractedData.personal.phone,
       location: extractedData.personal.location,
-      job_title: extractedData.experience.title,
+      job_title: state?.job?.title || state?.jobTitle || localStorage.getItem('draft_application_job_title') || extractedData.experience.title || "Applicant",
       company: extractedData.experience.company,
       relevance: extractedData.experience.relevance,
       degree: extractedData.education.degree,
