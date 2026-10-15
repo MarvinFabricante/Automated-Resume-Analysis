@@ -5,12 +5,11 @@ import candidateService from '../../../services/candidateService';
 import {
   User, Mail, Phone, MapPin,
   Cpu, Briefcase, GraduationCap,
-  CheckCircle, ArrowLeft, Edit3, Target
+  CheckCircle, ArrowLeft, Target
 } from 'lucide-react';
 import Header from '../../../components/layout/Header';
 import Footer from '../../../components/layout/Footer';
 import ApplicationProgressBar from '../../../components/common/ApplicationProgressBar';
-import ApplicationSuccessModal from '../../../components/modals/shared/ApplicationSuccessModal';
 
 interface InfoItemProps {
   icon: React.ReactNode;
@@ -40,7 +39,6 @@ const PreviewAndVerifyPage: React.FC = () => {
   const [smartMatches, setSmartMatches] = useState<any[] | null>(state?.matches || null);
   const [isLoadingSmartMatches, setIsLoadingSmartMatches] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [showSuccessModal, setShowSuccessModal] = useState(false);
 
   useEffect(() => {
     if (jobId !== 'smart' || !data || smartMatches) return;
@@ -172,7 +170,13 @@ const PreviewAndVerifyPage: React.FC = () => {
       };
 
       await candidateService.submitApplication(payload);
-      setShowSuccessModal(true);
+      navigate(`/submissionsuccess/${jobId}`, {
+        state: {
+          jobTitle: state?.job?.title || state?.jobTitle || "Position",
+          fileName: state?.fileName,
+          updatedData: extractedData
+        }
+      });
     } catch (error: any) {
       console.error("Failed to submit application:", error);
       const detail = error.response?.data?.detail || "Failed to submit application. Please check your network and try again.";
@@ -180,16 +184,6 @@ const PreviewAndVerifyPage: React.FC = () => {
     } finally {
       setIsSubmitting(false);
     }
-  };
-
-  const handleFinalRedirect = () => {
-    navigate(`/submissionsuccess/${jobId}`, {
-      state: {
-        jobTitle: state?.job?.title || state?.jobTitle || "Position",
-        fileName: state?.fileName,
-        updatedData: extractedData
-      }
-    });
   };
 
   return (
@@ -215,20 +209,11 @@ const PreviewAndVerifyPage: React.FC = () => {
         {/* Multi-step Application Progress Bar */}
         <ApplicationProgressBar currentStep={3} />
 
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end mb-8 gap-4">
-          <div>
-            <h1 className="text-3xl font-black text-slate-900 tracking-tight mb-2">Review Application</h1>
-            <p className="text-slate-500 font-medium">
-              Verify your information before finalizing submission for <span className="text-slate-900 font-bold">{state?.job?.title || "this position"}</span>.
-            </p>
-          </div>
-          <button
-            id="btn-edit-details"
-            onClick={handleBackToEdit}
-            className="flex items-center text-sm font-bold text-[#D60041] hover:underline bg-pink-50 px-5 py-2.5 rounded-xl transition-colors active:scale-95"
-          >
-            <Edit3 size={16} className="mr-2" /> Edit Details
-          </button>
+        <div className="mb-8">
+          <h1 className="text-3xl font-black text-slate-900 tracking-tight mb-2">Review Application</h1>
+          <p className="text-slate-500 font-medium">
+            Verify your information before finalizing submission for <span className="text-slate-900 font-bold">{state?.job?.title || "this position"}</span>.
+          </p>
         </div>
 
         <div className="space-y-6">
@@ -386,11 +371,6 @@ const PreviewAndVerifyPage: React.FC = () => {
             )}
           </div>
         </div>
-
-        <ApplicationSuccessModal 
-          isOpen={showSuccessModal} 
-          onConfirm={handleFinalRedirect} 
-        />
       </main>
 
       <Footer />
