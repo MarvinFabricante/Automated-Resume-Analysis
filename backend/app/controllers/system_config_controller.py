@@ -13,6 +13,7 @@ from app.schemas.system_config_schema import (
 )
 from app.services.system_config_service import system_config_service
 from app.services.audit_service import audit_service
+from app.services import admin_service
 from app.utils.cache import cache_response, clear_cache_pattern
 
 
@@ -81,10 +82,19 @@ async def change_user_role(
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(require_role("ADMIN"))
 ):
-    valid_roles = ["ADMIN", "HR", "CANDIDATE"]
+    if current_user and current_user.get("id") == user_id:
+        raise HTTPException(status_code=400, detail="You cannot change your own role.")
+
+    valid_roles = ["HR", "CANDIDATE"]
     if role_update.role.upper() not in valid_roles:
-        raise HTTPException(status_code=400, detail="Invalid role specified")
-        
+        raise HTTPException(status_code=400, detail="Invalid role specified. Only HR and CANDIDATE roles are permitted.")
+
+    target_user = await admin_service.get_user_by_id(db, user_id)
+    if not target_user:
+        raise HTTPException(status_code=404, detail="User not found")
+    if target_user.role == "ADMIN":
+        raise HTTPException(status_code=400, detail="Administrator accounts cannot be modified.")
+
     user = await system_config_service.update_user_role(db, user_id, role_update.role.upper())
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -93,6 +103,8 @@ async def change_user_role(
         db=db, user_id=current_user.get("id"), action="UPDATE_ROLE", target=f"User {user.email}", details=f"Changed role to {role_update.role.upper()}"
     )
     await clear_cache_pattern("users_role*")
+    await clear_cache_pattern("admin_users:*")
+    await clear_cache_pattern("users:all:*")
     return user
 
 

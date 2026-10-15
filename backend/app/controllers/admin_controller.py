@@ -55,6 +55,12 @@ async def archive_user(
     if current_user and current_user.get("id") == user_id:
         raise HTTPException(status_code=400, detail="You cannot suspend/archive your own account.")
 
+    target_user = await admin_service.get_user_by_id(db, user_id)
+    if not target_user:
+        raise HTTPException(status_code=404, detail="User not found")
+    if target_user.role == "ADMIN":
+        raise HTTPException(status_code=400, detail="Administrator accounts cannot be suspended or modified from the user directory.")
+
     user = await admin_service.toggle_user_archive_status(db, user_id, True)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -69,6 +75,7 @@ async def archive_user(
         )
 
     await clear_cache_pattern("admin_users:*")
+    await clear_cache_pattern("users:all:*")
     return {"message": "User archived successfully"}
 
 @router.patch("/users/{user_id}/unarchive")
@@ -77,6 +84,12 @@ async def unarchive_user(
     db: AsyncSession = Depends(get_db),
     current_user: Optional[dict] = Depends(get_optional_current_user)
 ):
+    target_user = await admin_service.get_user_by_id(db, user_id)
+    if not target_user:
+        raise HTTPException(status_code=404, detail="User not found")
+    if target_user.role == "ADMIN":
+        raise HTTPException(status_code=400, detail="Administrator accounts cannot be modified from the user directory.")
+
     user = await admin_service.toggle_user_archive_status(db, user_id, False)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -91,6 +104,7 @@ async def unarchive_user(
         )
 
     await clear_cache_pattern("admin_users:*")
+    await clear_cache_pattern("users:all:*")
     return {"message": "User unarchived successfully"}
 
 @router.post("/users", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
@@ -98,10 +112,13 @@ async def create_user(
     user_in: UserCreate, 
     db: AsyncSession = Depends(get_db)
 ):
+    if user_in.role == "ADMIN":
+        raise HTTPException(status_code=400, detail="Administrator accounts cannot be created from the user directory.")
     from app.services.auth_service import auth_service
     try:
         new_user = await auth_service.register_user(db, user_in.email, user_in.password, user_in.role, user_in.fullname)
         await clear_cache_pattern("admin_users:*")
+        await clear_cache_pattern("users:all:*")
         return new_user
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -112,15 +129,24 @@ async def update_user(
     user_update: UserUpdate,
     db: AsyncSession = Depends(get_db)
 ):
+    target_user = await admin_service.get_user_by_id(db, user_id)
+    if not target_user:
+        raise HTTPException(status_code=404, detail="User not found")
+    if target_user.role == "ADMIN":
+        raise HTTPException(status_code=400, detail="Administrator accounts cannot be modified from the user directory.")
+
     update_data = user_update.dict(exclude_unset=True)
     if not update_data:
         raise HTTPException(status_code=400, detail="No data provided to update")
+    if update_data.get("role") == "ADMIN":
+        raise HTTPException(status_code=400, detail="Cannot assign administrator role from the user directory.")
         
     updated_user = await admin_service.update_user(db, user_id, update_data)
     if not updated_user:
         raise HTTPException(status_code=404, detail="User not found")
         
     await clear_cache_pattern("admin_users:*")
+    await clear_cache_pattern("users:all:*")
     return updated_user
 
 @router.delete("/users/{user_id}", status_code=status.HTTP_200_OK)
@@ -133,6 +159,11 @@ async def delete_user(
         raise HTTPException(status_code=400, detail="You cannot delete your own account.")
 
     target_user = await admin_service.get_user_by_id(db, user_id)
+    if not target_user:
+        raise HTTPException(status_code=404, detail="User not found")
+    if target_user.role == "ADMIN":
+        raise HTTPException(status_code=400, detail="Administrator accounts cannot be deleted from the user directory.")
+
     user_email = target_user.email if target_user else f"ID: {user_id}"
 
     success = await admin_service.delete_user(db, user_id)
@@ -149,6 +180,7 @@ async def delete_user(
         )
         
     await clear_cache_pattern("admin_users:*")
+    await clear_cache_pattern("users:all:*")
     return {"message": "User removed successfully"}
 
 @router.post("/register")
