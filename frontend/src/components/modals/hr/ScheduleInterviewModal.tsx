@@ -17,11 +17,13 @@ import {
   useGetHRInterviewersQuery,
   useGetAllInterviewsQuery
 } from '../../../redux/api/apiSlice';
+import { getAssetUrl } from '../../../services/api';
 
 interface ScheduleInterviewModalProps {
   isOpen: boolean;
   onClose: () => void;
   candidate?: any;
+  onScheduled?: (candidate: any) => void;
 }
 
 interface FormDataState {
@@ -31,7 +33,7 @@ interface FormDataState {
   selectedSlot: any;
 }
 
-const ScheduleInterviewModal: React.FC<ScheduleInterviewModalProps> = ({ isOpen, onClose, candidate }) => {
+const ScheduleInterviewModal: React.FC<ScheduleInterviewModalProps> = ({ isOpen, onClose, candidate, onScheduled }) => {
   const { data: interviewers = [] } = useGetHRInterviewersQuery();
   const { data: allInterviews = [] } = useGetAllInterviewsQuery();
   const [getSlots, { isLoading: isFetchingSlots }] = useGetAvailableSlotsMutation();
@@ -195,6 +197,9 @@ const ScheduleInterviewModal: React.FC<ScheduleInterviewModalProps> = ({ isOpen,
       }).unwrap();
       
       setSuccessMsg(`Interview scheduled successfully! Interview notification emailed to candidate.`);
+      if (onScheduled) {
+        onScheduled(candidate);
+      }
       setTimeout(() => {
         onClose();
       }, 1200);
@@ -227,7 +232,7 @@ const ScheduleInterviewModal: React.FC<ScheduleInterviewModalProps> = ({ isOpen,
             <div className="text-center mb-5 sm:mb-8">
               <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl overflow-hidden border-4 border-white shadow-sm mx-auto mb-3 sm:mb-4 bg-pink-50 flex items-center justify-center">
                 {candidate.profileImage ? (
-                  <img src={candidate.profileImage} alt={candidate.name} className="w-full h-full object-cover" />
+                  <img src={getAssetUrl(candidate.profileImage)} alt={candidate.name} className="w-full h-full object-cover" />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center text-[#d81159] text-3xl font-bold bg-pink-100">
                     {(candidate.name || 'C').charAt(0)}

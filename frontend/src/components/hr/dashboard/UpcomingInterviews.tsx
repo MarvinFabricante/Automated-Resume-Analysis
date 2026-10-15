@@ -13,7 +13,10 @@ interface UpcomingInterviewsProps {
 
 const UpcomingInterviews: React.FC<UpcomingInterviewsProps> = ({ onScheduleClick }) => {
   const navigate = useNavigate();
-  const { data: interviews = [], isLoading } = useGetAllInterviewsQuery();
+  const { data: interviews = [], isLoading } = useGetAllInterviewsQuery(undefined, {
+    pollingInterval: 5000,
+    refetchOnFocus: true,
+  });
 
   // Filter and sort for upcoming interviews
   const upcomingInterviews = [...(interviews as Interview[])]

@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate } from '@/utils/navigation';
 import { 
   Download, AlertCircle, Briefcase, BarChart3, Calendar, 
-  RefreshCw, Sparkles, CheckCircle2, ChevronRight, Zap
+  Sparkles, CheckCircle2, ChevronRight, Zap, Radio
 } from 'lucide-react';
 import { Helmet } from 'react-helmet-async';
 import KeyMetrics from '../../components/hr/dashboard/KeyMetrics';
@@ -12,7 +12,7 @@ import UpcomingInterviews from '../../components/hr/dashboard/UpcomingInterviews
 import Header from '../../components/layout/Header';
 import Sidebar from '../../components/layout/Sidebar';
 import ChatWidget from '../../components/layout/ChatWidget';
-import ScheduleInterviewModal from '../../components/modals/hr/ScheduleInterviewModal';
+import NewScheduleModal from '../../components/modals/hr/NewScheduleModal';
 
 import {
   useGetDashboardStatsQuery,
@@ -26,17 +26,38 @@ import { exportToCSV } from '../../utils/exportUtils';
 
 const HRDashboard: React.FC = () => {
   const navigate = useNavigate();
-  const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
   const [isScheduleModalOpen, setIsScheduleModalOpen] = useState<boolean>(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
-  // RTK Query hooks
-  const { data: appStats = { pending: 0, reviewed: 0, accepted: 0, rejected: 0 }, refetch: refetchStats } = useGetDashboardStatsQuery();
-  const { data: candidateCountData, refetch: refetchCandidates } = useGetCandidateCountQuery();
-  const { data: resumeCountData, refetch: refetchResumes } = useGetResumeCountQuery();
-  const { data: jobs = [], refetch: refetchJobs } = useGetJobsQuery();
-  const { data: applications = [], refetch: refetchApps } = useGetApplicationsQuery();
-  const { refetch: refetchInterviews } = useGetAllInterviewsQuery();
+  // RTK Query hooks with real-time automatic polling
+  const { data: appStats = { pending: 0, reviewed: 0, accepted: 0, rejected: 0 } } = useGetDashboardStatsQuery(undefined, {
+    pollingInterval: 5000,
+    refetchOnFocus: true,
+    refetchOnMountOrArgChange: true,
+    refetchOnReconnect: true,
+  });
+  const { data: candidateCountData } = useGetCandidateCountQuery(undefined, {
+    pollingInterval: 5000,
+    refetchOnFocus: true,
+  });
+  const { data: resumeCountData } = useGetResumeCountQuery(undefined, {
+    pollingInterval: 5000,
+    refetchOnFocus: true,
+  });
+  const { data: jobs = [] } = useGetJobsQuery(undefined, {
+    pollingInterval: 10000,
+    refetchOnFocus: true,
+  });
+  const { data: applications = [] } = useGetApplicationsQuery(undefined, {
+    pollingInterval: 5000,
+    refetchOnFocus: true,
+    refetchOnMountOrArgChange: true,
+    refetchOnReconnect: true,
+  });
+  const { data: allInterviews = [] } = useGetAllInterviewsQuery(undefined, {
+    pollingInterval: 5000,
+    refetchOnFocus: true,
+  });
 
   const activeJobsCount = jobs.filter((j: any) => j.is_active).length;
   const totalCandidates = candidateCountData?.count || applications.length || 0;
@@ -44,26 +65,7 @@ const HRDashboard: React.FC = () => {
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
-    setTimeout(() => setToastMessage(null), 3000);
-  };
-
-  const handleRefreshAll = async () => {
-    setIsRefreshing(true);
-    try {
-      await Promise.allSettled([
-        refetchStats?.(),
-        refetchCandidates?.(),
-        refetchResumes?.(),
-        refetchJobs?.(),
-        refetchApps?.(),
-        refetchInterviews?.()
-      ]);
-      showToast('Dashboard analytics synchronized with live database');
-    } catch {
-      showToast('Dashboard data updated');
-    } finally {
-      setTimeout(() => setIsRefreshing(false), 600);
-    }
+    setTimeout(() => setToastMessage(null), 3500);
   };
 
   const handleExportFullReport = () => {
@@ -117,13 +119,6 @@ const HRDashboard: React.FC = () => {
             </div>
           )}
 
-          {/* Sync Progress Bar */}
-          {isRefreshing && (
-            <div className="h-1 w-full bg-slate-100 overflow-hidden sticky top-0 z-40">
-              <div className="h-full bg-gradient-to-r from-rose-500 to-[#D60041] animate-pulse w-full"></div>
-            </div>
-          )}
-
           <main className="w-full max-w-full px-3.5 sm:px-6 md:px-8 lg:px-10 py-4 sm:py-6 md:py-8">
 
             {/* 1. Executive Command Banner */}
@@ -135,9 +130,9 @@ const HRDashboard: React.FC = () => {
                 <div>
                   <div className="flex items-center gap-2 sm:gap-3 mb-1.5 sm:mb-2 flex-wrap">
                     <span className="px-2.5 sm:px-3 py-1 rounded-full text-[10px] sm:text-[11px] font-black uppercase tracking-wider bg-rose-50 text-[#D60041] border border-rose-100/90 flex items-center gap-1.5 shadow-2xs shrink-0">
-                      <span className="w-1.5 sm:w-2 h-1.5 sm:h-2 rounded-full bg-[#D60041] animate-pulse" />
-                      <span className="sm:hidden">ATS Engine Active</span>
-                      <span className="hidden sm:inline">Mariwasa ATS Engine Active</span>
+                      <Radio size={12} className="text-[#D60041] animate-pulse" />
+                      <span className="sm:hidden">Live Real-Time Stream</span>
+                      <span className="hidden sm:inline">Live Real-Time ATS Stream</span>
                     </span>
                     <span className="text-[11px] sm:text-xs text-slate-500 font-semibold flex items-center gap-1.5">
                       <span className="text-slate-300 font-bold">•</span>
@@ -179,29 +174,21 @@ const HRDashboard: React.FC = () => {
                     {/* Quick Schedule Interview */}
                     <button
                       onClick={() => setIsScheduleModalOpen(true)}
-                      className="flex-1 sm:flex-none px-3 sm:px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-2xl text-xs font-bold transition-all shadow-xs flex items-center justify-center gap-1.5 sm:gap-2 active:scale-95 min-h-[42px] truncate"
+                      className="flex-1 sm:flex-none px-3.5 sm:px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-2xl text-xs font-bold transition-all shadow-xs flex items-center justify-center gap-1.5 sm:gap-2 active:scale-95 min-h-[42px] truncate cursor-pointer"
+                      title="Schedule New Interview Session"
                     >
-                      <Calendar size={15} className="shrink-0" />
+                      <Calendar size={15} className="shrink-0 text-rose-300" />
                       <span className="truncate">Schedule</span>
                     </button>
 
                     {/* Export CSV Report */}
                     <button
                       onClick={handleExportFullReport}
-                      className="flex-1 sm:flex-none px-3 sm:px-4 py-2.5 bg-white hover:bg-slate-50 text-slate-700 hover:text-slate-900 border border-slate-200/90 rounded-2xl text-xs font-bold transition-all shadow-2xs flex items-center justify-center gap-1.5 sm:gap-2 group active:scale-95 min-h-[42px] truncate"
+                      className="flex-1 sm:flex-none px-3 sm:px-4 py-2.5 bg-white hover:bg-slate-50 text-slate-700 hover:text-slate-900 border border-slate-200/90 rounded-2xl text-xs font-bold transition-all shadow-2xs flex items-center justify-center gap-1.5 sm:gap-2 group active:scale-95 min-h-[42px] truncate cursor-pointer"
+                      title="Export candidate records to CSV"
                     >
                       <Download size={15} className="text-slate-400 group-hover:text-[#D60041] transition-colors shrink-0" />
                       <span className="truncate">Export CSV</span>
-                    </button>
-
-                    {/* Refresh live sync button */}
-                    <button
-                      onClick={handleRefreshAll}
-                      disabled={isRefreshing}
-                      className="p-2.5 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 border border-slate-200/80 rounded-2xl transition-all shadow-2xs active:scale-95 disabled:opacity-50 shrink-0 min-h-[42px] min-w-[42px] flex items-center justify-center"
-                      title="Refresh Live Data Feed"
-                    >
-                      <RefreshCw size={16} className={isRefreshing ? 'animate-spin text-[#D60041]' : ''} />
                     </button>
                   </div>
                 </div>
@@ -355,9 +342,12 @@ const HRDashboard: React.FC = () => {
 
             {/* Quick Schedule Interview Modal */}
             {isScheduleModalOpen && (
-              <ScheduleInterviewModal
+              <NewScheduleModal
                 isOpen={isScheduleModalOpen}
                 onClose={() => setIsScheduleModalOpen(false)}
+                onScheduled={(data) => {
+                  showToast(`Interview scheduled for ${data.candidateName}! Notification sent.`);
+                }}
               />
             )}
           </main>

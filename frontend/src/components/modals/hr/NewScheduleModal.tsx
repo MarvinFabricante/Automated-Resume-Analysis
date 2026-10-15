@@ -16,17 +16,27 @@ import {
   useGetHRInterviewersQuery,
   useScheduleInterviewMutation
 } from '../../../redux/api/apiSlice';
+import { getAssetUrl } from '../../../services/api';
 
 interface NewScheduleModalProps {
   isOpen: boolean;
   onClose: () => void;
+  initialCandidate?: any;
   initialDate?: string;
   initialTime?: string;
   initialInterviewerId?: string | number;
   onScheduled?: (data: { candidateName: string; title: string; date: string; startTime: string }) => void;
 }
 
-const NewScheduleModal: React.FC<NewScheduleModalProps> = ({ isOpen, onClose, initialDate, initialTime, initialInterviewerId, onScheduled }) => {
+const NewScheduleModal: React.FC<NewScheduleModalProps> = ({ 
+  isOpen, 
+  onClose, 
+  initialCandidate,
+  initialDate, 
+  initialTime, 
+  initialInterviewerId, 
+  onScheduled 
+}) => {
   const { data: candidates = [], isLoading: isCandidatesLoading } = useGetApplicationsQuery();
   const { data: allInterviews = [] } = useGetAllInterviewsQuery();
   const { data: interviewers = [] } = useGetHRInterviewersQuery();
@@ -83,6 +93,14 @@ const NewScheduleModal: React.FC<NewScheduleModalProps> = ({ isOpen, onClose, in
       setSelectedSlot(null);
       setAvailableSlots([]);
 
+      if (initialCandidate) {
+        setSelectedCandidate(initialCandidate);
+        setTitle(`Interview with ${initialCandidate.candidate_name || initialCandidate.name || 'Candidate'}`);
+      } else {
+        setSelectedCandidate(null);
+        setTitle('Technical Interview');
+      }
+
       if (initialTime) {
         setUseCustomTime(true);
         setCustomStartTime(initialTime);
@@ -110,7 +128,7 @@ const NewScheduleModal: React.FC<NewScheduleModalProps> = ({ isOpen, onClose, in
       }
       setDate(defaultDate);
     }
-  }, [isOpen, initialDate, initialTime]);
+  }, [isOpen, initialCandidate, initialDate, initialTime]);
 
   useEffect(() => {
     if (selectedCandidate) {
@@ -373,8 +391,16 @@ const NewScheduleModal: React.FC<NewScheduleModalProps> = ({ isOpen, onClose, in
             ) : (
               <div className="p-4 bg-pink-50/50 border border-pink-200 rounded-2xl flex items-center justify-between shadow-sm">
                 <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 rounded-xl bg-pink-100 text-[#D60041] flex items-center justify-center font-black text-lg shadow-sm">
-                    {(selectedCandidate.candidate_name || selectedCandidate.name || 'C').charAt(0)}
+                  <div className="w-12 h-12 rounded-xl bg-pink-100 text-[#D60041] border border-pink-200/80 flex items-center justify-center font-black text-lg shadow-sm overflow-hidden shrink-0">
+                    {(selectedCandidate.profileImage || selectedCandidate.profile_image_url) ? (
+                      <img 
+                        src={getAssetUrl(selectedCandidate.profileImage || selectedCandidate.profile_image_url)} 
+                        alt={selectedCandidate.candidate_name || selectedCandidate.name} 
+                        className="w-full h-full object-cover" 
+                      />
+                    ) : (
+                      (selectedCandidate.candidate_name || selectedCandidate.name || 'C').charAt(0)
+                    )}
                   </div>
                   <div>
                     <div className="flex items-center gap-2">
