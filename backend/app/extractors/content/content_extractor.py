@@ -2,7 +2,7 @@ import re
 from .name_extractor import extract_fullname, extract_all_name_candidates, _normalize_name, is_valid_name
 from .email_extractor import extract_email, extract_all_emails, _clean_email, is_valid_email
 from .phone_extractor import extract_phone, extract_all_phones, _clean_phone, is_valid_phone
-from .location_extractor import extract_location
+from .location_extractor import extract_location, extract_applicant_address
 from .experience_extractor import (
     extract_experience, extract_years_experience, extract_experience_entries,
     extract_job_title, extract_company, extract_relevance, extract_structured_experience
@@ -270,7 +270,11 @@ def extract_content(text: str) -> dict:
     all_emails = extract_all_emails(text, candidate_name=fullname)
     phone = extract_phone(text)
     all_phones = extract_all_phones(text)
-    location = extract_location(text)
+    location_details = extract_applicant_address(text)
+    if location_details.get("normalized_location") and location_details["normalized_location"] != "Philippines":
+        location = location_details["normalized_location"]
+    else:
+        location = extract_location(text)
 
     job_title = extract_job_title(text, exp_entries)
     company = extract_company(text, exp_entries)
@@ -299,6 +303,7 @@ def extract_content(text: str) -> dict:
         "phones": all_phones,
         "all_phones": all_phones,
         "location": location,
+        "location_details": location_details,
 
         # Job & Experience Details
         "job_title": job_title,
