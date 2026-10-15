@@ -1,202 +1,52 @@
+"""
+Philippine Resume Skills Extraction Engine
+==========================================
+Principal NLP & Information Extraction Architecture for the Philippine workforce:
+- Full-Document Multi-Pass Extraction:
+  - Pass 1: Exact & Alias Gazetteer Matching via FlashText + spaCy PhraseMatcher
+  - Pass 2: Linguistic Pattern & Dependency Extraction via spaCy Matcher,
+            Action Verb + Object Noun Chunks, Filipino Workplace Traits,
+            Driver's License, PRC Licensure, and TESDA Certificates
+  - Pass 3: Fuzzy Normalization & Canonical Deduplication via RapidFuzz
+- Exhaustive Philippine Taxonomy across 9 Workforce Domains:
+  1. Service, F&B & Hospitality (Jollibee/McDo Crew, Janitors, Stewards, Baristas)
+  2. Janitorial, Maintenance & Skilled Trades (Industrial Cleaning, SMAW/TIG, HVAC, EIM)
+  3. Logistics, Driving, Warehouse & Security (Riders, LTO DL, Forklift, SOSIA Guard)
+  4. BPO, Customer Service & Administrative (CSR, TSR, WPM, Avaya/Zendesk, SSS/BIR)
+  5. Software Development & IT (Java, C#, NestJS, Supabase, Cloud, QA Automation)
+  6. Engineering, Construction & Architecture (AutoCAD, STAAD.Pro, BOSH/COSH SO2, BOQ)
+  7. Healthcare, Education & Finance (RN, Caregiving, ESL, CPA, Tax Compliance)
+  8. Soft Skills & Filipino Workplace Traits ("Pakikisama", "Can work under pressure")
+  9. Philippine Licenses, Eligibility & Languages (PRC, CSC, TESDA NC, Filipino/Dialects)
+- External Dataset Ingestion Hook for ESCO, O*NET, and TESDA datasets.
+- Deterministic, local Python execution without external LLM dependencies.
+"""
+
+import os
 import re
-from app.extractors.nlp.nlp_engine import get_doc, get_skills_matcher, find_phrase_matches, get_verb_object_pairs
+import json
+from typing import Dict, Any, List, Optional, Set, Tuple
 
-# ─── Comprehensive Skills Knowledge Base ─────────────────────────────────────
-# All values UPPER-CASE for O(1) lookup.
+# Local deterministic NLP libraries
+try:
+    from flashtext import KeywordProcessor
+except ImportError:
+    KeywordProcessor = None
 
-_PROGRAMMING_LANGUAGES = {
-    "PYTHON", "JAVASCRIPT", "TYPESCRIPT", "JAVA", "C", "C++", "C#", "RUBY", "PHP",
-    "SWIFT", "KOTLIN", "GO", "GOLANG", "RUST", "R", "SCALA", "PERL", "LUA",
-    "OBJECTIVE-C", "DART", "ELIXIR", "HASKELL", "CLOJURE", "F#", "MATLAB",
-    "VISUAL BASIC", "VB.NET", "ASSEMBLY", "GROOVY", "SHELL", "POWERSHELL",
-    "COFFEESCRIPT", "SOLIDITY", "COBOL", "FORTRAN", "JULIA", "ZIG",
-}
+try:
+    from rapidfuzz import fuzz, process
+except ImportError:
+    fuzz = None
+    process = None
 
-_WEB_FRAMEWORKS = {
-    "REACT", "REACT.JS", "REACTJS", "ANGULAR", "ANGULARJS", "VUE", "VUE.JS", "VUEJS",
-    "NEXT.JS", "NEXTJS", "NUXT.JS", "NUXTJS", "SVELTE", "SVELTEKIT",
-    "NODE.JS", "NODEJS", "EXPRESS", "EXPRESS.JS", "EXPRESSJS", "FASTAPI", "FLASK",
-    "DJANGO", "SPRING", "SPRING BOOT", "LARAVEL", "RAILS", "RUBY ON RAILS",
-    "ASP.NET", "ASP.NET CORE", ".NET", ".NET CORE", "BLAZOR",
-    "NEST.JS", "NESTJS", "REMIX", "GATSBY", "EMBER", "EMBER.JS",
-    "BACKBONE.JS", "METEOR", "HAPI", "KOA", "FASTIFY",
-    "BOOTSTRAP", "TAILWINDCSS", "TAILWIND CSS", "TAILWIND", "MATERIAL UI", "MUI",
-    "CHAKRA UI", "ANT DESIGN", "SHADCN", "JQUERY", "THREE.JS", "D3.JS",
-}
-
-_DATA_ML = {
-    "MACHINE LEARNING", "DEEP LEARNING", "ARTIFICIAL INTELLIGENCE", "AI", "ML",
-    "NATURAL LANGUAGE PROCESSING", "NLP", "COMPUTER VISION",
-    "DATA SCIENCE", "DATA ANALYSIS", "DATA ANALYTICS", "DATA ENGINEERING",
-    "DATA VISUALIZATION", "DATA MINING", "DATA WAREHOUSING", "DATA MODELING",
-    "BIG DATA", "ETL", "ELT",
-    "PANDAS", "NUMPY", "SCIPY", "MATPLOTLIB", "SEABORN", "PLOTLY",
-    "TENSORFLOW", "PYTORCH", "KERAS", "SCIKIT-LEARN", "SKLEARN",
-    "OPENCV", "SPACY", "NLTK", "HUGGING FACE", "TRANSFORMERS",
-    "XGBOOST", "LIGHTGBM", "CATBOOST", "RANDOM FOREST",
-    "POWER BI", "TABLEAU", "LOOKER", "QLIK", "METABASE",
-    "APACHE SPARK", "SPARK", "HADOOP", "HIVE", "KAFKA", "AIRFLOW",
-    "DATABRICKS", "SNOWFLAKE", "DATALAKE", "REDSHIFT",
-    "JUPYTER", "JUPYTER NOTEBOOK", "GOOGLE COLAB",
-    "STATISTICS", "STATISTICAL ANALYSIS", "REGRESSION", "CLASSIFICATION",
-    "CLUSTERING", "NEURAL NETWORKS", "CNN", "RNN", "LSTM", "GAN",
-    "REINFORCEMENT LEARNING", "GENERATIVE AI", "LLM", "GPT", "PROMPT ENGINEERING",
-}
-
-_DATABASES = {
-    "SQL", "MYSQL", "POSTGRESQL", "POSTGRES", "SQLITE", "ORACLE", "ORACLE DB",
-    "SQL SERVER", "MSSQL", "MS SQL", "MARIADB",
-    "MONGODB", "MONGO", "DYNAMODB", "CASSANDRA", "COUCHDB", "COUCHBASE",
-    "REDIS", "MEMCACHED", "ELASTICSEARCH", "ELASTIC", "OPENSEARCH",
-    "NEO4J", "GRAPHQL", "PRISMA", "SEQUELIZE", "SQLALCHEMY",
-    "SUPABASE", "FIREBASE", "FIRESTORE", "REALM",
-    "INFLUXDB", "TIMESCALEDB", "COCKROACHDB",
-}
-
-_DEVOPS_CLOUD = {
-    "AWS", "AMAZON WEB SERVICES", "AZURE", "MICROSOFT AZURE", "GCP",
-    "GOOGLE CLOUD", "GOOGLE CLOUD PLATFORM",
-    "DOCKER", "KUBERNETES", "K8S", "HELM", "TERRAFORM", "ANSIBLE", "PUPPET", "CHEF",
-    "CI/CD", "CICD", "JENKINS", "GITHUB ACTIONS", "GITLAB CI", "CIRCLECI",
-    "BITBUCKET PIPELINES", "AZURE DEVOPS", "ARGOCD",
-    "NGINX", "APACHE", "CADDY", "TRAEFIK",
-    "LINUX", "UBUNTU", "CENTOS", "DEBIAN", "RED HAT", "RHEL",
-    "WINDOWS SERVER", "MACOS",
-    "BASH", "SHELL SCRIPTING", "POWERSHELL",
-    "PROMETHEUS", "GRAFANA", "DATADOG", "NEW RELIC", "SPLUNK", "ELK STACK",
-    "CLOUDFLARE", "VERCEL", "NETLIFY", "HEROKU", "DIGITALOCEAN", "LINODE",
-    "S3", "EC2", "LAMBDA", "ECS", "EKS", "FARGATE", "CLOUDFORMATION",
-    "SERVERLESS", "MICROSERVICES", "SERVICE MESH", "ISTIO",
-    "VAGRANT", "PACKER", "CONSUL",
-}
-
-_TOOLS_VERSION_CONTROL = {
-    "GIT", "GITHUB", "GITLAB", "BITBUCKET", "SVN", "SUBVERSION", "MERCURIAL",
-    "JIRA", "CONFLUENCE", "TRELLO", "ASANA", "MONDAY.COM", "NOTION", "CLICKUP",
-    "SLACK", "TEAMS", "MICROSOFT TEAMS",
-    "POSTMAN", "INSOMNIA", "SWAGGER", "OPENAPI",
-    "VS CODE", "VISUAL STUDIO CODE", "VISUAL STUDIO", "INTELLIJ", "PYCHARM",
-    "ECLIPSE", "XCODE", "ANDROID STUDIO", "WEBSTORM", "RIDER",
-    "FIGMA", "SKETCH", "ADOBE XD", "INVISION", "ZEPLIN",
-    "PHOTOSHOP", "ILLUSTRATOR", "AFTER EFFECTS", "PREMIERE PRO",
-    "ADOBE CREATIVE SUITE", "ADOBE CREATIVE CLOUD", "CANVA", "LIGHTROOM",
-    "BLENDER", "UNITY", "UNREAL ENGINE",
-}
-
-_TESTING_QA = {
-    "UNIT TESTING", "INTEGRATION TESTING", "E2E TESTING", "END-TO-END TESTING",
-    "TDD", "TEST-DRIVEN DEVELOPMENT", "BDD", "BEHAVIOR-DRIVEN DEVELOPMENT",
-    "JEST", "MOCHA", "CHAI", "CYPRESS", "PLAYWRIGHT", "SELENIUM", "PUPPETEER",
-    "PYTEST", "UNITTEST", "ROBOT FRAMEWORK",
-    "JUNIT", "TESTNG", "MOCKITO",
-    "APPIUM", "DETOX", "ENZYME", "REACT TESTING LIBRARY",
-    "LOAD TESTING", "PERFORMANCE TESTING", "JMETER", "GATLING", "K6",
-    "QA", "QUALITY ASSURANCE", "SOFTWARE TESTING", "MANUAL TESTING",
-    "AUTOMATION TESTING", "TEST AUTOMATION",
-}
-
-_MOBILE = {
-    "IOS", "ANDROID", "REACT NATIVE", "FLUTTER", "XAMARIN", "IONIC",
-    "SWIFTUI", "JETPACK COMPOSE", "KOTLIN MULTIPLATFORM", "MAUI",
-    "MOBILE DEVELOPMENT", "MOBILE APP DEVELOPMENT",
-    "PROGRESSIVE WEB APP", "PWA", "EXPO",
-}
-
-_SECURITY = {
-    "CYBERSECURITY", "CYBER SECURITY", "INFORMATION SECURITY", "INFOSEC",
-    "NETWORK SECURITY", "APPLICATION SECURITY", "CLOUD SECURITY",
-    "PENETRATION TESTING", "PEN TESTING", "ETHICAL HACKING",
-    "VULNERABILITY ASSESSMENT", "SIEM", "SOC",
-    "OWASP", "SSL/TLS", "ENCRYPTION", "OAUTH", "JWT", "SSO",
-    "IDENTITY AND ACCESS MANAGEMENT", "IAM", "ZERO TRUST",
-    "FIREWALL", "IDS", "IPS", "WAF", "VPN",
-    "COMPLIANCE", "GDPR", "HIPAA", "SOC 2", "ISO 27001", "PCI DSS",
-}
-
-_SOFT_SKILLS = {
-    "AGILE", "SCRUM", "KANBAN", "LEAN", "SAFe",
-    "PROJECT MANAGEMENT", "PROGRAM MANAGEMENT", "PRODUCT MANAGEMENT",
-    "LEADERSHIP", "TEAM LEADERSHIP", "TEAM MANAGEMENT", "PEOPLE MANAGEMENT",
-    "COMMUNICATION", "PRESENTATION", "PUBLIC SPEAKING",
-    "PROBLEM SOLVING", "CRITICAL THINKING", "ANALYTICAL THINKING",
-    "DECISION MAKING", "STRATEGIC PLANNING", "STRATEGIC THINKING",
-    "TIME MANAGEMENT", "ORGANIZATIONAL SKILLS",
-    "COLLABORATION", "TEAMWORK", "CROSS-FUNCTIONAL",
-    "MENTORING", "COACHING", "TRAINING",
-    "STAKEHOLDER MANAGEMENT", "CLIENT RELATIONS", "CLIENT MANAGEMENT",
-    "NEGOTIATION", "CONFLICT RESOLUTION",
-}
-
-_BUSINESS_DOMAIN = {
-    "CUSTOMER SERVICE", "SALES", "MARKETING", "DIGITAL MARKETING",
-    "SOCIAL MEDIA MARKETING", "EMAIL MARKETING", "CONTENT MARKETING",
-    "SEO", "SEM", "PPC", "GOOGLE ADS", "FACEBOOK ADS", "GOOGLE ANALYTICS",
-    "CONTENT CREATION", "COPYWRITING", "TECHNICAL WRITING", "DOCUMENTATION",
-    "UI/UX", "UX DESIGN", "UI DESIGN", "USER EXPERIENCE", "USER INTERFACE",
-    "PRODUCT DESIGN", "INTERACTION DESIGN", "WIREFRAMING", "PROTOTYPING",
-    "MICROSOFT OFFICE", "MICROSOFT 365", "EXCEL", "WORD", "POWERPOINT",
-    "GOOGLE WORKSPACE", "GOOGLE SHEETS", "GOOGLE DOCS",
-    "SAP", "SALESFORCE", "HUBSPOT", "ZOHO",
-    "ERP", "CRM", "SUPPLY CHAIN MANAGEMENT", "LOGISTICS",
-    "ACCOUNTING", "BOOKKEEPING", "QUICKBOOKS", "XERO",
-    "FINANCIAL ANALYSIS", "FINANCIAL MODELING", "BUDGETING", "FORECASTING",
-    "BUSINESS ANALYSIS", "BUSINESS INTELLIGENCE", "BI",
-    "REQUIREMENTS GATHERING", "PROCESS IMPROVEMENT", "SIX SIGMA",
-}
-
-_API_MISC = {
-    "REST", "REST API", "RESTFUL", "RESTFUL API",
-    "GRAPHQL", "GRPC", "SOAP", "WEBSOCKET", "WEBSOCKETS",
-    "API DEVELOPMENT", "API DESIGN", "API INTEGRATION",
-    "OAUTH 2.0", "SAML",
-    "HTML", "HTML5", "CSS", "CSS3", "SASS", "SCSS", "LESS",
-    "WEBPACK", "VITE", "PARCEL", "ROLLUP", "ESBUILD", "BABEL",
-    "NPM", "YARN", "PNPM", "PIP", "POETRY", "CONDA",
-    "JSON", "XML", "YAML", "TOML", "CSV",
-    "RESPONSIVE DESIGN", "RESPONSIVE WEB DESIGN", "ACCESSIBILITY", "WCAG",
-    "SEO OPTIMIZATION", "WEB PERFORMANCE", "CORE WEB VITALS",
-    "BLOCKCHAIN", "WEB3", "SMART CONTRACTS", "DEFI", "NFT",
-    "IOT", "INTERNET OF THINGS", "EMBEDDED SYSTEMS", "ARDUINO", "RASPBERRY PI",
-    "RPA", "ROBOTIC PROCESS AUTOMATION", "UIPATH", "AUTOMATION ANYWHERE",
-    "SYSTEM ADMINISTRATION", "SYSADMIN", "ACTIVE DIRECTORY",
-    "VIRTUALIZATION", "VMWARE", "HYPER-V",
-}
-
-# Union of all categories
-COMMON_SKILLS: set[str] = (
-    _PROGRAMMING_LANGUAGES | _WEB_FRAMEWORKS | _DATA_ML | _DATABASES |
-    _DEVOPS_CLOUD | _TOOLS_VERSION_CONTROL | _TESTING_QA | _MOBILE |
-    _SECURITY | _SOFT_SKILLS | _BUSINESS_DOMAIN | _API_MISC
+from app.extractors.nlp.nlp_engine import get_doc, get_verb_object_pairs
+from app.extractors.content.skills_taxonomy import (
+    PHILIPPINE_SKILLS_TAXONOMY,
+    load_external_skill_datasets as taxonomy_load_external,
 )
 
-# ─── Synonym Mapping ─────────────────────────────────────────────────────────
-# Maps alternate forms to a canonical skill name for deduplication
-_SKILL_SYNONYMS = {
-    "REACTJS": "REACT", "REACT.JS": "REACT",
-    "VUEJS": "VUE", "VUE.JS": "VUE",
-    "ANGULARJS": "ANGULAR",
-    "NEXTJS": "NEXT.JS", "NUXTJS": "NUXT.JS",
-    "NODEJS": "NODE.JS", "EXPRESSJS": "EXPRESS",
-    "NESTJS": "NEST.JS",
-    "GOLANG": "GO",
-    "POSTGRES": "POSTGRESQL",
-    "MONGO": "MONGODB",
-    "ELASTIC": "ELASTICSEARCH",
-    "K8S": "KUBERNETES",
-    "SKLEARN": "SCIKIT-LEARN",
-    "CICD": "CI/CD",
-    "TAILWIND": "TAILWINDCSS", "TAILWIND CSS": "TAILWINDCSS",
-    "AMAZON WEB SERVICES": "AWS",
-    "MICROSOFT AZURE": "AZURE",
-    "GOOGLE CLOUD": "GCP", "GOOGLE CLOUD PLATFORM": "GCP",
-    "MSSQL": "SQL SERVER", "MS SQL": "SQL SERVER",
-    "HTML5": "HTML5", "CSS3": "CSS3",
-    "MATERIALIZE": "MATERIALIZE", "QUASAR": "QUASAR",
-    "CAPACITORJS": "CapacitorJS",
-    "VUE 2": "VUE", "VUE 3": "VUE",
-}
-
-# ─── Casing Overrides ────────────────────────────────────────────────────────
+# ─── Backward-Compatibility Knowledge Base Symbols ───────────────────────────
+# Some modules (e.g. nlp_engine, spacy_extractor) import COMMON_SKILLS and _format_skill
 
 _UPPER_CASE_SKILLS = {
     "html", "html5", "css", "css3", "php", "sql", "mysql", "seo", "sem",
@@ -207,8 +57,9 @@ _UPPER_CASE_SKILLS = {
     "iam", "gdpr", "hipaa", "pci dss", "iso 27001", "soc 2", "rpa",
     "iot", "nft", "erp", "crm", "pwa", "saas", "paas", "iaas",
     "sass", "scss", "less", "npm", "yarn", "pnpm", "pip",
-    "k8s", "ec2", "s3", "eks", "ecs",
-    "html5 + css3", "html + css",
+    "k8s", "ec2", "s3", "eks", "ecs", "smaw", "tig", "mig", "haccp",
+    "fifo", "pos", "wpm", "bosh", "cosh", "staad.pro", "etabs", "boq",
+    "plc", "cctv", "bls", "cpr", "esl", "prc", "csc", "tesda", "lto",
 }
 
 _TITLE_CASE_OVERRIDES = {
@@ -228,407 +79,774 @@ _TITLE_CASE_OVERRIDES = {
     "opencv": "OpenCV", "fastapi": "FastAPI",
     "postgresql": "PostgreSQL", "postgres": "PostgreSQL",
     "mongodb": "MongoDB", "dynamodb": "DynamoDB",
-    "couchdb": "CouchDB", "couchbase": "Couchbase",
-    "neo4j": "Neo4j", "influxdb": "InfluxDB",
-    "cockroachdb": "CockroachDB", "timescaledb": "TimescaleDB",
-    "elasticsearch": "Elasticsearch", "opensearch": "OpenSearch",
     "supabase": "Supabase", "firebase": "Firebase",
-    "github": "GitHub", "gitlab": "GitLab", "bitbucket": "Bitbucket",
+    "github": "GitHub", "gitlab": "GitLab",
     "kubernetes": "Kubernetes", "docker": "Docker",
-    "terraform": "Terraform", "ansible": "Ansible",
-    "jenkins": "Jenkins", "argocd": "ArgoCD",
-    "cloudflare": "Cloudflare", "vercel": "Vercel", "netlify": "Netlify",
-    "heroku": "Heroku", "digitalocean": "DigitalOcean",
-    "datadog": "Datadog", "grafana": "Grafana", "prometheus": "Prometheus",
-    "splunk": "Splunk", "jira": "Jira", "confluence": "Confluence",
     "salesforce": "Salesforce", "hubspot": "HubSpot",
-    "quickbooks": "QuickBooks",
-    "typescript": "TypeScript", "javascript": "JavaScript",
-    "powershell": "PowerShell",
+    "quickbooks": "QuickBooks", "typescript": "TypeScript",
+    "javascript": "JavaScript", "powershell": "PowerShell",
     "android": "Android", "ios": "iOS",
-    "flutter": "Flutter", "react native": "React Native",
-    "swiftui": "SwiftUI", "jetpack compose": "Jetpack Compose",
-    "tailwindcss": "TailwindCSS", "tailwind css": "TailwindCSS",
-    "bootstrap": "Bootstrap", "material ui": "Material UI",
-    "materialize": "Materialize", "quasar": "Quasar",
-    "chakra ui": "Chakra UI",
-    "webpack": "Webpack", "vite": "Vite", "babel": "Babel",
-    "selenium": "Selenium", "cypress": "Cypress", "playwright": "Playwright",
-    "pytest": "pytest", "jest": "Jest",
-    "figma": "Figma", "photoshop": "Photoshop", "illustrator": "Illustrator",
-    "canva": "Canva", "blender": "Blender",
-    "power bi": "Power BI", "tableau": "Tableau", "looker": "Looker",
-    "snowflake": "Snowflake", "databricks": "Databricks",
-    "apache spark": "Apache Spark", "spark": "Spark",
-    "hadoop": "Hadoop", "kafka": "Kafka", "airflow": "Airflow",
-    "redis": "Redis", "memcached": "Memcached",
-    "prisma": "Prisma", "sequelize": "Sequelize", "sqlalchemy": "SQLAlchemy",
-    "spring boot": "Spring Boot", "spring": "Spring",
-    "django": "Django", "flask": "Flask", "laravel": "Laravel",
-    "ruby on rails": "Ruby on Rails",
-    "svelte": "Svelte", "sveltekit": "SvelteKit",
-    "remix": "Remix", "gatsby": "Gatsby",
-    "uipath": "UiPath",
-    "capacitorjs": "CapacitorJS",
-    "html5": "HTML5", "css3": "CSS3",
-    "html5 + css3": "HTML5 + CSS3", "html + css": "HTML + CSS",
-    "vue 2": "Vue 2", "vue 3": "Vue 3",
-    "ubuntu": "Ubuntu",
+    "autocad": "AutoCAD", "staad.pro": "STAAD.Pro",
+    "sketchup": "SketchUp", "zendesk": "Zendesk",
+    "freshdesk": "Freshdesk", "avaya": "Avaya",
 }
 
 
 def _format_skill(skill: str) -> str:
-    """Apply proper casing to a skill string."""
-    lower = skill.strip().lower()
+    """Apply proper capitalization and standard casing to a skill string."""
+    clean = skill.strip()
+    lower = clean.lower()
     if not lower:
         return ""
     if lower in _TITLE_CASE_OVERRIDES:
         return _TITLE_CASE_OVERRIDES[lower]
     if lower in _UPPER_CASE_SKILLS:
-        return skill.strip().upper()
-    return skill.strip().title()
+        return clean.upper()
+    return clean.title()
 
 
-# ─── Section header keywords ─────────────────────────────────────────────────
+# Populate COMMON_SKILLS with all canonical and alias terms in uppercase
+COMMON_SKILLS: Set[str] = set()
+for _canon, _meta in PHILIPPINE_SKILLS_TAXONOMY.items():
+    COMMON_SKILLS.add(_canon.upper())
+    for _al in _meta.get("aliases", []):
+        COMMON_SKILLS.add(_al.upper())
 
-_SKILL_HEADERS = [
-    "SKILLS", "TECHNICAL SKILLS", "CORE COMPETENCIES", "EXPERTISE",
-    "TECHNOLOGIES", "TOOLS", "KEY SKILLS", "PROFICIENCIES",
-    "COMPETENCIES", "TECH STACK", "TECHNICAL COMPETENCIES",
-    "AREAS OF EXPERTISE", "PROFESSIONAL SKILLS", "SKILL SET",
-    "TOOLS & TECHNOLOGIES", "TOOLS AND TECHNOLOGIES",
-    "PROGRAMMING LANGUAGES", "FRAMEWORKS", "SOFTWARE",
-    "TECHNICAL PROFICIENCY", "QUALIFICATIONS SUMMARY",
-]
 
-_STOP_HEADERS = [
-    "EXPERIENCE", "WORK EXPERIENCE", "PROFESSIONAL EXPERIENCE",
-    "EDUCATION", "CERTIFICATIONS", "PROJECTS", "WORK HISTORY",
-    "EMPLOYMENT", "REFERENCES", "ACHIEVEMENTS", "AFFILIATIONS",
-    "BACKGROUND", "PUBLICATIONS", "AWARDS", "INTERESTS",
-    "OBJECTIVE", "SUMMARY", "ABOUT ME", "PROFILE",
-    "VOLUNTEER", "HOBBIES", "LANGUAGES", "PERSONAL INFORMATION",
-    "TRAINING", "SEMINARS", "ACTIVITIES",
-    "CONTACT", "CONTACT INFORMATION", "CONTACT DETAILS",
-    "WORK PROJECTS", "PERSONAL PROJECTS", "ACADEMIC PROJECTS",
-]
-
-# ─── Noise words that should never be extracted as skills ─────────────────────
-
-_NOISE_WORDS = {
-    'and', 'or', 'the', 'for', 'with', 'in', 'of', 'to', 'a', 'an',
-    'is', 'at', 'on', 'by', 'etc', 'i', 'ii', 'iii', 'iv', 'v',
-    'years', 'year', 'experience', 'experienced', 'proficient',
-    'strong', 'excellent', 'good', 'knowledge', 'understanding',
-    'familiar', 'basic', 'advanced', 'intermediate', 'expert',
-    'level', 'including', 'using', 'working', 'used',
-    'responsible', 'developed', 'managed', 'implemented', 'created',
-    'designed', 'built', 'led', 'maintained', 'improved',
-    'various', 'multiple', 'several', 'other', 'related',
-    'tools', 'technologies', 'skills', 'ability', 'abilities',
-    'proficiency', 'competency', 'expertise',
-    'january', 'february', 'march', 'april', 'may', 'june',
-    'july', 'august', 'september', 'october', 'november', 'december',
-    'present', 'current', 'ongoing',
-    'city', 'street', 'province', 'philippines', 'manila',
-    'resume', 'cv', 'curriculum', 'vitae', 'page',
+# ─── Resume Section Regexes ──────────────────────────────────────────────────
+_SECTION_HEADERS = {
+    "Skills": re.compile(
+        r'^(?:technical\s+skills?|core\s+competencies|skills?\s*(?:&|and)\s*traits?|'
+        r'skills?\s*(?:&|and)\s*abilities|skills?\s*(?:&|and)\s*expertise|key\s+skills?|'
+        r'skills?|competencies|proficiencies|areas?\s+of\s+expertise|qualifications?|'
+        r'technical\s+&\s+engineering\s+skills?|skills\s+&\s+proficiencies)\b',
+        re.IGNORECASE
+    ),
+    "Work Experience": re.compile(
+        r'^(?:work\s+experience|professional\s+experience|employment\s+history|'
+        r'career\s+history|experience|work\s+history|relevant\s+experience)\b',
+        re.IGNORECASE
+    ),
+    "Education": re.compile(
+        r'^(?:education|educational\s+background|educational\s+attainment|'
+        r'academic\s+background|academic\s+qualifications?)\b',
+        re.IGNORECASE
+    ),
+    "Certifications": re.compile(
+        r'^(?:certifications?|licenses?\s*(?:&|and)\s*certifications?|eligibility|'
+        r'trainings?\s*(?:&|and)\s*seminars?|credentials?|accreditations?|'
+        r'licenses?\s*(?:&|and)\s*eligibility)\b',
+        re.IGNORECASE
+    ),
+    "Summary": re.compile(
+        r'^(?:objective|career\s+objective|summary|professional\s+summary|'
+        r'career\s+summary|profile|about\s+me)\b',
+        re.IGNORECASE
+    ),
 }
 
+# Context constraints for short keywords (e.g. single letters or common english words)
+_SHORT_KEYWORDS_REQUIRING_CONTEXT = {
+    "C": {"PROGRAMMING", "LANGUAGES", "DEVELOPER", "C++", "C#", "JAVA", "PYTHON", "CODE", "SOFTWARE"},
+    "R": {"PROGRAMMING", "LANGUAGES", "DATA", "STATISTICS", "PYTHON", "MACHINE LEARNING", "ANALYSIS"},
+    "GO": {"GOLANG", "PROGRAMMING", "BACKEND", "DEVELOPER", "DOCKER", "KUBERNETES"},
+    "IT": {"SUPPORT", "INFORMATION TECHNOLOGY", "BSIT", "BS IT", "HARDWARE", "SYSTEMS", "ADMIN"},
+    "AI": {"ARTIFICIAL INTELLIGENCE", "MACHINE LEARNING", "ML", "DEEP LEARNING", "DATA"},
+    "ML": {"MACHINE LEARNING", "AI", "DEEP LEARNING", "DATA SCIENCE", "ALGORITHMS"},
+    "QA": {"QUALITY ASSURANCE", "TESTING", "MANUAL TESTING", "AUTOMATION", "TESTER"},
+    "UI": {"USER INTERFACE", "UX", "FRONTEND", "DESIGN", "FIGMA"},
+    "UX": {"USER EXPERIENCE", "UI", "FRONTEND", "DESIGN", "RESEARCH"},
+    "PM": {"PROJECT MANAGER", "MAINTENANCE", "PREVENTIVE MAINTENANCE", "SCRUM"},
+}
 
-def _is_section_header(line: str, keywords: list[str]) -> bool:
-    """Check if a line is a section header matching any of the keywords."""
-    clean = line.strip().upper()
-    if not clean:
-        return False
-    if len(clean.split()) >= 6:
-        return False
-    for kw in keywords:
-        if clean == kw or clean.startswith(kw + ":") or clean.startswith(kw + " :"):
-            return True
-        stripped = clean.strip("-=_*#•► ").strip()
-        if stripped == kw or stripped.startswith(kw + ":"):
-            return True
-    return False
+# Filipino Soft Skills & Workplace Traits Trigger Patterns
+_SOFT_SKILL_PATTERNS = [
+    (
+        re.compile(r'\b(?:can\s+work\s+under\s+pressure|willing\s+to\s+learn\s+and\s+work\s+under\s+pressure|works?\s+well\s+under\s+pressure|stress\s+tolerance|handles?\s+pressure)\b', re.IGNORECASE),
+        "Stress Tolerance (Can Work Under Pressure)"
+    ),
+    (
+        re.compile(r'\b(?:willing\s+to\s+render\s+overtime|render\s+overtime|willing\s+to\s+work\s+overtime|work\s+on\s+holidays|amenable\s+to\s+shifting\s+schedules?|shifting\s+schedules?|night\s+shift|graveyard\s+shift|rotational\s+shifts?)\b', re.IGNORECASE),
+        "Overtime & Shifting Flexibility"
+    ),
+    (
+        re.compile(r'\b(?:can\s+work\s+with\s+minimal\s+supervision|minimal\s+supervision|works?\s+independently|without\s+supervision|autonomous\s+worker)\b', re.IGNORECASE),
+        "Autonomy (Can Work With Minimal Supervision)"
+    ),
+    (
+        re.compile(r'\b(?:fast\s+learner(?:\s+and\s+willing\s+to\s+be\s+trained)?|quick\s+learner|willing\s+to\s+be\s+trained|eager\s+to\s+learn)\b', re.IGNORECASE),
+        "Fast Learner & Willing to be Trained"
+    ),
+    (
+        re.compile(r'\b(?:team\s+player|team-player|works?\s+well\s+in\s+a\s+team|teamwork(?:\s+&\s+collaboration)?|pakikisama)\b', re.IGNORECASE),
+        "Teamwork & Collaboration"
+    ),
+    (
+        re.compile(r'\b(?:interpersonal\s+skills?|good\s+interpersonal\s+skills?)\b', re.IGNORECASE),
+        "Interpersonal Skills"
+    ),
+    (
+        re.compile(r'\b(?:active\s+listening|empathetic\s+listening)\b', re.IGNORECASE),
+        "Active Listening"
+    ),
+    (
+        re.compile(r'\b(?:conflict\s+de[\s\-]escalation|customer\s+de[\s\-]escalation|de[\s\-]escalation)\b', re.IGNORECASE),
+        "Conflict De-escalation"
+    ),
+    (
+        re.compile(r'\b(?:problem\s+solving|problem-solving(?:\s+skills?)?)\b', re.IGNORECASE),
+        "Problem Solving"
+    ),
+    (
+        re.compile(r'\b(?:time\s+management|multitasking|multi[\s\-]tasking)\b', re.IGNORECASE),
+        "Time Management & Multitasking"
+    ),
+    (
+        re.compile(r'\b(?:honesty\s+(?:&|and)\s+integrity|honest\s+and\s+trustworthy)\b', re.IGNORECASE),
+        "Honesty & Integrity"
+    ),
+]
 
+# Specialized Regexes
+_TYPING_SPEED_RE = re.compile(r'\b(\d{2,3})\s*WPM(?:\s+typing(?:\s+speed)?)?\b', re.IGNORECASE)
+_DRIVER_LICENSE_RE = re.compile(r'\b(?:Professional|Non-Professional)?\s*Driver\'?s?\s*License(?:\s*(?:Restriction|DL\s*Code)\s*([A-Za-z0-9,\s]+))?\b', re.IGNORECASE)
+_TESDA_CERT_RE = re.compile(r'\b(?:TESDA\s+)?([A-Za-z0-9\s/()\-]+?)\s*(?:NC\s*(?:I|II|III|IV)|National\s*Certificate\s*(?:I|II|III|IV))\b', re.IGNORECASE)
+_PRC_LICENSE_RE = re.compile(r'\b(?:PRC\s+)?(?:Registered|Licensed)?\s*([A-Za-z\s]+?)(?:Board\s*Exam\s*Passer|Licensure\s*Exam\s*Passer)\b', re.IGNORECASE)
 
-# ─── Date / Education noise detection for skills section ─────────────────────
-
-_DATE_NOISE_RE = re.compile(
-    r'^(?:'
-    r'(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|'
-    r'Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)'
-    r'\s+\d{4}'
-    r'|Expected\s+\d{4}'
-    r'|(?:19|20)\d{2}\s*[-–—to]+\s*(?:(?:19|20)\d{2}|Present|Expected|Current)'
-    r'|(?:19|20)\d{2}'
-    r'|Class\s+of\s+\d{4}'
-    r'|Batch\s+\d{4}'
-    r'|Graduated?\s+\d{4}'
-    r'|\d{1,2}(?:st|nd|rd|th)?\s+Year'
-    r')$',
+# Competency Trigger Prefixes
+_COMPETENCY_PREFIX_RE = re.compile(
+    r'\b(?:proficient\s+in|knowledgeable\s+in|skilled\s+in|experienced\s+in|background\s+in|'
+    r'familiar\s+with|ability\s+to\s+(?:operate|handle|perform|conduct)|good\s+command\s+of|'
+    r'strong\s+background\s+in|hands[\s\-]on\s+experience\s+in|well[\s\-]versed\s+in|'
+    r'competent\s+in|specializing\s+in|expertise\s+in)\s+([^.\n;:•]+)',
     re.IGNORECASE
 )
 
-_EDUCATION_NOISE_WORDS = {
-    'college student', 'year college', 'year college student',
-    '1st year', '2nd year', '3rd year', '4th year', '5th year',
-    'freshman', 'sophomore', 'junior year', 'senior year',
-    'undergraduate', 'graduate', 'postgraduate',
-    'expected graduation', 'graduation date',
+# Compound skill variations mapping
+_COMPOUND_SKILL_MAP = {
+    "ms word/excel/powerpoint": ["Microsoft Word", "Microsoft Excel", "Microsoft PowerPoint", "Microsoft Office Suite"],
+    "ms word, excel, powerpoint": ["Microsoft Word", "Microsoft Excel", "Microsoft PowerPoint", "Microsoft Office Suite"],
+    "word, excel, powerpoint": ["Microsoft Word", "Microsoft Excel", "Microsoft PowerPoint", "Microsoft Office Suite"],
+    "excel vlookup & pivot tables": ["Advanced Excel (VLOOKUP & Pivot Tables)", "Microsoft Excel"],
+    "excel vlookup and pivot tables": ["Advanced Excel (VLOOKUP & Pivot Tables)", "Microsoft Excel"],
+    "smaw ncii": ["Shielded Metal Arc Welding (SMAW)", "TESDA National Certificate (NC II)"],
+    "smaw nc ii": ["Shielded Metal Arc Welding (SMAW)", "TESDA National Certificate (NC II)"],
+    "bosh so2": ["Basic Occupational Safety and Health (BOSH)"],
+    "cosh so2": ["Construction Occupational Safety and Health (COSH)"],
+    "css nc ii": ["PC Troubleshooting & Hardware Repair", "TESDA National Certificate (NC II)"],
+    "food preparation and kitchen sanitation": ["Food Preparation", "Kitchen Sanitation"],
+    "floor buffing and housekeeping": ["Floor Polishing & Buffing", "Housekeeping & Room Makeup"],
 }
 
 
-def _is_date_or_education_noise(skill: str) -> bool:
-    """Check if a candidate skill string is actually a date range or education noise."""
-    clean = skill.strip()
-    if not clean:
-        return True
-    # Check against date noise regex
-    if _DATE_NOISE_RE.match(clean):
-        return True
-    # Check for date range embedded in skill
-    lower = clean.lower()
-    if lower in _EDUCATION_NOISE_WORDS:
-        return True
-    # Check if string is mostly numeric (e.g., "2023", "2027")
-    digits = sum(1 for c in clean if c.isdigit())
-    if digits >= 4 and len(clean) <= 10:
-        # Looks like a year or date
-        if re.fullmatch(r'(?:19|20)\d{2}', clean.strip()):
+class PhilippineSkillsExtractor:
+    """
+    High-precision multi-pass Philippine resume skills extraction engine.
+    """
+
+    def __init__(self):
+        self.taxonomy = PHILIPPINE_SKILLS_TAXONOMY
+        self.keyword_processor = KeywordProcessor(case_sensitive=False) if KeywordProcessor else None
+        self.alias_to_canonical: Dict[str, str] = {}
+        self.canonical_choices: List[str] = []
+        self._build_index()
+
+    def _build_index(self):
+        """Indexes all canonical skills and aliases into FlashText and alias maps."""
+        if KeywordProcessor is not None:
+            self.keyword_processor = KeywordProcessor(case_sensitive=False)
+        self.alias_to_canonical = {}
+        self.canonical_choices = list(self.taxonomy.keys())
+
+        for canonical, info in self.taxonomy.items():
+            if self.keyword_processor is not None:
+                self.keyword_processor.add_keyword(canonical, canonical)
+            self.alias_to_canonical[canonical.lower()] = canonical
+
+            for alias in info.get("aliases", []):
+                clean_alias = alias.strip()
+                if clean_alias:
+                    if self.keyword_processor is not None:
+                        self.keyword_processor.add_keyword(clean_alias, canonical)
+                    self.alias_to_canonical[clean_alias.lower()] = canonical
+
+    def load_external_datasets(
+        self,
+        esco_csv_path: Optional[str] = None,
+        onet_txt_path: Optional[str] = None,
+        tesda_json_path: Optional[str] = None
+    ) -> int:
+        """Loads external ESCO, O*NET, or TESDA datasets and dynamically updates the index."""
+        added = taxonomy_load_external(esco_csv_path, onet_txt_path, tesda_json_path)
+        if added > 0:
+            self._build_index()
+        return added
+
+    def _segment_sections(self, text: str) -> List[Tuple[int, int, str]]:
+        """Segments resume text into typed sections based on headers."""
+        spans: List[Tuple[int, int, str]] = []
+        lines = text.split('\n')
+        current_section = "General"
+        section_start = 0
+        char_offset = 0
+
+        for line in lines:
+            line_len = len(line) + 1  # newline length
+            clean_line = line.strip()
+
+            if clean_line:
+                matched_header = None
+                for sec_name, pattern in _SECTION_HEADERS.items():
+                    if pattern.match(clean_line):
+                        matched_header = sec_name
+                        break
+
+                if matched_header:
+                    if char_offset > section_start:
+                        spans.append((section_start, char_offset, current_section))
+                    current_section = matched_header
+                    section_start = char_offset
+
+            char_offset += line_len
+
+        if char_offset > section_start:
+            spans.append((section_start, char_offset, current_section))
+
+        return spans
+
+    def _get_section(self, offset: int, spans: List[Tuple[int, int, str]]) -> str:
+        """Returns the section name for a character offset."""
+        for start, end, name in spans:
+            if start <= offset < end:
+                return name
+        return "General"
+
+    def _is_valid_short_mention(self, raw: str, start: int, end: int, text: str) -> bool:
+        """Filters out ambiguous short tokens to prevent false positives."""
+        raw_upper = raw.strip().upper()
+        if raw_upper not in _SHORT_KEYWORDS_REQUIRING_CONTEXT:
             return True
-    # Date patterns like "June 2023" or "Expected 2027" or "June 2023 - Expected 2027"
-    if re.match(r'^(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)', clean, re.I):
-        if re.search(r'\d{4}', clean):
-            return True
-    if re.match(r'^Expected\s', clean, re.I):
-        return True
-    return False
+
+        exact_snippet = text[start:end].strip()
+        if not exact_snippet.isupper() and len(exact_snippet) <= 2:
+            return False
+
+        window_start = max(0, start - 100)
+        window_end = min(len(text), end + 100)
+        window = text[window_start:window_end].upper()
+
+        context_words = _SHORT_KEYWORDS_REQUIRING_CONTEXT[raw_upper]
+        return any(w in window for w in context_words)
+
+    def extract(self, text: str) -> Dict[str, Any]:
+        """
+        Executes the full multi-pass skills extraction pipeline:
+          - Pass 1: FlashText exact & alias gazetteer extraction
+          - Pass 2: spaCy Matcher, dependency verb-object pairs, and Filipino trait patterns
+          - Pass 3: RapidFuzz fuzzy normalization and canonical deduplication
+        """
+        if not text or not text.strip():
+            return {
+                "total_unique_skills": 0,
+                "skill_summary_by_type": {
+                    "hard_skills_count": 0,
+                    "soft_skills_count": 0,
+                    "certifications_and_licenses_count": 0,
+                    "languages_count": 0
+                },
+                "extracted_skills": [],
+                "categorized_view": {
+                    "hard_skills": [],
+                    "soft_skills": [],
+                    "tools_and_technologies": [],
+                    "certifications_and_eligibility": [],
+                    "languages": []
+                }
+            }
+
+        section_spans = self._segment_sections(text)
+        candidates: List[Dict[str, Any]] = []
+
+        # ─── Pass 1: FlashText Exact & Alias Gazetteer ────────────────────────
+        if self.keyword_processor is not None:
+            matches = self.keyword_processor.extract_keywords(text, span_info=True)
+            for canonical, start, end in matches:
+                raw_mention = text[start:end].strip()
+                if not self._is_valid_short_mention(raw_mention, start, end, text):
+                    continue
+
+                sec = self._get_section(start, section_spans)
+                candidates.append({
+                    "canonical_skill": canonical,
+                    "raw_mention": raw_mention,
+                    "source_section": sec,
+                    "extraction_method": "Gazetteer_Exact",
+                    "confidence_score": 0.98,
+                    "offset": start
+                })
+
+        # ─── Pass 2: Linguistic Patterns & Dependency Parsing ─────────────────
+        # 2a. Compound Skill Variations (e.g. MS Word/Excel/Powerpoint, SMAW NCII)
+        text_lower = text.lower()
+        for compound_key, mapped_canonicals in _COMPOUND_SKILL_MAP.items():
+            if compound_key in text_lower:
+                idx = text_lower.find(compound_key)
+                sec = self._get_section(idx, section_spans)
+                for mapped in mapped_canonicals:
+                    candidates.append({
+                        "canonical_skill": mapped,
+                        "raw_mention": text[idx:idx + len(compound_key)],
+                        "source_section": sec,
+                        "extraction_method": "Regex_Pattern",
+                        "confidence_score": 0.95,
+                        "offset": idx
+                    })
+
+        # 2b. Filipino Soft Skills & Workplace Traits
+        for pattern, canonical in _SOFT_SKILL_PATTERNS:
+            for m in pattern.finditer(text):
+                sec = self._get_section(m.start(), section_spans)
+                candidates.append({
+                    "canonical_skill": canonical,
+                    "raw_mention": m.group(0).strip(),
+                    "source_section": sec,
+                    "extraction_method": "Regex_Pattern",
+                    "confidence_score": 0.95,
+                    "offset": m.start()
+                })
+
+        # 2b. Typing Speed Pattern
+        for m in _TYPING_SPEED_RE.finditer(text):
+            sec = self._get_section(m.start(), section_spans)
+            candidates.append({
+                "canonical_skill": "Typing Speed (WPM)",
+                "raw_mention": m.group(0).strip(),
+                "source_section": sec,
+                "extraction_method": "Regex_Pattern",
+                "confidence_score": 0.96,
+                "offset": m.start()
+            })
+
+        # 2c. Professional Driver's License Pattern
+        for m in _DRIVER_LICENSE_RE.finditer(text):
+            sec = self._get_section(m.start(), section_spans)
+            candidates.append({
+                "canonical_skill": "Professional Driver's License (LTO)",
+                "raw_mention": m.group(0).strip(),
+                "source_section": sec,
+                "extraction_method": "Regex_Pattern",
+                "confidence_score": 0.96,
+                "offset": m.start()
+            })
+
+        # 2d. TESDA Certification Pattern
+        for m in _TESDA_CERT_RE.finditer(text):
+            sec = self._get_section(m.start(), section_spans)
+            raw = m.group(0).strip()
+            raw_lower = raw.lower()
+            if "smaw" in raw_lower or "welding" in raw_lower:
+                candidates.append({
+                    "canonical_skill": "Shielded Metal Arc Welding (SMAW)",
+                    "raw_mention": raw,
+                    "source_section": sec,
+                    "extraction_method": "Regex_Pattern",
+                    "confidence_score": 0.95,
+                    "offset": m.start()
+                })
+            candidates.append({
+                "canonical_skill": "TESDA National Certificate (NC II)",
+                "raw_mention": raw,
+                "source_section": sec,
+                "extraction_method": "Regex_Pattern",
+                "confidence_score": 0.95,
+                "offset": m.start()
+            })
+
+        # 2e. PRC Licensure Exam Pattern
+        for m in _PRC_LICENSE_RE.finditer(text):
+            sec = self._get_section(m.start(), section_spans)
+            field = m.group(1).strip().lower()
+            if "civil" in field:
+                canonical = "PRC Registered Civil Engineer"
+            elif "mechanical" in field:
+                canonical = "PRC Registered Mechanical Engineer"
+            elif "electrical" in field:
+                canonical = "PRC Registered Electrical Engineer"
+            elif "nurse" in field or "nursing" in field:
+                canonical = "PRC Registered Nurse"
+            elif "cpa" in field or "accountant" in field:
+                canonical = "PRC Certified Public Accountant (CPA)"
+            elif "teacher" in field or "education" in field:
+                canonical = "PRC Licensed Professional Teacher (LPT)"
+            else:
+                canonical = f"PRC Licensed {m.group(1).strip().title()}"
+            candidates.append({
+                "canonical_skill": canonical,
+                "raw_mention": m.group(0).strip(),
+                "source_section": sec,
+                "extraction_method": "Regex_Pattern",
+                "confidence_score": 0.95,
+                "offset": m.start()
+            })
+
+        # 2f. Competency Prefixes ("Proficient in...", "Skilled in...")
+        for m in _COMPETENCY_PREFIX_RE.finditer(text):
+            sec = self._get_section(m.start(), section_spans)
+            phrase = m.group(1).strip()
+            items = re.split(r'[,;|]|\band\b|\bwith\b', phrase)
+            for item in items:
+                clean_item = item.strip().strip("-•*►▪()")
+                if not clean_item or len(clean_item) < 3:
+                    continue
+
+                item_lower = clean_item.lower()
+                if item_lower in _COMPOUND_SKILL_MAP:
+                    for mapped_canonical in _COMPOUND_SKILL_MAP[item_lower]:
+                        candidates.append({
+                            "canonical_skill": mapped_canonical,
+                            "raw_mention": clean_item,
+                            "source_section": sec,
+                            "extraction_method": "Regex_Pattern",
+                            "confidence_score": 0.92,
+                            "offset": m.start()
+                        })
+                    continue
+
+                if item_lower in self.alias_to_canonical:
+                    candidates.append({
+                        "canonical_skill": self.alias_to_canonical[item_lower],
+                        "raw_mention": clean_item,
+                        "source_section": sec,
+                        "extraction_method": "Regex_Pattern",
+                        "confidence_score": 0.92,
+                        "offset": m.start()
+                    })
+                elif fuzz and len(clean_item) >= 4:
+                    best_match = process.extractOne(
+                        clean_item,
+                        list(self.alias_to_canonical.keys()),
+                        scorer=fuzz.token_sort_ratio
+                    )
+                    if best_match and best_match[1] >= 85:
+                        matched_canonical = self.alias_to_canonical[best_match[0]]
+                        candidates.append({
+                            "canonical_skill": matched_canonical,
+                            "raw_mention": clean_item,
+                            "source_section": sec,
+                            "extraction_method": "Fuzzy_Normalized",
+                            "confidence_score": round(0.75 + (best_match[1] - 85) / 100 * 0.20, 2),
+                            "offset": m.start()
+                        })
+
+        # 2g. Action Verb + Object Noun Phrases via Dependency Parsing
+        try:
+            doc = get_doc(text)
+            action_verbs = {
+                "operate", "maintain", "perform", "handle", "conduct", "execute",
+                "prepare", "develop", "build", "manage", "supervise", "monitor",
+                "install", "configure", "fabricate", "weld", "inspect", "draft", "encode"
+            }
+            for verb, obj in get_verb_object_pairs(doc):
+                if verb.lower() in action_verbs:
+                    obj_clean = obj.strip()
+                    if len(obj_clean) >= 4:
+                        obj_lower = obj_clean.lower()
+                        if obj_lower in _COMPOUND_SKILL_MAP:
+                            for mapped in _COMPOUND_SKILL_MAP[obj_lower]:
+                                candidates.append({
+                                    "canonical_skill": mapped,
+                                    "raw_mention": f"{verb} {obj}",
+                                    "source_section": "Work Experience",
+                                    "extraction_method": "Syntactic_Dependency",
+                                    "confidence_score": 0.90,
+                                    "offset": text.lower().find(obj_lower) if obj_lower in text.lower() else 0
+                                })
+                        elif obj_lower in self.alias_to_canonical:
+                            candidates.append({
+                                "canonical_skill": self.alias_to_canonical[obj_lower],
+                                "raw_mention": f"{verb} {obj}",
+                                "source_section": "Work Experience",
+                                "extraction_method": "Syntactic_Dependency",
+                                "confidence_score": 0.90,
+                                "offset": text.lower().find(obj_lower) if obj_lower in text.lower() else 0
+                            })
+                        elif fuzz and len(obj_clean) >= 5:
+                            match = process.extractOne(
+                                obj_clean,
+                                list(self.alias_to_canonical.keys()),
+                                scorer=fuzz.token_sort_ratio
+                            )
+                            if match and match[1] >= 85:
+                                candidates.append({
+                                    "canonical_skill": self.alias_to_canonical[match[0]],
+                                    "raw_mention": f"{verb} {obj}",
+                                    "source_section": "Work Experience",
+                                    "extraction_method": "Syntactic_Dependency",
+                                    "confidence_score": round(0.75 + (match[1] - 85) / 100 * 0.20, 2),
+                                    "offset": text.lower().find(obj_lower) if obj_lower in text.lower() else 0
+                                })
+        except Exception:
+            pass
+
+        # ─── Pass 3: Fuzzy Normalization, Prioritization & Deduplication ──────
+        section_priority = {
+            "Skills": 5,
+            "Work Experience": 4,
+            "Certifications": 4,
+            "Summary": 3,
+            "Education": 2,
+            "General": 1
+        }
+
+        grouped_skills: Dict[str, Dict[str, Any]] = {}
+        for cand in candidates:
+            c_skill = cand["canonical_skill"]
+            meta = self.taxonomy.get(c_skill, {})
+
+            skill_type = meta.get("type", "Hard Skill")
+            domain_category = meta.get("domain", "General Technical & Professional")
+            is_tool = meta.get("is_tool", False)
+
+            entry = {
+                "canonical_skill": c_skill,
+                "raw_mention": cand["raw_mention"],
+                "skill_type": skill_type,
+                "domain_category": domain_category,
+                "source_section": cand["source_section"],
+                "extraction_method": cand["extraction_method"],
+                "confidence_score": cand["confidence_score"],
+                "is_tool": is_tool,
+                "_priority": section_priority.get(cand["source_section"], 1),
+                "_offset": cand.get("offset", 0)
+            }
+
+            if c_skill not in grouped_skills:
+                grouped_skills[c_skill] = entry
+            else:
+                existing = grouped_skills[c_skill]
+                # Prioritize higher section relevance or higher confidence
+                if (entry["_priority"] > existing["_priority"] or
+                   (entry["_priority"] == existing["_priority"] and entry["confidence_score"] > existing["confidence_score"])):
+                    grouped_skills[c_skill] = entry
+
+        final_skills = []
+        hard_skills_set = set()
+        soft_skills_set = set()
+        tools_set = set()
+        certs_set = set()
+        languages_set = set()
+
+        for c_skill, data in sorted(grouped_skills.items(), key=lambda x: x[0]):
+            stype = data["skill_type"]
+            is_tool = data["is_tool"]
+
+            clean_entry = {
+                "canonical_skill": data["canonical_skill"],
+                "raw_mention": data["raw_mention"],
+                "skill_type": stype,
+                "domain_category": data["domain_category"],
+                "source_section": data["source_section"],
+                "extraction_method": data["extraction_method"],
+                "confidence_score": data["confidence_score"]
+            }
+            final_skills.append(clean_entry)
+
+            if is_tool:
+                tools_set.add(c_skill)
+
+            if stype == "Hard Skill":
+                if not is_tool:
+                    hard_skills_set.add(c_skill)
+                else:
+                    tools_set.add(c_skill)
+            elif stype == "Soft Skill":
+                soft_skills_set.add(c_skill)
+            elif stype == "Certification / License":
+                certs_set.add(c_skill)
+            elif stype == "Language":
+                languages_set.add(c_skill)
+
+        hard_count = len([s for s in final_skills if s["skill_type"] == "Hard Skill"])
+        soft_count = len([s for s in final_skills if s["skill_type"] == "Soft Skill"])
+        cert_count = len([s for s in final_skills if s["skill_type"] == "Certification / License"])
+        lang_count = len([s for s in final_skills if s["skill_type"] == "Language"])
+
+        return {
+            "total_unique_skills": len(final_skills),
+            "skill_summary_by_type": {
+                "hard_skills_count": hard_count,
+                "soft_skills_count": soft_count,
+                "certifications_and_licenses_count": cert_count,
+                "languages_count": lang_count
+            },
+            "extracted_skills": final_skills,
+            "categorized_view": {
+                "hard_skills": sorted(list(hard_skills_set)),
+                "soft_skills": sorted(list(soft_skills_set)),
+                "tools_and_technologies": sorted(list(tools_set)),
+                "certifications_and_eligibility": sorted(list(certs_set)),
+                "languages": sorted(list(languages_set))
+            }
+        }
 
 
-def _split_skill_items(raw_text: str) -> list[str]:
-    """Split a raw skills string into individual skill tokens."""
-    text = raw_text
-    for d in ['|', '•', '●', '◦', '▪', '►', '★', '✓', '✔', ';', '\n', '\r']:
-        text = text.replace(d, ',')
-
-    # Replace standalone hyphens/dashes used as list delimiters (but not date range dashes)
-    text = re.sub(r'(?<!\w)\s*[-–—]\s+', ', ', text)
-
-    # Split "/" separated skills (e.g. "Bootstrap / Tailwind / Materialize")
-    # but preserve known compound skills like "UI/UX", "CI/CD", "SSL/TLS", "HTML5 + CSS3"
-    _PRESERVE_SLASH = {'UI/UX', 'CI/CD', 'SSL/TLS', 'TCP/IP', 'OS/400', 'I/O', 'R/W'}
-
-    items = []
-    for chunk in text.split(','):
-        cleaned = chunk.strip().strip('*•-–—').strip()
-        # If chunk still contains a category label like "Languages: Python", strip before colon
-        if ':' in cleaned:
-            before, _, after = cleaned.partition(':')
-            if len(before) < 30 and len(after.strip()) > 1:
-                cleaned = after.strip()
-
-        # Split on " / " (spaced slash) to handle "Bootstrap / Tailwind / Materialize / Quasar"
-        if ' / ' in cleaned and cleaned.upper().strip() not in _PRESERVE_SLASH:
-            sub_items = cleaned.split(' / ')
-            for si in sub_items:
-                si = si.strip()
-                if si and 1 < len(si) < 50 and not _is_date_or_education_noise(si):
-                    items.append(si)
-        elif cleaned and 1 < len(cleaned) < 50 and not _is_date_or_education_noise(cleaned):
-            items.append(cleaned)
-    return items
+# ─── Singleton & Public Interface ─────────────────────────────────────────────
+_SKILLS_EXTRACTOR = PhilippineSkillsExtractor()
 
 
-def _get_canonical_key(skill_upper: str) -> str:
-    """Get the canonical key for deduplication using synonym mapping."""
-    return _SKILL_SYNONYMS.get(skill_upper, skill_upper)
-
-
-def _extract_contextual_skills(text: str) -> list[str]:
+def extract_structured_skills(text: str) -> Dict[str, Any]:
     """
-    Extract skills mentioned in context (experience descriptions, project details).
-    Looks for patterns like "using Python and React", "proficient in Docker",
-    "experience with AWS", "built with Next.js", etc.
-    Uses expanded verb/preposition patterns to maximize recall without an LLM.
+    Extracts structured skills across the entire Philippine workforce spectrum.
+    Returns the comprehensive JSON schema dictionary.
     """
-    contextual_patterns = [
-        r'(?:using|with|in|including|such\s+as|like|utilized|leveraging|'
-        r'proficient\s+in|experienced?\s+(?:in|with)|familiar\s+with|'
-        r'knowledge\s+of|expertise\s+in|skilled\s+in|'
-        r'built\s+(?:with|using|in)|developed\s+(?:with|using|in)|'
-        r'implemented\s+(?:with|using|in)|worked\s+(?:with|on)|'
-        r'deployed\s+(?:on|to|with|using)|migrated\s+to|'
-        r'integrated\s+(?:with|into)|configured\s+|'
-        r'managed\s+|administered\s+|maintained\s+|'
-        r'wrote\s+(?:in|using)|coded\s+(?:in|using)|'
-        r'automated\s+(?:with|using)|orchestrated\s+(?:with|using)|'
-        r'tested\s+(?:with|using)|monitored\s+(?:with|using)|'
-        r'designed\s+(?:with|using|in)|created\s+(?:with|using|in)|'
-        r'architected\s+(?:with|using)|optimized\s+(?:with|using))\s+'
-        r'([^.!?\n]{3,120})',
-    ]
-
-    found_skills = []
-    for pattern in contextual_patterns:
-        matches = re.finditer(pattern, text, re.IGNORECASE)
-        for m in matches:
-            fragment = m.group(1)
-            # Split the fragment and check each token against the KB
-            tokens = re.split(r'[,;|]|\band\b|\bor\b', fragment)
-            for token in tokens:
-                token_clean = token.strip().upper()
-                token_clean = re.sub(r'^[^A-Z0-9]+|[^A-Z0-9]+$', '', token_clean)
-                if token_clean in COMMON_SKILLS:
-                    found_skills.append(token_clean)
-
-    return found_skills
-
-
-def _extract_inline_category_skills(text: str) -> list[str]:
-    """
-    Pass 4: Extract skills from inline "Category: skill1, skill2" patterns
-    commonly found in resumes, e.g.:
-      - Programming Languages: Python, Java, C++
-      - Databases: MySQL, PostgreSQL, MongoDB
-      - Tools & Technologies: Docker, Kubernetes, AWS
-    """
-    category_pattern = re.compile(
-        r'^[\s•\-►▪*]*'
-        r'(?:Programming\s+Languages?|Languages?|Frameworks?|Libraries|'
-        r'Databases?|Tools?|Technologies|Platforms?|Cloud|DevOps|'
-        r'Operating\s+Systems?|Software|IDEs?|Version\s+Control|'
-        r'Frontend|Backend|Full[\s\-]?Stack|Mobile|Testing|'
-        r'Data(?:bases?|\s+Tools)?|Other|Miscellaneous|Additional|'
-        r'(?:Tools?\s*(?:&|and)\s*(?:Technologies|Frameworks?)?))'
-        r'\s*[:]\s*(.+)',
-        re.IGNORECASE | re.MULTILINE
-    )
-
-    found_skills = []
-    for m in category_pattern.finditer(text):
-        value = m.group(1).strip()
-        tokens = re.split(r'[,;|•]', value)
-        for token in tokens:
-            token_clean = token.strip().upper()
-            token_clean = re.sub(r'^[^A-Z0-9]+|[^A-Z0-9]+$', '', token_clean)
-            if token_clean in COMMON_SKILLS:
-                found_skills.append(token_clean)
-
-    return found_skills
+    return _SKILLS_EXTRACTOR.extract(text)
 
 
 def extract_skills(text: str) -> str:
     """
-    Extracts skills from resume text using a four-pass approach:
-      1. Section-based extraction: find the skills section and parse its content.
-      2. Contextual extraction: find skills mentioned in experience/project descriptions.
-      3. Full-document KB scan: match known skills from the knowledge base.
-      4. Inline category extraction: parse "Category: skill1, skill2" patterns.
-
-    No LLM/AI is used. Returns a pipe-separated string of identified skills
-    (deduplicated, properly cased).
+    Extracts skills and returns a clean pipe-separated string.
+    Maintains backward compatibility with the existing parsing pipeline.
     """
-    doc = get_doc(text)
-    lines = text.split('\n')
-
-    # ── Pass 1: Section-based extraction ──────────────────────────────────────
-    section_skills: list[str] = []
-    found_section = False
-    section_lines: list[str] = []
-
-    for line in lines:
-        clean_line = line.strip()
-        if not clean_line:
-            continue
-
-        if _is_section_header(clean_line, _SKILL_HEADERS):
-            if found_section and section_lines:
-                for sl in section_lines:
-                    line_to_split = sl
-                    colon_idx = line_to_split.find(':')
-                    if 0 <= colon_idx < 30:
-                        line_to_split = line_to_split[colon_idx + 1:].strip()
-                    section_skills.extend(_split_skill_items(line_to_split))
-                section_lines = []
-            found_section = True
-            colon_idx = clean_line.find(':')
-            if colon_idx >= 0:
-                after_colon = clean_line[colon_idx + 1:].strip()
-                if after_colon:
-                    section_lines.append(after_colon)
-            continue
-
-        if found_section:
-            if _is_section_header(clean_line, _STOP_HEADERS):
-                break
-            section_lines.append(clean_line)
-
-    if section_lines:
-        for sl in section_lines:
-            line_to_split = sl
-            colon_idx = line_to_split.find(':')
-            if 0 <= colon_idx < 30:
-                line_to_split = line_to_split[colon_idx + 1:].strip()
-            section_skills.extend(_split_skill_items(line_to_split))
-
-    # ── Pass 2: Contextual extraction from experience/project text ────────────
-    contextual_skills = _extract_contextual_skills(text)
-
-    # ── Pass 3: Knowledge-base scan using spaCy PhraseMatcher ─────────────────
-    matcher = get_skills_matcher()
-    spacy_matches = find_phrase_matches(doc, matcher)
-    kb_skills = [s.upper() for s in spacy_matches]
-
-    # ── Pass 3b: Contextual NLP extraction (Dependency Parsing) ───────────────
-    target_verbs = {'develop', 'build', 'implement', 'create', 'use', 'utilize', 'program', 'deploy', 'integrate', 'configure'}
-    pairs = get_verb_object_pairs(doc)
-    for v, obj in pairs:
-        if v.lower() in target_verbs:
-            # Check if the object contains a known skill
-            for token in re.split(r'[,;|]|\band\b|\bor\b', obj):
-                token_clean = re.sub(r'^[^A-Z0-9a-z]+|[^A-Z0-9a-z]+$', '', token.strip()).upper()
-                if token_clean in COMMON_SKILLS:
-                    kb_skills.append(token_clean)
-
-    # ── Pass 4: Inline category:value patterns ────────────────────────────────
-    inline_skills = _extract_inline_category_skills(text)
-
-    # ── Merge & deduplicate with synonym-aware dedup ──────────────────────────
-    seen_canonical: set[str] = set()
-    unique_skills: list[str] = []
-
-    def _add_skill(raw: str):
-        formatted = _format_skill(raw)
-        if not formatted:
-            return
-        key = formatted.lower().strip()
-        if key in _NOISE_WORDS or len(key) < 2:
-            return
-        # Filter out date ranges and education noise that leak into skills
-        if _is_date_or_education_noise(formatted):
-            return
-        # Canonical dedup
-        canonical = _get_canonical_key(formatted.upper().strip())
-        if canonical not in seen_canonical:
-            seen_canonical.add(canonical)
-            unique_skills.append(formatted)
-
-    # Priority: section > contextual > inline > KB
-    for s in section_skills:
-        _add_skill(s)
-    for s in contextual_skills:
-        _add_skill(s)
-    for s in inline_skills:
-        _add_skill(s)
-    for s in kb_skills:
-        _add_skill(s)
-
-    return " | ".join(unique_skills[:50]) if unique_skills else ""
+    structured = _SKILLS_EXTRACTOR.extract(text)
+    names = [s["canonical_skill"] for s in structured.get("extracted_skills", [])]
+    return " | ".join(names[:50]) if names else ""
 
 
-def extract_skills_list(text: str) -> list[str]:
-    """Return skills as a clean list of strings."""
-    skills_str = extract_skills(text)
-    if not skills_str:
-        return []
-    return [s.strip() for s in skills_str.split('|') if s.strip()]
+def extract_skills_list(text: str) -> List[str]:
+    """
+    Extracts skills and returns a clean list of canonical skill names.
+    Maintains backward compatibility with the existing parsing pipeline.
+    """
+    structured = _SKILLS_EXTRACTOR.extract(text)
+    return [s["canonical_skill"] for s in structured.get("extracted_skills", [])]
+
+
+def load_external_skill_datasets(
+    esco_csv_path: Optional[str] = None,
+    onet_txt_path: Optional[str] = None,
+    tesda_json_path: Optional[str] = None
+) -> int:
+    """
+    Ingests external skill datasets (ESCO, O*NET, TESDA) and dynamically
+    re-indexes the keyword processor.
+    """
+    return _SKILLS_EXTRACTOR.load_external_datasets(esco_csv_path, onet_txt_path, tesda_json_path)
+
+
+# ─── Verification & Demonstration Block ───────────────────────────────────────
+if __name__ == "__main__":
+    p1_jollibee = """
+OBJECTIVE
+Seeking a Service Crew or Janitor position where I can utilize my skills in food preparation,
+kitchen sanitation, and customer service. Willing to learn and work under pressure.
+
+WORK EXPERIENCE
+Service Crew
+Jollibee Foods Corporation - Crossing Branch, Calamba, Laguna
+June 2023 - December 2023
+- Food preparation and kitchen sanitation in frying and grill stations.
+- Handled POS cashiering, cash handling, and customer order taking.
+- Performed dining area table bussing, tray cleaning, and dishwashing.
+
+Utility Personnel / Janitor
+Robinsons Place Antipolo
+January 2022 - May 2023
+- Floor buffing and housekeeping using heavy-duty rotary floor polisher.
+- Restroom sanitation, trash segregation, and chemical handling.
+
+Delivery Rider
+Lalamove Philippines / Self-Employed
+2021 - 2022
+- Single motorcycle driving with Professional Driver's License Restriction 1, 2.
+- Defensive driving and mobile GPS navigation across Metro Manila and Rizal.
+
+SKILLS & TRAITS
+- Fast learner and willing to be trained
+- Can work under pressure and willing to render overtime
+- Team player with good interpersonal skills
+- Fluent in Tagalog and basic English
+"""
+
+    p2_bpo = """
+CAREER SUMMARY
+Dedicated Customer Service Representative with 2+ years of BPO experience handling inbound technical support and customer care accounts.
+
+CORE COMPETENCIES & SKILLS
+- Customer service & active listening
+- Conflict de-escalation & complaint resolution
+- 45 WPM typing speed
+- Inbound call handling & email correspondence
+- Ticketing systems: Zendesk, Freshdesk, Jira Service Desk
+- CRM & VoIP tools: Salesforce, Avaya One-X, Cisco IP Phone
+- Proficient in Microsoft Office (Excel VLOOKUP & Pivot Tables, Word, PowerPoint)
+- 201 file management and data encoding
+- Amenable to shifting schedules, night shift, and holiday overtime
+- Languages: Fluent in English and Filipino / Tagalog
+
+WORK EXPERIENCE
+Technical Support Representative (TSR)
+Concentrix Philippines - Pasig City
+March 2022 - Present
+- Handled 50+ inbound customer inquiries daily regarding internet connectivity and account billing.
+- Utilized Zendesk and Avaya for real-time call logging and customer de-escalation.
+"""
+
+    p3_dev = """
+SOFTWARE ENGINEER
+Makati City, Metro Manila | 09171234567 | dev@gmail.com
+
+TECHNICAL SKILLS
+Languages: Java, C#, TypeScript, JavaScript, Python, SQL, HTML5, CSS3
+Frameworks & Libraries: Spring Boot, NestJS, Node.js, Express.js, React.js, Next.js, Tailwind CSS
+Databases & Cloud: PostgreSQL, Supabase, MongoDB Atlas, Redis, Docker, AWS (S3, EC2)
+Tools & Testing: Git, GitHub Actions, Postman, Jest, Cypress, CI/CD, Linux
+
+PROFESSIONAL EXPERIENCE
+Full Stack Software Developer
+Accenture Philippines | BGC, Taguig City
+August 2023 - Present
+- Developed scalable RESTful APIs using NestJS and PostgreSQL with Supabase.
+- Built responsive UI components using React and Tailwind CSS.
+- Performed manual regression testing and automated API testing using Postman.
+- Collaborated in an Agile Scrum environment with daily standups and sprint planning.
+"""
+
+    p4_engineer = """
+REGISTERED CIVIL ENGINEER / SITE ENGINEER
+Binangonan, Rizal | 09181234567 | civil_eng@gmail.com
+
+LICENSES & CERTIFICATIONS
+- PRC Registered Civil Engineer (Civil Engineering Board Exam Passer)
+- BOSH SO2 Certified (Basic Occupational Safety and Health)
+- TESDA Shielded Metal Arc Welding (SMAW) NC II Certified
+- COSH Certified (Construction Occupational Safety and Health)
+
+TECHNICAL & ENGINEERING SKILLS
+- AutoCAD (2D & 3D), STAAD.Pro, ETABS, Revit, SketchUp, MS Project
+- Structural analysis and design
+- Site supervision and construction management
+- Concrete pouring and rebar inspection
+- Quantity surveying, cost estimation, and Bill of Quantities (BOQ) preparation
+- Blueprint reading and architectural plan interpretation
+- TIG/MIG welding and metal fabrication
+
+WORK EXPERIENCE
+Project Site Engineer
+DMCI Homes - Quezon City
+March 2023 - Present
+- Conducted daily site supervision and reinforced concrete quality inspection.
+- Prepared daily accomplishment reports and monitored subcontractor manpower.
+- Ensured strict compliance with construction safety and ISO 9001 quality standards.
+"""
+
+    resumes = [
+        ("Resume 1: Blue-Collar & Service Worker (Jollibee / Janitor / Rider)", p1_jollibee),
+        ("Resume 2: BPO CSR & Admin Assistant", p2_bpo),
+        ("Resume 3: Full Stack Software Developer", p3_dev),
+        ("Resume 4: Site Civil Engineer & TESDA Welder", p4_engineer)
+    ]
+
+    for title, resume_text in resumes:
+        print(f"\n{'='*80}\n{title}\n{'='*80}")
+        result = extract_structured_skills(resume_text)
+        print(json.dumps(result, indent=2))
