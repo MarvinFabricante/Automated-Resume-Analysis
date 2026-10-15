@@ -18,6 +18,11 @@ def clean_raw_text(text: str) -> str:
     text = text.replace('\x00', '').replace('\xa0', ' ').replace('\x0c', '\n')
     text = text.replace('\r\n', '\n').replace('\r', '\n')
 
+    # Remove zero-width characters and soft hyphens that break word/email boundaries
+    for zw in ['\u200b', '\u200c', '\u200d', '\ufeff', '\xad', '\u2060', '\u200e', '\u200f']:
+        text = text.replace(zw, '')
+    text = text.replace('\u202f', ' ')
+
     # Normalize unicode hyphens/dashes to standard hyphen or dash
     text = re.sub(r'[\u2010\u2011\u2012\u2013\u2014\u2015]', '-', text)
     # Normalize unicode quotes

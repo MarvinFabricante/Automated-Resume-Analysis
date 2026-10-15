@@ -4,7 +4,8 @@ import os
 
 def extract_text_from_pdf(file_path: str) -> str:
     """
-    Extracts text from a .pdf file using pdfminer.six with PyMuPDF fallback.
+    Extracts text from a .pdf file using pdfminer.six with PyMuPDF fallback
+    and link annotation extraction (capturing mailto: and hyperlink emails).
     """
     text = ""
     try:
@@ -23,6 +24,37 @@ def extract_text_from_pdf(file_path: str) -> str:
             text = "\n".join(pages)
         except Exception as e:
             print(f"PyMuPDF fallback error: {e}")
+
+    # Extract hyperlink URIs and annotations from PyMuPDF (especially mailto: links)
+    extra_links = []
+    try:
+        doc = fitz.open(file_path)
+        for page in doc:
+            # Check links
+            for link in page.get_links():
+                uri = link.get("uri", "")
+                if uri and ("mailto:" in uri.lower() or "@" in uri):
+                    clean_uri = uri.replace("mailto:", "").split("?")[0].strip()
+                    if clean_uri and clean_uri not in extra_links:
+                        extra_links.append(f"Email Link: {clean_uri}")
+                elif uri and ("tel:" in uri.lower() or "callto:" in uri.lower()):
+                    clean_tel = uri.lower().replace("tel:", "").replace("callto:", "").split("?")[0].strip()
+                    if clean_tel and clean_tel not in extra_links:
+                        extra_links.append(f"Phone Link: {clean_tel}")
+            # Check annotations
+            for annot in page.annots():
+                info = annot.info or {}
+                content = info.get("content", "")
+                if content and ("@" in content or "mailto:" in content.lower()):
+                    extra_links.append(f"Email Annotation: {content.strip()}")
+                elif content and ("tel:" in content.lower() or "callto:" in content.lower()):
+                    extra_links.append(f"Phone Annotation: {content.strip()}")
+        doc.close()
+    except Exception as e:
+        print(f"PyMuPDF link extraction error: {e}")
+
+    if extra_links:
+        text = (text + "\n" + "\n".join(extra_links)).strip()
 
     return text
 

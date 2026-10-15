@@ -6,19 +6,74 @@ import fitz
 
 def extract_text_from_docx(file_path: str) -> str:
     """
-    Extracts text from a .docx file using python-docx (paragraphs + tables).
+    Extracts text from a .docx file using python-docx.
+    Includes headers, footers, tables, text frames/boxes, and hyperlink targets.
     """
     try:
         doc = docx.Document(file_path)
         full_text = []
+
+        # 1. Section Headers (where candidate contact info & email frequently reside)
+        for section in doc.sections:
+            try:
+                for hp in section.header.paragraphs:
+                    if hp.text.strip():
+                        full_text.append(hp.text.strip())
+                for ht in section.header.tables:
+                    for row in ht.rows:
+                        row_cells = [cell.text.strip() for cell in row.cells if cell.text.strip()]
+                        if row_cells:
+                            full_text.append(" | ".join(row_cells))
+            except Exception:
+                pass
+
+        # 2. Main body paragraphs
         for para in doc.paragraphs:
             if para.text.strip():
                 full_text.append(para.text.strip())
+
+        # 3. Main body tables
         for table in doc.tables:
             for row in table.rows:
                 row_cells = [cell.text.strip() for cell in row.cells if cell.text.strip()]
                 if row_cells:
                     full_text.append(" | ".join(row_cells))
+
+        # 4. Text frames and shapes/textboxes (sidebar/contact cards)
+        try:
+            for txbx in doc.element.xpath('.//w:txbxContent'):
+                for p in txbx.xpath('.//w:p'):
+                    p_text = "".join(node.text for node in p.xpath('.//w:t') if node.text)
+                    if p_text.strip():
+                        full_text.append(p_text.strip())
+        except Exception:
+            pass
+
+        # 5. Section Footers
+        for section in doc.sections:
+            try:
+                for fp in section.footer.paragraphs:
+                    if fp.text.strip():
+                        full_text.append(fp.text.strip())
+            except Exception:
+                pass
+
+        # 6. Document relationships / Hyperlinks (e.g. mailto: or tel: links)
+        try:
+            for rel in doc.part.rels.values():
+                if "hyperlink" in getattr(rel, "reltype", "").lower():
+                    target = getattr(rel, "target_ref", "")
+                    if target and ("mailto:" in target.lower() or "@" in target):
+                        clean_target = target.replace("mailto:", "").split("?")[0].strip()
+                        if clean_target:
+                            full_text.append(f"Email Link: {clean_target}")
+                    elif target and ("tel:" in target.lower() or "callto:" in target.lower()):
+                        clean_tel = target.lower().replace("tel:", "").replace("callto:", "").split("?")[0].strip()
+                        if clean_tel:
+                            full_text.append(f"Phone Link: {clean_tel}")
+        except Exception:
+            pass
+
         return '\n'.join(full_text)
     except Exception as e:
         print(f"Error reading DOCX file: {e}")

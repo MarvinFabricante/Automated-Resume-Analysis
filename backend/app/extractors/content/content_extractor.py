@@ -1,7 +1,7 @@
 import re
 from .name_extractor import extract_fullname
-from .email_extractor import extract_email
-from .phone_extractor import extract_phone
+from .email_extractor import extract_email, extract_all_emails, _clean_email, is_valid_email
+from .phone_extractor import extract_phone, extract_all_phones, _clean_phone, is_valid_phone
 from .location_extractor import extract_location
 from .experience_extractor import (
     extract_experience, extract_years_experience, extract_experience_entries,
@@ -115,8 +115,35 @@ def _post_process(data: dict) -> dict:
 
     # Validate email
     email = data.get("email", "")
-    if email and not re.match(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$', email):
-        data["email"] = ""
+    if email:
+        cleaned_em = _clean_email(email)
+        if not cleaned_em or not is_valid_email(cleaned_em):
+            data["email"] = ""
+        else:
+            data["email"] = cleaned_em
+
+    if not data.get("email") and data.get("emails"):
+        for alt in data["emails"]:
+            cleaned_alt = _clean_email(alt)
+            if cleaned_alt and is_valid_email(cleaned_alt):
+                data["email"] = cleaned_alt
+                break
+
+    # Validate phone
+    phone = data.get("phone", "")
+    if phone:
+        cleaned_ph = _clean_phone(phone)
+        if not cleaned_ph or not is_valid_phone(cleaned_ph):
+            data["phone"] = ""
+        else:
+            data["phone"] = cleaned_ph
+
+    if not data.get("phone") and data.get("phones"):
+        for alt in data["phones"]:
+            cleaned_alt = _clean_phone(alt)
+            if cleaned_alt and is_valid_phone(cleaned_alt):
+                data["phone"] = cleaned_alt
+                break
 
     # Validate years_experience
     years = data.get("years_experience", 0)
@@ -169,6 +196,28 @@ def _cross_validate(data: dict, sections: dict) -> dict:
             if lines:
                 data["certifications"] = " | ".join(lines[:10])
 
+    # If email is empty, re-scan PERSONAL/CONTACT section
+    if not data.get("email") and sections.get("PERSONAL"):
+        personal_section = sections["PERSONAL"].strip()
+        fallback_email = extract_email(personal_section, candidate_name=data.get("fullname", ""))
+        if fallback_email:
+            data["email"] = fallback_email
+            emails_list = data.setdefault("emails", [])
+            if fallback_email not in emails_list:
+                emails_list.insert(0, fallback_email)
+            data["all_emails"] = emails_list
+
+    # If phone is empty, re-scan PERSONAL/CONTACT section
+    if not data.get("phone") and sections.get("PERSONAL"):
+        personal_section = sections["PERSONAL"].strip()
+        fallback_phone = extract_phone(personal_section)
+        if fallback_phone:
+            data["phone"] = fallback_phone
+            phones_list = data.setdefault("phones", [])
+            if fallback_phone not in phones_list:
+                phones_list.insert(0, fallback_phone)
+            data["all_phones"] = phones_list
+
     return data
 
 
@@ -198,8 +247,10 @@ def extract_content(text: str) -> dict:
 
     # Core extractions
     fullname = extract_fullname(text)
-    email = extract_email(text)
+    email = extract_email(text, candidate_name=fullname)
+    all_emails = extract_all_emails(text, candidate_name=fullname)
     phone = extract_phone(text)
+    all_phones = extract_all_phones(text)
     location = extract_location(text)
 
     job_title = extract_job_title(text, exp_entries)
@@ -221,7 +272,11 @@ def extract_content(text: str) -> dict:
         # Personal Information
         "fullname": fullname,
         "email": email,
+        "emails": all_emails,
+        "all_emails": all_emails,
         "phone": phone,
+        "phones": all_phones,
+        "all_phones": all_phones,
         "location": location,
 
         # Job & Experience Details
