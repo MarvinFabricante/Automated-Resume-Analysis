@@ -323,7 +323,9 @@ _SUB_TIER_HEADERS = [
 _STOP_SECTION_RE = re.compile(
     r'^(?:WORK\s+EXPERIENCE|EMPLOYMENT\s+HISTORY|PROFESSIONAL\s+EXPERIENCE|'
     r'RELEVANT\s+EXPERIENCE|WORK\s+HISTORY|ON-THE-JOB\s+TRAINING(?:\s*\(OJT\))?|'
-    r'SKILLS|TECHNICAL\s+SKILLS|CERTIFICATIONS|PROJECTS|SEMINARS(?:\s*/?\s*TRAININGS)?|'
+    r'SKILLS|TECHNICAL\s+SKILLS|CERTIFICATIONS(?:\s*(?:AND|&)\s*LICENSES)?|'
+    r'LICENSES(?:\s*(?:AND|&)\s*ELIGIBILITY)?|ELIGIBILITY|LICENSES|'
+    r'PROJECTS|SEMINARS(?:\s*/?\s*TRAININGS)?|'
     r'TRAININGS|PERSONAL\s+DATA|PERSONAL\s+INFORMATION|CHARACTER\s+REFERENCES|'
     r'REFERENCES|SUMMARY|AFFILIATIONS|AWARDS)(?:\s*[:\-–—])?$',
     re.IGNORECASE
@@ -440,6 +442,9 @@ def _is_invalid_institution(name: str) -> bool:
         return True
     if "hotel and restaurant management" in lower or "information technology" in lower:
         return True
+    if re.search(r'\b(?:course|curriculum|program|bachelor|master|doctor|diploma|certificate|associate)\b', lower):
+        if not any(w in lower for w in ["training center", "institute", "college", "university", "school", "academy"]):
+            return True
     return False
 
 
@@ -464,6 +469,14 @@ def _extract_school_and_location(text: str) -> Tuple[str, Optional[str]]:
     # Strip year notations like (2019 - 2021) or (2022)
     clean = re.sub(r'\((?:19|20)\d{2}(?:\s*[-–—to]+\s*(?:(?:19|20)\d{2}|Present))?\)', '', clean).strip()
     clean = re.sub(r'\((?:19|20)\d{2}\)', '', clean).strip()
+
+    # Check if TESDA + Training Center / Center / Institute
+    m_tesda = re.search(r'\b(TESDA\s+[A-Za-z0-9\s]+?(?:Training\s+Center|Center|Institute))\b', clean, re.I)
+    if m_tesda:
+        inst = m_tesda.group(1).strip()
+        loc = clean[m_tesda.end():].strip(' ,-–—')
+        loc = re.sub(r'(?:S\.?Y\.?|A\.?Y\.?)?\s*\d{4}.*$', '', loc).strip(' ,-–—()') or None
+        return inst, loc
 
     # 1. Known schools with safe boundaries
     for ks in sorted(_KNOWN_PH_INSTITUTIONS, key=len, reverse=True):
@@ -508,6 +521,19 @@ def _normalize_degree_or_course(text: str, level: str) -> Tuple[Optional[str], O
     Returns: (degree_or_course, raw_degree_or_course, major_or_specialization)
     """
     clean = text.strip()
+
+    # 0. Check Vocational / Technical courses
+    voc_match = re.search(r'\b((?:Vocational|Technical|Vocational\s*/\s*Technical)\s+(?:Course|Program|Training|Education)(?:\s+in\s+[A-Za-z0-9\s/&,()-]+)?)\b', clean, re.I)
+    if voc_match:
+        raw = voc_match.group(1).strip()
+        spec = raw.split(" in ", 1)[1].strip() if " in " in raw else None
+        return raw.title(), raw, spec
+
+    # 0b. Check High School Graduate / Completer
+    hs_match = re.search(r'\b(High\s+School\s+Graduate|Secondary\s+Graduate|High\s+School\s+Diploma|Junior\s+High\s+School\s+Completer|Senior\s+High\s+School\s+Graduate)\b', clean, re.I)
+    if hs_match:
+        raw = hs_match.group(1).strip()
+        return raw.title(), raw, None
 
     # 1. Check TESDA National Certificate courses
     nc_match = re.search(r'\b([A-Za-z0-9\s/&,()-]+?\s+NC\s+I{1,3}(?:\s*&\s*[A-Za-z0-9\s/&,()-]+?\s+NC\s+I{1,3})?)\b', clean, re.I)
@@ -670,7 +696,7 @@ def extract_structured_education(text: str) -> Dict[str, Any]:
                 level = "Senior High School (SHS)"
             elif re.search(r'\b(?:TESDA|NC\s+I{1,3})\b', line, re.I):
                 level = "Vocational / Technical (TESDA)"
-            elif re.search(r'\b(?:Master|MBA|Doctor|PhD)\b', line, re.I):
+            elif re.search(r'\b(?:Master(?:\'s|al)?\s+(?:Degree|in|of)|MBA|MSIT|MIT|Doctor(?:ate)?|PhD)\b', line, re.I) and not re.search(r'\bMaster\s+Plumber\b', line, re.I):
                 level = "Postgraduate"
             elif re.search(r'\b(?:High\s+School|Secondary|Junior\s+High|ALS)\b', line, re.I):
                 level = "Secondary / High School"
@@ -684,17 +710,32 @@ def extract_structured_education(text: str) -> Dict[str, Any]:
             honors = _extract_honors(part_honors + " " + line)
             status = _detect_status(line, e_yr, level)
 
+            if s_yr and e_yr:
+                yr_str = f"{s_yr} - {e_yr}"
+            elif e_yr:
+                yr_str = e_yr
+            elif s_yr:
+                yr_str = s_yr
+            else:
+                yr_str = ""
+            honors_str = ", ".join(honors) if isinstance(honors, list) else (honors or "")
+
             entries.append({
                 "education_level": level,
                 "degree_or_course": deg,
+                "degree": deg or raw_deg or "",
                 "raw_degree_or_course": raw_deg,
                 "major_or_specialization": spec,
                 "institution_name": inst,
+                "institution": inst,
+                "college": inst,
                 "location": loc,
                 "status": status,
                 "start_year": s_yr,
                 "end_year": e_yr,
-                "honors_and_awards": honors
+                "year": yr_str,
+                "honors_and_awards": honors,
+                "honors": honors_str
             })
 
     else:
@@ -710,7 +751,7 @@ def extract_structured_education(text: str) -> Dict[str, Any]:
             # Determine level
             level = tier
             if not level:
-                if re.search(r'\b(?:Master|MBA|Doctor|PhD)\b', combined_text, re.I):
+                if re.search(r'\b(?:Master(?:\'s|al)?\s+(?:Degree|in|of)|MBA|MSIT|MIT|Doctor(?:ate)?|PhD)\b', combined_text, re.I) and not re.search(r'\bMaster\s+Plumber\b', combined_text, re.I):
                     level = "Postgraduate"
                 elif re.search(r'\b(?:College\s+Level|Bachelor|BS|BA|Associate|ACT)\b', combined_text, re.I):
                     level = "Tertiary / College"
@@ -748,18 +789,62 @@ def extract_structured_education(text: str) -> Dict[str, Any]:
             if not inst:
                 inst, loc = _extract_school_and_location(combined_text)
 
+            if s_yr and e_yr:
+                yr_str = f"{s_yr} - {e_yr}"
+            elif e_yr:
+                yr_str = e_yr
+            elif s_yr:
+                yr_str = s_yr
+            else:
+                yr_str = ""
+            honors_str = ", ".join(honors) if isinstance(honors, list) else (honors or "")
+
             entries.append({
                 "education_level": level,
                 "degree_or_course": deg,
+                "degree": deg or raw_deg or "",
                 "raw_degree_or_course": raw_deg,
                 "major_or_specialization": spec,
                 "institution_name": inst or "Not Specified",
+                "institution": inst or "Not Specified",
+                "college": inst or "Not Specified",
                 "location": loc,
                 "status": status,
                 "start_year": s_yr,
                 "end_year": e_yr,
-                "honors_and_awards": honors
+                "year": yr_str,
+                "honors_and_awards": honors,
+                "honors": honors_str
             })
+
+        def _is_edu_entry_boundary(line_str: str, curr_lines: List[str]) -> bool:
+            if not curr_lines:
+                return False
+            clean_l = line_str.strip()
+            if not clean_l:
+                return False
+
+            curr_t = " \n ".join(curr_lines)
+            s_y, e_y = _extract_years(curr_t)
+            has_y = bool(s_y or e_y)
+
+            deg_pats = [
+                r'\b(?:Bachelor|Master|Doctor|Associate|Diploma|Certificate|Vocational|Technical\s+Course)\b',
+                r'\b(?:BSIT|BSCS|BSCE|BSME|BSEE|BSBA|BSHRM|BSHM|BSN|BSC|BSA|BSED|BEED|BSCpE|MSIT|MSCS|MBA|MPA|MIT|PhD)\b',
+                r'\b(?:High\s+School\s+Graduate|Secondary\s+Graduate|High\s+School\s+Diploma|Junior\s+High\s+School\s+Completer|Senior\s+High\s+School\s+Graduate|ALS\s+Completer)\b',
+                r'\b(?:STEM|ABM|HUMSS|GAS|TVL)\b',
+            ]
+            is_deg_l = any(re.search(p, clean_l, re.I) for p in deg_pats)
+            if is_deg_l:
+                has_d = any(any(re.search(p, prev, re.I) for p in deg_pats) for prev in curr_lines)
+                if has_y or has_d:
+                    return True
+
+            is_school_l = any(s.lower() in clean_l.lower() for s in _SCHOOL_SUFFIXES + _KNOWN_PH_INSTITUTIONS)
+            if is_school_l and has_y:
+                return True
+
+            return False
 
         for line in edu_lines:
             matched_tier = None
@@ -774,7 +859,11 @@ def extract_structured_education(text: str) -> Dict[str, Any]:
                     current_block = []
                 current_tier = matched_tier
             else:
-                current_block.append(line)
+                if not current_tier and _is_edu_entry_boundary(line, current_block):
+                    process_block(current_tier, current_block)
+                    current_block = [line]
+                else:
+                    current_block.append(line)
 
         if current_block:
             process_block(current_tier, current_block)

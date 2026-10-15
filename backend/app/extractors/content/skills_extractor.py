@@ -671,15 +671,35 @@ class PhilippineSkillsExtractor:
         cert_count = len([s for s in final_skills if s["skill_type"] == "Certification / License"])
         lang_count = len([s for s in final_skills if s["skill_type"] == "Language"])
 
+        skills_alias_list = [
+            {
+                **s,
+                "skill_name": s["canonical_skill"],
+                "category": s["skill_type"]
+            }
+            for s in final_skills
+        ]
+
+        summary_by_cat = {
+            "hard_skills": hard_count,
+            "soft_skills": soft_count,
+            "tools_and_technologies": len(tools_set),
+            "certifications_and_licenses": cert_count,
+            "languages": lang_count
+        }
+
         return {
             "total_unique_skills": len(final_skills),
+            "total_skills_count": len(final_skills),
             "skill_summary_by_type": {
                 "hard_skills_count": hard_count,
                 "soft_skills_count": soft_count,
                 "certifications_and_licenses_count": cert_count,
                 "languages_count": lang_count
             },
+            "summary_by_category": summary_by_cat,
             "extracted_skills": final_skills,
+            "skills": skills_alias_list,
             "categorized_view": {
                 "hard_skills": sorted(list(hard_skills_set)),
                 "soft_skills": sorted(list(soft_skills_set)),

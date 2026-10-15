@@ -70,7 +70,8 @@ _HONORIFICS = [
 # PRC professional licenses and international post-nominals widely used in the Philippines
 _PROFESSIONAL_SUFFIXES = {
     "CPA", "RN", "MD", "ECE", "CE", "ME", "EE", "IE", "LPT", "RMT", "RPh", "RPm",
-    "REA", "REB", "CHE", "MIT", "MSIT", "MBA", "PHD", "PMP", "CSP", "UAP", "PIA", "FAP", "CFP"
+    "REA", "REB", "CHE", "MIT", "MSIT", "MBA", "PHD", "PMP", "CSP", "UAP", "PIA", "FAP", "CFP",
+    "RCE", "RMP", "PECE", "PME", "PEE", "REE", "RME", "ECT", "RPsy", "CHRA", "SO1", "SO2", "SO3", "SO4"
 }
 
 _GENERATIONAL_SUFFIXES = {"JR", "SR", "II", "III", "IV", "V"}
@@ -199,7 +200,7 @@ def _normalize_name(name: str) -> str:
     # Invert surname-first if applicable
     name = _invert_surname_first(name)
 
-    # Clean honorifics at beginning
+    # Clean honorifics at beginning (e.g. "Engr.", "Dr.")
     name = _clean_honorifics(name)
 
     parts = name.split()
@@ -346,11 +347,22 @@ def extract_all_name_candidates(text: str, email: str = "") -> List[str]:
             add_cand(cand, idx, bonus=150.0)
 
     # Strategy 2: Scan header lines
-    for idx, line in enumerate(lines[:12]):
+    for idx, line in enumerate(lines[:15]):
         if len(line) > 120:
             continue
 
         upper = line.upper().strip()
+        cleaned_header = re.sub(r'^[\s\-–—=_*#•►:]+|[\s\-–—=_*#•►:]+$', '', upper)
+
+        # Stop scanning header if we reached a major section header
+        if any(cleaned_header == sh or cleaned_header.startswith(sh + ":") for sh in {
+            "WORK EXPERIENCE", "EXPERIENCE", "EMPLOYMENT HISTORY", "PROFESSIONAL EXPERIENCE",
+            "WORK HISTORY", "EDUCATION", "EDUCATIONAL BACKGROUND", "SKILLS", "TECHNICAL SKILLS",
+            "CERTIFICATIONS", "LICENSES", "LICENSES AND ELIGIBILITY", "TRAINING", "SEMINARS",
+            "PROJECTS", "REFERENCES", "CHARACTER REFERENCES"
+        }):
+            break
+
         if upper in {"RESUME", "CV", "CURRICULUM VITAE", "PERSONAL INFORMATION",
                      "CONTACT INFORMATION", "CONTACT DETAILS", "PROFILE", "SUMMARY",
                      "PROFESSIONAL SUMMARY", "ABOUT ME", "BIODATA", "BIO-DATA"}:
