@@ -1,5 +1,5 @@
 import re
-from .name_extractor import extract_fullname
+from .name_extractor import extract_fullname, extract_all_name_candidates, _normalize_name, is_valid_name
 from .email_extractor import extract_email, extract_all_emails, _clean_email, is_valid_email
 from .phone_extractor import extract_phone, extract_all_phones, _clean_phone, is_valid_phone
 from .location_extractor import extract_location
@@ -218,6 +218,17 @@ def _cross_validate(data: dict, sections: dict) -> dict:
                 phones_list.insert(0, fallback_phone)
             data["all_phones"] = phones_list
 
+    # If fullname is empty, re-scan PERSONAL/CONTACT section
+    if not data.get("fullname") and sections.get("PERSONAL"):
+        personal_section = sections["PERSONAL"].strip()
+        fallback_name = extract_fullname(personal_section)
+        if fallback_name:
+            data["fullname"] = fallback_name
+            names_list = data.setdefault("names", [])
+            if fallback_name not in names_list:
+                names_list.insert(0, fallback_name)
+            data["all_names"] = names_list
+
     return data
 
 
@@ -247,6 +258,7 @@ def extract_content(text: str) -> dict:
 
     # Core extractions
     fullname = extract_fullname(text)
+    all_names = extract_all_name_candidates(text)
     email = extract_email(text, candidate_name=fullname)
     all_emails = extract_all_emails(text, candidate_name=fullname)
     phone = extract_phone(text)
@@ -271,6 +283,8 @@ def extract_content(text: str) -> dict:
     data = {
         # Personal Information
         "fullname": fullname,
+        "names": all_names,
+        "all_names": all_names,
         "email": email,
         "emails": all_emails,
         "all_emails": all_emails,
