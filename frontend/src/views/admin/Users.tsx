@@ -243,7 +243,7 @@ const UsersPage: React.FC = () => {
           showToast(`Account for ${user.fullname} has been suspended.`, 'success');
           if (viewingUser?.id === user.id) setViewingUser(prev => prev ? ({ ...prev, is_archived: true }) : null);
         } catch (err: any) {
-          showToast(err.data?.detail || 'Failed to suspend account.', 'error');
+          showToast(err.data?.detail || err.error || err.message || 'Failed to suspend account.', 'error');
         }
       }
     });
@@ -263,7 +263,7 @@ const UsersPage: React.FC = () => {
           showToast(`Account for ${user.fullname} has been restored.`, 'success');
           if (viewingUser?.id === user.id) setViewingUser(prev => prev ? ({ ...prev, is_archived: false }) : null);
         } catch (err: any) {
-          showToast(err.data?.detail || 'Failed to restore account.', 'error');
+          showToast(err.data?.detail || err.error || err.message || 'Failed to restore account.', 'error');
         }
       }
     });
@@ -283,7 +283,7 @@ const UsersPage: React.FC = () => {
           showToast(`User role updated to ${newRole} successfully.`, 'success');
           if (viewingUser?.id === user.id) setViewingUser(prev => prev ? ({ ...prev, role: newRole }) : null);
         } catch (err: any) {
-          showToast(err.data?.detail || 'Failed to update user role.', 'error');
+          showToast(err.data?.detail || err.error || err.message || 'Failed to update user role.', 'error');
         }
       }
     });
@@ -303,7 +303,7 @@ const UsersPage: React.FC = () => {
           showToast(`User ${user.fullname} was permanently deleted.`, 'success');
           if (viewingUser?.id === user.id) setViewingUser(null);
         } catch (err: any) {
-          showToast(err.data?.detail || 'Failed to delete user.', 'error');
+          showToast(err.data?.detail || err.error || err.message || 'Failed to delete user.', 'error');
         }
       }
     });
@@ -318,7 +318,7 @@ const UsersPage: React.FC = () => {
       setFormData({ fullname: '', email: '', role: 'HR', password: '' });
       showToast(`User account created successfully for ${formData.fullname}.`, 'success');
     } catch (err: any) {
-      showToast(err.data?.detail || 'Failed to create user account.', 'error');
+      showToast(err.data?.detail || err.error || err.message || 'Failed to create user account.', 'error');
     } finally {
       setFormSubmitting(false);
     }
@@ -341,7 +341,7 @@ const UsersPage: React.FC = () => {
       setEditUserData(null);
       showToast('User details updated successfully.', 'success');
     } catch (err: any) {
-      showToast(err.data?.detail || 'Failed to update user.', 'error');
+      showToast(err.data?.detail || err.error || err.message || 'Failed to update user.', 'error');
     } finally {
       setFormSubmitting(false);
     }

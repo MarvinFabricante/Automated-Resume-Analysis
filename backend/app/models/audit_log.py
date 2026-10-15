@@ -7,7 +7,7 @@ class AuditLog(Base):
     __tablename__ = "audit_logs"
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     action = Column(String, nullable=False) # e.g., "SIGN_IN", "CREATE_JOB", "UPDATE_STATUS"
     target = Column(String, nullable=True) # e.g., "Job ID: 1", "Application ID: 5"
     details = Column(String, nullable=True) # JSON or descriptive text

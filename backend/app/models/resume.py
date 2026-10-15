@@ -7,7 +7,7 @@ class Resume(Base):
     __tablename__ = "resumes"
 
     id = Column(Integer, primary_key=True, index=True)
-    candidate_id = Column(Integer, ForeignKey("candidates.id"), nullable=False)
+    candidate_id = Column(Integer, ForeignKey("candidates.id", ondelete="CASCADE"), nullable=False)
     filename = Column(String, nullable=False)
     file_url = Column(String, nullable=True)
     parsed_data = Column(JSON, nullable=True)

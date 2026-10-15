@@ -112,13 +112,15 @@ async def create_user(
     user_in: UserCreate, 
     db: AsyncSession = Depends(get_db)
 ):
+    user_in.role = user_in.role.upper()
+    user_in.email = user_in.email.strip().lower()
     if user_in.role == "ADMIN":
         raise HTTPException(status_code=400, detail="Administrator accounts cannot be created from the user directory.")
     from app.services.auth_service import auth_service
     try:
         new_user = await auth_service.register_user(db, user_in.email, user_in.password, user_in.role, user_in.fullname)
-        await clear_cache_pattern("admin_users:*")
-        await clear_cache_pattern("users:all:*")
+        await clear_cache_pattern("admin_users")
+        await clear_cache_pattern("users:")
         return new_user
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -141,13 +143,21 @@ async def update_user(
     if update_data.get("role") == "ADMIN":
         raise HTTPException(status_code=400, detail="Cannot assign administrator role from the user directory.")
         
-    updated_user = await admin_service.update_user(db, user_id, update_data)
-    if not updated_user:
-        raise HTTPException(status_code=404, detail="User not found")
-        
-    await clear_cache_pattern("admin_users:*")
-    await clear_cache_pattern("users:all:*")
-    return updated_user
+    try:
+        updated_user = await admin_service.update_user(db, user_id, update_data)
+        if not updated_user:
+            raise HTTPException(status_code=404, detail="User not found")
+            
+        await clear_cache_pattern("admin_users")
+        await clear_cache_pattern("users:")
+        return updated_user
+    except HTTPException:
+        raise
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+    except Exception as e:
+        logger.error(f"Error updating user {user_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to update user: {str(e)}")
 
 @router.delete("/users/{user_id}", status_code=status.HTTP_200_OK)
 async def delete_user(
@@ -166,22 +176,28 @@ async def delete_user(
 
     user_email = target_user.email if target_user else f"ID: {user_id}"
 
-    success = await admin_service.delete_user(db, user_id)
-    if not success:
-        raise HTTPException(status_code=404, detail="User not found")
+    try:
+        success = await admin_service.delete_user(db, user_id)
+        if not success:
+            raise HTTPException(status_code=404, detail="User not found")
 
-    if current_user and current_user.get("id"):
-        await audit_service.record_activity(
-            db=db,
-            user_id=current_user.get("id"),
-            action="DELETE_USER",
-            target=f"User: {user_email}",
-            details=f"Admin deleted user account: {user_email}"
-        )
-        
-    await clear_cache_pattern("admin_users:*")
-    await clear_cache_pattern("users:all:*")
-    return {"message": "User removed successfully"}
+        if current_user and current_user.get("id"):
+            await audit_service.record_activity(
+                db=db,
+                user_id=current_user.get("id"),
+                action="DELETE_USER",
+                target=f"User: {user_email}",
+                details=f"Admin deleted user account: {user_email}"
+            )
+            
+        await clear_cache_pattern("admin_users")
+        await clear_cache_pattern("users:")
+        return {"message": "User removed successfully"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting user {user_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to delete user: {str(e)}")
 
 @router.post("/register")
 async def register_admin(
