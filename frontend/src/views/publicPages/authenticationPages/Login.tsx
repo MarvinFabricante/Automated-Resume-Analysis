@@ -15,7 +15,8 @@ import {
 } from 'lucide-react';
 import logo from '../../../assets/logo.png';
 import { Role } from '../../../types';
-import { isTokenExpired, clearAllAuthSessions } from '../../../utils/token';
+import { isTokenExpired, clearAllAuthSessions, broadcastAuthLogin } from '../../../utils/token';
+import { apiSlice } from '../../../redux/api/apiSlice';
 
 interface DetectedRoleInfo {
   role: string;
@@ -40,6 +41,11 @@ const Login: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [detectedRoleInfo, setDetectedRoleInfo] = useState<DetectedRoleInfo | null>(null);
   const [isDetectingRole, setIsDetectingRole] = useState(false);
+  const [existingSession, setExistingSession] = useState<{
+    fullname: string;
+    role: string;
+    token: string;
+  } | null>(null);
   const dispatch = useDispatch();
 
   const [modalState, setModalState] = useState<ModalState>({
@@ -65,6 +71,22 @@ const Login: React.FC = () => {
   }, []);
 
   useEffect(() => {
+    // Check if redirected due to session switched on another window
+    if (typeof window !== 'undefined' && window.location.search.includes('session_switched=1')) {
+      setModalState({
+        isOpen: true,
+        type: 'error',
+        title: 'Session Disconnected',
+        message: 'You have been automatically logged out because another account signed in on another window.'
+      });
+      try {
+        window.history.replaceState({}, '', window.location.pathname);
+      } catch (e) {
+        // ignore
+      }
+      return;
+    }
+
     // Check if redirected due to 1-hour session expiration
     if (typeof window !== 'undefined' && window.location.search.includes('session_expired=1')) {
       clearAllAuthSessions();
@@ -82,29 +104,31 @@ const Login: React.FC = () => {
       return;
     }
 
-    const checkExistingSession = () => {
+    const syncExistingSession = () => {
       const token = localStorage.getItem('token');
       const role = localStorage.getItem('role');
+      const fullname = localStorage.getItem('fullname') || '';
 
       if (token && isTokenExpired(token)) {
         clearAllAuthSessions();
+        setExistingSession(null);
         return;
       }
 
       if (token && role) {
-        if (role.toUpperCase() === 'ADMIN') {
-          window.location.href = '/admin/dashboard';
-        } else if (role.toUpperCase() === 'HR') {
-          window.location.href = '/hr/dashboard';
-        } else {
-          window.location.href = '/candidate/dashboard';
-        }
+        setExistingSession({
+          token,
+          role,
+          fullname,
+        });
+      } else {
+        setExistingSession(null);
       }
     };
     
-    checkExistingSession();
-    window.addEventListener('storage', checkExistingSession);
-    return () => window.removeEventListener('storage', checkExistingSession);
+    syncExistingSession();
+    window.addEventListener('storage', syncExistingSession);
+    return () => window.removeEventListener('storage', syncExistingSession);
   }, []);
 
   // Intelligent Role Auto-Detection from typed email
@@ -142,18 +166,8 @@ const Login: React.FC = () => {
 
   const handleGoogleLogin = () => {
     const existingToken = localStorage.getItem('token');
-    const existingRole = localStorage.getItem('role');
-    
     if (existingToken && isTokenExpired(existingToken)) {
       clearAllAuthSessions();
-    } else if (existingToken && existingRole) {
-      setModalState({
-        isOpen: true,
-        type: 'error',
-        title: 'Already Logged In',
-        message: `An account (${existingRole.toLowerCase()}) is already logged in on this browser. Please log out first if you want to switch accounts.`
-      });
-      return;
     }
 
     // Universal Google login with automatic role detection upon callback
@@ -171,18 +185,8 @@ const Login: React.FC = () => {
     e.preventDefault();
 
     const existingToken = localStorage.getItem('token');
-    const existingRole = localStorage.getItem('role');
-    
     if (existingToken && isTokenExpired(existingToken)) {
       clearAllAuthSessions();
-    } else if (existingToken && existingRole) {
-      setModalState({
-        isOpen: true,
-        type: 'error',
-        title: 'Already Logged In',
-        message: `An account (${existingRole.toLowerCase()}) is already logged in on this browser. Please log out first if you want to switch accounts.`
-      });
-      return;
     }
 
     setLoading(true);
@@ -194,16 +198,29 @@ const Login: React.FC = () => {
 
       const { access_token, role: verifiedRole, fullname, user_id, profile_image_url } = response.data;
 
+      // Invalidate old query cache so new user gets fresh state
+      dispatch(apiSlice.util.resetApiState());
+
       // Update Redux state
       dispatch(setCredentials({
         user: normalizedEmail,
         role: verifiedRole as Role,
+        userId: user_id,
         profileImageUrl: profile_image_url
       }));
 
+      // Store in localStorage
       localStorage.setItem('token', access_token);
-      localStorage.setItem('fullname', fullname);
-      localStorage.setItem('user_id', user_id);
+      localStorage.setItem('role', verifiedRole);
+      localStorage.setItem('fullname', fullname || '');
+      localStorage.setItem('user_id', String(user_id));
+      localStorage.setItem('saved_email', normalizedEmail);
+      if (profile_image_url) {
+        localStorage.setItem('profile_image_url', profile_image_url);
+      }
+
+      // Broadcast login to all other open windows/tabs so they automatically logout
+      broadcastAuthLogin(user_id, normalizedEmail, verifiedRole);
 
       setVerifiedUserRole(verifiedRole);
       setModalState({
@@ -226,10 +243,12 @@ const Login: React.FC = () => {
     }
   };
 
-  const handleRedirect = () => {
-    if (verifiedUserRole.toUpperCase() === 'ADMIN') {
+  const handleRedirect = (roleToUse?: string) => {
+    const targetRole = roleToUse || verifiedUserRole || localStorage.getItem('role') || '';
+    const norm = targetRole.toUpperCase();
+    if (norm === 'ADMIN') {
       window.location.href = '/admin/dashboard';
-    } else if (verifiedUserRole.toUpperCase() === 'HR') {
+    } else if (norm === 'HR') {
       window.location.href = '/hr/dashboard';
     } else {
       window.location.href = '/candidate/dashboard';
@@ -320,6 +339,25 @@ const Login: React.FC = () => {
         <div className="w-full md:w-[58%] p-6 sm:p-10 md:p-12 flex flex-col justify-center">
           <div className="w-full max-w-[420px] mx-auto md:mx-0 md:ml-auto">
             
+            {/* Active Session Indicator & Quick Switch */}
+            {existingSession && (
+              <div className="mb-5 p-3.5 bg-amber-50/90 border border-amber-200/90 rounded-2xl flex items-center justify-between text-xs text-amber-900 shadow-sm animate-in fade-in duration-200">
+                <div className="flex items-center gap-2 overflow-hidden mr-2">
+                  <div className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse flex-shrink-0" />
+                  <span className="truncate">
+                    Active: <strong className="font-semibold">{existingSession.fullname || existingSession.role}</strong> ({existingSession.role})
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleRedirect(existingSession.role)}
+                  className="px-3 py-1.5 text-[11px] font-semibold text-amber-900 bg-amber-200/70 hover:bg-amber-200 rounded-xl transition-colors whitespace-nowrap cursor-pointer flex-shrink-0"
+                >
+                  Dashboard →
+                </button>
+              </div>
+            )}
+
             {/* Google OAuth Login Button */}
             <div className="mb-5">
               <button

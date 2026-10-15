@@ -51,7 +51,7 @@ export const getAssetUrl = (path?: string | null): string => {
   return normalizedPath;
 };
 
-import { isTokenExpired, handleSessionExpired } from '../utils/token';
+import { isTokenExpired, handleSessionExpired, handleSessionSwitched } from '../utils/token';
 
 const api: AxiosInstance = axios.create({
   baseURL: API_BASE_URL,
@@ -78,16 +78,22 @@ api.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
-// Response interceptor: automatically log out accounts if 401 is received
+// Response interceptor: automatically log out accounts if 401 or 403 is received
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response && error.response.status === 401) {
+    if (error.response && (error.response.status === 401 || error.response.status === 403)) {
       const url = error.config?.url || '';
       // Don't auto-logout on password change, set-password, or login validation
       if (!url.includes('/auth/login') && !url.includes('/auth/change-password') && !url.includes('/auth/set-password')) {
-        if (typeof localStorage !== 'undefined' && localStorage.getItem('token')) {
-          handleSessionExpired();
+        if (typeof localStorage !== 'undefined') {
+          const currentToken = localStorage.getItem('token');
+          if (currentToken && isTokenExpired(currentToken)) {
+            handleSessionExpired();
+          } else if (currentToken) {
+            // Token is still valid in storage, meaning another session replaced it or role changed
+            handleSessionSwitched();
+          }
         }
       }
     }

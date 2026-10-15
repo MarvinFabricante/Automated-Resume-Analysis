@@ -46,6 +46,67 @@ export const isTokenExpired = (token?: string | null): boolean => {
   return Date.now() >= decoded.exp * 1000;
 };
 
+export interface AuthBroadcastPayload {
+  type: 'LOGIN' | 'LOGOUT';
+  userId?: number;
+  email?: string;
+  role?: string;
+  timestamp: number;
+}
+
+export const broadcastAuthLogin = (
+  userId?: number | string | null,
+  email?: string | null,
+  role?: string | null
+): void => {
+  if (typeof window === 'undefined') return;
+  const parsedId = userId ? Number(userId) : undefined;
+  const payload: AuthBroadcastPayload = {
+    type: 'LOGIN',
+    userId: parsedId && !isNaN(parsedId) ? parsedId : undefined,
+    email: (email || '').trim().toLowerCase(),
+    role: (role || '').toUpperCase(),
+    timestamp: Date.now(),
+  };
+  try {
+    if ('BroadcastChannel' in window) {
+      const channel = new BroadcastChannel('mariwasa_auth_channel');
+      channel.postMessage(payload);
+      channel.close();
+    }
+  } catch (e) {
+    // BroadcastChannel unsupported or blocked
+  }
+  try {
+    localStorage.setItem('auth_login_broadcast', JSON.stringify(payload));
+  } catch (e) {
+    // localStorage quota or private mode
+  }
+};
+
+export const broadcastAuthLogout = (): void => {
+  if (typeof window === 'undefined') return;
+  const payload: AuthBroadcastPayload = {
+    type: 'LOGOUT',
+    timestamp: Date.now(),
+  };
+  try {
+    if ('BroadcastChannel' in window) {
+      const channel = new BroadcastChannel('mariwasa_auth_channel');
+      channel.postMessage(payload);
+      channel.close();
+    }
+  } catch (e) {
+    // ignore
+  }
+  try {
+    localStorage.setItem('auth_logout_broadcast', Date.now().toString());
+    window.dispatchEvent(new CustomEvent('auth:logout'));
+  } catch (e) {
+    // ignore
+  }
+};
+
 export const clearAllAuthSessions = (): void => {
   if (typeof window === 'undefined') return;
   try {
@@ -55,9 +116,8 @@ export const clearAllAuthSessions = (): void => {
     localStorage.removeItem('saved_email');
     localStorage.removeItem('fullname');
     localStorage.removeItem('profile_image_url');
-    // Notify other tabs to log out immediately
-    localStorage.setItem('auth_logout_broadcast', Date.now().toString());
-    window.dispatchEvent(new CustomEvent('auth:logout'));
+    // Notify other windows/tabs to log out immediately
+    broadcastAuthLogout();
   } catch (e) {
     console.error('Failed to clear local session storage:', e);
   }
@@ -70,6 +130,15 @@ export const handleSessionExpired = (): void => {
     // Don't create an infinite redirect loop if already on login or public pages
     if (!currentPath.startsWith('/login')) {
       window.location.href = '/login?session_expired=1';
+    }
+  }
+};
+
+export const handleSessionSwitched = (): void => {
+  if (typeof window !== 'undefined') {
+    const currentPath = window.location.pathname;
+    if (!currentPath.startsWith('/login')) {
+      window.location.href = '/login?session_switched=1';
     }
   }
 };
