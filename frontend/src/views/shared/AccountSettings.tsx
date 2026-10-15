@@ -104,6 +104,7 @@ interface AccountFormData {
   managed_region: string;
   position: string;
   company_name: string;
+  governance_scope?: string;
 }
 
 const AccountSettings: React.FC = () => {
@@ -213,7 +214,8 @@ const AccountSettings: React.FC = () => {
         department: data.department || '',
         managed_region: data.managed_region || '',
         position: data.position || data.current_job_title || '',
-        company_name: data.company_name || data.current_company || ''
+        company_name: data.company_name || data.current_company || '',
+        governance_scope: data.governance_scope || ''
       };
       setFormData(normalized);
       setInitialData(normalized);
@@ -270,7 +272,7 @@ const AccountSettings: React.FC = () => {
     }
   };
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
   };
@@ -358,7 +360,10 @@ const AccountSettings: React.FC = () => {
       } else if (userRole === 'ADMIN') {
         updatePayload = {
           ...updatePayload,
-          managed_region: formData.managed_region.trim()
+          managed_region: formData.managed_region.trim(),
+          department: formData.department.trim(),
+          position: (formData.position || formData.current_job_title).trim(),
+          governance_scope: (formData.governance_scope || '').trim()
         };
       }
 
@@ -371,6 +376,9 @@ const AccountSettings: React.FC = () => {
         current_job_title: updatedData.current_job_title || updatedData.position || formData.current_job_title,
         current_company: updatedData.current_company || updatedData.company_name || formData.current_company,
         position: updatedData.position || formData.position,
+        department: updatedData.department || formData.department,
+        managed_region: updatedData.managed_region || formData.managed_region,
+        governance_scope: updatedData.governance_scope || formData.governance_scope,
         company_name: updatedData.company_name || formData.company_name,
         profile_image_url: updatedData.profile_image_url || currentImageUrl
       };
@@ -748,7 +756,7 @@ const AccountSettings: React.FC = () => {
                   <div className="bg-white border border-slate-100 rounded-2xl sm:rounded-3xl p-5 sm:p-7 md:p-8 shadow-xl shadow-slate-200/40">
                     <h3 className="text-base sm:text-lg font-black text-slate-900 tracking-tight mb-5 sm:mb-7 flex items-center gap-2.5">
                       {userRole === 'CANDIDATE' ? <User size={20} className="text-[#D10043]" /> : <Building2 size={20} className="text-[#D10043]" />}
-                      {userRole === 'CANDIDATE' ? 'Candidate Profile & Professional Details' : userRole === 'HR' ? 'HR Staff Identity & Department' : 'Administrator Credentials'}
+                      {userRole === 'CANDIDATE' ? 'Candidate Profile & Professional Details' : userRole === 'HR' ? 'HR Staff Identity & Department' : 'Administrator Profile & System Authority'}
                     </h3>
 
                     <div className="space-y-5 sm:space-y-8">
@@ -1060,25 +1068,80 @@ const AccountSettings: React.FC = () => {
 
                         {/* ROLE-SPECIFIC FIELDS: ADMIN */}
                         {userRole === 'ADMIN' && (
-                          <div className="space-y-1.5 sm:space-y-2 md:col-span-2">
-                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider ml-1">
-                              Managed Region / Headquarters
-                            </label>
-                            <input
-                              type="text"
-                              name="managed_region"
-                              value={formData.managed_region}
-                              onChange={handleInputChange}
-                              placeholder="e.g. Main Headquarters - Sto. Tomas, Batangas"
-                              className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl text-xs sm:text-sm font-bold text-slate-900 focus:outline-none focus:ring-4 focus:ring-[#D10043]/10 focus:border-[#D10043] transition-all"
-                            />
-                          </div>
+                          <>
+                            {/* System Role Title / Designation */}
+                            <div className="space-y-1.5 sm:space-y-2">
+                              <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider ml-1">
+                                System Designation / Administrative Title
+                              </label>
+                              <input
+                                type="text"
+                                name="position"
+                                value={formData.position || formData.current_job_title}
+                                onChange={(e) => setFormData({ ...formData, position: e.target.value, current_job_title: e.target.value })}
+                                placeholder="e.g. Lead Platform Administrator / DevOps Lead"
+                                className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl text-xs sm:text-sm font-bold text-slate-900 focus:outline-none focus:ring-4 focus:ring-[#D10043]/10 focus:border-[#D10043] transition-all"
+                              />
+                            </div>
+
+                            {/* Administrative Department */}
+                            <div className="space-y-1.5 sm:space-y-2">
+                              <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider ml-1">
+                                Administrative Division / Department
+                              </label>
+                              <input
+                                type="text"
+                                name="department"
+                                value={formData.department}
+                                onChange={handleInputChange}
+                                placeholder="e.g. Information Technology & Platform Security"
+                                className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl text-xs sm:text-sm font-bold text-slate-900 focus:outline-none focus:ring-4 focus:ring-[#D10043]/10 focus:border-[#D10043] transition-all"
+                              />
+                            </div>
+
+                            {/* Managed Region / Facility */}
+                            <div className="space-y-1.5 sm:space-y-2">
+                              <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider ml-1">
+                                Operational Facility / Headquarters
+                              </label>
+                              <input
+                                type="text"
+                                name="managed_region"
+                                value={formData.managed_region}
+                                onChange={handleInputChange}
+                                placeholder="e.g. Sto. Tomas Plant & Enterprise HQ, Batangas"
+                                className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl text-xs sm:text-sm font-bold text-slate-900 focus:outline-none focus:ring-4 focus:ring-[#D10043]/10 focus:border-[#D10043] transition-all"
+                              />
+                            </div>
+
+                            {/* Governance Domain */}
+                            <div className="space-y-1.5 sm:space-y-2">
+                              <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider ml-1">
+                                Primary Governance Domain
+                              </label>
+                              <div className="relative">
+                                <select
+                                  name="governance_scope"
+                                  value={formData.governance_scope || "Full Platform Governance (All Modules)"}
+                                  onChange={handleInputChange}
+                                  className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl text-xs sm:text-sm font-bold text-slate-900 focus:outline-none focus:ring-4 focus:ring-[#D10043]/10 focus:border-[#D10043] transition-all appearance-none cursor-pointer"
+                                >
+                                  <option value="Full Platform Governance (All Modules)">Full Platform Governance (All Modules)</option>
+                                  <option value="AI Screening Weights & Matching Calibration">AI Screening Weights & Matching Calibration</option>
+                                  <option value="User Directory Governance & RBAC Security">User Directory Governance & RBAC Security</option>
+                                  <option value="Job Requisitions & Vacancy Pipeline">Job Requisitions & Vacancy Pipeline</option>
+                                  <option value="Security Audit Logs & Platform Telemetry">Security Audit Logs & Platform Telemetry</option>
+                                </select>
+                                <ChevronRight className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 rotate-90 pointer-events-none" size={16} />
+                              </div>
+                            </div>
+                          </>
                         )}
 
                         {/* Bio / Operational Summary */}
                         <div className="col-span-full space-y-1.5 sm:space-y-2">
                           <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider ml-1">
-                            {userRole === 'CANDIDATE' ? 'Professional Bio & Career Objective' : userRole === 'HR' ? 'Operational Focus & Responsibilities' : 'Administrative Summary'}
+                            {userRole === 'CANDIDATE' ? 'Professional Bio & Career Objective' : userRole === 'HR' ? 'Operational Focus & Responsibilities' : 'Administrative Scope & System Governance Summary'}
                           </label>
                           <textarea
                             rows={3}
@@ -1088,7 +1151,9 @@ const AccountSettings: React.FC = () => {
                             placeholder={
                               userRole === 'CANDIDATE'
                                 ? "Describe your background, technical expertise, and career aspirations..."
-                                : "Describe your recruitment focus, department initiatives, and team oversight..."
+                                : userRole === 'HR'
+                                ? "Describe your recruitment focus, department initiatives, and team oversight..."
+                                : "Describe your system governance responsibilities, AI screening calibration oversight, user access policies, and operational objectives..."
                             }
                             className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl text-xs sm:text-sm font-medium text-slate-900 focus:outline-none focus:ring-4 focus:ring-[#D10043]/10 focus:border-[#D10043] transition-all resize-none"
                           />

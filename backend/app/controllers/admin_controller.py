@@ -202,20 +202,33 @@ async def get_admin_profile_details(admin_id: int, db: AsyncSession = Depends(ge
     users_count = 0
     jobs_count = 0
     audits_count = 0
+    resumes_count = 0
+    active_hr_count = 0
+    active_candidates_count = 0
     try:
         from app.models.user import User
         from app.models.job_description import JobDescription
         from app.models.audit_log import AuditLog
+        from app.models.resume import Resume
         from sqlalchemy import select, func
 
-        users_res = await db.execute(select(func.count(User.id)).where(User.is_archived == False))
+        users_res = await db.execute(select(func.count(User.id)).where(User.is_archived == False, User.role.in_(['HR', 'CANDIDATE'])))
         users_count = users_res.scalar() or 0
+
+        hr_res = await db.execute(select(func.count(User.id)).where(User.is_archived == False, User.role == "HR"))
+        active_hr_count = hr_res.scalar() or 0
+
+        cand_res = await db.execute(select(func.count(User.id)).where(User.is_archived == False, User.role == "CANDIDATE"))
+        active_candidates_count = cand_res.scalar() or 0
 
         jobs_res = await db.execute(select(func.count(JobDescription.id)))
         jobs_count = jobs_res.scalar() or 0
 
         audits_res = await db.execute(select(func.count(AuditLog.id)))
         audits_count = audits_res.scalar() or 0
+
+        resumes_res = await db.execute(select(func.count(Resume.id)))
+        resumes_count = resumes_res.scalar() or 0
     except Exception as e:
         print(f"Error computing Admin profile stats: {e}")
 
@@ -223,6 +236,9 @@ async def get_admin_profile_details(admin_id: int, db: AsyncSession = Depends(ge
     data.users_count = users_count
     data.jobs_count = jobs_count
     data.audits_count = audits_count
+    data.resumes_count = resumes_count
+    data.active_hr_count = active_hr_count
+    data.active_candidates_count = active_candidates_count
     return data
 
 @router.put("/profile/{admin_id}", response_model=AdminResponse)
@@ -235,7 +251,9 @@ async def update_admin_profile_details(
         updated_profile = await admin_service.update_admin_profile(db, admin_id, admin_update)
         if not updated_profile:
             raise HTTPException(status_code=404, detail="Admin profile not found")
-        await clear_cache_pattern(f"admin_profile:*\"admin_id\": {admin_id}*")
+        await clear_cache_pattern(f"admin_profile:*")
+        await clear_cache_pattern(f"admin:id:{admin_id}*")
+        await clear_cache_pattern(f"user:id:{admin_id}*")
         return updated_profile
     except HTTPException:
         raise
