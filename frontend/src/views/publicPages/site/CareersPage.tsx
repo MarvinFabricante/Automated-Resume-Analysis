@@ -1,6 +1,9 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useNavigate } from '@/utils/navigation';
 import { Helmet } from 'react-helmet-async';
+import gsap from 'gsap';
+import { ScrollTrigger } from 'gsap/ScrollTrigger';
+import { useGSAP } from '@gsap/react';
 import jobService from '../../../services/jobService';
 import {
   ChevronDown,
@@ -16,12 +19,17 @@ import Footer from '../../../components/layout/Footer';
 import Header from '../../../components/layout/Header';
 import { Job } from '../../../types';
 
+if (typeof window !== 'undefined') {
+  gsap.registerPlugin(ScrollTrigger);
+}
+
 interface DynamicJob extends Job {
   [key: string]: any;
 }
 
 const CareersPage: React.FC = () => {
   const navigate = useNavigate();
+  const containerRef = useRef<HTMLDivElement>(null);
 
   const [jobs, setJobs] = useState<DynamicJob[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -114,8 +122,82 @@ const CareersPage: React.FC = () => {
       .map(job => (job.title || job.job_title || '') as string))]
     : [];
 
+  // GSAP Animations
+  useGSAP(
+    () => {
+      // 1. Hero Entrance Animation
+      const heroTl = gsap.timeline({ defaults: { ease: 'power3.out' } });
+
+      heroTl
+        .fromTo(
+          '.careers-hero-badge',
+          { y: -20, opacity: 0, scale: 0.92 },
+          { y: 0, opacity: 1, scale: 1, duration: 0.8, clearProps: 'transform' }
+        )
+        .fromTo(
+          '.careers-hero-title',
+          { y: 35, opacity: 0 },
+          { y: 0, opacity: 1, duration: 0.9, clearProps: 'all' },
+          '-=0.45'
+        )
+        .fromTo(
+          '.careers-hero-desc',
+          { y: 25, opacity: 0 },
+          { y: 0, opacity: 1, duration: 0.85, clearProps: 'all' },
+          '-=0.55'
+        )
+        .fromTo(
+          '.careers-search-container',
+          { y: 30, opacity: 0, scale: 0.98 },
+          { y: 0, opacity: 1, scale: 1, duration: 0.85, clearProps: 'all' },
+          '-=0.5'
+        );
+
+      // Subtle floating effect on hero badge
+      gsap.to('.careers-hero-badge', {
+        y: -4,
+        duration: 2.5,
+        repeat: -1,
+        yoyo: true,
+        ease: 'sine.inOut',
+        delay: 1.2,
+      });
+
+      // 2. Animate Job Cards when loaded or page changes
+      if (!isLoading && paginatedJobs.length > 0) {
+        gsap.fromTo(
+          '.job-card',
+          { y: 35, opacity: 0 },
+          {
+            y: 0,
+            opacity: 1,
+            duration: 0.7,
+            stagger: 0.08,
+            ease: 'power3.out',
+            clearProps: 'all',
+          }
+        );
+
+        gsap.fromTo(
+          '.careers-pagination-bar',
+          { y: 25, opacity: 0 },
+          {
+            y: 0,
+            opacity: 1,
+            duration: 0.7,
+            ease: 'power3.out',
+            clearProps: 'all',
+          }
+        );
+      }
+
+      ScrollTrigger.refresh();
+    },
+    { scope: containerRef, dependencies: [isLoading, currentPage, filteredJobs.length] }
+  );
+
   return (
-    <div className="bg-[transparent] text-gray-800 antialiased font-sans min-h-screen flex flex-col selection:bg-pink-100 selection:text-pink-900">
+    <div ref={containerRef} className="bg-[transparent] text-gray-800 antialiased font-sans min-h-screen flex flex-col selection:bg-pink-100 selection:text-pink-900">
       <Helmet>
         <title>Careers - Mariwasa Portal</title>
       </Helmet>
@@ -123,22 +205,24 @@ const CareersPage: React.FC = () => {
 
       <main className="flex-grow max-w-6xl mx-auto px-4 sm:px-6 py-8 sm:py-12 md:py-16 lg:py-24 w-full">
 
+        {/* Hero Section */}
         <div className="text-center mb-8 sm:mb-16 relative">
-          <div className="inline-block p-1.5 rounded-full bg-white shadow-sm border border-gray-100 mb-4 sm:mb-8">
+          <div className="careers-hero-badge inline-block p-1.5 rounded-full bg-white shadow-sm border border-gray-100 mb-4 sm:mb-8 will-change-transform">
             <div className="flex items-center gap-2 sm:gap-3 px-3 py-1">
               <Briefcase size={16} className="text-[#D60041]" />
               <span className="text-[11px] sm:text-xs font-semibold uppercase tracking-wider text-gray-600">Open Positions</span>
             </div>
           </div>
-          <h1 className="text-3xl sm:text-4xl md:text-6xl font-normal tracking-tight text-gray-900 mb-3 sm:mb-6 leading-tight">
+          <h1 className="careers-hero-title text-3xl sm:text-4xl md:text-6xl font-normal tracking-tight text-gray-900 mb-3 sm:mb-6 leading-tight will-change-transform">
             Find Your <span className="font-semibold text-[#D60041]">Career</span> at Mariwasa
           </h1>
-          <p className="text-gray-600 text-sm sm:text-lg md:text-xl max-w-2xl mx-auto font-normal leading-relaxed px-2">
+          <p className="careers-hero-desc text-gray-600 text-sm sm:text-lg md:text-xl max-w-2xl mx-auto font-normal leading-relaxed px-2 will-change-transform">
             Explore exciting opportunities in ceramic manufacturing. Join our team of innovators and help build the homes of tomorrow.
           </p>
         </div>
 
-        <div className="w-full mb-8 sm:mb-16 relative z-20">
+        {/* Search & Filter Bar */}
+        <div className="careers-search-container w-full mb-8 sm:mb-16 relative z-20 will-change-transform">
           <div className="bg-white p-2.5 sm:p-3 rounded-2xl md:rounded-full shadow-sm border border-gray-100 flex flex-col md:flex-row gap-3 relative">
             <div className="relative flex-grow">
               <Search className="absolute left-5 sm:left-6 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
@@ -205,6 +289,7 @@ const CareersPage: React.FC = () => {
           </div>
         </div>
 
+        {/* Job Cards Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6 mb-8 sm:mb-12 items-stretch">
           {isLoading ? (
             <div className="col-span-full py-20 text-center text-gray-400 animate-pulse">
@@ -222,9 +307,9 @@ const CareersPage: React.FC = () => {
                     navigate(`/apply/${job.job_id}`, { state: { job } });
                   }
                 }}
-                className="bg-white p-5 sm:p-6 md:p-8 rounded-2xl sm:rounded-[32px] border border-gray-100 shadow-sm hover:shadow-md transition-all duration-300 group flex flex-col relative overflow-hidden cursor-pointer"
+                className="job-card bg-white p-5 sm:p-6 md:p-8 rounded-2xl sm:rounded-[32px] border border-gray-100 shadow-sm hover:shadow-md transition-all duration-300 group flex flex-col relative overflow-hidden cursor-pointer will-change-transform"
               >
-                <div className="absolute top-0 right-0 w-32 h-32 bg-red-50 rounded-bl-[100px] opacity-0 group-hover:opacity-50 transition-opacity duration-300"></div>
+                <div className="absolute top-0 right-0 w-32 h-32 bg-red-50 rounded-bl-[100px] opacity-0 group-hover:opacity-50 transition-opacity duration-300 pointer-events-none"></div>
 
                 <div className="flex justify-between items-start gap-2 mb-4 sm:mb-6 relative z-10">
                   <div>
@@ -320,7 +405,7 @@ const CareersPage: React.FC = () => {
 
         {/* Pagination UI */}
         {filteredJobs.length > JOBS_PER_PAGE && (
-          <div className="mt-8 sm:mt-12 flex flex-col sm:flex-row items-center justify-between gap-4 sm:gap-6 bg-white px-5 sm:px-8 py-4 sm:py-6 rounded-2xl sm:rounded-[32px] shadow-sm border border-gray-100 mb-12 sm:mb-24">
+          <div className="careers-pagination-bar mt-8 sm:mt-12 flex flex-col sm:flex-row items-center justify-between gap-4 sm:gap-6 bg-white px-5 sm:px-8 py-4 sm:py-6 rounded-2xl sm:rounded-[32px] shadow-sm border border-gray-100 mb-12 sm:mb-24 will-change-transform">
             <div className="text-xs sm:text-sm text-gray-500 font-medium text-center sm:text-left">
               Showing <span className="font-bold text-gray-900">{((currentPage - 1) * JOBS_PER_PAGE) + 1}</span> to <span className="font-bold text-gray-900">{Math.min(currentPage * JOBS_PER_PAGE, filteredJobs.length)}</span> of <span className="font-bold text-gray-900">{filteredJobs.length}</span> positions
             </div>
