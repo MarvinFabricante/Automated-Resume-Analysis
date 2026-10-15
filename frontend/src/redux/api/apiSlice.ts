@@ -130,6 +130,8 @@ export const apiSlice = createApi({
           missing_skills: app.missing_skills || [],
           relevant_experience: app.relevant_experience || null,
           experience_gaps: app.experience_gaps || null,
+          work_experiences: app.work_experiences || [],
+          total_experience_months: app.total_experience_months || 0,
           required_degree: app.required_degree || null,
           candidate_degree: app.candidate_degree || null,
           recommendations: app.recommendations || [],

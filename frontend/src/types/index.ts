@@ -84,6 +84,8 @@ export interface Application {
   education_reason?: string;
   relevant_experience?: string | null;
   experience_gaps?: string | null;
+  work_experiences?: WorkExperienceItem[];
+  total_experience_months?: number;
   required_degree?: string | null;
   candidate_degree?: string | null;
   recommendations?: string[];
@@ -93,6 +95,18 @@ export interface Application {
   ai_powered?: boolean;
   job?: Job;
   job_id?: number | string;
+}
+
+export interface WorkExperienceItem {
+  job_title: string;
+  raw_job_title?: string;
+  company_name: string;
+  location?: string | null;
+  employment_type?: 'Full-time' | 'Contractual' | 'OJT' | 'Part-time' | 'Seasonal' | 'Unknown' | string;
+  start_date?: string | null;
+  end_date?: string | null;
+  duration_months?: number;
+  responsibilities?: string[];
 }
 
 export interface CandidateApplicationView {

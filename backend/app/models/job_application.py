@@ -47,6 +47,8 @@ class JobApplication(Base):
     missing_skills = Column(JSON, nullable=True)
     relevant_experience = Column(String, nullable=True)
     experience_gaps = Column(String, nullable=True)
+    work_experiences = Column(JSON, nullable=True)
+    total_experience_months = Column(Integer, nullable=True)
     required_degree = Column(String, nullable=True)
     candidate_degree = Column(String, nullable=True)
     required_certifications = Column(String, nullable=True)
