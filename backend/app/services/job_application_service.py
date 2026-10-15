@@ -172,16 +172,29 @@ async def create_job_application(db: AsyncSession, application_in: JobApplicatio
         **data
     })
 
-    # Trigger notification
+    # Trigger notifications
     try:
         job_title = application_in.job_title if application_in.job_title else "a position"
+        # 1. Alert HR team
         await create_notification(
             db=db,
             title="New Application Submitted",
             message=f"{application_in.candidate_name} applied for {job_title}.",
             type="application",
+            target_role="HR",
             sender_role="CANDIDATE"
         )
+        # 2. Personal confirmation for Candidate
+        if application_in.candidate_email:
+            await create_notification(
+                db=db,
+                title="Application Submitted",
+                message=f"You successfully applied for {job_title}.",
+                type="application",
+                target_role="CANDIDATE",
+                target_email=application_in.candidate_email,
+                sender_role="SYSTEM"
+            )
     except Exception as notif_err:
         print(f"WARNING: Notification failed but application saved: {notif_err}")
     # Trigger background AI analysis

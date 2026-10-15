@@ -304,10 +304,38 @@ async def schedule_interview(db: AsyncSession, data: InterviewCreateSchema, user
             await InterviewRepository.add_interview_log(db, interview.id, "SMS_SENT", "Notification sent to candidate")
             await InterviewRepository.commit_changes(db)
 
-    # 5. Update candidate application status if pending
-    if getattr(application, "status", None) == "PENDING":
         application.status = "SCHEDULED"
         await InterviewRepository.commit_changes(db)
+
+    # 6. In-App Notifications
+    try:
+        from app.services.notification_service import create_notification
+        time_str = data.start_time.strftime('%b %d, %Y at %I:%M %p')
+        job_name = application.job_title or "Job Position"
+
+        # Dedicated notification for Candidate
+        if application.candidate_email:
+            await create_notification(
+                db=db,
+                title="Interview Scheduled 📅",
+                message=f"Your interview for {job_name} has been scheduled on {time_str}.",
+                type="schedule",
+                target_role="CANDIDATE",
+                target_email=application.candidate_email,
+                sender_role="HR"
+            )
+
+        # Operational alert for HR
+        await create_notification(
+            db=db,
+            title="Interview Scheduled",
+            message=f"Interview with {application.candidate_name} for {job_name} scheduled on {time_str}.",
+            type="schedule",
+            target_role="HR",
+            sender_role="HR"
+        )
+    except Exception as e_notif:
+        print(f"Warning: Could not create interview notification: {e_notif}")
 
     # Attach candidate and interviewer attributes for Pydantic response
     setattr(interview, "job_application", application)
@@ -428,6 +456,34 @@ async def update_interview(db: AsyncSession, interview_id: int, data: InterviewU
             if sent:
                 await InterviewRepository.add_interview_log(db, interview.id, "SMS_RESCHEDULED", "Reschedule SMS notification sent")
                 await InterviewRepository.commit_changes(db)
+
+        # In-App Notification for reschedule
+        try:
+            from app.services.notification_service import create_notification
+            time_str = interview.start_time.strftime('%b %d, %Y at %I:%M %p')
+            job_name = application.job_title or "Job Position"
+
+            if application.candidate_email:
+                await create_notification(
+                    db=db,
+                    title="Interview Rescheduled 📅",
+                    message=f"Your interview for {job_name} has been rescheduled to {time_str}.",
+                    type="schedule",
+                    target_role="CANDIDATE",
+                    target_email=application.candidate_email,
+                    sender_role="HR"
+                )
+
+            await create_notification(
+                db=db,
+                title="Interview Rescheduled",
+                message=f"Interview with {application.candidate_name} for {job_name} rescheduled to {time_str}.",
+                type="schedule",
+                target_role="HR",
+                sender_role="HR"
+            )
+        except Exception as e_notif:
+            print(f"Warning: Could not create interview reschedule notification: {e_notif}")
 
     setattr(interview, "job_application", application)
     _populate_candidate_info(interview)

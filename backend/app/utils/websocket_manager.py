@@ -191,68 +191,84 @@ async def get_online_count_async() -> int:
 async def connect_notification(websocket: WebSocket, role: str, email: Optional[str] = None) -> None:
     """Accept and register a WebSocket for notification broadcasts by role and optional email."""
     await websocket.accept()
-    if role not in role_connections:
-        role_connections[role] = []
-    role_connections[role].append(websocket)
+    norm_role = (role or "").upper()
+    norm_email = (email or "").lower() if email else None
 
-    if email:
-        if email not in email_connections:
-            email_connections[email] = []
-        email_connections[email].append(websocket)
+    if norm_role not in role_connections:
+        role_connections[norm_role] = []
+    role_connections[norm_role].append(websocket)
+
+    if norm_email:
+        if norm_email not in email_connections:
+            email_connections[norm_email] = []
+        email_connections[norm_email].append(websocket)
 
     await start_redis_listener()
 
 
 def disconnect_notification(websocket: WebSocket, role: str, email: Optional[str] = None) -> None:
     """Unregister a notification WebSocket by role and optional email."""
-    if role in role_connections:
-        if websocket in role_connections[role]:
-            role_connections[role].remove(websocket)
-        if not role_connections[role]:
-            del role_connections[role]
+    norm_role = (role or "").upper()
+    norm_email = (email or "").lower() if email else None
 
-    if email and email in email_connections:
-        if websocket in email_connections[email]:
-            email_connections[email].remove(websocket)
-        if not email_connections[email]:
-            del email_connections[email]
+    if norm_role in role_connections:
+        if websocket in role_connections[norm_role]:
+            role_connections[norm_role].remove(websocket)
+        if not role_connections[norm_role]:
+            del role_connections[norm_role]
+
+    if norm_email and norm_email in email_connections:
+        if websocket in email_connections[norm_email]:
+            email_connections[norm_email].remove(websocket)
+        if not email_connections[norm_email]:
+            del email_connections[norm_email]
 
 
 async def send_local_notification(message: str, target_role: Optional[str] = None, target_email: Optional[str] = None) -> None:
     """Send notification message only to connections locally attached to this worker process."""
     if target_email:
-        if target_email in email_connections:
+        norm_email = target_email.lower()
+        if norm_email in email_connections:
             dead_conns = []
-            for connection in list(email_connections[target_email]):
+            for connection in list(email_connections[norm_email]):
                 try:
                     await connection.send_text(message)
                 except Exception:
                     dead_conns.append(connection)
             for dead in dead_conns:
-                if target_email in email_connections and dead in email_connections[target_email]:
-                    email_connections[target_email].remove(dead)
+                if norm_email in email_connections and dead in email_connections[norm_email]:
+                    email_connections[norm_email].remove(dead)
     elif target_role:
-        if target_role in role_connections:
-            dead_conns = []
-            for connection in list(role_connections[target_role]):
-                try:
-                    await connection.send_text(message)
-                except Exception:
-                    dead_conns.append(connection)
-            for dead in dead_conns:
-                if target_role in role_connections and dead in role_connections[target_role]:
-                    role_connections[target_role].remove(dead)
+        norm_role = target_role.upper()
+        roles_to_notify = [norm_role]
+        if norm_role == "HR":
+            # Admin can also monitor HR operational notifications
+            roles_to_notify.append("ADMIN")
+
+        for r in roles_to_notify:
+            if r in role_connections:
+                dead_conns = []
+                for connection in list(role_connections[r]):
+                    try:
+                        await connection.send_text(message)
+                    except Exception:
+                        dead_conns.append(connection)
+                for dead in dead_conns:
+                    if r in role_connections and dead in role_connections[r]:
+                        role_connections[r].remove(dead)
     else:
-        for role, role_conns in list(role_connections.items()):
-            dead_conns = []
-            for connection in list(role_conns):
-                try:
-                    await connection.send_text(message)
-                except Exception:
-                    dead_conns.append(connection)
-            for dead in dead_conns:
-                if role in role_connections and dead in role_connections[role]:
-                    role_connections[role].remove(dead)
+        # Default: only broadcast internal events to ADMIN and HR (NEVER to CANDIDATES or Guests)
+        for r in ["ADMIN", "HR"]:
+            if r in role_connections:
+                dead_conns = []
+                for connection in list(role_connections[r]):
+                    try:
+                        await connection.send_text(message)
+                    except Exception:
+                        dead_conns.append(connection)
+                for dead in dead_conns:
+                    if r in role_connections and dead in role_connections[r]:
+                        role_connections[r].remove(dead)
 
 
 async def broadcast_notification(message: str, target_role: Optional[str] = None, target_email: Optional[str] = None) -> None:

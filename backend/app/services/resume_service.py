@@ -89,13 +89,15 @@ async def parse_resume_file(db: AsyncSession, file: UploadFile) -> dict:
                 except Exception as e_img:
                     logger.warning(f"Failed to upload extracted resume image to Supabase: {e_img}")
 
-        # Trigger notification
+        # Trigger notification for HR and Admin
         name = extracted_data.get("fullname", "A candidate") if extracted_data else "A candidate"
         await create_notification(
             db=db,
             title="Resume Parsed",
             message=f"{name}'s resume has been uploaded and parsed.",
-            type="upload"
+            type="upload",
+            target_role="HR",
+            sender_role="CANDIDATE"
         )
 
         return extracted_data or {}
@@ -123,7 +125,9 @@ async def create_resume(db: AsyncSession, resume_in: ResumeCreate) -> Resume:
         db=db,
         title="Resume Saved",
         message="A candidate saved their parsed resume to their profile.",
-        type="upload"
+        type="upload",
+        target_role="HR",
+        sender_role="CANDIDATE"
     )
 
     return new_resume

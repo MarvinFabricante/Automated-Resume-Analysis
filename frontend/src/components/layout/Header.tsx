@@ -204,7 +204,11 @@ const Header: React.FC = () => {
     fetchNotifications();
 
     if (isAdminRole || isHRRole || isCandidateRole) {
-      ws = new WebSocket(`${WS_BASE_URL}/notifications/ws?role=${userRole}&email=${userEmail}`);
+      const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+      const wsUrl = token
+        ? `${WS_BASE_URL}/notifications/ws?token=${encodeURIComponent(token)}`
+        : `${WS_BASE_URL}/notifications/ws?role=${userRole}&email=${userEmail}`;
+      ws = new WebSocket(wsUrl);
       ws.onmessage = (event) => {
         try {
           const n = JSON.parse(event.data);

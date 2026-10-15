@@ -9,12 +9,14 @@ async def create_job(db: AsyncSession, job: JobCreate):
     job_data = job.dict()
     db_job = await JobDescriptionRepository.create(db, job_data)
 
-    # Trigger notification
+    # Trigger notification for HR and Admin
     await create_notification(
         db=db,
         title="New Job Created",
         message=f"A new position '{db_job.job_title}' has been posted.",
-        type="job_creation"
+        type="job_creation",
+        target_role="HR",
+        sender_role="ADMIN"
     )
 
     return db_job
@@ -68,12 +70,14 @@ async def update_job(db: AsyncSession, job_id: str, job_data: JobUpdate):
     except Exception as match_sync_err:
         print(f"WARNING: Failed to sync application scores: {match_sync_err}")
 
-    # Trigger notification
+    # Trigger notification for HR and Admin
     await create_notification(
         db=db,
         title="Job Description Modified",
         message=f"The job details for '{db_job.job_title}' have been updated.",
-        type="job_update"
+        type="job_update",
+        target_role="HR",
+        sender_role="ADMIN"
     )
 
     return db_job

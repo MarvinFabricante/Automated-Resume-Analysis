@@ -1,5 +1,5 @@
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, update, or_, and_
+from sqlalchemy import select, update, or_, and_, func
 from typing import List, Optional
 import logging
 
@@ -44,37 +44,62 @@ async def get_all_by_criteria(
     limit: int = 50
 ) -> List[Notification]:
     """Get all notifications by criteria (checks Redis cache first)."""
-    cache_key = f"notifs:criteria:{role or 'all'}:{email or 'none'}:{limit}"
+    norm_role = (role or "").upper()
+    norm_email = (email or "").lower()
+
+    if norm_role not in ["ADMIN", "HR", "CANDIDATE"]:
+        return []
+
+    cache_key = f"notifs:criteria:{norm_role}:{norm_email or 'none'}:{limit}"
     cached = await get_cache(cache_key)
     if cached is not None:
         return cached
 
     query = select(Notification).order_by(Notification.created_at.desc())
         
-    if role:
-        if role == 'CANDIDATE':
-            email_condition = or_(Notification.target_email == None, Notification.target_email == email) if email else Notification.target_email == None
-            query = query.where(
-                and_(
-                    Notification.target_role == 'CANDIDATE',
-                    email_condition,
-                    or_(Notification.sender_role == 'HR', Notification.sender_role == 'ADMIN', Notification.sender_role == None)
+    if norm_role == 'CANDIDATE':
+        if norm_email:
+            email_condition = or_(
+                Notification.target_email == None,
+                func.lower(Notification.target_email) == norm_email
+            )
+        else:
+            email_condition = Notification.target_email == None
+
+        query = query.where(
+            and_(
+                Notification.target_role == 'CANDIDATE',
+                email_condition,
+                or_(
+                    Notification.sender_role.in_(['HR', 'ADMIN', 'SYSTEM']),
+                    Notification.sender_role == None
                 )
             )
-        elif role == 'HR':
-            query = query.where(
-                and_(
-                    or_(Notification.target_role == None, Notification.target_role == 'HR'),
-                    or_(Notification.sender_role == 'CANDIDATE', Notification.sender_role == 'ADMIN', Notification.sender_role == None)
+        )
+    elif norm_role == 'HR':
+        query = query.where(
+            and_(
+                or_(Notification.target_role == None, Notification.target_role == 'HR'),
+                or_(
+                    Notification.target_email == None,
+                    func.lower(Notification.target_email) == norm_email
+                ),
+                or_(
+                    Notification.sender_role.in_(['CANDIDATE', 'ADMIN', 'HR', 'SYSTEM']),
+                    Notification.sender_role == None
                 )
             )
-        elif role == 'ADMIN':
-            query = query.where(
-                and_(
-                    or_(Notification.target_role == None, Notification.target_role == 'ADMIN', Notification.target_role == 'HR'),
-                    or_(Notification.sender_role == 'HR', Notification.sender_role == 'CANDIDATE', Notification.sender_role == None)
+        )
+    elif norm_role == 'ADMIN':
+        query = query.where(
+            and_(
+                or_(Notification.target_role == None, Notification.target_role == 'ADMIN', Notification.target_role == 'HR'),
+                or_(
+                    Notification.sender_role.in_(['HR', 'CANDIDATE', 'ADMIN', 'SYSTEM']),
+                    Notification.sender_role == None
                 )
             )
+        )
         
     result = await db.execute(query.limit(limit))
     notifications = result.scalars().all()
@@ -84,22 +109,33 @@ async def get_all_by_criteria(
 
 async def mark_all_as_read(db: AsyncSession, role: Optional[str] = None, email: Optional[str] = None) -> bool:
     """Mark all notifications as read (Redis-first transaction)."""
+    norm_role = (role or "").upper()
+    norm_email = (email or "").lower()
+
+    if norm_role not in ["ADMIN", "HR", "CANDIDATE"]:
+        return False
+
     tx_id = await redis_tx_manager.stage_transaction(
         target="notification",
         action="MARK_ALL_READ",
-        payload={"role": role, "email": email},
+        payload={"role": norm_role, "email": norm_email},
     )
     try:
         query = update(Notification).where(Notification.is_read == False)
             
-        if role:
-            if role == 'CANDIDATE':
-                email_condition = or_(Notification.target_email == None, Notification.target_email == email) if email else Notification.target_email == None
-                query = query.where(and_(Notification.target_role == 'CANDIDATE', email_condition))
-            elif role == 'HR':
-                query = query.where(or_(Notification.target_role == None, Notification.target_role == 'HR'))
-            elif role == 'ADMIN':
-                query = query.where(or_(Notification.target_role == None, Notification.target_role == 'ADMIN', Notification.target_role == 'HR'))
+        if norm_role == 'CANDIDATE':
+            if norm_email:
+                email_condition = or_(
+                    Notification.target_email == None,
+                    func.lower(Notification.target_email) == norm_email
+                )
+            else:
+                email_condition = Notification.target_email == None
+            query = query.where(and_(Notification.target_role == 'CANDIDATE', email_condition))
+        elif norm_role == 'HR':
+            query = query.where(or_(Notification.target_role == None, Notification.target_role == 'HR'))
+        elif norm_role == 'ADMIN':
+            query = query.where(or_(Notification.target_role == None, Notification.target_role == 'ADMIN', Notification.target_role == 'HR'))
 
         await db.execute(query.values(is_read=True))
         await db.commit()

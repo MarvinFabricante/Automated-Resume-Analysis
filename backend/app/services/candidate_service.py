@@ -52,12 +52,14 @@ async def create_candidate_profile(db: AsyncSession, candidate_in: CandidateCrea
 
     new_candidate = await CandidateRepository.create(db, candidate_data)
 
-    # Trigger notification
+    # Trigger notification for HR and Admin
     await create_notification(
         db=db,
         title="New Candidate Registration",
         message=f"{new_candidate.fullname} has joined the platform.",
-        type="registration"
+        type="registration",
+        target_role="HR",
+        sender_role="CANDIDATE"
     )
 
     return new_candidate

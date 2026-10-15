@@ -172,13 +172,15 @@ async def change_password(db: AsyncSession, user_id: int, current_password: str,
         
     await AuthRepository.update_user_password(db, user, hash_password(new_password))
     
-    # Trigger notification
+    # Trigger notification specifically for this user
     await create_notification(
         db=db,
         title="Password Updated",
         message="Your account password has been successfully changed.",
         type="system_alert",
-        target_role=user.role
+        target_role=user.role,
+        target_email=user.email,
+        sender_role="SYSTEM"
     )
     
     # Record in audit log
@@ -199,13 +201,15 @@ async def set_password(db: AsyncSession, user_id: int, new_password: str):
         
     await AuthRepository.update_user_password(db, user, hash_password(new_password))
     
-    # Trigger notification
+    # Trigger notification specifically for this user
     await create_notification(
         db=db,
         title="Password Established",
         message="A new account password has been established for your account.",
         type="system_alert",
-        target_role=user.role
+        target_role=user.role,
+        target_email=user.email,
+        sender_role="SYSTEM"
     )
     
     # Record in audit log
