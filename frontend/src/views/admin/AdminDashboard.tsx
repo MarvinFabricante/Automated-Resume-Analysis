@@ -8,7 +8,6 @@ import {
   Activity, 
   Download, 
   ArrowUpRight, 
-  RefreshCw, 
   Cpu, 
   TrendingUp, 
   BarChart3, 
@@ -69,46 +68,22 @@ const AdminDashboard: React.FC = () => {
   // RTK Queries
   const { 
     data: stats, 
-    isLoading: isStatsLoading, 
-    isFetching: isStatsFetching,
-    refetch: refetchStats 
+    isLoading: isStatsLoading 
   } = useGetAdminSystemStatsQuery() as {
     data: AdminSystemStats | undefined;
     isLoading: boolean;
-    isFetching: boolean;
-    refetch: () => void;
   };
 
   const { 
     data: perf, 
-    isLoading: isPerfLoading, 
-    isFetching: isPerfFetching,
-    refetch: refetchPerf 
+    isLoading: isPerfLoading 
   } = useGetSystemPerformanceQuery() as {
     data: SystemPerformanceData | undefined;
     isLoading: boolean;
-    isFetching: boolean;
-    refetch: () => void;
   };
 
-  const { 
-    data: users = [], 
-    refetch: refetchUsers 
-  } = useGetUsersQuery();
-
-  const { 
-    data: jobs = [], 
-    refetch: refetchJobs 
-  } = useGetJobsQuery({ include_inactive: true });
-
-  const isRefreshing = isStatsFetching || isPerfFetching;
-
-  const handleRefreshAll = () => {
-    refetchStats();
-    refetchPerf();
-    refetchUsers();
-    refetchJobs();
-  };
+  const { data: users = [] } = useGetUsersQuery();
+  const { data: jobs = [] } = useGetJobsQuery({ include_inactive: true });
 
   // CSV Report Generator using real data
   const handleExportSystemReport = () => {
@@ -117,7 +92,7 @@ const AdminDashboard: React.FC = () => {
       const now = new Date();
       const reportLines = [
         '==================================================',
-        'AUTOMATED RESUME ANALYSIS - SYSTEM AUDIT & TELEMETRY REPORT',
+        'AUTOMATED RESUME ANALYSIS - SYSTEM AUDIT REPORT',
         `Generated: ${now.toLocaleString()}`,
         '==================================================',
         '',
@@ -200,7 +175,7 @@ const AdminDashboard: React.FC = () => {
             <div>
               <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white border border-gray-200/80 shadow-xs text-[11px] font-black text-gray-500 mb-2.5 tracking-wider uppercase">
                 <Activity size={13} className="text-[#D10043]" />
-                System Telemetry & Operations
+                System Operations
               </div>
               <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-gray-900">
                 Executive Dashboard
@@ -211,17 +186,6 @@ const AdminDashboard: React.FC = () => {
             </div>
 
             <div className="flex items-center gap-3 w-full md:w-auto shrink-0">
-              <button 
-                type="button"
-                onClick={handleRefreshAll}
-                disabled={isRefreshing}
-                className="flex-1 md:flex-none inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-2xl bg-white hover:bg-gray-50 text-gray-700 border border-gray-200/90 shadow-xs hover:border-gray-300 text-sm font-semibold transition-all cursor-pointer disabled:opacity-50"
-                title="Refresh all telemetry data"
-              >
-                <RefreshCw size={15} className={`text-gray-500 ${isRefreshing ? 'animate-spin text-[#D10043]' : ''}`} />
-                <span>{isRefreshing ? 'Syncing...' : 'Sync Telemetry'}</span>
-              </button>
-
               <button 
                 type="button"
                 onClick={handleExportSystemReport}
