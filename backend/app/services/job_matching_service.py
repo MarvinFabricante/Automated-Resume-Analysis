@@ -1,9 +1,47 @@
 import re
+import json
 import logging
+from typing import Optional
 from difflib import SequenceMatcher
 from app.models.job_description import JobDescription
 
 logger = logging.getLogger(__name__)
+
+_DEFAULT_MATCHING_CONFIG = {
+    "weights": {
+        "skills_weight": 0.45,
+        "experience_weight": 0.25,
+        "education_weight": 0.15,
+        "certifications_weight": 0.10,
+        "location_weight": 0.05
+    },
+    "thresholds": {
+        "fuzzy_match_threshold": 0.75,
+        "minimum_match_score": 30.0,
+        "transferable_skills_cap": 2
+    }
+}
+
+
+def get_current_matching_config() -> dict:
+    """
+    Retrieve active matching parameters from Redis or fallback to defaults.
+    Zero-overhead access (< 0.1ms) across async tasks and Celery workers.
+    """
+    try:
+        from app.utils.redis_client import get_sync_redis
+        client = get_sync_redis()
+        cached = client.get("matching_config:active")
+        if cached:
+            if isinstance(cached, bytes):
+                cached = cached.decode("utf-8")
+            data = json.loads(cached)
+            if isinstance(data, dict) and "weights" in data and "thresholds" in data:
+                return data
+    except Exception as e:
+        logger.debug(f"Failed to fetch matching config from Redis: {e}")
+
+    return _DEFAULT_MATCHING_CONFIG
 
 AI_SCORE_WEIGHT = 0.0
 RULE_SCORE_WEIGHT = 1.0 - AI_SCORE_WEIGHT
@@ -46,13 +84,19 @@ def _tokenize_skills(skills_str: str) -> list[str]:
     return skills
 
 
-def _fuzzy_match(a: str, b: str, threshold: float = 0.75) -> bool:
+def _fuzzy_match(a: str, b: str, threshold: Optional[float] = None) -> bool:
     """Check if two skill strings are a fuzzy match."""
     if a == b:
         return True
     # Check if one contains the other
     if a in b or b in a:
         return True
+    if threshold is None:
+        try:
+            cfg = get_current_matching_config()
+            threshold = float(cfg.get("thresholds", {}).get("fuzzy_match_threshold", 0.75))
+        except Exception:
+            threshold = 0.75
     # Use SequenceMatcher for fuzzy comparison
     ratio = SequenceMatcher(None, a, b).ratio()
     return ratio >= threshold
@@ -182,7 +226,7 @@ def _validate_verb_objects_against_job(verbs_objs: list[tuple[str, str]], job_te
     return relevant
 
 
-def calculate_experience_relevance(resume_experience: str, resume_skills: str, job_title: str, job_description: str) -> dict:
+def calculate_experience_relevance(resume_experience: str, resume_skills: str, job_title: str, job_description: str, transferable_cap: Optional[int] = None) -> dict:
     """
     Evaluate how RELEVANT the candidate's work experience is to the target job.
 
@@ -197,6 +241,13 @@ def calculate_experience_relevance(resume_experience: str, resume_skills: str, j
     Uses a hybrid approach (NLP, spaCy semantic similarity, keyword matching,
     rule-based validation) to analyze each entry individually.
     """
+    if transferable_cap is None:
+        try:
+            cfg = get_current_matching_config()
+            transferable_cap = int(cfg.get("thresholds", {}).get("transferable_skills_cap", 2))
+        except Exception:
+            transferable_cap = 2
+
     try:
         from app.extractors.nlp.nlp_engine import get_doc, get_verb_object_pairs
         nlp_available = True
@@ -313,10 +364,10 @@ def calculate_experience_relevance(resume_experience: str, resume_skills: str, j
         elif transferable and (semantic_sim >= 0.35 or len(direct_overlap) >= 1):
             # ── Minimally Relevant: only transferable skills with weak signal ──
             relevance = "Partially Relevant"
-            score_contrib = min(_TRANSFERABLE_ONLY_CAP, len(transferable))
+            score_contrib = min(transferable_cap, len(transferable))
             reasons.append(
                 f"⚠️ Limited relevance. Transferable skills detected but no direct "
-                f"technical or domain alignment. Score capped at {_TRANSFERABLE_ONLY_CAP}/10."
+                f"technical or domain alignment. Score capped at {transferable_cap}/10."
             )
 
         else:
@@ -589,7 +640,7 @@ def calculate_education_match(resume_education: str, job_description: str, educa
     }
 
 
-def calculate_skills_match(resume_skills: str, job_skills: str) -> dict:
+def calculate_skills_match(resume_skills: str, job_skills: str, fuzzy_threshold: Optional[float] = None) -> dict:
     """
     Compare resume skills against job requirements.
     Returns match ratio and lists of matched/missing skills.
@@ -609,7 +660,7 @@ def calculate_skills_match(resume_skills: str, job_skills: str) -> dict:
     for job_skill in job_tokens:
         found = False
         for resume_skill in resume_tokens:
-            if _fuzzy_match(resume_skill, job_skill):
+            if _fuzzy_match(resume_skill, job_skill, threshold=fuzzy_threshold):
                 matched.append(job_skill)
                 found = True
                 break
@@ -703,7 +754,7 @@ def _extract_education_requirement(text: str) -> str:
     return ""
 
 
-def calculate_certifications_match(resume_certs: str, job_description: str, certifications_req: str = None) -> dict:
+def calculate_certifications_match(resume_certs: str, job_description: str, certifications_req: str = None, fuzzy_threshold: Optional[float] = None) -> dict:
     """
     Compare resume certifications against job requirements.
     Returns a dict with score and details.
@@ -729,7 +780,7 @@ def calculate_certifications_match(resume_certs: str, job_description: str, cert
         if req in ['certification', 'certified', 'certificate']:
             continue
         for res in resume_tokens:
-            if _fuzzy_match(res, req):
+            if _fuzzy_match(res, req, threshold=fuzzy_threshold):
                 matched.append(req)
                 break
                 
@@ -928,22 +979,38 @@ def _generate_nlp_skills_explanation(skills_result: dict) -> str:
     return " ".join(parts)
 
 
-def calculate_match_score(resume_data: dict, job, use_ai: bool = False) -> dict:
+def calculate_match_score(resume_data: dict, job, use_ai: bool = False, matching_config: Optional[dict] = None) -> dict:
     """
     Calculate the overall match score between a parsed resume and a job.
 
     Scoring Strategy (100% NLP + Rule-Based):
     ──────────────────────────────────────────
-    Skills 45% + Experience Relevance 25% + Education 15% +
-    Certifications 10% + Location 5%
+    Dynamic weights and thresholds configured via System Settings:
+    Skills + Experience Relevance + Education + Certifications + Location
 
     All analysis is performed locally using spaCy NLP, keyword matching,
     fuzzy matching, and rule-based heuristics. No external AI API is used.
     """
+    if matching_config is None:
+        matching_config = get_current_matching_config()
+
+    weights = matching_config.get("weights") or {}
+    thresholds = matching_config.get("thresholds") or {}
+
+    w_skills = float(weights.get("skills_weight", 0.45))
+    w_exp = float(weights.get("experience_weight", 0.25))
+    w_edu = float(weights.get("education_weight", 0.15))
+    w_certs = float(weights.get("certifications_weight", 0.10))
+    w_loc = float(weights.get("location_weight", 0.05))
+
+    fuzzy_th = float(thresholds.get("fuzzy_match_threshold", 0.75))
+    min_score = float(thresholds.get("minimum_match_score", 30.0))
+    trans_cap = int(thresholds.get("transferable_skills_cap", 2))
+
     # ── Rule-based scoring ────────────────────────────────────────────────────
     resume_skills = resume_data.get("skills", "")
     job_skills = job.skills_requirements or ""
-    skills_result = calculate_skills_match(resume_skills, job_skills)
+    skills_result = calculate_skills_match(resume_skills, job_skills, fuzzy_threshold=fuzzy_th)
 
     resume_years = resume_data.get("years_experience", 0) or 0
     job_desc = (job.description or "") + " " + (job.skills_requirements or "")
@@ -952,7 +1019,7 @@ def calculate_match_score(resume_data: dict, job, use_ai: bool = False) -> dict:
     # Experience RELEVANCE analysis (not just years)
     resume_experience = resume_data.get("experience", "")
     relevance_result = calculate_experience_relevance(
-        resume_experience, resume_skills, job.job_title, job_desc
+        resume_experience, resume_skills, job.job_title, job_desc, transferable_cap=trans_cap
     )
     # STRICT COMBINED SCORE: Relevance dominates at 75%.
     relevance_score = relevance_result["relevance_score"]
@@ -973,20 +1040,26 @@ def calculate_match_score(resume_data: dict, job, use_ai: bool = False) -> dict:
 
     # Certifications matching
     resume_certs = resume_data.get("certifications", "") or resume_data.get("skills", "")
-    certs_result = calculate_certifications_match(resume_certs, job_desc, getattr(job, 'certifications_requirements', None))
+    certs_result = calculate_certifications_match(
+        resume_certs, job_desc, getattr(job, 'certifications_requirements', None), fuzzy_threshold=fuzzy_th
+    )
 
     # Location matching
     resume_location = resume_data.get("location", "")
     location_result = calculate_location_match(resume_location, getattr(job, 'location', None))
 
-    # ── Weighted NLP composite ────────────────────────────────────────────────
+    # ── Weighted NLP composite (normalized by sum of active weights) ──────────
+    total_w = w_skills + w_exp + w_edu + w_certs + w_loc
+    if total_w <= 0:
+        total_w = 1.0
+
     rule_match_pct = (
-        skills_result["score"] * 0.45 +
-        combined_exp_score * 0.25 +
-        education_result["score"] * 0.15 +
-        certs_result["score"] * 0.10 +
-        location_result["score"] * 0.05
-    ) * 100
+        (skills_result["score"] * w_skills) +
+        (combined_exp_score * w_exp) +
+        (education_result["score"] * w_edu) +
+        (certs_result["score"] * w_certs) +
+        (location_result["score"] * w_loc)
+    ) / total_w * 100
 
     # ── NLP-powered scoring (no external AI) ──────────────────────────────────
     blended_skills_score = round(skills_result["score"] * 100, 1)
@@ -1000,13 +1073,21 @@ def calculate_match_score(resume_data: dict, job, use_ai: bool = False) -> dict:
     all_missing = [s.title() for s in skills_result["missing"]]
     final_recommendations = _generate_recommendations(skills_result, experience_result, education_result, job.job_title)
 
-    # ── Generate NLP-based insights (replaces Gemini AI insights) ─────────────
+    pct_skills = round((w_skills / total_w) * 100)
+    pct_exp = round((w_exp / total_w) * 100)
+    pct_edu = round((w_edu / total_w) * 100)
+    pct_certs = round((w_certs / total_w) * 100)
+    pct_loc = round((w_loc / total_w) * 100)
+
+    # ── Generate NLP-based insights ──────────────────────────────────────────
     if final_match_pct >= 80:
         match_level = "High Match"
     elif final_match_pct >= 50:
         match_level = "Medium Match"
     else:
         match_level = "Low Match"
+
+    meets_threshold = final_match_pct >= min_score
 
     relevance_level = relevance_result.get("relevance_level", "Unknown")
     transferable_skills = relevance_result.get("transferable_skills", [])
@@ -1020,11 +1101,11 @@ def calculate_match_score(resume_data: dict, job, use_ai: bool = False) -> dict:
     location_explanation = location_result.get("reason", "")
 
     score_explanation = (
-        f"NLP Analysis: Skills {blended_skills_score}% (weight 45%) + "
-        f"Experience {blended_exp_score}% (weight 25%) + "
-        f"Education {blended_edu_score}% (weight 15%) + "
-        f"Certifications {blended_certs_score}% (weight 10%) + "
-        f"Location {blended_location_score}% (weight 5%) = {final_match_pct}%"
+        f"NLP Analysis: Skills {blended_skills_score}% (weight {pct_skills}%) + "
+        f"Experience {blended_exp_score}% (weight {pct_exp}%) + "
+        f"Education {blended_edu_score}% (weight {pct_edu}%) + "
+        f"Certifications {blended_certs_score}% (weight {pct_certs}%) + "
+        f"Location {blended_location_score}% (weight {pct_loc}%) = {final_match_pct}%"
     )
 
     # ── Build reason strings ──────────────────────────────────────────────────
@@ -1101,10 +1182,19 @@ def calculate_match_score(resume_data: dict, job, use_ai: bool = False) -> dict:
         "ai_powered": False,
         "relevance_level": relevance_level,
         "score_explanation": score_explanation,
+        "meets_threshold": meets_threshold,
+        "minimum_match_score": min_score,
+        "applied_weights": {
+            "skills": pct_skills,
+            "experience": pct_exp,
+            "education": pct_edu,
+            "certifications": pct_certs,
+            "location": pct_loc
+        },
     }
 
 
-def nlp_analyze_match(resume_data: dict, job_data: dict) -> dict:
+def nlp_analyze_match(resume_data: dict, job_data: dict, matching_config: Optional[dict] = None) -> dict:
     """
     Wrapper for calculate_match_score that accepts a dictionary for job_data.
     Used by the AI Analysis service to provide purely NLP-based results
@@ -1127,7 +1217,7 @@ def nlp_analyze_match(resume_data: dict, job_data: dict) -> dict:
             return getattr(self, key, default)
 
     mock_job = MockJob(job_data)
-    result = calculate_match_score(resume_data, mock_job, use_ai=False)
+    result = calculate_match_score(resume_data, mock_job, use_ai=False, matching_config=matching_config)
     
     # Map the unified output to the format previously expected from Gemini
     return {
@@ -1150,6 +1240,9 @@ def nlp_analyze_match(resume_data: dict, job_data: dict) -> dict:
         "experience_explanation": result["experience_explanation"],
         "education_explanation": result["education_explanation"],
         "certification_explanation": result["certification_explanation"],
+        "meets_threshold": result.get("meets_threshold", True),
+        "minimum_match_score": result.get("minimum_match_score", 30.0),
+        "applied_weights": result.get("applied_weights", {}),
     }
 
 

@@ -359,6 +359,14 @@ export const apiSlice = createApi({
       invalidatesTags: ['SystemConfig', 'AuditLogs'],
     }),
 
+    recalculateMatchingScores: builder.mutation<any, void>({
+      query: () => ({
+        url: '/system-config/matching/recalculate',
+        method: 'POST',
+      }),
+      invalidatesTags: ['Applications', 'Dashboard', 'Candidates'],
+    }),
+
     changeUserRole: builder.mutation<any, { userId: number | string; role: string }>({
       query: ({ userId, role }) => ({
         url: `/system-config/users/${userId}/role`,
@@ -476,6 +484,7 @@ export const {
   useGetMatchingConfigQuery,
   useUpdateMatchingWeightsMutation,
   useUpdateMatchingThresholdsMutation,
+  useRecalculateMatchingScoresMutation,
   useChangeUserRoleMutation,
   useGetFormTemplatesQuery,
   useCreateFormTemplateMutation,

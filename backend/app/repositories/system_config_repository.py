@@ -71,7 +71,8 @@ async def upsert_config(
         payload={"key": key, "value": value, "category": category},
     )
     try:
-        existing = await get_config_by_key(db, key)
+        query_res = await db.execute(select(SystemConfig).where(SystemConfig.key == key))
+        existing = query_res.scalar_one_or_none()
         if existing:
             existing.value = value
             existing.description = description or existing.description

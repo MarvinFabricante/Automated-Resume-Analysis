@@ -28,11 +28,17 @@ class JobMatchResult(BaseModel):
     required_certifications: Optional[str] = None
     candidate_certifications: Optional[str] = None
     recommendations: Optional[list[str]] = None
-    # ── Gemini AI Insights (populated when AI is available) ──────────────────
+    # ── Insights & Dynamic Matching Explanation ──────────────────────────────
     ai_summary: Optional[str] = None
     strengths: Optional[list[str]] = None
     weaknesses: Optional[list[str]] = None
     ai_powered: Optional[bool] = False
+    score_explanation: Optional[str] = None
+    match_level: Optional[str] = None
+    meets_threshold: Optional[bool] = None
+    minimum_match_score: Optional[float] = None
+    transferable_skills: Optional[list[str]] = None
+    applied_weights: Optional[dict] = None
 
 
 class MatchResponse(BaseModel):

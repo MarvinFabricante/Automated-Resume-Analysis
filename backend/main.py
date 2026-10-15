@@ -257,6 +257,16 @@ async def lifespan(app_instance: FastAPI):
     if await is_redis_available():
         logger.info("[Redis-First] Redis connection established. Redis-first transaction layer active.")
         await ws_manager.start_redis_listener()
+
+        # Warm up active matching algorithm configuration in Redis
+        try:
+            from app.utils.database import AsyncSessionLocal
+            from app.services.system_config_service import system_config_service
+            async with AsyncSessionLocal() as init_session:
+                active_cfg = await system_config_service.get_matching_parameters(init_session)
+                logger.info(f"[Startup] Active matching config synced to Redis: {active_cfg.get('weights')}")
+        except Exception as cfg_err:
+            logger.warning(f"[Startup] Could not initialize matching config in Redis: {cfg_err}")
     else:
         logger.warning("[Redis-First] Redis unreachable at startup. Operating with direct source-of-truth fallback.")
 
