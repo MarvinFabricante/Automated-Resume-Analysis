@@ -12,7 +12,7 @@ from .education_extractor import (
     extract_degree_title, extract_institution, extract_structured_education
 )
 from .skills_extractor import extract_skills, extract_skills_list, extract_structured_skills
-from .certifications_extractor import extract_certifications
+from .certifications_extractor import extract_certifications, extract_structured_certifications
 from .section_parser import split_into_sections
 from ..nlp.nlp_engine import extract_all as nlp_extract_all
 
@@ -290,7 +290,9 @@ def extract_content(text: str) -> dict:
     highest_degree = extract_highest_degree(text)
     institution = extract_institution(text, edu_entries)
     education_str = extract_education(text)
-    certifications_str = extract_certifications(text)
+    certifications_details = extract_structured_certifications(text)
+    certifications_list = [c["canonical_name"] for c in certifications_details.get("certifications", [])]
+    certifications_str = " | ".join(certifications_list[:25]) if certifications_list else extract_certifications(text)
 
     data = {
         # Personal Information
@@ -331,6 +333,8 @@ def extract_content(text: str) -> dict:
         "skills_list": skills_list,
         "skills_details": skills_details,
         "certifications": certifications_str,
+        "certifications_list": certifications_list,
+        "certifications_details": certifications_details,
     }
 
     # Run unified NLP engine for NER entities
