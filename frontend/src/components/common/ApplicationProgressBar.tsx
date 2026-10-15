@@ -17,8 +17,8 @@ const DEFAULT_STEPS: StepItem[] = [
   },
   {
     number: 2,
-    title: 'Submit Application',
-    subtitle: 'Fill & Update Details',
+    title: 'Application Details',
+    subtitle: 'Fill & Update Info',
     icon: Edit3,
   },
   {

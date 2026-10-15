@@ -253,7 +253,7 @@ const ApplicationForm: React.FC = () => {
   return (
     <div className="min-h-screen bg-[#F8FAFC] text-slate-900 antialiased font-['Inter',_sans-serif]">
       <Helmet>
-        <title>Edit Application | {jobTitle}</title>
+        <title>Application Details | {jobTitle}</title>
       </Helmet>
 
       <Header />
@@ -476,7 +476,7 @@ const ApplicationForm: React.FC = () => {
               type="submit"
               className="w-full sm:w-auto px-10 py-4 bg-[#D10043] hover:bg-slate-900 text-white rounded-[20px] font-bold flex items-center justify-center gap-3 transition-all shadow-xl shadow-pink-100 active:scale-[0.98]"
             >
-              <span>{jobId === 'smart' ? 'Find Job Matches' : 'Submit Application to Review'}</span>
+              <span>{jobId === 'smart' ? 'Find Job Matches' : 'Proceed to Review Application'}</span>
               <ArrowRight size={20} />
             </button>
           </div>

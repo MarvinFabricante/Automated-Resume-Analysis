@@ -6,8 +6,7 @@ import {
   CheckCircle,
   Home,
   Search,
-  BellRing,
-  ExternalLink
+  BellRing
 } from 'lucide-react';
 import Header from '../../../components/layout/Header';
 import Footer from '../../../components/layout/Footer';
@@ -21,7 +20,7 @@ interface StepItemProps {
 
 const StepItem: React.FC<StepItemProps> = ({ number, title, desc }) => (
   <div className="flex flex-col gap-3">
-    <span className="text-3xl font-black text-slate-100">{number}</span>
+    <span className="text-3xl font-black text-rose-200">{number}</span>
     <div>
       <h3 className="font-bold text-slate-900 mb-1">{title}</h3>
       <p className="text-sm text-slate-500 font-medium leading-relaxed">{desc}</p>
@@ -127,14 +126,6 @@ const SubmissionSuccessPage: React.FC = () => {
             Back to Home
           </button>
         </div>
-
-        <a
-          href="#"
-          className="mt-12 text-slate-400 hover:text-[#D60041] text-sm font-bold flex items-center gap-2 transition-colors group"
-        >
-          Follow us on LinkedIn for updates
-          <ExternalLink size={14} className="group-hover:translate-x-1 group-hover:-translate-y-1 transition-transform" />
-        </a>
       </main>
 
       <Footer />
