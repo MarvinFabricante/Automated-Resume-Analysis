@@ -20,7 +20,15 @@ import {
   Target,
   XCircle,
   Check,
-  Layers
+  Layers,
+  Award,
+  BookOpen,
+  Phone,
+  Mail,
+  User,
+  Sparkles,
+  Building2,
+  BadgeCheck
 } from 'lucide-react';
 import Header from '../../components/layout/Header';
 import Sidebar from '../../components/layout/Sidebar';
@@ -219,17 +227,24 @@ const CandidateSmartUpload: React.FC = () => {
           name: extractedData?.fullname,
           email: extractedData?.email,
           phone: extractedData?.phone,
-          location: extractedData?.location
+          location: extractedData?.location,
+          location_details: extractedData?.location_details
         },
         experience: {
-          title: extractedData?.experience ? extractedData.experience.split('|')[0]?.trim() : '',
-          company: extractedData?.experience ? extractedData.experience.split('|')[1]?.trim() : '',
+          title: extractedData?.job_title || (extractedData?.experience ? extractedData.experience.split('|')[0]?.trim() : ''),
+          company: extractedData?.company || (extractedData?.experience ? extractedData.experience.split('|')[1]?.trim() : ''),
           relevance: extractedData?.years_experience ? `${extractedData.years_experience} years` : ''
         },
         education: {
           degree: extractedData?.highest_degree || extractedData?.degree,
-          college: extractedData?.education || extractedData?.institution
+          college: extractedData?.institution || extractedData?.college || extractedData?.education
         },
+        work_experiences: extractedData?.work_experiences || [],
+        education_entries: extractedData?.education_entries || [],
+        certifications: extractedData?.certifications_list || (extractedData?.certifications ? extractedData.certifications.split(' | ') : []),
+        certifications_details: extractedData?.certifications_details,
+        skills_details: extractedData?.skills_details,
+        summary: extractedData?.summary,
         skills: Array.isArray(extractedData?.skills_list) && extractedData.skills_list.length > 0
           ? extractedData.skills_list
           : extractedData?.skills
@@ -598,41 +613,321 @@ const CandidateSmartUpload: React.FC = () => {
 
                       {/* Extracted Profile Credentials Preview */}
                       {extractedData && (
-                        <div className="bg-slate-50 border border-slate-100 rounded-[32px] p-6 sm:p-8 space-y-4">
-                          <h4 className="text-xs font-black uppercase tracking-widest text-slate-400 flex items-center gap-2">
-                            <Layers size={14} className="text-[#D10043]" />
-                            Parsed Candidate Information
-                          </h4>
+                        <div className="bg-white border border-slate-200/80 rounded-[32px] p-6 sm:p-8 space-y-6 shadow-sm">
+                          <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+                            <h4 className="text-xs font-black uppercase tracking-widest text-[#D10043] flex items-center gap-2">
+                              <Layers size={16} />
+                              Comprehensive Resume Content Extraction
+                            </h4>
+                            <span className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full bg-pink-50 text-[#D10043] border border-pink-100">
+                              Deterministic Local NLP
+                            </span>
+                          </div>
 
-                          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 pt-2">
-                            <div className="bg-white p-3.5 rounded-2xl border border-slate-100">
-                              <span className="block text-[9px] font-bold uppercase tracking-wider text-slate-400">Full Name</span>
-                              <p className="text-xs font-black text-slate-900 truncate mt-0.5">
-                                {extractedData.fullname || 'Extracted Name'}
-                              </p>
+                          {/* 1. Identity & Contact Header */}
+                          <div className="bg-slate-50/70 rounded-2xl p-4 sm:p-5 border border-slate-100 space-y-3">
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                              <div>
+                                <h3 className="text-lg font-black text-slate-900 flex items-center gap-2">
+                                  <User size={18} className="text-[#D10043]" />
+                                  {extractedData.fullname || 'Candidate Name'}
+                                </h3>
+                                <p className="text-xs font-bold text-slate-500 mt-0.5 flex items-center gap-1.5">
+                                  <Briefcase size={13} className="text-slate-400" />
+                                  <span>{extractedData.job_title || 'Role'}</span>
+                                  {extractedData.company && (
+                                    <>
+                                      <span className="text-slate-300">•</span>
+                                      <span className="text-slate-600">{extractedData.company}</span>
+                                    </>
+                                  )}
+                                </p>
+                              </div>
+
+                              <div className="flex items-center gap-2 self-start sm:self-auto">
+                                <span className="px-3 py-1 bg-slate-900 text-white text-[11px] font-bold rounded-xl flex items-center gap-1">
+                                  <Clock size={12} />
+                                  {extractedData.years_experience ? `${extractedData.years_experience} Years Exp` : 'Experience Recorded'}
+                                </span>
+                              </div>
                             </div>
 
-                            <div className="bg-white p-3.5 rounded-2xl border border-slate-100">
-                              <span className="block text-[9px] font-bold uppercase tracking-wider text-slate-400">Email</span>
-                              <p className="text-xs font-black text-slate-900 truncate mt-0.5">
-                                {extractedData.email || 'Extracted Email'}
-                              </p>
-                            </div>
-
-                            <div className="bg-white p-3.5 rounded-2xl border border-slate-100">
-                              <span className="block text-[9px] font-bold uppercase tracking-wider text-slate-400">Experience</span>
-                              <p className="text-xs font-black text-slate-900 truncate mt-0.5">
-                                {extractedData.years_experience ? `${extractedData.years_experience} Years` : 'Recorded'}
-                              </p>
-                            </div>
-
-                            <div className="bg-white p-3.5 rounded-2xl border border-slate-100">
-                              <span className="block text-[9px] font-bold uppercase tracking-wider text-slate-400">Education</span>
-                              <p className="text-xs font-black text-slate-900 truncate mt-0.5">
-                                {extractedData.highest_degree || extractedData.degree || 'Recorded'}
-                              </p>
+                            {/* Contact Badges */}
+                            <div className="flex flex-wrap gap-2 pt-1 text-xs">
+                              {extractedData.email && (
+                                <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-white rounded-lg border border-slate-200/70 text-slate-700 font-medium">
+                                  <Mail size={12} className="text-slate-400" />
+                                  {extractedData.email}
+                                </span>
+                              )}
+                              {extractedData.phone && (
+                                <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-white rounded-lg border border-slate-200/70 text-slate-700 font-medium">
+                                  <Phone size={12} className="text-slate-400" />
+                                  {extractedData.phone}
+                                </span>
+                              )}
+                              {extractedData.location && (
+                                <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-white rounded-lg border border-slate-200/70 text-slate-700 font-medium">
+                                  <MapPin size={12} className="text-slate-400" />
+                                  {extractedData.location}
+                                </span>
+                              )}
                             </div>
                           </div>
+
+                          {/* 2. Synthesized Executive Summary */}
+                          {extractedData.summary && (
+                            <div className="p-4 bg-gradient-to-r from-pink-50/50 via-slate-50 to-white rounded-2xl border border-pink-100/70">
+                              <span className="block text-[10px] font-black uppercase tracking-widest text-[#D10043] mb-1.5 flex items-center gap-1.5">
+                                <Sparkles size={13} />
+                                Executive Profile Summary
+                              </span>
+                              <p className="text-xs text-slate-700 leading-relaxed font-medium">
+                                {extractedData.summary}
+                              </p>
+                            </div>
+                          )}
+
+                          {/* 3. Granular Work Experience */}
+                          {extractedData.work_experiences && extractedData.work_experiences.length > 0 && (
+                            <div className="space-y-2.5">
+                              <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 block flex items-center gap-1.5">
+                                <Briefcase size={13} className="text-slate-400" />
+                                Extracted Work Experience ({extractedData.work_experiences.length})
+                              </span>
+                              <div className="grid grid-cols-1 gap-2.5">
+                                {extractedData.work_experiences.map((exp: any, expIdx: number) => {
+                                  const roleTitle = exp.job_title || exp.role || 'Role';
+                                  const compName = exp.company_name || exp.company || 'Company';
+                                  const dates = [exp.start_date, exp.end_date].filter(Boolean).join(' - ');
+                                  const durationStr = exp.duration_months ? `(${exp.duration_months} mos)` : '';
+                                  const duties = exp.responsibilities || exp.highlights || [];
+
+                                  return (
+                                    <div key={expIdx} className="bg-slate-50/80 rounded-xl p-3.5 border border-slate-100 text-xs">
+                                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                                        <div className="font-black text-slate-900 text-sm">
+                                          {roleTitle}
+                                          <span className="font-semibold text-slate-500 text-xs ml-1.5">
+                                            at {compName}
+                                          </span>
+                                          {exp.location && (
+                                            <span className="text-[11px] text-slate-400 font-normal ml-1">
+                                              ({exp.location})
+                                            </span>
+                                          )}
+                                        </div>
+                                        <div className="flex items-center gap-1.5">
+                                          {exp.employment_type && (
+                                            <span className="px-2 py-0.5 rounded-md bg-white border border-slate-200 text-[10px] font-bold text-slate-600">
+                                              {exp.employment_type}
+                                            </span>
+                                          )}
+                                          {dates && (
+                                            <span className="text-[11px] font-medium text-slate-500">
+                                              {dates} {durationStr}
+                                            </span>
+                                          )}
+                                        </div>
+                                      </div>
+                                      {duties.length > 0 && (
+                                        <ul className="mt-2 space-y-1 text-slate-600 pl-3 border-l-2 border-slate-200 text-[11px]">
+                                          {duties.slice(0, 2).map((duty: string, dIdx: number) => (
+                                            <li key={dIdx}>• {duty}</li>
+                                          ))}
+                                        </ul>
+                                      )}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* 4. Granular Education History */}
+                          {extractedData.education_entries && extractedData.education_entries.length > 0 && (
+                            <div className="space-y-2.5">
+                              <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 block flex items-center gap-1.5">
+                                <GraduationCap size={13} className="text-slate-400" />
+                                Educational Attainment
+                              </span>
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                                {extractedData.education_entries.map((edu: any, eduIdx: number) => {
+                                  const deg = edu.degree_or_course || edu.degree || 'Degree Program';
+                                  const inst = edu.institution_name || edu.institution || edu.college || 'Institution';
+                                  const level = edu.education_level || extractedData.highest_educational_attainment;
+                                  const year = edu.year || [edu.start_year, edu.end_year].filter(Boolean).join(' - ');
+                                  const honors = edu.honors || (Array.isArray(edu.honors_and_awards) ? edu.honors_and_awards.join(', ') : '');
+
+                                  return (
+                                    <div key={eduIdx} className="bg-slate-50/80 rounded-xl p-3.5 border border-slate-100 text-xs">
+                                      <div className="flex items-center justify-between gap-1 mb-1">
+                                        <span className="font-bold text-slate-900 text-xs truncate">
+                                          {deg}
+                                        </span>
+                                        {level && (
+                                          <span className="shrink-0 px-2 py-0.5 rounded-md bg-purple-50 text-purple-700 border border-purple-100 text-[9px] font-black uppercase">
+                                            {level}
+                                          </span>
+                                        )}
+                                      </div>
+                                      <p className="text-[11px] font-medium text-slate-600 truncate">
+                                        {inst}
+                                      </p>
+                                      <div className="flex items-center gap-2 mt-1 text-[10px] text-slate-400">
+                                        {year && <span>{year}</span>}
+                                        {honors && (
+                                          <span className="text-emerald-700 font-bold bg-emerald-50 px-1.5 py-0.2 rounded">
+                                            Honors: {honors}
+                                          </span>
+                                        )}
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* 5. Categorized Skills Inventory */}
+                          {(extractedData.skills_details?.categorized_view || extractedData.skills_list?.length > 0 || extractedData.skills) && (
+                            <div className="space-y-3 pt-1">
+                              <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 block flex items-center gap-1.5">
+                                <Cpu size={13} className="text-slate-400" />
+                                Verified Skills & Competencies Inventory
+                              </span>
+
+                              {extractedData.skills_details?.categorized_view ? (
+                                <div className="space-y-2">
+                                  {/* Hard Skills */}
+                                  {extractedData.skills_details.categorized_view.hard_skills?.length > 0 && (
+                                    <div>
+                                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
+                                        Hard Skills ({extractedData.skills_details.categorized_view.hard_skills.length})
+                                      </span>
+                                      <div className="flex flex-wrap gap-1.5">
+                                        {extractedData.skills_details.categorized_view.hard_skills.map((skill: string, sIdx: number) => (
+                                          <span key={sIdx} className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200/70">
+                                            {skill}
+                                          </span>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  {/* Tools & Technologies */}
+                                  {extractedData.skills_details.categorized_view.tools_and_technologies?.length > 0 && (
+                                    <div>
+                                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
+                                        Tools, Machinery & Systems ({extractedData.skills_details.categorized_view.tools_and_technologies.length})
+                                      </span>
+                                      <div className="flex flex-wrap gap-1.5">
+                                        {extractedData.skills_details.categorized_view.tools_and_technologies.map((tool: string, tIdx: number) => (
+                                          <span key={tIdx} className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-blue-50 text-blue-800 border border-blue-200/70">
+                                            {tool}
+                                          </span>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  {/* Soft Skills */}
+                                  {extractedData.skills_details.categorized_view.soft_skills?.length > 0 && (
+                                    <div>
+                                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
+                                        Workplace & Soft Skills ({extractedData.skills_details.categorized_view.soft_skills.length})
+                                      </span>
+                                      <div className="flex flex-wrap gap-1.5">
+                                        {extractedData.skills_details.categorized_view.soft_skills.map((soft: string, sfIdx: number) => (
+                                          <span key={sfIdx} className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-purple-50 text-purple-800 border border-purple-200/70">
+                                            {soft}
+                                          </span>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  {/* Languages */}
+                                  {extractedData.skills_details.categorized_view.languages?.length > 0 && (
+                                    <div>
+                                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
+                                        Languages ({extractedData.skills_details.categorized_view.languages.length})
+                                      </span>
+                                      <div className="flex flex-wrap gap-1.5">
+                                        {extractedData.skills_details.categorized_view.languages.map((lang: string, lIdx: number) => (
+                                          <span key={lIdx} className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-amber-50 text-amber-800 border border-amber-200/70">
+                                            {lang}
+                                          </span>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              ) : (
+                                <div className="flex flex-wrap gap-1.5">
+                                  {(extractedData.skills_list || (typeof extractedData.skills === 'string' ? extractedData.skills.split(' | ') : []))
+                                    .slice(0, 15)
+                                    .map((s: string, sIdx: number) => (
+                                      <span key={sIdx} className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-slate-100 text-slate-700 border border-slate-200">
+                                        {s}
+                                      </span>
+                                    ))}
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          {/* 6. Certifications, Licenses & Eligibility */}
+                          {((extractedData.certifications_details?.certifications && extractedData.certifications_details.certifications.length > 0) ||
+                            (extractedData.certifications_list && extractedData.certifications_list.length > 0) ||
+                            extractedData.certifications) && (
+                            <div className="space-y-2.5 pt-1">
+                              <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 block flex items-center gap-1.5">
+                                <Award size={13} className="text-[#D10043]" />
+                                Government Licenses, Eligibility & Certifications
+                              </span>
+
+                              {extractedData.certifications_details?.certifications?.length > 0 ? (
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                                  {extractedData.certifications_details.certifications.map((cert: any, cIdx: number) => (
+                                    <div key={cIdx} className="bg-rose-50/50 rounded-xl p-3 border border-rose-100 text-xs">
+                                      <div className="flex items-start justify-between gap-1 mb-1">
+                                        <span className="font-bold text-slate-900 leading-snug">
+                                          {cert.canonical_name}
+                                        </span>
+                                        {cert.category && (
+                                          <span className="shrink-0 px-1.5 py-0.5 rounded bg-white text-rose-700 border border-rose-200 text-[9px] font-bold">
+                                            {cert.category}
+                                          </span>
+                                        )}
+                                      </div>
+                                      <div className="text-[11px] text-slate-600 flex flex-wrap gap-x-2 gap-y-0.5">
+                                        {cert.issuing_organization && (
+                                          <span>Issuer: <strong className="text-slate-800">{cert.issuing_organization}</strong></span>
+                                        )}
+                                        {cert.expiration_or_status && (
+                                          <span className="text-emerald-700 font-semibold">• {cert.expiration_or_status}</span>
+                                        )}
+                                        {cert.credential_id_or_details && (
+                                          <span className="text-slate-500">• {cert.credential_id_or_details}</span>
+                                        )}
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              ) : (
+                                <div className="flex flex-wrap gap-1.5">
+                                  {(extractedData.certifications_list || (typeof extractedData.certifications === 'string' ? extractedData.certifications.split(' | ') : []))
+                                    .map((c: string, cIdx: number) => (
+                                      <span key={cIdx} className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-rose-50 text-rose-800 border border-rose-200">
+                                        {c}
+                                      </span>
+                                    ))}
+                                </div>
+                              )}
+                            </div>
+                          )}
+
                         </div>
                       )}
 

@@ -5,7 +5,8 @@ import candidateService from '../../../services/candidateService';
 import {
   User, Mail, Phone, MapPin,
   Cpu, Briefcase, GraduationCap,
-  CheckCircle, ArrowLeft, Target
+  CheckCircle, ArrowLeft, Target,
+  Award, Sparkles, Layers, Clock
 } from 'lucide-react';
 import Header from '../../../components/layout/Header';
 import Footer from '../../../components/layout/Footer';
@@ -88,6 +89,13 @@ const PreviewAndVerifyPage: React.FC = () => {
       degree: data?.degree || data?.highest_degree || state?.formData?.degree || "",
       college: data?.institution || data?.college || state?.formData?.college || (data?.education ? data.education.split('|')[0]?.trim() : "")
     },
+    years_experience: data?.years_experience || 0,
+    summary: data?.summary || state?.summary || "",
+    work_experiences: data?.work_experiences || state?.work_experiences || [],
+    education_entries: data?.education_entries || state?.education_entries || [],
+    certifications: data?.certifications_list || (data?.certifications ? data.certifications.split(' | ') : (state?.certifications || [])),
+    certifications_details: data?.certifications_details || state?.certifications_details || null,
+    skills_details: data?.skills_details || state?.skills_details || null,
     profile_image_url: data?.profile_image_url || state?.profile_image_url || null
   };
 
@@ -277,21 +285,89 @@ const PreviewAndVerifyPage: React.FC = () => {
               </div>
             </div>
 
+            {/* Executive Profile Summary */}
+            {extractedData.summary && (
+              <div className="mt-8 pt-6 border-t border-slate-50">
+                <div className="flex items-center gap-3 mb-3 text-[#D60041]">
+                  <div className="p-2.5 bg-pink-50 rounded-xl">
+                    <Sparkles size={18} />
+                  </div>
+                  <h2 className="font-bold uppercase tracking-widest text-xs">Executive Profile Summary</h2>
+                </div>
+                <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                  <p className="text-sm text-slate-700 leading-relaxed font-medium">
+                    {extractedData.summary}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Skills & Competencies */}
             <div className="mt-8 pt-8 border-t border-slate-50">
               <div className="flex items-center gap-3 mb-4 text-[#D60041]">
                 <div className="p-2.5 bg-pink-50 rounded-xl">
                   <Cpu size={20} />
                 </div>
-                <h2 className="font-bold uppercase tracking-widest text-xs">Skills</h2>
+                <h2 className="font-bold uppercase tracking-widest text-xs">Skills & Competencies</h2>
               </div>
               <div className="flex flex-wrap gap-2">
                 {extractedData.skills.map((skill: string, i: number) => (
-                  <span key={i} className="px-4 py-2 bg-slate-50 text-slate-700 rounded-xl text-sm font-bold border border-slate-100 hover:border-slate-200 transition-colors cursor-default">
+                  <span key={i} className="px-3.5 py-1.5 bg-slate-50 text-slate-700 rounded-xl text-xs font-bold border border-slate-100 hover:border-slate-200 transition-colors cursor-default">
                     {skill}
                   </span>
                 ))}
               </div>
             </div>
+
+            {/* Certifications & Licenses */}
+            {((extractedData.certifications_details?.certifications && extractedData.certifications_details.certifications.length > 0) ||
+              (extractedData.certifications && extractedData.certifications.length > 0)) && (
+              <div className="mt-8 pt-8 border-t border-slate-50">
+                <div className="flex items-center gap-3 mb-4 text-[#D60041]">
+                  <div className="p-2.5 bg-pink-50 rounded-xl">
+                    <Award size={20} />
+                  </div>
+                  <h2 className="font-bold uppercase tracking-widest text-xs">Licenses, Eligibility & Certifications</h2>
+                </div>
+                {extractedData.certifications_details?.certifications?.length > 0 ? (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {extractedData.certifications_details.certifications.map((cert: any, cIdx: number) => (
+                      <div key={cIdx} className="p-3.5 bg-rose-50/40 rounded-2xl border border-rose-100/70 text-xs">
+                        <div className="flex items-start justify-between gap-1 mb-1">
+                          <span className="font-bold text-slate-900 leading-snug">
+                            {cert.canonical_name}
+                          </span>
+                          {cert.category && (
+                            <span className="shrink-0 px-2 py-0.5 rounded-md bg-white text-rose-700 border border-rose-200 text-[10px] font-bold">
+                              {cert.category}
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-[11px] text-slate-600 flex flex-wrap gap-x-2 gap-y-0.5">
+                          {cert.issuing_organization && (
+                            <span>Issuer: <strong className="text-slate-800">{cert.issuing_organization}</strong></span>
+                          )}
+                          {cert.expiration_or_status && (
+                            <span className="text-emerald-700 font-semibold">• {cert.expiration_or_status}</span>
+                          )}
+                          {cert.credential_id_or_details && (
+                            <span className="text-slate-500">• {cert.credential_id_or_details}</span>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="flex flex-wrap gap-2">
+                    {extractedData.certifications.map((cert: string, cIdx: number) => (
+                      <span key={cIdx} className="px-3.5 py-1.5 bg-rose-50 text-rose-800 rounded-xl text-xs font-bold border border-rose-100">
+                        {cert}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </section>
 
           {/* Experience + Education */}
@@ -308,6 +384,25 @@ const PreviewAndVerifyPage: React.FC = () => {
               <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
                 <p className="text-sm text-slate-600 leading-relaxed font-medium">{extractedData.experience.relevance || "No additional description provided."}</p>
               </div>
+
+              {extractedData.work_experiences && extractedData.work_experiences.length > 0 && (
+                <div className="mt-4 space-y-2 pt-3 border-t border-slate-100">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 block mb-1">
+                    Granular Positions ({extractedData.work_experiences.length})
+                  </span>
+                  {extractedData.work_experiences.map((exp: any, idx: number) => (
+                    <div key={idx} className="p-3 bg-slate-50 rounded-xl border border-slate-100 text-xs">
+                      <div className="font-bold text-slate-900">{exp.job_title || exp.role}</div>
+                      <div className="text-slate-500 text-[11px] mt-0.5">
+                        {exp.company_name || exp.company}
+                        {[exp.start_date, exp.end_date].filter(Boolean).length > 0 && (
+                          <span className="ml-1 text-slate-400">• {[exp.start_date, exp.end_date].filter(Boolean).join(' - ')}</span>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </section>
 
             <section className="bg-white p-8 rounded-[32px] shadow-sm border border-slate-100 hover:shadow-md transition-shadow">
@@ -321,6 +416,24 @@ const PreviewAndVerifyPage: React.FC = () => {
               <p className="text-sm font-bold text-slate-500 bg-slate-50 inline-block px-3 py-1.5 rounded-lg border border-slate-100 mt-2">
                 {extractedData.education.college || "Institution Not Specified"}
               </p>
+
+              {extractedData.education_entries && extractedData.education_entries.length > 0 && (
+                <div className="mt-4 space-y-2 pt-3 border-t border-slate-100">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 block mb-1">
+                    Education History ({extractedData.education_entries.length})
+                  </span>
+                  {extractedData.education_entries.map((edu: any, idx: number) => (
+                    <div key={idx} className="p-3 bg-slate-50 rounded-xl border border-slate-100 text-xs">
+                      <div className="font-bold text-slate-900">{edu.degree_or_course || edu.degree}</div>
+                      <div className="text-slate-500 text-[11px] mt-0.5">
+                        {edu.institution_name || edu.institution}
+                        {edu.year && <span className="ml-1 text-slate-400">• {edu.year}</span>}
+                        {edu.honors && <span className="ml-1 text-emerald-700 font-bold">• {edu.honors}</span>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </section>
           </div>
 

@@ -474,6 +474,17 @@ def _detect_employment_type(raw_title: str, company: str = "", date_line: str = 
     return "Full-time"
 
 
+_RESUME_SECTION_HEADERS = {
+    "professional experience", "work experience", "experience", "employment history",
+    "work history", "career history", "relevant experience", "on-the-job training",
+    "education", "educational background", "academic background", "qualifications",
+    "skills", "technical skills", "core competencies", "certifications", "licenses",
+    "licenses and eligibility", "trainings", "seminars", "projects", "references",
+    "character references", "personal information", "contact information",
+    "summary", "professional summary", "career objective", "objective"
+}
+
+
 def _normalize_job_title(raw_title: str) -> str:
     """
     Normalizes raw job title to clean, standardized title string:
@@ -482,9 +493,15 @@ def _normalize_job_title(raw_title: str) -> str:
     - Normalizes casing to Title Case.
     - Standardizes known abbreviations where appropriate (e.g., CSR -> Customer Service Representative).
     """
+    if not raw_title:
+        return ""
+
     clean = re.sub(r'\s*\([^)]*\)', '', raw_title).strip()
     clean = re.sub(r'\s*\|\s*.*$', '', clean).strip()
-    clean = re.sub(r'^[•\-\*▪►✓\s]+|[•\-\*▪►✓\s]+$', '', clean).strip()
+    clean = re.sub(r'^[•\-\*▪►✓\s:]+|[•\-\*▪►✓\s:]+$', '', clean).strip()
+
+    if clean.lower() in _RESUME_SECTION_HEADERS or any(clean.lower().startswith(h) for h in _RESUME_SECTION_HEADERS):
+        return ""
 
     acronym_map = {
         "CSR": "Customer Service Representative",
@@ -661,6 +678,10 @@ def extract_structured_experience(text: str) -> Dict[str, Any]:
     while i < len(lines):
         line = lines[i]
 
+        if _is_section_header(line) or line.strip().lower() in _RESUME_SECTION_HEADERS or any(line.strip().lower().startswith(h) for h in _RESUME_SECTION_HEADERS):
+            i += 1
+            continue
+
         # ── Case A: Inline entry format (Template 2) ──────────────────────────
         # e.g.: Cashier / Counter Crew | Chowking - SM City Taytay | March 2021 to August 2022
         if '|' in line and _DATE_RANGE_REGEX.search(line):
@@ -715,14 +736,18 @@ def extract_structured_experience(text: str) -> Dict[str, Any]:
 
             work_experiences.append({
                 "job_title": norm_title,
+                "role": norm_title,
+                "title": norm_title,
                 "raw_job_title": raw_title,
                 "company_name": company,
+                "company": company,
                 "location": location,
                 "employment_type": emp_type,
                 "start_date": start_iso,
                 "end_date": end_iso,
                 "duration_months": duration,
-                "responsibilities": responsibilities
+                "responsibilities": responsibilities,
+                "highlights": responsibilities,
             })
             continue
 
@@ -781,14 +806,18 @@ def extract_structured_experience(text: str) -> Dict[str, Any]:
 
             work_experiences.append({
                 "job_title": norm_title,
+                "role": norm_title,
+                "title": norm_title,
                 "raw_job_title": raw_title,
                 "company_name": company,
+                "company": company,
                 "location": location,
                 "employment_type": emp_type,
                 "start_date": start_iso,
                 "end_date": end_iso,
                 "duration_months": duration,
-                "responsibilities": responsibilities
+                "responsibilities": responsibilities,
+                "highlights": responsibilities,
             })
 
             i = curr_idx
@@ -905,6 +934,7 @@ def extract_years_experience(text: str) -> int:
 def extract_job_title(text: str, entries: Optional[list[dict]] = None) -> str:
     """
     Extracts the candidate's primary job title from resume.
+    Prefers recent work experience role, falling back to header role tag.
     """
     if not text:
         return ""
@@ -912,20 +942,27 @@ def extract_job_title(text: str, entries: Optional[list[dict]] = None) -> str:
     if entries is None:
         entries = extract_experience_entries(text)
 
-    # 1. Header inspection
+    # 1. Most recent work experience role (highest confidence if available)
+    if entries:
+        for ent in entries:
+            t = ent.get("job_title") or ent.get("role") or ent.get("raw_job_title")
+            if t:
+                norm = _normalize_job_title(t)
+                if norm and norm.lower() not in _RESUME_SECTION_HEADERS:
+                    return norm
+
+    # 2. Header inspection (e.g. Subtitle under candidate's name)
     lines = [line.strip() for line in text.split('\n') if line.strip()]
     for line in lines[1:6]:
+        if _is_section_header(line) or line.strip().lower() in _RESUME_SECTION_HEADERS:
+            break
         if len(line) > 60:
             continue
         if re.search(r'@|\d{3,}|http', line):
             continue
         norm = _normalize_job_title(line)
-        if norm and len(norm) > 3 and norm != line:
+        if norm and len(norm) > 3 and norm.lower() not in _RESUME_SECTION_HEADERS:
             return norm
-
-    # 2. Most recent work experience role
-    if entries and entries[0].get("job_title"):
-        return entries[0]["job_title"]
 
     return ""
 
