@@ -135,11 +135,11 @@ async def get_daily_application_counts(db: AsyncSession, start_date: datetime) -
 
     result = await db.execute(
         select(
-            cast(JobApplication.created_at, Date),
+            func.date(JobApplication.created_at),
             func.count(JobApplication.id)
         )
         .where(JobApplication.created_at >= start_date)
-        .group_by(cast(JobApplication.created_at, Date))
+        .group_by(func.date(JobApplication.created_at))
     )
     counts = result.all()
     await set_cache(cache_key, counts, ttl=300)

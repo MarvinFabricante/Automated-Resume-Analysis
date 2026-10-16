@@ -88,6 +88,13 @@ async def get_dashboard_trends(db: AsyncSession):
 
     for row in db_result:
         row_date = row[0]
+        if isinstance(row_date, str):
+            try:
+                row_date = datetime.strptime(row_date, "%Y-%m-%d").date()
+            except Exception:
+                pass
+        elif hasattr(row_date, "date"):
+            row_date = row_date.date()
         if row_date in daily_counts:
             daily_counts[row_date] = row[1]
 

@@ -229,6 +229,7 @@ async def update_user(db: AsyncSession, user: User, update_data: dict) -> User:
                 {**fields_to_update, "uid": user_id}
             )
             await db.commit()
+            db.expire_all()
 
         # Re-query persistent user in this session
         result = await db.execute(select(User).where(User.id == user_id))

@@ -155,13 +155,16 @@ async def delete(db: AsyncSession, application: JobApplication) -> None:
         payload={"id": application.id, "job_id": application.job_id},
     )
     try:
-        await db.execute(
-            text("""
-                DELETE FROM interview_panelists 
-                WHERE interview_id IN (SELECT id FROM interviews WHERE job_application_id = :app_id)
-            """),
-            {"app_id": application.id}
-        )
+        try:
+            await db.execute(
+                text("""
+                    DELETE FROM interview_panelists 
+                    WHERE interview_id IN (SELECT id FROM interviews WHERE job_application_id = :app_id)
+                """),
+                {"app_id": application.id}
+            )
+        except Exception:
+            pass
         await db.execute(
             text("""
                 DELETE FROM interview_logs 
