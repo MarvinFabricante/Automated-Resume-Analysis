@@ -149,6 +149,7 @@ const CandidateCard: React.FC<CandidateCardProps> = ({
                 alt={candidate.name}
                 className="w-full h-full object-cover"
                 onError={(e: React.SyntheticEvent<HTMLImageElement>) => {
+                  e.currentTarget.onerror = null;
                   e.currentTarget.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(candidate.name || 'Candidate')}&background=fdf2f8&color=d81159&bold=true`;
                 }}
               />

@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState } from 'react';
 import { Helmet } from 'react-helmet-async';
 import { 
   X, MapPin, Briefcase, Star, GraduationCap, Mail, Phone, 
@@ -238,7 +238,7 @@ const ViewCandidateDetailsModal: React.FC<ViewCandidateDetailsModalProps> = ({
     return { bg: 'bg-purple-50 text-purple-700 border-purple-200', label: category || 'Professional Certification' };
   };
 
-  const extractedCertifications = useMemo(() => {
+  const extractedCertifications = (() => {
     if (candidate.certifications_details?.certifications && candidate.certifications_details.certifications.length > 0) {
       return candidate.certifications_details.certifications;
     }
@@ -279,7 +279,7 @@ const ViewCandidateDetailsModal: React.FC<ViewCandidateDetailsModalProps> = ({
         status: "Verified / Active"
       };
     });
-  }, [candidate.certifications_details, candidate.certifications, candidate.candidate_certifications]);
+  })();
   const hasStoredBreakdown = Boolean(
     matchedSkills.length ||
     missingSkills.length ||

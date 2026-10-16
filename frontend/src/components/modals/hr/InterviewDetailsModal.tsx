@@ -41,6 +41,7 @@ interface FormDataState {
 }
 
 const InterviewDetailsModal: React.FC<InterviewDetailsModalProps> = ({ isOpen, onClose, interview, onStatusChanged }) => {
+  const reduxUserRole = useSelector((state: RootState) => state.auth?.role);
   const [updateInterview, { isLoading: isUpdating }] = useUpdateInterviewMutation();
   const [deleteInterview, { isLoading: isDeleting }] = useDeleteInterviewMutation();
   const [getSlots, { isLoading: isFetchingSlots }] = useGetAvailableSlotsMutation();
@@ -128,7 +129,7 @@ const InterviewDetailsModal: React.FC<InterviewDetailsModalProps> = ({ isOpen, o
 
   const rawUserId = localStorage.getItem('user_id');
   const loggedInUserId = rawUserId ? parseInt(rawUserId, 10) : null;
-  const userRole = useSelector((state: RootState) => state.auth?.role) || localStorage.getItem('role');
+  const userRole = reduxUserRole || localStorage.getItem('role');
   const isOwner = !interview.interviewer_id || interview.interviewer_id === loggedInUserId;
   const isAdmin = userRole === 'ADMIN' || userRole === 'SUPERADMIN';
   const canModify = !interview.isGoogleEvent && (isOwner || isAdmin);
