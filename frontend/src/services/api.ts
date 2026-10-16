@@ -44,10 +44,19 @@ export const WS_BASE_URL: string = getWsBaseUrl();
 
 export const getAssetUrl = (path?: string | null): string => {
   if (!path) return '';
-  if (path.startsWith('http://') || path.startsWith('https://') || path.startsWith('data:')) {
-    return path;
+  let cleanPath = path.trim();
+
+  // Strip localhost / 127.0.0.1 domain so backend assets route through local reverse-proxy relative URLs
+  cleanPath = cleanPath.replace(/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?/i, '');
+
+  if (cleanPath.startsWith('http://') || cleanPath.startsWith('https://') || cleanPath.startsWith('data:')) {
+    // If running in browser over HTTPS, automatically upgrade insecure external http:// to https://
+    if (typeof window !== 'undefined' && window.location.protocol === 'https:' && cleanPath.startsWith('http://')) {
+      return cleanPath.replace(/^http:\/\//i, 'https://');
+    }
+    return cleanPath;
   }
-  const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+  const normalizedPath = cleanPath.startsWith('/') ? cleanPath : `/${cleanPath}`;
   return normalizedPath;
 };
 
