@@ -1,0 +1,267 @@
+[
+  {
+    "resume_skills": [
+      "react",
+      "typescript",
+      "redux",
+      "html5",
+      "css3",
+      "javascript"
+    ],
+    "job_skills": [
+      "react",
+      "typescript",
+      "redux",
+      "web"
+    ],
+    "resume_title": "frontend developer",
+    "job_title": "frontend engineer",
+    "candidate_years": 4.0,
+    "required_years": 3.0,
+    "candidate_edu": "Bachelor of Science in Computer Science",
+    "required_edu": "Bachelor's Degree",
+    "recruiter_action": 1
+  },
+  {
+    "resume_skills": [
+      "vue",
+      "javascript",
+      "tailwind",
+      "html5",
+      "css3",
+      "typescript"
+    ],
+    "job_skills": [
+      "react",
+      "javascript",
+      "frontend",
+      "ui"
+    ],
+    "resume_title": "ui web developer",
+    "job_title": "frontend engineer",
+    "candidate_years": 3.5,
+    "required_years": 2.0,
+    "candidate_edu": "BS Information Technology",
+    "required_edu": "Bachelor's Degree",
+    "recruiter_action": 1
+  },
+  {
+    "resume_skills": [
+      "python",
+      "fastapi",
+      "postgresql",
+      "docker",
+      "redis",
+      "rest"
+    ],
+    "job_skills": [
+      "python",
+      "django",
+      "postgresql",
+      "api"
+    ],
+    "resume_title": "python backend engineer",
+    "job_title": "backend developer",
+    "candidate_years": 5.0,
+    "required_years": 3.0,
+    "candidate_edu": "Master of Science in Software Engineering",
+    "required_edu": "Bachelor's Degree",
+    "recruiter_action": 1
+  },
+  {
+    "resume_skills": [
+      "kiln",
+      "firing",
+      "glaze",
+      "thermal_processing",
+      "slip_casting"
+    ],
+    "job_skills": [
+      "react",
+      "typescript",
+      "frontend",
+      "redux"
+    ],
+    "resume_title": "kiln operator",
+    "job_title": "frontend engineer",
+    "candidate_years": 6.0,
+    "required_years": 3.0,
+    "candidate_edu": "High School Diploma",
+    "required_edu": "Bachelor's Degree",
+    "recruiter_action": 0
+  },
+  {
+    "resume_skills": [
+      "html5",
+      "css3"
+    ],
+    "job_skills": [
+      "react",
+      "typescript",
+      "redux",
+      "nextjs",
+      "architecture"
+    ],
+    "resume_title": "intern",
+    "job_title": "senior frontend engineer",
+    "candidate_years": 0.5,
+    "required_years": 5.0,
+    "candidate_edu": "Associate Degree",
+    "required_edu": "Bachelor's Degree",
+    "recruiter_action": 0
+  },
+  {
+    "resume_skills": [
+      "kiln",
+      "firing",
+      "glaze",
+      "press_operator",
+      "quality_inspection"
+    ],
+    "job_skills": [
+      "kiln",
+      "firing",
+      "ceramics",
+      "safety"
+    ],
+    "resume_title": "ceramics technician",
+    "job_title": "kiln operator",
+    "candidate_years": 4.0,
+    "required_years": 2.0,
+    "candidate_edu": "Vocational Diploma in Ceramic Technology",
+    "required_edu": "Vocational / High School",
+    "recruiter_action": 1
+  },
+  {
+    "resume_skills": [
+      "react",
+      "javascript",
+      "css3"
+    ],
+    "job_skills": [
+      "kiln",
+      "thermal_processing",
+      "ceramics",
+      "firing"
+    ],
+    "resume_title": "frontend developer",
+    "job_title": "kiln operator",
+    "candidate_years": 3.0,
+    "required_years": 2.0,
+    "candidate_edu": "BS Computer Science",
+    "required_edu": "Vocational / High School",
+    "recruiter_action": 0
+  },
+  {
+    "resume_skills": [
+      "docker",
+      "kubernetes",
+      "aws",
+      "ci_cd",
+      "linux",
+      "terraform"
+    ],
+    "job_skills": [
+      "docker",
+      "k8s",
+      "cloud",
+      "aws",
+      "devops"
+    ],
+    "resume_title": "devops engineer",
+    "job_title": "cloud infrastructure engineer",
+    "candidate_years": 4.5,
+    "required_years": 3.0,
+    "candidate_edu": "BS Computer Engineering",
+    "required_edu": "Bachelor's Degree",
+    "recruiter_action": 1
+  },
+  {
+    "resume_skills": [
+      "python",
+      "pandas"
+    ],
+    "job_skills": [
+      "python",
+      "machine_learning",
+      "nlp",
+      "fastapi",
+      "docker",
+      "leadership"
+    ],
+    "resume_title": "data analyst",
+    "job_title": "lead ml engineer",
+    "candidate_years": 1.0,
+    "required_years": 6.0,
+    "candidate_edu": "High School",
+    "required_edu": "Master of Science",
+    "recruiter_action": 0
+  },
+  {
+    "resume_skills": [
+      "vue",
+      "javascript",
+      "python",
+      "fastapi",
+      "postgresql",
+      "html5"
+    ],
+    "job_skills": [
+      "react",
+      "python",
+      "api",
+      "sql",
+      "fullstack"
+    ],
+    "resume_title": "fullstack web developer",
+    "job_title": "fullstack engineer",
+    "candidate_years": 3.0,
+    "required_years": 2.0,
+    "candidate_edu": "BS Information Systems",
+    "required_edu": "Bachelor's Degree",
+    "recruiter_action": 1
+  },
+  {
+    "resume_skills": [
+      "recruitment",
+      "talent_acquisition",
+      "sourcing",
+      "interviewing",
+      "onboarding"
+    ],
+    "job_skills": [
+      "recruitment",
+      "sourcing",
+      "talent_acquisition",
+      "hr"
+    ],
+    "resume_title": "talent acquisition specialist",
+    "job_title": "hr recruiter",
+    "candidate_years": 3.0,
+    "required_years": 2.0,
+    "candidate_edu": "BS Psychology",
+    "required_edu": "Bachelor's Degree",
+    "recruiter_action": 1
+  },
+  {
+    "resume_skills": [
+      "recruitment",
+      "payroll",
+      "onboarding",
+      "employee_relations"
+    ],
+    "job_skills": [
+      "python",
+      "fastapi",
+      "postgresql",
+      "docker"
+    ],
+    "resume_title": "hr officer",
+    "job_title": "backend engineer",
+    "candidate_years": 5.0,
+    "required_years": 2.0,
+    "candidate_edu": "BS Psychology",
+    "required_edu": "Bachelor's Degree",
+    "recruiter_action": 0
+  }
+]

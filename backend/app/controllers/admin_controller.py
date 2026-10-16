@@ -1,8 +1,10 @@
+import logging
 import os
 import shutil
-from fastapi import APIRouter, Depends, HTTPException, status, File, UploadFile
+from typing import List, Optional
+from fastapi import APIRouter, Depends, HTTPException, status, File, UploadFile, Header
 from sqlalchemy.ext.asyncio import AsyncSession
-from typing import List
+from jose import jwt
 
 from app.utils.database import get_db
 from app.schemas.admin_schema import AdminCreate, AdminResponse, AdminUpdate
@@ -17,11 +19,10 @@ from app.services.job_description_service import (
     set_job_status,
     update_job,
 )
-from typing import List, Optional
-from fastapi import Header
-from jose import jwt
 from app.utils.auth import get_current_user
 from app.utils.cache import cache_response, clear_cache_pattern
+
+logger = logging.getLogger(__name__)
 
 def get_optional_current_user(authorization: Optional[str] = Header(None)) -> Optional[dict]:
     if not authorization:
@@ -473,3 +474,58 @@ async def update_retention_policy(
         details=f"Admin updated data retention policy to {policy.get('retention_days', 90)} days"
     )
     return {"message": "Retention policy updated successfully", "policy": policy}
+
+# ===================== ML Engine & Continuous Retraining Endpoints
+
+@router.get("/ml/status")
+async def get_ml_status(
+    current_user: Optional[dict] = Depends(get_optional_current_user)
+):
+    """
+    Get current self-improving ML Engine status, active model metadata,
+    validation metrics, feature importances, and feedback pool statistics.
+    """
+    try:
+        from app.ml_engine import get_production_model, get_feedback_db
+        model = get_production_model()
+        fb_db = get_feedback_db()
+
+        return {
+            "status": "online",
+            "model_version": model.metadata.get("version", "1.0.0"),
+            "trained_at": model.metadata.get("trained_at"),
+            "metrics": model.metadata.get("metrics", {}),
+            "feature_importances": model.classifier.get_feature_importances(),
+            "feedback_stats": fb_db.get_evaluation_stats(),
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch ML status: {str(e)}")
+
+
+@router.post("/ml/retrain")
+async def trigger_ml_retrain(
+    db: AsyncSession = Depends(get_db),
+    current_user: Optional[dict] = Depends(get_optional_current_user)
+):
+    """
+    Trigger the Continuous Retraining Pipeline:
+    Updates FastText embeddings, re-projects features, weights recruiter feedback (1.5x),
+    evaluates validation metrics, and atomically hot-swaps production_model.pkl.
+    """
+    try:
+        from app.ml_engine import retrain_production_model
+        result = retrain_production_model(force=True)
+
+        user_id = current_user.get("id") if current_user else None
+        await audit_service.record_activity(
+            db=db,
+            user_id=user_id,
+            action="ML_RETRAIN",
+            target="ML Production Engine",
+            details=f"Admin triggered continuous retraining: Version {result.get('version')}"
+        )
+
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Retraining failed: {str(e)}")
+

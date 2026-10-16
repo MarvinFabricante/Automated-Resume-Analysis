@@ -103,6 +103,27 @@ async def update_application_status(
     await clear_cache_pattern("all_apps*")
     await clear_cache_pattern("job_apps*")
     await clear_cache_pattern("cand_apps*")
+
+    # Record Human-in-the-Loop recruiter feedback in ML feedback database
+    try:
+        from app.ml_engine import get_feedback_db
+        fb_db = get_feedback_db()
+        st_upper = status_update.status.upper()
+        action = None
+        if st_upper in ("ACCEPTED", "SHORTLISTED", "HIRED", "INTERVIEWED"):
+            action = 1
+        elif st_upper in ("REJECTED", "PASSED_OVER"):
+            action = 0
+
+        if action is not None:
+            fb_db.record_recruiter_feedback(
+                resume_id=db_application.candidate_email or str(db_application.id) or db_application.candidate_name,
+                job_id=str(db_application.job_id),
+                recruiter_action=action,
+            )
+    except Exception as ml_fb_err:
+        import logging
+        logging.getLogger(__name__).debug(f"Notice on recording HITL feedback: {ml_fb_err}")
     
     return db_application
 
