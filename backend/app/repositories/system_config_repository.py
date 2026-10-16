@@ -160,6 +160,7 @@ async def update_user_role(db: AsyncSession, user_id: int, new_role: str) -> Opt
             {"new_role": new_role, "uid": user_id}
         )
         await db.commit()
+        db.expire_all()
 
         # Re-fetch updated user
         user_res = await db.execute(select(User).where(User.id == user_id))
