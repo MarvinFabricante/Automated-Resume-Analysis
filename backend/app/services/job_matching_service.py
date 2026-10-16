@@ -172,14 +172,27 @@ def _identify_transferable_skills(experience_text: str) -> list[str]:
 
 def _compute_semantic_similarity(text_a: str, text_b: str) -> float:
     """
-    Use spaCy document vectors to compute a semantic similarity score between
-    two text fragments. Returns 0.0 if NLP is unavailable, the model has no
-    real word vectors (e.g. en_core_web_sm), or vectors are empty.
-
-    NOTE: en_core_web_sm does NOT ship with word vectors; its .similarity()
-    uses context-sensitive tensors that give misleadingly high scores for
-    unrelated text.  We detect this and return 0.0 to avoid score inflation.
+    Compute semantic similarity between two text fragments using the FastText
+    embedding engine. Returns bounded score [0.0, 1.0].
+    Falls back gracefully if embeddings are uninitialized.
     """
+    try:
+        from app.ml_engine import get_production_model
+        model = get_production_model()
+        if model and model.embedding_engine:
+            tokens_a = model.embedding_engine.extract_clean_skills(text_a)
+            tokens_b = model.embedding_engine.extract_clean_skills(text_b)
+            if not tokens_a:
+                tokens_a = [t for t in text_a.lower().split() if t]
+            if not tokens_b:
+                tokens_b = [t for t in text_b.lower().split() if t]
+            vec_a = model.embedding_engine.vectorize_tokens(tokens_a)
+            vec_b = model.embedding_engine.vectorize_tokens(tokens_b)
+            sim = model.embedding_engine.compute_cosine_similarity(vec_a, vec_b)
+            return float(sim)
+    except Exception:
+        pass
+
     try:
         from app.extractors.nlp.nlp_engine import get_doc, get_nlp
         import warnings
@@ -201,6 +214,7 @@ def _compute_semantic_similarity(text_a: str, text_b: str) -> float:
             return max(0.0, min(1.0, sim))
     except Exception:
         return 0.0
+
 
 
 def _count_job_keyword_hits(entry_text: str, job_keywords: set[str]) -> tuple[int, list[str]]:
@@ -1007,6 +1021,22 @@ def calculate_match_score(resume_data: dict, job, use_ai: bool = False, matching
     min_score = float(thresholds.get("minimum_match_score", 30.0))
     trans_cap = int(thresholds.get("transferable_skills_cap", 2))
 
+    # If job is passed as a dictionary, adapt it to an object with attribute access
+    if isinstance(job, dict):
+        from types import SimpleNamespace
+        job = SimpleNamespace(
+            job_id=job.get("job_id", ""),
+            job_title=job.get("job_title", "Unknown Job"),
+            department=job.get("department", ""),
+            location=job.get("location", ""),
+            job_type=job.get("job_type", None),
+            description=job.get("description", ""),
+            skills_requirements=job.get("skills_requirements", ""),
+            experience_requirements=job.get("experience_requirements", None),
+            education_requirements=job.get("education_requirements", None),
+            certifications_requirements=job.get("certifications_requirements", None),
+        )
+
     # ── Rule-based scoring ────────────────────────────────────────────────────
     resume_skills = resume_data.get("skills", "")
     job_skills = job.skills_requirements or ""
@@ -1136,6 +1166,55 @@ def calculate_match_score(resume_data: dict, job, use_ai: bool = False, matching
                 + experience_result["reason"]
             )
 
+    # ── Self-Improving ML Engine Evaluation & Feedback Logging ──
+    ml_eval = None
+    try:
+        from app.ml_engine import get_production_model, get_feedback_db
+        prod_model = get_production_model()
+        cand_skills = resume_data.get("skills", "")
+        job_skills = (
+            job.skills_requirements if hasattr(job, "skills_requirements")
+            else (job.get("skills_requirements", "") if isinstance(job, dict) else (getattr(job, "description", "") or ""))
+        )
+        cand_title = resume_data.get("job_title", "") or resume_data.get("experience", "") or "applicant"
+        target_title = job.get("job_title", "") if isinstance(job, dict) else getattr(job, "job_title", "")
+        cand_years = resume_data.get("years_experience", 0) or 0
+        req_years = experience_result.get("required_years", 0) or 0
+        cand_edu = resume_data.get("education", "")
+        req_edu = getattr(job, "education_requirements", "") if not isinstance(job, dict) else job.get("education_requirements", "")
+
+        ml_eval = prod_model.predict(
+            candidate_skills=cand_skills,
+            job_skills=job_skills,
+            candidate_title=cand_title,
+            job_title=target_title,
+            candidate_years=cand_years,
+            required_years=req_years,
+            candidate_edu=cand_edu,
+            required_edu=req_edu,
+        )
+
+        # Log live candidate prediction to Phase 3 feedback DB for HITL tracking
+        resume_ident = resume_data.get("id") or resume_data.get("email") or resume_data.get("fullname", "anonymous")
+        job_ident = job.get("job_id") if isinstance(job, dict) else getattr(job, "job_id", "unknown")
+        fb_db = get_feedback_db()
+        fb_db.log_live_prediction(
+            resume_id=str(resume_ident),
+            job_id=str(job_ident),
+            resume_skills=cand_skills,
+            job_skills=job_skills,
+            resume_titles=cand_title,
+            job_titles=target_title,
+            candidate_years=cand_years,
+            required_years=req_years,
+            candidate_edu=cand_edu,
+            required_edu=req_edu,
+            feature_vector=ml_eval["feature_vector"],
+            predicted_fit_score=ml_eval["fit_probability"],
+        )
+    except Exception as ml_err:
+        logger.debug(f"Notice during ML scoring or live prediction logging: {ml_err}")
+
     return {
         "job_id": job.get("job_id") if isinstance(job, dict) else getattr(job, "job_id", None),
         "job_title": job.get("job_title", "Unknown Job") if isinstance(job, dict) else getattr(job, "job_title", "Unknown Job"),
@@ -1145,6 +1224,10 @@ def calculate_match_score(resume_data: dict, job, use_ai: bool = False, matching
         # ── Scores ──
         "match_percentage": final_match_pct,
         "match_level": match_level,
+        "ml_fit_percentage": ml_eval["fit_percentage"] if ml_eval else None,
+        "ml_fit_probability": ml_eval["fit_probability"] if ml_eval else None,
+        "ml_features": ml_eval["features"] if ml_eval else None,
+        "ml_model_version": ml_eval["model_version"] if ml_eval else None,
         "skills_score": round(blended_skills_score, 1),
         "skills_explanation": skills_explanation,
         "experience_score": round(blended_exp_score, 1),

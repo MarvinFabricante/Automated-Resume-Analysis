@@ -5,9 +5,11 @@ import {
   Settings, Menu, X, FileText, Search, User, Building2, Info, Briefcase, LogIn, UserPlus,
   Bell, Clock, CheckCircle2, AlertCircle, MessageSquare, ChevronRight,
   TrendingUp, Zap, Radio, Edit3, Calendar, Home, Scale, Lock,
-  PanelLeft, PanelLeftClose
+  PanelLeft, PanelLeftClose, Maximize2, ChevronUp
 } from 'lucide-react';
 import NotificationDropdown from './NotificationDropdown';
+import NotificationDetailModal from '../modals/shared/NotificationDetailModal';
+import { NotificationItem } from '../../types';
 import notificationService from '../../services/notificationService';
 import profileService from '../../services/profileService';
 import { useSelector, useDispatch } from 'react-redux';
@@ -29,6 +31,18 @@ const Header: React.FC = () => {
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isMobileNotifsOpen, setIsMobileNotifsOpen] = useState(false);
+  const [selectedMobileNotif, setSelectedMobileNotif] = useState<NotificationItem | null>(null);
+  const [mobileExpandedIds, setMobileExpandedIds] = useState<Record<string | number, boolean>>({});
+
+  const toggleMobileExpand = (id: string | number) => {
+    setMobileExpandedIds(prev => ({ ...prev, [id]: !prev[id] }));
+  };
+
+  const isLongMessage = (desc?: string) => {
+    if (!desc) return false;
+    return desc.length > 70 || desc.includes('\n');
+  };
+
   const [pulse, setPulse] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const notificationsRef = useRef<HTMLDivElement>(null);
@@ -754,44 +768,107 @@ const Header: React.FC = () => {
                         <p className="text-[11px] text-gray-400">No new notifications</p>
                       </div>
                     ) : (
-                      notifications.slice(0, 8).map((n) => (
-                        <div
-                          key={n.id}
-                          className={`p-3 rounded-xl border transition-all ${
-                            !n.read
-                              ? 'bg-rose-50/40 border-rose-100/90 shadow-2xs'
-                              : 'bg-gray-50/70 border-gray-100'
-                          }`}
-                        >
-                          <div className="flex items-start justify-between gap-1.5 mb-1">
-                            <p className={`text-xs truncate ${!n.read ? 'font-black text-gray-900' : 'font-bold text-gray-700'}`}>
-                              {n.title}
+                      notifications.slice(0, 8).map((n) => {
+                        const isLong = isLongMessage(n.desc);
+                        const isExpanded = !!mobileExpandedIds[n.id];
+
+                        return (
+                          <div
+                            key={n.id}
+                            onClick={() => setSelectedMobileNotif(n)}
+                            role="button"
+                            tabIndex={0}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' || e.key === ' ') {
+                                e.preventDefault();
+                                setSelectedMobileNotif(n);
+                              }
+                            }}
+                            className={`p-3 rounded-xl border transition-all cursor-pointer focus:outline-hidden ${
+                              !n.read
+                                ? 'bg-rose-50/40 border-rose-100/90 shadow-2xs hover:bg-rose-50/70'
+                                : 'bg-gray-50/70 border-gray-100 hover:bg-gray-100/80'
+                            } ${isExpanded ? 'ring-1 ring-[#D60041]/20 bg-rose-50/20' : ''}`}
+                          >
+                            <div className="flex items-start justify-between gap-1.5 mb-1">
+                              <p className={`text-xs ${isExpanded ? 'break-words' : 'truncate'} ${!n.read ? 'font-black text-gray-900' : 'font-bold text-gray-700'}`}>
+                                {n.title}
+                              </p>
+                              <div className="flex items-center gap-1 shrink-0 ml-1">
+                                {n.tag && (
+                                  <span className={`text-[8px] font-black px-1.5 py-0.5 rounded uppercase tracking-wider ${n.tagColor}`}>
+                                    {n.tag}
+                                  </span>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setSelectedMobileNotif(n);
+                                  }}
+                                  title="Enlarge notification details"
+                                  aria-label="Enlarge notification details"
+                                  className="p-1 rounded text-gray-400 hover:text-[#D60041] transition-colors cursor-pointer"
+                                >
+                                  <Maximize2 size={11} />
+                                </button>
+                                {!n.read && (
+                                  <span className="w-1.5 h-1.5 rounded-full bg-[#D60041] shrink-0" />
+                                )}
+                              </div>
+                            </div>
+                            <p className={`text-[11px] text-gray-600 leading-relaxed mb-1.5 ${
+                              isExpanded ? 'whitespace-pre-wrap break-words text-gray-900' : 'line-clamp-2'
+                            }`}>
+                              {n.desc}
                             </p>
-                            <div className="flex items-center gap-1.5 shrink-0">
-                              {n.tag && (
-                                <span className={`text-[8px] font-black px-1.5 py-0.5 rounded uppercase tracking-wider ${n.tagColor}`}>
-                                  {n.tag}
-                                </span>
-                              )}
-                              {!n.read && (
-                                <span className="w-1.5 h-1.5 rounded-full bg-[#D60041] shrink-0" />
-                              )}
+                            {isLong && (
+                              <div className="flex items-center justify-between gap-2 mb-2 pt-1 border-t border-gray-100/80">
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    toggleMobileExpand(n.id);
+                                  }}
+                                  className="inline-flex items-center gap-1 text-[10px] font-bold text-[#D60041] hover:underline cursor-pointer"
+                                >
+                                  {isExpanded ? (
+                                    <>
+                                      <ChevronUp size={11} />
+                                      <span>Show less</span>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <ChevronDown size={11} />
+                                      <span>Show more</span>
+                                    </>
+                                  )}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setSelectedMobileNotif(n);
+                                  }}
+                                  className="inline-flex items-center gap-1 text-[9px] font-bold text-gray-600 hover:text-[#D60041] bg-gray-100 hover:bg-rose-50 border border-gray-200/60 px-1.5 py-0.5 rounded cursor-pointer"
+                                >
+                                  <Maximize2 size={9} />
+                                  <span>Enlarge</span>
+                                </button>
+                              </div>
+                            )}
+                            <div className="flex items-center justify-between gap-2 pt-1 border-t border-gray-100/80 text-[10px]">
+                              <div className="flex items-center gap-1 text-gray-600 font-semibold truncate" title={`Created: ${n.fullDateTime || n.displayDateTime}`}>
+                                <Clock size={10} className="text-[#D60041] shrink-0" />
+                                <span className="truncate">{n.displayDateTime || n.time}</span>
+                              </div>
+                              <span className="text-[9px] font-bold text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded-full shrink-0">
+                                {n.relativeTime || n.time}
+                              </span>
                             </div>
                           </div>
-                          <p className="text-[11px] text-gray-600 line-clamp-2 leading-relaxed mb-2">
-                            {n.desc}
-                          </p>
-                          <div className="flex items-center justify-between gap-2 pt-1 border-t border-gray-100/80 text-[10px]">
-                            <div className="flex items-center gap-1 text-gray-600 font-semibold truncate" title={`Created: ${n.fullDateTime || n.displayDateTime}`}>
-                              <Clock size={10} className="text-[#D60041] shrink-0" />
-                              <span className="truncate">{n.displayDateTime || n.time}</span>
-                            </div>
-                            <span className="text-[9px] font-bold text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded-full shrink-0">
-                              {n.relativeTime || n.time}
-                            </span>
-                          </div>
-                        </div>
-                      ))
+                        );
+                      })
                     )}
                   </div>
                 )}
@@ -933,6 +1010,14 @@ const Header: React.FC = () => {
         aria-hidden="true"
       />
     )}
+
+    {/* Mobile Enlarged Notification Modal */}
+    <NotificationDetailModal
+      isOpen={!!selectedMobileNotif}
+      onClose={() => setSelectedMobileNotif(null)}
+      notification={selectedMobileNotif}
+      userRole={userRole}
+    />
     </>
   );
 };
