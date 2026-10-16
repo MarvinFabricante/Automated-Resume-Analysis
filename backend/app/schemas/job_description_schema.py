@@ -10,7 +10,7 @@ class JobBase(BaseModel):
     location: str
     salary_range: Optional[str] = None
     description: str
-    skills_requirements: str
+    skills_requirements: Optional[str] = None
     education_requirements: Optional[str] = None
     certifications_requirements: Optional[str] = None
     experience_requirements: Optional[str] = None

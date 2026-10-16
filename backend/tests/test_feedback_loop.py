@@ -168,6 +168,40 @@ def test_phase3_feedback_database():
     assert verified[0]["job_skills"] == ["react", "redux", "ui"]
     assert verified[0]["recruiter_action"] == 1
 
+    # Verify cross-referencing resolution when matching with different job/candidate identifier formats
+    eval_id_2 = db.log_live_prediction(
+        resume_id="candidate_profile_123",
+        job_id="JOB-2026-001",
+        resume_skills=["python", "fastapi"],
+        job_skills=["python", "docker"],
+        resume_titles=["backend engineer"],
+        job_titles=["backend developer"],
+        candidate_years=4.0,
+        required_years=3.0,
+        candidate_edu="BS Information Technology",
+        required_edu="Bachelor",
+        feature_vector=[0.88, 0.85, 1.0, 1],
+        predicted_fit_score=0.87,
+        candidate_email="alice@company.com",
+        candidate_name="Alice Smith",
+        job_code="JOB-2026-001",
+    )
+    assert eval_id_2 == 2
+
+    # Recruiter updates candidate status using integer SQL DB foreign key (e.g. 5) instead of string code
+    cross_success = db.record_recruiter_feedback(
+        job_id="5",
+        job_identifiers=["5", "JOB-2026-001"],
+        candidate_identifiers=["app_id_999", "alice@company.com", "Alice Smith"],
+        recruiter_action=1,
+    )
+    assert cross_success is True, "Must resolve evaluation via cross-referenced job_code and candidate email"
+
+    verified_all = db.get_verified_feedback(unused_only=False)
+    assert len(verified_all) == 2
+    alice_record = next(r for r in verified_all if r["evaluation_id"] == eval_id_2)
+    assert alice_record["recruiter_action"] == 1
+
 
 def test_phase4_continuous_retraining_and_hot_swap():
     """
@@ -322,3 +356,24 @@ def test_application_wiring_calculate_match_score():
         assert row is not None, "Evaluation must be logged in SQLite database"
         assert row["job_id"] == "JOB-MOCK-TEST-101"
         assert row["predicted_fit_score"] == result["ml_fit_probability"]
+
+
+def test_auto_retraining_task_execution():
+    """Verify Celery task registration, threshold evaluation, and background retrain execution."""
+    from app.tasks import retrain_ml_model_task
+    from app.celery_app import celery_app
+
+    # 1. Verify task is registered in Celery app
+    assert "retrain_ml_model_task" in celery_app.tasks
+
+    # 2. Verify beat schedule is configured
+    assert "hourly_ml_continuous_retraining_check" in celery_app.conf.beat_schedule
+    beat_job = celery_app.conf.beat_schedule["hourly_ml_continuous_retraining_check"]
+    assert beat_job["task"] == "retrain_ml_model_task"
+    assert beat_job["schedule"] == 3600.0
+
+    # 3. Execute task with force=True in-process
+    task_res = retrain_ml_model_task(min_new_samples=1, force=True)
+    assert task_res["status"] == "success"
+    assert "version" in task_res
+    assert "metrics" in task_res

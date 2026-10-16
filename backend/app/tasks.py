@@ -206,3 +206,49 @@ def process_outgoing_email_queue_task():
     return {"processed": True, "tx_id": tx_id, "success": success}
 
 
+async def _notify_retraining_success(result: dict):
+    """Deliver real-time websocket and database notification to Admin upon successful model retraining."""
+    try:
+        async with async_session() as db:
+            from app.services.notification_service import create_notification
+            version = result.get("version", "latest")
+            count = result.get("assimilated_records", 0)
+            metrics = result.get("metrics", {})
+            f1 = metrics.get("f1", 0.0)
+            roc_auc = metrics.get("roc_auc", 0.0)
+            await create_notification(
+                db=db,
+                title="ML Model Retrained",
+                message=f"Continuous Retraining finished: Upgraded to {version} (F1: {f1:.2f}, ROC-AUC: {roc_auc:.2f}) assimilating {count} recruiter decisions.",
+                type="system",
+                target_role="ADMIN",
+                sender_role="SYSTEM"
+            )
+    except Exception as notif_err:
+        logger.debug(f"Notice on retraining notification dispatch: {notif_err}")
+
+
+@celery_app.task(name="retrain_ml_model_task")
+def retrain_ml_model_task(min_new_samples: int = 5, force: bool = False) -> dict:
+    """
+    Background Celery worker task to run the continuous retraining pipeline:
+    Checks if enough unassimilated HR recruiter decisions exist,
+    updates FastText embeddings, retrains classifier, and hot-swaps model.
+    """
+    logger.info("[Celery] Checking/executing ML continuous retraining task...")
+    from app.ml_engine import retrain_production_model
+    try:
+        result = retrain_production_model(min_new_samples=min_new_samples, force=force)
+        logger.info(f"[Celery] ML Retraining task finished: status={result.get('status')} version={result.get('version')}")
+        if result.get("status") == "success":
+            try:
+                import asyncio
+                asyncio.run(_notify_retraining_success(result))
+            except Exception as notify_err:
+                logger.debug(f"Notice on async notification in worker: {notify_err}")
+        return result
+    except Exception as e:
+        logger.error(f"[Celery] ML Retraining task failed: {e}")
+        return {"status": "error", "error": str(e)}
+
+

@@ -69,6 +69,7 @@ services:
       - uploads_data:/app/uploads
       - ./backend/app:/app/app
       - ./backend/main.py:/app/main.py
+      - ./backend/data:/app/data
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:8000/ || exit 1"]
       interval: 10s
@@ -106,6 +107,7 @@ services:
       - uploads_data:/app/uploads
       - ./backend/app:/app/app
       - ./backend/main.py:/app/main.py
+      - ./backend/data:/app/data
     networks:
       - app-network
 
