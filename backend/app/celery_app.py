@@ -15,5 +15,12 @@ celery_app.conf.update(
     result_serializer="json",
     timezone="UTC",
     enable_utc=True,
-    imports=["app.tasks"]
+    imports=["app.tasks"],
+    beat_schedule={
+        "hourly_ml_continuous_retraining_check": {
+            "task": "retrain_ml_model_task",
+            "schedule": 3600.0,
+            "args": (5, False),
+        },
+    },
 )

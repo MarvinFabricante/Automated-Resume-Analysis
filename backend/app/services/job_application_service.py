@@ -34,6 +34,8 @@ def _resume_data_from_application(app: JobApplication) -> dict:
             years_experience = 0
 
     return {
+        "id": app.id,
+        "application_id": app.id,
         "fullname": app.candidate_name,
         "email": app.candidate_email,
         "phone": app.phone or "",

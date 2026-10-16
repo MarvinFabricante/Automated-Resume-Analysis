@@ -106,7 +106,7 @@ async def update_application_status(
 
     # Record Human-in-the-Loop recruiter feedback in ML feedback database
     try:
-        from app.ml_engine import get_feedback_db
+        from app.ml_engine import get_feedback_db, get_production_model
         fb_db = get_feedback_db()
         st_upper = status_update.status.upper()
         action = None
@@ -116,11 +116,115 @@ async def update_application_status(
             action = 0
 
         if action is not None:
-            fb_db.record_recruiter_feedback(
-                resume_id=db_application.candidate_email or str(db_application.id) or db_application.candidate_name,
-                job_id=str(db_application.job_id),
+            # 1. Resolve job code and all possible identifiers for the job
+            job_code = None
+            if db_application.job and getattr(db_application.job, "job_id", None):
+                job_code = str(db_application.job.job_id)
+            else:
+                from app.repositories.job_description_repository import JobDescriptionRepository
+                job_desc = await JobDescriptionRepository.get_by_id(db, db_application.job_id)
+                if job_desc and getattr(job_desc, "job_id", None):
+                    job_code = str(job_desc.job_id)
+
+            job_identifiers = [str(db_application.job_id)]
+            if job_code and job_code not in job_identifiers:
+                job_identifiers.append(job_code)
+
+            # 2. Resolve all candidate identifiers (email, id, name)
+            candidate_identifiers = [str(db_application.id)]
+            if db_application.candidate_email:
+                candidate_identifiers.append(db_application.candidate_email)
+            if db_application.candidate_name:
+                candidate_identifiers.append(db_application.candidate_name)
+
+            updated = fb_db.record_recruiter_feedback(
+                candidate_email=db_application.candidate_email,
+                candidate_name=db_application.candidate_name,
+                resume_id=str(db_application.id),
+                job_id=job_code or str(db_application.job_id),
+                job_code=job_code,
+                job_identifiers=job_identifiers,
+                candidate_identifiers=candidate_identifiers,
                 recruiter_action=action,
             )
+
+            # 3. Fallback: If no live prediction was previously logged for this candidate,
+            # synthesize the evaluation record from application data so the decision is not lost
+            if not updated:
+                job_desc = db_application.job
+                if not job_desc:
+                    from app.repositories.job_description_repository import JobDescriptionRepository
+                    job_desc = await JobDescriptionRepository.get_by_id(db, db_application.job_id)
+
+                prod_model = get_production_model()
+                cand_skills = db_application.skills or []
+                job_skills = job_desc.skills_requirements if job_desc else ""
+                cand_title = db_application.job_title or "applicant"
+                job_title_req = job_desc.job_title if job_desc else ""
+                cand_years = (db_application.total_experience_months or 0) / 12.0
+                cand_edu = db_application.degree or db_application.highest_educational_attainment or ""
+                req_edu = getattr(job_desc, "education_requirements", "") if job_desc else ""
+
+                eval_result = prod_model.predict(
+                    candidate_skills=cand_skills,
+                    job_skills=job_skills,
+                    candidate_title=cand_title,
+                    job_title=job_title_req,
+                    candidate_years=cand_years,
+                    required_years=0.0,
+                    candidate_edu=cand_edu,
+                    required_edu=req_edu,
+                )
+
+                new_eval_id = fb_db.log_live_prediction(
+                    resume_id=str(db_application.id),
+                    job_id=str(job_code or db_application.job_id),
+                    resume_skills=cand_skills,
+                    job_skills=job_skills,
+                    resume_titles=cand_title,
+                    job_titles=job_title_req,
+                    candidate_years=cand_years,
+                    required_years=0.0,
+                    candidate_edu=cand_edu,
+                    required_edu=req_edu,
+                    feature_vector=eval_result["feature_vector"],
+                    predicted_fit_score=eval_result["fit_probability"],
+                    candidate_email=db_application.candidate_email,
+                    candidate_name=db_application.candidate_name,
+                    job_code=job_code,
+                )
+                fb_db.record_recruiter_feedback(evaluation_id=new_eval_id, recruiter_action=action)
+
+            # 4. Check if threshold for automated continuous retraining is reached
+            try:
+                import os
+                stats = fb_db.get_evaluation_stats()
+                unassimilated = stats.get("unassimilated_verified", 0)
+                auto_threshold = int(os.getenv("ML_AUTO_RETRAIN_THRESHOLD", "5"))
+
+                if unassimilated >= auto_threshold:
+                    from app.tasks import retrain_ml_model_task
+                    try:
+                        retrain_ml_model_task.delay(min_new_samples=auto_threshold, force=False)
+                        import logging
+                        logging.getLogger(__name__).info(
+                            f"[HITL] Auto-enqueued Celery ML retraining task: {unassimilated} verified samples >= threshold {auto_threshold}"
+                        )
+                    except Exception as celery_err:
+                        import threading
+                        from app.ml_engine import retrain_production_model
+                        threading.Thread(
+                            target=retrain_production_model,
+                            kwargs={"min_new_samples": auto_threshold, "force": False},
+                            daemon=True
+                        ).start()
+                        import logging
+                        logging.getLogger(__name__).info(
+                            f"[HITL] Celery worker unavailable ({celery_err}). Dispatched background thread for continuous retraining."
+                        )
+            except Exception as auto_train_err:
+                import logging
+                logging.getLogger(__name__).debug(f"Notice on auto-retraining check: {auto_train_err}")
     except Exception as ml_fb_err:
         import logging
         logging.getLogger(__name__).debug(f"Notice on recording HITL feedback: {ml_fb_err}")

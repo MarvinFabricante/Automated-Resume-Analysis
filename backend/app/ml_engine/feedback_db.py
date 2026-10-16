@@ -52,6 +52,9 @@ class FeedbackDatabase:
                     evaluation_id INTEGER PRIMARY KEY AUTOINCREMENT,
                     resume_id TEXT,
                     job_id TEXT,
+                    candidate_email TEXT,
+                    candidate_name TEXT,
+                    job_code TEXT,
                     resume_skills_json TEXT,
                     job_skills_json TEXT,
                     resume_titles_json TEXT,
@@ -71,7 +74,21 @@ class FeedbackDatabase:
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );
             """)
+            # Ensure new columns exist in pre-existing tables
+            for col_name, col_type in [
+                ("candidate_email", "TEXT"),
+                ("candidate_name", "TEXT"),
+                ("job_code", "TEXT"),
+            ]:
+                try:
+                    conn.execute(f"ALTER TABLE application_evaluations ADD COLUMN {col_name} {col_type};")
+                except sqlite3.OperationalError:
+                    pass
+
             conn.execute("CREATE INDEX IF NOT EXISTS idx_eval_resume_job ON application_evaluations(resume_id, job_id);")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_eval_candidate_email ON application_evaluations(candidate_email);")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_eval_candidate_name ON application_evaluations(candidate_name);")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_eval_job_code ON application_evaluations(job_code);")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_eval_recruiter_action ON application_evaluations(recruiter_action);")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_eval_used_training ON application_evaluations(used_in_training);")
             conn.commit()
@@ -90,9 +107,13 @@ class FeedbackDatabase:
         required_edu: Optional[str],
         feature_vector: Union[Sequence[float], Any],
         predicted_fit_score: float,
+        candidate_email: Optional[str] = None,
+        candidate_name: Optional[str] = None,
+        job_code: Optional[str] = None,
     ) -> int:
         """
-        Log a live candidate evaluation with both raw extracted tokens and generated feature vector.
+        Log a live candidate evaluation with both raw extracted tokens, generated feature vector,
+        and candidate/job metadata for cross-referencing.
         Returns the created evaluation_id.
         """
         def to_json(val):
@@ -127,6 +148,7 @@ class FeedbackDatabase:
                 """
                 INSERT INTO application_evaluations (
                     resume_id, job_id,
+                    candidate_email, candidate_name, job_code,
                     resume_skills_json, job_skills_json,
                     resume_titles_json, job_titles_json,
                     candidate_years, required_years,
@@ -135,11 +157,14 @@ class FeedbackDatabase:
                     experience_delta, education_match,
                     predicted_fit_score, recruiter_action,
                     used_in_training, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 0, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 0, ?, ?)
                 """,
                 (
                     str(resume_id),
                     str(job_id),
+                    str(candidate_email).strip().lower() if candidate_email else None,
+                    str(candidate_name).strip() if candidate_name else None,
+                    str(job_code).strip() if job_code else None,
                     r_skills_json,
                     j_skills_json,
                     r_titles_json,
@@ -166,11 +191,20 @@ class FeedbackDatabase:
         resume_id: Optional[Union[str, int]] = None,
         job_id: Optional[Union[str, int]] = None,
         recruiter_action: Optional[int] = None,
+        candidate_email: Optional[str] = None,
+        candidate_name: Optional[str] = None,
+        job_code: Optional[str] = None,
+        job_identifiers: Optional[Sequence[Union[str, int]]] = None,
+        candidate_identifiers: Optional[Sequence[Union[str, int]]] = None,
     ) -> bool:
         """
         Record or update human HR recruiter action:
         1 = Interviewed / Hired
         0 = Rejected / Passed over
+
+        Supports cross-referencing by exact evaluation_id or by any combination of
+        candidate identifiers (email, name, resume_id, application_id) and
+        job identifiers (database ID, job code).
         """
         if recruiter_action not in (0, 1):
             raise ValueError("recruiter_action must be 0 (rejected) or 1 (interviewed/hired)")
@@ -188,29 +222,78 @@ class FeedbackDatabase:
                     """,
                     (recruiter_action, now_str, evaluation_id),
                 )
-            elif resume_id is not None and job_id is not None:
-                cursor.execute(
-                    """
-                    UPDATE application_evaluations
-                    SET recruiter_action = ?, used_in_training = 0, updated_at = ?
-                    WHERE resume_id = ? AND job_id = ?
-                    """,
-                    (recruiter_action, now_str, str(resume_id), str(job_id)),
-                )
-            elif resume_id is not None:
-                cursor.execute(
-                    """
-                    UPDATE application_evaluations
-                    SET recruiter_action = ?, used_in_training = 0, updated_at = ?
-                    WHERE resume_id = ?
-                    """,
-                    (recruiter_action, now_str, str(resume_id)),
-                )
-            else:
-                return False
+                conn.commit()
+                return cursor.rowcount > 0
 
-            conn.commit()
-            return cursor.rowcount > 0
+            # Gather all candidate and job search keys
+            cand_keys: List[str] = []
+            if resume_id is not None:
+                cand_keys.append(str(resume_id).strip())
+            if candidate_email:
+                cand_keys.append(str(candidate_email).strip().lower())
+            if candidate_name:
+                cand_keys.append(str(candidate_name).strip().lower())
+            if candidate_identifiers:
+                for c in candidate_identifiers:
+                    if c is not None and str(c).strip():
+                        cand_keys.append(str(c).strip())
+                        cand_keys.append(str(c).strip().lower())
+            cand_keys = list(dict.fromkeys(cand_keys))
+
+            job_keys: List[str] = []
+            if job_id is not None:
+                job_keys.append(str(job_id).strip())
+            if job_code is not None:
+                job_keys.append(str(job_code).strip())
+            if job_identifiers:
+                for j in job_identifiers:
+                    if j is not None and str(j).strip():
+                        job_keys.append(str(j).strip())
+            job_keys = list(dict.fromkeys(job_keys))
+
+            # Strategy 1: Match by candidate identifiers AND job identifiers
+            if cand_keys and job_keys:
+                placeholders_cand = ",".join("?" for _ in cand_keys)
+                placeholders_job = ",".join("?" for _ in job_keys)
+
+                query = f"""
+                    UPDATE application_evaluations
+                    SET recruiter_action = ?, used_in_training = 0, updated_at = ?
+                    WHERE (
+                        resume_id IN ({placeholders_cand})
+                        OR LOWER(candidate_email) IN ({placeholders_cand})
+                        OR LOWER(candidate_name) IN ({placeholders_cand})
+                    )
+                    AND (
+                        job_id IN ({placeholders_job})
+                        OR job_code IN ({placeholders_job})
+                    )
+                """
+                params = [recruiter_action, now_str] + cand_keys + cand_keys + cand_keys + job_keys + job_keys
+                cursor.execute(query, params)
+                if cursor.rowcount > 0:
+                    conn.commit()
+                    return True
+
+            # Strategy 2: Match by candidate identifiers alone if job keys didn't hit
+            if cand_keys:
+                placeholders_cand = ",".join("?" for _ in cand_keys)
+                query = f"""
+                    UPDATE application_evaluations
+                    SET recruiter_action = ?, used_in_training = 0, updated_at = ?
+                    WHERE (
+                        resume_id IN ({placeholders_cand})
+                        OR LOWER(candidate_email) IN ({placeholders_cand})
+                        OR LOWER(candidate_name) IN ({placeholders_cand})
+                    )
+                """
+                params = [recruiter_action, now_str] + cand_keys + cand_keys + cand_keys
+                cursor.execute(query, params)
+                if cursor.rowcount > 0:
+                    conn.commit()
+                    return True
+
+            return False
 
     def get_verified_feedback(self, unused_only: bool = False) -> List[Dict[str, Any]]:
         """

@@ -497,6 +497,7 @@ async def get_ml_status(
             "metrics": model.metadata.get("metrics", {}),
             "feature_importances": model.classifier.get_feature_importances(),
             "feedback_stats": fb_db.get_evaluation_stats(),
+            "auto_retrain_threshold": int(os.getenv("ML_AUTO_RETRAIN_THRESHOLD", "5")),
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to fetch ML status: {str(e)}")

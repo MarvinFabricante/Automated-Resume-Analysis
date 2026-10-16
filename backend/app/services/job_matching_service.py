@@ -1025,6 +1025,7 @@ def calculate_match_score(resume_data: dict, job, use_ai: bool = False, matching
     if isinstance(job, dict):
         from types import SimpleNamespace
         job = SimpleNamespace(
+            id=job.get("id", None),
             job_id=job.get("job_id", ""),
             job_title=job.get("job_title", "Unknown Job"),
             department=job.get("department", ""),
@@ -1195,8 +1196,15 @@ def calculate_match_score(resume_data: dict, job, use_ai: bool = False, matching
         )
 
         # Log live candidate prediction to Phase 3 feedback DB for HITL tracking
-        resume_ident = resume_data.get("id") or resume_data.get("email") or resume_data.get("fullname", "anonymous")
-        job_ident = job.get("job_id") if isinstance(job, dict) else getattr(job, "job_id", "unknown")
+        cand_email = resume_data.get("email")
+        cand_name = resume_data.get("fullname")
+        cand_id = resume_data.get("id") or resume_data.get("application_id")
+        resume_ident = cand_id or cand_email or cand_name or "anonymous"
+
+        job_code = job.get("job_id") if isinstance(job, dict) else getattr(job, "job_id", None)
+        job_db_id = job.get("id") if isinstance(job, dict) else getattr(job, "id", None)
+        job_ident = str(job_code or job_db_id or "unknown")
+
         fb_db = get_feedback_db()
         fb_db.log_live_prediction(
             resume_id=str(resume_ident),
@@ -1211,6 +1219,9 @@ def calculate_match_score(resume_data: dict, job, use_ai: bool = False, matching
             required_edu=req_edu,
             feature_vector=ml_eval["feature_vector"],
             predicted_fit_score=ml_eval["fit_probability"],
+            candidate_email=cand_email,
+            candidate_name=cand_name,
+            job_code=job_code,
         )
     except Exception as ml_err:
         logger.debug(f"Notice during ML scoring or live prediction logging: {ml_err}")
