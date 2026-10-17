@@ -65,19 +65,60 @@ def _needs_analysis_enrichment(app: JobApplication) -> bool:
     ])
 
 
+_pending_analyses = set()
+_supabase_file_cache = {"files": [], "timestamp": 0}
+
 def _apply_transient_analysis(app: JobApplication):
     """
     Check if analysis fields are missing for older records.
     Instead of calculating synchronously, dispatch a background task to process it.
+    Deduplicates tasks to avoid queue flooding.
     """
     if not app.job or not _needs_analysis_enrichment(app):
         return
 
+    if app.id in _pending_analyses:
+        return
+
+    _pending_analyses.add(app.id)
     try:
         from app.tasks import analyze_application_task
         analyze_application_task.delay(app.id)
     except Exception as e:
+        _pending_analyses.discard(app.id)
         print(f"WARNING: Failed to dispatch background analysis for {app.id}: {e}")
+
+
+def _get_cached_supabase_files():
+    import time
+    now = time.time()
+    if _supabase_file_cache["files"] and (now - _supabase_file_cache["timestamp"]) < 60:
+        return _supabase_file_cache["files"]
+
+    try:
+        from app.utils.supabase_storage import _get_client, SUPABASE_BUCKET
+        client = _get_client()
+        files = client.storage.from_(SUPABASE_BUCKET).list("resumes")
+
+        all_files = []
+        for item in files:
+            if item.get("id") is None:
+                folder_name = item.get("name", "")
+                try:
+                    sub_files = client.storage.from_(SUPABASE_BUCKET).list(f"resumes/{folder_name}")
+                    for sf in sub_files:
+                        if sf.get("id"):
+                            all_files.append((f"resumes/{folder_name}/{sf['name']}", sf["name"]))
+                except Exception:
+                    pass
+            else:
+                all_files.append((f"resumes/{item['name']}", item["name"]))
+
+        _supabase_file_cache["files"] = all_files
+        _supabase_file_cache["timestamp"] = now
+        return all_files
+    except Exception as e:
+        return []
 
 
 def _enrich_resume_url(app: JobApplication):
@@ -90,30 +131,11 @@ def _enrich_resume_url(app: JobApplication):
     if not name_parts:
         return
 
-    # Try Supabase Storage first
+    # Try cached Supabase Storage files
     try:
-        from app.utils.supabase_storage import _get_client, SUPABASE_BUCKET
-        client = _get_client()
-        files = client.storage.from_(SUPABASE_BUCKET).list("resumes")
-
+        all_files = _get_cached_supabase_files()
         best_match = None
         best_time = -1
-
-        # Check top-level files and subdirectory files
-        all_files = []
-        for item in files:
-            if item.get("id") is None:
-                # It's a folder – list its contents
-                folder_name = item.get("name", "")
-                try:
-                    sub_files = client.storage.from_(SUPABASE_BUCKET).list(f"resumes/{folder_name}")
-                    for sf in sub_files:
-                        if sf.get("id"):
-                            all_files.append((f"resumes/{folder_name}/{sf['name']}", sf["name"]))
-                except Exception:
-                    pass
-            else:
-                all_files.append((f"resumes/{item['name']}", item["name"]))
 
         for storage_path, filename in all_files:
             filename_lower = filename.lower()
@@ -128,6 +150,8 @@ def _enrich_resume_url(app: JobApplication):
                     best_match = storage_path
 
         if best_match:
+            from app.utils.supabase_storage import _get_client, SUPABASE_BUCKET
+            client = _get_client()
             public_url = client.storage.from_(SUPABASE_BUCKET).get_public_url(best_match)
             app.resume_url = public_url
             return

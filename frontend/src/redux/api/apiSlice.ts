@@ -43,6 +43,7 @@ export const apiSlice = createApi({
         return `/admins/read-jobs?include_inactive=${includeInactive}`;
       },
       providesTags: ['Jobs'],
+      keepUnusedDataFor: 300,
       transformResponse: (response: any) => {
         const rawData = Array.isArray(response) ? response : [];
         return rawData.map((job: any) => ({
@@ -101,6 +102,7 @@ export const apiSlice = createApi({
     getApplications: builder.query<any[], void>({
       query: () => '/applications/',
       providesTags: ['Applications'],
+      keepUnusedDataFor: 300,
       transformResponse: (response: any[]) => {
         return (response || []).map((app: any) => ({
           id: app.id,
@@ -203,6 +205,21 @@ export const apiSlice = createApi({
         method: 'PATCH',
         body: { status },
       }),
+      async onQueryStarted({ id, status }, { dispatch, queryFulfilled }) {
+        const patchResult = dispatch(
+          apiSlice.util.updateQueryData('getApplications', undefined, (draft) => {
+            const app = draft.find((a: any) => String(a.id) === String(id));
+            if (app) {
+              app.status = status.toUpperCase();
+            }
+          })
+        );
+        try {
+          await queryFulfilled;
+        } catch {
+          patchResult.undo();
+        }
+      },
       invalidatesTags: ['Applications'],
     }),
 
@@ -211,6 +228,21 @@ export const apiSlice = createApi({
         url: `/applications/${id}`,
         method: 'DELETE',
       }),
+      async onQueryStarted(id, { dispatch, queryFulfilled }) {
+        const patchResult = dispatch(
+          apiSlice.util.updateQueryData('getApplications', undefined, (draft) => {
+            const index = draft.findIndex((a: any) => String(a.id) === String(id));
+            if (index !== -1) {
+              draft.splice(index, 1);
+            }
+          })
+        );
+        try {
+          await queryFulfilled;
+        } catch {
+          patchResult.undo();
+        }
+      },
       invalidatesTags: ['Applications'],
     }),
 
@@ -256,6 +288,7 @@ export const apiSlice = createApi({
     getHRInterviewers: builder.query<any[], void>({
       query: () => '/hr/interviewers',
       providesTags: ['HRInterviewers'],
+      keepUnusedDataFor: 300,
     }),
 
     scheduleInterview: builder.mutation<any, any>({
@@ -298,6 +331,7 @@ export const apiSlice = createApi({
     getUsers: builder.query<any[], void>({
       query: () => '/admins/users',
       providesTags: ['Users'],
+      keepUnusedDataFor: 300,
     }),
 
     createUser: builder.mutation<any, any>({
@@ -323,6 +357,21 @@ export const apiSlice = createApi({
         url: `/admins/users/${userId}`,
         method: 'DELETE',
       }),
+      async onQueryStarted(userId, { dispatch, queryFulfilled }) {
+        const patchResult = dispatch(
+          apiSlice.util.updateQueryData('getUsers', undefined, (draft) => {
+            const index = draft.findIndex((u: any) => String(u.id) === String(userId));
+            if (index !== -1) {
+              draft.splice(index, 1);
+            }
+          })
+        );
+        try {
+          await queryFulfilled;
+        } catch {
+          patchResult.undo();
+        }
+      },
       invalidatesTags: ['Users'],
     }),
 
@@ -331,6 +380,21 @@ export const apiSlice = createApi({
         url: `/admins/users/${userId}/archive`,
         method: 'PATCH',
       }),
+      async onQueryStarted(userId, { dispatch, queryFulfilled }) {
+        const patchResult = dispatch(
+          apiSlice.util.updateQueryData('getUsers', undefined, (draft) => {
+            const user = draft.find((u: any) => String(u.id) === String(userId));
+            if (user) {
+              user.is_archived = true;
+            }
+          })
+        );
+        try {
+          await queryFulfilled;
+        } catch {
+          patchResult.undo();
+        }
+      },
       invalidatesTags: ['Users'],
     }),
 
@@ -339,12 +403,28 @@ export const apiSlice = createApi({
         url: `/admins/users/${userId}/unarchive`,
         method: 'PATCH',
       }),
+      async onQueryStarted(userId, { dispatch, queryFulfilled }) {
+        const patchResult = dispatch(
+          apiSlice.util.updateQueryData('getUsers', undefined, (draft) => {
+            const user = draft.find((u: any) => String(u.id) === String(userId));
+            if (user) {
+              user.is_archived = false;
+            }
+          })
+        );
+        try {
+          await queryFulfilled;
+        } catch {
+          patchResult.undo();
+        }
+      },
       invalidatesTags: ['Users'],
     }),
 
     getAdminSystemStats: builder.query<any, void>({
       query: () => '/admins/system-stats',
       providesTags: ['Dashboard'],
+      keepUnusedDataFor: 300,
     }),
 
     // --- SYSTEM CONFIGURATION ---
@@ -455,6 +535,19 @@ export const apiSlice = createApi({
       invalidatesTags: ['SystemConfig', 'AuditLogs'],
     }),
 
+    // --- CELERY BACKGROUND WORKER MONITORING ---
+    getCeleryTaskStatus: builder.query<any, string>({
+      query: (taskId) => `/admins/tasks/${taskId}`,
+    }),
+
+    triggerMLRetrain: builder.mutation<any, void>({
+      query: () => ({
+        url: '/admins/ml/retrain',
+        method: 'POST',
+      }),
+      invalidatesTags: ['Dashboard'],
+    }),
+
   }),
 });
 
@@ -507,4 +600,7 @@ export const {
   useRecoverDataMutation,
   useGetRetentionPolicyQuery,
   useUpdateRetentionPolicyMutation,
+  useGetCeleryTaskStatusQuery,
+  useLazyGetCeleryTaskStatusQuery,
+  useTriggerMLRetrainMutation,
 } = apiSlice;

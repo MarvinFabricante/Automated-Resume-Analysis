@@ -123,10 +123,10 @@ const CandidateCard: React.FC<CandidateCardProps> = ({
   const matchTheme = getMatchTheme();
 
   return (
-    <div className={`bg-white p-4 sm:p-5 md:p-6 rounded-2xl sm:rounded-3xl border transition-all duration-300 group ${
+    <div className={`bg-white p-4 sm:p-5 md:p-6 rounded-2xl sm:rounded-3xl border card-hover-smooth gpu-accelerated group ${
       isSelected 
         ? 'border-[#D60041] ring-2 ring-[#D60041]/10 shadow-md' 
-        : 'border-gray-200/80 shadow-sm hover:shadow-md hover:border-gray-300'
+        : 'border-gray-200/80 shadow-sm hover:border-gray-300'
     }`}>
       <div className="flex flex-col lg:flex-row gap-4 sm:gap-6 items-start lg:items-center">
         
