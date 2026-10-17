@@ -1,6 +1,6 @@
 import pytest
 from datetime import datetime
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch, MagicMock, AsyncMock
 from app.services import email_service
 
 
@@ -93,3 +93,19 @@ async def test_send_interview_rescheduled_email():
         assert args[0] == "candidate@example.com"
         assert "Rescheduled" in args[1]
         assert "Rescheduled due to panelist conflict." in args[2]
+
+
+@pytest.mark.asyncio
+async def test_send_email_celery_dispatch_failure_fallback():
+    with patch("app.utils.redis_client.redis_tx_manager.stage_transaction", new_callable=AsyncMock, return_value="tx-test-123"), \
+         patch("app.utils.redis_client.push_to_queue", new_callable=AsyncMock, return_value=True), \
+         patch("app.utils.redis_client.redis_tx_manager.commit_transaction", new_callable=AsyncMock, return_value=True), \
+         patch("app.tasks.send_email_task.delay", side_effect=Exception("Celery broker connection refused")), \
+         patch.dict("os.environ", {"SMTP_USER": "", "SMTP_PASSWORD": ""}), \
+         patch.object(email_service.logger, "warning") as mock_logger_warning:
+
+        res = await email_service._send_email_redis_first("test@example.com", "Subject", "<p>Body</p>")
+        assert res is True
+        mock_logger_warning.assert_called_once()
+        assert "Celery dispatch failed" in mock_logger_warning.call_args[0][0]
+

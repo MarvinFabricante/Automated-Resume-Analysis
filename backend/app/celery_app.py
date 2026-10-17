@@ -16,11 +16,28 @@ celery_app.conf.update(
     timezone="UTC",
     enable_utc=True,
     imports=["app.tasks"],
+    worker_prefetch_multiplier=1,
+    task_acks_late=True,
+    task_reject_on_worker_lost=True,
+    result_expires=3600,
+    broker_connection_retry_on_startup=True,
     beat_schedule={
         "hourly_ml_continuous_retraining_check": {
             "task": "retrain_ml_model_task",
             "schedule": 3600.0,
             "args": (5, False),
+        },
+        "periodic_email_queue_drain": {
+            "task": "process_outgoing_email_queue_task",
+            "schedule": 60.0,
+        },
+        "periodic_cache_maintenance": {
+            "task": "cleanup_expired_cache_task",
+            "schedule": 1800.0,
+        },
+        "periodic_active_comparisons_refresh": {
+            "task": "refresh_active_comparisons_task",
+            "schedule": 1800.0,
         },
     },
 )

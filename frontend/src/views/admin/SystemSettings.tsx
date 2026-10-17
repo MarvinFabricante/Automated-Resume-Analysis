@@ -13,7 +13,9 @@ import {
   ShieldCheck,
   Target,
   Percent,
-  SlidersHorizontal
+  SlidersHorizontal,
+  Cpu,
+  Zap
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Header from '../../components/layout/Header';
@@ -22,7 +24,8 @@ import {
   useGetMatchingConfigQuery,
   useUpdateMatchingWeightsMutation,
   useUpdateMatchingThresholdsMutation,
-  useRecalculateMatchingScoresMutation
+  useRecalculateMatchingScoresMutation,
+  useTriggerMLRetrainMutation
 } from '../../redux/api/apiSlice';
 
 interface MatchingWeights {
@@ -70,6 +73,7 @@ const SystemSettings: React.FC = () => {
   const [updateWeights] = useUpdateMatchingWeightsMutation();
   const [updateThresholds] = useUpdateMatchingThresholdsMutation();
   const [recalculateScores, { isLoading: isRecalculating }] = useRecalculateMatchingScoresMutation();
+  const [triggerMLRetrain, { isLoading: isRetraining }] = useTriggerMLRetrainMutation();
 
   const [weights, setWeights] = useState<MatchingWeights>(DEFAULT_WEIGHTS);
   const [thresholds, setThresholds] = useState<MatchingThresholds>(DEFAULT_THRESHOLDS);
@@ -162,11 +166,24 @@ const SystemSettings: React.FC = () => {
     setShowRecalcConfirm(false);
     try {
       const res = await recalculateScores().unwrap();
-      const updatedCount = res?.updated_applications ?? 0;
-      toast.success(`Successfully re-evaluated ${updatedCount} candidate applications with active parameters!`);
+      if (res?.task_id) {
+        toast.success(res?.message || "ATS match scores recalculation dispatched to Celery background worker!");
+      } else {
+        const updatedCount = res?.updated_applications ?? 0;
+        toast.success(`Successfully re-evaluated ${updatedCount} candidate applications with active parameters!`);
+      }
     } catch (err: any) {
       console.error("Failed to recalculate scores:", err);
       toast.error(err?.data?.detail || "Failed to recalculate application scores.");
+    }
+  };
+
+  const handleTriggerContinuousRetrain = async () => {
+    try {
+      const res = await triggerMLRetrain().unwrap();
+      toast.success(res?.message || "Continuous ML retraining task queued in Celery worker!");
+    } catch (err: any) {
+      toast.error(err?.data?.detail || "Failed to trigger continuous ML retraining.");
     }
   };
 
@@ -505,6 +522,35 @@ const SystemSettings: React.FC = () => {
                         >
                           <RefreshCw size={13} className={isRecalculating ? "animate-spin" : ""} />
                           {isRecalculating ? "Re-evaluating..." : "Re-evaluate All Applications"}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Celery-Powered Continuous ML Retraining Card */}
+                  <div className="bg-linear-to-br from-indigo-50/60 to-purple-50/30 border border-indigo-100 rounded-3xl p-6 shadow-xs card-hover-smooth">
+                    <div className="flex items-start gap-3">
+                      <div className="w-8 h-8 rounded-xl bg-white text-indigo-600 flex items-center justify-center shrink-0 shadow-2xs">
+                        <Cpu size={16} />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <h3 className="text-xs font-bold text-gray-900">Continuous Self-Improving ML Engine</h3>
+                          <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 tracking-wider">
+                            Celery Powered
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-gray-600 mt-1 leading-relaxed">
+                          Hot-swap production embeddings, retrain with human-in-the-loop recruiter decisions (1.5x weighting), and validate without application downtime.
+                        </p>
+                        <button
+                          type="button"
+                          onClick={handleTriggerContinuousRetrain}
+                          disabled={isRetraining}
+                          className="mt-3.5 px-4 py-2 bg-white hover:bg-indigo-50 text-indigo-600 border border-indigo-200 rounded-xl font-bold text-xs transition-all shadow-2xs hover:shadow-xs flex items-center gap-2 cursor-pointer disabled:opacity-60 btn-press"
+                        >
+                          <Zap size={13} className={isRetraining ? "animate-pulse text-amber-500" : ""} />
+                          {isRetraining ? "Queueing Retrain Task..." : "Trigger Continuous Retraining"}
                         </button>
                       </div>
                     </div>

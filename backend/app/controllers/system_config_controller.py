@@ -78,20 +78,33 @@ async def recalculate_matching_scores(
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(require_role("ADMIN"))
 ):
-    result = await system_config_service.recalculate_all_applications(db)
     await audit_service.record_activity(
         db=db,
         user_id=current_user.get("id"),
         action="RECALCULATE_SCORES",
         target="Job Applications",
-        details=f"Recalculated match scores for {result.get('updated_applications', 0)} applications based on updated matching parameters"
+        details="Admin triggered batch ATS match scores recalculation via Celery background worker"
     )
-    await clear_cache_pattern("ai_analysis:*")
-    await clear_cache_pattern("job_matches:*")
-    await clear_cache_pattern("job_comparison:*")
-    await clear_cache_pattern("app_stats:*")
-    await clear_cache_pattern("screening:*")
-    return result
+
+    try:
+        from app.tasks import recalculate_all_applications_task
+        task = recalculate_all_applications_task.delay()
+        return {
+            "status": "processing",
+            "task_id": task.id,
+            "message": "ATS match scores recalculation queued in Celery worker successfully.",
+            "updated_applications": 0
+        }
+    except Exception as celery_err:
+        import logging
+        logging.getLogger(__name__).warning(f"Celery dispatch failed ({celery_err}). Executing synchronously.")
+        result = await system_config_service.recalculate_all_applications(db)
+        await clear_cache_pattern("ai_analysis:*")
+        await clear_cache_pattern("job_matches:*")
+        await clear_cache_pattern("job_comparison:*")
+        await clear_cache_pattern("app_stats:*")
+        await clear_cache_pattern("screening:*")
+        return result
 
 
 # ─── Role Management ──────────────────────────────────────────────────────────

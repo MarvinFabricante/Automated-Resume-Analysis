@@ -86,7 +86,7 @@ services:
       dockerfile: Dockerfile
     container_name: resume_analysis_worker
     restart: unless-stopped
-    command: celery -A app.celery_app.celery_app worker --loglevel=info --concurrency=${CELERY_CONCURRENCY:-4} -Ofair
+    command: celery -A app.celery_app.celery_app worker --loglevel=info --concurrency=${CELERY_CONCURRENCY:-4} -Ofair -B
     depends_on:
       db:
         condition: service_healthy
