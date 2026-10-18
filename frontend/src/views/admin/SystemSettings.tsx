@@ -240,7 +240,7 @@ const SystemSettings: React.FC = () => {
       <div className="flex flex-1">
         <Sidebar />
         
-        <main className="flex-1 max-w-[1400px] mx-auto px-6 lg:px-10 py-10">
+        <main className="flex-1 min-w-0 max-w-[1400px] mx-auto px-6 lg:px-10 py-10">
           
           {/* Header section */}
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">

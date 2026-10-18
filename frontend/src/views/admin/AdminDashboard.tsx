@@ -155,7 +155,7 @@ const AdminDashboard: React.FC = () => {
   );
 
   return (
-    <div className="bg-[#FAFAFC] text-gray-800 antialiased min-h-screen font-['Inter'] flex flex-col relative overflow-x-hidden">
+    <div className="bg-[#FAFAFC] text-gray-800 antialiased min-h-screen font-['Inter'] flex flex-col relative">
       {/* Decorative background gradient */}
       <div className="absolute top-0 left-0 w-full h-[320px] bg-gradient-to-b from-[#D10043]/5 via-[#D10043]/2 to-transparent pointer-events-none z-0"></div>
 
@@ -165,10 +165,10 @@ const AdminDashboard: React.FC = () => {
       
       <Header />
       
-      <div className="flex flex-1 z-10 relative">
+      <div className="flex flex-1 relative">
         <Sidebar />
         
-        <main className="flex-1 max-w-[1500px] mx-auto px-4 sm:px-8 lg:px-10 py-8 sm:py-10 w-full overflow-hidden flex flex-col gap-8">
+        <main className="flex-1 min-w-0 max-w-[1500px] mx-auto px-4 sm:px-8 lg:px-10 py-8 sm:py-10 w-full overflow-hidden flex flex-col gap-8">
           
           {/* Header & Primary Controls */}
           <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6">

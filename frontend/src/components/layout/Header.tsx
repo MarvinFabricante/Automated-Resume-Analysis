@@ -469,8 +469,8 @@ const Header: React.FC = () => {
 
   return (
     <>
-    <header className="main-header relative bg-white border-b border-gray-100 px-4 sm:px-6 md:px-10 py-3 sm:py-4 sticky top-0 z-50 font-sans shadow-sm transition-colors duration-200">
-      <div className="max-w-[1400px] mx-auto flex items-center justify-between">
+    <header className="main-header w-full bg-white border-b border-gray-100 px-4 sm:px-6 md:px-10 h-[73px] flex items-center sticky top-0 z-50 font-sans shadow-sm transition-colors duration-200">
+      <div className="w-full max-w-[1400px] mx-auto flex items-center justify-between">
 
         <div className="flex items-center space-x-2 sm:space-x-3 shrink-0">
           {/* Mobile Drawer Trigger (Mobile & Tablet only < 1024px) */}
@@ -662,7 +662,7 @@ const Header: React.FC = () => {
       {isMobileMenuOpen && (
         <div
           ref={mobileMenuRef}
-          className="lg:hidden absolute top-full left-0 w-full bg-white border-b border-gray-200/90 shadow-2xl z-50 animate-in fade-in slide-in-from-top-2 duration-200 max-h-[calc(100vh-70px)] overflow-y-auto"
+          className="lg:hidden absolute top-full left-0 w-full bg-white border-b border-gray-200/90 shadow-2xl z-50 animate-in fade-in slide-in-from-top-2 duration-200 max-h-[calc(100vh-73px)] overflow-y-auto"
         >
           <div className="flex flex-col py-3 divide-y divide-gray-100">
             {/* 1. Primary Navigation Links */}
