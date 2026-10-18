@@ -50,12 +50,28 @@ body {
 /* =========================================================
    DESKTOP / LARGE SCREEN NAVIGATION BAR (DEFAULT WHITE)
    ========================================================= */
+header.main-header {
+  position: sticky !important;
+  top: 0 !important;
+  z-index: 50 !important;
+}
+
 @media (min-width: 1024px) {
   header.main-header,
   header.main-header.bg-white {
     background-color: #ffffff !important;
     border-bottom: 1px solid #f1f5f9 !important;
     box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.04) !important;
+  }
+
+  /* Desktop Sticky Docked Sidebar */
+  aside.desktop-sidebar,
+  aside[data-sidebar="true"] {
+    position: sticky !important;
+    top: 73px !important;
+    height: calc(100vh - 73px) !important;
+    align-self: flex-start !important;
+    z-index: 40 !important;
   }
 
   /* Desktop Logo Brand Text */

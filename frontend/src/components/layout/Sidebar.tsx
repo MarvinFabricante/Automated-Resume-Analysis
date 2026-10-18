@@ -164,13 +164,16 @@ const Sidebar: React.FC = () => {
       />
 
       <aside
+        data-sidebar="true"
         className={`
-          fixed top-0 bottom-0 left-0 z-[60] flex flex-col bg-white border-r border-slate-200/90
+          desktop-sidebar flex flex-col bg-white border-r border-slate-200/90
           transition-all duration-200 ease-in-out shadow-[1px_0_12px_rgba(0,0,0,0.03)]
           /* Mobile Drawer */
+          fixed top-0 bottom-0 left-0 z-[60]
           w-72 max-w-[85vw] h-full ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}
-          /* Desktop Docked Sidebar */
-          lg:translate-x-0 lg:top-[73px] lg:bottom-auto lg:h-[calc(100vh-73px)] lg:z-[40]
+          /* Desktop Docked Sticky Sidebar */
+          lg:sticky lg:top-[73px] lg:bottom-auto lg:left-auto lg:self-start lg:h-[calc(100vh-73px)] lg:z-40
+          lg:translate-x-0 lg:shrink-0
           ${isSidebarOpen ? 'lg:w-64' : 'lg:w-20'}
         `}
       >
@@ -431,14 +434,6 @@ const Sidebar: React.FC = () => {
           )}
         </div>
       </aside>
-
-      {/* Desktop Main Content Spacer (matches docked sidebar width) */}
-      <div
-        className={`hidden lg:block transition-all duration-200 ease-in-out shrink-0 ${
-          isSidebarOpen ? 'w-64' : 'w-20'
-        }`}
-        aria-hidden="true"
-      />
     </>
   );
 };
