@@ -370,6 +370,12 @@ const ApplicationTrends: React.FC<ApplicationTrendsProps> = ({ applications = []
     return { path, area, points };
   }, [chartData, maxApps]);
 
+  // Active hovered point in Area View
+  const hoveredAreaPt = useMemo(() => {
+    if (!hoveredDay || chartView !== 'area') return null;
+    return areaSvgData.points.find((pt: any) => pt.data.date === hoveredDay.date) || null;
+  }, [hoveredDay, chartView, areaSvgData.points]);
+
   // Action handlers
   const handleRefresh = async () => {
     setIsRefreshing(true);
@@ -896,32 +902,118 @@ const ApplicationTrends: React.FC<ApplicationTrendsProps> = ({ applications = []
                         strokeLinejoin="round"
                       />
 
+                      {/* Vertical Guideline on Hover */}
+                      {hoveredAreaPt && (
+                        <line
+                          x1={hoveredAreaPt.x}
+                          y1={0}
+                          x2={hoveredAreaPt.x}
+                          y2={240}
+                          stroke="#D60041"
+                          strokeWidth="1.5"
+                          strokeDasharray="4 4"
+                          strokeOpacity="0.45"
+                          className="pointer-events-none"
+                        />
+                      )}
+
                       {/* Nodes on each day */}
                       {areaSvgData.points.map((pt: any, idx: number) => {
                         const isSelected = selectedDay?.date === pt.data.date;
+                        const isHovered = hoveredDay?.date === pt.data.date;
                         const isPeak = pt.data.isPeak;
 
                         return (
-                          <g key={idx} className="cursor-pointer" onClick={() => handleDayClick(pt.data)}>
+                          <g
+                            key={idx}
+                            className="cursor-pointer"
+                            onMouseEnter={() => setHoveredDay(pt.data)}
+                            onMouseLeave={() => setHoveredDay(null)}
+                            onClick={() => handleDayClick(pt.data)}
+                          >
+                            {/* 1. Invisible wide hit area (radius 22) - static anchor prevents flicker & mouse jitter */}
                             <circle
                               cx={pt.x}
                               cy={pt.y}
-                              r={isSelected ? 7 : isPeak ? 6 : 4.5}
-                              fill={isPeak ? '#D60041' : '#ffffff'}
-                              stroke={isPeak ? '#ffffff' : '#D60041'}
-                              strokeWidth={isSelected ? 3 : 2}
-                              className="transition-transform duration-200 hover:scale-150"
+                              r={22}
+                              fill="transparent"
+                              className="cursor-pointer"
+                            />
+
+                            {/* 2. Soft halo ring for hovered / selected state */}
+                            {(isHovered || isSelected) && (
+                              <circle
+                                cx={pt.x}
+                                cy={pt.y}
+                                r={isSelected ? 14 : 11}
+                                fill="#D60041"
+                                fillOpacity={isSelected ? 0.35 : 0.2}
+                                className="pointer-events-none transition-all duration-200"
+                              />
+                            )}
+
+                            {/* 3. Visual Node Dot - controlled via SVG radius, no CSS scale jitter */}
+                            <circle
+                              cx={pt.x}
+                              cy={pt.y}
+                              r={isSelected ? 7.5 : isHovered ? 6.5 : isPeak ? 6 : 4.5}
+                              fill={isHovered || isPeak ? '#D60041' : '#ffffff'}
+                              stroke={isHovered || isPeak ? '#ffffff' : '#D60041'}
+                              strokeWidth={isHovered || isSelected ? 3 : 2}
+                              className="pointer-events-none transition-all duration-150"
                             />
                           </g>
                         );
                       })}
                     </svg>
+
+                    {/* Floating Detailed Tooltip on Hover in Area Mode */}
+                    {hoveredAreaPt && (
+                      <div
+                        className="absolute pointer-events-none z-30 transition-all duration-150 ease-out"
+                        style={{
+                          left: `${(hoveredAreaPt.x / 800) * 100}%`,
+                          top: `${(hoveredAreaPt.y / 240) * 100}%`,
+                          transform: `translate(${
+                            (hoveredAreaPt.x / 800) < 0.12 ? '0%' : (hoveredAreaPt.x / 800) > 0.88 ? '-100%' : '-50%'
+                          }, ${hoveredAreaPt.y < 70 ? '16px' : 'calc(-100% - 14px)'})`
+                        }}
+                      >
+                        <div className="bg-slate-900 text-white p-3 rounded-2xl shadow-2xl min-w-[140px] relative">
+                          <div className="flex justify-between items-center gap-2 mb-1">
+                            <span className="text-[10px] text-gray-400 font-bold uppercase whitespace-nowrap">
+                              {hoveredAreaPt.data.day}, {hoveredAreaPt.data.date}
+                            </span>
+                            <span className={`text-[9px] font-black px-1.5 py-0.5 rounded ${
+                              hoveredAreaPt.data.growth.startsWith('+') ? 'text-emerald-400 bg-emerald-500/20' : 'text-red-400 bg-red-500/20'
+                            }`}>
+                              {hoveredAreaPt.data.growth}
+                            </span>
+                          </div>
+                          <div className="text-sm font-black text-white">{hoveredAreaPt.data.applications} Applications</div>
+                          <div className="text-[10px] text-gray-400 mt-0.5 font-medium">
+                            {hoveredAreaPt.data.percentageOfTotal}% of window
+                          </div>
+                          {/* Tooltip triangle arrow */}
+                          <div
+                            className={`absolute w-3 h-3 bg-slate-900 ${
+                              hoveredAreaPt.y < 70 ? '-top-1.5' : '-bottom-1.5'
+                            }`}
+                            style={{
+                              left: (hoveredAreaPt.x / 800) < 0.12 ? '20px' : (hoveredAreaPt.x / 800) > 0.88 ? 'calc(100% - 20px)' : '50%',
+                              transform: 'translateX(-50%) rotate(45deg)'
+                            }}
+                          />
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   {/* Dedicated X-Axis Labels beneath area curve */}
                   <div className="h-9 w-full flex items-center justify-between px-1 pt-1 shrink-0">
                     {chartData.map((item, idx) => {
                       const isSelected = selectedDay?.date === item.date;
+                      const isHovered = hoveredDay?.date === item.date;
                       const showLabel = 
                         timeRange === '7D' || 
                         (timeRange === '14D' && (idx % 2 === 0 || idx === chartData.length - 1)) ||
@@ -931,12 +1023,14 @@ const ApplicationTrends: React.FC<ApplicationTrendsProps> = ({ applications = []
                         <div
                           key={idx}
                           onClick={() => handleDayClick(item)}
+                          onMouseEnter={() => setHoveredDay(item)}
+                          onMouseLeave={() => setHoveredDay(null)}
                           className={`flex flex-col items-center justify-center text-center cursor-pointer transition-colors ${
                             showLabel ? 'visible' : 'invisible'
                           }`}
                         >
                           <span className={`text-[10px] sm:text-[11px] font-black leading-none ${
-                            isSelected ? 'text-[#D60041]' : 'text-slate-900 hover:text-[#D60041]'
+                            isSelected || isHovered ? 'text-[#D60041]' : 'text-slate-900 hover:text-[#D60041]'
                           }`}>
                             {item.day}
                           </span>
