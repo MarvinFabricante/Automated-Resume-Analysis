@@ -69,6 +69,7 @@ desktop.ini
 uploads/
 **/uploads/
 deploy.sh
+stream_logs.sh
 
 # --- Frontend temporary & lint files ---
 lint_output.txt
@@ -144,3 +145,7 @@ render.yaml
 scripts/
 **/scripts/
 backend/scripts/
+
+# --- SQLite temporary files ---
+*.db-shm
+*.db-wal

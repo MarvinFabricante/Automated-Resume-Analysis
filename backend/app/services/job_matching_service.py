@@ -1377,7 +1377,13 @@ def nlp_compare_candidates(job_data: dict, candidates_data: list[dict]) -> dict:
         
     top_candidate = analyzed_candidates[0]
     overall_summary = f"Compared {len(analyzed_candidates)} candidate(s) for the '{job_data.get('job_title', 'Unknown')}' position. "
-    if top_candidate["match_score"] >= 75:
+    all_zero = all(c.get("match_score", 0) == 0 for c in analyzed_candidates)
+
+    if all_zero or top_candidate.get("match_score", 0) == 0:
+        overall_summary += "None of the candidates meet the requirements for this role (all scored 0% match)."
+    elif len(analyzed_candidates) > 1 and top_candidate["match_score"] == analyzed_candidates[1]["match_score"]:
+        overall_summary += f"Top candidates {top_candidate['candidate_name']} and {analyzed_candidates[1]['candidate_name']} are tied with an equal {top_candidate['match_score']}% match."
+    elif top_candidate["match_score"] >= 75:
         overall_summary += f"The strongest candidate is {top_candidate['candidate_name']} with an exceptional {top_candidate['match_score']}% match, highly aligned with the required skills and experience."
     elif top_candidate["match_score"] >= 50:
         overall_summary += f"The leading candidate is {top_candidate['candidate_name']} with a {top_candidate['match_score']}% match. They meet many requirements but have some gaps."
@@ -1388,17 +1394,21 @@ def nlp_compare_candidates(job_data: dict, candidates_data: list[dict]) -> dict:
     if len(analyzed_candidates) > 1:
         second_candidate = analyzed_candidates[1]
         score_diff = top_candidate["match_score"] - second_candidate["match_score"]
-        if score_diff >= 15:
+        if all_zero or (top_candidate.get("match_score", 0) == 0 and second_candidate.get("match_score", 0) == 0):
+            comparative_insights.append("All compared candidates currently lack matching skills or experience for this role.")
+        elif score_diff == 0:
+            comparative_insights.append(f"{top_candidate['candidate_name']} and {second_candidate['candidate_name']} are tied with an equal match score of {top_candidate['match_score']}%.")
+        elif score_diff >= 15:
             comparative_insights.append(f"{top_candidate['candidate_name']} is a significantly better match than the others, leading by {score_diff}% over the runner-up.")
         elif score_diff <= 5:
             comparative_insights.append(f"{top_candidate['candidate_name']} and {second_candidate['candidate_name']} are very closely matched, separated by only {score_diff}%.")
             
         # Check skill differences
-        if top_candidate["skills_score"] > second_candidate["skills_score"] + 10:
+        if top_candidate.get("skills_score", 0) > 0 and top_candidate.get("skills_score", 0) > second_candidate.get("skills_score", 0) + 10:
             comparative_insights.append(f"{top_candidate['candidate_name']} has a clear advantage in required technical skills.")
         
         # Check experience differences
-        if top_candidate["experience_score"] > second_candidate["experience_score"] + 10:
+        if top_candidate.get("experience_score", 0) > 0 and top_candidate.get("experience_score", 0) > second_candidate.get("experience_score", 0) + 10:
             comparative_insights.append(f"{top_candidate['candidate_name']}'s past experience is much more relevant to the role.")
 
     return {

@@ -189,3 +189,42 @@ def test_nlp_analyze_match_and_compare_candidates():
     # c1 matches all 4 skills and exceeds years experience; c1 must rank above c2
     assert comp["ranked_candidates"][0]["candidate_name"] == "Dev One"
     assert comp["ranked_candidates"][0]["match_score"] > comp["ranked_candidates"][1]["match_score"]
+
+
+def test_nlp_compare_candidates_zero_and_tie():
+    from unittest.mock import patch
+    job_data = {
+        "job_title": "Production Operator",
+        "skills_requirements": "Forklift, Heavy Machinery",
+    }
+    c_zero_1 = {
+        "candidate_id": 1,
+        "candidate_name": "Zero Match 1",
+        "skills": "None",
+    }
+    c_zero_2 = {
+        "candidate_id": 2,
+        "candidate_name": "Zero Match 2",
+        "skills": "None",
+    }
+
+    # Mock nlp_analyze_match to return 0 score
+    mock_zero = {
+        "ai_match_score": 0.0,
+        "strengths": [],
+        "weaknesses": ["No skills match"],
+        "match_level": "Low Match",
+        "ai_skills_score": 0.0,
+        "ai_experience_score": 0.0,
+        "ai_education_score": 0.0,
+    }
+
+    with patch("app.services.job_matching_service.nlp_analyze_match", return_value=mock_zero):
+        comp = job_matching_service.nlp_compare_candidates(job_data, [c_zero_1, c_zero_2])
+        # Must not claim a strongest match or best candidate when both are 0
+        assert "None of the candidates meet the requirements" in comp["overall_summary"]
+        assert "strongest candidate" not in comp["overall_summary"]
+        assert "best candidate" not in comp["overall_summary"]
+        assert any("lack matching skills" in insight for insight in comp["comparative_insights"])
+        assert not any("separated by only 0" in insight for insight in comp["comparative_insights"])
+
