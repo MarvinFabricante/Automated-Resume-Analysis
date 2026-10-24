@@ -62,13 +62,23 @@ async def get_total_resumes_count(db: AsyncSession):
 async def get_application_stats(db: AsyncSession):
     # Get counts grouped by status
     db_stats = await HRRepository.get_application_stats_by_status(db)
-    stats = {row[0]: row[1] for row in db_stats}
+    stats = {str(row[0]).upper(): row[1] for row in db_stats if row[0]}
+
+    pending = stats.get("PENDING", 0)
+    reviewed = stats.get("REVIEWED", 0) + stats.get("TECHNICAL INTERVIEW", 0) + stats.get("FINAL INTERVIEW", 0)
+    accepted = stats.get("ACCEPTED", 0)
+    rejected = stats.get("REJECTED", 0)
+    archived = stats.get("ARCHIVED", 0)
+    total_archived = rejected + archived
 
     return {
-        "pending": stats.get("PENDING", 0),
-        "reviewed": stats.get("REVIEWED", 0),
-        "accepted": stats.get("ACCEPTED", 0),
-        "rejected": stats.get("REJECTED", 0)
+        "pending": pending,
+        "reviewed": reviewed,
+        "accepted": accepted,
+        "rejected": total_archived,
+        "archived": archived,
+        "raw_rejected": rejected,
+        "total": pending + reviewed + accepted + total_archived
     }
 
 

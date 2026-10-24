@@ -339,16 +339,16 @@ async def get_performance_stats(db: AsyncSession) -> Dict[str, Any]:
     total_apps = total_apps_q.scalar() or 0
 
     app_statuses = {}
-    for status_val in ["PENDING", "REVIEWED", "ACCEPTED", "REJECTED", "TECHNICAL INTERVIEW", "FINAL INTERVIEW"]:
+    for status_val in ["PENDING", "REVIEWED", "ACCEPTED", "REJECTED", "ARCHIVED", "TECHNICAL INTERVIEW", "FINAL INTERVIEW"]:
         count_q = await db.execute(
             select(func.count(JobApplication.id)).where(JobApplication.status == status_val)
         )
         app_statuses[status_val] = count_q.scalar() or 0
 
     pending = app_statuses.get("PENDING", 0)
-    reviewed = app_statuses.get("REVIEWED", 0)
+    reviewed = app_statuses.get("REVIEWED", 0) + app_statuses.get("TECHNICAL INTERVIEW", 0) + app_statuses.get("FINAL INTERVIEW", 0)
     accepted = app_statuses.get("ACCEPTED", 0)
-    rejected = app_statuses.get("REJECTED", 0)
+    rejected = app_statuses.get("REJECTED", 0) + app_statuses.get("ARCHIVED", 0)
 
     avg_score_q = await db.execute(
         select(func.avg(JobApplication.match_score)).where(JobApplication.match_score.isnot(None))

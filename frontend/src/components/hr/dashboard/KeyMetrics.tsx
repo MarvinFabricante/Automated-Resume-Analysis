@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { 
   FileText, Briefcase, Zap, Sparkles, ArrowUpRight, LucideIcon
 } from 'lucide-react';
@@ -73,20 +73,72 @@ const StatCard: React.FC<StatCardProps> = ({
 interface ApplicationFlowCardProps {
   appStats?: Record<string, any>;
   totalApps: number;
+  applications?: any[];
   onFilterClick?: (status: string) => void;
 }
 
-const ApplicationFlowCard: React.FC<ApplicationFlowCardProps> = ({ appStats, totalApps, onFilterClick }) => {
-  const pending = appStats?.pending || 0;
-  const reviewed = appStats?.reviewed || 0;
-  const accepted = appStats?.accepted || 0;
-  const rejected = appStats?.rejected || 0;
+const ApplicationFlowCard: React.FC<ApplicationFlowCardProps> = ({ 
+  appStats, 
+  totalApps, 
+  applications = [], 
+  onFilterClick 
+}) => {
+  // Derive counts from actual applications list when available for 100% accuracy
+  const { pending, reviewed, accepted, rejected, validTotal } = useMemo(() => {
+    if (applications && applications.length > 0) {
+      let p = 0;
+      let r = 0;
+      let a = 0;
+      let rej = 0;
 
-  const validTotal = totalApps > 0 ? totalApps : (pending + reviewed + accepted + rejected) || 1;
-  const pendingPct = Math.round((pending / validTotal) * 100);
-  const reviewedPct = Math.round((reviewed / validTotal) * 100);
-  const acceptedPct = Math.round((accepted / validTotal) * 100);
-  const rejectedPct = Math.max(0, 100 - pendingPct - reviewedPct - acceptedPct);
+      applications.forEach((app: any) => {
+        const st = (app.status || '').toUpperCase();
+        if (st === 'ACCEPTED') {
+          a += 1;
+        } else if (['REVIEWED', 'TECHNICAL INTERVIEW', 'FINAL INTERVIEW'].includes(st)) {
+          r += 1;
+        } else if (['REJECTED', 'ARCHIVED'].includes(st)) {
+          rej += 1;
+        } else {
+          p += 1;
+        }
+      });
+
+      return {
+        pending: p,
+        reviewed: r,
+        accepted: a,
+        rejected: rej,
+        validTotal: applications.length
+      };
+    }
+
+    const p = appStats?.pending || 0;
+    const r = appStats?.reviewed || 0;
+    const a = appStats?.accepted || 0;
+    const rej = (appStats?.rejected || 0) + (appStats?.archived || 0);
+    const sum = p + r + a + rej;
+    const tot = totalApps > 0 ? Math.max(totalApps, sum) : sum;
+
+    return {
+      pending: p,
+      reviewed: r,
+      accepted: a,
+      rejected: rej,
+      validTotal: tot
+    };
+  }, [applications, appStats, totalApps]);
+
+  const pendingPct = validTotal > 0 ? Math.round((pending / validTotal) * 100) : 0;
+  const reviewedPct = validTotal > 0 ? Math.round((reviewed / validTotal) * 100) : 0;
+  const acceptedPct = validTotal > 0 ? Math.round((accepted / validTotal) * 100) : 0;
+  const rejectedPct = validTotal > 0 ? Math.round((rejected / validTotal) * 100) : 0;
+
+  // Accurate proportional segment widths matching numbers
+  const pendingWidth = validTotal > 0 ? (pending / validTotal) * 100 : 0;
+  const reviewedWidth = validTotal > 0 ? (reviewed / validTotal) * 100 : 0;
+  const acceptedWidth = validTotal > 0 ? (accepted / validTotal) * 100 : 0;
+  const rejectedWidth = validTotal > 0 ? (rejected / validTotal) * 100 : 0;
 
   return (
     <div className="relative flex flex-col justify-between p-3.5 sm:p-5 lg:p-6 bg-white border border-slate-200/80 rounded-2xl sm:rounded-3xl hover:border-pink-200 hover:shadow-xl hover:-translate-y-1 transition-all duration-300 group col-span-2 sm:col-span-2 lg:col-span-3 xl:col-span-2">
@@ -110,24 +162,24 @@ const ApplicationFlowCard: React.FC<ApplicationFlowCardProps> = ({ appStats, tot
       <div className="mb-2.5 sm:mb-3.5">
         <div className="h-2 sm:h-2.5 w-full bg-slate-100 rounded-full overflow-hidden flex shadow-inner">
           <div 
-            style={{ width: `${pendingPct}%` }} 
+            style={{ width: `${pendingWidth}%` }} 
             className="bg-amber-400 h-full transition-all duration-700 hover:brightness-110" 
             title={`Pending: ${pending} (${pendingPct}%)`}
           />
           <div 
-            style={{ width: `${reviewedPct}%` }} 
+            style={{ width: `${reviewedWidth}%` }} 
             className="bg-blue-500 h-full transition-all duration-700 hover:brightness-110" 
-            title={`Reviewed: ${reviewed} (${reviewedPct}%)`}
+            title={`Screened: ${reviewed} (${reviewedPct}%)`}
           />
           <div 
-            style={{ width: `${acceptedPct}%` }} 
+            style={{ width: `${acceptedWidth}%` }} 
             className="bg-emerald-500 h-full transition-all duration-700 hover:brightness-110" 
             title={`Accepted: ${accepted} (${acceptedPct}%)`}
           />
           <div 
-            style={{ width: `${rejectedPct}%` }} 
-            className="bg-slate-300 h-full transition-all duration-700 hover:brightness-110" 
-            title={`Rejected: ${rejected} (${rejectedPct}%)`}
+            style={{ width: `${rejectedWidth}%` }} 
+            className="bg-slate-400 h-full transition-all duration-700 hover:brightness-110" 
+            title={`Archived: ${rejected} (${rejectedPct}%)`}
           />
         </div>
       </div>
@@ -282,6 +334,7 @@ const KeyMetrics: React.FC<KeyMetricsProps> = ({
         <ApplicationFlowCard
           appStats={appStats}
           totalApps={totalApps}
+          applications={applications}
           onFilterClick={handleFilterNavigation}
         />
 

@@ -218,10 +218,18 @@ const ApplicationTrends: React.FC<ApplicationTrendsProps> = ({ applications = []
   }, [backendDeptData, applications]);
 
   const statusDistributionData = useMemo(() => {
-    const pending = appStats?.pending ?? 0;
-    const reviewed = appStats?.reviewed ?? 0;
-    const accepted = appStats?.accepted ?? 0;
-    const rejected = appStats?.rejected ?? 0;
+    let pending = appStats?.pending ?? 0;
+    let reviewed = appStats?.reviewed ?? 0;
+    let accepted = appStats?.accepted ?? 0;
+    let rejected = (appStats?.rejected ?? 0) + (appStats?.archived ?? 0);
+
+    if (applications && applications.length > 0) {
+      pending = applications.filter((a: any) => (a.status || '').toUpperCase() === 'PENDING').length;
+      reviewed = applications.filter((a: any) => ['REVIEWED', 'TECHNICAL INTERVIEW', 'FINAL INTERVIEW'].includes((a.status || '').toUpperCase())).length;
+      accepted = applications.filter((a: any) => (a.status || '').toUpperCase() === 'ACCEPTED').length;
+      rejected = applications.filter((a: any) => ['REJECTED', 'ARCHIVED'].includes((a.status || '').toUpperCase())).length;
+    }
+
     const total = (pending + reviewed + accepted + rejected) || 1;
 
     return [
@@ -230,7 +238,7 @@ const ApplicationTrends: React.FC<ApplicationTrendsProps> = ({ applications = []
       { label: 'Accepted Candidates', value: accepted, color: '#10B981', percentage: `${Math.round((accepted / total) * 100)}%`, statusKey: 'ACCEPTED' },
       { label: 'Archived / Rejected', value: rejected, color: '#94A3B8', percentage: `${Math.round((rejected / total) * 100)}%`, statusKey: 'REJECTED' },
     ];
-  }, [appStats]);
+  }, [appStats, applications]);
 
   const activeDistribution = distributionTab === 'department' ? departmentData : statusDistributionData;
 
