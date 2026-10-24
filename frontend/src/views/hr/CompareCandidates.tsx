@@ -20,6 +20,7 @@ interface CandidateComparisonData extends Partial<Application> {
   phone?: string;
   location?: string;
   company?: string;
+  job_title?: string;
   relevance?: string;
   experience_reason?: string;
   skills?: string[];
@@ -70,21 +71,53 @@ const calculateRuleBasedScore = (
     // 1. Skills Matching
     let jobSkills: string[] = [];
     if (job.skills_requirements) {
-      jobSkills = Array.isArray(job.skills_requirements)
-        ? job.skills_requirements.map((s: string) => s.trim().toLowerCase()).filter(Boolean)
-        : job.skills_requirements.split(',').map((s: string) => s.trim().toLowerCase()).filter(Boolean);
+      const raw = Array.isArray(job.skills_requirements)
+        ? job.skills_requirements
+        : String(job.skills_requirements).split(/[,;\n•|]+/);
+      jobSkills = raw
+        .map(s => String(s).trim().replace(/^[-*•\s]+/, '').replace(/[.,;:]+$/, '').toLowerCase())
+        .filter(s => s.length > 0);
+    } else if (job.description) {
+      jobSkills = job.description.toLowerCase().split(/[\s,;]+/).filter(w => w.length > 3);
     } else {
-      jobSkills = job.title.toLowerCase().split(' ').filter(w => w.length > 2);
+      jobSkills = (job.title || '').toLowerCase().split(/[\s,]+/).filter(w => w.length > 2);
     }
 
-    const candidateSkills = (candidate.skills || []).map(s => s.toLowerCase());
+    const rawCandSkills = Array.isArray(candidate.skills)
+      ? candidate.skills
+      : typeof candidate.skills === 'string'
+        ? (candidate.skills as string).split(/[,;\n•|]+/)
+        : [];
+
+    const candSkillTokens = new Set<string>();
+    rawCandSkills.forEach(s => {
+      const clean = String(s).replace(/\t/g, ' ').trim().toLowerCase();
+      if (clean) {
+        candSkillTokens.add(clean);
+        clean.split(/[\s/]+/).forEach(tok => {
+          if (tok.length > 1) candSkillTokens.add(tok);
+        });
+      }
+    });
+
+    if (Array.isArray(candidate.matched_skills)) {
+      candidate.matched_skills.forEach(s => {
+        const clean = String(s).trim().toLowerCase();
+        if (clean) candSkillTokens.add(clean);
+      });
+    }
+
     matchedSkills = [];
     missingSkills = [];
 
     if (jobSkills.length > 0) {
       let matchCount = 0;
       jobSkills.forEach(reqSkill => {
-        const hasSkill = candidateSkills.some(cs => cs.includes(reqSkill) || reqSkill.includes(cs));
+        const hasSkill = Array.from(candSkillTokens).some(cs => {
+          if (cs === reqSkill) return true;
+          if (reqSkill.length > 2 && (cs.includes(reqSkill) || reqSkill.includes(cs))) return true;
+          return false;
+        });
         if (hasSkill) {
           matchCount++;
           matchedSkills.push(reqSkill);
@@ -99,40 +132,81 @@ const calculateRuleBasedScore = (
 
     // 2. Experience Matching
     const jobExp = (job.experience_requirements || '').toLowerCase();
-    const candExp = ((candidate.relevance || '') + ' ' + (candidate.experience_reason || '')).toLowerCase();
+    const candExpParts = [
+      candidate.relevance,
+      candidate.relevant_experience,
+      candidate.experience_reason,
+      candidate.preferredJob,
+      candidate.company,
+      candidate.job_title,
+      Array.isArray(candidate.work_experiences)
+        ? candidate.work_experiences.map((w: any) => `${w?.job_title || ''} ${w?.company_name || ''} ${w?.description || ''}`).join(' ')
+        : ''
+    ].filter(Boolean).join(' ').toLowerCase();
 
     if (jobExp) {
-      const expKeywords = jobExp.split(/[\s,]+/).filter(w => w.length > 3);
-      if (expKeywords.length > 0) {
-        const matchCount = expKeywords.filter(kw => candExp.includes(kw)).length;
-        expScore = Math.round((matchCount / expKeywords.length) * 100);
+      const reqYearsMatch = jobExp.match(/(\d+)(?:\s*-\s*(\d+))?\+?\s*(?:years?|yrs?)/i);
+      const reqYears = reqYearsMatch ? parseInt(reqYearsMatch[1], 10) : 0;
+
+      let candYears = 0;
+      if (candidate.total_experience_months && candidate.total_experience_months > 0) {
+        candYears = Math.round(candidate.total_experience_months / 12);
       } else {
-        expScore = 80;
+        const candYearsMatch = candExpParts.match(/(\d+)\+?\s*(?:years?|yrs?)/i);
+        if (candYearsMatch) candYears = parseInt(candYearsMatch[1], 10);
+      }
+
+      const stopWords = new Set(['years', 'year', 'experience', 'preferably', 'preferred', 'plus', 'with', 'have', 'from', 'role', 'work', 'least', 'must', 'should', 'about', 'minimum', 'candidate']);
+      const expKeywords = jobExp.split(/[\s,.;:]+/).filter(w => w.length > 3 && !stopWords.has(w));
+
+      let keywordScore = 0;
+      if (expKeywords.length > 0) {
+        const matchCount = expKeywords.filter(kw => candExpParts.includes(kw)).length;
+        keywordScore = Math.round((matchCount / expKeywords.length) * 100);
+      } else {
+        keywordScore = 80;
+      }
+
+      if (reqYears > 0 && candYears > 0) {
+        const yearsScore = Math.min(100, Math.round((candYears / reqYears) * 100));
+        expScore = expKeywords.length > 0 ? Math.round((yearsScore * 0.5) + (keywordScore * 0.5)) : yearsScore;
+      } else if (reqYears > 0 && candYears === 0) {
+        expScore = keywordScore > 0 ? keywordScore : (candidate.experienceScore || candidate.experience_score || 0);
+      } else {
+        expScore = keywordScore > 0 ? keywordScore : (candidate.experienceScore || candidate.experience_score || (candExpParts.length > 10 ? 75 : 0));
       }
     } else {
-      expScore = candidate.experienceScore || 0;
+      expScore = candidate.experienceScore ?? candidate.experience_score ?? (candExpParts.length > 10 ? 80 : 50);
     }
 
     // 3. Certifications Matching
-    const jobCert = (job.certifications_requirements || '').toLowerCase();
-    const candCert = ((candidate.candidate_certifications || '') + ' ' + (candidate.certifications || '') + ' ' + (candidate.skills || '')).toLowerCase();
+    const jobCert = (job.certifications_requirements || '').toLowerCase().trim();
+    const candCert = ([
+      candidate.candidate_certifications,
+      candidate.certifications,
+      Array.isArray(candidate.skills) ? candidate.skills.join(' ') : (candidate.skills || '')
+    ]).filter(Boolean).join(' ').toLowerCase();
 
-    if (jobCert) {
-      const certKeywords = jobCert.split(/[\s,]+/).filter(w => w.length > 3 && !['certification', 'certified'].includes(w));
+    const hasCertReq = jobCert.length > 0 && !jobCert.includes('none') && !jobCert.includes('not required') && !jobCert.includes('n/a');
+
+    if (hasCertReq) {
+      const stopWords = new Set(['certification', 'certified', 'license', 'licensed', 'preferred', 'plus', 'with', 'have', 'must', 'required']);
+      const certKeywords = jobCert.split(/[\s,.;:]+/).filter(w => w.length > 2 && !stopWords.has(w));
       if (certKeywords.length > 0) {
         const matchCount = certKeywords.filter(kw => candCert.includes(kw)).length;
         certScore = Math.round((matchCount / certKeywords.length) * 100);
       } else {
-        certScore = 80;
+        certScore = jobCert.split(/[\s,]+/).some(w => w.length > 3 && candCert.includes(w)) ? 100 : 0;
       }
     } else {
-      certScore = candidate.certifications_score || candidate.certificationsScore || 0;
+      // Certification not required for this job
+      certScore = (candidate.certifications_score || candidate.certificationsScore || 0) > 0 ? 100 : 100;
     }
   } else {
-    // AI Scores
-    skillsScore = candidate.skillsScore || 0;
-    expScore = candidate.experienceScore || 0;
-    certScore = candidate.certifications_score || candidate.certificationsScore || 0;
+    // Original AI Scores
+    skillsScore = candidate.skillsScore ?? candidate.skills_score ?? 0;
+    expScore = candidate.experienceScore ?? candidate.experience_score ?? 0;
+    certScore = candidate.certifications_score ?? candidate.certificationsScore ?? 0;
   }
 
   let totalWeight = 0;
@@ -151,7 +225,21 @@ const calculateRuleBasedScore = (
     rawScore += certScore * 20;
   }
 
-  const matchScore = totalWeight > 0 ? Math.round(rawScore / totalWeight) : 0;
+  let matchScore = 0;
+  const originalScore = candidate.matchScore ?? candidate.match_score ?? 0;
+
+  if (!job && originalScore > 0) {
+    // When using original AI match scores, preserve the existing score unless specific filters are toggled
+    if ((filters?.skills && filters?.experience && filters?.certifications) || (skillsScore === 0 && expScore === 0 && certScore === 0)) {
+      matchScore = Math.round(originalScore);
+    } else if (totalWeight > 0 && (skillsScore > 0 || expScore > 0 || certScore > 0)) {
+      matchScore = Math.round(rawScore / totalWeight);
+    } else {
+      matchScore = Math.round(originalScore);
+    }
+  } else {
+    matchScore = totalWeight > 0 ? Math.round(rawScore / totalWeight) : 0;
+  }
 
   return {
     ...candidate,
@@ -245,11 +333,21 @@ const CompareCandidates: React.FC = () => {
     return [...scoredCandidates].sort((a, b) => (b.matchScore || 0) - (a.matchScore || 0));
   }, [candidates, selectedCandidateIds, jobs, selectedJobId, evaluationFilters]);
 
+  const isAllZero = useMemo(() => {
+    return selectedCandidatesData.length > 0 && selectedCandidatesData.every(c => (c.matchScore || 0) === 0);
+  }, [selectedCandidatesData]);
+
+  const hasTiedWinner = useMemo(() => {
+    if (selectedCandidatesData.length < 2 || isAllZero) return false;
+    return (selectedCandidatesData[0].matchScore || 0) > 0 &&
+           selectedCandidatesData[0].matchScore === selectedCandidatesData[1].matchScore;
+  }, [selectedCandidatesData, isAllZero]);
+
   const categoryWinners = useMemo(() => {
-    if (selectedCandidatesData.length === 0) return {};
+    if (selectedCandidatesData.length === 0 || isAllZero) return {};
 
     const getWinner = (key: 'skillsScore' | 'experienceScore' | 'certificationsScore') => {
-      let maxScore = -1;
+      let maxScore = 0;
       let winner: CandidateComparisonData | null = null;
       selectedCandidatesData.forEach(c => {
         if ((c[key] || 0) > maxScore) {
@@ -257,7 +355,7 @@ const CompareCandidates: React.FC = () => {
           winner = c;
         }
       });
-      return winner;
+      return maxScore > 0 ? winner : null;
     };
 
     return {
@@ -265,7 +363,7 @@ const CompareCandidates: React.FC = () => {
       experience: getWinner('experienceScore'),
       certifications: getWinner('certificationsScore')
     };
-  }, [selectedCandidatesData]);
+  }, [selectedCandidatesData, isAllZero]);
 
   const winner = useMemo(() => {
     if (selectedCandidatesData.length === 0) return null;
@@ -273,7 +371,7 @@ const CompareCandidates: React.FC = () => {
   }, [selectedCandidatesData]);
 
   const renderComparisonView = () => {
-    if (!winner) return null;
+    if (selectedCandidatesData.length === 0 || !winner) return null;
 
     const displayedCandidatesInScorecards = scorecardFilter === 'all'
       ? selectedCandidatesData
@@ -313,113 +411,218 @@ const CompareCandidates: React.FC = () => {
         </div>
 
         {/* AI Recommendation / Winner Banner */}
-        <div className="bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-white rounded-2xl sm:rounded-3xl p-4 sm:p-7 md:p-8 mb-5 sm:mb-8 shadow-xl relative overflow-hidden border border-slate-800">
-          <div className="absolute -right-10 -top-10 w-40 h-40 bg-[#D60041]/20 rounded-full blur-3xl pointer-events-none"></div>
-          <div className="absolute -left-10 -bottom-10 w-40 h-40 bg-blue-500/15 rounded-full blur-3xl pointer-events-none"></div>
+        {isAllZero ? (
+          <div className="bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-white rounded-2xl sm:rounded-3xl p-4 sm:p-7 md:p-8 mb-5 sm:mb-8 shadow-xl relative overflow-hidden border border-slate-800">
+            <div className="absolute -right-10 -top-10 w-40 h-40 bg-rose-500/10 rounded-full blur-3xl pointer-events-none"></div>
+            <div className="absolute -left-10 -bottom-10 w-40 h-40 bg-amber-500/10 rounded-full blur-3xl pointer-events-none"></div>
 
-          <div className="relative flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-4 sm:gap-6">
-            <div className="flex-1">
-              <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-[#D60041]/25 border border-[#D60041]/40 rounded-full text-[10px] sm:text-xs font-black text-[#FF3E74] uppercase tracking-wider mb-2 sm:mb-3">
-                <Trophy className="w-3.5 h-3.5 text-amber-400" />
-                <span>Top Recommended Match</span>
-              </div>
-              <h2 className="text-lg sm:text-2xl md:text-3xl font-black tracking-tight leading-tight">
-                {winner.name} is the top match!
-              </h2>
-              <p className="text-slate-300 font-medium mt-1.5 sm:mt-2 max-w-3xl leading-relaxed text-xs sm:text-sm">
-                Based on our {winner.isRuleBased ? 'rule-based analysis' : 'semantic AI analysis'} of skills, experience, and educational background, <span className="text-white font-bold">{winner.name}</span> has the highest matching index of <span className="text-[#FF3E74] font-black">{winner.matchScore}%</span>.
-                {winner.ai_summary ? ` ${winner.ai_summary}` : ` Strong alignment demonstrated with requirements for ${winner.preferredJob}.`}
-              </p>
-            </div>
-
-            {/* Mobile-Friendly Winner Snapshot Card */}
-            <div className="bg-white/5 border border-white/10 p-3.5 sm:p-5 rounded-2xl shrink-0 flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
-              <div className="flex items-center gap-3">
-                <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-xl overflow-hidden border border-white/20 shrink-0 bg-white/10">
-                  <img
-                    src={getAvatarUrl(winner)}
-                    alt={winner.name}
-                    className="w-full h-full object-cover"
-                    onError={(e) => {
-                      (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${encodeURIComponent(winner.name)}&background=fdf2f8&color=d81159&bold=true`;
-                    }}
-                  />
+            <div className="relative flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-4 sm:gap-6">
+              <div className="flex-1">
+                <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-500/20 border border-amber-500/30 rounded-full text-[10px] sm:text-xs font-black text-amber-300 uppercase tracking-wider mb-2 sm:mb-3">
+                  <AlertTriangle className="w-3.5 h-3.5 text-amber-400" />
+                  <span>No Strong Match Identified</span>
                 </div>
-                <div className="min-w-0">
-                  <div className="flex items-center gap-1.5">
-                    <p className="text-xs sm:text-sm font-bold text-white truncate max-w-[150px] sm:max-w-[200px]">{winner.name}</p>
-                    <span className="px-1.5 py-0.5 bg-amber-400/20 text-amber-300 border border-amber-400/30 rounded text-[9px] font-black uppercase shrink-0">#1 Top</span>
+                <h2 className="text-lg sm:text-2xl md:text-3xl font-black tracking-tight leading-tight">
+                  No Qualifying Candidates Found
+                </h2>
+                <p className="text-slate-300 font-medium mt-1.5 sm:mt-2 max-w-3xl leading-relaxed text-xs sm:text-sm">
+                  None of the {selectedCandidatesData.length} compared candidates meet the required qualifications, skills, or experience criteria for this position (all scored 0% match). Consider reviewing other applicants, adjusting evaluation criteria weights, or comparing against a different job profile.
+                </p>
+              </div>
+
+              {/* Mobile-Friendly Snapshot Card for No Match */}
+              <div className="bg-white/5 border border-white/10 p-3.5 sm:p-5 rounded-2xl shrink-0 flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-xl overflow-hidden border border-white/20 shrink-0 bg-white/10 flex items-center justify-center">
+                    <Users className="w-6 h-6 text-slate-400" />
                   </div>
-                  <p className="text-[11px] text-slate-300 font-semibold truncate mt-0.5">{winner.preferredJob}</p>
+                  <div className="min-w-0">
+                    <p className="text-xs sm:text-sm font-bold text-white truncate max-w-[150px] sm:max-w-[200px]">All {selectedCandidatesData.length} Candidates</p>
+                    <span className="px-1.5 py-0.5 bg-rose-500/20 text-rose-300 border border-rose-500/30 rounded text-[9px] font-black uppercase shrink-0">Unmatched (0%)</span>
+                    <p className="text-[11px] text-slate-400 font-semibold truncate mt-0.5">Below required criteria</p>
+                  </div>
                 </div>
-              </div>
 
-              <div className="flex items-center justify-between sm:justify-end gap-3 pt-2.5 sm:pt-0 border-t sm:border-t-0 border-white/10">
-                <div className="text-left sm:text-right">
-                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Match Score</p>
-                  <p className="text-2xl sm:text-4xl font-black text-[#FF3E74] leading-tight">{winner.matchScore}%</p>
-                </div>
-                <div className="flex flex-wrap sm:flex-col gap-1 sm:gap-1 text-[9px] font-bold">
-                  <span className="px-2 py-0.5 bg-blue-500/20 text-blue-300 rounded border border-blue-500/30">Skills: {winner.skillsScore}%</span>
-                  <span className="px-2 py-0.5 bg-purple-500/20 text-purple-300 rounded border border-purple-500/30">Exp: {winner.experienceScore}%</span>
-                  <span className="px-2 py-0.5 bg-amber-500/20 text-amber-300 rounded border border-amber-500/30">Certs: {winner.certificationsScore || 0}%</span>
+                <div className="flex items-center justify-between sm:justify-end gap-3 pt-2.5 sm:pt-0 border-t sm:border-t-0 border-white/10">
+                  <div className="text-left sm:text-right">
+                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Match Score</p>
+                    <p className="text-2xl sm:text-4xl font-black text-slate-400 leading-tight">0%</p>
+                  </div>
+                  <div className="flex flex-wrap sm:flex-col gap-1 sm:gap-1 text-[9px] font-bold">
+                    <span className="px-2 py-0.5 bg-slate-800 text-slate-400 rounded border border-slate-700">Skills: 0%</span>
+                    <span className="px-2 py-0.5 bg-slate-800 text-slate-400 rounded border border-slate-700">Exp: 0%</span>
+                    <span className="px-2 py-0.5 bg-slate-800 text-slate-400 rounded border border-slate-700">Certs: 0%</span>
+                  </div>
                 </div>
               </div>
             </div>
           </div>
-        </div>
+        ) : hasTiedWinner ? (
+          <div className="bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-white rounded-2xl sm:rounded-3xl p-4 sm:p-7 md:p-8 mb-5 sm:mb-8 shadow-xl relative overflow-hidden border border-slate-800">
+            <div className="absolute -right-10 -top-10 w-40 h-40 bg-blue-500/20 rounded-full blur-3xl pointer-events-none"></div>
+            <div className="absolute -left-10 -bottom-10 w-40 h-40 bg-purple-500/15 rounded-full blur-3xl pointer-events-none"></div>
+
+            <div className="relative flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-4 sm:gap-6">
+              <div className="flex-1">
+                <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-blue-500/25 border border-blue-500/40 rounded-full text-[10px] sm:text-xs font-black text-blue-300 uppercase tracking-wider mb-2 sm:mb-3">
+                  <Users className="w-3.5 h-3.5 text-blue-300" />
+                  <span>Tie For Top Match</span>
+                </div>
+                <h2 className="text-lg sm:text-2xl md:text-3xl font-black tracking-tight leading-tight">
+                  {winner.name} & {selectedCandidatesData[1]?.name} are tied!
+                </h2>
+                <p className="text-slate-300 font-medium mt-1.5 sm:mt-2 max-w-3xl leading-relaxed text-xs sm:text-sm">
+                  Both candidates share the highest matching index of <span className="text-[#FF3E74] font-black">{winner.matchScore}%</span> based on our {winner.isRuleBased ? 'rule-based analysis' : 'semantic AI analysis'}. Review their individual skills and experience breakdowns below to differentiate.
+                </p>
+              </div>
+
+              {/* Mobile-Friendly Winner Snapshot Card */}
+              <div className="bg-white/5 border border-white/10 p-3.5 sm:p-5 rounded-2xl shrink-0 flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-xl overflow-hidden border border-white/20 shrink-0 bg-white/10">
+                    <img
+                      src={getAvatarUrl(winner)}
+                      alt={winner.name}
+                      className="w-full h-full object-cover"
+                      onError={(e) => {
+                        (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${encodeURIComponent(winner.name)}&background=fdf2f8&color=d81159&bold=true`;
+                      }}
+                    />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-1.5">
+                      <p className="text-xs sm:text-sm font-bold text-white truncate max-w-[150px] sm:max-w-[200px]">{winner.name}</p>
+                      <span className="px-1.5 py-0.5 bg-blue-400/20 text-blue-300 border border-blue-400/30 rounded text-[9px] font-black uppercase shrink-0">Tied #1</span>
+                    </div>
+                    <p className="text-[11px] text-slate-300 font-semibold truncate mt-0.5">{winner.preferredJob}</p>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between sm:justify-end gap-3 pt-2.5 sm:pt-0 border-t sm:border-t-0 border-white/10">
+                  <div className="text-left sm:text-right">
+                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Match Score</p>
+                    <p className="text-2xl sm:text-4xl font-black text-[#FF3E74] leading-tight">{winner.matchScore}%</p>
+                  </div>
+                  <div className="flex flex-wrap sm:flex-col gap-1 sm:gap-1 text-[9px] font-bold">
+                    <span className="px-2 py-0.5 bg-blue-500/20 text-blue-300 rounded border border-blue-500/30">Skills: {winner.skillsScore}%</span>
+                    <span className="px-2 py-0.5 bg-purple-500/20 text-purple-300 rounded border border-purple-500/30">Exp: {winner.experienceScore}%</span>
+                    <span className="px-2 py-0.5 bg-amber-500/20 text-amber-300 rounded border border-amber-500/30">Certs: {winner.certificationsScore || 0}%</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-white rounded-2xl sm:rounded-3xl p-4 sm:p-7 md:p-8 mb-5 sm:mb-8 shadow-xl relative overflow-hidden border border-slate-800">
+            <div className="absolute -right-10 -top-10 w-40 h-40 bg-[#D60041]/20 rounded-full blur-3xl pointer-events-none"></div>
+            <div className="absolute -left-10 -bottom-10 w-40 h-40 bg-blue-500/15 rounded-full blur-3xl pointer-events-none"></div>
+
+            <div className="relative flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-4 sm:gap-6">
+              <div className="flex-1">
+                <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-[#D60041]/25 border border-[#D60041]/40 rounded-full text-[10px] sm:text-xs font-black text-[#FF3E74] uppercase tracking-wider mb-2 sm:mb-3">
+                  <Trophy className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Top Recommended Match</span>
+                </div>
+                <h2 className="text-lg sm:text-2xl md:text-3xl font-black tracking-tight leading-tight">
+                  {winner.name} is the top match!
+                </h2>
+                <p className="text-slate-300 font-medium mt-1.5 sm:mt-2 max-w-3xl leading-relaxed text-xs sm:text-sm">
+                  Based on our {winner.isRuleBased ? 'rule-based analysis' : 'semantic AI analysis'} of skills, experience, and educational background, <span className="text-white font-bold">{winner.name}</span> has the highest matching index of <span className="text-[#FF3E74] font-black">{winner.matchScore}%</span>.
+                  {winner.ai_summary ? ` ${winner.ai_summary}` : ` Strong alignment demonstrated with requirements for ${winner.preferredJob}.`}
+                </p>
+              </div>
+
+              {/* Mobile-Friendly Winner Snapshot Card */}
+              <div className="bg-white/5 border border-white/10 p-3.5 sm:p-5 rounded-2xl shrink-0 flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-xl overflow-hidden border border-white/20 shrink-0 bg-white/10">
+                    <img
+                      src={getAvatarUrl(winner)}
+                      alt={winner.name}
+                      className="w-full h-full object-cover"
+                      onError={(e) => {
+                        (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${encodeURIComponent(winner.name)}&background=fdf2f8&color=d81159&bold=true`;
+                      }}
+                    />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-1.5">
+                      <p className="text-xs sm:text-sm font-bold text-white truncate max-w-[150px] sm:max-w-[200px]">{winner.name}</p>
+                      <span className="px-1.5 py-0.5 bg-amber-400/20 text-amber-300 border border-amber-400/30 rounded text-[9px] font-black uppercase shrink-0">#1 Top</span>
+                    </div>
+                    <p className="text-[11px] text-slate-300 font-semibold truncate mt-0.5">{winner.preferredJob}</p>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between sm:justify-end gap-3 pt-2.5 sm:pt-0 border-t sm:border-t-0 border-white/10">
+                  <div className="text-left sm:text-right">
+                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Match Score</p>
+                    <p className="text-2xl sm:text-4xl font-black text-[#FF3E74] leading-tight">{winner.matchScore}%</p>
+                  </div>
+                  <div className="flex flex-wrap sm:flex-col gap-1 sm:gap-1 text-[9px] font-bold">
+                    <span className="px-2 py-0.5 bg-blue-500/20 text-blue-300 rounded border border-blue-500/30">Skills: {winner.skillsScore}%</span>
+                    <span className="px-2 py-0.5 bg-purple-500/20 text-purple-300 rounded border border-purple-500/30">Exp: {winner.experienceScore}%</span>
+                    <span className="px-2 py-0.5 bg-amber-500/20 text-amber-300 rounded border border-amber-500/30">Certs: {winner.certificationsScore || 0}%</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Category Winners Filter Display */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 sm:gap-4 mb-5 sm:mb-7">
-          {evaluationFilters.skills && categoryWinners.skills && (
-            <div className="bg-blue-50/60 border border-blue-100 rounded-2xl p-3 sm:p-4 flex items-center justify-between shadow-2xs">
-              <div className="flex items-center gap-2.5 min-w-0">
-                <div className="p-2 bg-blue-100 text-blue-600 rounded-xl shrink-0">
-                  <Zap className="w-4 h-4" />
+        {(categoryWinners.skills || categoryWinners.experience || categoryWinners.certifications) && (
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 sm:gap-4 mb-5 sm:mb-7">
+            {evaluationFilters.skills && categoryWinners.skills && (
+              <div className="bg-blue-50/60 border border-blue-100 rounded-2xl p-3 sm:p-4 flex items-center justify-between shadow-2xs">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="p-2 bg-blue-100 text-blue-600 rounded-xl shrink-0">
+                    <Zap className="w-4 h-4" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-[9px] sm:text-[10px] font-black text-slate-400 uppercase tracking-wider">Top Skills Match</p>
+                    <p className="text-xs sm:text-sm font-bold text-slate-800 truncate">{categoryWinners.skills.name}</p>
+                  </div>
                 </div>
-                <div className="min-w-0">
-                  <p className="text-[9px] sm:text-[10px] font-black text-slate-400 uppercase tracking-wider">Top Skills Match</p>
-                  <p className="text-xs sm:text-sm font-bold text-slate-800 truncate">{categoryWinners.skills.name}</p>
-                </div>
+                <span className="px-2 py-1 bg-blue-100/80 text-blue-700 rounded-lg text-xs font-black shrink-0">
+                  {categoryWinners.skills.skillsScore}%
+                </span>
               </div>
-              <span className="px-2 py-1 bg-blue-100/80 text-blue-700 rounded-lg text-xs font-black shrink-0">
-                {categoryWinners.skills.skillsScore}%
-              </span>
-            </div>
-          )}
-          {evaluationFilters.experience && categoryWinners.experience && (
-            <div className="bg-purple-50/60 border border-purple-100 rounded-2xl p-3 sm:p-4 flex items-center justify-between shadow-2xs">
-              <div className="flex items-center gap-2.5 min-w-0">
-                <div className="p-2 bg-purple-100 text-purple-600 rounded-xl shrink-0">
-                  <Briefcase className="w-4 h-4" />
+            )}
+            {evaluationFilters.experience && categoryWinners.experience && (
+              <div className="bg-purple-50/60 border border-purple-100 rounded-2xl p-3 sm:p-4 flex items-center justify-between shadow-2xs">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="p-2 bg-purple-100 text-purple-600 rounded-xl shrink-0">
+                    <Briefcase className="w-4 h-4" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-[9px] sm:text-[10px] font-black text-slate-400 uppercase tracking-wider">Top Experience</p>
+                    <p className="text-xs sm:text-sm font-bold text-slate-800 truncate">{categoryWinners.experience.name}</p>
+                  </div>
                 </div>
-                <div className="min-w-0">
-                  <p className="text-[9px] sm:text-[10px] font-black text-slate-400 uppercase tracking-wider">Top Experience</p>
-                  <p className="text-xs sm:text-sm font-bold text-slate-800 truncate">{categoryWinners.experience.name}</p>
-                </div>
+                <span className="px-2 py-1 bg-purple-100/80 text-purple-700 rounded-lg text-xs font-black shrink-0">
+                  {categoryWinners.experience.experienceScore}%
+                </span>
               </div>
-              <span className="px-2 py-1 bg-purple-100/80 text-purple-700 rounded-lg text-xs font-black shrink-0">
-                {categoryWinners.experience.experienceScore}%
-              </span>
-            </div>
-          )}
-          {evaluationFilters.certifications && categoryWinners.certifications && (
-            <div className="bg-amber-50/60 border border-amber-100 rounded-2xl p-3 sm:p-4 flex items-center justify-between shadow-2xs">
-              <div className="flex items-center gap-2.5 min-w-0">
-                <div className="p-2 bg-amber-100 text-amber-600 rounded-xl shrink-0">
-                  <Award className="w-4 h-4" />
+            )}
+            {evaluationFilters.certifications && categoryWinners.certifications && (
+              <div className="bg-amber-50/60 border border-amber-100 rounded-2xl p-3 sm:p-4 flex items-center justify-between shadow-2xs">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="p-2 bg-amber-100 text-amber-600 rounded-xl shrink-0">
+                    <Award className="w-4 h-4" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-[9px] sm:text-[10px] font-black text-slate-400 uppercase tracking-wider">Top Certifications</p>
+                    <p className="text-xs sm:text-sm font-bold text-slate-800 truncate">{categoryWinners.certifications.name}</p>
+                  </div>
                 </div>
-                <div className="min-w-0">
-                  <p className="text-[9px] sm:text-[10px] font-black text-slate-400 uppercase tracking-wider">Top Certifications</p>
-                  <p className="text-xs sm:text-sm font-bold text-slate-800 truncate">{categoryWinners.certifications.name}</p>
-                </div>
+                <span className="px-2 py-1 bg-amber-100/80 text-amber-700 rounded-lg text-xs font-black shrink-0">
+                  {categoryWinners.certifications.certificationsScore || 0}%
+                </span>
               </div>
-              <span className="px-2 py-1 bg-amber-100/80 text-amber-700 rounded-lg text-xs font-black shrink-0">
-                {categoryWinners.certifications.certificationsScore || 0}%
-              </span>
-            </div>
-          )}
-        </div>
+            )}
+          </div>
+        )}
 
         {/* View Mode Switcher for Mobile & Tablet */}
         <div className="flex items-center justify-between gap-2 mb-3 sm:mb-4">
@@ -481,42 +684,45 @@ const CompareCandidates: React.FC = () => {
                           <span>Criteria</span>
                         </div>
                       </th>
-                      {selectedCandidatesData.map((candidate, idx) => (
-                        <th
-                          key={candidate.id}
-                          className={`p-3 sm:p-5 text-left min-w-[210px] max-w-[250px] sm:min-w-[270px] relative snap-start ${
-                            idx === 0 ? 'bg-rose-50/25' : ''
-                          }`}
-                        >
-                          {idx === 0 && (
-                            <div className="absolute top-0 left-0 right-0 h-1 bg-[#D60041]" />
-                          )}
-                          <div className="flex items-center gap-2.5">
-                            <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl overflow-hidden border border-rose-100 shadow-2xs shrink-0 bg-rose-50">
-                              <img
-                                src={getAvatarUrl(candidate)}
-                                alt={candidate.name}
-                                className="w-full h-full object-cover"
-                                onError={(e) => {
-                                  (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${encodeURIComponent(candidate.name)}&background=fdf2f8&color=d81159&bold=true`;
-                                }}
-                              />
-                            </div>
-                            <div className="min-w-0">
-                              <div className="flex items-center gap-1.5">
-                                <span className={`px-1.5 py-0.5 rounded text-[9px] font-black uppercase shrink-0 ${
-                                  idx === 0 ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-600'
-                                }`}>
-                                  Rank #{idx + 1}
-                                </span>
-                                {idx === 0 && <Trophy className="w-3 h-3 text-amber-500 shrink-0" />}
+                      {selectedCandidatesData.map((candidate, idx) => {
+                        const isTop = !isAllZero && (candidate.matchScore || 0) > 0 && candidate.matchScore === selectedCandidatesData[0].matchScore;
+                        return (
+                          <th
+                            key={candidate.id}
+                            className={`p-3 sm:p-5 text-left min-w-[210px] max-w-[250px] sm:min-w-[270px] relative snap-start ${
+                              isTop ? 'bg-rose-50/25' : ''
+                            }`}
+                          >
+                            {isTop && (
+                              <div className="absolute top-0 left-0 right-0 h-1 bg-[#D60041]" />
+                            )}
+                            <div className="flex items-center gap-2.5">
+                              <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl overflow-hidden border border-rose-100 shadow-2xs shrink-0 bg-rose-50">
+                                <img
+                                  src={getAvatarUrl(candidate)}
+                                  alt={candidate.name}
+                                  className="w-full h-full object-cover"
+                                  onError={(e) => {
+                                    (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${encodeURIComponent(candidate.name)}&background=fdf2f8&color=d81159&bold=true`;
+                                  }}
+                                />
                               </div>
-                              <h4 className="text-xs sm:text-sm font-bold text-slate-900 tracking-tight truncate mt-0.5">{candidate.name}</h4>
-                              <p className="text-[10px] sm:text-[11px] text-slate-500 font-semibold truncate">{candidate.preferredJob}</p>
+                              <div className="min-w-0">
+                                <div className="flex items-center gap-1.5">
+                                  <span className={`px-1.5 py-0.5 rounded text-[9px] font-black uppercase shrink-0 ${
+                                    isTop ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-600'
+                                  }`}>
+                                    {isAllZero ? 'Unranked' : `Rank #${idx + 1}`}
+                                  </span>
+                                  {isTop && <Trophy className="w-3 h-3 text-amber-500 shrink-0" />}
+                                </div>
+                                <h4 className="text-xs sm:text-sm font-bold text-slate-900 tracking-tight truncate mt-0.5">{candidate.name}</h4>
+                                <p className="text-[10px] sm:text-[11px] text-slate-500 font-semibold truncate">{candidate.preferredJob}</p>
+                              </div>
                             </div>
-                          </div>
-                        </th>
-                      ))}
+                          </th>
+                        );
+                      })}
                     </tr>
                   </thead>
 
@@ -529,24 +735,29 @@ const CompareCandidates: React.FC = () => {
                           <span>Match Score</span>
                         </div>
                       </td>
-                      {selectedCandidatesData.map((candidate, idx) => (
-                        <td key={candidate.id} className={`p-3 sm:p-5 ${idx === 0 ? 'bg-rose-50/15' : ''}`}>
-                          <div className="flex items-center gap-2 sm:gap-3">
-                            <span className={`text-lg sm:text-2xl font-black ${idx === 0 ? 'text-[#D60041]' : 'text-slate-900'}`}>
-                              {candidate.matchScore}%
-                            </span>
-                            <div className="flex-1 max-w-[80px] sm:max-w-[120px] bg-slate-100 rounded-full h-2">
-                              <div
-                                className={`h-2 rounded-full ${idx === 0 ? 'bg-[#D60041]' : 'bg-slate-700'}`}
-                                style={{ width: `${candidate.matchScore}%` }}
-                              />
+                      {selectedCandidatesData.map((candidate) => {
+                        const isTop = !isAllZero && (candidate.matchScore || 0) > 0 && candidate.matchScore === selectedCandidatesData[0].matchScore;
+                        return (
+                          <td key={candidate.id} className={`p-3 sm:p-5 ${isTop ? 'bg-rose-50/15' : ''}`}>
+                            <div className="flex items-center gap-2 sm:gap-3">
+                              <span className={`text-lg sm:text-2xl font-black ${isTop ? 'text-[#D60041]' : (candidate.matchScore || 0) === 0 ? 'text-slate-400' : 'text-slate-900'}`}>
+                                {candidate.matchScore}%
+                              </span>
+                              <div className="flex-1 max-w-[80px] sm:max-w-[120px] bg-slate-100 rounded-full h-2">
+                                <div
+                                  className={`h-2 rounded-full ${isTop ? 'bg-[#D60041]' : (candidate.matchScore || 0) === 0 ? 'bg-slate-300' : 'bg-slate-700'}`}
+                                  style={{ width: `${candidate.matchScore}%` }}
+                                />
+                              </div>
                             </div>
-                          </div>
-                          {idx === 0 && (
-                            <span className="text-[9px] font-black text-[#D60041] uppercase tracking-wider mt-1 block">Top Match</span>
-                          )}
-                        </td>
-                      ))}
+                            {isTop ? (
+                              <span className="text-[9px] font-black text-[#D60041] uppercase tracking-wider mt-1 block">Top Match</span>
+                            ) : (candidate.matchScore || 0) === 0 ? (
+                              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mt-1 block">No Match</span>
+                            ) : null}
+                          </td>
+                        );
+                      })}
                     </tr>
 
                     {/* Row 2: Pillar Scores */}
@@ -557,8 +768,10 @@ const CompareCandidates: React.FC = () => {
                           <span>Pillar Scores</span>
                         </div>
                       </td>
-                      {selectedCandidatesData.map((candidate, idx) => (
-                        <td key={candidate.id} className={`p-3 sm:p-5 space-y-2 sm:space-y-2.5 ${idx === 0 ? 'bg-rose-50/15' : ''}`}>
+                      {selectedCandidatesData.map((candidate) => {
+                        const isTop = !isAllZero && (candidate.matchScore || 0) > 0 && candidate.matchScore === selectedCandidatesData[0].matchScore;
+                        return (
+                          <td key={candidate.id} className={`p-3 sm:p-5 space-y-2 sm:space-y-2.5 ${isTop ? 'bg-rose-50/15' : ''}`}>
                           <div>
                             <div className="flex justify-between text-[10px] sm:text-[11px] font-bold mb-0.5">
                               <span className={evaluationFilters.skills ? 'text-slate-600' : 'text-slate-300 line-through'}>Skills</span>
@@ -587,7 +800,8 @@ const CompareCandidates: React.FC = () => {
                             </div>
                           </div>
                         </td>
-                      ))}
+                      );
+                    })}
                     </tr>
 
                     {/* Row 3: Matched Skills */}
@@ -766,29 +980,33 @@ const CompareCandidates: React.FC = () => {
                 >
                   All Candidates ({selectedCandidatesData.length})
                 </button>
-                {selectedCandidatesData.map((cand, i) => (
-                  <button
-                    key={cand.id}
-                    type="button"
-                    onClick={() => setScorecardFilter(cand.id)}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all flex items-center gap-1.5 cursor-pointer ${
-                      scorecardFilter === cand.id
-                        ? 'bg-[#D60041] text-white shadow-2xs'
-                        : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
-                    }`}
-                  >
-                    {i === 0 && <Trophy size={11} className={scorecardFilter === cand.id ? 'text-amber-300' : 'text-amber-500'} />}
-                    <span>{cand.name.split(' ')[0]}</span>
-                    <span className="text-[10px] opacity-80 font-black">({cand.matchScore}%)</span>
-                  </button>
-                ))}
+                {selectedCandidatesData.map((cand, i) => {
+                  const isTop = !isAllZero && (cand.matchScore || 0) > 0 && cand.matchScore === selectedCandidatesData[0].matchScore;
+                  return (
+                    <button
+                      key={cand.id}
+                      type="button"
+                      onClick={() => setScorecardFilter(cand.id)}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all flex items-center gap-1.5 cursor-pointer ${
+                        scorecardFilter === cand.id
+                          ? 'bg-[#D60041] text-white shadow-2xs'
+                          : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
+                      }`}
+                    >
+                      {isTop && <Trophy size={11} className={scorecardFilter === cand.id ? 'text-amber-300' : 'text-amber-500'} />}
+                      <span>{cand.name.split(' ')[0]}</span>
+                      <span className="text-[10px] opacity-80 font-black">({cand.matchScore}%)</span>
+                    </button>
+                  );
+                })}
               </div>
             )}
 
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 sm:gap-6">
               {displayedCandidatesInScorecards.map((candidate) => {
                 const actualRank = selectedCandidatesData.findIndex(c => c.id === candidate.id) + 1;
-                const isTopMatch = actualRank === 1;
+                const isTopMatch = !isAllZero && (candidate.matchScore || 0) > 0 && candidate.matchScore === selectedCandidatesData[0].matchScore;
+                const isZeroScore = (candidate.matchScore || 0) === 0;
 
                 return (
                   <div
@@ -819,12 +1037,18 @@ const CompareCandidates: React.FC = () => {
 
                         <div className="text-right shrink-0">
                           <span className={`inline-flex items-center gap-1 text-[10px] font-black uppercase px-2 py-0.5 rounded-full ${
-                            isTopMatch ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-600'
+                            isTopMatch
+                              ? 'bg-amber-100 text-amber-800'
+                              : isZeroScore
+                                ? 'bg-slate-100 text-slate-500'
+                                : 'bg-slate-100 text-slate-600'
                           }`}>
                             {isTopMatch && <Trophy size={11} className="text-amber-600" />}
-                            Rank #{actualRank}
+                            {isZeroScore ? 'No Match' : `Rank #${actualRank}`}
                           </span>
-                          <p className="text-2xl font-black text-[#D60041] mt-0.5 leading-tight">{candidate.matchScore}%</p>
+                          <p className={`text-2xl font-black mt-0.5 leading-tight ${isZeroScore ? 'text-slate-400' : 'text-[#D60041]'}`}>
+                            {candidate.matchScore}%
+                          </p>
                         </div>
                       </div>
 
@@ -1241,17 +1465,25 @@ const CompareCandidates: React.FC = () => {
                       )}
                     </div>
 
-                    <div className="text-right shrink-0">
-                      <span className={`text-xs font-black px-2 py-0.5 rounded-lg ${
-                        (candidate.matchScore || 0) >= 85
-                          ? 'bg-emerald-50 text-emerald-700 border border-emerald-100'
-                          : (candidate.matchScore || 0) >= 70
-                            ? 'bg-amber-50 text-amber-700 border border-amber-100'
-                            : 'bg-slate-50 text-slate-600 border border-slate-100'
-                      }`}>
-                        {calculateRuleBasedScore(candidate, (jobs as Job[]).find(j => j.id === parseInt(selectedJobId) || String(j.id) === selectedJobId), evaluationFilters).matchScore || 0}%
-                      </span>
-                    </div>
+                    {(() => {
+                      const candJob = (jobs as Job[]).find(j => j.id === parseInt(selectedJobId) || String(j.id) === selectedJobId);
+                      const computedScore = calculateRuleBasedScore(candidate, candJob, evaluationFilters).matchScore || 0;
+                      return (
+                        <div className="text-right shrink-0">
+                          <span className={`text-xs font-black px-2 py-0.5 rounded-lg ${
+                            computedScore >= 85
+                              ? 'bg-emerald-50 text-emerald-700 border border-emerald-100'
+                              : computedScore >= 70
+                                ? 'bg-amber-50 text-amber-700 border border-amber-100'
+                                : computedScore > 0
+                                  ? 'bg-slate-50 text-slate-600 border border-slate-100'
+                                  : 'bg-slate-100 text-slate-400 border border-slate-200'
+                          }`}>
+                            {computedScore}%
+                          </span>
+                        </div>
+                      );
+                    })()}
 
                     {isActive && (
                       <div className="absolute right-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-[#D60041] rounded-l-full" />
@@ -1320,9 +1552,15 @@ const CompareCandidates: React.FC = () => {
                 <div className="flex items-center justify-between sm:justify-end gap-3 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-100">
                   <div className="text-left sm:text-right">
                     <p className="text-[9px] sm:text-[10px] font-black text-slate-400 uppercase tracking-wider">Suitability</p>
-                    <p className="text-xl sm:text-2xl font-black text-[#D60041] leading-none mt-0.5">
-                      {calculateRuleBasedScore(activeCandidate, (jobs as Job[]).find(j => j.id === parseInt(selectedJobId) || String(j.id) === selectedJobId), evaluationFilters).matchScore || 0}%
-                    </p>
+                    {(() => {
+                      const candJob = (jobs as Job[]).find(j => j.id === parseInt(selectedJobId) || String(j.id) === selectedJobId);
+                      const activeScore = calculateRuleBasedScore(activeCandidate, candJob, evaluationFilters).matchScore || 0;
+                      return (
+                        <p className={`text-xl sm:text-2xl font-black leading-none mt-0.5 ${activeScore > 0 ? 'text-[#D60041]' : 'text-slate-400'}`}>
+                          {activeScore}%
+                        </p>
+                      );
+                    })()}
                   </div>
 
                   <button
