@@ -232,16 +232,24 @@ async def create_job_application(db: AsyncSession, application_in: JobApplicatio
     try:
         # Resolve the exact job title of the position applied for
         applied_job_title = None
-        if new_application and getattr(new_application, "job", None) and new_application.job.job_title:
-            applied_job_title = new_application.job.job_title
-        else:
-            from app.repositories.job_description_repository import JobDescriptionRepository
-            job_desc = await JobDescriptionRepository.get_by_id(db, db_job_id)
-            if job_desc and job_desc.job_title:
-                applied_job_title = job_desc.job_title
+        try:
+            app_dict = getattr(new_application, "__dict__", {})
+            if "job" in app_dict and app_dict["job"] and getattr(app_dict["job"], "job_title", None):
+                applied_job_title = app_dict["job"].job_title
+        except Exception:
+            pass
 
         if not applied_job_title:
-            applied_job_title = application_in.job_title or "the position"
+            from app.repositories.job_description_repository import JobDescriptionRepository
+            try:
+                job_desc = await JobDescriptionRepository.get_by_id(db, db_job_id)
+                if job_desc and getattr(job_desc, "job_title", None):
+                    applied_job_title = job_desc.job_title
+            except Exception:
+                pass
+
+        if not applied_job_title:
+            applied_job_title = getattr(application_in, "job_title", None) or "the position"
 
         # 1. Alert HR team
         await create_notification(
@@ -338,15 +346,24 @@ async def update_application_status(db: AsyncSession, application_id: int, new_s
 
         # Notify Candidate (Targeted to their email)
         job_title = None
-        if db_application.job and db_application.job.job_title:
-            job_title = db_application.job.job_title
-        elif getattr(db_application, "job_id", None):
+        try:
+            app_dict = getattr(db_application, "__dict__", {})
+            if "job" in app_dict and app_dict["job"] and getattr(app_dict["job"], "job_title", None):
+                job_title = app_dict["job"].job_title
+        except Exception:
+            pass
+
+        if not job_title and getattr(db_application, "job_id", None):
             from app.repositories.job_description_repository import JobDescriptionRepository
-            job_desc = await JobDescriptionRepository.get_by_id(db, db_application.job_id)
-            if job_desc and job_desc.job_title:
-                job_title = job_desc.job_title
+            try:
+                job_desc = await JobDescriptionRepository.get_by_id(db, db_application.job_id)
+                if job_desc and getattr(job_desc, "job_title", None):
+                    job_title = job_desc.job_title
+            except Exception:
+                pass
+
         if not job_title:
-            job_title = db_application.job_title or "Position"
+            job_title = getattr(db_application, "job_title", None) or "Position"
 
         if status_upper == "ACCEPTED":
             title = "Application Accepted 🎉"

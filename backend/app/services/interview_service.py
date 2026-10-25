@@ -26,8 +26,15 @@ def _populate_candidate_info(interview):
         setattr(interview, "candidate_phone", getattr(app, "phone", None))
         real_job_title = None
         try:
-            if "job" in getattr(app, "__dict__", {}) and app.job:
-                real_job_title = getattr(app.job, "job_title", None)
+            app_dict = getattr(app, "__dict__", {})
+            if "job" in app_dict and app_dict["job"] is not None:
+                real_job_title = getattr(app_dict["job"], "job_title", None)
+            elif hasattr(app, "job"):
+                try:
+                    if app.job:
+                        real_job_title = getattr(app.job, "job_title", None)
+                except Exception:
+                    pass
         except Exception:
             pass
         if not real_job_title:
@@ -226,6 +233,27 @@ async def schedule_interview(db: AsyncSession, data: InterviewCreateSchema, user
     user = await AuthRepository.get_user_by_id(db, interviewer_id)
     credentials_json = _get_valid_credentials(user)
 
+    # Resolve real target position title safely without triggering lazy-load on detached instance
+    job_name = None
+    try:
+        app_dict = getattr(application, "__dict__", {})
+        if "job" in app_dict and app_dict["job"] is not None:
+            job_name = getattr(app_dict["job"], "job_title", None)
+    except Exception:
+        pass
+
+    if not job_name and getattr(application, "job_id", None):
+        from app.repositories.job_description_repository import JobDescriptionRepository
+        try:
+            job_desc = await JobDescriptionRepository.get_by_id(db, application.job_id)
+            if job_desc and getattr(job_desc, "job_title", None):
+                job_name = job_desc.job_title
+        except Exception:
+            pass
+
+    if not job_name:
+        job_name = getattr(application, "job_title", None) or "Job Position"
+
     # 2. Create Interview Record
     start = data.start_time.replace(tzinfo=None)
     end = data.end_time.replace(tzinfo=None)
@@ -246,6 +274,20 @@ async def schedule_interview(db: AsyncSession, data: InterviewCreateSchema, user
     }
     interview = await InterviewRepository.create_interview(db, interview_data)
     interview = await InterviewRepository.update_interview(db, interview)
+
+    # Automatically update candidate application status to REVIEWED upon scheduling
+    current_app_status = (getattr(application, "status", None) or "PENDING").upper()
+    if current_app_status in ["PENDING", "SCHEDULED", ""]:
+        application.status = "REVIEWED"
+        from app.repositories.job_application_repository import JobApplicationRepository
+        try:
+            await JobApplicationRepository.update(db, application)
+            await InterviewRepository.add_interview_log(
+                db, interview.id, "STATUS_UPDATE", f"Candidate application status automatically updated from {current_app_status} to REVIEWED upon scheduling"
+            )
+            await InterviewRepository.commit_changes(db)
+        except Exception as e_status:
+            logger.error(f"Error updating application status to REVIEWED: {e_status}")
 
     # 3. Create Google Calendar Event via centralized service if credentials exist
     attendees = []
@@ -279,17 +321,6 @@ async def schedule_interview(db: AsyncSession, data: InterviewCreateSchema, user
         interview.meeting_link = None
         await InterviewRepository.commit_changes(db)
 
-    # Resolve real target position title
-    applied_job = getattr(application, 'job', None)
-    job_name = applied_job.job_title if (applied_job and applied_job.job_title) else None
-    if not job_name and getattr(application, 'job_id', None):
-        from app.repositories.job_description_repository import JobDescriptionRepository
-        job_desc = await JobDescriptionRepository.get_by_id(db, application.job_id)
-        if job_desc and job_desc.job_title:
-            job_name = job_desc.job_title
-    if not job_name:
-        job_name = application.job_title or "Job Position"
-
     # 4. Email Candidate on their Gmail account
     if application.candidate_email:
         try:
@@ -313,7 +344,7 @@ async def schedule_interview(db: AsyncSession, data: InterviewCreateSchema, user
             print(f"Warning: Could not send interview invitation email: {e}")
 
     # 5. Send SMS Notification (if phone configured)
-    if application.phone:
+    if getattr(application, "phone", None):
         message = (
             f"Hi {application.candidate_name}, your interview for {job_name} is scheduled on "
             f"{data.start_time.strftime('%Y-%m-%d %H:%M')}. Please check your email ({application.candidate_email}) for interview details."
@@ -322,17 +353,6 @@ async def schedule_interview(db: AsyncSession, data: InterviewCreateSchema, user
         if sent:
             await InterviewRepository.add_interview_log(db, interview.id, "SMS_SENT", "Notification sent to candidate")
             await InterviewRepository.commit_changes(db)
-
-    # 5b. Automatically update candidate application status to REVIEWED upon scheduling
-    current_app_status = (application.status or "PENDING").upper()
-    if current_app_status in ["PENDING", "SCHEDULED", ""]:
-        application.status = "REVIEWED"
-        from app.repositories.job_application_repository import JobApplicationRepository
-        await JobApplicationRepository.update(db, application)
-        await InterviewRepository.add_interview_log(
-            db, interview.id, "STATUS_UPDATE", f"Candidate application status automatically updated from {current_app_status} to REVIEWED upon scheduling"
-        )
-        await InterviewRepository.commit_changes(db)
 
     # 6. In-App Notifications
     try:
@@ -452,16 +472,26 @@ async def update_interview(db: AsyncSession, interview_id: int, data: InterviewU
     # If rescheduled time changed, notify candidate via email and SMS
     application = await InterviewRepository.get_job_application(db, interview.job_application_id)
     if time_changed and application:
-        # Resolve real target position title
-        applied_job = getattr(application, 'job', None)
-        job_name = applied_job.job_title if (applied_job and applied_job.job_title) else None
-        if not job_name and getattr(application, 'job_id', None):
+        # Resolve real target position title safely without triggering lazy-load on detached instance
+        job_name = None
+        try:
+            app_dict = getattr(application, "__dict__", {})
+            if "job" in app_dict and app_dict["job"] is not None:
+                job_name = getattr(app_dict["job"], "job_title", None)
+        except Exception:
+            pass
+
+        if not job_name and getattr(application, "job_id", None):
             from app.repositories.job_description_repository import JobDescriptionRepository
-            job_desc = await JobDescriptionRepository.get_by_id(db, application.job_id)
-            if job_desc and job_desc.job_title:
-                job_name = job_desc.job_title
+            try:
+                job_desc = await JobDescriptionRepository.get_by_id(db, application.job_id)
+                if job_desc and getattr(job_desc, "job_title", None):
+                    job_name = job_desc.job_title
+            except Exception:
+                pass
+
         if not job_name:
-            job_name = application.job_title or "Job Position"
+            job_name = getattr(application, "job_title", None) or "Job Position"
 
         if application.candidate_email:
             try:

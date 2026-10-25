@@ -128,8 +128,13 @@ async def update(db: AsyncSession, application: JobApplication) -> JobApplicatio
         payload=tx_payload,
     )
     try:
+        if application not in db:
+            application = await db.merge(application)
         await db.commit()
-        await db.refresh(application)
+        try:
+            await db.refresh(application)
+        except Exception:
+            pass
 
         await redis_tx_manager.commit_transaction(tx_id, {"id": application.id})
 

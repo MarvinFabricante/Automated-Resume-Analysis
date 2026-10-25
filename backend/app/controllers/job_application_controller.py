@@ -118,13 +118,21 @@ async def update_application_status(
         if action is not None:
             # 1. Resolve job code and all possible identifiers for the job
             job_code = None
-            if db_application.job and getattr(db_application.job, "job_id", None):
-                job_code = str(db_application.job.job_id)
-            else:
+            try:
+                app_dict = getattr(db_application, "__dict__", {})
+                if "job" in app_dict and app_dict["job"] and getattr(app_dict["job"], "job_id", None):
+                    job_code = str(app_dict["job"].job_id)
+            except Exception:
+                pass
+
+            if not job_code:
                 from app.repositories.job_description_repository import JobDescriptionRepository
-                job_desc = await JobDescriptionRepository.get_by_id(db, db_application.job_id)
-                if job_desc and getattr(job_desc, "job_id", None):
-                    job_code = str(job_desc.job_id)
+                try:
+                    job_desc = await JobDescriptionRepository.get_by_id(db, db_application.job_id)
+                    if job_desc and getattr(job_desc, "job_id", None):
+                        job_code = str(job_desc.job_id)
+                except Exception:
+                    pass
 
             job_identifiers = [str(db_application.job_id)]
             if job_code and job_code not in job_identifiers:
@@ -151,10 +159,19 @@ async def update_application_status(
             # 3. Fallback: If no live prediction was previously logged for this candidate,
             # synthesize the evaluation record from application data so the decision is not lost
             if not updated:
-                job_desc = db_application.job
+                job_desc = None
+                try:
+                    app_dict = getattr(db_application, "__dict__", {})
+                    if "job" in app_dict:
+                        job_desc = app_dict["job"]
+                except Exception:
+                    pass
                 if not job_desc:
                     from app.repositories.job_description_repository import JobDescriptionRepository
-                    job_desc = await JobDescriptionRepository.get_by_id(db, db_application.job_id)
+                    try:
+                        job_desc = await JobDescriptionRepository.get_by_id(db, db_application.job_id)
+                    except Exception:
+                        pass
 
                 prod_model = get_production_model()
                 cand_skills = db_application.skills or []

@@ -19,9 +19,16 @@ async def get_job_application(db: AsyncSession, application_id: int) -> Optional
     cache_key = f"job_app:{application_id}"
     cached = await get_cache(cache_key)
     if cached is not None:
-        return cached
+        try:
+            return await db.merge(cached)
+        except Exception:
+            pass
 
-    result = await db.execute(select(JobApplication).filter(JobApplication.id == application_id))
+    result = await db.execute(
+        select(JobApplication)
+        .options(selectinload(JobApplication.job))
+        .filter(JobApplication.id == application_id)
+    )
     app = result.scalars().first()
     if app:
         await set_cache(cache_key, app, ttl=600)

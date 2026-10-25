@@ -67,4 +67,4 @@ class JobApplication(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     # Relationships
-    job = relationship("JobDescription", back_populates="applications")
+    job = relationship("JobDescription", back_populates="applications", lazy="selectin")

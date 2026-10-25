@@ -21,8 +21,8 @@ class Interview(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     # Relationships
-    job_application = relationship("JobApplication", backref="interviews")
-    interviewer = relationship("User", foreign_keys=[interviewer_id])
+    job_application = relationship("JobApplication", backref="interviews", lazy="selectin")
+    interviewer = relationship("User", foreign_keys=[interviewer_id], lazy="selectin")
     logs = relationship("InterviewLog", back_populates="interview", cascade="all, delete-orphan")
 
 
