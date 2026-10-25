@@ -196,7 +196,10 @@ const ScheduleInterviewModal: React.FC<ScheduleInterviewModalProps> = ({ isOpen,
         end_time: finalEnd
       }).unwrap();
       
-      setSuccessMsg(`Interview scheduled successfully! Interview notification emailed to candidate.`);
+      setSuccessMsg(`Interview scheduled successfully! Candidate marked as Reviewed and notification sent.`);
+      if (candidate) {
+        candidate.status = 'Reviewed';
+      }
       if (onScheduled) {
         onScheduled(candidate);
       }

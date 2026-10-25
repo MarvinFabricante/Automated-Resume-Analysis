@@ -29,7 +29,8 @@ const TableStatusDropdown: React.FC<TableStatusDropdownProps> = ({ status, candi
     switch ((st || '').toLowerCase()) {
       case 'accepted': return { color: 'text-teal-700 bg-teal-50 border-teal-200', label: 'Accepted' };
       case 'rejected': return { color: 'text-rose-700 bg-rose-50 border-rose-200', label: 'Rejected' };
-      case 'reviewed': return { color: 'text-blue-700 bg-blue-50 border-blue-200', label: 'Reviewed' };
+      case 'reviewed':
+      case 'scheduled': return { color: 'text-blue-700 bg-blue-50 border-blue-200', label: 'Reviewed' };
       case 'technical interview': return { color: 'text-purple-700 bg-purple-50 border-purple-200', label: 'Tech Interview' };
       case 'final interview': return { color: 'text-indigo-700 bg-indigo-50 border-indigo-200', label: 'Final Interview' };
       case 'archived': return { color: 'text-gray-700 bg-gray-100 border-gray-200', label: 'Archived' };

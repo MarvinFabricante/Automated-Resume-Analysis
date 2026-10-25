@@ -323,7 +323,15 @@ async def schedule_interview(db: AsyncSession, data: InterviewCreateSchema, user
             await InterviewRepository.add_interview_log(db, interview.id, "SMS_SENT", "Notification sent to candidate")
             await InterviewRepository.commit_changes(db)
 
-        application.status = "SCHEDULED"
+    # 5b. Automatically update candidate application status to REVIEWED upon scheduling
+    current_app_status = (application.status or "PENDING").upper()
+    if current_app_status in ["PENDING", "SCHEDULED", ""]:
+        application.status = "REVIEWED"
+        from app.repositories.job_application_repository import JobApplicationRepository
+        await JobApplicationRepository.update(db, application)
+        await InterviewRepository.add_interview_log(
+            db, interview.id, "STATUS_UPDATE", f"Candidate application status automatically updated from {current_app_status} to REVIEWED upon scheduling"
+        )
         await InterviewRepository.commit_changes(db)
 
     # 6. In-App Notifications

@@ -25,7 +25,7 @@ interface NewScheduleModalProps {
   initialDate?: string;
   initialTime?: string;
   initialInterviewerId?: string | number;
-  onScheduled?: (data: { candidateName: string; title: string; date: string; startTime: string }) => void;
+  onScheduled?: (data: { candidateId?: string | number; candidateName: string; title: string; date: string; startTime: string }) => void;
 }
 
 const NewScheduleModal: React.FC<NewScheduleModalProps> = ({ 
@@ -245,8 +245,13 @@ const NewScheduleModal: React.FC<NewScheduleModalProps> = ({
         end_time: finalEnd
       }).unwrap();
 
+      if (selectedCandidate) {
+        selectedCandidate.status = 'Reviewed';
+      }
+
       if (onScheduled) {
         onScheduled({
+          candidateId: selectedCandidate.id,
           candidateName: selectedCandidate.candidate_name || selectedCandidate.name || 'Candidate',
           title: title.trim() || 'Technical Interview',
           date: date,

@@ -91,7 +91,8 @@ const CandidateCard: React.FC<CandidateCardProps> = ({
     switch ((st || '').toLowerCase()) {
       case 'accepted': return { icon: <CheckCircle2 className="w-3.5 h-3.5" />, color: 'text-teal-700', bg: 'bg-teal-50', border: 'border-teal-200', label: 'Accepted' };
       case 'rejected': return { icon: <XCircle className="w-3.5 h-3.5" />, color: 'text-rose-700', bg: 'bg-rose-50', border: 'border-rose-200', label: 'Rejected' };
-      case 'reviewed': return { icon: <Search className="w-3.5 h-3.5" />, color: 'text-blue-700', bg: 'bg-blue-50', border: 'border-blue-200', label: 'Reviewed' };
+      case 'reviewed':
+      case 'scheduled': return { icon: <Search className="w-3.5 h-3.5" />, color: 'text-blue-700', bg: 'bg-blue-50', border: 'border-blue-200', label: 'Reviewed' };
       case 'technical interview': return { icon: <Clock className="w-3.5 h-3.5" />, color: 'text-purple-700', bg: 'bg-purple-50', border: 'border-purple-200', label: 'Tech Interview' };
       case 'final interview': return { icon: <Clock className="w-3.5 h-3.5" />, color: 'text-indigo-700', bg: 'bg-indigo-50', border: 'border-indigo-200', label: 'Final Interview' };
       case 'archived': return { icon: <Archive className="w-3.5 h-3.5" />, color: 'text-gray-700', bg: 'bg-gray-100', border: 'border-gray-200', label: 'Archived' };

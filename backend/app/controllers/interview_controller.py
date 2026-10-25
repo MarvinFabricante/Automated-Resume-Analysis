@@ -192,6 +192,13 @@ async def schedule_interview(
         await clear_cache_pattern("app_interviews*")
         await clear_cache_pattern("cand_interviews*")
         await clear_cache_pattern("calendar_events*")
+        await clear_cache_pattern("all_apps*")
+        await clear_cache_pattern("job_apps*")
+        await clear_cache_pattern("cand_apps*")
+        await clear_cache_pattern("app_stats*")
+        await clear_cache_pattern("screening*")
+        await clear_cache_pattern("hr:stats*")
+        await clear_cache_pattern("admin:stats*")
         return result
     except ValueError as e:
         if "already scheduled" in str(e).lower():

@@ -669,6 +669,13 @@ const ScreeningPortal: React.FC = () => {
         isOpen={interviewModalOpen}
         onClose={() => setInterviewModalOpen(false)}
         candidate={selectedCandidate}
+        onScheduled={() => {
+          showToastMessage('Interview scheduled successfully! Candidate marked as Reviewed.', 'success');
+          if (selectedCandidate) {
+            setSelectedCandidate((prev: any) => ({ ...prev, status: 'Reviewed' }));
+          }
+          refetch();
+        }}
       />
 
       {/* View Candidate Details Modal */}
