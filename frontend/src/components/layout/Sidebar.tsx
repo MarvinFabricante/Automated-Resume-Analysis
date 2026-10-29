@@ -329,9 +329,6 @@ const Sidebar: React.FC = () => {
                         }`}
                         aria-label={item.label}
                       >
-                        {isActive && (
-                          <span className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-4 bg-[#D60041] rounded-r-full" />
-                        )}
                         <span
                           className={`transition-colors ${
                             isActive ? 'text-[#D60041]' : 'text-slate-400 group-hover:text-slate-800'

@@ -186,21 +186,20 @@ const PhysicalResumes: React.FC = () => {
   const totalPages = resumesData?.total_pages || 1;
 
   return (
-    <div className="flex h-screen bg-[#F8FAFC] overflow-hidden">
+    <div className="bg-[#F8FAFC] text-slate-800 antialiased min-h-screen font-sans flex flex-col selection:bg-rose-100 selection:text-[#D60041]">
       <Helmet>
         <title>Physical Resume Storage | Mariwasa HR Portal</title>
       </Helmet>
 
-      {/* SIDEBAR */}
-      <Sidebar />
+      {/* TOP HEADER */}
+      <Header />
 
-      {/* MAIN CONTENT AREA */}
-      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        {/* TOP HEADER */}
-        <Header />
+      <div className="flex flex-1">
+        {/* SIDEBAR */}
+        <Sidebar />
 
-        {/* SCROLLABLE VIEW CONTAINER */}
-        <main className="flex-1 overflow-y-auto px-3.5 sm:px-6 lg:px-8 py-4 sm:py-6 space-y-4 sm:space-y-6 custom-scrollbar">
+        {/* MAIN CONTENT AREA */}
+        <div className="flex-1 min-w-0 flex flex-col">
           {/* TOAST ALERT */}
           {toast && (
             <div
@@ -218,6 +217,9 @@ const PhysicalResumes: React.FC = () => {
               <span className="truncate">{toast.message}</span>
             </div>
           )}
+
+          {/* MAIN PAGE VIEW */}
+          <main className="w-full max-w-full px-3.5 sm:px-6 md:px-8 lg:px-10 py-4 sm:py-6 md:py-8 space-y-4 sm:space-y-6">
 
           {/* PAGE HERO BANNER */}
           <section className="bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 rounded-2xl sm:rounded-3xl p-5 sm:p-8 text-white relative overflow-hidden shadow-xl shadow-slate-900/10">
@@ -771,7 +773,8 @@ const PhysicalResumes: React.FC = () => {
               </div>
             </div>
           )}
-        </main>
+          </main>
+        </div>
       </div>
 
       {/* IN-BROWSER RESUME VIEWER MODAL */}
