@@ -3,13 +3,13 @@ import { useNavigate, useLocation } from '@/utils/navigation';
 import {
   LayoutDashboard, Users, Building2, User, Settings, Search, Briefcase,
   BookOpen, MessageSquare, Scale, Sliders, Calendar, Sparkles,
-  PanelLeftClose, PanelLeftOpen, X, LogOut
+  PanelLeftClose, PanelLeftOpen, X, LogOut, FolderArchive
 } from 'lucide-react';
 import { useSelector, useDispatch } from 'react-redux';
 import { toggleSidebar, closeSidebar } from '../../redux/slices/uiSlice';
 import { logout as logoutAction } from '../../redux/slices/authSlice';
 import { RootState } from '../../redux/store';
-import { clearAllAuthSessions } from '../../utils/token';
+import { clearAllAuthSessions, performUserLogout } from '../../utils/token';
 
 export interface NavItem {
   label: string;
@@ -32,10 +32,8 @@ const Sidebar: React.FC = () => {
   const { isSidebarOpen } = useSelector((state: RootState) => state.ui);
 
   const handleLogout = () => {
-    clearAllAuthSessions();
     dispatch(logoutAction());
-    navigate('/');
-    window.location.reload();
+    performUserLogout();
   };
 
   const normRole = (userRole || '').toUpperCase();
@@ -84,6 +82,13 @@ const Sidebar: React.FC = () => {
               icon: <User size={18} />,
               badge: 'AI',
               badgeColor: 'bg-[#D60041] text-white',
+            },
+            {
+              label: 'Physical Resumes',
+              path: '/hr/physical-resumes',
+              icon: <FolderArchive size={18} />,
+              badge: 'Storage',
+              badgeColor: 'bg-emerald-600 text-white',
             },
             { label: 'Interview Scheduling', path: '/hr/scheduling', icon: <Calendar size={18} /> },
             { label: 'Candidate Comparison', path: '/hr/comparecandidates', icon: <Scale size={18} /> },
