@@ -140,7 +140,7 @@ export const SessionTimeoutWatcher: React.FC = () => {
       }
     };
 
-    // Handle when a window initiates logout
+    // Handle when a window initiates logout (redirect other open dashboard tabs to homepage)
     const handleLogoutBroadcast = () => {
       dispatch(resetAuthState());
       dispatch(apiSlice.util.resetApiState());
@@ -150,7 +150,7 @@ export const SessionTimeoutWatcher: React.FC = () => {
         !window.location.pathname.startsWith('/register') &&
         window.location.pathname !== '/'
       ) {
-        window.location.href = '/login?session_expired=1';
+        window.location.href = '/';
       }
     };
 
@@ -210,7 +210,8 @@ export const SessionTimeoutWatcher: React.FC = () => {
                 timestamp: Date.now(),
               });
             } else if (isTokenExpired(event.newValue)) {
-              handleLogoutBroadcast();
+              dispatch(logout());
+              handleSessionExpired();
             } else {
               syncCurrentCredentials();
               checkAndSchedule();

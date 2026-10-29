@@ -31,6 +31,7 @@ from app.controllers.chat_controller import router as chat_router
 from app.controllers.ai_caller_controller import router as ai_caller_router
 from app.controllers.interview_controller import router as interview_router
 from app.controllers.system_config_controller import router as system_config_router
+from app.controllers.physical_resume_controller import router as physical_resume_router
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -188,6 +189,64 @@ async def ensure_interview_voice_columns(conn):
             logger.warning(f"Could not ensure interviews.{column_name}: {e}")
 
 
+async def ensure_physical_resumes_table(conn):
+    """
+    Ensure the physical_resumes table exists in PostgreSQL or SQLite.
+    """
+    try:
+        dialect = conn.dialect.name
+        if dialect == "sqlite":
+            await conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS physical_resumes (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    hr_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+                    candidate_name TEXT NOT NULL,
+                    candidate_email TEXT,
+                    candidate_phone TEXT,
+                    target_job_id INTEGER REFERENCES job_descriptions(id) ON DELETE SET NULL,
+                    target_job_title TEXT,
+                    physical_location TEXT,
+                    submission_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    filename TEXT NOT NULL,
+                    file_url TEXT NOT NULL,
+                    storage_path TEXT,
+                    file_size INTEGER,
+                    file_type TEXT,
+                    status TEXT DEFAULT 'RECEIVED',
+                    notes TEXT,
+                    parsed_data JSON,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """))
+        else:
+            await conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS physical_resumes (
+                    id SERIAL PRIMARY KEY,
+                    hr_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+                    candidate_name VARCHAR NOT NULL,
+                    candidate_email VARCHAR,
+                    candidate_phone VARCHAR,
+                    target_job_id INTEGER REFERENCES job_descriptions(id) ON DELETE SET NULL,
+                    target_job_title VARCHAR,
+                    physical_location VARCHAR,
+                    submission_date TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+                    filename VARCHAR NOT NULL,
+                    file_url VARCHAR NOT NULL,
+                    storage_path VARCHAR,
+                    file_size INTEGER,
+                    file_type VARCHAR,
+                    status VARCHAR DEFAULT 'RECEIVED',
+                    notes TEXT,
+                    parsed_data JSON,
+                    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+                    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+                )
+            """))
+    except Exception as e:
+        logger.warning(f"Could not ensure physical_resumes table: {e}")
+
+
 async def ensure_cascade_delete_constraints(conn):
     """
     Ensure foreign key constraints referencing users have appropriate ON DELETE CASCADE or SET NULL rules.
@@ -237,6 +296,7 @@ async def create_tables():
     from app.models.password_reset import PasswordReset
     from app.models.interview import Interview, InterviewLog, VoiceCallRecord
     from app.models.system_config import SystemConfig, FormTemplate
+    from app.models.physical_resume import PhysicalResume
 
     try:
         async with engine.begin() as conn:
@@ -244,6 +304,7 @@ async def create_tables():
             await ensure_application_analysis_columns(conn)
             await ensure_archived_conversations_table(conn)
             await ensure_interview_voice_columns(conn)
+            await ensure_physical_resumes_table(conn)
             await ensure_cascade_delete_constraints(conn)
     except Exception as e:
         logger.debug(f"Table creation notice (concurrent worker init): {e}")
@@ -359,6 +420,8 @@ app.add_middleware(
 # Static Files
 if not os.path.exists("uploads"):
     os.makedirs("uploads")
+if not os.path.exists("uploads/physical_resumes"):
+    os.makedirs("uploads/physical_resumes", exist_ok=True)
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
 # Include Routers
@@ -374,6 +437,7 @@ app.include_router(chat_router)
 app.include_router(ai_caller_router)
 app.include_router(interview_router)
 app.include_router(system_config_router)
+app.include_router(physical_resume_router)
 
 
 @app.get("/", tags=["Testing"])

@@ -13,8 +13,7 @@ export const apiSlice = createApi({
       return headers;
     },
   }),
-  // Added AuditLogs, Users, SystemConfig, Templates, Interviews, CalendarEvents, HRInterviewers to tagTypes
-  tagTypes: ['Dashboard', 'Jobs', 'Candidates', 'Applications', 'AuditLogs', 'Users', 'SystemConfig', 'Templates', 'Interviews', 'CalendarEvents', 'HRInterviewers'],
+  tagTypes: ['Dashboard', 'Jobs', 'Candidates', 'Applications', 'AuditLogs', 'Users', 'SystemConfig', 'Templates', 'Interviews', 'CalendarEvents', 'HRInterviewers', 'PhysicalResumes'],
   endpoints: (builder) => ({
     // --- DASHBOARD STATS ---
     getDashboardStats: builder.query<any, void>({
@@ -588,6 +587,60 @@ export const apiSlice = createApi({
       invalidatesTags: ['Dashboard'],
     }),
 
+    // --- PHYSICAL RESUMES STORAGE ---
+    getPhysicalResumes: builder.query<any, { search?: string; status?: string; job_id?: number; page?: number; limit?: number } | void>({
+      query: (params) => {
+        const p = params as { search?: string; status?: string; job_id?: number; page?: number; limit?: number } | undefined;
+        const queryParams = new URLSearchParams();
+        if (p?.search) queryParams.append('search', p.search);
+        if (p?.status && p.status !== 'All') queryParams.append('status', p.status);
+        if (p?.job_id) queryParams.append('job_id', String(p.job_id));
+        if (p?.page) queryParams.append('page', String(p.page));
+        if (p?.limit) queryParams.append('limit', String(p.limit));
+        const qs = queryParams.toString();
+        return `/hr/physical-resumes/${qs ? `?${qs}` : ''}`;
+      },
+      providesTags: ['PhysicalResumes'],
+      keepUnusedDataFor: 60,
+    }),
+
+    getPhysicalResumeStats: builder.query<any, void>({
+      query: () => '/hr/physical-resumes/stats',
+      providesTags: ['PhysicalResumes'],
+      keepUnusedDataFor: 60,
+    }),
+
+    getPhysicalResumeById: builder.query<any, number | string>({
+      query: (id) => `/hr/physical-resumes/${id}`,
+      providesTags: (_result, _error, id) => [{ type: 'PhysicalResumes', id }],
+    }),
+
+    uploadPhysicalResume: builder.mutation<any, FormData>({
+      query: (formData) => ({
+        url: '/hr/physical-resumes/upload',
+        method: 'POST',
+        body: formData,
+      }),
+      invalidatesTags: ['PhysicalResumes', 'Dashboard'],
+    }),
+
+    updatePhysicalResume: builder.mutation<any, { id: number | string; body: any }>({
+      query: ({ id, body }) => ({
+        url: `/hr/physical-resumes/${id}`,
+        method: 'PUT',
+        body,
+      }),
+      invalidatesTags: ['PhysicalResumes'],
+    }),
+
+    deletePhysicalResume: builder.mutation<any, number | string>({
+      query: (id) => ({
+        url: `/hr/physical-resumes/${id}`,
+        method: 'DELETE',
+      }),
+      invalidatesTags: ['PhysicalResumes', 'Dashboard'],
+    }),
+
   }),
 });
 
@@ -649,4 +702,10 @@ export const {
   useSimulateVoiceCallMutation,
   useGetInterviewCallLogsQuery,
   useLazyGetInterviewCallLogsQuery,
+  useGetPhysicalResumesQuery,
+  useGetPhysicalResumeStatsQuery,
+  useGetPhysicalResumeByIdQuery,
+  useUploadPhysicalResumeMutation,
+  useUpdatePhysicalResumeMutation,
+  useDeletePhysicalResumeMutation,
 } = apiSlice;

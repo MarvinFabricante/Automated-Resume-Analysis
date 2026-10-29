@@ -10,6 +10,7 @@ from app.models.message import Message, ArchivedConversation
 from app.models.audit_log import AuditLog
 from app.models.interview import Interview, InterviewLog, VoiceCallRecord
 from app.models.system_config import SystemConfig, FormTemplate
+from app.models.physical_resume import PhysicalResume
 
 __all__ = [
     "User",
@@ -17,6 +18,7 @@ __all__ = [
     "HR",
     "Admin",
     "Resume",
+    "PhysicalResume",
     "JobDescription",
     "JobApplication",
     "Notification",

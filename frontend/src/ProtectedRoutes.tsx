@@ -14,12 +14,29 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ allowedRole, children }
   const [isAuthorized, setIsAuthorized] = useState<boolean | null>(null);
 
   useEffect(() => {
+    // If user voluntarily logged out from any dashboard or portal, redirect to homepage immediately
+    if (typeof window !== 'undefined') {
+      const isVoluntary = sessionStorage.getItem('voluntary_logout');
+      if (isVoluntary) {
+        sessionStorage.removeItem('voluntary_logout');
+        window.location.href = '/';
+        return;
+      }
+    }
+
     const token = typeof localStorage !== 'undefined' ? localStorage.getItem('token') : null;
     const userRole = typeof localStorage !== 'undefined' ? localStorage.getItem('role') : null;
 
-    if (!token || isTokenExpired(token)) {
+    // Genuine session expiration: token exists in storage but is past the 1-hour expiration time
+    if (token && isTokenExpired(token)) {
       handleSessionExpired();
-      navigate('/login?session_expired=1', { replace: true });
+      setIsAuthorized(false);
+      return;
+    }
+
+    // Unauthenticated access (e.g. guest or post-logout without token)
+    if (!token) {
+      navigate('/login', { replace: true });
       setIsAuthorized(false);
       return;
     }

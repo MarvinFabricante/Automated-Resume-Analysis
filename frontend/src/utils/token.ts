@@ -123,6 +123,25 @@ export const clearAllAuthSessions = (): void => {
   }
 };
 
+/**
+ * Handles intentional user logout from any dashboard or portal.
+ * Guaranteed to redirect to the homepage ('/') without triggering session expiration warnings.
+ */
+export const performUserLogout = (): void => {
+  if (typeof window === 'undefined') return;
+  try {
+    sessionStorage.setItem('voluntary_logout', '1');
+  } catch (e) {
+    // ignore
+  }
+  clearAllAuthSessions();
+  window.location.href = '/';
+};
+
+/**
+ * Handles genuine session expiration (1-hour limit passed).
+ * Clears session and redirects to /login?session_expired=1 to inform the user.
+ */
 export const handleSessionExpired = (): void => {
   clearAllAuthSessions();
   if (typeof window !== 'undefined') {
@@ -142,3 +161,4 @@ export const handleSessionSwitched = (): void => {
     }
   }
 };
+

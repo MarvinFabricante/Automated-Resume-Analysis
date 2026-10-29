@@ -1,9 +1,12 @@
+import logging
 from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.job_application import JobApplication
 from app.schemas.job_application_schema import JobApplicationCreate
 from app.services.notification_service import create_notification
 from app.repositories.job_application_repository import JobApplicationRepository
+
+logger = logging.getLogger(__name__)
 
 
 def _resume_data_from_application(app: JobApplication) -> dict:
@@ -312,14 +315,20 @@ async def get_all_applications(db: AsyncSession):
     return _enrich_applications(applications)
 
 
-async def update_application_status(db: AsyncSession, application_id: int, new_status: str) -> Optional[JobApplication]:
-    """Update application status and send notifications."""
+async def update_application_status(
+    db: AsyncSession, 
+    application_id: int, 
+    new_status: str,
+    notes: Optional[str] = None
+) -> Optional[JobApplication]:
+    """Update application status, record in-app notifications, and dispatch professional email to candidate."""
     db_application = await JobApplicationRepository.get_by_id(db, application_id)
 
     if not db_application:
         return None
 
     status_upper = new_status.upper()
+    previous_status = db_application.status
     db_application.status = status_upper
     db_application = await JobApplicationRepository.update(db, db_application)
 
@@ -344,7 +353,7 @@ async def update_application_status(db: AsyncSession, application_id: int, new_s
             sender_role="HR"
         )
 
-        # Notify Candidate (Targeted to their email)
+        # Resolve Job Title
         job_title = None
         try:
             app_dict = getattr(db_application, "__dict__", {})
@@ -368,22 +377,26 @@ async def update_application_status(db: AsyncSession, application_id: int, new_s
         if status_upper == "ACCEPTED":
             title = "Application Accepted 🎉"
             message = f"Congratulations! Your application for the position of {job_title} has been accepted."
-        elif status_upper == "REJECTED":
+        elif status_upper in ("REJECTED", "ARCHIVED", "PASSED_OVER"):
             title = "Application Update"
-            message = f"Thank you for your interest. Unfortunately, your application for the position of {job_title} has been rejected."
-        elif status_upper == "TECHNICAL INTERVIEW":
+            message = f"Thank you for your interest. Unfortunately, your application for the position of {job_title} was not selected."
+        elif status_upper in ("TECHNICAL INTERVIEW", "INTERVIEW"):
             title = "Technical Interview Scheduled 💻"
             message = f"You have advanced to the Technical Interview stage for the {job_title} position!"
         elif status_upper == "FINAL INTERVIEW":
             title = "Final Interview Scheduled 🤝"
             message = f"Great news! You have reached the Final Interview stage for the {job_title} position!"
-        elif status_upper == "REVIEWED":
+        elif status_upper in ("REVIEWED", "SCREENED"):
             title = "Application Under Review"
             message = f"Great news! Your application for the position of {job_title} has been reviewed."
+        elif status_upper in ("HIRED", "OFFER"):
+            title = "Selection & Job Offer 🎉"
+            message = f"Congratulations! You have been selected for hire for the {job_title} position!"
         else:
             title = "Application Status Update"
-            message = f"Your application for the position of {job_title} is currently pending review."
+            message = f"Your application for the position of {job_title} is currently marked as {status_upper}."
 
+        # In-app notification
         await create_notification(
             db=db,
             title=title,
@@ -393,8 +406,25 @@ async def update_application_status(db: AsyncSession, application_id: int, new_s
             target_email=db_application.candidate_email,
             sender_role="HR"
         )
+
+        # Dispatch professional email to candidate
+        if db_application.candidate_email:
+            try:
+                from app.services.email_service import send_application_status_update_email
+                await send_application_status_update_email(
+                    to_email=db_application.candidate_email,
+                    candidate_name=db_application.candidate_name or "Candidate",
+                    job_title=job_title or "Position",
+                    new_status=status_upper,
+                    previous_status=previous_status,
+                    notes=notes
+                )
+                logger.info(f"Dispatched status update email ({status_upper}) to candidate {db_application.candidate_email}")
+            except Exception as email_err:
+                logger.error(f"Error dispatching status update email to candidate {db_application.candidate_email}: {email_err}")
+
     except Exception as e:
-        print(f"Error creating status update notifications: {e}")
+        logger.error(f"Error creating status update notifications: {e}")
 
     return db_application
 

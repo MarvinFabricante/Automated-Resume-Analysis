@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate } from '@/utils/navigation';
 import { 
   Download, AlertCircle, Briefcase, BarChart3, Calendar, 
-  Sparkles, CheckCircle2, ChevronRight, Zap, Radio
+  Sparkles, CheckCircle2, ChevronRight, Zap, Radio, FolderArchive
 } from 'lucide-react';
 import { Helmet } from 'react-helmet-async';
 import KeyMetrics from '../../components/hr/dashboard/KeyMetrics';
@@ -179,6 +179,16 @@ const HRDashboard: React.FC = () => {
                     >
                       <Calendar size={15} className="shrink-0 text-rose-300" />
                       <span className="truncate">Schedule</span>
+                    </button>
+
+                    {/* Physical Resume Vault */}
+                    <button
+                      onClick={() => navigate('/hr/physical-resumes')}
+                      className="flex-1 sm:flex-none px-3 sm:px-4 py-2.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-2xl text-xs font-black uppercase tracking-wider transition-all shadow-2xs flex items-center justify-center gap-1.5 active:scale-95 min-h-[42px] truncate cursor-pointer"
+                      title="Physical Walk-In Resumes & Storage"
+                    >
+                      <FolderArchive size={15} className="shrink-0 text-emerald-600" />
+                      <span className="truncate">Physical Resumes</span>
                     </button>
 
                     {/* Export CSV Report */}
