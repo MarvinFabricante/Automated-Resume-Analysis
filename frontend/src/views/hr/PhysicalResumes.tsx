@@ -7,7 +7,6 @@ import {
   Upload,
   Download,
   Eye,
-  Trash2,
   Edit3,
   Calendar,
   Building2,
@@ -39,7 +38,6 @@ import EditPhysicalResumeModal from '../../components/modals/hr/EditPhysicalResu
 import {
   useGetPhysicalResumesQuery,
   useGetPhysicalResumeStatsQuery,
-  useDeletePhysicalResumeMutation,
   useGetJobsQuery,
 } from '../../redux/api/apiSlice';
 import { API_BASE_URL } from '../../services/api';
@@ -79,17 +77,7 @@ const PhysicalResumes: React.FC = () => {
 
   const { data: statsData, refetch: refetchStats } = useGetPhysicalResumeStatsQuery();
   const { data: jobs = [] } = useGetJobsQuery();
-  const [deleteResume, { isLoading: isDeleting }] = useDeletePhysicalResumeMutation();
 
-  // Modals state
-  const [viewModalOpen, setViewModalOpen] = useState<boolean>(false);
-  const [uploadModalOpen, setUploadModalOpen] = useState<boolean>(false);
-  const [editModalOpen, setEditModalOpen] = useState<boolean>(false);
-  const [selectedResume, setSelectedResume] = useState<any>(null);
-
-  // Delete confirmation
-  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState<boolean>(false);
-  const [resumeToDelete, setResumeToDelete] = useState<any>(null);
 
   // Toast notification
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
@@ -118,25 +106,11 @@ const PhysicalResumes: React.FC = () => {
     setEditModalOpen(true);
   };
 
-  const handleOpenDelete = (resume: any) => {
-    setResumeToDelete(resume);
-    setDeleteConfirmOpen(true);
-  };
-
-  const handleConfirmDelete = async () => {
-    if (!resumeToDelete) return;
-    try {
-      await deleteResume(resumeToDelete.id).unwrap();
-      showToast(`Removed physical resume record for ${resumeToDelete.candidate_name}.`, 'success');
-      setDeleteConfirmOpen(false);
-      setResumeToDelete(null);
-      refetch();
-      refetchStats();
-    } catch (err: any) {
-      console.error('Delete error:', err);
-      showToast('Failed to delete physical resume record.', 'error');
-    }
-  };
+  // Modals state
+  const [viewModalOpen, setViewModalOpen] = useState<boolean>(false);
+  const [uploadModalOpen, setUploadModalOpen] = useState<boolean>(false);
+  const [editModalOpen, setEditModalOpen] = useState<boolean>(false);
+  const [selectedResume, setSelectedResume] = useState<any>(null);
 
   const handleDirectDownload = (e: React.MouseEvent, resume: any) => {
     e.stopPropagation();
@@ -626,19 +600,6 @@ const PhysicalResumes: React.FC = () => {
                       >
                         <Edit3 size={14} />
                       </button>
-
-                      {/* DELETE BUTTON */}
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleOpenDelete(resume);
-                        }}
-                        className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
-                        title="Delete record"
-                      >
-                        <Trash2 size={14} />
-                      </button>
                     </div>
                   </div>
                 );
@@ -739,18 +700,6 @@ const PhysicalResumes: React.FC = () => {
                           >
                             <Edit3 size={14} />
                           </button>
-
-                          {/* DELETE */}
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleOpenDelete(resume);
-                            }}
-                            className="p-1 text-slate-400 hover:text-rose-600 rounded-md cursor-pointer"
-                          >
-                            <Trash2 size={14} />
-                          </button>
                         </td>
                       </tr>
                     ))}
@@ -844,41 +793,6 @@ const PhysicalResumes: React.FC = () => {
         }}
       />
 
-      {/* DELETE CONFIRMATION MODAL */}
-      {deleteConfirmOpen && resumeToDelete && (
-        <div className="fixed inset-0 z-50 bg-slate-950/75 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-200">
-          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200 animate-in zoom-in-95 duration-200">
-            <div className="w-12 h-12 rounded-2xl bg-rose-100 text-rose-600 flex items-center justify-center mb-4">
-              <Trash2 size={24} />
-            </div>
-            <h3 className="text-base font-black text-slate-900 mb-1">
-              Delete Physical Resume Record?
-            </h3>
-            <p className="text-xs text-slate-600 font-medium leading-relaxed mb-6">
-              Are you sure you want to permanently delete the physical resume file and record for{' '}
-              <strong className="text-slate-900">{resumeToDelete.candidate_name}</strong>? Filing location:{' '}
-              <span className="font-semibold text-rose-600">{resumeToDelete.physical_location}</span>. This action cannot be undone.
-            </p>
-            <div className="flex items-center justify-end space-x-3">
-              <button
-                type="button"
-                onClick={() => setDeleteConfirmOpen(false)}
-                className="px-4 py-2.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50 cursor-pointer"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                disabled={isDeleting}
-                onClick={handleConfirmDelete}
-                className="px-5 py-2.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold shadow-xs hover:shadow-md transition-all cursor-pointer disabled:opacity-50"
-              >
-                {isDeleting ? 'Deleting...' : 'Yes, Delete Record'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };
