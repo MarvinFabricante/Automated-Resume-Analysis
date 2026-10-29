@@ -109,3 +109,80 @@ async def test_send_email_celery_dispatch_failure_fallback():
         mock_logger_warning.assert_called_once()
         assert "Celery dispatch failed" in mock_logger_warning.call_args[0][0]
 
+
+@pytest.mark.asyncio
+async def test_send_application_status_update_email_reviewed():
+    with patch("app.services.email_service._send_smtp_sync", return_value=True) as mock_send:
+        res = await email_service.send_application_status_update_email(
+            to_email="cand.reviewed@example.com",
+            candidate_name="Alex Smith",
+            job_title="Ceramics Engineer",
+            new_status="REVIEWED",
+            notes="Initial screening completed with strong match."
+        )
+        assert res is True
+        assert mock_send.called
+        args, _ = mock_send.call_args
+        assert args[0] == "cand.reviewed@example.com"
+        assert "Application Status Update: Ceramics Engineer" in args[1]
+        assert "Alex Smith" in args[2]
+        assert "Ceramics Engineer" in args[2]
+        assert "Under Review" in args[2]
+        assert "Initial screening completed with strong match." in args[2]
+
+
+@pytest.mark.asyncio
+async def test_send_application_status_update_email_accepted():
+    with patch("app.services.email_service._send_smtp_sync", return_value=True) as mock_send:
+        res = await email_service.send_application_status_update_email(
+            to_email="cand.accepted@example.com",
+            candidate_name="Maria Santos",
+            job_title="Production Supervisor",
+            new_status="ACCEPTED"
+        )
+        assert res is True
+        assert mock_send.called
+        args, _ = mock_send.call_args
+        assert args[0] == "cand.accepted@example.com"
+        assert "Congratulations: Application Shortlisted" in args[1]
+        assert "Maria Santos" in args[2]
+        assert "accepted and shortlisted" in args[2]
+
+
+@pytest.mark.asyncio
+async def test_send_application_status_update_email_rejected():
+    with patch("app.services.email_service._send_smtp_sync", return_value=True) as mock_send:
+        res = await email_service.send_application_status_update_email(
+            to_email="cand.rejected@example.com",
+            candidate_name="Juan Dela Cruz",
+            job_title="Logistics Manager",
+            new_status="REJECTED"
+        )
+        assert res is True
+        assert mock_send.called
+        args, _ = mock_send.call_args
+        assert args[0] == "cand.rejected@example.com"
+        assert "Application Update: Logistics Manager" in args[1]
+        assert "Juan Dela Cruz" in args[2]
+        assert "chosen to move forward with other candidates" in args[2]
+        assert "talent database" in args[2]
+
+
+@pytest.mark.asyncio
+async def test_send_application_status_update_email_technical_interview():
+    with patch("app.services.email_service._send_smtp_sync", return_value=True) as mock_send:
+        res = await email_service.send_application_status_update_email(
+            to_email="cand.interview@example.com",
+            candidate_name="Grace Hopper",
+            job_title="Systems Architect",
+            new_status="TECHNICAL INTERVIEW"
+        )
+        assert res is True
+        assert mock_send.called
+        args, _ = mock_send.call_args
+        assert args[0] == "cand.interview@example.com"
+        assert "Technical Interview for Systems Architect" in args[1]
+        assert "Grace Hopper" in args[2]
+        assert "Technical Interview" in args[2]
+
+

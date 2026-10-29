@@ -398,7 +398,7 @@ const ScreeningPortal: React.FC = () => {
   const handleUpdateStatus = async (candidateId: string | number, newStatus: string) => {
     try {
       await updateStatus({ id: candidateId, status: newStatus }).unwrap();
-      showToastMessage(`Status updated to ${newStatus} successfully!`, 'success');
+      showToastMessage(`Status updated to ${newStatus} & email sent to candidate!`, 'success');
       if (selectedCandidate && selectedCandidate.id === candidateId) {
         setSelectedCandidate((prev: any) => ({ ...prev, status: newStatus }));
       }
@@ -452,7 +452,7 @@ const ScreeningPortal: React.FC = () => {
       for (const id of selectedIds) {
         await updateStatus({ id, status: newStatus }).unwrap();
       }
-      showToastMessage(`Updated ${selectedIds.length} candidates to ${newStatus}!`, 'success');
+      showToastMessage(`Updated ${selectedIds.length} candidates to ${newStatus} & dispatched email notifications!`, 'success');
       setSelectedIds([]);
     } catch (error) {
       console.error("Batch status update error:", error);

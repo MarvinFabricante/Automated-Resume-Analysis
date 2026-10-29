@@ -82,7 +82,7 @@ async def update_application_status(
     Update the status of a job application.
     """
     db_application = await job_application_service.update_application_status(
-        db, application_id, status_update.status
+        db, application_id, status_update.status, notes=status_update.notes
     )
     if not db_application:
         raise HTTPException(status_code=404, detail="Application not found")

@@ -54,6 +54,7 @@ class JobApplicationCreate(JobApplicationBase):
 
 class JobApplicationStatusUpdate(BaseModel):
     status: str
+    notes: Optional[str] = None
 
 class JobApplicationResponse(JobApplicationBase):
     id: int
