@@ -120,18 +120,19 @@ const EditPhysicalResumeModal: React.FC<EditPhysicalResumeModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/75 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 animate-in fade-in duration-200">
-      <div className="bg-white rounded-3xl shadow-2xl max-w-xl w-full overflow-hidden border border-slate-200 animate-in zoom-in-95 duration-200">
-        <div className="px-6 py-5 border-b border-slate-100 flex items-center justify-between bg-gradient-to-r from-slate-50 to-white">
-          <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 rounded-2xl bg-[#D60041] text-white flex items-center justify-center shadow-xs">
-              <FolderArchive size={20} />
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/75 backdrop-blur-xs flex items-center justify-center p-2.5 sm:p-4 animate-in fade-in duration-200">
+      <div className="bg-white rounded-2xl sm:rounded-3xl shadow-2xl max-w-xl w-full max-h-[92vh] flex flex-col overflow-hidden border border-slate-200 animate-in zoom-in-95 duration-200">
+        {/* Header */}
+        <div className="px-4 sm:px-6 py-3.5 sm:py-4 border-b border-slate-100 flex items-center justify-between bg-gradient-to-r from-slate-50 to-white shrink-0">
+          <div className="flex items-center space-x-3 min-w-0">
+            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl sm:rounded-2xl bg-[#D60041] text-white flex items-center justify-center shadow-xs shrink-0">
+              <FolderArchive size={18} className="sm:w-5 sm:h-5" />
             </div>
-            <div>
-              <h3 className="text-base font-black text-slate-900 tracking-tight">
+            <div className="min-w-0">
+              <h3 className="text-sm sm:text-base font-black text-slate-900 tracking-tight truncate">
                 Edit Filing Details
               </h3>
-              <p className="text-xs text-slate-500 font-medium">
+              <p className="text-[11px] sm:text-xs text-slate-500 font-medium truncate">
                 Update storage location, candidate status, or remarks
               </p>
             </div>
@@ -139,23 +140,25 @@ const EditPhysicalResumeModal: React.FC<EditPhysicalResumeModalProps> = ({
           <button
             type="button"
             onClick={onClose}
-            className="p-1.5 text-slate-400 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
+            aria-label="Close modal"
+            className="p-1.5 text-slate-400 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer shrink-0 ml-2"
           >
             <X size={18} />
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+        {/* Scrollable Form Body */}
+        <form onSubmit={handleSubmit} className="overflow-y-auto flex-1 custom-scrollbar p-4 sm:p-6 space-y-4">
           {errorMessage && (
             <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl flex items-center gap-2 text-xs text-rose-700 font-semibold">
-              <AlertCircle size={15} />
+              <AlertCircle size={15} className="shrink-0" />
               <span>{errorMessage}</span>
             </div>
           )}
 
           <div>
             <label className="block text-xs font-black uppercase tracking-wider text-slate-700 mb-1">
-              Candidate Name
+              Candidate Name <span className="text-[#D60041]">*</span>
             </label>
             <input
               type="text"
@@ -166,9 +169,9 @@ const EditPhysicalResumeModal: React.FC<EditPhysicalResumeModalProps> = ({
             />
           </div>
 
-          <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200 space-y-2">
+          <div className="bg-slate-50 p-3 sm:p-3.5 rounded-2xl border border-slate-200 space-y-2">
             <label className="block text-xs font-black uppercase tracking-wider text-slate-800">
-              Physical Storage Location Ref
+              Physical Storage Location Ref <span className="text-[#D60041]">*</span>
             </label>
             <input
               type="text"
@@ -176,6 +179,7 @@ const EditPhysicalResumeModal: React.FC<EditPhysicalResumeModalProps> = ({
               value={formData.physical_location}
               onChange={(e) => setFormData({ ...formData, physical_location: e.target.value })}
               className="w-full px-3.5 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#D60041]/20 focus:border-[#D60041]"
+              placeholder="e.g. Cabinet A • Shelf 2 • Folder #14"
             />
             <div className="flex flex-wrap items-center gap-1.5 pt-1">
               {PRESET_LOCATIONS.map((preset, idx) => (
@@ -195,7 +199,7 @@ const EditPhysicalResumeModal: React.FC<EditPhysicalResumeModalProps> = ({
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-3.5">
             <div>
               <label className="block text-xs font-black uppercase tracking-wider text-slate-700 mb-1">
                 Filing Status
@@ -222,7 +226,8 @@ const EditPhysicalResumeModal: React.FC<EditPhysicalResumeModalProps> = ({
                 value={formData.submission_date}
                 onChange={(e) => setFormData({ ...formData, submission_date: e.target.value })}
                 className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#D60041]/20 focus:border-[#D60041]"
-              />
+              >
+              </input>
             </div>
           </div>
 
@@ -244,26 +249,28 @@ const EditPhysicalResumeModal: React.FC<EditPhysicalResumeModalProps> = ({
             </select>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-3.5">
             <div>
               <label className="block text-xs font-black uppercase tracking-wider text-slate-700 mb-1">
-                Email
+                Candidate Email
               </label>
               <input
                 type="email"
                 value={formData.candidate_email}
                 onChange={(e) => setFormData({ ...formData, candidate_email: e.target.value })}
+                placeholder="candidate@example.com"
                 className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#D60041]/20 focus:border-[#D60041]"
               />
             </div>
             <div>
               <label className="block text-xs font-black uppercase tracking-wider text-slate-700 mb-1">
-                Phone
+                Contact Phone
               </label>
               <input
                 type="text"
                 value={formData.candidate_phone}
                 onChange={(e) => setFormData({ ...formData, candidate_phone: e.target.value })}
+                placeholder="+63 912 345 6789"
                 className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#D60041]/20 focus:border-[#D60041]"
               />
             </div>
@@ -271,17 +278,19 @@ const EditPhysicalResumeModal: React.FC<EditPhysicalResumeModalProps> = ({
 
           <div>
             <label className="block text-xs font-black uppercase tracking-wider text-slate-700 mb-1">
-              HR Notes
+              HR Notes & Filing Remarks
             </label>
             <textarea
               rows={2}
               value={formData.notes}
               onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+              placeholder="Add any candidate notes, referrals, or interview stage details..."
               className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#D60041]/20 focus:border-[#D60041] resize-none"
             />
           </div>
 
-          <div className="pt-2 border-t border-slate-100 flex items-center justify-end space-x-2">
+          {/* Sticky Actions Footer */}
+          <div className="sticky bottom-0 bg-white/95 backdrop-blur-xs pt-3 pb-1 border-t border-slate-100 flex items-center justify-end space-x-2 -mx-4 sm:-mx-6 px-4 sm:px-6">
             <button
               type="button"
               onClick={onClose}
