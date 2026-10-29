@@ -12,7 +12,18 @@ import {
   Edit3,
   Trash2,
   RefreshCw,
-  Lock
+  Lock,
+  PhoneCall,
+  PhoneForwarded,
+  PhoneMissed,
+  PhoneOff,
+  MessageSquare,
+  Radio,
+  Sparkles,
+  ChevronDown,
+  ChevronUp,
+  Volume2,
+  Check
 } from 'lucide-react';
 import { useSelector } from 'react-redux';
 import { RootState } from '../../../redux/store';
@@ -20,7 +31,12 @@ import {
   useUpdateInterviewMutation,
   useDeleteInterviewMutation,
   useGetAvailableSlotsMutation,
-  useGetHRInterviewersQuery
+  useGetHRInterviewersQuery,
+  usePlaceInterviewCallMutation,
+  useRetryInterviewCallMutation,
+  useSendInterviewBackupSMSMutation,
+  useSimulateVoiceCallMutation,
+  useGetInterviewCallLogsQuery
 } from '../../../redux/api/apiSlice';
 
 interface InterviewDetailsModalProps {
@@ -47,9 +63,18 @@ const InterviewDetailsModal: React.FC<InterviewDetailsModalProps> = ({ isOpen, o
   const [getSlots, { isLoading: isFetchingSlots }] = useGetAvailableSlotsMutation();
   const { data: interviewers = [] } = useGetHRInterviewersQuery();
 
+  // AI Voice Notification hooks (REQ028 - REQ034)
+  const [placeCall, { isLoading: isCalling }] = usePlaceInterviewCallMutation();
+  const [retryCall, { isLoading: isRetrying }] = useRetryInterviewCallMutation();
+  const [sendBackupSMS, { isLoading: isSendingSMS }] = useSendInterviewBackupSMSMutation();
+  const [simulateCall, { isLoading: isSimulating }] = useSimulateVoiceCallMutation();
+
   const [isEditing, setIsEditing] = useState<boolean>(false);
   const [confirmDelete, setConfirmDelete] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string>('');
+  const [showCallLogs, setShowCallLogs] = useState<boolean>(false);
+  const [actionFeedback, setActionFeedback] = useState<string>('');
+  const [showSimulateMenu, setShowSimulateMenu] = useState<boolean>(false);
 
   const [formData, setFormData] = useState<FormDataState>({
     title: '',
@@ -64,6 +89,7 @@ const InterviewDetailsModal: React.FC<InterviewDetailsModalProps> = ({ isOpen, o
   const [availableSlots, setAvailableSlots] = useState<any[]>([]);
 
   const actualInterviewId = interview?.rawId || (typeof interview?.id === 'string' && interview.id.startsWith('iv-') ? parseInt(interview.id.replace('iv-', ''), 10) : interview?.id);
+  const { data: callLogs = [], refetch: refetchLogs } = useGetInterviewCallLogsQuery(actualInterviewId, { skip: !actualInterviewId || Boolean(interview?.isGoogleEvent) });
 
   const toLocalDateString = (d?: Date | null) => {
     if (!d) return '';
@@ -210,6 +236,64 @@ const InterviewDetailsModal: React.FC<InterviewDetailsModalProps> = ({ isOpen, o
     }
   };
 
+  const handleTriggerVoiceCall = async () => {
+    try {
+      setActionFeedback('');
+      const res = await placeCall(actualInterviewId).unwrap();
+      setActionFeedback(`Voice call initiated to candidate (Attempt #${res.attempt || 1})!`);
+      if (refetchLogs) refetchLogs();
+      if (onStatusChanged) onStatusChanged();
+      setTimeout(() => setActionFeedback(''), 5000);
+    } catch (err: any) {
+      alert(err?.data?.detail || err?.data?.message || 'Failed to place voice call.');
+    }
+  };
+
+  const handleTriggerRetryCall = async () => {
+    try {
+      setActionFeedback('');
+      const res = await retryCall(actualInterviewId).unwrap();
+      setActionFeedback(`Retry voice call placed (Attempt #${res.attempt || 1})!`);
+      if (refetchLogs) refetchLogs();
+      if (onStatusChanged) onStatusChanged();
+      setTimeout(() => setActionFeedback(''), 5000);
+    } catch (err: any) {
+      alert(err?.data?.detail || err?.data?.message || 'Failed to retry voice call.');
+    }
+  };
+
+  const handleTriggerBackupSMS = async () => {
+    try {
+      setActionFeedback('');
+      await sendBackupSMS(actualInterviewId).unwrap();
+      setActionFeedback('Backup SMS notification successfully dispatched to candidate!');
+      if (refetchLogs) refetchLogs();
+      if (onStatusChanged) onStatusChanged();
+      setTimeout(() => setActionFeedback(''), 5000);
+    } catch (err: any) {
+      alert(err?.data?.detail || err?.data?.message || 'Failed to send backup SMS.');
+    }
+  };
+
+  const handleSimulateResponse = async (outcome: string, phrase?: string) => {
+    try {
+      setActionFeedback('');
+      setShowSimulateMenu(false);
+      const res = await simulateCall({
+        interviewId: actualInterviewId,
+        outcome,
+        spoken_phrase: phrase,
+        language: 'en'
+      }).unwrap();
+      setActionFeedback(`Simulated "${outcome}": Interview status updated to ${res.interview_status || outcome}`);
+      if (refetchLogs) refetchLogs();
+      if (onStatusChanged) onStatusChanged();
+      setTimeout(() => setActionFeedback(''), 5000);
+    } catch (err: any) {
+      alert(err?.data?.detail || err?.data?.message || 'Failed to simulate voice response.');
+    }
+  };
+
   const formatDateTime = (dateVal?: string | Date) => {
     if (!dateVal) return 'N/A';
     const d = new Date(dateVal);
@@ -226,6 +310,10 @@ const InterviewDetailsModal: React.FC<InterviewDetailsModalProps> = ({ isOpen, o
 
   const getStatusBadge = (status?: string) => {
     switch (status?.toUpperCase()) {
+      case 'CONFIRMED':
+        return <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 px-3 py-1 rounded-full text-xs font-black tracking-wider uppercase">Confirmed</span>;
+      case 'RESCHEDULE_REQUESTED':
+        return <span className="bg-amber-50 text-amber-700 border border-amber-200 px-3 py-1 rounded-full text-xs font-black tracking-wider uppercase">Reschedule Requested</span>;
       case 'COMPLETED':
         return <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 px-3 py-1 rounded-full text-xs font-black tracking-wider uppercase">Completed</span>;
       case 'CANCELED':
@@ -234,6 +322,48 @@ const InterviewDetailsModal: React.FC<InterviewDetailsModalProps> = ({ isOpen, o
         return <span className="bg-amber-50 text-amber-700 border border-amber-200 px-3 py-1 rounded-full text-xs font-black tracking-wider uppercase">No Show</span>;
       default:
         return <span className="bg-pink-50 text-[#D60041] border border-pink-200 px-3 py-1 rounded-full text-xs font-black tracking-wider uppercase">Scheduled</span>;
+    }
+  };
+
+  const getVoiceCallBadge = (callStatus?: string) => {
+    switch (callStatus?.toUpperCase()) {
+      case 'CONFIRMED':
+        return (
+          <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 px-3 py-1 rounded-full text-[11px] font-black tracking-wider uppercase flex items-center gap-1.5 shadow-xs">
+            <CheckCircle2 size={13} className="text-emerald-600" /> Verbally Confirmed
+          </span>
+        );
+      case 'RESCHEDULE_REQUESTED':
+        return (
+          <span className="bg-amber-50 text-amber-700 border border-amber-200 px-3 py-1 rounded-full text-[11px] font-black tracking-wider uppercase flex items-center gap-1.5 shadow-xs">
+            <AlertCircle size={13} className="text-amber-600" /> Reschedule Requested
+          </span>
+        );
+      case 'RETRY_SCHEDULED':
+        return (
+          <span className="bg-purple-50 text-purple-700 border border-purple-200 px-3 py-1 rounded-full text-[11px] font-black tracking-wider uppercase flex items-center gap-1.5 shadow-xs">
+            <RefreshCw size={13} className="animate-spin text-purple-600" /> Retry Scheduled
+          </span>
+        );
+      case 'IN_PROGRESS':
+        return (
+          <span className="bg-blue-50 text-blue-700 border border-blue-200 px-3 py-1 rounded-full text-[11px] font-black tracking-wider uppercase flex items-center gap-1.5 shadow-xs">
+            <Radio size={13} className="animate-pulse text-blue-600" /> Calling Candidate...
+          </span>
+        );
+      case 'UNREACHABLE':
+      case 'SMS_BACKUP_SENT':
+        return (
+          <span className="bg-rose-50 text-rose-700 border border-rose-200 px-3 py-1 rounded-full text-[11px] font-black tracking-wider uppercase flex items-center gap-1.5 shadow-xs">
+            <PhoneOff size={13} className="text-rose-600" /> Unreachable (Backup SMS Sent)
+          </span>
+        );
+      default:
+        return (
+          <span className="bg-slate-100 text-slate-700 border border-slate-200 px-3 py-1 rounded-full text-[11px] font-black tracking-wider uppercase flex items-center gap-1.5 shadow-xs">
+            <Clock size={13} /> Call Pending
+          </span>
+        );
     }
   };
 
@@ -388,6 +518,298 @@ const InterviewDetailsModal: React.FC<InterviewDetailsModalProps> = ({ isOpen, o
                   Emailed via SMTP
                 </span>
               </div>
+
+              {/* AI Voice Notification Module (REQ028 - REQ034) */}
+              {!isGoogleOnlyEvent && (
+                <div className="bg-gradient-to-br from-white via-rose-50/30 to-pink-50/40 border border-rose-200/80 rounded-3xl p-5 sm:p-6 shadow-sm space-y-4">
+                  {/* Card Header */}
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-rose-100">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-[#D60041] to-rose-500 text-white flex items-center justify-center shadow-md shadow-[#D60041]/20 shrink-0">
+                        <PhoneCall size={20} />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <h4 className="text-sm font-black text-gray-900 tracking-tight">
+                            AI Voice Notification Module
+                          </h4>
+                          <span className="px-2 py-0.5 bg-rose-100 text-[#D60041] rounded-full text-[10px] font-black uppercase tracking-wider">
+                            Voice + SMS
+                          </span>
+                        </div>
+                        <p className="text-[11px] font-semibold text-gray-500">
+                          Automated call in English & Filipino with verbal confirmation
+                        </p>
+                      </div>
+                    </div>
+                    <div className="self-start sm:self-auto">
+                      {getVoiceCallBadge(interview.call_status)}
+                    </div>
+                  </div>
+
+                  {/* Verbal Response Quote Block (REQ030 & REQ034) */}
+                  {(interview.verbal_notes || interview.candidate_response) && (
+                    <div className="bg-white/90 rounded-2xl p-4 border border-rose-100 shadow-xs space-y-1.5">
+                      <div className="flex items-center justify-between text-[11px] font-black uppercase tracking-wider text-gray-500">
+                        <span className="flex items-center gap-1.5 text-gray-700">
+                          <MessageSquare size={13} className="text-[#D60041]" />
+                          Candidate Verbal Response (REQ030)
+                        </span>
+                        <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black tracking-wider uppercase ${
+                          interview.candidate_response === 'CONFIRMED'
+                            ? 'bg-emerald-100 text-emerald-800'
+                            : 'bg-amber-100 text-amber-800'
+                        }`}>
+                          {interview.candidate_response === 'CONFIRMED' ? 'Confirmed' : 'Reschedule Requested'}
+                        </span>
+                      </div>
+                      <p className="text-xs font-semibold text-slate-800 italic bg-slate-50/80 p-3 rounded-xl border border-slate-100">
+                        "{interview.verbal_notes || interview.candidate_response}"
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Metadata Row: Phone, Attempts Meter (REQ031), Language (REQ029) */}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
+                    {/* Candidate Phone */}
+                    <div className="bg-white/80 p-3 rounded-2xl border border-rose-100/70">
+                      <span className="text-[10px] font-black text-gray-400 uppercase tracking-wider block">
+                        Candidate Phone
+                      </span>
+                      <span className="text-xs font-bold text-gray-900 flex items-center gap-1.5 mt-0.5">
+                        <Phone size={13} className="text-[#D60041]" />
+                        {interview.candidate_phone || 'No phone provided'}
+                      </span>
+                    </div>
+
+                    {/* Retry Attempts Progress (REQ031) */}
+                    <div className="bg-white/80 p-3 rounded-2xl border border-rose-100/70">
+                      <span className="text-[10px] font-black text-gray-400 uppercase tracking-wider block">
+                        Call Attempts (Max 3 / 24h)
+                      </span>
+                      <div className="flex items-center gap-2 mt-1">
+                        <div className="flex items-center gap-1">
+                          {[1, 2, 3].map((num) => {
+                            const isAttempted = (interview.call_attempts || 0) >= num;
+                            return (
+                              <div
+                                key={num}
+                                className={`h-2.5 w-6 rounded-full transition-colors ${
+                                  isAttempted
+                                    ? interview.call_status === 'CONFIRMED'
+                                      ? 'bg-emerald-500'
+                                      : interview.call_status === 'RESCHEDULE_REQUESTED'
+                                      ? 'bg-amber-500'
+                                      : 'bg-[#D60041]'
+                                    : 'bg-gray-200'
+                                }`}
+                                title={`Attempt ${num} of 3`}
+                              />
+                            );
+                          })}
+                        </div>
+                        <span className="text-xs font-bold text-gray-700">
+                          {interview.call_attempts || 0}/3
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Language & Voice Engine (REQ029) */}
+                    <div className="bg-white/80 p-3 rounded-2xl border border-rose-100/70">
+                      <span className="text-[10px] font-black text-gray-400 uppercase tracking-wider block">
+                        Voice Language
+                      </span>
+                      <span className="text-xs font-bold text-gray-900 flex items-center gap-1.5 mt-0.5">
+                        <Volume2 size={13} className="text-[#D60041]" />
+                        English & Filipino (Bilingual)
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Next Retry Banner if RETRY_SCHEDULED (REQ031) */}
+                  {interview.call_status === 'RETRY_SCHEDULED' && interview.next_retry_at && (
+                    <div className="bg-purple-50 border border-purple-200 text-purple-900 px-4 py-2.5 rounded-2xl flex items-center justify-between text-xs font-bold">
+                      <div className="flex items-center gap-2">
+                        <RefreshCw size={14} className="animate-spin text-purple-600" />
+                        <span>
+                          Next automated retry scheduled at{' '}
+                          <span className="font-black text-purple-950">
+                            {new Date(interview.next_retry_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true })}
+                          </span>{' '}
+                          (within 24-hr retry policy)
+                        </span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* SMS Backup Alert if Unreachable (REQ033) */}
+                  {(interview.sms_backup_sent || interview.call_status === 'SMS_BACKUP_SENT' || interview.call_status === 'UNREACHABLE') && (
+                    <div className="bg-rose-50 border border-rose-200 text-rose-800 px-4 py-2.5 rounded-2xl flex items-center gap-2 text-xs font-bold">
+                      <PhoneOff size={14} className="text-rose-600 shrink-0" />
+                      <span>
+                        Voice calls completed (3 attempts). Backup SMS notification dispatched to {interview.candidate_phone}.
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Action Controls for HR (Call Now, Retry, SMS Backup, Simulate) */}
+                  {canModify && (
+                    <div className="pt-2 flex flex-wrap items-center justify-between gap-2.5 border-t border-rose-100/80">
+                      <div className="flex flex-wrap items-center gap-2">
+                        {/* Place Voice Call (REQ028) */}
+                        <button
+                          type="button"
+                          onClick={handleTriggerVoiceCall}
+                          disabled={isCalling}
+                          className="px-3.5 py-2 bg-gradient-to-r from-[#D60041] to-rose-600 hover:from-rose-700 hover:to-[#D60041] text-white rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-1.5 disabled:opacity-50"
+                        >
+                          <PhoneCall size={14} className={isCalling ? 'animate-pulse' : ''} />
+                          {isCalling ? 'Calling Candidate...' : 'Call Candidate Now'}
+                        </button>
+
+                        {/* Retry Call (REQ031) */}
+                        {(interview.call_status === 'RETRY_SCHEDULED' || (interview.call_attempts || 0) > 0) && (
+                          <button
+                            type="button"
+                            onClick={handleTriggerRetryCall}
+                            disabled={isRetrying}
+                            className="px-3 py-2 bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5 disabled:opacity-50"
+                          >
+                            <RefreshCw size={13} className={isRetrying ? 'animate-spin' : ''} />
+                            {isRetrying ? 'Retrying...' : 'Retry Call Now'}
+                          </button>
+                        )}
+
+                        {/* Send Backup SMS (REQ033) */}
+                        <button
+                          type="button"
+                          onClick={handleTriggerBackupSMS}
+                          disabled={isSendingSMS}
+                          className="px-3 py-2 bg-white hover:bg-rose-50 text-rose-700 border border-rose-200 rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5 disabled:opacity-50 shadow-xs"
+                        >
+                          <Mail size={13} />
+                          {isSendingSMS ? 'Sending SMS...' : 'Send Backup SMS'}
+                        </button>
+                      </div>
+
+                      {/* Dev / Interactive Simulation Menu */}
+                      <div className="relative">
+                        <button
+                          type="button"
+                          onClick={() => setShowSimulateMenu(!showSimulateMenu)}
+                          className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5"
+                        >
+                          <Sparkles size={13} className="text-[#D60041]" />
+                          Simulate Response
+                          <ChevronDown size={13} />
+                        </button>
+
+                        {showSimulateMenu && (
+                          <div className="absolute right-0 bottom-full mb-2 w-64 bg-white rounded-2xl shadow-xl border border-gray-100 p-2 z-30 space-y-1 animate-in fade-in slide-in-from-bottom-2">
+                            <p className="px-3 py-1 text-[10px] font-black uppercase tracking-wider text-gray-400">
+                              Simulate Voice Response (Test)
+                            </p>
+                            <button
+                              type="button"
+                              onClick={() => handleSimulateResponse('CONFIRMED', 'Yes, I confirm my attendance for this interview')}
+                              className="w-full text-left px-3 py-2 hover:bg-emerald-50 text-emerald-800 rounded-xl text-xs font-bold flex items-center justify-between"
+                            >
+                              <span>Confirm Attendance</span>
+                              <CheckCircle2 size={14} className="text-emerald-600" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleSimulateResponse('RESCHEDULE_REQUESTED', 'Please reschedule, I have a conflict on Friday')}
+                              className="w-full text-left px-3 py-2 hover:bg-amber-50 text-amber-800 rounded-xl text-xs font-bold flex items-center justify-between"
+                            >
+                              <span>Request Reschedule</span>
+                              <AlertCircle size={14} className="text-amber-600" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleSimulateResponse('NO_ANSWER')}
+                              className="w-full text-left px-3 py-2 hover:bg-rose-50 text-rose-800 rounded-xl text-xs font-bold flex items-center justify-between"
+                            >
+                              <span>No Answer (Trigger Retry)</span>
+                              <PhoneMissed size={14} className="text-rose-600" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleSimulateResponse('BUSY')}
+                              className="w-full text-left px-3 py-2 hover:bg-slate-50 text-slate-800 rounded-xl text-xs font-bold flex items-center justify-between"
+                            >
+                              <span>Line Busy</span>
+                              <PhoneOff size={14} className="text-slate-600" />
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Call Log Accordion (REQ032) */}
+                  <div className="pt-2 border-t border-rose-100/60">
+                    <button
+                      type="button"
+                      onClick={() => setShowCallLogs(!showCallLogs)}
+                      className="w-full flex items-center justify-between text-xs font-bold text-gray-600 hover:text-gray-900 transition-colors py-1"
+                    >
+                      <span className="flex items-center gap-1.5">
+                        <PhoneForwarded size={14} className="text-[#D60041]" />
+                        Call Attempts & Responses Log ({callLogs?.length || 0})
+                      </span>
+                      {showCallLogs ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                    </button>
+
+                    {showCallLogs && (
+                      <div className="mt-3 space-y-2 max-h-48 overflow-y-auto pr-1">
+                        {callLogs && callLogs.length > 0 ? (
+                          callLogs.map((log: any, idx: number) => (
+                            <div
+                              key={log.id || idx}
+                              className="bg-white/90 p-3 rounded-xl border border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs"
+                            >
+                              <div className="space-y-0.5">
+                                <div className="flex items-center gap-2">
+                                  <span className="font-black text-gray-900">
+                                    Attempt #{log.attempt_number || 1}
+                                  </span>
+                                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase ${
+                                    log.extracted_intent === 'CONFIRMED'
+                                      ? 'bg-emerald-100 text-emerald-800'
+                                      : log.extracted_intent === 'RESCHEDULE_REQUESTED'
+                                      ? 'bg-amber-100 text-amber-800'
+                                      : 'bg-rose-100 text-rose-800'
+                                  }`}>
+                                    {log.status || log.extracted_intent}
+                                  </span>
+                                  {log.sms_backup_sent && (
+                                    <span className="px-2 py-0.5 bg-blue-100 text-blue-800 rounded-full text-[10px] font-black uppercase">
+                                      SMS Backup Sent
+                                    </span>
+                                  )}
+                                </div>
+                                {log.candidate_verbal_response && (
+                                  <p className="text-[11px] font-medium text-gray-700 italic">
+                                    "{log.candidate_verbal_response}"
+                                  </p>
+                                )}
+                              </div>
+                              <span className="text-[10px] text-gray-400 font-mono self-start sm:self-auto shrink-0">
+                                {log.created_at ? new Date(log.created_at).toLocaleString() : ''}
+                              </span>
+                            </div>
+                          ))
+                        ) : (
+                          <p className="text-xs text-gray-400 font-medium py-2 text-center">
+                            No call logs recorded yet. Automated call will trigger upon interview scheduling.
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
 
               {/* Description / Notes */}
               {(interview.description || interview.notes) && (

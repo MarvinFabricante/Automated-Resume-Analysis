@@ -6,6 +6,7 @@ import json
 from dotenv import load_dotenv
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import NullPool
 from app.celery_app import celery_app
 
 
@@ -371,5 +372,56 @@ def retrain_ml_model_task(min_new_samples: int = 5, force: bool = False) -> dict
     except Exception as e:
         logger.error(f"[Celery] ML Retraining task failed: {e}")
         return {"status": "error", "error": str(e)}
+
+
+def get_task_session_maker():
+    task_engine = create_async_engine(
+        effective_db_url,
+        poolclass=NullPool,
+    )
+    return sessionmaker(task_engine, class_=AsyncSession, expire_on_commit=False), task_engine
+
+
+@celery_app.task(name="initiate_interview_call_task")
+def initiate_interview_call_task(interview_id: int) -> dict:
+    """
+    REQ028: Celery background worker task to place automated AI voice call to candidate.
+    """
+    logger.info(f"[Celery] Executing initiate_interview_call_task for interview_id={interview_id}")
+    async def _async_call():
+        session_maker, task_engine = get_task_session_maker()
+        try:
+            async with session_maker() as db:
+                from app.services.ai_caller_service import initiate_candidate_interview_call
+                return await initiate_candidate_interview_call(interview_id, db=db)
+        finally:
+            await task_engine.dispose()
+    try:
+        return asyncio.run(_async_call())
+    except Exception as e:
+        logger.error(f"[Celery] Error in initiate_interview_call_task: {e}")
+        return {"status": "error", "error": str(e)}
+
+
+@celery_app.task(name="process_voice_call_retries_task")
+def process_voice_call_retries_task() -> dict:
+    """
+    REQ031 & REQ033: Periodic Celery worker task to check and execute voice call retries
+    up to 3 times within 24 hours, and send SMS backup when 3 attempts are exhausted.
+    """
+    async def _async_retries():
+        session_maker, task_engine = get_task_session_maker()
+        try:
+            async with session_maker() as db:
+                from app.services.ai_caller_service import process_due_retries
+                return await process_due_retries(db=db)
+        finally:
+            await task_engine.dispose()
+    try:
+        return asyncio.run(_async_retries())
+    except Exception as e:
+        logger.error(f"[Celery] Error in process_voice_call_retries_task: {e}")
+        return {"status": "error", "error": str(e)}
+
 
 

@@ -16,7 +16,9 @@ import {
   Users,
   X,
   RotateCcw,
-  Lock
+  Lock,
+  Phone,
+  PhoneCall
 } from 'lucide-react';
 import { useSelector } from 'react-redux';
 import { RootState } from '../../redux/store';
@@ -74,7 +76,71 @@ export interface FormattedCalendarEvent {
   interviewer_name?: string;
   interviewer_email?: string;
   type: string;
+  call_status?: string;
+  call_attempts?: number;
+  candidate_response?: string;
+  sms_backup_sent?: boolean;
+  call_language?: string;
+  verbal_notes?: string;
+  last_call_at?: string;
+  next_retry_at?: string;
 }
+
+const getVoiceCallBadge = (ev: FormattedCalendarEvent) => {
+  if (ev.isGoogleEvent) return null;
+  const status = (ev.call_status || '').toUpperCase();
+  const response = (ev.candidate_response || '').toUpperCase();
+
+  if (response === 'CONFIRMED' || status === 'CONFIRMED') {
+    return (
+      <span className="inline-flex items-center gap-1 bg-emerald-50 text-emerald-700 border border-emerald-200 text-[9px] font-black px-2 py-0.5 rounded-full uppercase" title="Candidate confirmed via voice call">
+        <PhoneCall size={9} className="text-emerald-600" />
+        AI Call: Confirmed
+      </span>
+    );
+  }
+  if (response === 'RESCHEDULE_REQUESTED' || status === 'RESCHEDULE_REQUESTED') {
+    return (
+      <span className="inline-flex items-center gap-1 bg-amber-50 text-amber-700 border border-amber-200 text-[9px] font-black px-2 py-0.5 rounded-full uppercase" title="Candidate requested reschedule via voice call">
+        <RotateCcw size={9} className="text-amber-600" />
+        AI Call: Reschedule Req
+      </span>
+    );
+  }
+  if (status === 'IN_PROGRESS' || status === 'CALLING') {
+    return (
+      <span className="inline-flex items-center gap-1 bg-blue-50 text-blue-700 border border-blue-200 text-[9px] font-black px-2 py-0.5 rounded-full uppercase animate-pulse">
+        <PhoneCall size={9} className="text-blue-600" />
+        Calling Candidate...
+      </span>
+    );
+  }
+  if (status === 'RETRY_SCHEDULED') {
+    return (
+      <span className="inline-flex items-center gap-1 bg-orange-50 text-orange-700 border border-orange-200 text-[9px] font-black px-2 py-0.5 rounded-full uppercase" title={`Auto-retry scheduled (Attempt ${ev.call_attempts || 1}/3)`}>
+        <RotateCcw size={9} className="text-orange-600" />
+        Call Retry ({ev.call_attempts || 1}/3)
+      </span>
+    );
+  }
+  if (status === 'FAILED') {
+    return (
+      <span className="inline-flex items-center gap-1 bg-rose-50 text-rose-700 border border-rose-200 text-[9px] font-black px-2 py-0.5 rounded-full uppercase" title="Call attempts exhausted">
+        <AlertCircle size={9} className="text-rose-600" />
+        {ev.sms_backup_sent ? 'SMS Backup Sent' : 'Call Failed (3/3)'}
+      </span>
+    );
+  }
+  if (status === 'QUEUED' || status === 'PENDING') {
+    return (
+      <span className="inline-flex items-center gap-1 bg-gray-50 text-gray-600 border border-gray-200 text-[9px] font-black px-2 py-0.5 rounded-full uppercase">
+        <Phone size={9} className="text-gray-400" />
+        Call Queued
+      </span>
+    );
+  }
+  return null;
+};
 
 const HRSchedulingPage: React.FC = () => {
   // Calendar view state
@@ -232,7 +298,15 @@ const HRSchedulingPage: React.FC = () => {
         interviewer_id: iv.interviewer_id,
         interviewer_name: iv.interviewer_name,
         interviewer_email: iv.interviewer_email,
-        type: 'interview'
+        type: 'interview',
+        call_status: iv.call_status,
+        call_attempts: iv.call_attempts,
+        candidate_response: iv.candidate_response,
+        sms_backup_sent: iv.sms_backup_sent,
+        call_language: iv.call_language,
+        verbal_notes: iv.verbal_notes,
+        last_call_at: iv.last_call_at,
+        next_retry_at: iv.next_retry_at
       });
     });
 
@@ -286,7 +360,14 @@ const HRSchedulingPage: React.FC = () => {
       // Status filter
       if (statusFilter !== 'ALL') {
         const evStatus = (ev.status || '').toUpperCase();
-        if (ev.isGoogleEvent) {
+        const callStatus = (ev.call_status || '').toUpperCase();
+        const candResp = (ev.candidate_response || '').toUpperCase();
+
+        if (statusFilter === 'CONFIRMED') {
+          if (evStatus !== 'CONFIRMED' && candResp !== 'CONFIRMED' && callStatus !== 'CONFIRMED') return false;
+        } else if (statusFilter === 'RESCHEDULE_REQUESTED') {
+          if (evStatus !== 'RESCHEDULE_REQUESTED' && candResp !== 'RESCHEDULE_REQUESTED') return false;
+        } else if (ev.isGoogleEvent) {
           if (statusFilter !== 'SCHEDULED') return false;
         } else {
           if (statusFilter === 'CANCELED') {
@@ -743,6 +824,8 @@ const HRSchedulingPage: React.FC = () => {
                   >
                     <option value="ALL">All Status</option>
                     <option value="SCHEDULED">Scheduled</option>
+                    <option value="CONFIRMED">Confirmed (AI Voice)</option>
+                    <option value="RESCHEDULE_REQUESTED">Reschedule Requested</option>
                     <option value="COMPLETED">Completed</option>
                     <option value="CANCELED">Canceled</option>
                     <option value="NO_SHOW">No Show</option>
@@ -1120,11 +1203,14 @@ const HRSchedulingPage: React.FC = () => {
                                     >
                                       <div className="flex items-center justify-between text-[10px] font-bold text-gray-500 mb-1">
                                         <span>{formatEventTime(ev.start)} – {formatEventTime(ev.end)}</span>
-                                        {readOnly && (
-                                          <span className="inline-flex items-center gap-0.5 text-[9px] font-black text-amber-700 bg-amber-50 px-1 py-0.5 rounded border border-amber-200" title="Read-Only">
-                                            <Lock size={8} /> Read-Only
-                                          </span>
-                                        )}
+                                        <div className="flex items-center gap-1 flex-wrap justify-end">
+                                          {getVoiceCallBadge(ev)}
+                                          {readOnly && (
+                                            <span className="inline-flex items-center gap-0.5 text-[9px] font-black text-amber-700 bg-amber-50 px-1 py-0.5 rounded border border-amber-200" title="Read-Only">
+                                              <Lock size={8} /> Read-Only
+                                            </span>
+                                          )}
+                                        </div>
                                       </div>
                                       <h5 className="font-bold text-xs truncate group-hover:text-[#D60041] transition-colors">
                                         {ev.candidate_name && !isGoogle ? ev.candidate_name : ev.title}
@@ -1317,6 +1403,7 @@ const HRSchedulingPage: React.FC = () => {
                                               }`}>
                                                 {ev.status}
                                               </span>
+                                              {getVoiceCallBadge(ev)}
                                               {readOnly && (
                                                 <span className="bg-amber-100 text-amber-800 text-[9px] font-black px-2 py-0.5 rounded-full uppercase inline-flex items-center gap-1">
                                                   <Lock size={9} /> Read-Only ({ev.interviewer_name ? `Assigned to ${ev.interviewer_name}` : 'Other HR'})
@@ -1499,6 +1586,7 @@ const HRSchedulingPage: React.FC = () => {
                                             }`}>
                                               {ev.status}
                                             </span>
+                                            {getVoiceCallBadge(ev)}
                                             {readOnly && (
                                               <span className="bg-amber-100 text-amber-800 text-[9px] font-black px-2 py-0.5 rounded-full uppercase inline-flex items-center gap-1">
                                                 <Lock size={9} /> Read-Only ({ev.interviewer_name ? `Assigned to ${ev.interviewer_name}` : 'Other HR'})

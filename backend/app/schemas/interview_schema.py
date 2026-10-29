@@ -24,6 +24,24 @@ class InterviewUpdateSchema(BaseModel):
     status: Optional[str] = None
     interviewer_id: Optional[int] = None
 
+class VoiceCallRecordResponseSchema(BaseModel):
+    id: int
+    interview_id: int
+    call_sid: Optional[str] = None
+    phone_number: str
+    attempt_number: int
+    status: str
+    duration: int = 0
+    language: str = "bilingual"
+    candidate_verbal_response: Optional[str] = None
+    extracted_intent: Optional[str] = None
+    notes: Optional[str] = None
+    sms_backup_sent: bool = False
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
 class InterviewResponseSchema(BaseModel):
     id: int
     job_application_id: int
@@ -44,8 +62,24 @@ class InterviewResponseSchema(BaseModel):
     interviewer_name: Optional[str] = None
     interviewer_email: Optional[str] = None
     
+    # AI Voice Notification fields
+    call_status: Optional[str] = "PENDING"
+    call_attempts: Optional[int] = 0
+    last_call_at: Optional[datetime] = None
+    next_retry_at: Optional[datetime] = None
+    candidate_response: Optional[str] = None
+    call_language: Optional[str] = "bilingual"
+    verbal_notes: Optional[str] = None
+    sms_backup_sent: Optional[bool] = False
+    call_records: Optional[List[VoiceCallRecordResponseSchema]] = []
+    
     class Config:
         from_attributes = True
+
+class SimulateVoiceCallRequest(BaseModel):
+    outcome: str = "CONFIRMED" # CONFIRMED, RESCHEDULE_REQUESTED, NO_ANSWER, BUSY, FAILED
+    spoken_phrase: Optional[str] = None
+    language: Optional[str] = "en"
 
 class TimeSlotSchema(BaseModel):
     start_time: datetime
@@ -61,4 +95,5 @@ class CalendarFeedResponseSchema(BaseModel):
     google_events: List[Dict[str, Any]] = []
     google_connected: bool = False
     google_account: Optional[str] = None
+
 

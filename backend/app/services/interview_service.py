@@ -56,6 +56,17 @@ def _populate_candidate_info(interview):
         setattr(interview, "interviewer_name", None)
         setattr(interview, "interviewer_email", None)
     setattr(interview, "meeting_link", None)
+    # Ensure AI Voice notification fields are attached safely
+    if not hasattr(interview, "call_status") or interview.call_status is None:
+        setattr(interview, "call_status", "PENDING")
+    if not hasattr(interview, "call_attempts") or interview.call_attempts is None:
+        setattr(interview, "call_attempts", 0)
+    if not hasattr(interview, "sms_backup_sent") or interview.sms_backup_sent is None:
+        setattr(interview, "sms_backup_sent", False)
+    if not hasattr(interview, "call_language") or interview.call_language is None:
+        setattr(interview, "call_language", "bilingual")
+    if not hasattr(interview, "call_records") or interview.call_records is None:
+        setattr(interview, "call_records", [])
     return interview
 
 def send_sms_notification_sync(to_phone: str, message: str):
@@ -382,6 +393,23 @@ async def schedule_interview(db: AsyncSession, data: InterviewCreateSchema, user
         )
     except Exception as e_notif:
         print(f"Warning: Could not create interview notification: {e_notif}")
+
+    # 7. REQ028: Automatically place voice calls to candidates after interview scheduling
+    if getattr(application, "phone", None):
+        try:
+            from app.tasks import initiate_interview_call_task
+            initiate_interview_call_task.delay(interview.id)
+            await InterviewRepository.add_interview_log(
+                db, interview.id, "VOICE_CALL_QUEUED", f"Automated AI voice call queued for candidate phone {application.phone}"
+            )
+            await InterviewRepository.commit_changes(db)
+        except Exception as e_voice:
+            logger.warning(f"Celery dispatch notice for interview voice call: {e_voice}. Falling back to background async...")
+            try:
+                from app.services.ai_caller_service import initiate_candidate_interview_call
+                asyncio.create_task(initiate_candidate_interview_call(interview.id))
+            except Exception as e_direct:
+                logger.error(f"Error queueing automated voice call: {e_direct}")
 
     # Attach candidate and interviewer attributes for Pydantic response
     setattr(interview, "job_application", application)
