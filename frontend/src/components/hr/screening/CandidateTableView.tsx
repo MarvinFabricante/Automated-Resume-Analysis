@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { 
   Calendar, MapPin, ChevronDown, CheckCircle2, XCircle, Clock, Search, 
-  Check, Archive, Trash2, RotateCcw, FileText, Download, Copy, Mail, Phone, Eye, Sparkles
+  Check, Archive, RotateCcw, FileText, Download, Copy, Mail, Phone, Eye, Sparkles
 } from 'lucide-react';
 import { getAssetUrl } from '../../../services/api';
 import { CandidateItem } from './CandidateCard';
@@ -331,15 +331,6 @@ const CandidateTableView: React.FC<CandidateTableViewProps> = ({
                           <Archive size={14} />
                         </button>
                       )}
-
-                      <button
-                        type="button"
-                        onClick={() => onDeleteApplication(c.id)}
-                        title="Remove Application"
-                        className="p-1.5 hover:bg-rose-50 text-gray-400 hover:text-rose-700 rounded-lg transition-colors cursor-pointer"
-                      >
-                        <Trash2 size={14} />
-                      </button>
                     </div>
                   </td>
                 </tr>

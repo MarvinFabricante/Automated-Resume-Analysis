@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { 
   Calendar, MapPin, ChevronDown, CheckCircle2, XCircle, Clock, Search, 
-  Check, Archive, Trash2, RotateCcw, FileText, Copy, Mail, Phone,
+  Check, Archive, RotateCcw, FileText, Copy, Mail, Phone,
   Zap, Briefcase, GraduationCap, Sparkles
 } from 'lucide-react';
 import { getAssetUrl } from '../../../services/api';
@@ -328,16 +328,6 @@ const CandidateCard: React.FC<CandidateCardProps> = ({
                 <Archive size={15} />
               </button>
             )}
-
-            {/* Remove / Delete Button */}
-            <button
-              type="button"
-              onClick={() => onDeleteApplication(candidate.id)}
-              title="Remove Candidate Application"
-              className="w-9 h-9 sm:w-10 sm:h-10 flex items-center justify-center bg-gray-50 border border-gray-200 text-gray-500 hover:bg-rose-50 hover:border-rose-200 hover:text-rose-700 rounded-xl transition-all cursor-pointer shadow-xs hover:shadow-sm shrink-0"
-            >
-              <Trash2 size={15} />
-            </button>
 
             {/* Status Dropdown */}
             <div className="relative flex-1 sm:flex-none sm:min-w-[130px]" ref={dropdownRef}>

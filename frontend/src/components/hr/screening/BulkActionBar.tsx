@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { 
-  Scale, Archive, Trash2, Download, X, CheckSquare, Square, 
+  Scale, Archive, Download, X, CheckSquare, Square, 
   ChevronDown, CheckCircle2, Clock, Check
 } from 'lucide-react';
 
@@ -146,17 +146,6 @@ const BulkActionBar: React.FC<BulkActionBarProps> = ({
         >
           <Archive size={13} />
           <span className="hidden sm:inline">Archive</span>
-        </button>
-
-        {/* Delete Selected */}
-        <button
-          type="button"
-          onClick={onBatchDelete}
-          title="Remove selected candidates"
-          className="flex items-center justify-center gap-1.5 px-2.5 sm:px-3 py-1.5 sm:py-2 bg-gray-800 hover:bg-rose-950/60 text-rose-300 border border-gray-700 hover:border-rose-800/50 rounded-xl text-xs font-bold transition-all cursor-pointer h-8.5 sm:h-9"
-        >
-          <Trash2 size={13} />
-          <span className="hidden sm:inline">Remove</span>
         </button>
 
         {/* Desktop Deselect / Cancel */}

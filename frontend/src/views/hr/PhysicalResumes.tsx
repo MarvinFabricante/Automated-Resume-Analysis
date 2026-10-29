@@ -7,7 +7,6 @@ import {
   Upload,
   Download,
   Eye,
-  Trash2,
   Edit3,
   Calendar,
   Building2,
@@ -39,7 +38,6 @@ import EditPhysicalResumeModal from '../../components/modals/hr/EditPhysicalResu
 import {
   useGetPhysicalResumesQuery,
   useGetPhysicalResumeStatsQuery,
-  useDeletePhysicalResumeMutation,
   useGetJobsQuery,
 } from '../../redux/api/apiSlice';
 import { API_BASE_URL } from '../../services/api';
@@ -79,17 +77,7 @@ const PhysicalResumes: React.FC = () => {
 
   const { data: statsData, refetch: refetchStats } = useGetPhysicalResumeStatsQuery();
   const { data: jobs = [] } = useGetJobsQuery();
-  const [deleteResume, { isLoading: isDeleting }] = useDeletePhysicalResumeMutation();
 
-  // Modals state
-  const [viewModalOpen, setViewModalOpen] = useState<boolean>(false);
-  const [uploadModalOpen, setUploadModalOpen] = useState<boolean>(false);
-  const [editModalOpen, setEditModalOpen] = useState<boolean>(false);
-  const [selectedResume, setSelectedResume] = useState<any>(null);
-
-  // Delete confirmation
-  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState<boolean>(false);
-  const [resumeToDelete, setResumeToDelete] = useState<any>(null);
 
   // Toast notification
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
@@ -118,25 +106,11 @@ const PhysicalResumes: React.FC = () => {
     setEditModalOpen(true);
   };
 
-  const handleOpenDelete = (resume: any) => {
-    setResumeToDelete(resume);
-    setDeleteConfirmOpen(true);
-  };
-
-  const handleConfirmDelete = async () => {
-    if (!resumeToDelete) return;
-    try {
-      await deleteResume(resumeToDelete.id).unwrap();
-      showToast(`Removed physical resume record for ${resumeToDelete.candidate_name}.`, 'success');
-      setDeleteConfirmOpen(false);
-      setResumeToDelete(null);
-      refetch();
-      refetchStats();
-    } catch (err: any) {
-      console.error('Delete error:', err);
-      showToast('Failed to delete physical resume record.', 'error');
-    }
-  };
+  // Modals state
+  const [viewModalOpen, setViewModalOpen] = useState<boolean>(false);
+  const [uploadModalOpen, setUploadModalOpen] = useState<boolean>(false);
+  const [editModalOpen, setEditModalOpen] = useState<boolean>(false);
+  const [selectedResume, setSelectedResume] = useState<any>(null);
 
   const handleDirectDownload = (e: React.MouseEvent, resume: any) => {
     e.stopPropagation();
@@ -175,6 +149,21 @@ const PhysicalResumes: React.FC = () => {
     showToast('Catalog exported to CSV successfully.', 'success');
   };
 
+  const formatDate = (dateStr?: string | null) => {
+    if (!dateStr) return 'N/A';
+    try {
+      const d = new Date(dateStr);
+      if (isNaN(d.getTime())) return dateStr.split('T')[0] || 'N/A';
+      return d.toLocaleDateString('en-US', {
+        month: 'short',
+        day: '2-digit',
+        year: 'numeric',
+      });
+    } catch {
+      return dateStr.split('T')[0] || 'N/A';
+    }
+  };
+
   const statusColor = (status: string) => {
     switch ((status || '').toUpperCase()) {
       case 'RECEIVED':
@@ -211,11 +200,11 @@ const PhysicalResumes: React.FC = () => {
         <Header />
 
         {/* SCROLLABLE VIEW CONTAINER */}
-        <main className="flex-1 overflow-y-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6 custom-scrollbar">
+        <main className="flex-1 overflow-y-auto px-3.5 sm:px-6 lg:px-8 py-4 sm:py-6 space-y-4 sm:space-y-6 custom-scrollbar">
           {/* TOAST ALERT */}
           {toast && (
             <div
-              className={`fixed top-20 right-6 z-50 flex items-center space-x-2.5 px-4 py-3 rounded-2xl shadow-xl border text-xs font-bold animate-in slide-in-from-top-4 duration-300 ${
+              className={`fixed top-20 right-4 sm:right-6 z-50 flex items-center space-x-2.5 px-4 py-3 rounded-2xl shadow-xl border text-xs font-bold animate-in slide-in-from-top-4 duration-300 max-w-[90vw] sm:max-w-md ${
                 toast.type === 'success'
                   ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
                   : 'bg-rose-50 text-rose-800 border-rose-200'
@@ -226,20 +215,20 @@ const PhysicalResumes: React.FC = () => {
               ) : (
                 <AlertCircle size={16} className="text-rose-600 shrink-0" />
               )}
-              <span>{toast.message}</span>
+              <span className="truncate">{toast.message}</span>
             </div>
           )}
 
           {/* PAGE HERO BANNER */}
-          <section className="bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 rounded-3xl p-6 sm:p-8 text-white relative overflow-hidden shadow-xl shadow-slate-900/10">
+          <section className="bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 rounded-2xl sm:rounded-3xl p-5 sm:p-8 text-white relative overflow-hidden shadow-xl shadow-slate-900/10">
             <div className="absolute top-0 right-0 w-96 h-96 bg-[#D60041]/20 rounded-full blur-3xl -mr-32 -mt-32 pointer-events-none" />
-            <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
-              <div className="max-w-2xl">
+            <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-5 sm:gap-6">
+              <div className="max-w-2xl min-w-0">
                 <div className="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-white/10 backdrop-blur-md border border-white/15 text-pink-300 text-xs font-bold mb-3">
-                  <FolderArchive size={14} />
-                  <span>Physical Storage & Walk-In Submissions</span>
+                  <FolderArchive size={14} className="shrink-0" />
+                  <span className="truncate">Physical Storage & Walk-In Submissions</span>
                 </div>
-                <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-white leading-tight">
+                <h1 className="text-xl sm:text-2xl md:text-3xl font-black tracking-tight text-white leading-tight">
                   Hard-Copy Resume Storage Vault
                 </h1>
                 <p className="text-xs sm:text-sm text-slate-300 font-medium mt-2 leading-relaxed">
@@ -248,7 +237,7 @@ const PhysicalResumes: React.FC = () => {
               </div>
 
               {/* Action Buttons */}
-              <div className="flex flex-wrap items-center gap-3 shrink-0">
+              <div className="flex flex-wrap items-center gap-2.5 sm:gap-3 shrink-0">
                 <button
                   type="button"
                   onClick={() => {
@@ -256,8 +245,9 @@ const PhysicalResumes: React.FC = () => {
                     refetchStats();
                     showToast('Data refreshed.', 'success');
                   }}
-                  className="p-3 bg-white/10 hover:bg-white/15 border border-white/10 rounded-2xl text-white transition-all cursor-pointer"
+                  className="p-2.5 sm:p-3 bg-white/10 hover:bg-white/15 border border-white/10 rounded-xl sm:rounded-2xl text-white transition-all cursor-pointer"
                   title="Refresh repository"
+                  aria-label="Refresh repository"
                 >
                   <RefreshCw size={16} className={isFetching ? 'animate-spin' : ''} />
                 </button>
@@ -265,7 +255,7 @@ const PhysicalResumes: React.FC = () => {
                 <button
                   type="button"
                   onClick={handleExportCSV}
-                  className="px-4 py-3 bg-white/10 hover:bg-white/15 border border-white/15 text-white rounded-2xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer"
+                  className="px-3.5 sm:px-4 py-2.5 sm:py-3 bg-white/10 hover:bg-white/15 border border-white/15 text-white rounded-xl sm:rounded-2xl text-xs font-bold transition-all flex items-center gap-1.5 sm:gap-2 cursor-pointer"
                 >
                   <Download size={15} />
                   <span>Export CSV</span>
@@ -274,7 +264,7 @@ const PhysicalResumes: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setUploadModalOpen(true)}
-                  className="px-5 py-3 bg-[#D60041] hover:bg-[#B50037] text-white rounded-2xl text-xs font-black shadow-lg shadow-pink-600/30 active:scale-95 transition-all flex items-center gap-2 cursor-pointer"
+                  className="px-4 sm:px-5 py-2.5 sm:py-3 bg-[#D60041] hover:bg-[#B50037] text-white rounded-xl sm:rounded-2xl text-xs font-black shadow-lg shadow-pink-600/30 active:scale-95 transition-all flex items-center gap-2 cursor-pointer"
                 >
                   <Upload size={16} />
                   <span>Upload Physical Resume</span>
@@ -284,58 +274,58 @@ const PhysicalResumes: React.FC = () => {
           </section>
 
           {/* METRIC CARDS */}
-          <section className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            <div className="bg-white p-5 rounded-2xl sm:rounded-3xl border border-slate-200/80 shadow-xs flex items-center space-x-4">
-              <div className="w-12 h-12 rounded-2xl bg-pink-50 text-[#D60041] flex items-center justify-center shrink-0">
-                <FolderArchive size={22} />
+          <section className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+            <div className="bg-white p-3.5 sm:p-5 rounded-2xl sm:rounded-3xl border border-slate-200/80 shadow-xs flex items-center space-x-3 sm:space-x-4 min-w-0">
+              <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl bg-pink-50 text-[#D60041] flex items-center justify-center shrink-0">
+                <FolderArchive className="w-5 h-5 sm:w-6 sm:h-6" />
               </div>
-              <div>
-                <p className="text-xl sm:text-2xl font-black text-slate-900 leading-tight">
+              <div className="min-w-0">
+                <p className="text-lg sm:text-2xl font-black text-slate-900 leading-tight">
                   {statsData?.total_stored ?? totalItems}
                 </p>
-                <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mt-0.5">
+                <p className="text-[10px] sm:text-[11px] font-bold text-slate-400 uppercase tracking-wider mt-0.5 truncate">
                   Stored Physical Resumes
                 </p>
               </div>
             </div>
 
-            <div className="bg-white p-5 rounded-2xl sm:rounded-3xl border border-slate-200/80 shadow-xs flex items-center space-x-4">
-              <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
-                <Calendar size={22} />
+            <div className="bg-white p-3.5 sm:p-5 rounded-2xl sm:rounded-3xl border border-slate-200/80 shadow-xs flex items-center space-x-3 sm:space-x-4 min-w-0">
+              <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
+                <Calendar className="w-5 h-5 sm:w-6 sm:h-6" />
               </div>
-              <div>
-                <p className="text-xl sm:text-2xl font-black text-slate-900 leading-tight">
+              <div className="min-w-0">
+                <p className="text-lg sm:text-2xl font-black text-slate-900 leading-tight">
                   {statsData?.received_this_month ?? 0}
                 </p>
-                <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mt-0.5">
+                <p className="text-[10px] sm:text-[11px] font-bold text-slate-400 uppercase tracking-wider mt-0.5 truncate">
                   Received This Month
                 </p>
               </div>
             </div>
 
-            <div className="bg-white p-5 rounded-2xl sm:rounded-3xl border border-slate-200/80 shadow-xs flex items-center space-x-4">
-              <div className="w-12 h-12 rounded-2xl bg-purple-50 text-purple-600 flex items-center justify-center shrink-0">
-                <CheckCircle2 size={22} />
+            <div className="bg-white p-3.5 sm:p-5 rounded-2xl sm:rounded-3xl border border-slate-200/80 shadow-xs flex items-center space-x-3 sm:space-x-4 min-w-0">
+              <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl bg-purple-50 text-purple-600 flex items-center justify-center shrink-0">
+                <CheckCircle2 className="w-5 h-5 sm:w-6 sm:h-6" />
               </div>
-              <div>
-                <p className="text-xl sm:text-2xl font-black text-slate-900 leading-tight">
+              <div className="min-w-0">
+                <p className="text-lg sm:text-2xl font-black text-slate-900 leading-tight">
                   {(statsData?.status_counts?.SHORTLISTED ?? 0) + (statsData?.status_counts?.UNDER_REVIEW ?? 0)}
                 </p>
-                <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mt-0.5">
-                  In Review / Shortlisted
+                <p className="text-[10px] sm:text-[11px] font-bold text-slate-400 uppercase tracking-wider mt-0.5 truncate">
+                  In Review / Shortlist
                 </p>
               </div>
             </div>
 
-            <div className="bg-white p-5 rounded-2xl sm:rounded-3xl border border-slate-200/80 shadow-xs flex items-center space-x-4">
-              <div className="w-12 h-12 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center shrink-0">
-                <Layers size={22} />
+            <div className="bg-white p-3.5 sm:p-5 rounded-2xl sm:rounded-3xl border border-slate-200/80 shadow-xs flex items-center space-x-3 sm:space-x-4 min-w-0">
+              <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center shrink-0">
+                <Layers className="w-5 h-5 sm:w-6 sm:h-6" />
               </div>
-              <div>
-                <p className="text-xl sm:text-2xl font-black text-slate-900 leading-tight">
+              <div className="min-w-0">
+                <p className="text-lg sm:text-2xl font-black text-slate-900 leading-tight">
                   {statsData?.status_counts?.RECEIVED ?? 0}
                 </p>
-                <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mt-0.5">
+                <p className="text-[10px] sm:text-[11px] font-bold text-slate-400 uppercase tracking-wider mt-0.5 truncate">
                   Unreviewed / New
                 </p>
               </div>
@@ -343,9 +333,9 @@ const PhysicalResumes: React.FC = () => {
           </section>
 
           {/* SEARCH, STATUS TABS & TOOLBAR */}
-          <section className="bg-white p-4 sm:p-5 rounded-3xl border border-slate-200/80 shadow-xs space-y-4">
+          <section className="bg-white p-3.5 sm:p-5 rounded-2xl sm:rounded-3xl border border-slate-200/80 shadow-xs space-y-3.5 sm:space-y-4">
             {/* Status Pills */}
-            <div className="flex items-center gap-1.5 overflow-x-auto custom-scrollbar pb-1">
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 -mx-1 px-1 custom-scrollbar">
               {STATUS_FILTERS.map((tab) => {
                 const isActive = statusFilter === tab.value;
                 return (
@@ -356,7 +346,7 @@ const PhysicalResumes: React.FC = () => {
                       setStatusFilter(tab.value);
                       setPage(1);
                     }}
-                    className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
+                    className={`px-3 sm:px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
                       isActive
                         ? 'bg-[#D60041] text-white shadow-xs'
                         : 'bg-slate-50 text-slate-600 hover:bg-slate-100 hover:text-slate-900 border border-slate-100'
@@ -368,56 +358,59 @@ const PhysicalResumes: React.FC = () => {
               })}
             </div>
 
-            {/* Search Input, Job Filter & View Toggle */}
-            <div className="flex flex-col md:flex-row items-center justify-between gap-3 pt-2 border-t border-slate-100">
-              <div className="flex-1 w-full flex items-center gap-3">
+            {/* Search Input, Job Filter & View Toggle (Fully Responsive across Mobile & Desktop) */}
+            <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3 pt-2 border-t border-slate-100">
+              <div className="flex-1 flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 sm:gap-3">
                 {/* Search Bar */}
                 <div className="relative flex-1">
                   <Search size={16} className="absolute left-3.5 top-3 text-slate-400 pointer-events-none" />
                   <input
                     type="text"
-                    placeholder="Search candidate name, filing location, phone, notes, job title..."
+                    placeholder="Search candidate name, location ref, notes..."
                     value={searchQuery}
                     onChange={(e) => {
                       setSearchQuery(e.target.value);
                       setPage(1);
                     }}
-                    className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#D60041]/20 focus:border-[#D60041] transition-all"
+                    className={`w-full pl-10 ${searchQuery ? 'pr-16' : 'pr-4'} py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#D60041]/20 focus:border-[#D60041] transition-all`}
                   />
                   {searchQuery && (
                     <button
                       type="button"
                       onClick={() => setSearchQuery('')}
-                      className="absolute right-3 top-2.5 text-xs text-slate-400 hover:text-slate-600 font-bold"
+                      className="absolute right-3 top-2.5 text-xs text-slate-400 hover:text-slate-600 font-bold px-1.5 py-0.5 rounded cursor-pointer"
                     >
                       Clear
                     </button>
                   )}
                 </div>
 
-                {/* Job Filter Dropdown */}
-                <div className="hidden sm:block w-64 shrink-0">
-                  <select
-                    value={jobFilter}
-                    onChange={(e) => {
-                      setJobFilter(e.target.value);
-                      setPage(1);
-                    }}
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#D60041]/20 focus:border-[#D60041] appearance-none cursor-pointer"
-                  >
-                    <option value="">All Requisitions</option>
-                    {jobs.map((j: any) => (
-                      <option key={j.id} value={j.id}>
-                        {j.title || j.job_title}
-                      </option>
-                    ))}
-                  </select>
+                {/* Job Filter Dropdown - Accessible on Mobile & Desktop */}
+                <div className="w-full sm:w-60 md:w-64 shrink-0">
+                  <div className="relative">
+                    <select
+                      value={jobFilter}
+                      onChange={(e) => {
+                        setJobFilter(e.target.value);
+                        setPage(1);
+                      }}
+                      className="w-full pl-3.5 pr-8 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#D60041]/20 focus:border-[#D60041] appearance-none cursor-pointer truncate"
+                    >
+                      <option value="">All Requisitions</option>
+                      {jobs.map((j: any) => (
+                        <option key={j.id} value={j.id}>
+                          {j.title || j.job_title}
+                        </option>
+                      ))}
+                    </select>
+                    <SlidersHorizontal size={13} className="absolute right-3 top-3.5 text-slate-400 pointer-events-none" />
+                  </div>
                 </div>
               </div>
 
               {/* View Mode Toggle & Counter */}
-              <div className="flex items-center space-x-2 shrink-0 self-end md:self-auto">
-                <span className="text-xs font-bold text-slate-500 mr-2">
+              <div className="flex items-center justify-between lg:justify-end gap-2 shrink-0 pt-2 lg:pt-0 border-t lg:border-t-0 border-slate-100">
+                <span className="text-xs font-bold text-slate-500">
                   Showing <strong className="text-slate-900">{items.length}</strong> of {totalItems}
                 </span>
 
@@ -457,9 +450,9 @@ const PhysicalResumes: React.FC = () => {
             </div>
           ) : items.length === 0 ? (
             /* EMPTY STATE */
-            <div className="py-16 sm:py-24 bg-white rounded-3xl border border-slate-200/80 text-center px-4 flex flex-col items-center justify-center">
-              <div className="w-20 h-20 rounded-3xl bg-pink-50 text-[#D60041] flex items-center justify-center mb-4 shadow-sm">
-                <FolderArchive size={36} />
+            <div className="py-16 sm:py-24 bg-white rounded-2xl sm:rounded-3xl border border-slate-200/80 text-center px-4 flex flex-col items-center justify-center">
+              <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl sm:rounded-3xl bg-pink-50 text-[#D60041] flex items-center justify-center mb-4 shadow-sm">
+                <FolderArchive size={32} className="sm:w-9 sm:h-9" />
               </div>
               <h3 className="text-base sm:text-lg font-black text-slate-900 mb-1">
                 No Physical Resumes Found
@@ -502,11 +495,11 @@ const PhysicalResumes: React.FC = () => {
                   <div
                     key={resume.id}
                     onClick={() => handleOpenView(resume)}
-                    className="group bg-white rounded-2xl sm:rounded-3xl border border-slate-200/80 hover:border-pink-300 p-5 shadow-xs hover:shadow-xl hover:shadow-slate-200/50 transition-all duration-200 flex flex-col justify-between cursor-pointer relative overflow-hidden"
+                    className="group bg-white rounded-2xl sm:rounded-3xl border border-slate-200/80 hover:border-pink-300 p-4 sm:p-5 shadow-xs hover:shadow-xl hover:shadow-slate-200/50 transition-all duration-200 flex flex-col justify-between cursor-pointer relative overflow-hidden"
                   >
                     {/* Top status & format */}
                     <div>
-                      <div className="flex items-center justify-between gap-2 mb-3">
+                      <div className="flex items-center justify-between gap-2 mb-2.5">
                         <span
                           className={`text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full border ${statusColor(
                             resume.status
@@ -521,25 +514,26 @@ const PhysicalResumes: React.FC = () => {
                       </div>
 
                       {/* Candidate Name & Title */}
-                      <h4 className="text-sm font-black text-slate-900 group-hover:text-[#D60041] transition-colors truncate">
+                      <h4 className="text-sm font-black text-slate-900 group-hover:text-[#D60041] transition-colors truncate" title={resume.candidate_name}>
                         {resume.candidate_name}
                       </h4>
-                      <p className="text-xs text-slate-500 font-semibold truncate mt-0.5 flex items-center gap-1.5">
+                      <p className="text-xs text-slate-500 font-semibold truncate mt-0.5 flex items-center gap-1.5" title={resume.target_job_title || 'General Applicant'}>
                         <Briefcase size={13} className="text-slate-400 shrink-0" />
-                        <span>{resume.target_job_title || 'General Applicant'}</span>
+                        <span className="truncate">{resume.target_job_title || 'General Applicant'}</span>
                       </p>
 
                       {/* PHYSICAL FILING LOCATION TAG (Prominent) */}
                       <div className="mt-3 p-2.5 rounded-xl bg-slate-50 border border-slate-100 group-hover:bg-pink-50/50 group-hover:border-pink-100 transition-colors">
                         <div className="flex items-center justify-between text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
                           <span className="flex items-center gap-1 text-[#D60041]">
-                            <FolderArchive size={11} /> Physical Storage Ref
+                            <FolderArchive size={11} className="shrink-0" /> Physical Storage Ref
                           </span>
                           <button
                             type="button"
                             onClick={(e) => handleCopyLocation(e, resume.id, resume.physical_location)}
-                            className="text-slate-400 hover:text-slate-700 cursor-pointer"
+                            className="text-slate-400 hover:text-slate-700 cursor-pointer p-0.5 rounded"
                             title="Copy location reference"
+                            aria-label="Copy location reference"
                           >
                             {copiedId === resume.id ? (
                               <Check size={12} className="text-emerald-500" />
@@ -548,7 +542,7 @@ const PhysicalResumes: React.FC = () => {
                             )}
                           </button>
                         </div>
-                        <p className="text-xs font-black text-slate-800 break-words">
+                        <p className="text-xs font-black text-slate-800 break-words line-clamp-2">
                           {resume.physical_location || 'General HR Archive'}
                         </p>
                       </div>
@@ -557,21 +551,15 @@ const PhysicalResumes: React.FC = () => {
                       <div className="mt-3 space-y-1 text-[11px] text-slate-500 font-medium">
                         <div className="flex items-center justify-between">
                           <span className="flex items-center gap-1">
-                            <Calendar size={12} className="text-slate-400" /> Hand-in Date:
+                            <Calendar size={12} className="text-slate-400 shrink-0" /> Hand-in Date:
                           </span>
                           <span className="font-semibold text-slate-700">
-                            {resume.submission_date
-                              ? new Date(resume.submission_date).toLocaleDateString('en-US', {
-                                  month: 'short',
-                                  day: '2-digit',
-                                  year: 'numeric',
-                                })
-                              : 'N/A'}
+                            {formatDate(resume.submission_date)}
                           </span>
                         </div>
                         <div className="flex items-center justify-between">
                           <span className="flex items-center gap-1">
-                            <FileText size={12} className="text-slate-400" /> Size:
+                            <FileText size={12} className="text-slate-400 shrink-0" /> Size:
                           </span>
                           <span className="font-semibold text-slate-700">
                             {resume.formatted_file_size || 'N/A'}
@@ -581,7 +569,7 @@ const PhysicalResumes: React.FC = () => {
 
                       {/* Notes snippet */}
                       {resume.notes && (
-                        <p className="mt-2 text-[11px] text-slate-500 italic line-clamp-1 border-t border-slate-100 pt-1.5">
+                        <p className="mt-2 text-[11px] text-slate-500 italic line-clamp-1 border-t border-slate-100 pt-1.5" title={resume.notes}>
                           "{resume.notes}"
                         </p>
                       )}
@@ -596,10 +584,10 @@ const PhysicalResumes: React.FC = () => {
                           e.stopPropagation();
                           handleOpenView(resume);
                         }}
-                        className="flex-1 py-1.5 px-2 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1 cursor-pointer"
+                        className="flex-1 py-2 px-2.5 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer"
                         title="View resume inside application"
                       >
-                        <Eye size={13} className="text-[#D60041]" />
+                        <Eye size={13} className="text-[#D60041] shrink-0" />
                         <span>View</span>
                       </button>
 
@@ -607,11 +595,11 @@ const PhysicalResumes: React.FC = () => {
                       <button
                         type="button"
                         onClick={(e) => handleDirectDownload(e, resume)}
-                        className="py-1.5 px-2.5 bg-pink-50 hover:bg-[#D60041] text-[#D60041] hover:text-white rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1 cursor-pointer"
+                        className="py-2 px-3 bg-pink-50 hover:bg-[#D60041] text-[#D60041] hover:text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer"
                         title="Download resume file"
                       >
-                        <Download size={13} />
-                        <span className="hidden sm:inline">Save</span>
+                        <Download size={13} className="shrink-0" />
+                        <span>Download</span>
                       </button>
 
                       {/* EDIT BUTTON */}
@@ -621,23 +609,11 @@ const PhysicalResumes: React.FC = () => {
                           e.stopPropagation();
                           handleOpenEdit(resume);
                         }}
-                        className="p-1.5 text-slate-400 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
+                        className="p-2 text-slate-400 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
                         title="Edit filing details"
+                        aria-label="Edit filing details"
                       >
                         <Edit3 size={14} />
-                      </button>
-
-                      {/* DELETE BUTTON */}
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleOpenDelete(resume);
-                        }}
-                        className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
-                        title="Delete record"
-                      >
-                        <Trash2 size={14} />
                       </button>
                     </div>
                   </div>
@@ -645,10 +621,10 @@ const PhysicalResumes: React.FC = () => {
               })}
             </div>
           ) : (
-            /* TABLE VIEW */
-            <div className="bg-white rounded-3xl border border-slate-200/80 shadow-xs overflow-hidden">
+            /* TABLE VIEW (With horizontal scroll wrapper & minimum width) */
+            <div className="bg-white rounded-2xl sm:rounded-3xl border border-slate-200/80 shadow-xs overflow-hidden">
               <div className="overflow-x-auto custom-scrollbar">
-                <table className="w-full text-left text-xs">
+                <table className="w-full text-left text-xs min-w-[760px]">
                   <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-black uppercase tracking-wider text-[10px]">
                     <tr>
                       <th className="px-5 py-3.5">Candidate</th>
@@ -678,24 +654,18 @@ const PhysicalResumes: React.FC = () => {
                         </td>
                         <td className="px-4 py-3.5">
                           <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-100 text-slate-800 font-bold text-xs">
-                            <FolderArchive size={12} className="text-[#D60041]" />
-                            {resume.physical_location || 'General HR Archive'}
+                            <FolderArchive size={12} className="text-[#D60041] shrink-0" />
+                            <span className="truncate max-w-[200px]">{resume.physical_location || 'General HR Archive'}</span>
                           </span>
                         </td>
-                        <td className="px-4 py-3.5 text-slate-600 font-semibold">
-                          {resume.submission_date
-                            ? new Date(resume.submission_date).toLocaleDateString('en-US', {
-                                month: 'short',
-                                day: '2-digit',
-                                year: 'numeric',
-                              })
-                            : 'N/A'}
+                        <td className="px-4 py-3.5 text-slate-600 font-semibold whitespace-nowrap">
+                          {formatDate(resume.submission_date)}
                         </td>
                         <td className="px-4 py-3.5 text-slate-500">
-                          <p className="font-semibold text-slate-700 truncate max-w-[160px]">{resume.filename}</p>
-                          <p className="text-[10px] text-slate-400">{resume.formatted_file_size}</p>
+                          <p className="font-semibold text-slate-700 truncate max-w-[160px]" title={resume.filename}>{resume.filename}</p>
+                          <p className="text-[10px] text-slate-400">{resume.formatted_file_size || 'N/A'}</p>
                         </td>
-                        <td className="px-4 py-3.5">
+                        <td className="px-4 py-3.5 whitespace-nowrap">
                           <span
                             className={`text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full border ${statusColor(
                               resume.status
@@ -712,7 +682,7 @@ const PhysicalResumes: React.FC = () => {
                               e.stopPropagation();
                               handleOpenView(resume);
                             }}
-                            className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-lg text-xs font-bold transition-all inline-flex items-center gap-1 cursor-pointer"
+                            className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-lg text-xs font-bold transition-all inline-flex items-center gap-1 cursor-pointer"
                           >
                             <Eye size={12} className="text-[#D60041]" />
                             <span>View</span>
@@ -722,7 +692,7 @@ const PhysicalResumes: React.FC = () => {
                           <button
                             type="button"
                             onClick={(e) => handleDirectDownload(e, resume)}
-                            className="px-2.5 py-1 bg-pink-50 hover:bg-[#D60041] text-[#D60041] hover:text-white rounded-lg text-xs font-bold transition-all inline-flex items-center gap-1 cursor-pointer"
+                            className="px-2.5 py-1.5 bg-pink-50 hover:bg-[#D60041] text-[#D60041] hover:text-white rounded-lg text-xs font-bold transition-all inline-flex items-center gap-1 cursor-pointer"
                           >
                             <Download size={12} />
                             <span>Download</span>
@@ -735,21 +705,11 @@ const PhysicalResumes: React.FC = () => {
                               e.stopPropagation();
                               handleOpenEdit(resume);
                             }}
-                            className="p-1 text-slate-400 hover:text-slate-800 rounded-md cursor-pointer"
+                            className="p-1.5 text-slate-400 hover:text-slate-800 hover:bg-slate-100 rounded-lg cursor-pointer"
+                            title="Edit filing details"
+                            aria-label="Edit filing details"
                           >
                             <Edit3 size={14} />
-                          </button>
-
-                          {/* DELETE */}
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleOpenDelete(resume);
-                            }}
-                            className="p-1 text-slate-400 hover:text-rose-600 rounded-md cursor-pointer"
-                          >
-                            <Trash2 size={14} />
                           </button>
                         </td>
                       </tr>
@@ -760,19 +720,21 @@ const PhysicalResumes: React.FC = () => {
             </div>
           )}
 
-          {/* PAGINATION */}
+          {/* PAGINATION (Responsive for mobile & desktop) */}
           {totalPages > 1 && (
-            <div className="flex items-center justify-between bg-white px-5 py-3 rounded-2xl border border-slate-200/80 shadow-xs">
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-white px-4 sm:px-5 py-3 rounded-2xl border border-slate-200/80 shadow-xs">
               <span className="text-xs font-bold text-slate-500">
-                Page <strong className="text-slate-900">{page}</strong> of {totalPages}
+                Page <strong className="text-slate-900">{page}</strong> of {totalPages} ({totalItems} total)
               </span>
 
-              <div className="flex items-center space-x-1">
+              <div className="flex items-center space-x-1 overflow-x-auto max-w-full py-0.5">
                 <button
                   type="button"
                   disabled={page <= 1}
                   onClick={() => setPage((p) => Math.max(p - 1, 1))}
-                  className="p-2 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                  className="p-1.5 sm:p-2 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                  title="Previous page"
+                  aria-label="Previous page"
                 >
                   <ChevronLeft size={16} />
                 </button>
@@ -781,12 +743,12 @@ const PhysicalResumes: React.FC = () => {
                   .map((p, idx, arr) => (
                     <React.Fragment key={p}>
                       {idx > 0 && arr[idx - 1] !== p - 1 && (
-                        <span className="px-2 text-xs text-slate-400">...</span>
+                        <span className="px-1.5 text-xs text-slate-400">...</span>
                       )}
                       <button
                         type="button"
                         onClick={() => setPage(p)}
-                        className={`w-8 h-8 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                        className={`w-7 h-7 sm:w-8 sm:h-8 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                           page === p
                             ? 'bg-[#D60041] text-white shadow-xs'
                             : 'text-slate-600 hover:bg-slate-100 border border-slate-200'
@@ -800,7 +762,9 @@ const PhysicalResumes: React.FC = () => {
                   type="button"
                   disabled={page >= totalPages}
                   onClick={() => setPage((p) => Math.min(p + 1, totalPages))}
-                  className="p-2 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                  className="p-1.5 sm:p-2 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                  title="Next page"
+                  aria-label="Next page"
                 >
                   <ChevronRight size={16} />
                 </button>
@@ -844,41 +808,6 @@ const PhysicalResumes: React.FC = () => {
         }}
       />
 
-      {/* DELETE CONFIRMATION MODAL */}
-      {deleteConfirmOpen && resumeToDelete && (
-        <div className="fixed inset-0 z-50 bg-slate-950/75 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-200">
-          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200 animate-in zoom-in-95 duration-200">
-            <div className="w-12 h-12 rounded-2xl bg-rose-100 text-rose-600 flex items-center justify-center mb-4">
-              <Trash2 size={24} />
-            </div>
-            <h3 className="text-base font-black text-slate-900 mb-1">
-              Delete Physical Resume Record?
-            </h3>
-            <p className="text-xs text-slate-600 font-medium leading-relaxed mb-6">
-              Are you sure you want to permanently delete the physical resume file and record for{' '}
-              <strong className="text-slate-900">{resumeToDelete.candidate_name}</strong>? Filing location:{' '}
-              <span className="font-semibold text-rose-600">{resumeToDelete.physical_location}</span>. This action cannot be undone.
-            </p>
-            <div className="flex items-center justify-end space-x-3">
-              <button
-                type="button"
-                onClick={() => setDeleteConfirmOpen(false)}
-                className="px-4 py-2.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50 cursor-pointer"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                disabled={isDeleting}
-                onClick={handleConfirmDelete}
-                className="px-5 py-2.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold shadow-xs hover:shadow-md transition-all cursor-pointer disabled:opacity-50"
-              >
-                {isDeleting ? 'Deleting...' : 'Yes, Delete Record'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

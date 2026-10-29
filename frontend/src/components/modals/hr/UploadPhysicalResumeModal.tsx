@@ -174,19 +174,19 @@ const UploadPhysicalResumeModal: React.FC<UploadPhysicalResumeModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/75 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 animate-in fade-in duration-200">
-      <div className="bg-white rounded-3xl shadow-2xl max-w-2xl w-full overflow-hidden border border-slate-200 animate-in zoom-in-95 duration-200">
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/75 backdrop-blur-xs flex items-center justify-center p-2.5 sm:p-4 animate-in fade-in duration-200">
+      <div className="bg-white rounded-2xl sm:rounded-3xl shadow-2xl max-w-2xl w-full max-h-[92vh] flex flex-col overflow-hidden border border-slate-200 animate-in zoom-in-95 duration-200">
         {/* HEADER */}
-        <div className="px-6 py-5 border-b border-slate-100 flex items-center justify-between bg-gradient-to-r from-slate-50 to-white">
-          <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-[#D60041] to-[#B50037] text-white flex items-center justify-center shadow-xs">
+        <div className="px-4 sm:px-6 py-4 sm:py-5 border-b border-slate-100 flex items-center justify-between bg-gradient-to-r from-slate-50 to-white shrink-0">
+          <div className="flex items-center space-x-3 min-w-0">
+            <div className="w-10 h-10 rounded-xl sm:rounded-2xl bg-gradient-to-br from-[#D60041] to-[#B50037] text-white flex items-center justify-center shadow-xs shrink-0">
               <FolderArchive size={20} />
             </div>
-            <div>
-              <h3 className="text-base font-black text-slate-900 tracking-tight">
+            <div className="min-w-0">
+              <h3 className="text-sm sm:text-base font-black text-slate-900 tracking-tight truncate">
                 Store Physical Resume
               </h3>
-              <p className="text-xs text-slate-500 font-medium">
+              <p className="text-[11px] sm:text-xs text-slate-500 font-medium truncate">
                 Upload paper / walk-in scanned resume and assign storage filing location
               </p>
             </div>
@@ -194,14 +194,14 @@ const UploadPhysicalResumeModal: React.FC<UploadPhysicalResumeModalProps> = ({
           <button
             type="button"
             onClick={onClose}
-            className="p-1.5 text-slate-400 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
+            className="p-1.5 text-slate-400 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer shrink-0 ml-2"
           >
             <X size={18} />
           </button>
         </div>
 
         {/* FORM */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-5">
+        <form onSubmit={handleSubmit} className="p-4 sm:p-6 space-y-4 sm:space-y-5 overflow-y-auto flex-1 custom-scrollbar">
           {errorMessage && (
             <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-2xl flex items-center gap-2.5 text-xs text-rose-700 font-semibold animate-in shake duration-300">
               <AlertCircle size={16} className="shrink-0 text-rose-600" />
@@ -440,8 +440,8 @@ const UploadPhysicalResumeModal: React.FC<UploadPhysicalResumeModalProps> = ({
             />
           </div>
 
-          {/* ACTION BUTTONS */}
-          <div className="pt-3 border-t border-slate-100 flex items-center justify-end space-x-3">
+          {/* ACTION BUTTONS (Sticky footer with backdrop blur) */}
+          <div className="sticky bottom-0 bg-white/95 backdrop-blur-xs pt-3 pb-1 border-t border-slate-100 flex items-center justify-end space-x-3 -mx-4 sm:-mx-6 px-4 sm:px-6 mt-2">
             <button
               type="button"
               onClick={onClose}

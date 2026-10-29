@@ -10,7 +10,6 @@ import {
   AlertCircle,
   CheckCircle2,
   Edit3,
-  Trash2,
   RefreshCw,
   Lock,
   PhoneCall,
@@ -29,7 +28,6 @@ import { useSelector } from 'react-redux';
 import { RootState } from '../../../redux/store';
 import {
   useUpdateInterviewMutation,
-  useDeleteInterviewMutation,
   useGetAvailableSlotsMutation,
   useGetHRInterviewersQuery,
   usePlaceInterviewCallMutation,
@@ -59,7 +57,6 @@ interface FormDataState {
 const InterviewDetailsModal: React.FC<InterviewDetailsModalProps> = ({ isOpen, onClose, interview, onStatusChanged }) => {
   const reduxUserRole = useSelector((state: RootState) => state.auth?.role);
   const [updateInterview, { isLoading: isUpdating }] = useUpdateInterviewMutation();
-  const [deleteInterview, { isLoading: isDeleting }] = useDeleteInterviewMutation();
   const [getSlots, { isLoading: isFetchingSlots }] = useGetAvailableSlotsMutation();
   const { data: interviewers = [] } = useGetHRInterviewersQuery();
 
@@ -70,7 +67,6 @@ const InterviewDetailsModal: React.FC<InterviewDetailsModalProps> = ({ isOpen, o
   const [simulateCall, { isLoading: isSimulating }] = useSimulateVoiceCallMutation();
 
   const [isEditing, setIsEditing] = useState<boolean>(false);
-  const [confirmDelete, setConfirmDelete] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string>('');
   const [showCallLogs, setShowCallLogs] = useState<boolean>(false);
   const [actionFeedback, setActionFeedback] = useState<string>('');
@@ -102,7 +98,6 @@ const InterviewDetailsModal: React.FC<InterviewDetailsModalProps> = ({ isOpen, o
   useEffect(() => {
     if (interview) {
       setIsEditing(false);
-      setConfirmDelete(false);
       setErrorMsg('');
 
       const rawStart = interview.start_time || interview.start || interview.start_datetime;
@@ -225,16 +220,6 @@ const InterviewDetailsModal: React.FC<InterviewDetailsModalProps> = ({ isOpen, o
     }
   };
 
-  const handleDelete = async () => {
-    if (!canModify) return;
-    try {
-      await deleteInterview(actualInterviewId).unwrap();
-      onClose();
-      if (onStatusChanged) onStatusChanged();
-    } catch (err: any) {
-      alert(err?.data?.detail || 'Failed to delete interview.');
-    }
-  };
 
   const handleTriggerVoiceCall = async () => {
     try {
@@ -870,33 +855,6 @@ const InterviewDetailsModal: React.FC<InterviewDetailsModalProps> = ({ isOpen, o
                         </button>
                       )}
                     </div>
-
-                    {!confirmDelete ? (
-                      <button
-                        onClick={() => setConfirmDelete(true)}
-                        className="px-3 py-2 text-gray-400 hover:text-rose-600 rounded-xl text-xs font-semibold transition-colors flex items-center gap-1"
-                      >
-                        <Trash2 size={14} />
-                        Delete
-                      </button>
-                    ) : (
-                      <div className="flex items-center gap-2 bg-rose-50 p-1.5 rounded-xl border border-rose-100">
-                        <span className="text-[10px] text-rose-700 font-bold px-1">Confirm delete?</span>
-                        <button
-                          onClick={handleDelete}
-                          disabled={isDeleting}
-                          className="px-2.5 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-bold"
-                        >
-                          {isDeleting ? 'Deleting...' : 'Yes, Delete'}
-                        </button>
-                        <button
-                          onClick={() => setConfirmDelete(false)}
-                          className="px-2.5 py-1 bg-white hover:bg-gray-100 text-gray-700 rounded-lg text-xs font-semibold border border-gray-200"
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    )}
                   </div>
                 </div>
               )}
