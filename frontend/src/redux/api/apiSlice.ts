@@ -327,6 +327,46 @@ export const apiSlice = createApi({
       providesTags: ['Applications'],
     }),
 
+    // --- AI VOICE NOTIFICATION CALLER (REQ028 - REQ034) ---
+    placeInterviewCall: builder.mutation<any, number | string>({
+      query: (interviewId) => ({
+        url: `/ai-caller/interview/${interviewId}/call`,
+        method: 'POST',
+      }),
+      invalidatesTags: ['Interviews', 'CalendarEvents'],
+    }),
+
+    retryInterviewCall: builder.mutation<any, number | string>({
+      query: (interviewId) => ({
+        url: `/ai-caller/interview/${interviewId}/retry`,
+        method: 'POST',
+      }),
+      invalidatesTags: ['Interviews', 'CalendarEvents'],
+    }),
+
+    sendInterviewBackupSMS: builder.mutation<any, number | string>({
+      query: (interviewId) => ({
+        url: `/ai-caller/interview/${interviewId}/send-backup-sms`,
+        method: 'POST',
+      }),
+      invalidatesTags: ['Interviews', 'CalendarEvents'],
+    }),
+
+    simulateVoiceCall: builder.mutation<any, { interviewId: number | string; outcome: string; spoken_phrase?: string; language?: string }>({
+      query: ({ interviewId, ...body }) => ({
+        url: `/ai-caller/interview/${interviewId}/simulate`,
+        method: 'POST',
+        body,
+      }),
+      invalidatesTags: ['Interviews', 'CalendarEvents'],
+    }),
+
+    getInterviewCallLogs: builder.query<any[], number | string>({
+      query: (interviewId) => `/ai-caller/interview/${interviewId}/logs`,
+      providesTags: ['Interviews'],
+    }),
+
+
     // --- ADMIN / HR TOOLS ---
     getUsers: builder.query<any[], void>({
       query: () => '/admins/users',
@@ -603,4 +643,10 @@ export const {
   useGetCeleryTaskStatusQuery,
   useLazyGetCeleryTaskStatusQuery,
   useTriggerMLRetrainMutation,
+  usePlaceInterviewCallMutation,
+  useRetryInterviewCallMutation,
+  useSendInterviewBackupSMSMutation,
+  useSimulateVoiceCallMutation,
+  useGetInterviewCallLogsQuery,
+  useLazyGetInterviewCallLogsQuery,
 } = apiSlice;

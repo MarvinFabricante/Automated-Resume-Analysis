@@ -157,6 +157,37 @@ async def ensure_archived_conversations_table(conn):
         logger.warning(f"Could not ensure archived_conversations table: {e}")
 
 
+async def ensure_interview_voice_columns(conn):
+    """
+    Ensure voice notification columns in interviews table exist.
+    """
+    columns = {
+        "call_status": "VARCHAR DEFAULT 'PENDING'",
+        "call_attempts": "INTEGER DEFAULT 0",
+        "last_call_at": "TIMESTAMP",
+        "next_retry_at": "TIMESTAMP",
+        "candidate_response": "VARCHAR",
+        "call_language": "VARCHAR DEFAULT 'bilingual'",
+        "verbal_notes": "TEXT",
+        "sms_backup_sent": "BOOLEAN DEFAULT FALSE",
+    }
+    dialect = conn.dialect.name
+    for column_name, column_type in columns.items():
+        try:
+            if dialect == "sqlite":
+                existing = await conn.execute(text("PRAGMA table_info(interviews)"))
+                existing_names = {row[1] for row in existing.fetchall()}
+                if column_name not in existing_names:
+                    sqlite_type = "TEXT" if "VARCHAR" in column_type or "TIMESTAMP" in column_type else ("INTEGER" if "INTEGER" in column_type else "BOOLEAN")
+                    await conn.execute(text(f"ALTER TABLE interviews ADD COLUMN {column_name} {sqlite_type}"))
+            else:
+                await conn.execute(text(
+                    f"ALTER TABLE interviews ADD COLUMN IF NOT EXISTS {column_name} {column_type}"
+                ))
+        except Exception as e:
+            logger.warning(f"Could not ensure interviews.{column_name}: {e}")
+
+
 async def ensure_cascade_delete_constraints(conn):
     """
     Ensure foreign key constraints referencing users have appropriate ON DELETE CASCADE or SET NULL rules.
@@ -204,7 +235,7 @@ async def create_tables():
     from app.models.notification import Notification
     from app.models.message import Message, ArchivedConversation
     from app.models.password_reset import PasswordReset
-    from app.models.interview import Interview, InterviewLog
+    from app.models.interview import Interview, InterviewLog, VoiceCallRecord
     from app.models.system_config import SystemConfig, FormTemplate
 
     try:
@@ -212,6 +243,7 @@ async def create_tables():
             await conn.run_sync(Base.metadata.create_all)
             await ensure_application_analysis_columns(conn)
             await ensure_archived_conversations_table(conn)
+            await ensure_interview_voice_columns(conn)
             await ensure_cascade_delete_constraints(conn)
     except Exception as e:
         logger.debug(f"Table creation notice (concurrent worker init): {e}")

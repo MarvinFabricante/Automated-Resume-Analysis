@@ -26,7 +26,9 @@ import {
   Search,
   Laptop,
   HelpCircle,
-  Award
+  Award,
+  PhoneCall,
+  RotateCcw
 } from 'lucide-react';
 import { useSelector } from 'react-redux';
 import { RootState } from '../../redux/store';
@@ -522,9 +524,26 @@ const ApplicationTracking: React.FC = () => {
                                   <Calendar className="w-4 h-4 mr-1.5 text-purple-600" />
                                   Live Interview Session
                                 </span>
-                                <span className="bg-purple-100 text-purple-700 text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider">
-                                  Google Calendar Confirmed
-                                </span>
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <span className="bg-purple-100 text-purple-700 text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider">
+                                    Google Calendar Confirmed
+                                  </span>
+                                  {step.interviewInfo.candidate_response === 'CONFIRMED' && (
+                                    <span className="bg-emerald-100 text-emerald-800 text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider inline-flex items-center gap-1">
+                                      <PhoneCall size={10} className="text-emerald-600" /> Voice Confirmed
+                                    </span>
+                                  )}
+                                  {step.interviewInfo.candidate_response === 'RESCHEDULE_REQUESTED' && (
+                                    <span className="bg-amber-100 text-amber-800 text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider inline-flex items-center gap-1">
+                                      <RotateCcw size={10} className="text-amber-600" /> Reschedule Requested
+                                    </span>
+                                  )}
+                                  {step.interviewInfo.sms_backup_sent && (
+                                    <span className="bg-indigo-100 text-indigo-800 text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider inline-flex items-center gap-1">
+                                      <Mail size={10} className="text-indigo-600" /> SMS Dispatched
+                                    </span>
+                                  )}
+                                </div>
                               </div>
                               <div className="space-y-1">
                                 <span className="text-sm font-black text-slate-900 block">{step.interviewInfo.title}</span>
