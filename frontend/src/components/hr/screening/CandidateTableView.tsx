@@ -41,7 +41,7 @@ const TableStatusDropdown: React.FC<TableStatusDropdownProps> = ({ status, candi
   const currentInfo = getStatusInfo(status);
 
   return (
-    <div className="relative inline-block" ref={ref}>
+    <div className={`relative inline-block ${isOpen ? 'z-50' : 'z-0'}`} ref={ref}>
       <button
         type="button"
         onClick={(e) => {
@@ -56,7 +56,7 @@ const TableStatusDropdown: React.FC<TableStatusDropdownProps> = ({ status, candi
       </button>
 
       {isOpen && (
-        <div className="absolute top-full left-0 mt-1 w-44 bg-white border border-gray-100 rounded-xl shadow-xl z-50 py-1 animate-in fade-in zoom-in-95 duration-150">
+        <div className="absolute top-full left-0 mt-1 w-52 bg-white border border-gray-200 rounded-xl shadow-2xl z-50 py-1.5 animate-in fade-in zoom-in-95 duration-150">
           {['Pending', 'Reviewed', 'Technical Interview', 'Final Interview', 'Accepted', 'Rejected'].map((s) => (
             <button
               key={s}

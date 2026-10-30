@@ -124,10 +124,12 @@ const CandidateCard: React.FC<CandidateCardProps> = ({
   const matchTheme = getMatchTheme();
 
   return (
-    <div className={`bg-white p-4 sm:p-5 md:p-6 rounded-2xl sm:rounded-3xl border card-hover-smooth gpu-accelerated group ${
+    <div className={`bg-white p-4 sm:p-5 md:p-6 rounded-2xl sm:rounded-3xl border card-hover-smooth group ${
+      isDropdownOpen ? 'relative z-50 shadow-md !transform-none' : 'relative z-0 shadow-xs'
+    } ${
       isSelected 
-        ? 'border-[#D60041] ring-2 ring-[#D60041]/10 shadow-md' 
-        : 'border-gray-200/80 shadow-sm hover:border-gray-300'
+        ? 'border-[#D60041] ring-2 ring-[#D60041]/10' 
+        : 'border-gray-200/80 hover:border-gray-300'
     }`}>
       <div className="flex flex-col lg:flex-row gap-4 sm:gap-6 items-start lg:items-center">
         
@@ -330,10 +332,13 @@ const CandidateCard: React.FC<CandidateCardProps> = ({
             )}
 
             {/* Status Dropdown */}
-            <div className="relative flex-1 sm:flex-none sm:min-w-[130px]" ref={dropdownRef}>
+            <div className={`relative flex-1 sm:flex-none sm:min-w-[130px] ${isDropdownOpen ? 'z-50' : ''}`} ref={dropdownRef}>
               <button
                 type="button"
-                onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setIsDropdownOpen(!isDropdownOpen);
+                }}
                 disabled={isUpdating}
                 className={`w-full h-9 sm:h-10 flex items-center justify-between gap-1.5 px-2.5 rounded-xl border text-[11px] font-bold uppercase tracking-wider transition-all cursor-pointer ${statusInfo.bg} ${statusInfo.color} ${statusInfo.border} hover:brightness-95 hover:shadow-xs ${isUpdating ? 'opacity-50 animate-pulse' : ''}`}
               >
@@ -345,7 +350,7 @@ const CandidateCard: React.FC<CandidateCardProps> = ({
               </button>
 
               {isDropdownOpen && (
-                <div className="absolute top-full right-0 mt-1.5 w-48 bg-white border border-gray-100 rounded-2xl shadow-xl z-50 py-1.5 animate-in fade-in slide-in-from-top-1 duration-150">
+                <div className="absolute top-full right-0 mt-1.5 w-52 sm:w-56 bg-white border border-gray-200/90 rounded-2xl shadow-2xl z-50 py-1.5 animate-in fade-in slide-in-from-top-1 duration-150">
                   {['Pending', 'Reviewed', 'Technical Interview', 'Final Interview', 'Accepted', 'Rejected'].map((s) => {
                     const info = getStatusInfo(s);
                     const isCurrent = status === s.toLowerCase();
@@ -353,7 +358,8 @@ const CandidateCard: React.FC<CandidateCardProps> = ({
                       <button
                         key={s}
                         type="button"
-                        onClick={async () => {
+                        onClick={async (e) => {
+                          e.stopPropagation();
                           setIsDropdownOpen(false);
                           setIsUpdating(true);
                           await onUpdateStatus(candidate.id, s);
