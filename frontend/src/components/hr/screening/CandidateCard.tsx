@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { 
-  Calendar, MapPin, ChevronDown, CheckCircle2, XCircle, Clock, Search, 
+import {
+  Calendar, MapPin, ChevronDown, CheckCircle2, XCircle, Clock, Search,
   Check, Archive, RotateCcw, FileText, Copy, Mail, Phone,
   Zap, Briefcase, GraduationCap, Sparkles
 } from 'lucide-react';
@@ -40,13 +40,13 @@ interface CandidateCardProps {
   onSkillClick?: (skill: string) => void;
 }
 
-const CandidateCard: React.FC<CandidateCardProps> = ({ 
-  candidate, 
+const CandidateCard: React.FC<CandidateCardProps> = ({
+  candidate,
   isSelected = false,
   onToggleSelect,
-  onOpenDetails, 
-  onOpenInterview, 
-  onUpdateStatus, 
+  onOpenDetails,
+  onOpenInterview,
+  onUpdateStatus,
   onArchiveApplication,
   onRestoreApplication,
   onDeleteApplication,
@@ -124,15 +124,12 @@ const CandidateCard: React.FC<CandidateCardProps> = ({
   const matchTheme = getMatchTheme();
 
   return (
-    <div className={`bg-white p-4 sm:p-5 md:p-6 rounded-2xl sm:rounded-3xl border card-hover-smooth group ${
-      isDropdownOpen ? 'relative z-50 shadow-md !transform-none' : 'relative z-0 shadow-xs'
-    } ${
-      isSelected 
-        ? 'border-[#D60041] ring-2 ring-[#D60041]/10' 
-        : 'border-gray-200/80 hover:border-gray-300'
-    }`}>
+    <div className={`bg-white p-4 sm:p-5 md:p-6 rounded-2xl sm:rounded-3xl border card-hover-smooth gpu-accelerated group ${isSelected
+        ? 'border-[#D60041] ring-2 ring-[#D60041]/10 shadow-md'
+        : 'border-gray-200/80 shadow-sm hover:border-gray-300'
+      }`}>
       <div className="flex flex-col lg:flex-row gap-4 sm:gap-6 items-start lg:items-center">
-        
+
         {/* Selection Checkbox & Avatar */}
         <div className="flex items-center gap-3 shrink-0">
           {onToggleSelect && (
@@ -168,13 +165,13 @@ const CandidateCard: React.FC<CandidateCardProps> = ({
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2">
             <div>
               <div className="flex flex-wrap items-center gap-2 mb-1">
-                <h3 
+                <h3
                   onClick={() => onOpenDetails(candidate)}
                   className="text-base sm:text-lg font-bold text-gray-900 tracking-tight hover:text-[#D60041] cursor-pointer transition-colors"
                 >
                   {candidate.name}
                 </h3>
-                
+
                 {/* Match Score Badge */}
                 <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 text-[11px] font-black uppercase tracking-wider rounded-full border ${matchTheme.badge}`}>
                   <span className={`w-1.5 h-1.5 rounded-full ${matchTheme.dot}`}></span>
@@ -250,7 +247,7 @@ const CandidateCard: React.FC<CandidateCardProps> = ({
               <Calendar className="w-3.5 h-3.5 text-gray-400 shrink-0" />
               <span>Applied {formatDate(candidate.date)}</span>
             </div>
-            
+
             <div className="flex items-center gap-1">
               <MapPin className="w-3.5 h-3.5 text-gray-400 shrink-0" />
               <span className="truncate max-w-[140px]">{candidate.location || "N/A"}</span>
@@ -292,7 +289,7 @@ const CandidateCard: React.FC<CandidateCardProps> = ({
 
         {/* Action Section - Responsive Two-tier on mobile, inline on desktop */}
         <div className="w-full lg:w-auto shrink-0 pt-3 lg:pt-0 border-t lg:border-t-0 border-gray-100 flex flex-col sm:flex-row lg:flex-row items-stretch sm:items-center gap-2">
-          
+
           {/* Row 1 on mobile: Quick Icon Actions + Status Dropdown */}
           <div className="flex items-center gap-1.5 sm:gap-2 w-full sm:w-auto">
             {/* Direct Resume View/Download */}
@@ -332,13 +329,10 @@ const CandidateCard: React.FC<CandidateCardProps> = ({
             )}
 
             {/* Status Dropdown */}
-            <div className={`relative flex-1 sm:flex-none sm:min-w-[130px] ${isDropdownOpen ? 'z-50' : ''}`} ref={dropdownRef}>
+            <div className="relative flex-1 sm:flex-none sm:min-w-[130px]" ref={dropdownRef}>
               <button
                 type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setIsDropdownOpen(!isDropdownOpen);
-                }}
+                onClick={() => setIsDropdownOpen(!isDropdownOpen)}
                 disabled={isUpdating}
                 className={`w-full h-9 sm:h-10 flex items-center justify-between gap-1.5 px-2.5 rounded-xl border text-[11px] font-bold uppercase tracking-wider transition-all cursor-pointer ${statusInfo.bg} ${statusInfo.color} ${statusInfo.border} hover:brightness-95 hover:shadow-xs ${isUpdating ? 'opacity-50 animate-pulse' : ''}`}
               >
@@ -350,7 +344,7 @@ const CandidateCard: React.FC<CandidateCardProps> = ({
               </button>
 
               {isDropdownOpen && (
-                <div className="absolute top-full right-0 mt-1.5 w-52 sm:w-56 bg-white border border-gray-200/90 rounded-2xl shadow-2xl z-50 py-1.5 animate-in fade-in slide-in-from-top-1 duration-150">
+                <div className="absolute top-full right-0 mt-1.5 w-48 bg-white border border-gray-100 rounded-2xl shadow-xl z-50 py-1.5 animate-in fade-in slide-in-from-top-1 duration-150">
                   {['Pending', 'Reviewed', 'Technical Interview', 'Final Interview', 'Accepted', 'Rejected'].map((s) => {
                     const info = getStatusInfo(s);
                     const isCurrent = status === s.toLowerCase();
@@ -358,16 +352,14 @@ const CandidateCard: React.FC<CandidateCardProps> = ({
                       <button
                         key={s}
                         type="button"
-                        onClick={async (e) => {
-                          e.stopPropagation();
+                        onClick={async () => {
                           setIsDropdownOpen(false);
                           setIsUpdating(true);
                           await onUpdateStatus(candidate.id, s);
                           setTimeout(() => setIsUpdating(false), 500);
                         }}
-                        className={`w-full flex items-center justify-between px-3.5 py-2 text-[11px] font-bold uppercase tracking-wider transition-colors cursor-pointer ${
-                          isCurrent ? info.bg + ' ' + info.color : 'text-gray-600 hover:bg-pink-50 hover:text-[#D60041]'
-                        }`}
+                        className={`w-full flex items-center justify-between px-3.5 py-2 text-[11px] font-bold uppercase tracking-wider transition-colors cursor-pointer ${isCurrent ? info.bg + ' ' + info.color : 'text-gray-600 hover:bg-pink-50 hover:text-[#D60041]'
+                          }`}
                       >
                         <div className="flex items-center gap-2">
                           <span className={info.color}>{info.icon}</span>
