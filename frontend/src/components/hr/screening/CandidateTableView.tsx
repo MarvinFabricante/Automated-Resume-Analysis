@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { 
-  Calendar, MapPin, ChevronDown, CheckCircle2, XCircle, Clock, Search, 
+import {
+  Calendar, MapPin, ChevronDown, CheckCircle2, XCircle, Clock, Search,
   Check, Archive, RotateCcw, FileText, Download, Copy, Mail, Phone, Eye, Sparkles
 } from 'lucide-react';
 import { getAssetUrl } from '../../../services/api';
@@ -41,7 +41,7 @@ const TableStatusDropdown: React.FC<TableStatusDropdownProps> = ({ status, candi
   const currentInfo = getStatusInfo(status);
 
   return (
-    <div className={`relative inline-block ${isOpen ? 'z-50' : 'z-0'}`} ref={ref}>
+    <div className="relative inline-block" ref={ref}>
       <button
         type="button"
         onClick={(e) => {
@@ -56,7 +56,7 @@ const TableStatusDropdown: React.FC<TableStatusDropdownProps> = ({ status, candi
       </button>
 
       {isOpen && (
-        <div className="absolute top-full left-0 mt-1 w-52 bg-white border border-gray-200 rounded-xl shadow-2xl z-50 py-1.5 animate-in fade-in zoom-in-95 duration-150">
+        <div className="absolute top-full left-0 mt-1 w-44 bg-white border border-gray-100 rounded-xl shadow-xl z-50 py-1 animate-in fade-in zoom-in-95 duration-150">
           {['Pending', 'Reviewed', 'Technical Interview', 'Final Interview', 'Accepted', 'Rejected'].map((s) => (
             <button
               key={s}
@@ -68,11 +68,10 @@ const TableStatusDropdown: React.FC<TableStatusDropdownProps> = ({ status, candi
                 await onUpdateStatus(candidateId, s);
                 setTimeout(() => setIsUpdating(false), 500);
               }}
-              className={`w-full flex items-center justify-between px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider transition-colors cursor-pointer ${
-                (status || '').toLowerCase() === s.toLowerCase() 
-                  ? 'bg-pink-50 text-[#D60041]' 
+              className={`w-full flex items-center justify-between px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider transition-colors cursor-pointer ${(status || '').toLowerCase() === s.toLowerCase()
+                  ? 'bg-pink-50 text-[#D60041]'
                   : 'text-gray-600 hover:bg-gray-50'
-              }`}
+                }`}
             >
               <span>{s}</span>
               {(status || '').toLowerCase() === s.toLowerCase() && <Check size={11} />}
@@ -167,15 +166,15 @@ const CandidateTableView: React.FC<CandidateTableViewProps> = ({
                 ? getAssetUrl(c.profileImage)
                 : `https://ui-avatars.com/api/?name=${encodeURIComponent(c.name || 'Candidate')}&background=fdf2f8&color=d81159&bold=true`;
 
-              const matchColor = match >= 80 
-                ? 'text-emerald-700 bg-emerald-50 border-emerald-200 ring-1 ring-emerald-500/20' 
-                : match >= 60 
-                  ? 'text-amber-700 bg-amber-50 border-amber-200 ring-1 ring-amber-500/20' 
+              const matchColor = match >= 80
+                ? 'text-emerald-700 bg-emerald-50 border-emerald-200 ring-1 ring-emerald-500/20'
+                : match >= 60
+                  ? 'text-amber-700 bg-amber-50 border-amber-200 ring-1 ring-amber-500/20'
                   : 'text-rose-700 bg-rose-50 border-rose-200 ring-1 ring-rose-500/20';
 
               return (
-                <tr 
-                  key={c.id} 
+                <tr
+                  key={c.id}
                   className={`hover:bg-pink-50/25 transition-colors ${isSelected ? 'bg-pink-50/35' : ''}`}
                 >
                   <td className="py-3 px-3.5 text-center">
@@ -190,9 +189,9 @@ const CandidateTableView: React.FC<CandidateTableViewProps> = ({
                   <td className="py-3 px-3">
                     <div className="flex items-center gap-2.5">
                       <div className="w-9 h-9 rounded-xl overflow-hidden border border-gray-100 shrink-0 bg-pink-50">
-                        <img 
-                          src={avatarUrl} 
-                          alt={c.name} 
+                        <img
+                          src={avatarUrl}
+                          alt={c.name}
                           className="w-full h-full object-cover"
                           onError={(e: React.SyntheticEvent<HTMLImageElement>) => {
                             e.currentTarget.onerror = null;
@@ -271,10 +270,10 @@ const CandidateTableView: React.FC<CandidateTableViewProps> = ({
                   </td>
 
                   <td className="py-3 px-3">
-                    <TableStatusDropdown 
-                      status={c.status} 
-                      candidateId={c.id} 
-                      onUpdateStatus={onUpdateStatus} 
+                    <TableStatusDropdown
+                      status={c.status}
+                      candidateId={c.id}
+                      onUpdateStatus={onUpdateStatus}
                     />
                   </td>
 
