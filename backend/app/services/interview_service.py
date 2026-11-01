@@ -382,14 +382,17 @@ async def schedule_interview(db: AsyncSession, data: InterviewCreateSchema, user
 
     # 5. Send SMS Notification (if phone configured)
     if getattr(application, "phone", None):
+        sched_time_str = data.start_time.strftime('%A, %b %d, %Y at %I:%M %p')
         message = (
-            f"Hi {application.candidate_name}, your interview for {job_name} is scheduled on "
-            f"{data.start_time.strftime('%Y-%m-%d %H:%M')}. Please check your email ({application.candidate_email}) for interview details."
+            f"Mariwasa HR: Magandang araw, {application.candidate_name}! Nais naming ipaalam na scheduled na ang "
+            f"iyong interview para sa posisyong {job_name} sa {sched_time_str}. Kindly check your email ({application.candidate_email}) "
+            f"para sa meeting link at complete interview details. Maraming salamat and see you!"
         )
         sent = await asyncio.to_thread(send_sms_notification_sync, application.phone, message)
         if sent:
             await InterviewRepository.add_interview_log(db, interview.id, "SMS_SENT", "Notification sent to candidate")
             await InterviewRepository.commit_changes(db)
+
 
     # 6. In-App Notifications
     try:
@@ -569,14 +572,17 @@ async def update_interview(db: AsyncSession, interview_id: int, data: InterviewU
                 print(f"Warning: Could not send reschedule email: {e}")
 
         if application.phone:
+            sched_time_str = interview.start_time.strftime('%A, %b %d, %Y at %I:%M %p')
             message = (
-                f"Hi {application.candidate_name}, your interview for {job_name} has been rescheduled to "
-                f"{interview.start_time.strftime('%Y-%m-%d %H:%M')}. Please check your email for complete details."
+                f"Mariwasa HR Update: Magandang araw, {application.candidate_name}! Nais naming ipagbigay-alam na na-reschedule ang "
+                f"iyong interview para sa posisyong {job_name} sa {sched_time_str}. Pakitingnan ang iyong email ({application.candidate_email}) "
+                f"para sa updated calendar invite at complete details. Maraming salamat!"
             )
             sent = await asyncio.to_thread(send_sms_notification_sync, application.phone, message)
             if sent:
                 await InterviewRepository.add_interview_log(db, interview.id, "SMS_RESCHEDULED", "Reschedule SMS notification sent")
                 await InterviewRepository.commit_changes(db)
+
 
         # In-App Notification for reschedule
         try:

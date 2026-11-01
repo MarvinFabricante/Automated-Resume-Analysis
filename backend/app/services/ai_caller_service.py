@@ -764,16 +764,17 @@ async def send_backup_sms_notification(interview_id: int, db: AsyncSession) -> b
         return False
 
     phone = format_to_e164(application.phone) or application.phone
-    job_name = getattr(application, "job_title", "Position")
-    cand_name = getattr(application, "candidate_name", "Candidate")
-    cand_email = getattr(application, "candidate_email", "your email")
-    date_str = format_ph_datetime(interview.start_time, lang="en")
+    job_name = getattr(application, "job_title", None) or "Position"
+    cand_name = getattr(application, "candidate_name", None) or "Candidate"
+    cand_email = getattr(application, "candidate_email", None) or "your email"
+    sched_time_str = interview.start_time.strftime('%A, %b %d, %Y at %I:%M %p') if getattr(interview, "start_time", None) else "the scheduled time"
 
     message = (
-        f"Mariwasa HR Notice: Hi {cand_name}, we attempted to reach you by voice call regarding your interview for "
-        f"{job_name} scheduled on {date_str}. Since we could not connect, please check your email ({cand_email}) "
-        f"to confirm or contact HR to reschedule. Salamat!"
+        f"Mariwasa HR Notice: Magandang araw, {cand_name}! Sinubukan ka naming tawagan patungkol sa iyong interview para sa "
+        f"{job_name} na naka-schedule sa {sched_time_str}. Dahil hindi kami nakakonekta, kindly check your email ({cand_email}) "
+        f"para ma-confirm ang iyong availability o mag-request ng reschedule. Maraming salamat!"
     )
+
 
     from app.services.interview_service import send_sms_notification_sync
     sent = await asyncio.to_thread(send_sms_notification_sync, phone, message)
