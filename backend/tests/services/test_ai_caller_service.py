@@ -355,3 +355,67 @@ async def test_retry_and_sms_backup_after_3_attempts(db_session):
     assert interview.call_status in ["UNREACHABLE", "SMS_BACKUP_SENT"]
     assert interview.sms_backup_sent is True
 
+
+@pytest.mark.asyncio
+async def test_send_backup_sms_notification_with_datetime_and_fallback(db_session):
+    """Verifies send_backup_sms_notification formats start_time and safely falls back when None."""
+    from app.models.interview import Interview
+    from app.models.job_application import JobApplication
+    from app.models.job_description import JobDescription, JobType
+    from app.models.user import User
+
+    hr = User(email="hr_fallback@example.com", password="pwd", role="HR", fullname="HR Fallback")
+    db_session.add(hr)
+    await db_session.flush()
+
+    job = JobDescription(job_id="JOB-FB1", job_title="Ceramics Specialist", department="Production", job_type=JobType.FULL_TIME, location="Batangas", description="Desc")
+    db_session.add(job)
+    await db_session.flush()
+
+    app = JobApplication(job_id=job.id, candidate_name="Juan Dela Cruz", candidate_email="juan@example.com", phone="09181234567", status="PENDING")
+    db_session.add(app)
+    await db_session.flush()
+
+    interview = Interview(
+        job_application_id=app.id,
+        interviewer_id=hr.id,
+        title="Production Interview",
+        start_time=datetime(2026, 11, 26, 13, 0, 0),
+        end_time=datetime(2026, 11, 26, 14, 0, 0),
+        call_attempts=3
+    )
+    db_session.add(interview)
+    await db_session.commit()
+
+    # 1. Test with valid start_time
+    with patch("app.services.interview_service.send_sms_notification_sync", return_value=True) as mock_sms:
+        result = await ai_caller_service.send_backup_sms_notification(interview.id, db_session)
+        assert result is True
+        mock_sms.assert_called_once()
+        _, sent_msg = mock_sms.call_args[0]
+        assert "Thursday, Nov 26, 2026 at 01:00 PM" in sent_msg
+        assert "Juan Dela Cruz" in sent_msg
+        assert "Position" in sent_msg
+
+    # 2. Test fallback when start_time is None
+    mock_interview = MagicMock()
+    mock_interview.id = 999
+    mock_interview.job_application_id = app.id
+    mock_interview.start_time = None
+    mock_db = AsyncMock()
+    mock_db.add = MagicMock()
+    res_interview = MagicMock()
+    res_interview.scalar_one_or_none.return_value = mock_interview
+    res_app = MagicMock()
+    res_app.scalar_one_or_none.return_value = app
+    mock_db.execute.side_effect = [res_interview, res_app]
+
+    with patch("app.services.interview_service.send_sms_notification_sync", return_value=True) as mock_sms:
+        result = await ai_caller_service.send_backup_sms_notification(999, mock_db)
+        assert result is True
+        mock_sms.assert_called_once()
+        _, sent_msg = mock_sms.call_args[0]
+        assert "the scheduled time" in sent_msg
+
+
+

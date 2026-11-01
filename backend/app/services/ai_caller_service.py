@@ -764,10 +764,10 @@ async def send_backup_sms_notification(interview_id: int, db: AsyncSession) -> b
         return False
 
     phone = format_to_e164(application.phone) or application.phone
-    job_name = getattr(application, "job_title", "Position")
-    cand_name = getattr(application, "candidate_name", "Candidate")
-    cand_email = getattr(application, "candidate_email", "your email")
-    sched_time_str = interview.start_time.strftime('%A, %b %d, %Y at %I:%M %p') if getattr(interview, "start_time", None) else date_str
+    job_name = getattr(application, "job_title", None) or "Position"
+    cand_name = getattr(application, "candidate_name", None) or "Candidate"
+    cand_email = getattr(application, "candidate_email", None) or "your email"
+    sched_time_str = interview.start_time.strftime('%A, %b %d, %Y at %I:%M %p') if getattr(interview, "start_time", None) else "the scheduled time"
 
     message = (
         f"Mariwasa HR Notice: Magandang araw, {cand_name}! Sinubukan ka naming tawagan patungkol sa iyong interview para sa "
