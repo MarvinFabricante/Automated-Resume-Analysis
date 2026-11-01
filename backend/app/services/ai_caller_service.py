@@ -26,9 +26,11 @@ GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
 if not GEMINI_API_KEY and os.getenv('GEMINI_API_KEYS'):
     GEMINI_API_KEY = os.getenv('GEMINI_API_KEYS').split(',')[0].strip().strip('"').strip("'")
 
+AI_CALLER_PHONE_NUMBER = os.getenv('AI_CALLER_PHONE_NUMBER', os.getenv('TWILIO_PHONE_NUMBER', '09771331871'))
 TWILIO_ACCOUNT_SID = os.getenv('TWILIO_ACCOUNT_SID')
 TWILIO_AUTH_TOKEN = os.getenv('TWILIO_AUTH_TOKEN')
-TWILIO_PHONE_NUMBER = os.getenv('TWILIO_PHONE_NUMBER')
+TWILIO_PHONE_NUMBER = os.getenv('TWILIO_PHONE_NUMBER', AI_CALLER_PHONE_NUMBER)
+AI_CALLER_PROVIDER = os.getenv('AI_CALLER_PROVIDER', 'auto')
 PUBLIC_BASE_URL = os.getenv('PUBLIC_BASE_URL', '')
 
 GEMINI_WS_URL = "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1alpha.GenerativeService.MultimodalLive"
@@ -225,8 +227,164 @@ async def generate_incoming_twiml(request_host: str) -> str:
     return str(response)
 
 
-async def initiate_outbound_call(phone_number: str, request_host: str):
-    """Initiates a general outbound call using Twilio (backward compatibility)."""
+def get_connected_adb_device() -> Optional[str]:
+    """Checks if an authorized Android phone is connected via ADB for DIY calling."""
+    import shutil
+    import subprocess
+    if not shutil.which("adb"):
+        return None
+    try:
+        res = subprocess.run(["adb", "devices"], capture_output=True, text=True, timeout=3)
+        for line in res.stdout.splitlines():
+            line = line.strip()
+            if line and not line.startswith("List of devices"):
+                parts = line.split()
+                if len(parts) >= 2 and parts[1] == "device":
+                    return parts[0]
+    except Exception as e:
+        logger.debug(f"[AI Caller] Error checking ADB devices: {e}")
+    return None
+
+
+def trigger_adb_dial(phone_number: str, device_id: Optional[str] = None, auto_press_call: bool = True) -> Dict[str, Any]:
+    """Triggers outbound phone dialer on connected Android device via ADB and executes call."""
+    import subprocess
+    import time
+    dial_number = phone_number
+    if dial_number.startswith("+63"):
+        dial_number = "0" + dial_number[3:]
+    elif dial_number.startswith("63"):
+        dial_number = "0" + dial_number[2:]
+
+    cmd = ["adb"]
+    if device_id:
+        cmd += ["-s", device_id]
+    dial_cmd = cmd + ["shell", "am", "start", "-a", "android.intent.action.DIAL", "-d", f"tel:{dial_number}"]
+
+    try:
+        res = subprocess.run(dial_cmd, capture_output=True, text=True, timeout=5)
+        if auto_press_call and res.returncode == 0:
+            time.sleep(0.7)
+            call_cmd = cmd + ["shell", "input", "keyevent", "5"]
+            subprocess.run(call_cmd, capture_output=True, text=True, timeout=3)
+
+        return {
+            "success": res.returncode == 0,
+            "stdout": res.stdout.strip(),
+            "stderr": res.stderr.strip(),
+            "dial_number": dial_number
+        }
+    except Exception as e:
+        logger.error(f"[AI Caller] Failed to trigger ADB dial: {e}")
+        return {"success": False, "error": str(e), "dial_number": dial_number}
+
+
+def trigger_adb_sms(phone_number: str, message: str, device_id: Optional[str] = None) -> bool:
+    """
+    Sends an SMS directly to applicant phone number on connected Android device via ADB.
+    Automates compose draft and Send button click.
+    """
+    import shutil
+    import subprocess
+    import shlex
+    import re
+    import time
+
+    if not shutil.which("adb"):
+        logger.warning("[AI Caller] ADB binary not found on host system.")
+        return False
+
+    clean_number = phone_number
+    if clean_number.startswith("+63"):
+        clean_number = "0" + clean_number[3:]
+    elif clean_number.startswith("63"):
+        clean_number = "0" + clean_number[2:]
+
+    base_adb = ["adb"]
+    if device_id:
+        base_adb += ["-s", device_id]
+
+    try:
+        # Wake screen & dismiss lockscreen if any
+        subprocess.run(base_adb + ["shell", "input", "keyevent", "224"], capture_output=True, timeout=5)
+        subprocess.run(base_adb + ["shell", "wm", "dismiss-keyguard"], capture_output=True, timeout=5)
+
+        # Force stop Google Messages to ensure fresh compose activity with new body
+        subprocess.run(base_adb + ["shell", "am", "force-stop", "com.google.android.apps.messaging"], capture_output=True, timeout=5)
+        time.sleep(0.3)
+
+        # Launch compose with recipient and body safely quoted
+        quoted_body = shlex.quote(message)
+        launch_cmd = f"am start -a android.intent.action.SENDTO -d sms:{clean_number} --es sms_body {quoted_body}"
+        res = subprocess.run(base_adb + ["shell", launch_cmd], capture_output=True, text=True, timeout=5)
+        if res.returncode != 0:
+            logger.error(f"[AI Caller] Failed to launch SMS compose: {res.stderr}")
+            return False
+
+        # Allow compose UI to render
+        time.sleep(1.2)
+
+        # Locate Send button dynamically from UI hierarchy
+        tap_x, tap_y = 648, 1474  # Verified default for Redmi / 720x1600
+        try:
+            dump_res = subprocess.run(
+                base_adb + ["shell", "uiautomator", "dump", "/sdcard/sms_ui.xml && cat /sdcard/sms_ui.xml"],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            xml_content = dump_res.stdout or ""
+            patterns = [
+                r'content-desc="Send SMS"[^>]+bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"',
+                r'resource-id="Compose:Draft:Send"[^>]+bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"',
+                r'content-desc="Send"[^>]+bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"',
+                r'bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"[^>]+content-desc="Send SMS"',
+                r'bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"[^>]+resource-id="Compose:Draft:Send"',
+            ]
+            for pat in patterns:
+                m = re.search(pat, xml_content)
+                if m:
+                    x1, y1, x2, y2 = map(int, m.groups())
+                    tap_x = (x1 + x2) // 2
+                    tap_y = (y1 + y2) // 2
+                    logger.info(f"[AI Caller] Located SMS Send button at ({tap_x}, {tap_y})")
+                    break
+        except Exception as dump_err:
+            logger.warning(f"[AI Caller] UIAutomator dump failed, using fallback coordinates: {dump_err}")
+
+        # Tap the Send button
+        tap_res = subprocess.run(base_adb + ["shell", "input", "tap", str(tap_x), str(tap_y)], capture_output=True, timeout=5)
+        time.sleep(1.0)
+
+        # Press Home to return device to normal state
+        subprocess.run(base_adb + ["shell", "input", "keyevent", "3"], capture_output=True, timeout=5)
+
+        logger.info(f"[AI Caller] SMS successfully sent to {clean_number} via ADB.")
+        return tap_res.returncode == 0
+    except Exception as e:
+        logger.error(f"[AI Caller] Failed to send SMS via ADB: {e}")
+        return False
+
+
+
+async def initiate_outbound_call(phone_number: str, request_host: str, provider: Optional[str] = None):
+    """Initiates an outbound call using Twilio or DIY Android phone via ADB."""
+    effective_provider = provider or AI_CALLER_PROVIDER
+    if effective_provider == "adb":
+        adb_device = get_connected_adb_device()
+        if adb_device:
+            adb_res = trigger_adb_dial(phone_number, adb_device)
+            if adb_res.get("success"):
+                return {
+                    "message": f"DIY Call initiated to {phone_number} from {AI_CALLER_PHONE_NUMBER}",
+                    "call_sid": f"ADB_{uuid.uuid4().hex[:12]}",
+                    "device": adb_device,
+                    "from_phone": AI_CALLER_PHONE_NUMBER,
+                    "status": "DIALER_TRIGGERED"
+                }
+            raise HTTPException(status_code=500, detail=f"Failed to trigger ADB dial: {adb_res.get('error') or adb_res.get('stderr')}")
+        raise HTTPException(status_code=500, detail="No authorized ADB device connected")
+
     if not TWILIO_ACCOUNT_SID or not TWILIO_AUTH_TOKEN:
         raise HTTPException(status_code=500, detail="Twilio credentials not configured")
 
@@ -306,8 +464,8 @@ async def initiate_candidate_interview_call(
     call_sid = f"SIM_{uuid.uuid4().hex[:12]}"
     call_status = "INITIATED"
 
-    # Attempt real Twilio call if credentials exist
-    if TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN and TWILIO_PHONE_NUMBER:
+    # Attempt real Twilio call if credentials exist and provider is not adb
+    if TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN and TWILIO_PHONE_NUMBER and AI_CALLER_PROVIDER != "adb":
         try:
             client = TwilioClient(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
             twiml_url = f"https://{effective_host}/ai-caller/interview-twiml/{interview_id}?attempt={new_attempt}&lang={lang}"
@@ -328,6 +486,17 @@ async def initiate_candidate_interview_call(
         except Exception as e:
             logger.error(f"[AI Caller] Twilio call error: {e}. Logging call attempt.")
             call_status = "FAILED"
+    else:
+        # DIY Mode: Attempt Android ADB Call Dispatch
+        adb_dev = get_connected_adb_device()
+        if adb_dev:
+            adb_res = trigger_adb_dial(formatted_phone, adb_dev)
+            if adb_res.get("success"):
+                call_sid = f"ADB_{uuid.uuid4().hex[:12]}"
+                call_status = "INITIATED"
+                logger.info(f"[AI Caller] DIY Android call dispatched to {formatted_phone} via device {adb_dev} (SIM: {AI_CALLER_PHONE_NUMBER})")
+            else:
+                logger.warning(f"[AI Caller] DIY Android call dialer error: {adb_res.get('error') or adb_res.get('stderr')}")
 
     # REQ032: Log call attempt in VoiceCallRecord and InterviewLog
     call_record = VoiceCallRecord(
@@ -337,7 +506,7 @@ async def initiate_candidate_interview_call(
         attempt_number=new_attempt,
         status=call_status,
         language=lang,
-        notes=f"Automated voice call attempt #{new_attempt} placed to {formatted_phone}."
+        notes=f"Automated voice call attempt #{new_attempt} placed to {formatted_phone} (Caller: {AI_CALLER_PHONE_NUMBER})."
     )
     db.add(call_record)
 
