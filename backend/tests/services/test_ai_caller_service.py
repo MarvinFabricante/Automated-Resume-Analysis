@@ -16,16 +16,18 @@ async def test_generate_incoming_twiml():
 
 @pytest.mark.asyncio
 async def test_initiate_outbound_call_missing_credentials():
-    with patch.object(ai_caller_service, "TWILIO_ACCOUNT_SID", None):
+    with patch.object(ai_caller_service, "AI_CALLER_PROVIDER", "twilio"), \
+         patch.object(ai_caller_service, "TWILIO_ACCOUNT_SID", None):
         with pytest.raises(HTTPException) as excinfo:
-            await ai_caller_service.initiate_outbound_call("+639123456789", "test.com")
+            await ai_caller_service.initiate_outbound_call("+639123456789", "test.com", provider="twilio")
         assert excinfo.value.status_code == 500
         assert "not configured" in excinfo.value.detail
 
 
 @pytest.mark.asyncio
 async def test_initiate_outbound_call_success():
-    with patch.object(ai_caller_service, "TWILIO_ACCOUNT_SID", "AC123"), \
+    with patch.object(ai_caller_service, "AI_CALLER_PROVIDER", "twilio"), \
+         patch.object(ai_caller_service, "TWILIO_ACCOUNT_SID", "AC123"), \
          patch.object(ai_caller_service, "TWILIO_AUTH_TOKEN", "token123"), \
          patch.object(ai_caller_service, "TWILIO_PHONE_NUMBER", "+1234567890"), \
          patch("app.services.ai_caller_service.TwilioClient") as mock_twilio_cls:
@@ -36,7 +38,7 @@ async def test_initiate_outbound_call_success():
         mock_client.calls.create.return_value = mock_call
         mock_twilio_cls.return_value = mock_client
 
-        res = await ai_caller_service.initiate_outbound_call("+639999999999", "api.example.com")
+        res = await ai_caller_service.initiate_outbound_call("+639999999999", "api.example.com", provider="twilio")
         assert res["message"] == "Call initiated"
         assert res["call_sid"] == "CA_test_call_sid"
         mock_client.calls.create.assert_called_once_with(
@@ -48,14 +50,26 @@ async def test_initiate_outbound_call_success():
 
 @pytest.mark.asyncio
 async def test_initiate_outbound_call_twilio_error():
-    with patch.object(ai_caller_service, "TWILIO_ACCOUNT_SID", "AC123"), \
+    with patch.object(ai_caller_service, "AI_CALLER_PROVIDER", "twilio"), \
+         patch.object(ai_caller_service, "TWILIO_ACCOUNT_SID", "AC123"), \
          patch.object(ai_caller_service, "TWILIO_AUTH_TOKEN", "token123"), \
          patch("app.services.ai_caller_service.TwilioClient", side_effect=Exception("Twilio network error")):
         
         with pytest.raises(HTTPException) as excinfo:
-            await ai_caller_service.initiate_outbound_call("+639999999999", "api.example.com")
+            await ai_caller_service.initiate_outbound_call("+639999999999", "api.example.com", provider="twilio")
         assert excinfo.value.status_code == 500
         assert "Twilio network error" in excinfo.value.detail
+
+
+@pytest.mark.asyncio
+async def test_initiate_outbound_call_adb_success():
+    with patch("app.services.ai_caller_service.get_connected_adb_device", return_value="TEST_DEVICE_123"), \
+         patch("app.services.ai_caller_service.trigger_adb_dial", return_value={"success": True}):
+        res = await ai_caller_service.initiate_outbound_call("+639999999999", "api.example.com", provider="adb")
+        assert "DIY Call initiated" in res["message"]
+        assert res["device"] == "TEST_DEVICE_123"
+        assert res["status"] == "DIALER_TRIGGERED"
+
 
 
 @pytest.mark.asyncio

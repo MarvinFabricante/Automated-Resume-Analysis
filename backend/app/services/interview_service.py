@@ -1,3 +1,4 @@
+from fastapi.logger import logger
 import os
 import asyncio
 from datetime import datetime, timedelta
@@ -70,9 +71,23 @@ def _populate_candidate_info(interview):
     return interview
 
 def send_sms_notification_sync(to_phone: str, message: str):
+    provider = os.getenv('AI_CALLER_PROVIDER', 'twilio').lower()
+    
+    # Priority 1: DIY ADB Provider via connected Android phone (SIM 09771331871)
+    if provider == 'adb':
+        try:
+            from app.services.ai_caller_service import get_connected_adb_device, trigger_adb_sms
+            device = get_connected_adb_device()
+            if device and to_phone:
+                sent = trigger_adb_sms(to_phone, message, device)
+                if sent:
+                    return True
+        except Exception as e:
+            print(f"DIY ADB SMS Error: {e}")
+
     account_sid = os.getenv('TWILIO_ACCOUNT_SID')
     auth_token = os.getenv('TWILIO_AUTH_TOKEN')
-    from_phone = os.getenv('TWILIO_PHONE_NUMBER')
+    from_phone = os.getenv('TWILIO_PHONE_NUMBER', os.getenv('AI_CALLER_PHONE_NUMBER', '09771331871'))
     
     if account_sid and auth_token and from_phone and to_phone:
         try:
@@ -85,8 +100,19 @@ def send_sms_notification_sync(to_phone: str, message: str):
             return True
         except Exception as e:
             print(f"Twilio SMS Error: {e}")
-            return False
+
+    # Fallback to DIY ADB if Twilio failed or wasn't configured
+    if provider != 'adb':
+        try:
+            from app.services.ai_caller_service import get_connected_adb_device, trigger_adb_sms
+            device = get_connected_adb_device()
+            if device and to_phone:
+                return trigger_adb_sms(to_phone, message, device)
+        except Exception as e:
+            print(f"DIY ADB SMS Error: {e}")
+
     return False
+
 
 
 def _get_valid_credentials(user) -> Optional[str]:
