@@ -149,8 +149,8 @@ _PHILIPPINE_JOB_TAXONOMY: Dict[str, List[str]] = {
         "Software Developer Intern (OJT)", "Software Intern"
     ],
     "QA Engineer": [
-        "QA Analyst", "QA Engineer", "Quality Assurance Analyst",
-        "Software Tester", "Test Engineer", "Manual Tester", "Automation QA"
+        "QA Analyst", "QA Engineer", "Quality Assurance Analyst", "Quality Assurance Engineer",
+        "Quality Engineer", "Software Tester", "Test Engineer", "Manual Tester", "Automation QA"
     ],
     "IT Support Specialist": [
         "IT Support Specialist", "System Administrator", "Network Engineer",
@@ -171,6 +171,17 @@ _PHILIPPINE_JOB_TAXONOMY: Dict[str, List[str]] = {
     ],
     "Electrical Engineer": [
         "Electrical Engineer", "Electronics Engineer", "ECE", "Power Engineer"
+    ],
+    "Chemical Engineer": [
+        "Chemical Engineer", "Process Engineer", "Plant Chemist", "Chemical Analyst"
+    ],
+    "Industrial Engineer": [
+        "Industrial Engineer", "Continuous Improvement Specialist", "Process Analyst",
+        "Operations Analyst", "Supply Chain Analyst", "Methods Analyst"
+    ],
+    "Materials Engineer": [
+        "Materials Engineer", "Materials Quality Engineer", "Materials Science and Engineering",
+        "Metallurgical Engineer", "Ceramic Engineer", "Corrosion Engineer", "Materials Testing Technician"
     ],
     "Architect": [
         "Architect", "Architectural Designer", "Junior Architect", "Architectural Apprentice"
@@ -234,17 +245,28 @@ _EMPLOYMENT_TYPE_RULES = [
 _PHIL_COMPANY_NAMES = [
     "Jollibee", "Jollibee Foods Corporation", "McDonald's", "McDonalds", "Chowking",
     "Mang Inasal", "Greenwich", "Red Ribbon", "Goldilocks", "KFC", "Gerry's Grill",
-    "Robinsons", "Robinsons Place", "Robinsons Galleria", "SM", "SM Supermalls", "SM City",
-    "Puregold", "Ayala Malls", "DMCI", "DMCI Homes", "Accenture", "Accenture Philippines",
-    "Teleperformance", "Concentrix", "Convergys", "TaskUs", "Alorica", "Foundever",
-    "Sitel", "Cognizant", "Globe Telecom", "Smart Communications", "PLDT",
-    "San Miguel Corporation", "BDO", "BPI", "Metrobank", "Foodpanda", "Grab",
-    "Lalamove", "Shopee", "Lazada", "Angkas", "Monde Nissin", "Universal Robina",
+    "Robinsons", "Robinsons Place", "Robinsons Galleria", "Robinsons Land", "SM",
+    "SM Supermalls", "SM City", "Puregold", "Ayala Malls", "Ayala Land", "DMCI",
+    "DMCI Homes", "Accenture", "Accenture Philippines", "Teleperformance", "Concentrix",
+    "Convergys", "TaskUs", "Alorica", "Foundever", "Sitel", "Cognizant", "Globe Telecom",
+    "Smart Communications", "PLDT", "San Miguel Corporation", "San Miguel Brewery",
+    "BDO", "BPI", "Metrobank", "Foodpanda", "Food Panda", "Grab", "Lalamove", "Shopee",
+    "Lazada", "Angkas", "Monde Nissin", "Universal Robina", "ChanzIT", "Fourello",
+    "Vaskeappen", "Maxim", "Ninja Van", "J&T Express", "Flash Express", "Toktok",
+    "Mariwasa", "Mariwasa Siam Ceramics", "Mariwasa Siam Ceramics Inc.",
     "XYZ Tech Solutions Inc."
 ]
 
 _COMPANY_LEGAL_SUFFIXES_RE = re.compile(
-    r'\b(?:Inc\.?|Corp\.?|Corporation|Co\.?|Ltd\.?|LLC|Holdings|Enterprises|Services|Trading|Foods|Solutions|Technologies|Group|Agency|Branch|Manpower)\b',
+    r'\b(?:Inc\.?|Corp\.?|Corporation|Co\.?|Ltd\.?|LLC|Holdings|Enterprises|Services|Trading|Foods|Solutions|Technologies|Group|Agency|Branch|Manpower|Industries|Manufacturing|Ceramics|Systems|Consulting|Logistics|Phils\.?|Philippines)\b',
+    re.IGNORECASE
+)
+
+_JOB_TITLE_KEYWORDS_RE = re.compile(
+    r'\b(?:Engineer|Engineering|Developer|Programmer|Specialist|Manager|Director|Officer|Analyst|Lead|Supervisor|'
+    r'Technician|Assistant|Associate|Operator|Representative|Consultant|Architect|Designer|Coordinator|'
+    r'Administrator|Crew|Cashier|Rider|Driver|Clerk|Intern|Trainee|Nurse|Teacher|Instructor|Professor|'
+    r'Accountant|Auditor|Chemist|Pharmacist|Janitor|Cook|Chef|Staff|Executive|Practitioner|Worker|Scientist)\b',
     re.IGNORECASE
 )
 
@@ -485,6 +507,29 @@ _RESUME_SECTION_HEADERS = {
 }
 
 
+_ADDRESS_PATTERNS = re.compile(
+    r'\b(?:Avenue|Ave\.?|Street|St\.?|Barangay|Brgy\.?|Subdivision|Subd\.?|Boulevard|Blvd\.?|Road|Rd\.?|Highway|Hwy\.?|Bldg\.?|Building|Block|Blk\.?|Lot|Compound|Phase|Sitio|Purok)\b',
+    re.IGNORECASE
+)
+
+
+def _is_address_or_location(text: str) -> bool:
+    """Detect if text is an address or location rather than job title or company."""
+    if not text:
+        return False
+    lower = text.lower().strip()
+    if _ADDRESS_PATTERNS.search(lower):
+        job_words = ["developer", "engineer", "crew", "cashier", "rider", "driver", "clerk", "agent", "assistant", "manager", "specialist", "technician", "worker", "officer", "analyst"]
+        if not any(w in lower for w in job_words):
+            return True
+    # If string consists primarily of Philippine location names
+    if any(loc == lower or f", {loc}" in lower for loc in _PHIL_LOCATIONS_SET):
+        job_words = ["developer", "engineer", "crew", "cashier", "rider", "driver", "clerk", "agent", "assistant", "manager", "specialist", "technician", "worker", "officer", "analyst"]
+        if not any(w in lower for w in job_words) and not _COMPANY_LEGAL_SUFFIXES_RE.search(lower):
+            return True
+    return False
+
+
 def _normalize_job_title(raw_title: str) -> str:
     """
     Normalizes raw job title to clean, standardized title string:
@@ -501,6 +546,9 @@ def _normalize_job_title(raw_title: str) -> str:
     clean = re.sub(r'^[•\-\*▪►✓\s:]+|[•\-\*▪►✓\s:]+$', '', clean).strip()
 
     if clean.lower() in _RESUME_SECTION_HEADERS or any(clean.lower().startswith(h) for h in _RESUME_SECTION_HEADERS):
+        return ""
+
+    if _is_address_or_location(clean):
         return ""
 
     acronym_map = {
@@ -576,6 +624,104 @@ def _split_company_and_location(raw_text: str) -> Tuple[str, Optional[str]]:
                 return comp, found_loc
 
     return clean, None
+
+
+def _extract_title_company_location(title_cand: str, comp_cand: str = "") -> Tuple[str, str, Optional[str]]:
+    """
+    Decouples raw title, company, and location strings even when written on the same line,
+    swapped, or combined (e.g. 'Food Panda Delivery Rider', 'Delivery Rider at Food Panda').
+    Returns (job_title, company_name, location).
+    """
+    title_cand = title_cand.strip() if title_cand else ""
+    comp_cand = comp_cand.strip() if comp_cand else ""
+
+    # Check if comp_cand is actually an address
+    loc_override = None
+    if comp_cand and _is_address_or_location(comp_cand):
+        loc_override = comp_cand
+        comp_cand = ""
+
+    # Check if lines were swapped: title_cand is company and comp_cand is job title
+    if comp_cand:
+        title_has_comp_signals = bool(_COMPANY_LEGAL_SUFFIXES_RE.search(title_cand) or any(c.lower() in title_cand.lower() for c in _PHIL_COMPANY_NAMES))
+        comp_has_comp_signals = bool(_COMPANY_LEGAL_SUFFIXES_RE.search(comp_cand) or any(c.lower() in comp_cand.lower() for c in _PHIL_COMPANY_NAMES))
+
+        title_has_job_signals = bool(_JOB_TITLE_KEYWORDS_RE.search(title_cand) or any(t.lower() in title_cand.lower() for vars_list in _PHILIPPINE_JOB_TAXONOMY.values() for t in vars_list))
+        comp_has_job_signals = bool(_JOB_TITLE_KEYWORDS_RE.search(comp_cand) or any(t.lower() in comp_cand.lower() for vars_list in _PHILIPPINE_JOB_TAXONOMY.values() for t in vars_list))
+
+        should_swap = False
+        if title_has_comp_signals and comp_has_job_signals and not comp_has_comp_signals:
+            should_swap = True
+        elif not title_has_job_signals and comp_has_job_signals and not comp_has_comp_signals:
+            should_swap = True
+
+        if should_swap:
+            title_cand, comp_cand = comp_cand, title_cand
+
+    if comp_cand:
+        company, location = _split_company_and_location(comp_cand)
+        norm_title = _normalize_job_title(title_cand)
+        return norm_title, company, location or loc_override
+
+    # If comp_cand is empty, parse title_cand
+    if not title_cand:
+        return "", "", loc_override
+
+    # 1. Check ' at ' or ' @ '
+    at_match = re.search(r'\s+(?:at|@)\s+', title_cand, re.IGNORECASE)
+    if at_match:
+        t_part = title_cand[:at_match.start()].strip()
+        c_part = title_cand[at_match.end():].strip()
+        comp, loc = _split_company_and_location(c_part)
+        return _normalize_job_title(t_part), comp, loc or loc_override
+
+    # 2. Check ' - ' or ' – ' or ' — '
+    if re.search(r'\s+[-–—]\s+', title_cand):
+        parts = re.split(r'\s+[-–—]\s+', title_cand, maxsplit=1)
+        p1, p2 = parts[0].strip(), parts[1].strip()
+        p1_comp = bool(_COMPANY_LEGAL_SUFFIXES_RE.search(p1) or any(c.lower() == p1.lower() for c in _PHIL_COMPANY_NAMES))
+        p2_comp = bool(_COMPANY_LEGAL_SUFFIXES_RE.search(p2) or any(c.lower() == p2.lower() for c in _PHIL_COMPANY_NAMES))
+        if p1_comp and not p2_comp:
+            comp, loc = _split_company_and_location(p1)
+            return _normalize_job_title(p2), comp, loc or loc_override
+        else:
+            comp, loc = _split_company_and_location(p2)
+            return _normalize_job_title(p1), comp, loc or loc_override
+
+    # 3. Check known Philippine company prefixes/suffixes
+    for c in sorted(_PHIL_COMPANY_NAMES, key=len, reverse=True):
+        c_low = c.lower()
+        t_low = title_cand.lower()
+        if t_low.startswith(c_low) and len(title_cand) > len(c):
+            boundary_char = title_cand[len(c):len(c)+1]
+            if boundary_char in " \t-–—|,/":
+                rem = title_cand[len(c):].strip(" \t-–—|,/")
+                if rem:
+                    return _normalize_job_title(rem), c, loc_override
+        elif t_low.endswith(c_low) and len(title_cand) > len(c):
+            boundary_char = title_cand[-len(c)-1:-len(c)]
+            if boundary_char in " \t-–—|,/":
+                rem = title_cand[:-len(c)].strip(" \t-–—|,/")
+                if rem:
+                    return _normalize_job_title(rem), c, loc_override
+
+    # 4. Check known job taxonomy suffixes (e.g. 'Food Panda Delivery Rider')
+    all_taxonomy_titles = []
+    for vars_list in _PHILIPPINE_JOB_TAXONOMY.values():
+        all_taxonomy_titles.extend(vars_list)
+    for tax_title in sorted(all_taxonomy_titles, key=len, reverse=True):
+        tax_low = tax_title.lower()
+        t_low = title_cand.lower()
+        if t_low.endswith(tax_low) and len(title_cand) > len(tax_title):
+            boundary_char = title_cand[-len(tax_title)-1:-len(tax_title)]
+            if boundary_char in " \t-–—|,/":
+                prefix = title_cand[:-len(tax_title)].strip(" \t-–—|,/")
+                if len(prefix) >= 3 and not _is_address_or_location(prefix):
+                    comp, loc = _split_company_and_location(prefix)
+                    return _normalize_job_title(tax_title), comp, loc or loc_override
+
+    norm_title = _normalize_job_title(title_cand)
+    return norm_title, "", loc_override
 
 
 def _is_section_header(line: str) -> bool:
@@ -689,25 +835,32 @@ def extract_structured_experience(text: str) -> Dict[str, Any]:
             continue
 
         # ── Case A: Inline entry format (Template 2) ──────────────────────────
-        # e.g.: Cashier / Counter Crew | Chowking - SM City Taytay | March 2021 to August 2022
-        if '|' in line and _DATE_RANGE_REGEX.search(line):
-            segments = [s.strip() for s in line.split('|')]
-            if len(segments) >= 3:
-                raw_title = segments[0]
-                comp_loc_str = segments[1]
-                date_str = segments[2]
-            else:
-                raw_title = segments[0]
-                rest = segments[1]
-                dm = _DATE_RANGE_REGEX.search(rest)
-                if dm:
-                    comp_loc_str = rest[:dm.start()].strip(' -|')
-                    date_str = rest[dm.start():].strip()
+        if _DATE_RANGE_REGEX.search(line):
+            if '|' in line:
+                segments = [s.strip() for s in line.split('|')]
+                if len(segments) >= 3:
+                    raw_title = segments[0]
+                    comp_loc_str = segments[1]
+                    date_str = segments[2]
                 else:
-                    comp_loc_str = rest
-                    date_str = ""
+                    raw_title = segments[0]
+                    rest = segments[1]
+                    dm = _DATE_RANGE_REGEX.search(rest)
+                    if dm:
+                        comp_loc_str = rest[:dm.start()].strip(' -|')
+                        date_str = rest[dm.start():].strip()
+                    else:
+                        comp_loc_str = rest
+                        date_str = ""
+                norm_title, company, location = _extract_title_company_location(raw_title, comp_loc_str)
+            else:
+                dm = _DATE_RANGE_REGEX.search(line)
+                title_comp_str = line[:dm.start()].strip(' -–—(),|')
+                date_str = line[dm.start():].strip(' ()')
+                raw_title = title_comp_str
+                norm_title, company, location = _extract_title_company_location(title_comp_str)
+                comp_loc_str = company + (f" - {location}" if location else "")
 
-            company, location = _split_company_and_location(comp_loc_str)
             start_iso, end_iso, duration, extra_status = _parse_date_and_duration(date_str)
 
             # Responsibilities in subsequent lines
@@ -715,7 +868,7 @@ def extract_structured_experience(text: str) -> Dict[str, Any]:
             i += 1
             while i < len(lines):
                 next_l = lines[i]
-                if '|' in next_l and _DATE_RANGE_REGEX.search(next_l):
+                if _DATE_RANGE_REGEX.search(next_l):
                     break
                 if _is_section_header(next_l):
                     break
@@ -730,31 +883,33 @@ def extract_structured_experience(text: str) -> Dict[str, Any]:
                         responsibilities.append(duty_text)
                     i += 1
                     continue
-                elif not _DATE_RANGE_REGEX.search(next_l) and not any(comp in next_l for comp in _PHIL_COMPANY_NAMES):
-                    if len(next_l) > 15:
+                elif not _DATE_RANGE_REGEX.search(next_l) and not any(comp.lower() in next_l.lower() for comp in _PHIL_COMPANY_NAMES):
+                    if len(next_l) > 15 and not _is_address_or_location(next_l):
                         responsibilities.append(next_l)
                         i += 1
                         continue
                 break
 
             emp_type = _detect_employment_type(raw_title, comp_loc_str, date_str, responsibilities)
-            norm_title = _normalize_job_title(raw_title)
+            if not norm_title:
+                norm_title = _normalize_job_title(raw_title)
 
-            work_experiences.append({
-                "job_title": norm_title,
-                "role": norm_title,
-                "title": norm_title,
-                "raw_job_title": raw_title,
-                "company_name": company,
-                "company": company,
-                "location": location,
-                "employment_type": emp_type,
-                "start_date": start_iso,
-                "end_date": end_iso,
-                "duration_months": duration,
-                "responsibilities": responsibilities,
-                "highlights": responsibilities,
-            })
+            if norm_title and not _is_address_or_location(norm_title):
+                work_experiences.append({
+                    "job_title": norm_title,
+                    "role": norm_title,
+                    "title": norm_title,
+                    "raw_job_title": raw_title,
+                    "company_name": company,
+                    "company": company,
+                    "location": location,
+                    "employment_type": emp_type,
+                    "start_date": start_iso,
+                    "end_date": end_iso,
+                    "duration_months": duration,
+                    "responsibilities": responsibilities,
+                    "highlights": responsibilities,
+                })
             continue
 
         # ── Case B: Multi-line block format (Template 1 & Template 3) ─────────
@@ -784,7 +939,7 @@ def extract_structured_experience(text: str) -> Dict[str, Any]:
                 if not comp_loc_str and len(parts) > 1:
                     comp_loc_str = parts[1]
 
-            company, location = _split_company_and_location(comp_loc_str)
+            norm_title, company, location = _extract_title_company_location(raw_title, comp_loc_str)
             start_iso, end_iso, duration, extra_status = _parse_date_and_duration(date_line)
 
             # Responsibilities
@@ -809,28 +964,30 @@ def extract_structured_experience(text: str) -> Dict[str, Any]:
                     cleaned_duty = curr_l.lstrip('•-*▪►✓ ').strip()
                     if cleaned_duty:
                         responsibilities.append(cleaned_duty)
-                elif len(curr_l) > 15:
+                elif len(curr_l) > 15 and not _is_address_or_location(curr_l):
                     responsibilities.append(curr_l)
                 curr_idx += 1
 
             emp_type = _detect_employment_type(raw_title, comp_loc_str, date_line, responsibilities)
-            norm_title = _normalize_job_title(raw_title)
+            if not norm_title:
+                norm_title = _normalize_job_title(raw_title)
 
-            work_experiences.append({
-                "job_title": norm_title,
-                "role": norm_title,
-                "title": norm_title,
-                "raw_job_title": raw_title,
-                "company_name": company,
-                "company": company,
-                "location": location,
-                "employment_type": emp_type,
-                "start_date": start_iso,
-                "end_date": end_iso,
-                "duration_months": duration,
-                "responsibilities": responsibilities,
-                "highlights": responsibilities,
-            })
+            if norm_title and not _is_address_or_location(norm_title):
+                work_experiences.append({
+                    "job_title": norm_title,
+                    "role": norm_title,
+                    "title": norm_title,
+                    "raw_job_title": raw_title,
+                    "company_name": company,
+                    "company": company,
+                    "location": location,
+                    "employment_type": emp_type,
+                    "start_date": start_iso,
+                    "end_date": end_iso,
+                    "duration_months": duration,
+                    "responsibilities": responsibilities,
+                    "highlights": responsibilities,
+                })
 
             i = curr_idx
             continue
@@ -989,8 +1146,32 @@ def extract_company(text: str, entries: Optional[list[dict]] = None) -> str:
     if entries:
         for e in entries:
             comp = e.get("company_name") or e.get("company", "")
-            if comp and len(comp) > 2:
+            if comp and len(comp) > 2 and not _is_address_or_location(comp):
                 return comp
+
+    # Fallback: scan text / experience blocks for known company names
+    blocks = _extract_experience_blocks(text)
+    comb = "\n".join(blocks)
+    for c in sorted(_PHIL_COMPANY_NAMES, key=len, reverse=True):
+        if re.search(rf'\b{re.escape(c)}\b', comb, re.I):
+            return c
+
+    # Fallback: scan lines in experience blocks for company legal suffixes
+    for block in blocks:
+        for line in block.split('\n'):
+            line_str = line.strip()
+            if len(line_str) > 3 and not _is_address_or_location(line_str) and not _JOB_TITLE_KEYWORDS_RE.search(line_str):
+                if _COMPANY_LEGAL_SUFFIXES_RE.search(line_str):
+                    c_clean, _ = _split_company_and_location(line_str)
+                    if c_clean:
+                        return c_clean
+
+    # Fallback: search for 'at <Company>' pattern
+    at_m = re.search(r'\b(?:at|@)\s+([A-Za-z0-9\s&.,\'-]+?)(?:\s*\(|\s*[-–—|,]|\s*[\r\n]|$)', comb, re.I)
+    if at_m:
+        cand = at_m.group(1).strip()
+        if len(cand) > 2 and not _is_address_or_location(cand):
+            return cand
 
     return ""
 

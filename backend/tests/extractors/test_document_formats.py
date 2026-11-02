@@ -326,4 +326,198 @@ def test_tc_res_009_review_before_submit_preview_and_replace(temp_files):
     assert r2_parsed.get("candidate_email") != r1_parsed.get("candidate_email")
 
 
+def test_tc_res_010_text_extraction_all_visible_info(temp_files):
+    """
+    Test Case: TC-RES-010
+    Module: Resume Processing
+    Requirement: REQ004
+    Scenario: Text Extraction
+    Steps: Upload R1
+    Expected Result: Extracted text contains all visible resume text without missing important info (e.g. company, degree).
+    """
+    # 1. Test real-world R1 PDF (contains company & job title combined, plus student status)
+    r1_sample_path = "uploads/resumes/1779865932_jampol.pdf" if os.path.exists("uploads/resumes/1779865932_jampol.pdf") else "backend/uploads/resumes/1779865932_jampol.pdf"
+    if os.path.exists(r1_sample_path):
+        parsed = process_resume(r1_sample_path, "pdf")
+        assert parsed.get("candidate_name") == "John Paul T. Basagre"
+        assert parsed.get("degree") == "Bachelor of Science in Computer Science"
+        assert "STI Colleges" in parsed.get("college", "")
+        assert parsed.get("company") == "Food Panda", f"Expected 'Food Panda', got '{parsed.get('company')}'"
+        assert parsed.get("job_title") == "Delivery Rider"
+        assert "raw_text" in parsed
+        assert "Filipinas Avenue, Dulumbayan, Teresa, Rizal" in parsed["raw_text"]
+        assert len(parsed.get("work_experiences", [])) >= 1
+        assert parsed["work_experiences"][0]["company_name"] == "Food Panda"
+
+    # 2. Test multi-role real-world PDF
+    r2_sample_path = "uploads/resumes/1779867190_SebastianCurtisLavarias.pdf" if os.path.exists("uploads/resumes/1779867190_SebastianCurtisLavarias.pdf") else "backend/uploads/resumes/1779867190_SebastianCurtisLavarias.pdf"
+    if os.path.exists(r2_sample_path):
+        parsed2 = process_resume(r2_sample_path, "pdf")
+        assert parsed2.get("candidate_name") == "Sebastian Curtis Lavarias"
+        assert parsed2.get("degree") == "Bachelor of Science in Information Technology"
+        assert "Universidad De Manila" in parsed2.get("college", "")
+        assert parsed2.get("company") == "ChanzIT"
+        assert len(parsed2.get("work_experiences", [])) >= 3
+
+    # 3. Test DOCX format with specialized engineering degree and single-line experience
+    doc = docx.Document()
+    doc.add_heading("ENGR. ALYSSA MARIE REYES", level=0)
+    p_contact = doc.add_paragraph("alyssa.reyes@gmail.com | +63 919 555 4321 | Binangonan, Rizal")
+    
+    doc.add_heading("EDUCATION", level=1)
+    doc.add_paragraph("Mapúa University - Intramuros, Manila")
+    doc.add_paragraph("BS Materials Science and Engineering")
+    doc.add_paragraph("2018 - 2022")
+    
+    doc.add_heading("WORK EXPERIENCE", level=1)
+    doc.add_paragraph("Mariwasa Siam Ceramics Inc.")
+    doc.add_paragraph("Materials Quality Engineer")
+    doc.add_paragraph("August 2022 - Present")
+    doc.add_paragraph("• Performed raw material characterization and ceramic testing.")
+
+    doc.add_heading("SKILLS", level=1)
+    doc.add_paragraph("Materials Characterization, Metallurgy, XRD, SEM, Quality Assurance")
+
+    with tempfile.NamedTemporaryFile(suffix=".docx", delete=False) as f:
+        doc.save(f.name)
+        docx_path = temp_files(f.name)
+
+    res_docx = process_resume(docx_path, "docx")
+    assert "Alyssa Marie Reyes" in res_docx.get("candidate_name", "")
+    assert "Materials" in res_docx.get("degree", ""), f"Degree should capture Materials Engineering, got: {res_docx.get('degree')}"
+    assert "Mapúa University" in res_docx.get("college", "") or "Mapua" in res_docx.get("college", "")
+    assert "Mariwasa" in res_docx.get("company", ""), f"Company should capture Mariwasa, got: {res_docx.get('company')}"
+    assert "Engineer" in res_docx.get("job_title", "")
+    assert len(res_docx.get("work_experiences", [])) >= 1
+    assert len(res_docx.get("education_details", [])) >= 1
+
+    # 4. Test TXT format with date inline without pipe
+    txt_content = (
+        "MICHAEL ANGELO TAN\n"
+        "Email: michael.tan@yahoo.com\n"
+        "Phone: 09201234567\n"
+        "Location: Quezon City\n\n"
+        "WORK EXPERIENCE\n"
+        "Grab Philippines Delivery Rider        June 2023 - Present\n"
+        "• Transported packages and food parcels across NCR.\n\n"
+        "EDUCATION\n"
+        "BS Chemical Engineering\n"
+        "University of the Philippines Diliman\n"
+        "2019 - 2023\n"
+    )
+    with tempfile.NamedTemporaryFile(suffix=".txt", mode="w", delete=False) as f:
+        f.write(txt_content)
+        txt_path = temp_files(f.name)
+
+    res_txt = process_resume(txt_path, "txt")
+    assert res_txt.get("candidate_name") == "Michael Angelo Tan"
+    assert "Chemical Engineering" in res_txt.get("degree", "")
+    assert "University of the Philippines" in res_txt.get("college", "")
+    assert "Grab" in res_txt.get("company", "")
+    assert "Delivery Rider" in res_txt.get("job_title", "")
+
+
+def test_tc_res_011_normalization_emojis_symbols_accented_letters(temp_files):
+    """
+    Test Case: TC-RES-011
+    Module: Resume Processing
+    Requirement: REQ005
+    Scenario: Normalization
+    Steps: Upload R6
+    Expected Result: Extra spaces, symbols and stray characters removed; accented letters kept.
+    Actual Result (Fixed): Emojis are removed, extra spaces collapsed, accented letters preserved.
+    """
+    from app.extractors.file.file_extractor import clean_raw_text, remove_emojis
+
+    # 1. Direct unit test of clean_raw_text with emojis, extra spaces, stray symbols, and accented letters
+    raw_sample = (
+        "👤   JOSÉ   NIÑO   HERNÁNDEZ   ✨\n\n\n"
+        "✉️   jose.nino@gmail.com   |   📞   +63 917 555 1234   |   📍   Parañaque City, Metro Manila\n\n\n\n"
+        "PROFESSIONAL SUMMARY\n"
+        "🚀   Materials Engineer with 4+ years of quality assurance experience.\n\n"
+        "EDUCATION\n"
+        "🎓   Mapúa University - Intramuros, Manila\n"
+        "BS Materials Science and Engineering\n"
+        "2018 - 2022   •   Cum Laude   ⭐\n\n"
+        "WORK EXPERIENCE\n"
+        "💼   Mariwasa Siam Ceramics Inc.\n"
+        "Materials Quality Engineer\n"
+        "August 2022 - Present\n"
+        "•   Conducted ceramic quality analysis and physical testing.   💻\n"
+        "•   Collaborated with production managers and inspectors.   ✔️\n"
+    )
+
+    cleaned = clean_raw_text(raw_sample)
+
+    # Verification: All emojis must be stripped
+    emoji_chars = ["👤", "✨", "✉", "📞", "📍", "🚀", "🎓", "⭐", "💼", "💻", "✔️"]
+    for em in emoji_chars:
+        assert em not in cleaned, f"Emoji '{em}' should have been removed from cleaned text"
+
+    # Verification: Accented letters must be preserved
+    assert "JOSÉ" in cleaned or "José" in cleaned, "Accented letter 'É' should be preserved"
+    assert "NIÑO" in cleaned or "Niño" in cleaned, "Accented letter 'Ñ' should be preserved"
+    assert "HERNÁNDEZ" in cleaned or "Hernández" in cleaned, "Accented letter 'Á' should be preserved"
+    assert "Parañaque" in cleaned, "Accented letter 'ñ' in Parañaque must be preserved"
+    assert "Mapúa" in cleaned, "Accented letter 'ú' in Mapúa must be preserved"
+
+    # Verification: Extra spaces collapsed
+    assert "   " not in cleaned, "Multiple consecutive spaces should be collapsed"
+    assert "\n\n\n" not in cleaned, "Excessive consecutive newlines should be collapsed"
+
+    # 2. End-to-end processing test via process_resume on R6 representation (TXT)
+    with tempfile.NamedTemporaryFile(suffix=".txt", mode="w", encoding="utf-8", delete=False) as f:
+        f.write(raw_sample)
+        r6_txt_path = temp_files(f.name)
+
+    res_r6 = process_resume(r6_txt_path, "txt")
+    raw_extracted = res_r6.get("raw_text", "")
+
+    # Ensure raw_text is normalized
+    for em in emoji_chars:
+        assert em not in raw_extracted, f"Emoji '{em}' should not appear in extracted raw_text"
+    assert "Parañaque" in raw_extracted
+    assert "Mapúa" in raw_extracted
+
+    # Ensure structured fields are clean of emojis and retain accents
+    assert "José" in res_r6.get("candidate_name", "") or "JOSÉ" in res_r6.get("candidate_name", "")
+    assert "jose.nino@gmail.com" == res_r6.get("candidate_email")
+    assert "+63 917 555 1234" in res_r6.get("candidate_phone", "")
+    assert "Parañaque" in res_r6.get("location", "")
+    assert "Mapúa" in res_r6.get("college", "") or "Mapua" in res_r6.get("college", "")
+    assert "Mariwasa" in res_r6.get("company", "")
+
+    # 3. End-to-end processing test via DOCX format with emojis & accents
+    doc_r6 = docx.Document()
+    doc_r6.add_heading("👤   DR. RENÉ   PEÑA   CRUZ   🌟", level=0)
+    doc_r6.add_paragraph("📧   rene.pena@outlook.com   |   📱   0918-765-4321   |   📌   Las Piñas City")
+    doc_r6.add_heading("EDUCATION", level=1)
+    doc_r6.add_paragraph("Mapúa University   🎓")
+    doc_r6.add_paragraph("BS Computer Engineering")
+    doc_r6.add_paragraph("2017 - 2021")
+    doc_r6.add_heading("WORK EXPERIENCE", level=1)
+    doc_r6.add_paragraph("Accenture Philippines   💼")
+    doc_r6.add_paragraph("Software Engineer")
+    doc_r6.add_paragraph("August 2021 - Present")
+    doc_r6.add_paragraph("•   Engineered backend web APIs.   🚀")
+
+    with tempfile.NamedTemporaryFile(suffix=".docx", delete=False) as f:
+        doc_r6.save(f.name)
+        r6_docx_path = temp_files(f.name)
+
+    res_docx_r6 = process_resume(r6_docx_path, "docx")
+    docx_raw = res_docx_r6.get("raw_text", "")
+
+    # Ensure no emojis in DOCX raw_text
+    for em in ["👤", "🌟", "📧", "📱", "📌", "🎓", "💼", "🚀"]:
+        assert em not in docx_raw, f"Emoji '{em}' should not appear in docx raw_text"
+    # Ensure accented letters kept
+    assert "René" in res_docx_r6.get("candidate_name", "") or "RENÉ" in res_docx_r6.get("candidate_name", "")
+    assert "Peña" in res_docx_r6.get("candidate_name", "") or "PEÑA" in res_docx_r6.get("candidate_name", "")
+    assert "Las Piñas" in res_docx_r6.get("location", "")
+    assert "Accenture" in res_docx_r6.get("company", "")
+
+
+
+
 
