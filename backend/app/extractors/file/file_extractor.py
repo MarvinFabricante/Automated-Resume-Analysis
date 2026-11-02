@@ -45,17 +45,71 @@ def clean_raw_text(text: str) -> str:
 
 def extract_file_content(file_path: str, file_extension: str) -> str:
     """
-    Utility function to extract text from a file based on its extension.
+    Utility function to extract text from a file based on its extension or contents.
     Always returns cleaned and normalized text.
+    Handles:
+    - PDF documents (text-based and scanned/OCR)
+    - Microsoft Word documents (.docx and legacy .doc)
+    - Plain text files (.txt) with multi-encoding support
+    - Magic-byte sniffing fallback if extension is missing, unknown, or mismatched
     """
     ext = file_extension.lower().strip('.')
-    raw_text = ""
+    if '.' in ext:
+        ext = ext.split('.')[-1]
 
+    # Validate content (magic bytes) against disguised executables
+    try:
+        from app.utils.file_validator import validate_file_content, is_executable_binary
+        with open(file_path, 'rb') as f:
+            header = f.read(1024)
+
+        # Immediate rejection if file content is an executable binary
+        is_exe, _ = is_executable_binary(header)
+        if is_exe:
+            return ""
+
+        is_valid, _ = validate_file_content(header, f"file.{ext}")
+        if not is_valid:
+            return ""
+
+        # Auto-detect true format via magic bytes if the file is a valid document binary
+        if b'%PDF' in header:
+            ext = 'pdf'
+        elif header.startswith(b'PK\x03\x04'):
+            ext = 'docx'
+        elif header.startswith(b'\xd0\xcf\x11\xe0'):
+            ext = 'doc'
+        elif not ext or ext not in ('pdf', 'doc', 'docx', 'txt'):
+            ext = 'txt'
+    except Exception:
+        if not ext:
+            ext = 'txt'
+
+    raw_text = ""
     if ext == 'pdf':
         raw_text = extract_text_from_pdf(file_path)
     elif ext in ['doc', 'docx']:
         raw_text = extract_text_from_docx(file_path)
     elif ext == 'txt':
         raw_text = extract_text_from_txt(file_path)
+
+    # Cross-format fallback only for legitimate document formats (NOT executables or binary noise)
+    if not raw_text or len(raw_text.strip()) < 10:
+        try:
+            with open(file_path, 'rb') as f:
+                header = f.read(1024)
+            is_exe, _ = is_executable_binary(header)
+            if is_exe:
+                return ""
+            if b'%PDF' in header and ext != 'pdf':
+                raw_text = extract_text_from_pdf(file_path)
+            elif (header.startswith(b'PK\x03\x04') or header.startswith(b'\xd0\xcf\x11\xe0')) and ext not in ('doc', 'docx'):
+                raw_text = extract_text_from_docx(file_path)
+            elif ext != 'txt' and not any(header.startswith(b) for b in (b'\x00', b'\x7fELF', b'MZ')):
+                txt_fallback = extract_text_from_txt(file_path)
+                if len(txt_fallback.strip()) > len(raw_text.strip()):
+                    raw_text = txt_fallback
+        except Exception:
+            pass
 
     return clean_raw_text(raw_text)

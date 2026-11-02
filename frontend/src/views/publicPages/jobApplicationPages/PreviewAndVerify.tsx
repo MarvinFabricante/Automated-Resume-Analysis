@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useLocation, useNavigate, useParams } from '@/utils/navigation';
 import { Helmet } from 'react-helmet-async';
 import candidateService from '../../../services/candidateService';
@@ -6,11 +6,14 @@ import {
   User, Mail, Phone, MapPin,
   Cpu, Briefcase, GraduationCap,
   CheckCircle, ArrowLeft, Target,
-  Award, Sparkles, Layers, Clock
+  Award, Sparkles, Layers, Clock,
+  Eye, FileUp, FileText
 } from 'lucide-react';
 import Header from '../../../components/layout/Header';
 import Footer from '../../../components/layout/Footer';
+import ResumePreviewModal from '../../../components/modals/shared/ResumePreviewModal';
 import ApplicationProgressBar from '../../../components/common/ApplicationProgressBar';
+
 
 interface InfoItemProps {
   icon: React.ReactNode;
@@ -41,6 +44,78 @@ const PreviewAndVerifyPage: React.FC = () => {
   const [isLoadingSmartMatches, setIsLoadingSmartMatches] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // Resume Document Preview & Replace State (REQ003 / TC-RES-009)
+  const [showResumePreview, setShowResumePreview] = useState<boolean>(false);
+  const [currentFile, setCurrentFile] = useState<File | null>(null);
+  const [currentFileName, setCurrentFileName] = useState<string>(
+    state?.fileName || data?.filename || "Uploaded_Resume.pdf"
+  );
+  const [currentResumeUrl, setCurrentResumeUrl] = useState<string | null>(
+    state?.resumeUrl || data?.file_url || null
+  );
+  const [currentRawText, setCurrentRawText] = useState<string | null>(
+    state?.rawText || data?.raw_text || null
+  );
+  const [dynamicExtractedData, setDynamicExtractedData] = useState<any>(data || null);
+  const [dynamicMatchData, setDynamicMatchData] = useState<any>(matchData || null);
+  const [isReplacingResume, setIsReplacingResume] = useState<boolean>(false);
+  const replaceInputRef = useRef<HTMLInputElement>(null);
+
+  const checkFileContent = async (file: File): Promise<{ valid: boolean; error?: string }> => {
+    try {
+      const slice = file.slice(0, 1024);
+      const buffer = await slice.arrayBuffer();
+      const bytes = new Uint8Array(buffer);
+      if (bytes.length >= 2 && bytes[0] === 0x4d && bytes[1] === 0x5a) {
+        return { valid: false, error: 'File rejected by content check: Windows executable binary (.exe) is not accepted.' };
+      }
+      if (bytes.length >= 4 && bytes[0] === 0x7f && bytes[1] === 0x45 && bytes[2] === 0x4c && bytes[3] === 0x46) {
+        return { valid: false, error: 'File rejected by content check: ELF binary executable is not accepted.' };
+      }
+      return { valid: true };
+    } catch {
+      return { valid: true };
+    }
+  };
+
+  const handleReplaceResume = async (newFile: File) => {
+    const contentCheck = await checkFileContent(newFile);
+    if (!contentCheck.valid) {
+      alert(contentCheck.error);
+      return;
+    }
+
+    try {
+      setIsReplacingResume(true);
+      setCurrentFile(newFile);
+      setCurrentFileName(newFile.name);
+
+      const response = await candidateService.parseResume(newFile);
+      if (response.data) {
+        const parsed = response.data;
+        setCurrentResumeUrl(parsed.file_url || null);
+        setCurrentRawText(parsed.raw_text || null);
+        setDynamicExtractedData(parsed);
+
+        if (jobId && jobId !== 'smart') {
+          try {
+            const matchRes = await candidateService.matchData(jobId, parsed);
+            if (matchRes.data) {
+              setDynamicMatchData(matchRes.data);
+            }
+          } catch (mErr) {
+            console.error("Match recalculation failed:", mErr);
+          }
+        }
+      }
+    } catch (err: any) {
+      console.error("Failed to replace resume:", err);
+      alert(err.response?.data?.detail || "Failed to parse new resume. Please ensure the file is valid.");
+    } finally {
+      setIsReplacingResume(false);
+    }
+  };
+
   useEffect(() => {
     if (jobId !== 'smart' || !data || smartMatches) return;
 
@@ -70,34 +145,38 @@ const PreviewAndVerifyPage: React.FC = () => {
     };
   }, [jobId, data, smartMatches]);
 
+  const activeData = dynamicExtractedData || data;
+  const activeMatch = dynamicMatchData || matchData;
+
   const extractedData = {
     personal: {
-      name: data?.fullname || state?.formData?.fullName || "",
-      email: data?.email || state?.formData?.email || "",
-      phone: data?.phone || state?.formData?.phone || "",
-      location: data?.location || state?.formData?.location || ""
+      name: activeData?.fullname || state?.formData?.fullName || "",
+      email: activeData?.email || state?.formData?.email || "",
+      phone: activeData?.phone || state?.formData?.phone || "",
+      location: activeData?.location || state?.formData?.location || ""
     },
-    skills: (Array.isArray(data?.skills_list) && data.skills_list.length > 0)
-      ? data.skills_list
-      : (data?.skills ? data.skills.split(' | ').filter(Boolean) : (state?.formData?.skills || ["Skills in review"])),
+    skills: (Array.isArray(activeData?.skills_list) && activeData.skills_list.length > 0)
+      ? activeData.skills_list
+      : (activeData?.skills ? activeData.skills.split(' | ').filter(Boolean) : (state?.formData?.skills || ["Skills in review"])),
     experience: {
-      title: data?.job_title || state?.formData?.jobTitle || (data?.experience ? data.experience.split('|')[0]?.trim() : ""),
-      company: data?.company || state?.formData?.company || state?.job?.department || "Mariwasa Siam Ceramics",
-      relevance: data?.relevance || state?.formData?.relevance || (data?.years_experience ? `${data.years_experience}+ years of experience` : "Experience provided")
+      title: activeData?.job_title || state?.formData?.jobTitle || (activeData?.experience ? activeData.experience.split('|')[0]?.trim() : ""),
+      company: activeData?.company || state?.formData?.company || state?.job?.department || "Mariwasa Siam Ceramics",
+      relevance: activeData?.relevance || state?.formData?.relevance || (activeData?.years_experience ? `${activeData.years_experience}+ years of experience` : "Experience provided")
     },
     education: {
-      degree: data?.degree || data?.highest_degree || state?.formData?.degree || "",
-      college: data?.institution || data?.college || state?.formData?.college || (data?.education ? data.education.split('|')[0]?.trim() : "")
+      degree: activeData?.degree || activeData?.highest_degree || state?.formData?.degree || "",
+      college: activeData?.institution || activeData?.college || state?.formData?.college || (activeData?.education ? activeData.education.split('|')[0]?.trim() : "")
     },
-    years_experience: data?.years_experience || 0,
-    summary: data?.summary || state?.summary || "",
-    work_experiences: data?.work_experiences || state?.work_experiences || [],
-    education_entries: data?.education_entries || state?.education_entries || [],
-    certifications: data?.certifications_list || (data?.certifications ? data.certifications.split(' | ') : (state?.certifications || [])),
-    certifications_details: data?.certifications_details || state?.certifications_details || null,
-    skills_details: data?.skills_details || state?.skills_details || null,
-    profile_image_url: data?.profile_image_url || state?.profile_image_url || null
+    years_experience: activeData?.years_experience || 0,
+    summary: activeData?.summary || state?.summary || "",
+    work_experiences: activeData?.work_experiences || state?.work_experiences || [],
+    education_entries: activeData?.education_entries || state?.education_entries || [],
+    certifications: activeData?.certifications_list || (activeData?.certifications ? activeData.certifications.split(' | ') : (state?.certifications || [])),
+    certifications_details: activeData?.certifications_details || state?.certifications_details || null,
+    skills_details: activeData?.skills_details || state?.skills_details || null,
+    profile_image_url: activeData?.profile_image_url || state?.profile_image_url || null
   };
+
 
   const getMatchTier = (pct: number) => {
     if (pct >= 70) return 'Strong Match';
@@ -234,8 +313,68 @@ const PreviewAndVerifyPage: React.FC = () => {
 
         <div className="space-y-6">
 
-          {/* AI Match Analysis Card if matchData available */}
-          {matchData && (
+          {/* Uploaded Resume Document Review Card (REQ003 / TC-RES-009) */}
+          <section className="bg-white p-6 sm:p-8 rounded-[32px] shadow-sm border border-slate-100 hover:shadow-md transition-shadow">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-5">
+              <div className="flex items-center gap-4 min-w-0">
+                <div className="w-14 h-14 bg-pink-50 text-[#D10043] rounded-2xl flex items-center justify-center shrink-0 border border-pink-100/80 shadow-2xs">
+                  <FileText size={26} />
+                </div>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-[#D10043] bg-pink-50 px-2 py-0.5 rounded-md border border-pink-100/60">
+                      Uploaded Resume Document
+                    </span>
+                    <span className="text-xs text-emerald-600 font-bold flex items-center gap-1">
+                      <CheckCircle size={13} /> Verified for submission
+                    </span>
+                  </div>
+                  <h3 className="text-base sm:text-lg font-black text-slate-900 truncate mt-1">
+                    {currentFileName}
+                  </h3>
+                  <p className="text-xs text-slate-400 font-medium mt-0.5">
+                    Review your resume formatting and content, or replace it before submitting your application.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2.5 w-full sm:w-auto shrink-0">
+                <button
+                  id="btn-preview-resume"
+                  data-testid="preview-resume-btn"
+                  type="button"
+                  onClick={() => setShowResumePreview(true)}
+                  className="flex-1 sm:flex-none px-5 py-3 rounded-xl bg-slate-900 hover:bg-[#D10043] text-white font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition-all shadow-md active:scale-95 cursor-pointer"
+                >
+                  <Eye size={16} />
+                  <span>Preview Resume</span>
+                </button>
+                <button
+                  id="btn-replace-resume"
+                  data-testid="replace-resume-btn"
+                  type="button"
+                  onClick={() => replaceInputRef.current?.click()}
+                  disabled={isReplacingResume}
+                  className="flex-1 sm:flex-none px-5 py-3 rounded-xl bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition-all active:scale-95 cursor-pointer shadow-2xs disabled:opacity-60"
+                >
+                  {isReplacingResume ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-slate-600 border-t-transparent rounded-full animate-spin" />
+                      <span>Replacing...</span>
+                    </>
+                  ) : (
+                    <>
+                      <FileUp size={16} />
+                      <span>Replace Resume</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </section>
+
+          {/* AI Match Analysis Card if activeMatch available */}
+          {activeMatch && (
             <section className="bg-white p-8 rounded-[32px] shadow-sm border border-slate-100 hover:shadow-md transition-shadow">
               <div className="flex items-center justify-between mb-6">
                 <div className="flex items-center gap-3 text-[#D60041]">
@@ -245,15 +384,15 @@ const PreviewAndVerifyPage: React.FC = () => {
                   <h2 className="font-bold uppercase tracking-widest text-xs">AI Match Analysis</h2>
                 </div>
                 <div className="bg-[#D60041] text-white px-4 py-1.5 rounded-xl text-xs font-black shadow-sm">
-                  {getMatchTier(matchData.match_percentage)} ({matchData.match_percentage}%)
+                  {getMatchTier(activeMatch.match_percentage)} ({activeMatch.match_percentage}%)
                 </div>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 {[
-                  { label: 'Skills Alignment', score: matchData.skills_score, icon: <Cpu size={16} /> },
-                  { label: 'Experience Level', score: matchData.experience_score, icon: <Briefcase size={16} /> },
-                  { label: 'Education Match', score: matchData.education_score, icon: <GraduationCap size={16} /> }
+                  { label: 'Skills Alignment', score: activeMatch.skills_score, icon: <Cpu size={16} /> },
+                  { label: 'Experience Level', score: activeMatch.experience_score, icon: <Briefcase size={16} /> },
+                  { label: 'Education Match', score: activeMatch.education_score, icon: <GraduationCap size={16} /> }
                 ].map((item, idx) => (
                   <div key={idx} className="bg-slate-50/70 p-4 rounded-2xl border border-slate-100/70 flex flex-col items-center text-center">
                     <div className="text-[#D60041] mb-1.5">{item.icon}</div>
@@ -266,6 +405,7 @@ const PreviewAndVerifyPage: React.FC = () => {
               </div>
             </section>
           )}
+
 
           {/* Personal Information */}
           <section className="bg-white p-8 rounded-[32px] shadow-sm border border-slate-100 hover:shadow-md transition-shadow">
@@ -445,22 +585,34 @@ const PreviewAndVerifyPage: React.FC = () => {
             </section>
           </div>
 
-          {/* Action Buttons: Reversal of Action (Back) + Final Submission */}
-          <div className="flex flex-col sm:flex-row gap-4 pt-6 border-t border-slate-200">
+          {/* Action Buttons: Reversal of Action (Back) + Resume Preview + Final Submission */}
+          <div className="flex flex-col sm:flex-row gap-3 pt-6 border-t border-slate-200">
             <button
               id="btn-back-edit"
               type="button"
               onClick={handleBackToEdit}
-              className="flex-1 bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-700 py-5 rounded-[24px] font-bold transition-all active:scale-95 flex items-center justify-center gap-2"
+              className="flex-1 bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-700 py-5 rounded-[24px] font-bold transition-all active:scale-95 flex items-center justify-center gap-2 cursor-pointer shadow-2xs"
             >
               <ArrowLeft size={18} />
               <span>Back to Edit Details</span>
             </button>
+
+            <button
+              id="btn-preview-resume-footer"
+              data-testid="preview-resume-footer-btn"
+              type="button"
+              onClick={() => setShowResumePreview(true)}
+              className="flex-1 bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-700 py-5 rounded-[24px] font-bold transition-all active:scale-95 flex items-center justify-center gap-2 cursor-pointer shadow-2xs"
+            >
+              <Eye size={18} className="text-[#D60041]" />
+              <span>Preview Resume</span>
+            </button>
+
             {jobId === 'smart' ? (
               <button
                 disabled={isLoadingSmartMatches || !smartMatches}
-                onClick={() => navigate(`/smart-matches`, { state: { matches: smartMatches, extractedData: data, fileName: state?.fileName } })}
-                className={`flex-[2] py-5 rounded-[24px] font-bold flex items-center justify-center gap-3 transition-all shadow-xl active:scale-95 ${
+                onClick={() => navigate(`/smart-matches`, { state: { matches: smartMatches, extractedData: activeData, fileName: currentFileName } })}
+                className={`flex-[2] py-5 rounded-[24px] font-bold flex items-center justify-center gap-3 transition-all shadow-xl active:scale-95 cursor-pointer ${
                   isLoadingSmartMatches || !smartMatches
                     ? "bg-slate-200 text-slate-400 cursor-not-allowed shadow-none"
                     : "bg-[#D60041] hover:bg-slate-900 text-white shadow-pink-100"
@@ -475,7 +627,7 @@ const PreviewAndVerifyPage: React.FC = () => {
                 type="button"
                 disabled={isSubmitting}
                 onClick={handleFinalSubmit}
-                className="flex-[2] bg-[#D60041] hover:bg-slate-900 text-white py-5 rounded-[24px] font-bold flex items-center justify-center gap-3 transition-all shadow-xl shadow-pink-100 active:scale-95 disabled:opacity-75 disabled:cursor-not-allowed"
+                className="flex-[2] bg-[#D60041] hover:bg-slate-900 text-white py-5 rounded-[24px] font-bold flex items-center justify-center gap-3 transition-all shadow-xl shadow-pink-100 active:scale-95 disabled:opacity-75 disabled:cursor-not-allowed cursor-pointer"
               >
                 {isSubmitting ? (
                   <div className="flex items-center gap-2">
@@ -494,8 +646,28 @@ const PreviewAndVerifyPage: React.FC = () => {
         </div>
       </main>
 
+      <ResumePreviewModal
+        isOpen={showResumePreview}
+        onClose={() => setShowResumePreview(false)}
+        file={currentFile}
+        fileName={currentFileName}
+        fileUrl={currentResumeUrl}
+        rawText={currentRawText}
+        extractedData={activeData}
+        onReplaceFile={handleReplaceResume}
+      />
+
+      <input
+        ref={replaceInputRef}
+        type="file"
+        accept=".pdf,.doc,.docx,.txt,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain"
+        onChange={(e) => e.target.files?.[0] && handleReplaceResume(e.target.files[0])}
+        className="hidden"
+      />
+
       <Footer />
     </div>
+
   );
 };
 

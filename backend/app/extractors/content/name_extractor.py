@@ -58,7 +58,7 @@ _NOT_NAME_PATTERNS = [
     r"https?://",                      # URL
     r"\b(www\.|linkedin|github|gitlab|portfolio)\b",
     r"\b(street|st\.|city|province|metro|manila|philippines|ave\.|road|blvd|brgy|barangay|poblacion|subdivision|village)\b",  # address
-    r"\b(rizal|cavite|laguna|batangas|bulacan|pampanga|bataan|zambales|tarlac|pangasinan|ilocos|isabela|cagayan|albay|camarines|sorsogon|cebu|bohol|iloilo|negros|leyte|samar|davao|bukidnon|misamis|zamboanga|benguet)\b",  # PH provinces
+    r"(?:,\s*|\b(?:province|prov\.)\s+(?:of\s+)?)(?:cavite|laguna|batangas|bulacan|pampanga|bataan|zambales|tarlac|pangasinan|ilocos|isabela|cagayan|albay|camarines|sorsogon|cebu|bohol|iloilo|negros|leyte|samar|davao|bukidnon|misamis|zamboanga|benguet|rizal)\b",  # PH provinces in address context
     r"\b(skills|education|experience|work|history|summary|objective|certifications|references|training)\b",
     r"\b(years?\s+of\s+experience|curriculum\s+vitae|bio[\s-]?data)\b",
 ]

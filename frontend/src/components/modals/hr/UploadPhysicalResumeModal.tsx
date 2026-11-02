@@ -87,7 +87,22 @@ const UploadPhysicalResumeModal: React.FC<UploadPhysicalResumeModalProps> = ({
     }
   };
 
-  const handleFileSelected = (file: File) => {
+  const handleFileSelected = async (file: File) => {
+    try {
+      const slice = file.slice(0, 1024);
+      const buffer = await slice.arrayBuffer();
+      const bytes = new Uint8Array(buffer);
+      if (bytes.length >= 2 && bytes[0] === 0x4d && bytes[1] === 0x5a) {
+        setErrorMessage('File rejected by content check: Executable files (.exe) disguised as documents are strictly rejected.');
+        return;
+      }
+      if (bytes.length >= 4 && bytes[0] === 0x7f && bytes[1] === 0x45 && bytes[2] === 0x4c && bytes[3] === 0x46) {
+        setErrorMessage('File rejected by content check: Binary executable files are strictly rejected.');
+        return;
+      }
+    } catch {}
+
+    setErrorMessage(null);
     setSelectedFile(file);
     setErrors((prev) => ({ ...prev, file: '' }));
 
@@ -217,7 +232,7 @@ const UploadPhysicalResumeModal: React.FC<UploadPhysicalResumeModalProps> = ({
             <input
               ref={fileInputRef}
               type="file"
-              accept=".pdf,.docx,.doc,.png,.jpg,.jpeg,.webp"
+              accept=".pdf,.docx,.doc,.txt,.png,.jpg,.jpeg,.webp,text/plain"
               onChange={handleFileChange}
               className="hidden"
             />
@@ -242,7 +257,7 @@ const UploadPhysicalResumeModal: React.FC<UploadPhysicalResumeModalProps> = ({
                   Click to select scan or drag & drop here
                 </p>
                 <p className="text-[11px] text-slate-500 font-medium max-w-sm">
-                  Supports PDF, Scanned Photos (PNG, JPG, WEBP), and Word Documents (DOCX) up to 25MB
+                  Supports PDF, Word Documents (DOCX), Text files (TXT), and Scanned Photos (PNG, JPG, WEBP) up to 25MB
                 </p>
               </div>
             ) : (

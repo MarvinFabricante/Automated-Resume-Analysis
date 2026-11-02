@@ -9,7 +9,7 @@ from app.models.candidate import Candidate
 
 @pytest.mark.asyncio
 async def test_parse_resume_file(db_session):
-    dummy_bytes = b"Dummy PDF content for resume parser test"
+    dummy_bytes = b"%PDF-1.4\nDummy PDF content for resume parser test"
     upload_file = UploadFile(
         filename="John_Doe_Resume.pdf",
         file=io.BytesIO(dummy_bytes)

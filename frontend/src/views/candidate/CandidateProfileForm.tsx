@@ -194,7 +194,10 @@ const CandidateProfileForm: React.FC = () => {
     navigate(`/candidate/preview-profile/${jobId}`, {
       state: {
         job: { title: jobTitle, job_id: jobId },
+        file: location.state?.file,
         fileName: location.state?.fileName,
+        resumeUrl: location.state?.resumeUrl || location.state?.extractedData?.file_url || null,
+        rawText: location.state?.rawText || location.state?.extractedData?.raw_text || null,
         formData,
         extractedData: {
           ...location.state?.extractedData,
@@ -209,7 +212,8 @@ const CandidateProfileForm: React.FC = () => {
           college: formData.college,
           skills: formData.skills.join(' | '),
           skills_list: formData.skills,
-          resumeUrl: location.state?.resumeUrl || null
+          resumeUrl: location.state?.resumeUrl || location.state?.extractedData?.file_url || null,
+          raw_text: location.state?.rawText || location.state?.extractedData?.raw_text || null
         },
         personal: {
           name: formData.fullName,
@@ -251,7 +255,7 @@ const CandidateProfileForm: React.FC = () => {
         <main className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-12 flex-grow min-w-0 w-full overflow-hidden">
         {/* Reversal of action / Back to Upload */}
         <button
-          onClick={() => navigate(jobId ? `/candidate/upload-resume/${jobId}` : '/candidate/upload-resume')}
+          onClick={() => navigate(jobId ? `/candidate/upload-resume/${jobId}` : '/candidate/upload-resume', { state: location.state })}
           className="flex items-center text-slate-500 hover:text-[#D10043] transition-all mb-6 font-semibold text-sm group"
         >
           <ArrowLeft size={18} className="mr-2 group-hover:-translate-x-1 transition-transform" />

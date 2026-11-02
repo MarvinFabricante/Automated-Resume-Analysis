@@ -17,7 +17,7 @@ from app.utils.cache import clear_cache_pattern
 
 logger = logging.getLogger(__name__)
 
-ALLOWED_EXTENSIONS = {".pdf", ".docx", ".doc", ".png", ".jpg", ".jpeg", ".webp"}
+ALLOWED_EXTENSIONS = {".pdf", ".docx", ".doc", ".txt", ".png", ".jpg", ".jpeg", ".webp"}
 
 def _format_size(size_bytes: Optional[int]) -> str:
     if not size_bytes:
@@ -62,11 +62,18 @@ async def store_physical_resume(
     if ext not in ALLOWED_EXTENSIONS:
         raise HTTPException(
             status_code=400,
-            detail=f"Unsupported file type '{ext}'. Allowed types: PDF, DOCX, DOC, PNG, JPG, JPEG, WEBP."
+            detail=f"Unsupported file type '{ext}'. Allowed types: PDF, DOCX, DOC, TXT, PNG, JPG, JPEG, WEBP."
         )
 
     file_bytes = await file.read()
     file_size = len(file_bytes)
+
+    # Security: Content check (magic bytes) to reject disguised executables (.exe renamed to .pdf, etc.)
+    from app.utils.file_validator import validate_file_content
+    is_valid, validation_err = validate_file_content(file_bytes, orig_filename)
+    if not is_valid:
+        raise HTTPException(status_code=400, detail=validation_err)
+
     mime_type = _get_mime_type(orig_filename)
     timestamp = int(time.time())
     safe_name = f"{timestamp}_{orig_filename.replace(' ', '_')}"
@@ -98,7 +105,7 @@ async def store_physical_resume(
 
     # 3. Optional auto-parse for text & skills extraction
     parsed_data = None
-    if ext in {".pdf", ".docx", ".doc"}:
+    if ext in {".pdf", ".docx", ".doc", ".txt"}:
         try:
             from app.extractors.resume_processor import process_resume
             tmp_dir = tempfile.mkdtemp()
@@ -138,12 +145,12 @@ async def store_physical_resume(
     # 4. Create PhysicalResume DB record
     physical_resume = PhysicalResume(
         hr_id=hr_id,
-        candidate_name=data.get("candidate_name", "").strip(),
-        candidate_email=data.get("candidate_email", "").strip() or None,
-        candidate_phone=data.get("candidate_phone", "").strip() or None,
+        candidate_name=(data.get("candidate_name") or "").strip(),
+        candidate_email=(data.get("candidate_email") or "").strip() or None,
+        candidate_phone=(data.get("candidate_phone") or "").strip() or None,
         target_job_id=int(target_job_id) if target_job_id else None,
         target_job_title=target_job_title,
-        physical_location=data.get("physical_location", "").strip() or "General HR Archive",
+        physical_location=(data.get("physical_location") or "").strip() or "General HR Archive",
         submission_date=submission_date,
         filename=orig_filename,
         file_url=file_url,
@@ -151,7 +158,7 @@ async def store_physical_resume(
         file_size=file_size,
         file_type=mime_type,
         status=data.get("status") or "RECEIVED",
-        notes=data.get("notes", "").strip() or None,
+        notes=(data.get("notes") or "").strip() or None,
         parsed_data=parsed_data,
         created_at=datetime.utcnow(),
         updated_at=datetime.utcnow(),
