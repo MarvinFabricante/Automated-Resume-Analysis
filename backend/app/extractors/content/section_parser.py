@@ -35,6 +35,16 @@ _SECTION_DEFINITIONS: dict[str, list[str]] = {
         "TECHNOLOGY STACK", "RELEVANT SKILLS",
         "HARD SKILLS", "SOFT SKILLS", "SKILLS & EXPERTISE",
         "SKILLS INVENTORY", "CORE STRENGTHS",
+        "SKILLS & COMPETENCIES", "SKILLS AND COMPETENCIES",
+        "SKILLS / COMPETENCIES", "SKILLS/COMPETENCIES",
+        "CORE SKILLS & COMPETENCIES", "CORE SKILLS AND COMPETENCIES",
+        "KEY SKILLS & COMPETENCIES", "KEY SKILLS AND COMPETENCIES",
+        "TECHNICAL SKILLS & COMPETENCIES", "TECHNICAL SKILLS AND COMPETENCIES",
+        "PROFESSIONAL SKILLS & COMPETENCIES", "COMPETENCIES & SKILLS",
+        "COMPETENCIES AND SKILLS", "SKILLS & ABILITIES", "SKILLS AND ABILITIES",
+        "SKILLS & PROFICIENCIES", "SKILLS AND PROFICIENCIES",
+        "SKILLS & CAPABILITIES", "SKILLS AND CAPABILITIES",
+        "CORE SKILLS", "FUNCTIONAL SKILLS", "SPECIAL SKILLS",
     ],
     "EXPERIENCE": [
         "EXPERIENCE", "WORK HISTORY", "EMPLOYMENT", "PROFESSIONAL BACKGROUND",
@@ -163,7 +173,19 @@ def detect_section_label(line: str) -> Optional[str]:
     if not normalised:
         return None
 
-    return _HEADER_MAP.get(normalised)
+    res = _HEADER_MAP.get(normalised)
+    if res:
+        return res
+
+    # Flexible matching for compound headers
+    if re.search(r'\bSKILLS?\b', normalised) and re.search(r'\b(?:COMPETENC|PROFICIENC|ABILIT|TECH|KNOWLEDGE|EXPERTISE)\w*\b', normalised):
+        return "SKILLS"
+    if re.search(r'\b(?:WORK|EMPLOYMENT|PROFESSIONAL|CAREER)\b', normalised) and re.search(r'\b(?:EXPERIENCE|HISTORY|BACKGROUND|RECORD)\b', normalised):
+        return "EXPERIENCE"
+    if re.search(r'\b(?:EDUCATION|EDUCATIONAL|ACADEMIC|SCHOLASTIC)\b', normalised):
+        return "EDUCATION"
+
+    return None
 
 
 # ─── Section Splitter ────────────────────────────────────────────────────────
@@ -207,7 +229,7 @@ def split_into_sections(text: str) -> dict[str, str]:
         if label:
             # Check if previous section has trailing lines that actually belong to this new section
             # e.g. "STI Colleges Ortigas-Cainta\nBachelor..." preceding EDUCATION header
-            if label == "EDUCATION" and sections.get(current_label):
+            if label == "EDUCATION" and sections.get(current_label) and current_label != "EXPERIENCE":
                 prev_lines = [l for l in sections[current_label] if l.strip()]
                 if prev_lines:
                     tail = prev_lines[-4:]
@@ -230,7 +252,7 @@ def split_into_sections(text: str) -> dict[str, str]:
                             sections[label] = []
                         sections[label].extend(moved)
 
-            elif label == "EXPERIENCE" and sections.get(current_label):
+            elif label == "EXPERIENCE" and sections.get(current_label) and current_label != "EDUCATION":
                 prev_lines = [l for l in sections[current_label] if l.strip()]
                 if prev_lines:
                     tail = prev_lines[-4:]

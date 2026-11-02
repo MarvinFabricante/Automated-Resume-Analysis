@@ -11,7 +11,8 @@ import {
   ArrowRight,
   Cpu,
   Zap,
-  Eye
+  Eye,
+  AlertTriangle
 } from 'lucide-react';
 import Header from '../../../components/layout/Header';
 import Footer from '../../../components/layout/Footer';
@@ -79,12 +80,23 @@ const SmartUploadPage: React.FC = () => {
         }
       }
 
-      // If claimed to be DOCX, verify ZIP header PK (0x50, 0x4B)
-      if (/\.docx$/i.test(file.name)) {
-        if (bytes.length >= 2 && (bytes[0] !== 0x50 || bytes[1] !== 0x4b)) {
+      // If claimed to be DOCX or DOC, verify Word document signature (ZIP PK, OLE CFBF, RTF, or XML)
+      if (/\.(docx|doc)$/i.test(file.name)) {
+        const isZip = bytes.length >= 2 && bytes[0] === 0x50 && bytes[1] === 0x4b;
+        const isCfbf = bytes.length >= 4 && bytes[0] === 0xd0 && bytes[1] === 0xcf && bytes[2] === 0x11 && bytes[3] === 0xe0;
+        const isRtf = bytes.length >= 5 && bytes[0] === 0x7b && bytes[1] === 0x5c && bytes[2] === 0x72 && bytes[3] === 0x74 && bytes[4] === 0x66;
+        let isXml = false;
+        try {
+          const sliceText = new TextDecoder().decode(bytes.slice(0, 80));
+          isXml = sliceText.includes('<?xml') || sliceText.includes('<w:document');
+        } catch {
+          // ignore
+        }
+
+        if (!isZip && !isCfbf && !isRtf && !isXml) {
           return {
             valid: false,
-            error: 'File rejected by content check: The file has a .docx extension but does not contain valid Word document content.'
+            error: 'File rejected by content check: The file has a Word extension (.docx/.doc) but does not contain valid Microsoft Word document content.'
           };
         }
       }
@@ -321,15 +333,34 @@ const SmartUploadPage: React.FC = () => {
 
                 {isComplete && (
                   <div className="space-y-8 animate-in fade-in zoom-in-95 duration-500">
-                    <div className="bg-green-50 border border-green-100 p-8 rounded-[32px] flex items-center gap-6 shadow-sm">
-                      <div className="bg-white text-green-500 p-4 rounded-2xl shadow-md border border-green-50">
-                        <CheckCircle2 size={32} />
+                    {extractedData?.is_incomplete ? (
+                      <div className="bg-amber-50 border border-amber-200 p-8 rounded-[32px] flex items-center gap-6 shadow-sm">
+                        <div className="bg-white text-amber-500 p-4 rounded-2xl shadow-md border border-amber-100 shrink-0">
+                          <AlertTriangle size={32} />
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2 mb-1">
+                            <h4 className="text-xl font-black text-slate-900">Resume Parsed</h4>
+                            <span className="px-2.5 py-0.5 bg-amber-100 text-amber-800 rounded-full text-[10px] font-black uppercase tracking-wider">
+                              Flagged Incomplete
+                            </span>
+                          </div>
+                          <p className="text-slate-600 font-medium">
+                            Missing section(s): <span className="font-bold text-amber-700">{extractedData?.missing_sections?.join(', ') || 'Required section'}</span>. Missing section left empty.
+                          </p>
+                        </div>
                       </div>
-                      <div>
-                        <h4 className="text-xl font-black text-slate-900">Resume Parsed</h4>
-                        <p className="text-slate-600 font-medium">Your credentials are ready. Match analysis will run after this review step.</p>
+                    ) : (
+                      <div className="bg-green-50 border border-green-100 p-8 rounded-[32px] flex items-center gap-6 shadow-sm">
+                        <div className="bg-white text-green-500 p-4 rounded-2xl shadow-md border border-green-50">
+                          <CheckCircle2 size={32} />
+                        </div>
+                        <div>
+                          <h4 className="text-xl font-black text-slate-900">Resume Parsed</h4>
+                          <p className="text-slate-600 font-medium">Your credentials are ready. Match analysis will run after this review step.</p>
+                        </div>
                       </div>
-                    </div>
+                    )}
 
                     {/* Extracted Data Display */}
                     <div className="bg-slate-50 border border-slate-100 rounded-[32px] p-8 space-y-6">

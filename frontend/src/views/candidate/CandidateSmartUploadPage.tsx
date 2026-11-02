@@ -107,12 +107,23 @@ const CandidateSmartUploadPage: React.FC = () => {
         }
       }
 
-      // If claimed to be DOCX, verify ZIP header PK (0x50, 0x4B)
-      if (/\.docx$/i.test(file.name)) {
-        if (bytes.length >= 2 && (bytes[0] !== 0x50 || bytes[1] !== 0x4b)) {
+      // If claimed to be DOCX or DOC, verify Word document signature (ZIP PK, OLE CFBF, RTF, or XML)
+      if (/\.(docx|doc)$/i.test(file.name)) {
+        const isZip = bytes.length >= 2 && bytes[0] === 0x50 && bytes[1] === 0x4b;
+        const isCfbf = bytes.length >= 4 && bytes[0] === 0xd0 && bytes[1] === 0xcf && bytes[2] === 0x11 && bytes[3] === 0xe0;
+        const isRtf = bytes.length >= 5 && bytes[0] === 0x7b && bytes[1] === 0x5c && bytes[2] === 0x72 && bytes[3] === 0x74 && bytes[4] === 0x66;
+        let isXml = false;
+        try {
+          const sliceText = new TextDecoder().decode(bytes.slice(0, 80));
+          isXml = sliceText.includes('<?xml') || sliceText.includes('<w:document');
+        } catch {
+          // ignore
+        }
+
+        if (!isZip && !isCfbf && !isRtf && !isXml) {
           return {
             valid: false,
-            error: 'File rejected by content check: The file has a .docx extension but does not contain valid Word document content.'
+            error: 'File rejected by content check: The file has a Word extension (.docx/.doc) but does not contain valid Word document content.'
           };
         }
       }
@@ -623,7 +634,14 @@ const CandidateSmartUploadPage: React.FC = () => {
                               <Sparkles size={16} className="text-[#D10043]" />
                               Extracted Candidate Profile Summary
                             </h4>
-                            <span className="text-[11px] font-bold text-slate-400">ATS Snapshot</span>
+                            <div className="flex items-center gap-2">
+                              {extractedData?.is_incomplete && (
+                                <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-200">
+                                  Incomplete: Missing {extractedData.missing_sections?.join(', ') || 'Section'}
+                                </span>
+                              )}
+                              <span className="text-[11px] font-bold text-slate-400">ATS Snapshot</span>
+                            </div>
                           </div>
 
                           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">

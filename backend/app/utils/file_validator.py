@@ -61,20 +61,15 @@ def validate_file_content(file_bytes: bytes, filename: str) -> Tuple[bool, str]:
             logger.warning(f"Content check failure: File '{filename}' claimed .pdf but lacks %PDF header.")
             return False, "File rejected by content check: The file has a .pdf extension but does not contain valid PDF content."
 
-    # 3. DOCX Content Validation: Must start with ZIP header PK\x03\x04
-    elif ext == 'docx':
-        if not header.startswith(b'PK\x03\x04') and not header.startswith(b'PK\x05\x06'):
-            logger.warning(f"Content check failure: File '{filename}' claimed .docx but lacks ZIP magic bytes.")
-            return False, "File rejected by content check: The file has a .docx extension but does not contain valid Word document content."
-
-    # 4. Legacy DOC Content Validation: Must start with OLE CFBF or RTF or ZIP
-    elif ext == 'doc':
+    # 3. DOCX and DOC Content Validation: Accepts ZIP (PK), OLE CFBF, or RTF Word headers
+    elif ext in ('docx', 'doc'):
+        is_zip = header.startswith(b'PK')
         is_cfbf = header.startswith(b'\xd0\xcf\x11\xe0')
         is_rtf = header.startswith(b'{\\rtf')
-        is_docx_zip = header.startswith(b'PK\x03\x04')
-        if not (is_cfbf or is_rtf or is_docx_zip):
-            logger.warning(f"Content check failure: File '{filename}' claimed .doc but lacks Word/RTF header.")
-            return False, "File rejected by content check: The file has a .doc extension but does not contain valid Microsoft Word content."
+        is_xml = header.strip().startswith(b'<?xml') or b'<w:document' in header[:200]
+        if not (is_zip or is_cfbf or is_rtf or is_xml):
+            logger.warning(f"Content check failure: File '{filename}' claimed .{ext} but lacks valid Word document header.")
+            return False, f"File rejected by content check: The file has a .{ext} extension but does not contain valid Microsoft Word document content."
 
     # 5. TXT Content Validation: Plain text should not have high null-byte density
     elif ext == 'txt':

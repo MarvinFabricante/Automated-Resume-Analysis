@@ -49,6 +49,58 @@ def _convert_doc_to_docx(file_path: str) -> Optional[str]:
     return None
 
 
+def _extract_text_from_legacy_or_rtf(file_path: str) -> str:
+    """
+    Direct stream text extraction for legacy binary Word (.doc OLE CFBF)
+    or Rich Text Format (.rtf) files when LibreOffice is not available.
+    Extracts UTF-16LE and ASCII text blocks without corrupting encoding.
+    """
+    try:
+        with open(file_path, "rb") as f:
+            data = f.read()
+
+        # Check for Rich Text Format
+        if data.startswith(b"{\\rtf"):
+            text_str = data.decode("latin-1", errors="ignore")
+            text_str = re.sub(r'\\([a-z]{1,32})(-?\d+)? ?', ' ', text_str)
+            text_str = re.sub(r'[{}]', '', text_str)
+            text_str = re.sub(r'\\\n', '\n', text_str)
+            return text_str.strip()
+
+        # Check for OLE2 CFBF (.doc) or generic binary document stream
+        if data.startswith(b"\xd0\xcf\x11\xe0") or b"WordDocument" in data[:2048]:
+            utf16_strings = []
+            for match in re.finditer(b'(?:[\x20-\x7E]\x00){4,}', data):
+                try:
+                    s = match.group(0).decode('utf-16le', errors='ignore').strip()
+                    if len(s) > 3 and not s.startswith(('Root Entry', 'WordDocument', 'Table', 'Data')):
+                        utf16_strings.append(s)
+                except Exception:
+                    pass
+
+            ascii_strings = []
+            for match in re.finditer(b'[\x20-\x7E\r\n\t]{4,}', data):
+                try:
+                    s = match.group(0).decode('ascii', errors='ignore').strip()
+                    if len(s) > 3 and not s.startswith(('Root Entry', 'WordDocument', 'Table', 'Data', 'SummaryInformation')):
+                        ascii_strings.append(s)
+                except Exception:
+                    pass
+
+            combined = []
+            for s in utf16_strings:
+                if s not in combined:
+                    combined.append(s)
+            for s in ascii_strings:
+                if s not in combined:
+                    combined.append(s)
+
+            return "\n".join(combined).strip()
+    except Exception as e:
+        logger.warning(f"Error in legacy doc/rtf fallback extraction: {e}")
+    return ""
+
+
 def _format_para_text(p_elem, doc_obj: docx.Document) -> str:
     """
     Extracts text from a Word paragraph XML element while preserving:
@@ -199,6 +251,9 @@ def extract_text_from_docx(file_path: str) -> str:
                 target_path = converted
                 tmp_converted_file = converted
             else:
+                fallback_txt = _extract_text_from_legacy_or_rtf(file_path)
+                if fallback_txt and len(fallback_txt.strip()) > 10:
+                    return fallback_txt
                 logger.warning(f"File {file_path} is not a valid zip and cannot be converted.")
                 return ""
 
