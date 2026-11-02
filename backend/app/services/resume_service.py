@@ -2,13 +2,14 @@ import os
 import shutil
 import time
 import tempfile
-from fastapi import UploadFile
+from fastapi import UploadFile, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.extractors.resume_processor import process_resume
 from app.models.resume import Resume
 from app.schemas.resume_schema import ResumeCreate, ResumeUpdate
 from app.services.notification_service import create_notification
 from app.repositories.resume_repository import ResumeRepository
+from app.utils.file_validator import validate_file_content
 
 import logging
 logger = logging.getLogger(__name__)
@@ -23,9 +24,18 @@ async def parse_resume_file(db: AsyncSession, file: UploadFile) -> dict:
     timestamp = int(time.time())
     safe_filename = f"{timestamp}_{file.filename.replace(' ', '_')}"
 
-    # Read file bytes for Supabase upload
+    # Read file bytes for validation and processing
     file_bytes = await file.read()
     await file.seek(0)  # Reset file pointer for potential local processing
+
+    # Security: Content check (magic bytes) to reject disguised executables (.exe renamed to .pdf, etc.)
+    is_valid, validation_err = validate_file_content(file_bytes, file.filename)
+    if not is_valid:
+        logger.warning(f"File content validation failed for '{file.filename}': {validation_err}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=validation_err
+        )
 
     # Write to a temporary file for the resume processor (it needs a file path)
     tmp_dir = tempfile.mkdtemp()
@@ -41,8 +51,9 @@ async def parse_resume_file(db: AsyncSession, file: UploadFile) -> dict:
 
         if not extracted_data:
             logger.warning("process_resume returned empty data (Parsing Failed)")
-        else:
-            logger.info(f"Successfully extracted data for {extracted_data.get('fullname', 'unknown')}")
+            return {}
+
+        logger.info(f"Successfully extracted data for {extracted_data.get('fullname', 'unknown')}")
 
         # Upload to Supabase Storage
         supabase_url = None

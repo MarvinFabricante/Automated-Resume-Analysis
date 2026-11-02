@@ -10,11 +10,13 @@ import {
   ShieldCheck,
   ArrowRight,
   Cpu,
-  Zap
+  Zap,
+  Eye
 } from 'lucide-react';
 import Header from '../../../components/layout/Header';
 import Footer from '../../../components/layout/Footer';
 import RecruitmentTermsModal from '../../../components/modals/shared/RecruitmentTermsModal';
+import ResumePreviewModal from '../../../components/modals/shared/ResumePreviewModal';
 
 const SmartUploadPage: React.FC = () => {
   const [file, setFile] = useState<File | null>(null);
@@ -25,9 +27,11 @@ const SmartUploadPage: React.FC = () => {
   const [cooldown, setCooldown] = useState(0);
   const [isTermsAccepted, setIsTermsAccepted] = useState(false);
   const [showTermsModal, setShowTermsModal] = useState(false);
+  const [showPreviewModal, setShowPreviewModal] = useState(false);
   const [extractedData, setExtractedData] = useState<any>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
+
 
   React.useEffect(() => {
     if (cooldown > 0) {
@@ -36,19 +40,92 @@ const SmartUploadPage: React.FC = () => {
     }
   }, [cooldown]);
 
-  const validateAndSetFile = (selectedFile: File) => {
+  const checkFileContent = async (file: File): Promise<{ valid: boolean; error?: string }> => {
+    try {
+      const slice = file.slice(0, 1024);
+      const buffer = await slice.arrayBuffer();
+      const bytes = new Uint8Array(buffer);
+
+      // Windows PE Executable: 'M' (0x4D), 'Z' (0x5A)
+      if (bytes.length >= 2 && bytes[0] === 0x4d && bytes[1] === 0x5a) {
+        return {
+          valid: false,
+          error: 'File rejected by content check: The file content is a Windows executable binary (.exe), not a valid document.'
+        };
+      }
+
+      // Linux ELF executable: 0x7F, 'E', 'L', 'F'
+      if (bytes.length >= 4 && bytes[0] === 0x7f && bytes[1] === 0x45 && bytes[2] === 0x4c && bytes[3] === 0x46) {
+        return {
+          valid: false,
+          error: 'File rejected by content check: The file content is an ELF binary executable, not a valid document.'
+        };
+      }
+
+      // If claimed to be PDF, verify %PDF magic bytes
+      if (/\.pdf$/i.test(file.name)) {
+        let hasPdfHeader = false;
+        for (let i = 0; i < Math.min(bytes.length - 4, 1020); i++) {
+          if (bytes[i] === 0x25 && bytes[i + 1] === 0x50 && bytes[i + 2] === 0x44 && bytes[i + 3] === 0x46) {
+            hasPdfHeader = true;
+            break;
+          }
+        }
+        if (!hasPdfHeader) {
+          return {
+            valid: false,
+            error: 'File rejected by content check: The file has a .pdf extension but does not contain valid PDF content (disguised or corrupt file).'
+          };
+        }
+      }
+
+      // If claimed to be DOCX, verify ZIP header PK (0x50, 0x4B)
+      if (/\.docx$/i.test(file.name)) {
+        if (bytes.length >= 2 && (bytes[0] !== 0x50 || bytes[1] !== 0x4b)) {
+          return {
+            valid: false,
+            error: 'File rejected by content check: The file has a .docx extension but does not contain valid Word document content.'
+          };
+        }
+      }
+
+      return { valid: true };
+    } catch {
+      return { valid: true };
+    }
+  };
+
+  const validateAndSetFile = async (selectedFile: File) => {
     const validTypes = [
       "application/pdf",
       "application/msword",
-      "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "text/plain"
     ];
 
-    if (selectedFile && validTypes.includes(selectedFile.type)) {
+    if (
+      selectedFile &&
+      (validTypes.includes(selectedFile.type) ||
+        /\.(pdf|docx|doc|txt)$/i.test(selectedFile.name) ||
+        (!selectedFile.type && !/\.[a-zA-Z0-9]+$/i.test(selectedFile.name)))
+    ) {
+      if (selectedFile.size > 10 * 1024 * 1024) {
+        alert("File size exceeds 10MB limit. Please upload a smaller document.");
+        return;
+      }
+
+      // Deep content check: reject disguised executables (.exe renamed to .pdf, etc.)
+      const contentCheck = await checkFileContent(selectedFile);
+      if (!contentCheck.valid) {
+        alert(contentCheck.error);
+        return;
+      }
+
       setFile(selectedFile);
       setIsComplete(false);
       setUploadProgress(0);
     } else {
-      alert("Invalid file type. Please upload a PDF or Word document.");
+      alert("Invalid file type. Please upload a PDF, Word document, or text file (.pdf, .docx, .doc, .txt).");
     }
   };
 
@@ -92,7 +169,7 @@ const SmartUploadPage: React.FC = () => {
         alert("Too many requests! Please wait a moment before trying again.");
         setCooldown(30);
       } else {
-        const detail = error.response?.data?.detail || "Failed to parse resume. Please ensure you uploaded a valid PDF or Word document.";
+        const detail = error.response?.data?.detail || "Failed to parse resume. Please ensure you uploaded a valid PDF, Word document, or text file.";
         alert(detail);
       }
       setIsUploading(false);
@@ -152,7 +229,7 @@ const SmartUploadPage: React.FC = () => {
                   ref={fileInputRef}
                   onChange={(e) => e.target.files?.[0] && validateAndSetFile(e.target.files[0])}
                   className="hidden"
-                  accept=".pdf,.doc,.docx"
+                  accept=".pdf,.doc,.docx,.txt,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain"
                 />
                 <div className="w-24 h-24 bg-slate-100 text-slate-400 group-hover:text-[#D60041] group-hover:bg-white group-hover:shadow-xl group-hover:shadow-pink-100/50 rounded-[32px] mb-8 flex items-center justify-center mx-auto transition-all duration-500 transform group-hover:rotate-6">
                   <FileUp size={48} />
@@ -162,30 +239,62 @@ const SmartUploadPage: React.FC = () => {
                 <button className="inline-flex items-center bg-slate-900 text-white px-10 py-4 rounded-2xl font-bold text-base hover:bg-[#D60041] transition-all shadow-xl shadow-slate-200 hover:shadow-pink-200 hover:-translate-y-1 active:scale-95">
                   Select Document
                 </button>
-                <p className="mt-8 text-xs text-slate-400 font-bold uppercase tracking-widest">Supported formats: PDF, DOCX (Max 10MB)</p>
+                <p className="mt-8 text-xs text-slate-400 font-bold uppercase tracking-widest">Supported formats: PDF, DOCX, TXT (Max 10MB)</p>
               </div>
             ) : (
               <div className="max-w-3xl mx-auto space-y-8">
-                <div className="flex items-center p-8 bg-slate-50 rounded-[32px] border border-slate-100 shadow-sm relative overflow-hidden group">
-                  <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/40 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000"></div>
-                  <div className="p-5 bg-white rounded-2xl text-[#D60041] shadow-md mr-6 relative z-10">
-                    <FileText size={32} />
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between p-6 sm:p-8 bg-slate-50 rounded-[32px] border border-slate-100 shadow-sm relative overflow-hidden group gap-4">
+                  <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/40 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000 pointer-events-none"></div>
+                  <div className="flex items-center min-w-0 relative z-10">
+                    <div className="p-4 sm:p-5 bg-white rounded-2xl text-[#D60041] shadow-md mr-5 shrink-0">
+                      <FileText size={32} />
+                    </div>
+                    <div className="min-w-0">
+                      <h4 className="text-lg sm:text-xl font-black text-slate-900 truncate mb-1">{file.name}</h4>
+                      <p className="text-xs sm:text-sm text-slate-500 font-bold uppercase tracking-wider">
+                        {(file.size / (1024 * 1024)).toFixed(2)} MB • Analysis Ready
+                      </p>
+                    </div>
                   </div>
-                  <div className="flex-1 min-w-0 relative z-10">
-                    <h4 className="text-xl font-black text-slate-900 truncate mb-1">{file.name}</h4>
-                    <p className="text-sm text-slate-500 font-bold uppercase tracking-wider">
-                      {(file.size / (1024 * 1024)).toFixed(2)} MB • Analysis Ready
-                    </p>
-                  </div>
-                  {!isUploading && !isComplete && (
+
+                  <div className="flex items-center gap-2 self-end sm:self-auto shrink-0 relative z-10">
                     <button
-                      onClick={() => setFile(null)}
-                      className="p-3 hover:bg-red-50 hover:text-red-500 rounded-full transition-all text-slate-400 border border-transparent hover:border-red-100 relative z-10 active:scale-90"
+                      id="btn-smart-preview-resume"
+                      data-testid="preview-resume-btn"
+                      type="button"
+                      onClick={() => setShowPreviewModal(true)}
+                      className="px-4 py-2.5 bg-white hover:bg-slate-100 text-slate-700 hover:text-[#D60041] border border-slate-200 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-2xs cursor-pointer"
+                      title="Preview Resume"
                     >
-                      <X size={24} />
+                      <Eye size={15} className="text-[#D60041]" />
+                      <span>Preview</span>
                     </button>
-                  )}
+                    {!isUploading && (
+                      <button
+                        id="btn-smart-replace-resume"
+                        data-testid="replace-resume-btn"
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        className="px-4 py-2.5 bg-white hover:bg-slate-100 text-slate-700 hover:text-slate-900 border border-slate-200 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-2xs cursor-pointer"
+                        title="Replace Resume"
+                      >
+                        <FileUp size={15} />
+                        <span>Replace</span>
+                      </button>
+                    )}
+                    {!isUploading && !isComplete && (
+                      <button
+                        type="button"
+                        onClick={() => setFile(null)}
+                        className="p-2.5 hover:bg-red-50 hover:text-red-500 rounded-full transition-all text-slate-400 border border-transparent hover:border-red-100 cursor-pointer"
+                        title="Remove Document"
+                      >
+                        <X size={20} />
+                      </button>
+                    )}
+                  </div>
                 </div>
+
 
                 {isUploading && (
                   <div className="px-4 space-y-4">
@@ -261,38 +370,53 @@ const SmartUploadPage: React.FC = () => {
                       </div>
                     </div>
 
-                    <button
-                      onClick={() => navigate('/applicationform/smart', { 
-                        state: { 
-                          fileName: file.name, 
-                          isSmart: true,
-                          extractedData,
-                          personal: {
-                            name: extractedData?.fullname,
-                            email: extractedData?.email,
-                            phone: extractedData?.phone,
-                            location: extractedData?.location
-                          },
-                          experience: {
-                            title: extractedData?.job_title || (extractedData?.experience ? extractedData.experience.split('|')[0]?.trim() : ""),
-                            company: extractedData?.company || (extractedData?.experience ? extractedData.experience.split('|')[1]?.trim() : ""),
-                            relevance: extractedData?.relevance || (extractedData?.years_experience ? `${extractedData.years_experience} years` : "")
-                          },
-                          education: {
-                            degree: extractedData?.degree || extractedData?.highest_degree || "",
-                            college: extractedData?.institution || extractedData?.college || extractedData?.education || ""
-                          },
-                          skills: Array.isArray(extractedData?.skills_list) && extractedData.skills_list.length > 0
-                            ? extractedData.skills_list
-                            : (extractedData?.skills ? extractedData.skills.split(' | ').filter(Boolean) : []),
-                          resumeUrl: extractedData?.file_url
-                        } 
-                      })}
-                      className="w-full bg-slate-900 hover:bg-[#D60041] text-white py-5 rounded-[24px] font-bold flex items-center justify-center gap-3 transition-all shadow-xl hover:shadow-pink-100 active:scale-95"
-                    >
-                      <span>Proceed to Edit Information</span>
-                      <ArrowRight size={20} />
-                    </button>
+                    <div className="flex flex-col sm:flex-row gap-4">
+                      <button
+                        id="btn-smart-preview-resume-complete"
+                        data-testid="preview-resume-complete-btn"
+                        type="button"
+                        onClick={() => setShowPreviewModal(true)}
+                        className="flex-1 bg-white hover:bg-slate-50 text-slate-800 border-2 border-slate-200 py-5 rounded-[24px] font-bold flex items-center justify-center gap-3 transition-all shadow-sm active:scale-95 cursor-pointer"
+                      >
+                        <Eye size={20} className="text-[#D60041]" />
+                        <span>Preview Resume</span>
+                      </button>
+                      <button
+                        id="btn-smart-proceed-form"
+                        onClick={() => navigate('/applicationform/smart', { 
+                          state: { 
+                            fileName: file.name, 
+                            file: file,
+                            isSmart: true,
+                            extractedData,
+                            personal: {
+                              name: extractedData?.fullname,
+                              email: extractedData?.email,
+                              phone: extractedData?.phone,
+                              location: extractedData?.location
+                            },
+                            experience: {
+                              title: extractedData?.job_title || (extractedData?.experience ? extractedData.experience.split('|')[0]?.trim() : ""),
+                              company: extractedData?.company || (extractedData?.experience ? extractedData.experience.split('|')[1]?.trim() : ""),
+                              relevance: extractedData?.relevance || (extractedData?.years_experience ? `${extractedData.years_experience} years` : "")
+                            },
+                            education: {
+                              degree: extractedData?.degree || extractedData?.highest_degree || "",
+                              college: extractedData?.institution || extractedData?.college || extractedData?.education || ""
+                            },
+                            skills: Array.isArray(extractedData?.skills_list) && extractedData.skills_list.length > 0
+                              ? extractedData.skills_list
+                              : (extractedData?.skills ? extractedData.skills.split(' | ').filter(Boolean) : []),
+                            resumeUrl: extractedData?.file_url,
+                            rawText: extractedData?.raw_text
+                          } 
+                        })}
+                        className="flex-1 bg-slate-900 hover:bg-[#D60041] text-white py-5 rounded-[24px] font-bold flex items-center justify-center gap-3 transition-all shadow-xl hover:shadow-pink-100 active:scale-95 cursor-pointer"
+                      >
+                        <span>Proceed to Edit Information</span>
+                        <ArrowRight size={20} />
+                      </button>
+                    </div>
                   </div>
                 )}
 
@@ -348,6 +472,20 @@ const SmartUploadPage: React.FC = () => {
           </div>
         </div>
       </main>
+
+      <ResumePreviewModal
+        isOpen={showPreviewModal}
+        onClose={() => setShowPreviewModal(false)}
+        file={file}
+        fileName={file?.name}
+        resumeUrl={extractedData?.file_url}
+        rawText={extractedData?.raw_text}
+        extractedData={extractedData}
+        onReplace={() => {
+          setShowPreviewModal(false);
+          fileInputRef.current?.click();
+        }}
+      />
 
       <RecruitmentTermsModal 
         isOpen={showTermsModal} 

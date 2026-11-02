@@ -596,10 +596,16 @@ def _extract_experience_blocks(text: str) -> List[str]:
     Extracts all sections corresponding to Work Experience and OJT/Internship.
     """
     exp_headers = [
-        "WORK EXPERIENCE", "EMPLOYMENT HISTORY", "PROFESSIONAL EXPERIENCE",
-        "RELEVANT EXPERIENCE", "WORK HISTORY", "ON-THE-JOB TRAINING (OJT)",
-        "ON-THE-JOB TRAINING", "OJT", "INTERNSHIP", "PRACTICUM",
-        "ON-THE-JOB TRAINING / INTERNSHIP"
+        "EXPERIENCE", "WORK EXPERIENCE", "EMPLOYMENT HISTORY", "PROFESSIONAL EXPERIENCE",
+        "RELEVANT EXPERIENCE", "WORK HISTORY", "CAREER HISTORY", "JOB EXPERIENCE",
+        "CAREER SUMMARY", "CAREER EXPERIENCE", "POSITIONS HELD", "WORK RECORD",
+        "INDUSTRY EXPERIENCE", "PROFESSIONAL HISTORY", "WORK AND EXPERIENCE",
+        "RELEVANT WORK EXPERIENCE", "EMPLOYMENT RECORD", "WORK BACKGROUND",
+        "OCCUPATIONAL HISTORY", "EMPLOYMENT BACKGROUND", "CAREER BACKGROUND",
+        "RELEVANT EMPLOYMENT", "ON-THE-JOB TRAINING (OJT)", "ON-THE-JOB TRAINING",
+        "ON THE JOB TRAINING", "OJT", "INTERNSHIP", "INTERNSHIPS", "PRACTICUM",
+        "ON-THE-JOB TRAINING / INTERNSHIP", "ON-THE-JOB TRAINING (OJT) / INTERNSHIP / PRACTICUM",
+        "PRACTICUM / INTERNSHIP", "INTERNSHIP / PRACTICUM", "APPRENTICESHIP",
     ]
     stop_headers = [
         "EDUCATION", "SKILLS", "CERTIFICATIONS", "PROJECTS", "QUALIFICATIONS",
@@ -762,7 +768,7 @@ def extract_structured_experience(text: str) -> Dict[str, Any]:
 
         if has_date_ahead:
             raw_title = line
-            company_line = lines[i + 1] if date_offset == 2 else (lines[i + 2] if date_offset == 1 else "")
+            company_line = lines[i + 1] if date_offset == 2 else (lines[i + 2] if (date_offset == 1 and i + 2 < len(lines)) else "")
             date_line = lines[i + date_offset]
 
             if date_offset == 1:
@@ -771,6 +777,12 @@ def extract_structured_experience(text: str) -> Dict[str, Any]:
             else:
                 comp_loc_str = company_line
                 consumed_header = date_offset + 1
+
+            if '|' in raw_title:
+                parts = [p.strip() for p in raw_title.split('|', 1)]
+                raw_title = parts[0]
+                if not comp_loc_str and len(parts) > 1:
+                    comp_loc_str = parts[1]
 
             company, location = _split_company_and_location(comp_loc_str)
             start_iso, end_iso, duration, extra_status = _parse_date_and_duration(date_line)

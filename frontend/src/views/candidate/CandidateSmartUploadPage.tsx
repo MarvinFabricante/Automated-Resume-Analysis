@@ -23,10 +23,12 @@ import {
   RefreshCw,
   Compass,
   Building2,
-  ChevronRight
+  ChevronRight,
+  Eye
 } from 'lucide-react';
 import Header from '../../components/layout/Header';
 import Sidebar from '../../components/layout/Sidebar';
+import ResumePreviewModal from '../../components/modals/shared/ResumePreviewModal';
 
 const DIVISIONS = [
   { id: 'ALL', label: 'All Divisions' },
@@ -46,6 +48,7 @@ const CandidateSmartUploadPage: React.FC = () => {
 
   // Component state
   const [file, setFile] = useState<File | null>(null);
+  const [showPreviewModal, setShowPreviewModal] = useState<boolean>(false);
   const [selectedDivision, setSelectedDivision] = useState<string>('ALL');
   const [isDragging, setIsDragging] = useState<boolean>(false);
   const [isUploading, setIsUploading] = useState<boolean>(false);
@@ -65,31 +68,94 @@ const CandidateSmartUploadPage: React.FC = () => {
     }
   }, [cooldown]);
 
-  const validateAndSetFile = (selectedFile: File) => {
+  const checkFileContent = async (file: File): Promise<{ valid: boolean; error?: string }> => {
+    try {
+      const slice = file.slice(0, 1024);
+      const buffer = await slice.arrayBuffer();
+      const bytes = new Uint8Array(buffer);
+
+      // Windows PE Executable: 'M' (0x4D), 'Z' (0x5A)
+      if (bytes.length >= 2 && bytes[0] === 0x4d && bytes[1] === 0x5a) {
+        return {
+          valid: false,
+          error: 'File rejected by content check: The file content is a Windows executable binary (.exe), not a valid document.'
+        };
+      }
+
+      // Linux ELF executable: 0x7F, 'E', 'L', 'F'
+      if (bytes.length >= 4 && bytes[0] === 0x7f && bytes[1] === 0x45 && bytes[2] === 0x4c && bytes[3] === 0x46) {
+        return {
+          valid: false,
+          error: 'File rejected by content check: The file content is an ELF binary executable, not a valid document.'
+        };
+      }
+
+      // If claimed to be PDF, verify %PDF magic bytes
+      if (/\.pdf$/i.test(file.name)) {
+        let hasPdfHeader = false;
+        for (let i = 0; i < Math.min(bytes.length - 4, 1020); i++) {
+          if (bytes[i] === 0x25 && bytes[i + 1] === 0x50 && bytes[i + 2] === 0x44 && bytes[i + 3] === 0x46) {
+            hasPdfHeader = true;
+            break;
+          }
+        }
+        if (!hasPdfHeader) {
+          return {
+            valid: false,
+            error: 'File rejected by content check: The file has a .pdf extension but does not contain valid PDF content (disguised or corrupt file).'
+          };
+        }
+      }
+
+      // If claimed to be DOCX, verify ZIP header PK (0x50, 0x4B)
+      if (/\.docx$/i.test(file.name)) {
+        if (bytes.length >= 2 && (bytes[0] !== 0x50 || bytes[1] !== 0x4b)) {
+          return {
+            valid: false,
+            error: 'File rejected by content check: The file has a .docx extension but does not contain valid Word document content.'
+          };
+        }
+      }
+
+      return { valid: true };
+    } catch {
+      return { valid: true };
+    }
+  };
+
+  const validateAndSetFile = async (selectedFile: File) => {
     const validTypes = [
       'application/pdf',
       'application/msword',
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'text/plain'
     ];
 
     if (
       selectedFile &&
       (validTypes.includes(selectedFile.type) ||
-        selectedFile.name.endsWith('.pdf') ||
-        selectedFile.name.endsWith('.docx') ||
-        selectedFile.name.endsWith('.doc'))
+        /\.(pdf|docx|doc|txt)$/i.test(selectedFile.name) ||
+        (!selectedFile.type && !/\.[a-zA-Z0-9]+$/i.test(selectedFile.name)))
     ) {
       if (selectedFile.size > 10 * 1024 * 1024) {
         alert('File size exceeds 10MB limit. Please upload a smaller document.');
         return;
       }
+
+      // Deep content check: reject disguised executables (.exe renamed to .pdf, etc.)
+      const contentCheck = await checkFileContent(selectedFile);
+      if (!contentCheck.valid) {
+        alert(contentCheck.error);
+        return;
+      }
+
       setFile(selectedFile);
       setIsComplete(false);
       setUploadProgress(0);
       setExtractedData(null);
       setMatchResults([]);
     } else {
-      alert('Please upload a valid PDF or Microsoft Word document (.pdf, .docx, .doc).');
+      alert('Please upload a valid PDF, Word document, or text file (.pdf, .docx, .doc, .txt).');
     }
   };
 
@@ -377,7 +443,7 @@ const CandidateSmartUploadPage: React.FC = () => {
                   <input
                     ref={fileInputRef}
                     type="file"
-                    accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                    accept=".pdf,.doc,.docx,.txt,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain"
                     className="hidden"
                     onChange={(e) => {
                       if (e.target.files && e.target.files[0]) {
@@ -395,7 +461,7 @@ const CandidateSmartUploadPage: React.FC = () => {
                   </h3>
                   
                   <p className="text-xs text-slate-400 font-medium max-w-md mx-auto mb-5">
-                    Supports PDF and Microsoft Word documents (.pdf, .docx, .doc) up to 10MB.
+                    Supports PDF, Word documents (.docx, .doc), and Text files (.txt) up to 10MB.
                   </p>
 
                   <div className="flex flex-wrap items-center justify-center gap-3 text-xs font-semibold text-slate-500">
@@ -429,17 +495,42 @@ const CandidateSmartUploadPage: React.FC = () => {
                       </div>
                     </div>
 
-                    {!isUploading && !isComplete && (
+                    <div className="flex items-center gap-2 self-end sm:self-auto">
                       <button
+                        id="btn-candidate-preview-resume"
+                        data-testid="preview-resume-btn"
                         type="button"
-                        onClick={handleReset}
-                        className="px-3 py-1.5 text-xs font-bold text-slate-500 hover:text-rose-600 hover:bg-white rounded-lg transition-colors flex items-center gap-1 border border-transparent hover:border-rose-100 self-end sm:self-auto cursor-pointer"
-                        title="Change file"
+                        onClick={() => setShowPreviewModal(true)}
+                        className="px-3.5 py-1.5 bg-white hover:bg-slate-100 text-slate-700 hover:text-slate-900 border border-slate-200 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-2xs cursor-pointer"
+                        title="Preview Resume"
                       >
-                        <X size={14} />
-                        <span>Change File</span>
+                        <Eye size={15} className="text-[#D10043]" />
+                        <span>Preview</span>
                       </button>
-                    )}
+                      {!isUploading && (
+                        <button
+                          id="btn-candidate-replace-resume"
+                          data-testid="replace-resume-btn"
+                          type="button"
+                          onClick={() => fileInputRef.current?.click()}
+                          className="px-3.5 py-1.5 bg-white hover:bg-slate-100 text-slate-700 hover:text-slate-900 border border-slate-200 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-2xs cursor-pointer"
+                          title="Replace Resume"
+                        >
+                          <FileUp size={15} />
+                          <span>Replace</span>
+                        </button>
+                      )}
+                      {!isUploading && !isComplete && (
+                        <button
+                          type="button"
+                          onClick={handleReset}
+                          className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-white rounded-lg transition-colors border border-transparent hover:border-rose-100 cursor-pointer"
+                          title="Change file"
+                        >
+                          <X size={16} />
+                        </button>
+                      )}
+                    </div>
                   </div>
 
                   {/* UPLOADING & PROCESSING PROGRESS */}
@@ -493,6 +584,17 @@ const CandidateSmartUploadPage: React.FC = () => {
                         </div>
 
                         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 w-full sm:w-auto">
+                          <button
+                            id="btn-candidate-preview-resume-complete"
+                            data-testid="preview-resume-complete-btn"
+                            type="button"
+                            onClick={() => setShowPreviewModal(true)}
+                            className="px-4 py-3 rounded-xl bg-white hover:bg-slate-50 border border-slate-200 text-slate-800 font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                          >
+                            <Eye size={14} className="text-[#D10043]" />
+                            <span>Preview Resume</span>
+                          </button>
+
                           <button
                             type="button"
                             onClick={handleProceedToMatches}
@@ -651,6 +753,20 @@ const CandidateSmartUploadPage: React.FC = () => {
 
         </main>
       </div>
+
+      <ResumePreviewModal
+        isOpen={showPreviewModal}
+        onClose={() => setShowPreviewModal(false)}
+        file={file}
+        fileName={file?.name}
+        resumeUrl={extractedData?.file_url}
+        rawText={extractedData?.raw_text}
+        extractedData={extractedData}
+        onReplace={() => {
+          setShowPreviewModal(false);
+          fileInputRef.current?.click();
+        }}
+      />
     </div>
   );
 };

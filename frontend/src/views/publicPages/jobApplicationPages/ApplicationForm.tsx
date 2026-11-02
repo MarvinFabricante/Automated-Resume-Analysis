@@ -147,7 +147,10 @@ const ApplicationForm: React.FC = () => {
       navigate(`/apply/${jobId}`, {
         state: {
           job: location.state?.job,
+          file: location.state?.file,
           fileName: location.state?.fileName,
+          resumeUrl: location.state?.resumeUrl || location.state?.extractedData?.file_url || null,
+          rawText: location.state?.rawText || location.state?.extractedData?.raw_text || null,
           extractedData: {
             ...location.state?.extractedData,
             fullname: formData.fullName,
@@ -161,11 +164,14 @@ const ApplicationForm: React.FC = () => {
             college: formData.college,
             skills: formData.skills.join(' | '),
             skills_list: formData.skills,
+            file_url: location.state?.resumeUrl || location.state?.extractedData?.file_url || null,
+            raw_text: location.state?.rawText || location.state?.extractedData?.raw_text || null,
             profile_image_url: location.state?.profile_image_url || location.state?.extractedData?.profile_image_url
           },
           matchData
         }
       });
+
     } else {
       navigate(-1);
     }
@@ -227,7 +233,10 @@ const ApplicationForm: React.FC = () => {
       state: {
         job: location.state?.job,
         jobTitle,
+        file: location.state?.file,
         fileName: location.state?.fileName,
+        resumeUrl: location.state?.resumeUrl || location.state?.extractedData?.file_url || null,
+        rawText: location.state?.rawText || location.state?.extractedData?.raw_text || null,
         formData,
         extractedData: {
           ...location.state?.extractedData,
@@ -242,12 +251,15 @@ const ApplicationForm: React.FC = () => {
           college: formData.college,
           skills: formData.skills.join(' | '),
           skills_list: formData.skills,
+          file_url: location.state?.resumeUrl || location.state?.extractedData?.file_url || null,
+          raw_text: location.state?.rawText || location.state?.extractedData?.raw_text || null,
           profile_image_url: location.state?.profile_image_url || location.state?.extractedData?.profile_image_url
         },
         matchData,
         matchScore
       }
     });
+
   };
 
   return (

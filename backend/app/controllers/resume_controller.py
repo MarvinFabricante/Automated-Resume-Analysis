@@ -81,6 +81,15 @@ async def upload_resume_file(
     """
     file_bytes = await file.read()
 
+    # Security: Content check (magic bytes) to reject disguised executables (.exe renamed to .pdf, etc.)
+    from app.utils.file_validator import validate_file_content
+    is_valid, validation_err = validate_file_content(file_bytes, file.filename)
+    if not is_valid:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=validation_err
+        )
+
     try:
         from app.utils.supabase_storage import upload_resume
         result = await upload_resume(

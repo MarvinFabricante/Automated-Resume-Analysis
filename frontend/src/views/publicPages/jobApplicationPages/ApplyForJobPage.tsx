@@ -14,13 +14,16 @@ import {
   ArrowRight,
   Target,
   GraduationCap,
-  Cpu
+  Cpu,
+  Eye
 } from 'lucide-react';
 import Header from '../../../components/layout/Header';
 import Footer from '../../../components/layout/Footer';
 import RecruitmentTermsModal from '../../../components/modals/shared/RecruitmentTermsModal';
+import ResumePreviewModal from '../../../components/modals/shared/ResumePreviewModal';
 import ApplicationProgressBar from '../../../components/common/ApplicationProgressBar';
 import { Job } from '../../../types';
+
 
 const STATIC_JOBS = [
   { job_id: "1", title: "Production Supervisor", department: "Manufacturing" },
@@ -39,10 +42,12 @@ const ApplyForJobPage: React.FC = () => {
   const [isComplete, setIsComplete] = useState(false);
   const [isTermsAccepted, setIsTermsAccepted] = useState(false);
   const [showTermsModal, setShowTermsModal] = useState(false);
+  const [showPreviewModal, setShowPreviewModal] = useState(false);
   const [extractedData, setExtractedData] = useState<any>(null);
   const [matchData, setMatchData] = useState<any>(null);
   const [, setIsMatching] = useState(false);
   const [cooldown, setCooldown] = useState(0);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
 
@@ -121,6 +126,9 @@ const ApplyForJobPage: React.FC = () => {
       state: {
         job,
         fileName: file?.name || "Uploaded Resume",
+        file: file,
+        resumeUrl: extractedData?.file_url || null,
+        rawText: extractedData?.raw_text || null,
         extractedData,
         matchData,
         personal: {
@@ -144,6 +152,7 @@ const ApplyForJobPage: React.FC = () => {
         profile_image_url: extractedData?.profile_image_url || null
       }
     });
+
   };
 
   const getMatchTier = (pct: number) => {
@@ -152,19 +161,92 @@ const ApplyForJobPage: React.FC = () => {
     return 'Potential Match';
   };
 
-  const validateAndSetFile = (selectedFile: File) => {
+  const checkFileContent = async (file: File): Promise<{ valid: boolean; error?: string }> => {
+    try {
+      const slice = file.slice(0, 1024);
+      const buffer = await slice.arrayBuffer();
+      const bytes = new Uint8Array(buffer);
+
+      // Windows PE Executable: 'M' (0x4D), 'Z' (0x5A)
+      if (bytes.length >= 2 && bytes[0] === 0x4d && bytes[1] === 0x5a) {
+        return {
+          valid: false,
+          error: 'File rejected by content check: The file content is a Windows executable binary (.exe), not a valid document.'
+        };
+      }
+
+      // Linux ELF executable: 0x7F, 'E', 'L', 'F'
+      if (bytes.length >= 4 && bytes[0] === 0x7f && bytes[1] === 0x45 && bytes[2] === 0x4c && bytes[3] === 0x46) {
+        return {
+          valid: false,
+          error: 'File rejected by content check: The file content is an ELF binary executable, not a valid document.'
+        };
+      }
+
+      // If claimed to be PDF, verify %PDF magic bytes
+      if (/\.pdf$/i.test(file.name)) {
+        let hasPdfHeader = false;
+        for (let i = 0; i < Math.min(bytes.length - 4, 1020); i++) {
+          if (bytes[i] === 0x25 && bytes[i + 1] === 0x50 && bytes[i + 2] === 0x44 && bytes[i + 3] === 0x46) {
+            hasPdfHeader = true;
+            break;
+          }
+        }
+        if (!hasPdfHeader) {
+          return {
+            valid: false,
+            error: 'File rejected by content check: The file has a .pdf extension but does not contain valid PDF content (disguised or corrupt file).'
+          };
+        }
+      }
+
+      // If claimed to be DOCX, verify ZIP header PK (0x50, 0x4B)
+      if (/\.docx$/i.test(file.name)) {
+        if (bytes.length >= 2 && (bytes[0] !== 0x50 || bytes[1] !== 0x4b)) {
+          return {
+            valid: false,
+            error: 'File rejected by content check: The file has a .docx extension but does not contain valid Word document content.'
+          };
+        }
+      }
+
+      return { valid: true };
+    } catch {
+      return { valid: true };
+    }
+  };
+
+  const validateAndSetFile = async (selectedFile: File) => {
     const validTypes = [
       "application/pdf",
       "application/msword",
-      "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "text/plain"
     ];
 
-    if (selectedFile && validTypes.includes(selectedFile.type)) {
+    if (
+      selectedFile &&
+      (validTypes.includes(selectedFile.type) ||
+        /\.(pdf|docx|doc|txt)$/i.test(selectedFile.name) ||
+        (!selectedFile.type && !/\.[a-zA-Z0-9]+$/i.test(selectedFile.name)))
+    ) {
+      if (selectedFile.size > 10 * 1024 * 1024) {
+        alert("File size exceeds 10MB limit. Please upload a smaller document.");
+        return;
+      }
+
+      // Deep content check: reject disguised executables (.exe renamed to .pdf, etc.)
+      const contentCheck = await checkFileContent(selectedFile);
+      if (!contentCheck.valid) {
+        alert(contentCheck.error);
+        return;
+      }
+
       setFile(selectedFile);
       setIsComplete(false);
       setUploadProgress(0);
     } else {
-      alert("Invalid file type. Please upload a PDF or Word document.");
+      alert("Invalid file type. Please upload a PDF, Word document, or text file (.pdf, .docx, .doc, .txt).");
     }
   };
 
@@ -218,7 +300,7 @@ const ApplyForJobPage: React.FC = () => {
         alert("Too many requests! Please wait a moment before trying again.");
         setCooldown(30); // Force a longer cooldown if backend rejected them
       } else {
-        const detail = error.response?.data?.detail || "Failed to parse resume. Please ensure you uploaded a valid PDF or Word document.";
+        const detail = error.response?.data?.detail || "Failed to parse resume. Please ensure you uploaded a valid PDF, Word document, or text file.";
         alert(detail);
       }
     } finally {
@@ -295,36 +377,68 @@ const ApplyForJobPage: React.FC = () => {
                   ref={fileInputRef}
                   onChange={(e) => e.target.files?.[0] && validateAndSetFile(e.target.files[0])}
                   className="hidden"
-                  accept=".pdf,.doc,.docx"
+                  accept=".pdf,.doc,.docx,.txt,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain"
                 />
                 <div className="w-16 h-16 sm:w-20 sm:h-20 bg-slate-100 text-slate-400 group-hover:text-[#D60041] group-hover:bg-pink-50 rounded-2xl sm:rounded-3xl mb-4 sm:mb-6 flex items-center justify-center mx-auto transition-all duration-300">
                   <FileUp size={32} />
                 </div>
                 <h3 className="text-base sm:text-lg font-bold mb-1">Upload Resume</h3>
-                <p className="text-slate-400 text-xs sm:text-sm mb-6 sm:mb-8 font-medium">Drag and drop or click to browse (PDF or DOCX)</p>
+                <p className="text-slate-400 text-xs sm:text-sm mb-6 sm:mb-8 font-medium">Drag and drop or click to browse (PDF, DOCX, or TXT)</p>
                 <span className="inline-flex items-center bg-slate-900 text-white px-6 sm:px-8 py-3 sm:py-3.5 rounded-xl sm:rounded-2xl font-bold text-xs sm:text-sm hover:bg-[#D60041] transition-colors shadow-md">
                   Select Document
                 </span>
               </div>
             ) : (
               <div className="space-y-6">
-                <div className="flex items-center p-4 sm:p-6 bg-slate-50 rounded-2xl sm:rounded-[24px] border border-slate-100">
-                  <div className="p-3 sm:p-4 bg-white rounded-xl text-[#D60041] shadow-sm mr-3 sm:mr-5 shrink-0">
-                    <FileText size={24} />
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between p-4 sm:p-6 bg-slate-50 rounded-2xl sm:rounded-[24px] border border-slate-100 gap-4">
+                  <div className="flex items-center min-w-0">
+                    <div className="p-3 sm:p-4 bg-white rounded-xl text-[#D60041] shadow-sm mr-3 sm:mr-5 shrink-0">
+                      <FileText size={24} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <h4 className="font-bold text-sm sm:text-base text-slate-900 truncate">{file.name}</h4>
+                      <p className="text-[11px] sm:text-xs text-slate-500 font-medium">{(file.size / (1024 * 1024)).toFixed(2)} MB • Ready to submit</p>
+                    </div>
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <h4 className="font-bold text-sm sm:text-base text-slate-900 truncate">{file.name}</h4>
-                    <p className="text-[11px] sm:text-xs text-slate-500 font-medium">{(file.size / (1024 * 1024)).toFixed(2)} MB • Ready to submit</p>
-                  </div>
-                  {!isUploading && !isComplete && (
+
+                  <div className="flex items-center gap-2 self-end sm:self-auto shrink-0">
                     <button
-                      onClick={() => setFile(null)}
-                      className="p-2 sm:p-2.5 hover:bg-white hover:text-red-500 rounded-full transition-all text-slate-400 border border-transparent hover:border-slate-100 shrink-0 ml-2"
+                      id="btn-preview-resume"
+                      data-testid="preview-resume-btn"
+                      type="button"
+                      onClick={() => setShowPreviewModal(true)}
+                      className="px-3.5 py-2 bg-white hover:bg-slate-100 text-slate-700 hover:text-[#D60041] border border-slate-200 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-2xs cursor-pointer"
+                      title="Preview Resume"
                     >
-                      <X size={18} />
+                      <Eye size={15} className="text-[#D60041]" />
+                      <span>Preview</span>
                     </button>
-                  )}
+                    {!isUploading && (
+                      <button
+                        id="btn-replace-resume"
+                        data-testid="replace-resume-btn"
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        className="px-3.5 py-2 bg-white hover:bg-slate-100 text-slate-700 hover:text-slate-900 border border-slate-200 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-2xs cursor-pointer"
+                        title="Replace Resume"
+                      >
+                        <FileUp size={15} />
+                        <span>Replace</span>
+                      </button>
+                    )}
+                    {!isUploading && !isComplete && (
+                      <button
+                        type="button"
+                        onClick={() => setFile(null)}
+                        className="p-2 sm:p-2.5 hover:bg-white hover:text-red-500 rounded-full transition-all text-slate-400 border border-transparent hover:border-slate-100 shrink-0 cursor-pointer"
+                        title="Remove Document"
+                      >
+                        <X size={18} />
+                      </button>
+                    )}
+                  </div>
                 </div>
+
 
                 {isUploading && (
                   <div className="px-2">
@@ -443,8 +557,20 @@ const ApplyForJobPage: React.FC = () => {
                     </div>
 
                     {/* Step Navigation Action Buttons */}
-                    <div className="flex flex-col sm:flex-row gap-4 pt-4 border-t border-slate-100">
+                    <div className="flex flex-col sm:flex-row gap-3 pt-4 border-t border-slate-100">
                       <button
+                        id="btn-preview-resume-complete"
+                        data-testid="preview-resume-complete-btn"
+                        type="button"
+                        onClick={() => setShowPreviewModal(true)}
+                        className="flex-1 bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-700 py-4 rounded-2xl font-bold transition-all active:scale-95 flex items-center justify-center gap-2 text-sm cursor-pointer shadow-2xs"
+                      >
+                        <Eye size={18} className="text-[#D60041]" />
+                        <span>Preview Resume</span>
+                      </button>
+                      <button
+                        id="btn-upload-different"
+                        data-testid="upload-different-resume-btn"
                         type="button"
                         onClick={() => {
                           setFile(null);
@@ -452,7 +578,7 @@ const ApplyForJobPage: React.FC = () => {
                           setIsComplete(false);
                           setMatchData(null);
                         }}
-                        className="flex-1 bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-700 py-4 rounded-2xl font-bold transition-all active:scale-95 flex items-center justify-center gap-2 text-sm"
+                        className="flex-1 bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-700 py-4 rounded-2xl font-bold transition-all active:scale-95 flex items-center justify-center gap-2 text-sm cursor-pointer shadow-2xs"
                       >
                         <FileUp size={18} />
                         <span>Upload Different Resume</span>
@@ -460,7 +586,7 @@ const ApplyForJobPage: React.FC = () => {
                       <button
                         type="button"
                         onClick={handleProceedToForm}
-                        className="flex-[2] bg-[#D60041] hover:bg-slate-900 text-white py-4 rounded-2xl font-bold flex items-center justify-center gap-3 transition-all shadow-xl shadow-pink-100 active:scale-95 text-sm"
+                        className="flex-[2] bg-[#D60041] hover:bg-slate-900 text-white py-4 rounded-2xl font-bold flex items-center justify-center gap-3 transition-all shadow-xl shadow-pink-100 active:scale-95 text-sm cursor-pointer"
                       >
                         <span>Proceed to Application Details</span>
                         <ArrowRight size={18} />
@@ -506,6 +632,19 @@ const ApplyForJobPage: React.FC = () => {
 
       </main>
 
+      <ResumePreviewModal
+        isOpen={showPreviewModal}
+        onClose={() => setShowPreviewModal(false)}
+        file={file instanceof File ? file : null}
+        fileName={file?.name}
+        fileUrl={extractedData?.file_url}
+        rawText={extractedData?.raw_text}
+        extractedData={extractedData}
+        onReplaceFile={(newFile) => {
+          validateAndSetFile(newFile);
+        }}
+      />
+
       <RecruitmentTermsModal 
         isOpen={showTermsModal} 
         onClose={() => setShowTermsModal(false)} 
@@ -514,6 +653,7 @@ const ApplyForJobPage: React.FC = () => {
 
       <Footer />
     </div>
+
   );
 };
 

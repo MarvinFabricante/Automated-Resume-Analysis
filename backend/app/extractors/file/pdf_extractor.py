@@ -19,7 +19,17 @@ def extract_text_from_pdf(file_path: str) -> str:
             doc = fitz.open(file_path)
             pages = []
             for page in doc:
-                pages.append(page.get_text())
+                page_text = page.get_text()
+                # Scanned or image-only PDF page fallback to OCR
+                if not page_text or len(page_text.strip()) < 20:
+                    try:
+                        ocr_tp = page.get_textpage_ocr(flags=0, dpi=150, full=True)
+                        ocr_text = ocr_tp.extractText()
+                        if ocr_text and len(ocr_text.strip()) > len(page_text.strip()):
+                            page_text = ocr_text
+                    except Exception:
+                        pass
+                pages.append(page_text)
             doc.close()
             text = "\n".join(pages)
         except Exception as e:
