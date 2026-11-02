@@ -118,7 +118,11 @@ const SmartUploadPage: React.FC = () => {
     if (
       selectedFile &&
       (validTypes.includes(selectedFile.type) ||
-        /\.(pdf|docx|doc|txt)$/i.test(selectedFile.name) ||
+        selectedFile.type.startsWith('text/') ||
+        selectedFile.type.includes('pdf') ||
+        selectedFile.type.includes('word') ||
+        selectedFile.type.includes('officedocument') ||
+        /\.(pdf|docx|doc|txt|text)$/i.test(selectedFile.name) ||
         (!selectedFile.type && !/\.[a-zA-Z0-9]+$/i.test(selectedFile.name)))
     ) {
       if (selectedFile.size > 10 * 1024 * 1024) {

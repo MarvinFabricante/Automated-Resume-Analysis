@@ -848,40 +848,67 @@ def extract_structured_experience(text: str) -> Dict[str, Any]:
             i += 1
             continue
 
-        # ── Case A: Inline entry format (Template 2) ──────────────────────────
+        # ── Case A: Inline or Date-First entry format ─────────────────────────
         if _DATE_RANGE_REGEX.search(line):
-            if '|' in line:
+            dm = _DATE_RANGE_REGEX.search(line)
+            before_date = line[:dm.start()].strip(' -–—(),|')
+            after_date = line[dm.end():].strip(' -–—(),|')
+
+            if not before_date:
+                # Standalone date or Date-First line (e.g. "2021 - Present" or "2021 - Present | Senior Developer | Tech Mahindra")
+                date_str = line[dm.start():dm.end()].strip()
+                if after_date:
+                    if '|' in after_date:
+                        segs = [s.strip() for s in after_date.split('|') if s.strip()]
+                        raw_title = segs[0] if segs else ""
+                        comp_loc_str = " | ".join(segs[1:]) if len(segs) > 1 else ""
+                    else:
+                        raw_title = after_date
+                        comp_loc_str = ""
+                    consumed_header = 1
+                else:
+                    consumed_header = 1
+                    raw_title = ""
+                    comp_loc_str = ""
+                    if i + 1 < len(lines) and not _is_section_header(lines[i + 1]) and not lines[i + 1].startswith(('•', '-', '*', '▪', '►', '✓')) and not _DATE_RANGE_REGEX.search(lines[i + 1]):
+                        raw_title = lines[i + 1]
+                        consumed_header = 2
+                        if i + 2 < len(lines) and not _is_section_header(lines[i + 2]) and not lines[i + 2].startswith(('•', '-', '*', '▪', '►', '✓')) and not _DATE_RANGE_REGEX.search(lines[i + 2]):
+                            comp_loc_str = lines[i + 2]
+                            consumed_header = 3
+                            if i + 3 < len(lines) and not _is_section_header(lines[i + 3]) and not lines[i + 3].startswith(('•', '-', '*', '▪', '►', '✓')) and not _DATE_RANGE_REGEX.search(lines[i + 3]) and _is_address_or_location(lines[i + 3]):
+                                comp_loc_str = f"{comp_loc_str} - {lines[i + 3]}"
+                                consumed_header = 4
+                norm_title, company, location = _extract_title_company_location(raw_title, comp_loc_str)
+            elif '|' in line:
                 segments = [s.strip() for s in line.split('|')]
-                if len(segments) >= 3:
-                    raw_title = segments[0]
-                    comp_loc_str = segments[1]
-                    date_str = segments[2]
+                date_idx = next((idx for idx, s in enumerate(segments) if _DATE_RANGE_REGEX.search(s)), -1)
+                if date_idx >= 0:
+                    date_str = segments[date_idx]
+                    other_segs = [s for idx, s in enumerate(segments) if idx != date_idx]
+                    raw_title = other_segs[0] if other_segs else ""
+                    comp_loc_str = " | ".join(other_segs[1:]) if len(other_segs) > 1 else ""
                 else:
                     raw_title = segments[0]
-                    rest = segments[1]
-                    dm = _DATE_RANGE_REGEX.search(rest)
-                    if dm:
-                        comp_loc_str = rest[:dm.start()].strip(' -|')
-                        date_str = rest[dm.start():].strip()
-                    else:
-                        comp_loc_str = rest
-                        date_str = ""
+                    comp_loc_str = segments[1] if len(segments) > 1 else ""
+                    date_str = segments[2] if len(segments) > 2 else ""
                 norm_title, company, location = _extract_title_company_location(raw_title, comp_loc_str)
+                consumed_header = 1
             else:
-                dm = _DATE_RANGE_REGEX.search(line)
-                title_comp_str = line[:dm.start()].strip(' -–—(),|')
+                title_comp_str = before_date
                 date_str = line[dm.start():].strip(' ()')
                 raw_title = title_comp_str
                 norm_title, company, location = _extract_title_company_location(title_comp_str)
                 comp_loc_str = company + (f" - {location}" if location else "")
+                consumed_header = 1
 
             start_iso, end_iso, duration, extra_status = _parse_date_and_duration(date_str)
 
             # Responsibilities in subsequent lines
             responsibilities = []
-            i += 1
-            while i < len(lines):
-                next_l = lines[i]
+            curr_idx = i + consumed_header
+            while curr_idx < len(lines):
+                next_l = lines[curr_idx]
                 if _DATE_RANGE_REGEX.search(next_l):
                     break
                 if _is_section_header(next_l):
@@ -889,28 +916,28 @@ def extract_structured_experience(text: str) -> Dict[str, Any]:
                 d_match = re.match(r'^(?:Duties|Responsibilities|Key\s+Tasks)\s*[:.\-]\s*(.+)', next_l, re.IGNORECASE)
                 if d_match:
                     responsibilities.append(d_match.group(1).strip())
-                    i += 1
+                    curr_idx += 1
                     continue
                 elif next_l.startswith(('•', '-', '*', '▪', '►', '✓')):
                     duty_text = next_l.lstrip('•-*▪►✓ ').strip()
                     if duty_text:
                         responsibilities.append(duty_text)
-                    i += 1
+                    curr_idx += 1
                     continue
                 elif not _DATE_RANGE_REGEX.search(next_l) and not any(comp.lower() in next_l.lower() for comp in _PHIL_COMPANY_NAMES):
                     if len(next_l) > 15 and not _is_address_or_location(next_l):
                         responsibilities.append(next_l)
-                        i += 1
+                        curr_idx += 1
                         continue
                 break
 
             emp_type = _detect_employment_type(raw_title, comp_loc_str, date_str, responsibilities)
             # Reject academic degrees / schooling mistaken as employment roles
             if re.search(r'\b(?:bachelor|master|doctor|phd|diploma|associate|elementary|high\s+school)\b', raw_title, re.I):
-                i += 1
+                i = curr_idx
                 continue
             if re.search(r'\b(?:university|college|polytechnic)\b', comp_loc_str or company or "", re.I) and re.search(r'\b(?:bachelor|master|degree|course|bs|ba|ab|bba|bsba|bscpe|bsit|bscs)\b', raw_title, re.I):
-                i += 1
+                i = curr_idx
                 continue
 
             if norm_title and not _is_address_or_location(norm_title):
@@ -929,6 +956,7 @@ def extract_structured_experience(text: str) -> Dict[str, Any]:
                     "responsibilities": responsibilities,
                     "highlights": responsibilities,
                 })
+            i = curr_idx
             continue
 
         # ── Case B: Multi-line block format (Template 1 & Template 3) ─────────
@@ -942,15 +970,16 @@ def extract_structured_experience(text: str) -> Dict[str, Any]:
 
         if has_date_ahead:
             raw_title = line
-            company_line = lines[i + 1] if date_offset == 2 else (lines[i + 2] if (date_offset == 1 and i + 2 < len(lines)) else "")
             date_line = lines[i + date_offset]
-
-            if date_offset == 1:
+            if date_offset == 3:
+                comp_loc_str = f"{lines[i + 1]} - {lines[i + 2]}"
+                consumed_header = 4
+            elif date_offset == 2:
+                comp_loc_str = lines[i + 1]
+                consumed_header = 3
+            elif date_offset == 1:
                 comp_loc_str = lines[i + 2] if i + 2 < len(lines) and not lines[i + 2].startswith(('-', '•', '*')) else ""
                 consumed_header = 3 if comp_loc_str else 2
-            else:
-                comp_loc_str = company_line
-                consumed_header = date_offset + 1
 
             if '|' in raw_title:
                 parts = [p.strip() for p in raw_title.split('|', 1)]
@@ -1015,6 +1044,7 @@ def extract_structured_experience(text: str) -> Dict[str, Any]:
 
             i = curr_idx
             continue
+
 
         i += 1
 
@@ -1200,7 +1230,20 @@ def extract_company(text: str, entries: Optional[list[dict]] = None) -> str:
         if len(cand) > 2 and not _is_address_or_location(cand):
             return cand
 
+    # Fallback: scan candidate company lines in experience blocks
+    for block in blocks:
+        block_lines = [l.strip() for l in block.split('\n') if l.strip()]
+        for line_str in block_lines:
+            if 2 < len(line_str) < 60:
+                if not _is_section_header(line_str) and not line_str.startswith(('•', '-', '*', '▪', '►', '✓')):
+                    if not _DATE_RANGE_REGEX.search(line_str) and not _is_address_or_location(line_str):
+                        if not _JOB_TITLE_KEYWORDS_RE.search(line_str):
+                            c_cand, _ = _split_company_and_location(line_str)
+                            if c_cand and len(c_cand) > 2 and not _is_address_or_location(c_cand) and not _JOB_TITLE_KEYWORDS_RE.search(c_cand):
+                                return c_cand
+
     return ""
+
 
 
 def extract_relevance(text: str, years: int = 0, job_title: str = "", skills: str = "") -> str:

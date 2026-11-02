@@ -216,6 +216,30 @@ def _extract_table_text(tbl_elem, doc_obj: docx.Document) -> List[str]:
                 if '\n' in ctxt or len(ctxt) > 100:
                     is_layout = True
 
+            # Check if this row is a header row (all non-empty cells are table descriptor headers)
+            row_items = [t for t in cell_texts if t]
+            header_terms = {
+                "date", "dates", "year", "years", "period", "duration",
+                "role", "roles", "position", "positions", "title", "job title",
+                "company", "companies", "employer", "organization", "company name",
+                "responsibilities", "duties", "key responsibilities", "description",
+                "degree", "degrees", "school", "institution", "location", "details",
+                "role & company", "position & company", "position / company"
+            }
+            if row_items and all(re.sub(r'[^a-zA-Z\s&/]', '', t.lower()).strip() in header_terms for t in row_items):
+                continue
+
+            # If row has multiple cells, check if cell 0 is solely a date while cell 1 is role/company.
+            # In Word resume tables, placing Dates in column 0 and Position/Company in column 1 is very common.
+            # Align them so Position/Company comes first, then Date, then Duties.
+            if len(cell_texts) >= 2:
+                c0 = cell_texts[0]
+                c1 = cell_texts[1]
+                is_c0_date = bool(re.search(r'\b(?:\d{4}|present|current)\b', c0, re.I) and not re.search(r'\b(?:developer|engineer|manager|officer|assistant|clerk|lead|analyst|specialist|technician|representative|crew|nurse|supervisor|director|designer)\b', c0, re.I))
+                is_c1_role_or_comp = bool(len(c1) > 2 and not re.search(r'^\s*(?:\d{4}|present|current)\b', c1, re.I))
+                if is_c0_date and is_c1_role_or_comp:
+                    cell_texts = [c1, c0] + cell_texts[2:]
+
             if is_layout:
                 # Vertical extraction for multi-column resume layout
                 for ctxt in cell_texts:
@@ -229,6 +253,7 @@ def _extract_table_text(tbl_elem, doc_obj: docx.Document) -> List[str]:
     except Exception as e:
         logger.debug(f"Error extracting table text: {e}")
     return tbl_lines
+
 
 
 def extract_text_from_docx(file_path: str) -> str:

@@ -675,6 +675,129 @@ async def test_tc_res_013_missing_section_flagged_incomplete(temp_files):
     assert res_complete.get("completeness_score") == 100.0
 
 
+def test_tc_res_014_no_data_loss_across_formats(temp_files):
+    """
+    Test Case: TC-RES-014
+    Module: Resume Processing
+    Requirement: REQ051
+    Scenario: No data loss across formats
+    Steps: Upload same content as DOCX, PDF, TXT
+    Expected Result: Extracted fields identical across three (including candidate_company, degree, role, name, email).
+    """
+    resume_text = (
+        "EDUARDO SANTOS\n"
+        "Email: eduardo.santos@gmail.com\n"
+        "Phone: +63 918 765 4321\n"
+        "Address: Pasig City, Metro Manila\n\n"
+        "PROFESSIONAL SUMMARY\n"
+        "Experienced Senior Full Stack Developer specializing in Python, React, and cloud architectures.\n\n"
+        "WORK EXPERIENCE\n"
+        "Senior Full Stack Developer\n"
+        "Tech Mahindra\n"
+        "August 2021 - Present\n"
+        "• Designed and developed resilient microservices using FastAPI and PostgreSQL.\n"
+        "• Optimized distributed data pipelines and Redis caching layers.\n\n"
+        "EDUCATION\n"
+        "BS Computer Engineering\n"
+        "Mapúa University\n"
+        "2015 - 2019\n\n"
+        "SKILLS & COMPETENCIES\n"
+        "Python, FastAPI, TypeScript, React, PostgreSQL, Docker, Redis, Git, Linux\n"
+    )
+
+    # 1. Plain text format (.txt)
+    with tempfile.NamedTemporaryFile(suffix=".txt", mode="w", encoding="utf-8", delete=False) as f:
+        f.write(resume_text)
+        txt_path = temp_files(f.name)
+    res_txt = process_resume(txt_path, "txt")
+
+    # 2. PDF format (.pdf)
+    pdf_doc = fitz.open()
+    page = pdf_doc.new_page()
+    page.insert_text((50, 50), resume_text)
+    with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as f:
+        pdf_doc.save(f.name)
+        pdf_path = temp_files(f.name)
+    res_pdf = process_resume(pdf_path, "pdf")
+
+    # 3. DOCX format (.docx) with paragraphs
+    w_doc = docx.Document()
+    for line in resume_text.split("\n"):
+        w_doc.add_paragraph(line)
+    with tempfile.NamedTemporaryFile(suffix=".docx", delete=False) as f:
+        w_doc.save(f.name)
+        docx_path = temp_files(f.name)
+    res_docx = process_resume(docx_path, "docx")
+
+    # 4. Verify identical extraction across all three formats
+    fields_to_compare = [
+        "candidate_name",
+        "candidate_email",
+        "candidate_company",
+        "candidate_job_title",
+        "candidate_degree",
+        "is_incomplete",
+        "completeness_status"
+    ]
+
+    for field in fields_to_compare:
+        val_txt = res_txt.get(field)
+        val_pdf = res_pdf.get(field)
+        val_docx = res_docx.get(field)
+        assert val_txt == val_pdf == val_docx, (
+            f"Discrepancy across formats for field '{field}': "
+            f"TXT='{val_txt}', PDF='{val_pdf}', DOCX='{val_docx}'"
+        )
+
+    # Specifically verify company was captured identically
+    assert res_docx.get("candidate_company") == "Tech Mahindra"
+    assert res_pdf.get("candidate_company") == "Tech Mahindra"
+    assert res_txt.get("candidate_company") == "Tech Mahindra"
+
+    # Specifically verify job title was captured identically
+    assert res_docx.get("candidate_job_title") == "Full Stack Developer"
+    assert res_pdf.get("candidate_job_title") == "Full Stack Developer"
+    assert res_txt.get("candidate_job_title") == "Full Stack Developer"
+
+    # 5. Test DOCX table layout (Dates in Col 0, Position & Company in Col 1, Duties in Col 2)
+    w_table_doc = docx.Document()
+    w_table_doc.add_heading("EDUARDO SANTOS", level=0)
+    w_table_doc.add_paragraph("eduardo.santos@gmail.com | 09187654321 | Pasig City")
+    w_table_doc.add_heading("WORK EXPERIENCE", level=1)
+
+    tbl = w_table_doc.add_table(rows=2, cols=3)
+    tbl.cell(0, 0).text = "Dates"
+    tbl.cell(0, 1).text = "Role & Company"
+    tbl.cell(0, 2).text = "Responsibilities"
+    tbl.cell(1, 0).text = "2021 - Present"
+    tbl.cell(1, 1).text = "Senior Full Stack Developer\nTech Mahindra"
+    tbl.cell(1, 2).text = "Designed and developed microservices in Python"
+
+    w_table_doc.add_heading("EDUCATION", level=1)
+    w_table_doc.add_paragraph("BS Computer Engineering\nMapúa University\n2015 - 2019")
+    w_table_doc.add_heading("SKILLS", level=1)
+    w_table_doc.add_paragraph("Python, FastAPI, Redis, Docker, SQL")
+
+    with tempfile.NamedTemporaryFile(suffix=".docx", delete=False) as f:
+        w_table_doc.save(f.name)
+        docx_table_path = temp_files(f.name)
+    res_table_docx = process_resume(docx_table_path, "docx")
+    assert res_table_docx.get("candidate_company") == "Tech Mahindra", (
+        f"Table DOCX must capture company 'Tech Mahindra', got '{res_table_docx.get('candidate_company')}'"
+    )
+    assert res_table_docx.get("candidate_job_title") == "Full Stack Developer"
+
+    # 6. Test TXT file with UTF-16 encoding
+    utf16_content = resume_text.encode("utf-16")
+    with tempfile.NamedTemporaryFile(suffix=".txt", mode="wb", delete=False) as f:
+        f.write(utf16_content)
+        txt_utf16_path = temp_files(f.name)
+    res_utf16 = process_resume(txt_utf16_path, "txt")
+    assert res_utf16.get("candidate_name") == "Eduardo Santos"
+    assert res_utf16.get("candidate_company") == "Tech Mahindra"
+
+
+
 
 
 

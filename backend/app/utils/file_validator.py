@@ -71,8 +71,24 @@ def validate_file_content(file_bytes: bytes, filename: str) -> Tuple[bool, str]:
             logger.warning(f"Content check failure: File '{filename}' claimed .{ext} but lacks valid Word document header.")
             return False, f"File rejected by content check: The file has a .{ext} extension but does not contain valid Microsoft Word document content."
 
-    # 5. TXT Content Validation: Plain text should not have high null-byte density
-    elif ext == 'txt':
+    # 5. TXT Content Validation: Supports UTF-8, UTF-16 (with or without BOM), Latin-1
+    elif ext in ('txt', 'text'):
+        # Accept text with standard BOMs
+        if header.startswith((b'\xef\xbb\xbf', b'\xff\xfe', b'\xfe\xff')):
+            return True, ""
+        # Check if decodable as utf-8
+        try:
+            header.decode('utf-8')
+            return True, ""
+        except UnicodeDecodeError:
+            pass
+        # Check if decodable as utf-16
+        try:
+            header.decode('utf-16')
+            return True, ""
+        except UnicodeDecodeError:
+            pass
+        # Plain text should not have high null-byte density unless it is valid utf-16
         null_count = header.count(b'\x00')
         if null_count > len(header) * 0.05:
             logger.warning(f"Content check failure: File '{filename}' claimed .txt but contains binary data.")
