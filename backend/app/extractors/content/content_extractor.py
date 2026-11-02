@@ -236,8 +236,6 @@ def _cross_validate(data: dict, sections: dict) -> dict:
             phones_list = data.setdefault("phones", [])
             if fallback_phone not in phones_list:
                 phones_list.insert(0, fallback_phone)
-            data["all_phones"] = phones_list
-
     # If fullname is empty, re-scan PERSONAL/CONTACT section
     if not data.get("fullname") and sections.get("PERSONAL"):
         personal_section = sections["PERSONAL"].strip()
@@ -248,6 +246,42 @@ def _cross_validate(data: dict, sections: dict) -> dict:
             if fallback_name not in names_list:
                 names_list.insert(0, fallback_name)
             data["all_names"] = names_list
+
+    # If company is empty, check work_experiences / experience_details / EXPERIENCE section
+    if not data.get("company"):
+        for exp in data.get("work_experiences", []):
+            c = exp.get("company_name") or exp.get("company")
+            if c and len(c) > 2:
+                data["company"] = c
+                break
+        if not data.get("company"):
+            for exp in data.get("experience_details", []):
+                c = exp.get("company_name") or exp.get("company")
+                if c and len(c) > 2:
+                    data["company"] = c
+                    break
+        if not data.get("company") and sections.get("EXPERIENCE"):
+            c = extract_company(sections["EXPERIENCE"])
+            if c:
+                data["company"] = c
+
+    # If degree is empty, check education_entries / education_details / EDUCATION section
+    if not data.get("degree"):
+        for edu in data.get("education_entries", []):
+            d = edu.get("degree_or_course") or edu.get("degree") or edu.get("raw_degree_or_course")
+            if d and len(d) > 3:
+                data["degree"] = d
+                break
+        if not data.get("degree"):
+            for edu in data.get("education_details", []):
+                d = edu.get("degree")
+                if d and len(d) > 3:
+                    data["degree"] = d
+                    break
+        if not data.get("degree") and sections.get("EDUCATION"):
+            d = extract_degree_title(sections["EDUCATION"])
+            if d:
+                data["degree"] = d
 
     return data
 
@@ -270,6 +304,8 @@ def extract_content(text: str) -> dict:
 
     No external LLM is required; runs high-speed rule-based + spaCy NLP pipelines.
     """
+    from ..file.file_extractor import clean_raw_text
+    text = clean_raw_text(text)
     sections = split_into_sections(text)
 
     # Structured entries

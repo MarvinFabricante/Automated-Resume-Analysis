@@ -19,16 +19,8 @@ from spacy.tokens import Doc
 
 
 def _normalize_text(text: str) -> str:
-    # Basic normalization: collapse whitespace, remove excessive punctuation noise
-    t = text or ""
-    t = t.replace('\r', '\n')
-    t = re.sub(r"\u2013|\u2014", '-', t)  # normalize dashes
-    t = re.sub(r"\t+", ' ', t)
-    t = re.sub(r"[^\S\n]+", ' ', t)
-    # Collapse multiple newlines into single newline
-    t = re.sub(r"\n+", '\n', t)
-    t = t.strip()
-    return t
+    from app.extractors.file.file_extractor import clean_raw_text
+    return clean_raw_text(text)
 
 
 def extract_advanced_skills(doc: Doc) -> list[str]:

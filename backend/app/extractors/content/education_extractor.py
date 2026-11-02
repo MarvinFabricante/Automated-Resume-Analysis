@@ -99,7 +99,35 @@ _PHILIPPINE_DEGREE_MAP: Dict[str, str] = {
     "B.S. ARCHITECTURE": "Bachelor of Science in Architecture",
     "BACHELOR OF SCIENCE IN ARCHITECTURE": "Bachelor of Science in Architecture",
     "BSCHE": "Bachelor of Science in Chemical Engineering",
+    "B.S.C.H.E.": "Bachelor of Science in Chemical Engineering",
     "BS CHEMICAL ENGINEERING": "Bachelor of Science in Chemical Engineering",
+    "BACHELOR OF SCIENCE IN CHEMICAL ENGINEERING": "Bachelor of Science in Chemical Engineering",
+    "BSMSE": "Bachelor of Science in Materials Science and Engineering",
+    "BS MATERIALS ENGINEERING": "Bachelor of Science in Materials Engineering",
+    "BS MATERIALS SCIENCE AND ENGINEERING": "Bachelor of Science in Materials Science and Engineering",
+    "BACHELOR OF SCIENCE IN MATERIALS ENGINEERING": "Bachelor of Science in Materials Engineering",
+    "BACHELOR OF SCIENCE IN MATERIALS SCIENCE AND ENGINEERING": "Bachelor of Science in Materials Science and Engineering",
+    "BS CERAMIC ENGINEERING": "Bachelor of Science in Ceramic Engineering",
+    "BACHELOR OF SCIENCE IN CERAMIC ENGINEERING": "Bachelor of Science in Ceramic Engineering",
+    "BS METALLURGICAL ENGINEERING": "Bachelor of Science in Metallurgical Engineering",
+    "BACHELOR OF SCIENCE IN METALLURGICAL ENGINEERING": "Bachelor of Science in Metallurgical Engineering",
+    "BS MINING ENGINEERING": "Bachelor of Science in Mining Engineering",
+    "BACHELOR OF SCIENCE IN MINING ENGINEERING": "Bachelor of Science in Mining Engineering",
+    "BS GEODETIC ENGINEERING": "Bachelor of Science in Geodetic Engineering",
+    "BS SANITARY ENGINEERING": "Bachelor of Science in Sanitary Engineering",
+    "BS ENVIRONMENTAL ENGINEERING": "Bachelor of Science in Environmental Engineering",
+    "BS AGRICULTURAL ENGINEERING": "Bachelor of Science in Agricultural Engineering",
+    "BS AGRICULTURAL AND BIOSYSTEMS ENGINEERING": "Bachelor of Science in Agricultural and Biosystems Engineering",
+    "BS MARINE ENGINEERING": "Bachelor of Science in Marine Engineering",
+    "BS MARINE TRANSPORTATION": "Bachelor of Science in Marine Transportation",
+    "BS FOOD TECHNOLOGY": "Bachelor of Science in Food Technology",
+    "BS FORESTRY": "Bachelor of Science in Forestry",
+    "BS APPLIED MATHEMATICS": "Bachelor of Science in Applied Mathematics",
+    "BS MATHEMATICS": "Bachelor of Science in Mathematics",
+    "BS STATISTICS": "Bachelor of Science in Statistics",
+    "BS BIOLOGY": "Bachelor of Science in Biology",
+    "BS CHEMISTRY": "Bachelor of Science in Chemistry",
+    "BS PHYSICS": "Bachelor of Science in Physics",
 
     # ── Business, Accountancy, Hospitality & Administration
     "BSA": "Bachelor of Science in Accountancy",
@@ -276,7 +304,8 @@ _KNOWN_PH_INSTITUTIONS = [
     "Access Computer College", "Access Computer College Inc.", "Datamex Institute of Computer Technology", "Datamex",
     "Informatics College", "CIIT College of Arts and Technology", "CIIT", "iACADEMY", "ACLC College",
     "TESDA Provincial Training Center", "TESDA Regional Training Center", "TESDA Training Center", "TESDA",
-    "DepEd Rizal", "DepEd Manila", "DepEd Quezon City", "DepEd"
+    "DepEd Rizal", "DepEd Manila", "DepEd Quezon City", "DepEd",
+    "Universidad De Manila", "UDM", "University of Rizal System", "URS", "MMC-CAST"
 ]
 
 _SCHOOL_SUFFIXES = [
@@ -284,7 +313,8 @@ _SCHOOL_SUFFIXES = [
     "Vocational High School", "High School", "Senior High School", "Junior High School",
     "Elementary School", "Central School", "Integrated School", "State University",
     "University", "Colleges Foundation Inc.", "Colleges Foundation", "Colleges", "College",
-    "Institute of Technology", "Institute", "Polytechnic", "Academy", "Training Center"
+    "Institute of Technology", "Institute", "Polytechnic", "Academy", "Training Center",
+    "Universidad", "Colegio"
 ]
 
 _PHIL_LOCATIONS_SET = {
@@ -323,11 +353,13 @@ _SUB_TIER_HEADERS = [
 _STOP_SECTION_RE = re.compile(
     r'^(?:WORK\s+EXPERIENCE|EMPLOYMENT\s+HISTORY|PROFESSIONAL\s+EXPERIENCE|'
     r'RELEVANT\s+EXPERIENCE|WORK\s+HISTORY|ON-THE-JOB\s+TRAINING(?:\s*\(OJT\))?|'
-    r'SKILLS|TECHNICAL\s+SKILLS|CERTIFICATIONS(?:\s*(?:AND|&)\s*LICENSES)?|'
+    r'SKILLS|TECHNICAL\s+SKILLS|CORE\s+COMPETENCIES|EXPERTISE|'
+    r'CERTIFICATIONS(?:\s*(?:AND|&)\s*LICENSES)?|'
     r'LICENSES(?:\s*(?:AND|&)\s*ELIGIBILITY)?|ELIGIBILITY|LICENSES|'
-    r'PROJECTS|SEMINARS(?:\s*/?\s*TRAININGS)?|'
+    r'(?:WORK\s+|PERSONAL\s+|ACADEMIC\s+|KEY\s+|NOTABLE\s+|RELEVANT\s+)?PROJECTS|PORTFOLIO|CAPSTONE|'
+    r'SEMINARS(?:\s*/?\s*TRAININGS)?|TRAINING|'
     r'TRAININGS|PERSONAL\s+DATA|PERSONAL\s+INFORMATION|CHARACTER\s+REFERENCES|'
-    r'REFERENCES|SUMMARY|AFFILIATIONS|AWARDS)(?:\s*[:\-–—])?$',
+    r'REFERENCES|SUMMARY|AFFILIATIONS|AWARDS|CONTACT|LANGUAGES)(?:\s*[:\-–—])?$',
     re.IGNORECASE
 )
 
@@ -438,12 +470,25 @@ def _is_invalid_institution(name: str) -> bool:
         return True
     if re.search(r'\bcollege\s+(?:level|undergrad(?:uate)?)\b', lower):
         return True
-    if any(lower == w or lower.startswith(w + " ") for w in ["grade", "level", "semester", "strand", "academic"]):
+    if any(lower == w or lower.startswith(w + " ") for w in ["grade", "level", "semester", "strand", "academic", "role:", "technologies:", "tech stack:"]):
         return True
     if "hotel and restaurant management" in lower or "information technology" in lower:
         return True
-    if re.search(r'\b(?:course|curriculum|program|bachelor|master|doctor|diploma|certificate|associate)\b', lower):
-        if not any(w in lower for w in ["training center", "institute", "college", "university", "school", "academy"]):
+    if re.search(r'\b(?:course|curriculum|program|bachelor|master|doctor|diploma|certificate|associate|bs|ba|ms|ma|ab|phd)\b', lower):
+        if not any(w in lower for w in ["training center", "institute", "college", "university", "school", "academy", "polytechnic"]):
+            return True
+    if re.search(r'\b(?:bs|ba|ms|ma|ab)\s+[a-z]', lower):
+        if not any(w in lower for w in ["training center", "institute", "college", "university", "school", "academy", "polytechnic"]):
+            return True
+    if re.search(r'\b(?:engineering|accountancy|criminology|nursing|psychology|education|architecture)\b', lower):
+        if not any(w in lower for w in ["training center", "institute", "college", "university", "school", "academy", "polytechnic", "campus", "department"]):
+            return True
+    # Dates or pure years
+    if re.match(r'^(?:19|20)\d{2}', lower) or re.search(r'\b(?:january|february|march|april|may|june|july|august|september|october|november|december)\b', lower):
+        return True
+    # Address lines without school keywords
+    if re.search(r'\b(?:avenue|ave\.?|street|st\.?|barangay|brgy\.?|subdivision|subd\.?|boulevard|blvd\.?|road|rd\.?|highway)\b', lower):
+        if not any(w in lower for w in ["training center", "institute", "college", "university", "school", "academy", "polytechnic"]):
             return True
     return False
 
@@ -474,19 +519,19 @@ def _extract_school_and_location(text: str) -> Tuple[str, Optional[str]]:
     m_tesda = re.search(r'\b(TESDA\s+[A-Za-z0-9\s]+?(?:Training\s+Center|Center|Institute))\b', clean, re.I)
     if m_tesda:
         inst = m_tesda.group(1).strip()
-        loc = clean[m_tesda.end():].strip(' ,-–—')
-        loc = re.sub(r'(?:S\.?Y\.?|A\.?Y\.?)?\s*\d{4}.*$', '', loc).strip(' ,-–—()') or None
+        after_line = clean[m_tesda.end():].split('\n')[0].strip(' ,-–—')
+        loc = re.sub(r'(?:S\.?Y\.?|A\.?Y\.?)?\s*\d{4}.*$', '', after_line).strip(' ,-–—()') or None
         return inst, loc
 
     # 1. Known schools with safe boundaries
     for ks in sorted(_KNOWN_PH_INSTITUTIONS, key=len, reverse=True):
         m = re.search(rf'(?<!\w){re.escape(ks)}(?!\w)', clean, re.I)
         if m:
-            after = clean[m.end():].strip(' ,-–—')
+            after_line = clean[m.end():].split('\n')[0].strip(' ,-–—')
             loc = None
-            if after:
-                after_clean = re.sub(r'(?:S\.?Y\.?|A\.?Y\.?)?\s*\d{4}.*$', '', after).strip(' ,-–—()')
-                if after_clean:
+            if after_line:
+                after_clean = re.sub(r'(?:S\.?Y\.?|A\.?Y\.?)?\s*\d{4}.*$', '', after_line).strip(' ,-–—()')
+                if after_clean and len(after_clean) > 1 and not _is_invalid_institution(after_clean):
                     loc = after_clean
             return ks, loc
 
@@ -496,12 +541,14 @@ def _extract_school_and_location(text: str) -> Tuple[str, Optional[str]]:
         m = re.search(pat, clean, re.I)
         if m:
             found = m.group(1).strip()
+            if '\n' in found:
+                found = found.split('\n')[-1].strip()
             if not _is_invalid_institution(found):
-                after = clean[m.end():].strip(' ,-–—')
+                after_line = clean[m.end():].split('\n')[0].strip(' ,-–—')
                 loc = None
-                if after:
-                    after_clean = re.sub(r'(?:S\.?Y\.?|A\.?Y\.?)?\s*\d{4}.*$', '', after).strip(' ,-–—()')
-                    if after_clean:
+                if after_line:
+                    after_clean = re.sub(r'(?:S\.?Y\.?|A\.?Y\.?)?\s*\d{4}.*$', '', after_line).strip(' ,-–—()')
+                    if after_clean and len(after_clean) > 1 and not _is_invalid_institution(after_clean):
                         loc = after_clean
                 return found, loc
 
@@ -529,19 +576,7 @@ def _normalize_degree_or_course(text: str, level: str) -> Tuple[Optional[str], O
         spec = raw.split(" in ", 1)[1].strip() if " in " in raw else None
         return raw.title(), raw, spec
 
-    # 0b. Check High School Graduate / Completer
-    hs_match = re.search(r'\b(High\s+School\s+Graduate|Secondary\s+Graduate|High\s+School\s+Diploma|Junior\s+High\s+School\s+Completer|Senior\s+High\s+School\s+Graduate)\b', clean, re.I)
-    if hs_match:
-        raw = hs_match.group(1).strip()
-        return raw.title(), raw, None
-
-    # 1. Check TESDA National Certificate courses
-    nc_match = re.search(r'\b([A-Za-z0-9\s/&,()-]+?\s+NC\s+I{1,3}(?:\s*&\s*[A-Za-z0-9\s/&,()-]+?\s+NC\s+I{1,3})?)\b', clean, re.I)
-    if nc_match:
-        raw = nc_match.group(1).strip()
-        return raw, raw, None
-
-    # 2. Check SHS Strands
+    # 1. Check SHS Strands (STEM, ABM, HUMSS, TVL, GAS)
     for strand, s_info in _SHS_STRANDS_INFO.items():
         if re.search(rf'\b{strand}\b', clean, re.I):
             raw = clean
@@ -552,6 +587,19 @@ def _normalize_degree_or_course(text: str, level: str) -> Tuple[Optional[str], O
             if ict_match:
                 spec = ict_match.group(1).strip()
             return canonical, raw, spec
+
+    # 1b. Check High School Graduate / Completer
+    hs_match = re.search(r'\b(Senior\s+High\s*school(?:\s+Graduate)?|Junior\s+High\s*school(?:\s+Completer)?|High\s+School\s+Graduate|Secondary\s+Graduate|High\s+School\s+Diploma|ALS\s+Completer)\b', clean, re.I)
+    if hs_match:
+        raw = hs_match.group(1).strip()
+        canon = "Senior High School" if "senior" in raw.lower() else ("Junior High School" if "junior" in raw.lower() else raw.title())
+        return canon, raw, None
+
+    # 1c. Check TESDA National Certificate courses
+    nc_match = re.search(r'\b([A-Za-z0-9\s/&,()-]+?\s+NC\s+I{1,3}(?:\s*&\s*[A-Za-z0-9\s/&,()-]+?\s+NC\s+I{1,3})?)\b', clean, re.I)
+    if nc_match:
+        raw = nc_match.group(1).strip()
+        return raw, raw, None
 
     # 3. Check Alternative Learning System
     if re.search(r'\bAlternative\s+Learning\s+System\s*(?:\(ALS\))?', clean, re.I):
@@ -579,6 +627,30 @@ def _normalize_degree_or_course(text: str, level: str) -> Tuple[Optional[str], O
     if deg_gen:
         raw = deg_gen.group(1).strip()
         return raw.title(), raw, None
+
+    # Generic BS / MS / BA / MA / Diploma patterns
+    bs_m = re.search(r'\b(?:B\.?S\.?|Bachelor\s+of\s+Science)\s*(?:in|major\s+in)?\s+([A-Za-z\s/&]+?)(?:\s*\(|\s*[-–—|,]|\s*$)', clean, re.I)
+    if bs_m:
+        field = bs_m.group(1).strip()
+        field = re.sub(r'\b(?:student|graduate|candidate|level|year)\b.*$', '', field, flags=re.I).strip()
+        if len(field) >= 3 and not any(w in field.lower() for w in ["university", "college", "school"]):
+            canonical = f"Bachelor of Science in {field.title()}"
+            return canonical, clean, None
+
+    ba_m = re.search(r'\b(?:B\.?A\.?|A\.?B\.?|Bachelor\s+of\s+Arts)\s*(?:in|major\s+in)?\s+([A-Za-z\s/&]+?)(?:\s*\(|\s*[-–—|,]|\s*$)', clean, re.I)
+    if ba_m:
+        field = ba_m.group(1).strip()
+        field = re.sub(r'\b(?:student|graduate|candidate|level|year)\b.*$', '', field, flags=re.I).strip()
+        if len(field) >= 3 and not any(w in field.lower() for w in ["university", "college", "school"]):
+            canonical = f"Bachelor of Arts in {field.title()}"
+            return canonical, clean, None
+
+    dip_m = re.search(r'\b(?:Diploma|Certificate|Associate)\s*(?:in|of)?\s+([A-Za-z\s/&]+?)(?:\s*\(|\s*[-–—|,]|\s*$)', clean, re.I)
+    if dip_m:
+        field = dip_m.group(1).strip()
+        if len(field) >= 3 and not any(w in field.lower() for w in ["university", "college", "school"]):
+            canonical = f"Diploma in {field.title()}"
+            return canonical, clean, None
 
     # For Junior High / Primary, courses are None
     if level in ["Secondary / High School", "Primary / Elementary"]:
@@ -676,6 +748,21 @@ def extract_structured_education(text: str) -> Dict[str, Any]:
     if not edu_lines:
         edu_lines = lines
 
+    # Pre-process wrapped school continuation lines (e.g. 'Magat Salamat Elementary' + 'School')
+    merged_edu_lines = []
+    k = 0
+    while k < len(edu_lines):
+        curr_l = edu_lines[k]
+        if k + 1 < len(edu_lines):
+            nxt_l = edu_lines[k + 1]
+            if nxt_l.lower().strip() in ['school', 'high school', 'college', 'university', 'institute', 'academy', 'campus']:
+                merged_edu_lines.append(f"{curr_l} {nxt_l}")
+                k += 2
+                continue
+        merged_edu_lines.append(curr_l)
+        k += 1
+    edu_lines = merged_edu_lines
+
     # 2. Check if inline pipe-delimited format (Template 3)
     is_pipe_format = any(l.count('|') >= 2 for l in edu_lines)
     entries = []
@@ -743,6 +830,29 @@ def extract_structured_education(text: str) -> Dict[str, Any]:
         current_tier = None
         current_block = []
 
+        def _is_school_text(text: str) -> bool:
+            if not text or len(text) < 3 or _is_invalid_institution(text):
+                return False
+            lower = text.lower().strip()
+            if lower in ['elementary', 'primary', 'junior high', 'senior high', 'senior highschool', 'junior highschool', 'high school graduate']:
+                return False
+            return any(s.lower() in lower for s in _SCHOOL_SUFFIXES + _KNOWN_PH_INSTITUTIONS)
+
+        def _is_degree_text(text: str) -> bool:
+            if not text or len(text) < 2:
+                return False
+            lower = text.lower().strip()
+            if _is_school_text(text) and lower not in ['elementary', 'primary', 'junior high', 'senior high', 'senior highschool', 'junior highschool', 'senior high school', 'junior high school']:
+                return False
+            deg_pats = [
+                r'\b(?:Bachelor|Master|Doctor|Associate|Diploma|Certificate|Vocational|Technical\s+Course)\b',
+                r'\b(?:BSIT|BSCS|BSCE|BSME|BSEE|BSBA|BSHRM|BSHM|BSN|BSC|BSA|BSED|BEED|BSCpE|MSIT|MSCS|MBA|MPA|MIT|PhD)\b',
+                r'\b(?:BS|B\.S\.|BA|B\.A\.|AB|MS|M\.S\.|MA|M\.A\.)\s+[A-Za-z]',
+                r'\b(?:Senior\s*High\s*school|Junior\s*High\s*school|Senior\s*High|Junior\s*High|Elementary|Primary|ALS)\b',
+                r'\b(?:STEM|ABM|HUMSS|GAS|TVL)\b',
+            ]
+            return any(re.search(p, text, re.I) for p in deg_pats)
+
         def process_block(tier: Optional[str], block_lines: List[str]):
             if not block_lines:
                 return
@@ -757,9 +867,9 @@ def extract_structured_education(text: str) -> Dict[str, Any]:
                     level = "Tertiary / College"
                 elif re.search(r'\b(?:TESDA|NC\s+I{1,3}|Vocational)\b', combined_text, re.I):
                     level = "Vocational / Technical (TESDA)"
-                elif re.search(r'\b(?:Senior\s+High|STEM|ABM|HUMSS|GAS|TVL|SHS)\b', combined_text, re.I):
+                elif re.search(r'\b(?:Senior\s+High\s*school|Senior\s+High|STEM|ABM|HUMSS|GAS|TVL|SHS)\b', combined_text, re.I):
                     level = "Senior High School (SHS)"
-                elif re.search(r'\b(?:Junior\s+High|High\s+School|Secondary|ALS)\b', combined_text, re.I):
+                elif re.search(r'\b(?:Junior\s+High\s*school|Junior\s+High|High\s*School|Secondary|ALS)\b', combined_text, re.I):
                     level = "Secondary / High School"
                 elif re.search(r'\b(?:Elementary|Primary)\b', combined_text, re.I):
                     level = "Primary / Elementary"
@@ -781,13 +891,26 @@ def extract_structured_education(text: str) -> Dict[str, Any]:
                 d, rd, sp = _normalize_degree_or_course(bline_clean, level)
                 if d and not deg:
                     deg, raw_deg, spec = d, rd, sp
+                elif rd and not raw_deg:
+                    raw_deg = rd
                 # Check institution
-                i, l = _extract_school_and_location(bline_clean)
-                if i and not _is_invalid_institution(i) and any(s.lower() in i.lower() for s in _SCHOOL_SUFFIXES + _KNOWN_PH_INSTITUTIONS) and not inst:
-                    inst, loc = i, l
+                if _is_school_text(bline_clean) and not _is_degree_text(bline_clean):
+                    i, l = _extract_school_and_location(bline_clean)
+                    if i and not _is_invalid_institution(i) and not inst:
+                        inst, loc = i, l
 
             if not inst:
-                inst, loc = _extract_school_and_location(combined_text)
+                for bline in block_lines:
+                    bline_clean = bline.strip(' -•*')
+                    if _is_school_text(bline_clean):
+                        inst, loc = _extract_school_and_location(bline_clean)
+                        break
+            if not inst and block_lines:
+                for bline in block_lines:
+                    bline_clean = bline.strip(' -•*')
+                    if not _is_degree_text(bline_clean) and not _extract_years(bline_clean)[0] and not _is_invalid_institution(bline_clean):
+                        inst = bline_clean
+                        break
 
             if s_yr and e_yr:
                 yr_str = f"{s_yr} - {e_yr}"
@@ -824,34 +947,46 @@ def extract_structured_education(text: str) -> Dict[str, Any]:
             if not clean_l:
                 return False
 
+            if clean_l.lower() in ['school', 'high school', 'college', 'colleges', 'university', 'institute', 'academy', 'campus']:
+                return False
+
+            if any(pat.search(clean_l) for pat, _ in _HONORS_PATTERNS):
+                return False
+
             curr_t = " \n ".join(curr_lines)
             s_y, e_y = _extract_years(curr_t)
             has_y = bool(s_y or e_y)
 
-            deg_pats = [
-                r'\b(?:Bachelor|Master|Doctor|Associate|Diploma|Certificate|Vocational|Technical\s+Course)\b',
-                r'\b(?:BSIT|BSCS|BSCE|BSME|BSEE|BSBA|BSHRM|BSHM|BSN|BSC|BSA|BSED|BEED|BSCpE|MSIT|MSCS|MBA|MPA|MIT|PhD)\b',
-                r'\b(?:High\s+School\s+Graduate|Secondary\s+Graduate|High\s+School\s+Diploma|Junior\s+High\s+School\s+Completer|Senior\s+High\s+School\s+Graduate|ALS\s+Completer)\b',
-                r'\b(?:STEM|ABM|HUMSS|GAS|TVL)\b',
-            ]
-            is_deg_l = any(re.search(p, clean_l, re.I) for p in deg_pats)
-            if is_deg_l:
-                has_d = any(any(re.search(p, prev, re.I) for p in deg_pats) for prev in curr_lines)
-                if has_y or has_d:
-                    return True
+            l_sy, l_ey = _extract_years(clean_l)
+            has_line_y = bool(l_sy or l_ey)
 
-            is_school_l = any(s.lower() in clean_l.lower() for s in _SCHOOL_SUFFIXES + _KNOWN_PH_INSTITUTIONS)
-            if is_school_l and has_y:
+            if has_y:
+                return True
+
+            if has_line_y:
+                return False
+
+            has_d = any(_is_degree_text(p) for p in curr_lines)
+            has_s = any(_is_school_text(p) for p in curr_lines)
+
+            if _is_degree_text(clean_l) and has_d:
+                return True
+            if _is_school_text(clean_l) and has_s:
                 return True
 
             return False
 
         for line in edu_lines:
             matched_tier = None
-            for tier_name, tier_re in _SUB_TIER_HEADERS:
-                if tier_re.match(line):
-                    matched_tier = tier_name
-                    break
+            curr_t = " \n ".join(current_block) if current_block else ""
+            s_y, e_y = _extract_years(curr_t)
+            can_be_tier = (not current_block) or bool(s_y or e_y) or line.strip().endswith(':') or line.strip().isupper()
+
+            if can_be_tier:
+                for tier_name, tier_re in _SUB_TIER_HEADERS:
+                    if tier_re.match(line):
+                        matched_tier = tier_name
+                        break
 
             if matched_tier:
                 if current_block:
@@ -859,7 +994,7 @@ def extract_structured_education(text: str) -> Dict[str, Any]:
                     current_block = []
                 current_tier = matched_tier
             else:
-                if not current_tier and _is_edu_entry_boundary(line, current_block):
+                if _is_edu_entry_boundary(line, current_block):
                     process_block(current_tier, current_block)
                     current_block = [line]
                 else:
@@ -965,6 +1100,24 @@ def extract_degree_title(text: str, entries: Optional[list[dict]] = None) -> str
     for entry in structured.get("education_entries", []):
         if entry.get("degree_or_course"):
             return entry["degree_or_course"]
+        if entry.get("raw_degree_or_course"):
+            return entry["raw_degree_or_course"]
+
+    # Fallback to scanning text / EDUCATION section directly
+    sec = split_into_sections(text).get("EDUCATION", text)
+    deg_norm, raw, _ = _normalize_degree_or_course(sec, "Tertiary / College")
+    if deg_norm:
+        return deg_norm
+
+    for line in sec.split('\n'):
+        l = line.strip()
+        if not l or _is_invalid_institution(l):
+            continue
+        d, rd, _ = _normalize_degree_or_course(l, "Tertiary / College")
+        if d:
+            return d
+        if rd and len(rd) > 3 and not _is_invalid_institution(rd):
+            return rd
 
     return ""
 
