@@ -135,7 +135,7 @@ async def register_candidate(
 
 
 @router.post("/parse-resume", tags=["Candidates"])
-@limiter.limit("5/minute")
+@limiter.limit("60/minute")
 async def parse_resume(request: Request, file: UploadFile = File(...), db: AsyncSession = Depends(get_db)):
     """
     Test endpoint to parse an uploaded resume and return extracted data.

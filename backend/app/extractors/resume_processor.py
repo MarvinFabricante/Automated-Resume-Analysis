@@ -62,6 +62,22 @@ def process_resume(file_path: str, file_extension: str) -> dict:
     summary = extracted_data.get("summary", "")
     extracted_data["ai_summary"] = summary
 
+    company = extracted_data.get("company", "")
+    extracted_data["candidate_company"] = company
+
+    job_title = extracted_data.get("job_title", "")
+    extracted_data["candidate_job_title"] = job_title
+
+    # Propagate completeness evaluation to top-level (TC-RES-013 / REQ006)
+    is_incomplete = extracted_data.get("is_incomplete", False)
+    extracted_data["is_incomplete"] = is_incomplete
+    extracted_data["is_complete"] = extracted_data.get("is_complete", not is_incomplete)
+    extracted_data["completeness_status"] = extracted_data.get("completeness_status", "Incomplete" if is_incomplete else "Complete")
+    extracted_data["missing_sections"] = extracted_data.get("missing_sections", [])
+    extracted_data["missing_fields"] = extracted_data.get("missing_fields", [])
+    extracted_data["completeness_flags"] = extracted_data.get("completeness_flags", {})
+    extracted_data["completeness_score"] = extracted_data.get("completeness_score", 100.0 if not is_incomplete else 0.0)
+
     # Ensure list representations for array consumers
     if "skills_list" in extracted_data and not isinstance(extracted_data.get("skills"), list):
         # Keep string for string consumers, but ensure array is accessible
@@ -97,6 +113,8 @@ def process_resume(file_path: str, file_extension: str) -> dict:
 
     logger.info(
         f"Resume extraction complete for [{fullname or 'Unknown'}]: "
+        f"Status={extracted_data.get('completeness_status')}, Incomplete={is_incomplete}, "
+        f"MissingSections={extracted_data.get('missing_sections')}, "
         f"Email='{email}', Phone='{phone}', Location='{extracted_data.get('location', '')}', "
         f"Skills={skills_count}, WorkExperiences={exp_count} ({extracted_data.get('total_experience_months', 0)} mos), "
         f"EducationEntries={edu_count} ({extracted_data.get('highest_educational_attainment', 'Unknown')}), "

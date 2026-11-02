@@ -466,6 +466,8 @@ def _is_invalid_institution(name: str) -> bool:
     if not name or len(name) < 3:
         return True
     lower = name.lower()
+    if '@' in lower or re.search(r'\b(?:\+?63|09|\d{3,}[-\s]?\d{3,})\b', lower):
+        return True
     if re.search(r'\b(?:\d+(?:st|nd|rd|th)?|first|second|third|fourth)?\s*year\s+college\b', lower):
         return True
     if re.search(r'\bcollege\s+(?:level|undergrad(?:uate)?)\b', lower):
@@ -735,10 +737,11 @@ def extract_structured_education(text: str) -> Dict[str, Any]:
     in_edu = False
     edu_lines = []
     for line in lines:
-        if _EDUCATION_HEADERS_RE.match(line):
+        cleaned_line = re.sub(r'^[\s\-–—=_*#•►:]+|[\s\-–—=_*#•►:]+$', '', line.strip())
+        if _EDUCATION_HEADERS_RE.match(cleaned_line) or _EDUCATION_HEADERS_RE.match(line):
             in_edu = True
             continue
-        elif _STOP_SECTION_RE.match(line):
+        elif _STOP_SECTION_RE.match(cleaned_line) or _STOP_SECTION_RE.match(line):
             if in_edu:
                 break
             continue
@@ -746,6 +749,15 @@ def extract_structured_education(text: str) -> Dict[str, Any]:
             edu_lines.append(line)
 
     if not edu_lines:
+        has_other_headers = any(
+            _STOP_SECTION_RE.match(l) or _STOP_SECTION_RE.match(re.sub(r'^[\s\-–—=_*#•►:]+|[\s\-–—=_*#•►:]+$', '', l.strip()))
+            for l in lines
+        )
+        if has_other_headers:
+            return {
+                "highest_educational_attainment": "",
+                "education_entries": []
+            }
         edu_lines = lines
 
     # Pre-process wrapped school continuation lines (e.g. 'Magat Salamat Elementary' + 'School')
@@ -921,6 +933,13 @@ def extract_structured_education(text: str) -> Dict[str, Any]:
             else:
                 yr_str = ""
             honors_str = ", ".join(honors) if isinstance(honors, list) else (honors or "")
+
+            if not deg and (not inst or inst == "Not Specified"):
+                return
+            if deg and ('@' in deg or re.search(r'\b(?:\+?63|09|\d{3,}[-\s]?\d{3,})\b', deg)):
+                return
+            if inst and ('@' in inst or re.search(r'\b(?:\+?63|09|\d{3,}[-\s]?\d{3,})\b', inst)):
+                return
 
             entries.append({
                 "education_level": level,

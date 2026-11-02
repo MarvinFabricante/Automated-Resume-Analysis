@@ -1,4 +1,5 @@
 import re
+from typing import Optional, List, Dict, Any
 from .name_extractor import extract_fullname, extract_all_name_candidates, _normalize_name, is_valid_name
 from .email_extractor import extract_email, extract_all_emails, _clean_email, is_valid_email
 from .phone_extractor import extract_phone, extract_all_phones, _clean_phone, is_valid_phone
@@ -286,6 +287,165 @@ def _cross_validate(data: dict, sections: dict) -> dict:
     return data
 
 
+def assess_resume_completeness(data: dict, sections: Optional[dict] = None) -> dict:
+    """
+    Evaluates whether the resume contains all essential core sections:
+      1. Personal & Contact Information (Candidate Name + Email or Phone)
+      2. Work Experience (Prior employment, roles, or relevant history)
+      3. Education (Academic degrees, vocational courses, or schooling)
+      4. Skills (Technical, soft, or functional competencies)
+
+    If any core section is missing (TC-RES-013 / REQ006):
+      - Marks is_incomplete = True, is_complete = False, completeness_status = "Incomplete"
+      - Enforces that missing section fields remain cleanly empty (no bleeding or hallucinated placeholders)
+      - Records missing section names in `missing_sections` (e.g. ["Work Experience"])
+      - Records granular missing fields in `missing_fields`
+      - Calculates a completeness_score (0.0 - 100.0)
+    """
+    missing_sections: list[str] = []
+    missing_fields: list[str] = []
+    notes: list[str] = []
+
+    # ── 1. Personal & Contact Information Assessment ─────────────────────────
+    fullname = (data.get("fullname") or data.get("name") or data.get("candidate_name") or "").strip()
+    email = (data.get("email") or data.get("candidate_email") or "").strip()
+    phone = (data.get("phone") or data.get("candidate_phone") or "").strip()
+
+    has_name = bool(fullname and len(fullname) >= 3)
+    has_contact = bool(email or phone)
+    has_personal = has_name and has_contact
+
+    if not has_personal:
+        missing_sections.append("Contact Information" if has_name else "Personal Information")
+        if not has_name:
+            missing_fields.append("fullname")
+            notes.append("Missing candidate name")
+        if not email:
+            missing_fields.append("email")
+            notes.append("Missing contact email")
+        if not phone:
+            missing_fields.append("phone")
+            notes.append("Missing contact phone number")
+
+    # ── 2. Work Experience Assessment ─────────────────────────────────────────
+    work_exps = data.get("work_experiences") or []
+    exp_details = data.get("experience_details") or []
+    job_title = (data.get("job_title") or "").strip()
+    company = (data.get("company") or "").strip()
+    exp_section = sections.get("EXPERIENCE", "").strip() if sections else ""
+
+    # Check for empty / placeholder sections like "N/A", "None", "Fresh Graduate with no experience"
+    placeholder_exp = bool(re.search(r'^(?:none|n/?a|not\s+applicable|no\s+experience|fresh\s+graduate\s+with\s+no\s+work\s+experience)$', exp_section, re.I))
+    has_other_headers_for_exp = bool(sections and any(k in sections for k in ("EDUCATION", "SKILLS", "CERTIFICATIONS")))
+    if has_other_headers_for_exp and not exp_section:
+        has_work_experience = False
+    else:
+        has_work_experience = (
+            bool(work_exps or exp_details or (job_title and company))
+            and not placeholder_exp
+            and (bool(work_exps) or bool(exp_details) or (bool(exp_section) and len(exp_section) > 15))
+        )
+
+    if not has_work_experience:
+        missing_sections.append("Work Experience")
+        missing_fields.extend(["work_experiences", "job_title", "company", "experience"])
+        notes.append("Missing Work Experience section: no prior employment or work history entries found.")
+        # Ensure missing section fields are cleanly empty
+        data["work_experiences"] = []
+        data["experience_details"] = []
+        data["job_title"] = ""
+        data["company"] = ""
+        data["experience"] = ""
+        data["years_experience"] = 0
+        data["total_experience_months"] = 0
+        data["relevance"] = ""
+
+    # ── 3. Education Assessment ───────────────────────────────────────────────
+    edu_entries = data.get("education_entries") or []
+    edu_details = data.get("education_details") or []
+    degree = (data.get("degree") or data.get("candidate_degree") or "").strip()
+    institution = (data.get("institution") or data.get("college") or "").strip()
+    education_str = (data.get("education") or "").strip()
+    edu_section = sections.get("EDUCATION", "").strip() if sections else ""
+
+    placeholder_edu = bool(re.search(r'^(?:none|n/?a|not\s+applicable)$', edu_section, re.I))
+    has_other_headers_for_edu = bool(sections and any(k in sections for k in ("EXPERIENCE", "SKILLS", "CERTIFICATIONS")))
+    if has_other_headers_for_edu and not edu_section:
+        has_education = False
+    else:
+        has_education = (
+            bool(edu_entries or edu_details or degree or institution or education_str)
+            and not placeholder_edu
+            and (bool(edu_entries) or bool(edu_details) or (bool(edu_section) and len(edu_section) > 10) or bool(degree and institution))
+        )
+
+    if not has_education:
+        missing_sections.append("Education")
+        missing_fields.extend(["education_entries", "degree", "institution", "education"])
+        notes.append("Missing Education section: no academic qualifications or schooling records found.")
+        # Ensure missing section fields are cleanly empty
+        data["education_entries"] = []
+        data["education_details"] = []
+        data["degree"] = ""
+        data["highest_degree"] = ""
+        data["institution"] = ""
+        data["college"] = ""
+        data["education"] = ""
+        data["highest_educational_attainment"] = ""
+
+    # ── 4. Skills Assessment ──────────────────────────────────────────────────
+    skills_list = data.get("skills_list") or []
+    skills_str = (data.get("skills") or "").strip()
+    skills_section = sections.get("SKILLS", "").strip() if sections else ""
+
+    placeholder_skills = bool(re.search(r'^(?:none|n/?a|not\s+applicable)$', skills_section, re.I))
+    has_other_headers_for_skills = bool(sections and any(k in sections for k in ("EXPERIENCE", "EDUCATION", "CERTIFICATIONS")))
+    if has_other_headers_for_skills and not skills_section:
+        has_skills = False
+    else:
+        has_skills = (
+            bool(skills_list or (skills_str and len(skills_str) > 2))
+            and not placeholder_skills
+        )
+
+    if not has_skills:
+        missing_sections.append("Skills")
+        missing_fields.extend(["skills_list", "skills"])
+        notes.append("Missing Skills section: no skills or competencies identified.")
+        # Ensure missing section fields are cleanly empty
+        data["skills_list"] = []
+        data["skills"] = ""
+        data["skills_details"] = {}
+        data["skills_array"] = []
+
+    # ── Completeness calculation ──────────────────────────────────────────────
+    core_flags = {
+        "personal_info": has_personal,
+        "work_experience": has_work_experience,
+        "education": has_education,
+        "skills": has_skills,
+    }
+
+    total_core = len(core_flags)
+    present_core = sum(1 for v in core_flags.values() if v)
+    completeness_score = round((present_core / float(total_core)) * 100.0, 1)
+
+    is_incomplete = len(missing_sections) > 0
+    is_complete = not is_incomplete
+    completeness_status = "Incomplete" if is_incomplete else "Complete"
+
+    data["is_incomplete"] = is_incomplete
+    data["is_complete"] = is_complete
+    data["completeness_status"] = completeness_status
+    data["missing_sections"] = missing_sections
+    data["missing_fields"] = list(dict.fromkeys(missing_fields))
+    data["completeness_flags"] = core_flags
+    data["completeness_score"] = completeness_score
+    data["completeness_notes"] = notes
+
+    return data
+
+
 def extract_content(text: str) -> dict:
     """
     Main content extraction pipeline.
@@ -340,6 +500,18 @@ def extract_content(text: str) -> dict:
     skills_str = extract_skills(text)
     skills_list = extract_skills_list(text)
     skills_details = extract_structured_skills(text)
+    if not skills_list and sections.get("SKILLS"):
+        raw_items = []
+        for s_line in sections["SKILLS"].split('\n'):
+            for item in re.split(r'[,|•*▪►✓\t]+', s_line):
+                item_clean = item.strip(' -•*▪►✓.')
+                if item_clean and len(item_clean) >= 2 and item_clean.lower() not in ["skills", "technical skills", "competencies"]:
+                    if item_clean not in raw_items:
+                        raw_items.append(item_clean)
+        if raw_items:
+            skills_list = raw_items
+            skills_str = " | ".join(raw_items)
+
     relevance = extract_relevance(text, years_experience, job_title, skills_str)
 
     degree_title = extract_degree_title(text, edu_entries)
@@ -410,6 +582,9 @@ def extract_content(text: str) -> dict:
 
     # Post-process for cleanliness and validation
     data = _post_process(data)
+
+    # Assess completeness against core resume sections (TC-RES-013 / REQ006)
+    data = assess_resume_completeness(data, sections)
 
     return data
 
@@ -549,6 +724,16 @@ def format_resume_display(data: dict) -> str:
     # 6. Executive Summary
     lines.append("\n[6. SYNTHESIZED EXECUTIVE SUMMARY]")
     lines.append(f"  {data.get('summary', 'No summary generated.')}")
+
+    # 7. Completeness Assessment
+    lines.append("\n[7. COMPLETENESS ASSESSMENT]")
+    lines.append(f"  • Completeness Status: {data.get('completeness_status', 'Complete')}")
+    lines.append(f"  • Completeness Score:  {data.get('completeness_score', 100.0)}%")
+    lines.append(f"  • Flagged Incomplete:  {'Yes' if data.get('is_incomplete') else 'No'}")
+    if data.get("missing_sections"):
+        lines.append(f"  • Missing Sections:    {', '.join(data['missing_sections'])}")
+    if data.get("missing_fields"):
+        lines.append(f"  • Missing Fields:      {', '.join(data['missing_fields'])}")
     lines.append(bar)
 
     return "\n".join(lines)

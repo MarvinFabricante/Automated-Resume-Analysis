@@ -518,6 +518,163 @@ def test_tc_res_011_normalization_emojis_symbols_accented_letters(temp_files):
     assert "Accenture" in res_docx_r6.get("company", "")
 
 
+@pytest.mark.asyncio
+async def test_tc_res_013_missing_section_flagged_incomplete(temp_files):
+    """
+    Test ID: TC-RES-013
+    Module: Resume Processing
+    Requirement: REQ006
+    Scenario: Missing section
+    Steps: Upload R7 (DOCX format missing Work Experience section)
+    Expected Result: Parser completes; missing section left empty, flagged as incomplete
+    """
+    # ── 1. Create R7 Sample as a valid Microsoft Word .docx document ─────────
+    # R7 has Personal Info, Education, and Skills, but NO Work Experience section
+    doc_r7 = docx.Document()
+    doc_r7.add_heading("CARMINA FLORES SANTOS", level=0)
+    doc_r7.add_paragraph("carmina.santos@gmail.com | +63 917 888 9999 | Makati City, Metro Manila")
+    
+    doc_r7.add_heading("OBJECTIVE", level=1)
+    doc_r7.add_paragraph("Dedicated recent Accountancy graduate aiming to leverage analytical and financial competencies.")
+
+    doc_r7.add_heading("EDUCATION", level=1)
+    doc_r7.add_paragraph("Bachelor of Science in Accountancy")
+    doc_r7.add_paragraph("University of Santo Tomas, Manila")
+    doc_r7.add_paragraph("2019 - 2023 | Magna Cum Laude")
+
+    doc_r7.add_heading("SKILLS & COMPETENCIES", level=1)
+    doc_r7.add_paragraph("• Financial Accounting")
+    doc_r7.add_paragraph("• QuickBooks")
+    doc_r7.add_paragraph("• SAP Financial Accounting")
+    doc_r7.add_paragraph("• Philippine Taxation")
+    doc_r7.add_paragraph("• Microsoft Excel Financial Modeling")
+
+    doc_r7.add_heading("CERTIFICATIONS & LICENSES", level=1)
+    doc_r7.add_paragraph("Certified Public Accountant (CPA) - PRC Board Passer (Rating: 88.50%)")
+
+    with tempfile.NamedTemporaryFile(suffix=".docx", delete=False) as f:
+        doc_r7.save(f.name)
+        r7_docx_path = temp_files(f.name)
+
+    # ── 2. Run Resume Processing on R7 DOCX ──────────────────────────────────
+    res_r7 = process_resume(r7_docx_path, "docx")
+
+    # A. Parser completes successfully (does not crash or return empty dict)
+    assert res_r7 is not None, "Parser must complete and return structured resume data"
+    assert isinstance(res_r7, dict), "Parser result must be a dictionary"
+    assert len(res_r7) > 0, "Parser must not return empty data"
+
+    # B. Missing section (Work Experience) is left cleanly empty
+    assert res_r7.get("work_experiences") == [], "work_experiences must be an empty list when section is missing"
+    assert res_r7.get("experience_details") == [], "experience_details must be an empty list when section is missing"
+    assert res_r7.get("job_title") == "", "job_title must be empty string when experience section is missing"
+    assert res_r7.get("candidate_job_title") == "", "candidate_job_title alias must be empty string"
+    assert res_r7.get("company") == "", "company must be empty string when experience section is missing"
+    assert res_r7.get("candidate_company") == "", "candidate_company alias must be empty string"
+    assert res_r7.get("experience") == "", "experience summary must be empty string"
+    assert res_r7.get("years_experience") == 0, "years_experience must be 0 when experience section is missing"
+    assert res_r7.get("total_experience_months") == 0, "total_experience_months must be 0"
+    assert res_r7.get("relevance") == "", "relevance statement must be empty when experience is missing"
+
+    # C. Existing sections (Personal, Education, Skills) are accurately parsed
+    assert "Carmina" in res_r7.get("candidate_name", "").title()
+    assert res_r7.get("candidate_email") == "carmina.santos@gmail.com"
+    assert "9178889999" in res_r7.get("candidate_phone", "").replace("-", "").replace(" ", "")
+    assert "Bachelor of Science in Accountancy" in res_r7.get("degree", "")
+    assert "Santo Tomas" in res_r7.get("college", "")
+    assert len(res_r7.get("skills_list", [])) >= 3
+    assert any("Accounting" in s or "QuickBooks" in s for s in res_r7.get("skills_list", []))
+
+    # D. Resume is explicitly flagged as incomplete
+    assert res_r7.get("is_incomplete") is True, "Resume must be flagged as incomplete (is_incomplete=True)"
+    assert res_r7.get("is_complete") is False, "Resume must have is_complete=False"
+    assert res_r7.get("completeness_status") == "Incomplete", "completeness_status must be 'Incomplete'"
+    assert "Work Experience" in res_r7.get("missing_sections", []), "missing_sections must include 'Work Experience'"
+    assert "work_experiences" in res_r7.get("missing_fields", []), "missing_fields must track empty experience fields"
+    assert res_r7.get("completeness_score") == 75.0, "Score should reflect 3 of 4 core sections present (75.0%)"
+    assert res_r7.get("completeness_flags", {}).get("work_experience") is False
+
+    # E. Diagnostics report displays completeness assessment
+    disp = res_r7.get("formatted_display", "")
+    assert "COMPLETENESS ASSESSMENT" in disp
+    assert "Flagged Incomplete:  Yes" in disp
+    assert "Work Experience" in disp
+
+    # ── 3. Test Resume Missing Education Section ─────────────────────────────
+    doc_no_edu = docx.Document()
+    doc_no_edu.add_heading("MARKO RODRIGUEZ", level=0)
+    doc_no_edu.add_paragraph("marko.rodriguez@gmail.com | 0918-111-2222 | Pasig City")
+    doc_no_edu.add_heading("WORK EXPERIENCE", level=1)
+    doc_no_edu.add_paragraph("Senior Graphic Designer")
+    doc_no_edu.add_paragraph("Creative Studio Inc., Pasig City")
+    doc_no_edu.add_paragraph("March 2020 - Present")
+    doc_no_edu.add_paragraph("• Created brand identity assets and UI graphics.")
+    doc_no_edu.add_heading("SKILLS", level=1)
+    doc_no_edu.add_paragraph("Adobe Photoshop, Illustrator, Figma, Typography")
+
+    with tempfile.NamedTemporaryFile(suffix=".docx", delete=False) as f:
+        doc_no_edu.save(f.name)
+        no_edu_docx_path = temp_files(f.name)
+
+    res_no_edu = process_resume(no_edu_docx_path, "docx")
+    assert res_no_edu.get("is_incomplete") is True
+    assert "Education" in res_no_edu.get("missing_sections", [])
+    assert res_no_edu.get("education_entries") == []
+    assert res_no_edu.get("degree") == ""
+    assert res_no_edu.get("institution") == ""
+    assert res_no_edu.get("college") == ""
+    assert res_no_edu.get("company") == "Creative Studio Inc."
+
+    # ── 4. Test Resume Missing Skills Section ─────────────────────────────────
+    doc_no_skills = docx.Document()
+    doc_no_skills.add_heading("DIANA REYES", level=0)
+    doc_no_skills.add_paragraph("diana.reyes@gmail.com | 0919-333-4444 | Quezon City")
+    doc_no_skills.add_heading("EDUCATION", level=1)
+    doc_no_skills.add_paragraph("BS Civil Engineering")
+    doc_no_skills.add_paragraph("Polytechnic University of the Philippines")
+    doc_no_skills.add_paragraph("2018 - 2022")
+    doc_no_skills.add_heading("WORK EXPERIENCE", level=1)
+    doc_no_skills.add_paragraph("Site Engineer")
+    doc_no_skills.add_paragraph("Megawide Construction")
+    doc_no_skills.add_paragraph("June 2022 - Present")
+    doc_no_skills.add_paragraph("• Supervised rebar placement and concrete pouring.")
+
+    with tempfile.NamedTemporaryFile(suffix=".docx", delete=False) as f:
+        doc_no_skills.save(f.name)
+        no_skills_docx_path = temp_files(f.name)
+
+    res_no_skills = process_resume(no_skills_docx_path, "docx")
+    assert res_no_skills.get("is_incomplete") is True
+    assert "Skills" in res_no_skills.get("missing_sections", [])
+    assert res_no_skills.get("skills_list") == []
+    assert res_no_skills.get("skills") == ""
+
+    # ── 5. Test Complete Resume (All 4 Core Sections Present) ────────────────
+    doc_complete = docx.Document()
+    doc_complete.add_heading("EDUARDO BAUTISTA", level=0)
+    doc_complete.add_paragraph("eduardo.bautista@gmail.com | 0917-555-6666 | Taguig City")
+    doc_complete.add_heading("EDUCATION", level=1)
+    doc_complete.add_paragraph("BS Computer Engineering")
+    doc_complete.add_paragraph("Mapua University, 2018-2022")
+    doc_complete.add_heading("WORK EXPERIENCE", level=1)
+    doc_complete.add_paragraph("Full Stack Developer")
+    doc_complete.add_paragraph("Accenture Philippines, 2022-Present")
+    doc_complete.add_paragraph("• Built web applications.")
+    doc_complete.add_heading("SKILLS", level=1)
+    doc_complete.add_paragraph("Python, React, PostgreSQL, Docker, Git")
+
+    with tempfile.NamedTemporaryFile(suffix=".docx", delete=False) as f:
+        doc_complete.save(f.name)
+        complete_docx_path = temp_files(f.name)
+
+    res_complete = process_resume(complete_docx_path, "docx")
+    assert res_complete.get("is_incomplete") is False, "Complete resume must have is_incomplete=False"
+    assert res_complete.get("is_complete") is True, "Complete resume must have is_complete=True"
+    assert res_complete.get("completeness_status") == "Complete"
+    assert res_complete.get("missing_sections") == []
+    assert res_complete.get("completeness_score") == 100.0
+
+
 
 
 

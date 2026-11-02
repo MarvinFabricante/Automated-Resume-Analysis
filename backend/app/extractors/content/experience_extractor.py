@@ -788,7 +788,21 @@ def _extract_experience_blocks(text: str) -> List[str]:
     if current_block:
         extracted_blocks.append('\n'.join(current_block))
 
-    return extracted_blocks if extracted_blocks else [text]
+    if extracted_blocks:
+        return extracted_blocks
+
+    # If other section headers (like EDUCATION, SKILLS, etc.) exist in the document,
+    # but NO experience header was found, then there is NO work experience section!
+    has_other_section_headers = any(
+        any(re.sub(r'^[\s\-–—=_*#•►:]+|[\s\-–—=_*#•►:]+$', '', l.strip()).upper() == sh or 
+            re.sub(r'^[\s\-–—=_*#•►:]+|[\s\-–—=_*#•►:]+$', '', l.strip()).upper().startswith(sh + ":")
+            for sh in stop_headers)
+        for l in lines
+    )
+    if has_other_section_headers:
+        return []
+
+    return [text]
 
 
 # ─── 6. Primary Structured Extractor ─────────────────────────────────────────
@@ -891,8 +905,13 @@ def extract_structured_experience(text: str) -> Dict[str, Any]:
                 break
 
             emp_type = _detect_employment_type(raw_title, comp_loc_str, date_str, responsibilities)
-            if not norm_title:
-                norm_title = _normalize_job_title(raw_title)
+            # Reject academic degrees / schooling mistaken as employment roles
+            if re.search(r'\b(?:bachelor|master|doctor|phd|diploma|associate|elementary|high\s+school)\b', raw_title, re.I):
+                i += 1
+                continue
+            if re.search(r'\b(?:university|college|polytechnic)\b', comp_loc_str or company or "", re.I) and re.search(r'\b(?:bachelor|master|degree|course|bs|ba|ab|bba|bsba|bscpe|bsit|bscs)\b', raw_title, re.I):
+                i += 1
+                continue
 
             if norm_title and not _is_address_or_location(norm_title):
                 work_experiences.append({
@@ -969,8 +988,13 @@ def extract_structured_experience(text: str) -> Dict[str, Any]:
                 curr_idx += 1
 
             emp_type = _detect_employment_type(raw_title, comp_loc_str, date_line, responsibilities)
-            if not norm_title:
-                norm_title = _normalize_job_title(raw_title)
+            # Reject academic degrees / schooling mistaken as employment roles
+            if re.search(r'\b(?:bachelor|master|doctor|phd|diploma|associate|elementary|high\s+school)\b', raw_title, re.I):
+                i = curr_idx
+                continue
+            if re.search(r'\b(?:university|college|polytechnic)\b', comp_loc_str or company or "", re.I) and re.search(r'\b(?:bachelor|master|degree|course|bs|ba|ab|bba|bsba|bscpe|bsit|bscs)\b', raw_title, re.I):
+                i = curr_idx
+                continue
 
             if norm_title and not _is_address_or_location(norm_title):
                 work_experiences.append({
@@ -1129,6 +1153,9 @@ def extract_job_title(text: str, entries: Optional[list[dict]] = None) -> str:
             continue
         if re.search(r'@|\d{3,}|http', line):
             continue
+        # Avoid matching educational degrees or school institutions as a job title
+        if re.search(r'\b(?:bachelor|master|doctor|phd|diploma|associate|elementary|high\s+school|university|college|institute|polytechnic|campus)\b', line, re.I):
+            continue
         norm = _normalize_job_title(line)
         if norm and len(norm) > 3 and norm.lower() not in _RESUME_SECTION_HEADERS:
             return norm
@@ -1180,6 +1207,26 @@ def extract_relevance(text: str, years: int = 0, job_title: str = "", skills: st
     """
     Generates a concise relevance statement highlighting candidate qualifications.
     """
+    if text:
+        if not job_title:
+            try:
+                job_title = extract_job_title(text)
+            except Exception:
+                pass
+        if not years:
+            try:
+                y = extract_years_experience(text)
+                if y:
+                    years = int(y)
+            except Exception:
+                pass
+        if not skills:
+            try:
+                from .skills_extractor import extract_skills
+                skills = extract_skills(text)
+            except Exception:
+                pass
+
     parts = []
     if years and years > 0:
         if job_title:
@@ -1196,7 +1243,8 @@ def extract_relevance(text: str, years: int = 0, job_title: str = "", skills: st
 
     if parts:
         return " ".join(parts)
-    return "Professional career history with relevant industry experience"
+    return ""
+
 
 
 # ─── 8. Runnable Test Block for Templates 1, 2, and 3 ────────────────────────

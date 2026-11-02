@@ -136,9 +136,9 @@ def extract_file_content(file_path: str, file_extension: str) -> str:
         # Auto-detect true format via magic bytes if the file is a valid document binary
         if b'%PDF' in header:
             ext = 'pdf'
-        elif header.startswith(b'PK\x03\x04'):
+        elif header.startswith(b'PK'):
             ext = 'docx'
-        elif header.startswith(b'\xd0\xcf\x11\xe0'):
+        elif header.startswith(b'\xd0\xcf\x11\xe0') or header.startswith(b'{\\rtf'):
             ext = 'doc'
         elif not ext or ext not in ('pdf', 'doc', 'docx', 'txt'):
             ext = 'txt'
@@ -164,7 +164,7 @@ def extract_file_content(file_path: str, file_extension: str) -> str:
                 return ""
             if b'%PDF' in header and ext != 'pdf':
                 raw_text = extract_text_from_pdf(file_path)
-            elif (header.startswith(b'PK\x03\x04') or header.startswith(b'\xd0\xcf\x11\xe0')) and ext not in ('doc', 'docx'):
+            elif (header.startswith(b'PK') or header.startswith(b'\xd0\xcf\x11\xe0') or header.startswith(b'{\\rtf')) and ext not in ('doc', 'docx'):
                 raw_text = extract_text_from_docx(file_path)
             elif ext != 'txt' and not any(header.startswith(b) for b in (b'\x00', b'\x7fELF', b'MZ')):
                 txt_fallback = extract_text_from_txt(file_path)
