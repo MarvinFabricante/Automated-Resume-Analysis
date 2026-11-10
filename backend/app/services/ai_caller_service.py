@@ -147,11 +147,13 @@ def build_interview_voice_twiml(
     interviewer_name: Optional[str],
     language: str = "bilingual",
     attempt: int = 1,
-    request_host: Optional[str] = None
+    request_host: Optional[str] = None,
+    location: Optional[str] = None
 ) -> str:
     """
     REQ029 & REQ030: Generates TwiML delivering interview details clearly in English or Filipino,
     and requests verbal confirmation (confirm or reschedule).
+    Includes candidate name, date, time, and interview location.
     """
     response = VoiceResponse()
 
@@ -159,6 +161,7 @@ def build_interview_voice_twiml(
     action_url = f"https://{host}/ai-caller/voice-response?interview_id={interview_id}&attempt={attempt}&lang={language}" if host else f"/ai-caller/voice-response?interview_id={interview_id}&attempt={attempt}&lang={language}"
 
     interviewer_display = interviewer_name or "our HR team"
+    loc_display = location or "Mariwasa Plant, Sto. Tomas, Batangas"
     dt_en = format_ph_datetime(start_time, lang="en")
     dt_fil = format_ph_datetime(start_time, lang="fil")
 
@@ -174,7 +177,7 @@ def build_interview_voice_twiml(
     if language == "fil":
         gather.say(
             f"Magandang araw {candidate_name}. Ito ay awtomatikong tawag mula sa Mariwasa Siam Ceramics. "
-            f"Nais po naming ipaalam na ang inyong interbyu para sa posisyong {job_title} ay nakatakda sa {dt_fil} kasama si {interviewer_display}. "
+            f"Nais po naming ipaalam na ang inyong interbyu para sa posisyong {job_title} ay nakatakda sa {dt_fil} kasama si {interviewer_display} sa {loc_display}. "
             f"Upang kumpirmahin ang inyong pagdalo, sabihin lamang ang Kumpirma o Confirm, o pindutin ang 1. "
             f"Kung nais ninyong humiling ng ibang petsa o mag-reschedule, sabihin ang Reschedule o pindutin ang 2.",
             language="fil-PH",
@@ -183,7 +186,7 @@ def build_interview_voice_twiml(
     elif language == "en":
         gather.say(
             f"Hello {candidate_name}. This is an automated interview notification call from Mariwasa Siam Ceramics. "
-            f"Your interview for the position of {job_title} has been scheduled on {dt_en} with {interviewer_display}. "
+            f"Your interview for the position of {job_title} has been scheduled on {dt_en} with {interviewer_display} at {loc_display}. "
             f"To confirm your attendance, please say Confirm or press 1. "
             f"If you need to request a reschedule, please say Reschedule or press 2.",
             language="en-US",
@@ -192,7 +195,7 @@ def build_interview_voice_twiml(
     else: # Bilingual default
         gather.say(
             f"Hello {candidate_name}. This is Mariwasa Siam Ceramics regarding your job application for {job_title}. "
-            f"Your interview is scheduled on {dt_en} with {interviewer_display}. "
+            f"Your interview is scheduled on {dt_en} with {interviewer_display} at {loc_display}. "
             f"To confirm your attendance, please say Confirm or press 1. "
             f"Para sa reschedule o bagong petsa, sabihin ang Reschedule o pindutin ang 2.",
             language="en-US",
@@ -768,10 +771,11 @@ async def send_backup_sms_notification(interview_id: int, db: AsyncSession) -> b
     cand_name = getattr(application, "candidate_name", None) or "Candidate"
     cand_email = getattr(application, "candidate_email", None) or "your email"
     sched_time_str = interview.start_time.strftime('%A, %b %d, %Y at %I:%M %p') if getattr(interview, "start_time", None) else "the scheduled time"
+    loc_str = getattr(interview, "meeting_link", None) or "Mariwasa Plant, Sto. Tomas, Batangas"
 
     message = (
         f"Mariwasa HR Notice: Magandang araw, {cand_name}! Sinubukan ka naming tawagan patungkol sa iyong interview para sa "
-        f"{job_name} na naka-schedule sa {sched_time_str}. Dahil hindi kami nakakonekta, kindly check your email ({cand_email}) "
+        f"{job_name} na naka-schedule sa {sched_time_str} sa {loc_str}. Dahil hindi kami nakakonekta, kindly check your email ({cand_email}) "
         f"para ma-confirm ang iyong availability o mag-request ng reschedule. Maraming salamat!"
     )
 

@@ -380,6 +380,110 @@ async def send_interview_rescheduled_email(
     return await _send_email_redis_first(to_email, subject, body, "interview_rescheduled")
 
 
+async def send_interview_cancellation_email(
+    to_email: str,
+    candidate_name: str,
+    job_title: str,
+    interview_title: str,
+    start_time: datetime,
+    interviewer_name: Optional[str] = None,
+    reason: Optional[str] = None,
+) -> bool:
+    """Send an interview cancellation notification email to candidate, HR, or panelist."""
+    formatted_date = start_time.strftime("%A, %B %d, %Y")
+    start_str = start_time.strftime("%I:%M %p")
+    interviewer_display = interviewer_name if interviewer_name else "Mariwasa HR Panel"
+
+    subject = f"Canceled: {interview_title} - {job_title} | Mariwasa Siam Ceramics"
+
+    reason_section = ""
+    if reason and reason.strip():
+        reason_section = f"""
+        <div style="margin-top: 20px; padding: 16px; background-color: #fef2f2; border-left: 4px solid #ef4444; border-radius: 4px;">
+            <p style="margin: 0 0 6px 0; font-size: 12px; font-weight: bold; text-transform: uppercase; color: #991b1b; letter-spacing: 0.05em;">Cancellation Notes / Reason</p>
+            <p style="margin: 0; font-size: 14px; color: #1e293b; white-space: pre-wrap;">{reason}</p>
+        </div>
+        """
+
+    body = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    </head>
+    <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; color: #1e293b; margin: 0; padding: 24px; background-color: #f1f5f9;">
+        <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 20px; overflow: hidden; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05);">
+            <!-- Header Banner -->
+            <div style="background: linear-gradient(135deg, #ef4444 0%, #b91c1c 100%); padding: 32px 32px 28px 32px; color: #ffffff; text-align: left;">
+                <span style="display: inline-block; padding: 4px 12px; background-color: rgba(255, 255, 255, 0.2); border-radius: 12px; font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 12px;">
+                    Schedule Cancellation
+                </span>
+                <h1 style="margin: 0; font-size: 24px; font-weight: 800; color: #ffffff; line-height: 1.2;">
+                    Interview Canceled
+                </h1>
+                <p style="margin: 6px 0 0 0; font-size: 14px; color: #fee2e2; font-weight: 500;">
+                    Mariwasa Siam Ceramics, Inc.
+                </p>
+            </div>
+
+            <!-- Main Content -->
+            <div style="padding: 32px;">
+                <p style="font-size: 16px; margin: 0 0 16px 0;">Dear <strong>{candidate_name}</strong>,</p>
+
+                <p style="font-size: 15px; color: #334155; margin: 0 0 24px 0; line-height: 1.6;">
+                    Please be advised that the scheduled interview for the position of <strong>{job_title}</strong> has been canceled. The calendar event has been removed from all participant schedules.
+                </p>
+
+                <!-- Interview Details Card -->
+                <div style="background-color: #fef2f2; border: 1px solid #fee2e2; border-radius: 16px; padding: 24px; margin-bottom: 24px;">
+                    <h3 style="margin: 0 0 18px 0; font-size: 16px; font-weight: 700; color: #991b1b; border-bottom: 1px solid #fecaca; padding-bottom: 10px;">
+                        Canceled Schedule Details
+                    </h3>
+
+                    <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
+                        <tr>
+                            <td style="padding: 6px 0; color: #64748b; font-weight: 600; width: 140px;">Stage / Round:</td>
+                            <td style="padding: 6px 0; color: #0f172a; font-weight: 700;">{interview_title}</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 6px 0; color: #64748b; font-weight: 600;">Position:</td>
+                            <td style="padding: 6px 0; color: #0f172a; font-weight: 700;">{job_title}</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 6px 0; color: #64748b; font-weight: 600;">Originally Scheduled:</td>
+                            <td style="padding: 6px 0; color: #b91c1c; font-weight: 700;">{formatted_date} at {start_str}</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 6px 0; color: #64748b; font-weight: 600;">Assigned Panelist:</td>
+                            <td style="padding: 6px 0; color: #0f172a; font-weight: 600;">{interviewer_display}</td>
+                        </tr>
+                    </table>
+
+                    {reason_section}
+                </div>
+
+                <p style="font-size: 14px; color: #475569; margin: 0 0 4px 0;">
+                    If you have any questions or would like to request a reschedule, our HR team is here to assist you.
+                </p>
+                <p style="font-size: 14px; color: #0f172a; font-weight: 700; margin: 0;">
+                    Best regards,<br>
+                    Mariwasa Siam Ceramics Human Resources Team
+                </p>
+            </div>
+
+            <!-- Footer -->
+            <div style="background-color: #f8fafc; border-top: 1px solid #e2e8f0; padding: 20px 32px; text-align: center; font-size: 11px; color: #94a3b8;">
+                <p style="margin: 0 0 4px 0; font-weight: 600;">Mariwasa Siam Ceramics, Inc.</p>
+                <p style="margin: 0;">Automated Resume Analysis & Recruitment Portal • This is an automated notification.</p>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+    return await _send_email_redis_first(to_email, subject, body, "interview_cancellation")
+
+
 async def send_application_status_update_email(
     to_email: str,
     candidate_name: str,

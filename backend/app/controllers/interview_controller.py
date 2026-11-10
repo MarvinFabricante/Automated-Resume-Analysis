@@ -1,10 +1,11 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy.ext.asyncio import AsyncSession
-from typing import List, Optional
+from typing import List, Optional, Union
 
 from app.utils.database import get_db
 from app.schemas.interview_schema import (
     AvailableSlotsRequest,
+    AvailableSlotsResponseSchema,
     InterviewCreateSchema,
     InterviewUpdateSchema,
     InterviewResponseSchema,
@@ -83,14 +84,16 @@ async def get_google_status(
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.post("/available-slots", response_model=List[TimeSlotSchema])
+@router.post("/available-slots", response_model=Union[AvailableSlotsResponseSchema, List[TimeSlotSchema]])
 async def get_available_slots(
     request: AvailableSlotsRequest,
+    response: Response,
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
     """
     Automatically view available time slots by syncing HR and panel calendars using Google Calendar API.
+    If the requested date/time is fully booked, returns a message offering alternative dates with available slots.
     """
     try:
         target_ids = []
@@ -114,6 +117,22 @@ async def get_available_slots(
             request.end_date,
             user_ids=target_ids
         )
+
+        if not slots:
+            msg = getattr(slots, "message", None) or "The selected date is fully booked."
+            alt_dates = getattr(slots, "alternative_dates", []) or []
+            alt_slots = getattr(slots, "alternative_slots", []) or []
+            response.headers["X-Availability-Message"] = msg
+            if alt_dates:
+                response.headers["X-Alternative-Dates"] = ",".join(alt_dates)
+
+            return AvailableSlotsResponseSchema(
+                slots=[],
+                message=msg,
+                alternative_dates=alt_dates,
+                alternative_slots=alt_slots
+            )
+
         return slots
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -217,6 +236,10 @@ async def schedule_interview(
     except ValueError as e:
         if "already scheduled" in str(e).lower() or "conflict" in str(e).lower():
             raise HTTPException(status_code=409, detail=str(e))
+        if "rate limit" in str(e).lower() or "429" in str(e).lower():
+            raise HTTPException(status_code=429, detail=str(e))
+        if "timeout" in str(e).lower() or "timed out" in str(e).lower():
+            raise HTTPException(status_code=504, detail=str(e))
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -301,6 +324,32 @@ async def update_interview_status(
         )
         await clear_cache_pattern("app_interviews*")
         await clear_cache_pattern("cand_interviews*")
+        await clear_cache_pattern("calendar_events*")
+        return result
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/{interview_id}/cancel", response_model=InterviewResponseSchema)
+async def cancel_interview(
+    interview_id: int,
+    reason: Optional[str] = Query(None),
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Cancel an interview: removes the Google Calendar event, notifies participants, and updates status to CANCELED.
+    """
+    try:
+        result = await interview_service.cancel_interview(
+            db, interview_id, current_user.get("id"), user_role=current_user.get("role"), reason=reason
+        )
+        await clear_cache_pattern("app_interviews*")
+        await clear_cache_pattern("cand_interviews*")
+        await clear_cache_pattern("calendar_events*")
         return result
     except PermissionError as e:
         raise HTTPException(status_code=403, detail=str(e))

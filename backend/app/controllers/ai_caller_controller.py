@@ -165,6 +165,19 @@ async def get_interview_twiml(
     job_name = getattr(application, "job_title", interview.title) if application else interview.title
     interviewer_name = interview.interviewer.fullname if getattr(interview, "interviewer", None) else "Mariwasa HR"
 
+    # Resolve interview location: meeting link if online, or job location, or default plant location
+    location = None
+    if getattr(interview, "meeting_link", None):
+        location = "Online via Google Meet"
+    elif application and getattr(application, "job_id", None):
+        from app.models.job_description import JobDescription
+        job_q = await db.execute(select(JobDescription).where(JobDescription.id == application.job_id))
+        job_obj = job_q.scalar_one_or_none()
+        if job_obj and getattr(job_obj, "location", None):
+            location = job_obj.location
+    if not location:
+        location = "Mariwasa Plant, Sto. Tomas, Batangas"
+
     twiml = ai_caller_service.build_interview_voice_twiml(
         interview_id=interview_id,
         candidate_name=cand_name,
@@ -173,7 +186,8 @@ async def get_interview_twiml(
         interviewer_name=interviewer_name,
         language=lang,
         attempt=attempt,
-        request_host=request.url.hostname
+        request_host=request.url.hostname,
+        location=location
     )
     return HTMLResponse(content=twiml, media_type="application/xml")
 

@@ -144,3 +144,182 @@ async def test_status_callback_webhook_endpoint(client):
         assert mock_cb.called
 
 
+@pytest.mark.asyncio
+async def test_interview_booking_places_ai_voice_call_within_10_seconds(client, db_session):
+    """
+    TEST-ID: 1 (Controller E2E)
+    Module: AI Voice Notification
+    Scenario: Call after scheduling
+    Steps: Book interview for candidate with test number
+    Expected Result: Call placed automatically within 10 seconds
+    Priority: H
+    """
+    import time
+    from datetime import datetime
+    from app.models.user import User
+    from app.models.job_description import JobDescription, JobType
+    from app.models.job_application import JobApplication
+    from app.utils.auth import create_access_token
+
+    test_phone = "+639171234567"
+
+    # 1. Setup HR user and Candidate with test number
+    hr = User(
+        email="ctrl_voice_hr@example.com",
+        password="password123",
+        role="HR",
+        fullname="Voice Ctrl HR"
+    )
+    db_session.add(hr)
+    await db_session.flush()
+
+    token = create_access_token({"sub": hr.email, "id": hr.id, "role": "HR"})
+    headers = {"Authorization": f"Bearer {token}"}
+
+    job = JobDescription(
+        job_id="CTRL-VOICE-1",
+        job_title="Ceramics Engineer",
+        department="Engineering",
+        job_type=JobType.FULL_TIME,
+        location="Manila",
+        description="Engineering"
+    )
+    db_session.add(job)
+    await db_session.flush()
+
+    app = JobApplication(
+        job_id=job.id,
+        candidate_name="Alex Ctrl Candidate",
+        candidate_email="alex.ctrl@example.com",
+        phone=test_phone,
+        job_title="Ceramics Engineer",
+        status="SHORTLISTED"
+    )
+    db_session.add(app)
+    await db_session.commit()
+    await db_session.refresh(hr)
+    await db_session.refresh(app)
+
+    schedule_payload = {
+        "job_application_id": app.id,
+        "interviewer_id": hr.id,
+        "title": "Ceramics Engineering Technical Interview",
+        "start_time": "2026-11-27T10:00:00",
+        "end_time": "2026-11-27T11:00:00"
+    }
+
+    t_start = time.time()
+
+    # 2. Book interview via /interviews/schedule
+    with patch("app.services.email_service.EmailService.send_interview_invitation_email", new_callable=AsyncMock) as mock_email, \
+         patch("app.services.interview_service.create_real_google_event", return_value={"id": "g_evt_ctrl_voice", "status": "confirmed"}), \
+         patch("app.services.notification_service.create_notification", new_callable=AsyncMock), \
+         patch("app.tasks.initiate_interview_call_task.delay") as mock_voice_task:
+
+        mock_email.return_value = True
+        resp = await client.post("/interviews/schedule", json=schedule_payload, headers=headers)
+
+    t_end = time.time()
+
+    # 3. Assert successful booking
+    assert resp.status_code == 200
+    interview_data = resp.json()
+    interview_id = interview_data["id"]
+    assert interview_data["job_application_id"] == app.id
+
+    # 4. Verify call placed automatically within 10 seconds
+    elapsed_time = t_end - t_start
+    assert elapsed_time < 10.0, f"Booking and call queueing took {elapsed_time:.2f}s, expected < 10s"
+
+    # Verify background Celery task was queued with the created interview id
+    mock_voice_task.assert_called_once_with(interview_id)
+
+
+@pytest.mark.asyncio
+async def test_interview_twiml_endpoint_includes_name_date_time_location(client, db_session):
+    """
+    TEST-ID: 2 (Controller TwiML Content Verification)
+    Module: AI Voice Notification
+    Scenario: Message content
+    Steps: After the test call, request interview TwiML
+    Expected Result: Message includes name, date, time, location in voice message
+    Priority: H
+    """
+    from datetime import datetime
+    from app.models.user import User
+    from app.models.job_description import JobDescription, JobType
+    from app.models.job_application import JobApplication
+    from app.models.interview import Interview
+
+    hr = User(
+        email="ctrl_twiml_hr@example.com",
+        password="password123",
+        role="HR",
+        fullname="Engr. Antonio Reyes"
+    )
+    db_session.add(hr)
+    await db_session.flush()
+
+    job_loc = "Mariwasa Plant 1, Sto. Tomas, Batangas"
+    job = JobDescription(
+        job_id="CTRL-JOB-TWIML",
+        job_title="Lead Kiln Operator",
+        department="Manufacturing",
+        job_type=JobType.FULL_TIME,
+        location=job_loc,
+        description="Operating industrial kilns"
+    )
+    db_session.add(job)
+    await db_session.flush()
+
+    cand_name = "Marvin Dela Torre"
+    app = JobApplication(
+        job_id=job.id,
+        candidate_name=cand_name,
+        candidate_email="marvin.delatorre@example.com",
+        phone="+639179998888",
+        job_title="Lead Kiln Operator",
+        status="SHORTLISTED"
+    )
+    db_session.add(app)
+    await db_session.commit()
+
+    start_dt = datetime(2026, 11, 30, 15, 30, 0)
+    interview = Interview(
+        job_application_id=app.id,
+        interviewer_id=hr.id,
+        title="Technical Kiln Interview",
+        start_time=start_dt,
+        end_time=datetime(2026, 11, 30, 16, 30, 0),
+        status="SCHEDULED"
+    )
+    db_session.add(interview)
+    await db_session.commit()
+    await db_session.refresh(interview)
+
+    # 1. Fetch TwiML from endpoint in English
+    resp_en = await client.get(f"/ai-caller/interview-twiml/{interview.id}?lang=en")
+    assert resp_en.status_code == 200
+    assert "application/xml" in resp_en.headers["content-type"]
+    text_en = resp_en.text
+
+    # Verify Name, Date, Time, Location in English
+    assert cand_name in text_en
+    assert "November 30, 2026" in text_en
+    assert "3:30 PM" in text_en
+    assert job_loc in text_en
+
+    # 2. Fetch TwiML from endpoint in Filipino
+    resp_fil = await client.get(f"/ai-caller/interview-twiml/{interview.id}?lang=fil")
+    assert resp_fil.status_code == 200
+    text_fil = resp_fil.text
+
+    # Verify Name, Date, Time, Location in Filipino
+    assert cand_name in text_fil
+    assert "Nobyembre" in text_fil
+    assert "3:30 PM" in text_fil
+    assert job_loc in text_fil
+
+
+
+

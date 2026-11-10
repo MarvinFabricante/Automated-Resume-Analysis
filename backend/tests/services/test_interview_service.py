@@ -879,6 +879,660 @@ async def test_reschedule_interview_moves_slot_removes_old_event_creates_new_and
     assert "PANELIST" in notif_roles
 
 
+@pytest.mark.asyncio
+async def test_cancellation_removes_event_notifies_participants_and_updates_status(db_session):
+    """
+    TEST-ID: 8
+    Module: Interview Scheduling
+    Scenario: Cancellation
+    Steps: Cancel an interview
+    Expected Result: Event removed, participant notified, status updated
+    Priority: H
+    """
+    # 1. Setup HR user with valid Google credentials
+    hr_user = User(
+        email="hr_cancel_service@example.com",
+        password="password123",
+        role="HR",
+        fullname="HR Cancellation Lead",
+        google_credentials='{"access_token": "valid_token"}',
+    )
+    # 2. Setup Panel Member
+    panel_member = User(
+        email="panel_cancel_service@example.com",
+        password="password123",
+        role="HR",
+        fullname="Lead Interviewer Marco",
+    )
+    db_session.add_all([hr_user, panel_member])
+    await db_session.flush()
+
+    # 3. Setup Job Description and Application
+    job = JobDescription(
+        job_id="CANCEL-JOB-001",
+        job_title="Cloud Security Architect",
+        department="Security",
+        job_type=JobType.FULL_TIME,
+        location="Taguig",
+        description="Lead cloud cybersecurity architecture"
+    )
+    db_session.add(job)
+    await db_session.flush()
+
+    application = JobApplication(
+        job_id=job.id,
+        candidate_name="Danielle Candidate",
+        candidate_email="danielle.cand@example.com",
+        phone="+639191234567",
+        job_title="Cloud Security Architect",
+        status="SHORTLISTED"
+    )
+    db_session.add(application)
+    await db_session.commit()
+    await db_session.refresh(hr_user)
+    await db_session.refresh(panel_member)
+    await db_session.refresh(application)
+
+    initial_start = datetime(2026, 10, 20, 10, 0, 0)
+    initial_end = datetime(2026, 10, 20, 11, 0, 0)
+    initial_google_event = {
+        "id": "g_event_cancel_test_789",
+        "summary": "Cloud Security Architect Interview",
+        "status": "confirmed",
+    }
+
+    create_data = InterviewCreateSchema(
+        job_application_id=application.id,
+        interviewer_id=hr_user.id,
+        panelist_ids=[panel_member.id],
+        title="Cloud Security Architect Interview",
+        description="Architecture design review",
+        start_time=initial_start,
+        end_time=initial_end,
+    )
+
+    with patch("app.services.interview_service.create_real_google_event", return_value=initial_google_event), \
+         patch("app.services.notification_service.create_notification", new_callable=AsyncMock), \
+         patch("app.tasks.initiate_interview_call_task.delay"):
+        interview = await interview_service.schedule_interview(db_session, create_data, hr_user.id)
+
+    assert interview.id is not None
+    assert interview.status == "SCHEDULED"
+    assert interview.google_event_id == "g_event_cancel_test_789"
+
+    # Step: Cancel the interview
+    with patch("app.services.interview_service.delete_real_google_event") as mock_delete_event, \
+         patch("app.services.email_service.send_interview_cancellation_email", new_callable=AsyncMock) as mock_cancel_email, \
+         patch("app.services.interview_service.send_sms_notification_sync", return_value=True) as mock_sms, \
+         patch("app.services.notification_service.create_notification", new_callable=AsyncMock) as mock_notif:
+
+        mock_cancel_email.return_value = True
+
+        cancelled_interview = await interview_service.cancel_interview(
+            db_session,
+            interview.id,
+            user_id=hr_user.id,
+            user_role="HR",
+            reason="Candidate requested cancellation due to personal scheduling conflict."
+        )
+
+    # Verification:
+    # 1. Status updated to CANCELED
+    assert cancelled_interview.status == "CANCELED"
+
+    # 2. Event removed from Google Calendar and reference cleared
+    assert mock_delete_event.called
+    assert mock_delete_event.call_args.kwargs.get("event_id") == "g_event_cancel_test_789"
+    assert cancelled_interview.google_event_id is None
+
+    # 3. Participants notified via email
+    assert mock_cancel_email.called
+    cancel_email_recipients = [c.kwargs.get("to_email") for c in mock_cancel_email.call_args_list]
+    assert "danielle.cand@example.com" in cancel_email_recipients
+    assert "hr_cancel_service@example.com" in cancel_email_recipients
+    assert "panel_cancel_service@example.com" in cancel_email_recipients
+
+    # 4. Candidate notified via SMS
+    assert mock_sms.called
+
+    # 5. In-app notifications generated for all participants
+    assert mock_notif.called
+    notif_roles = [c.kwargs.get("target_role") for c in mock_notif.call_args_list]
+    assert "CANDIDATE" in notif_roles
+    assert "HR" in notif_roles
+    assert "PANELIST" in notif_roles
+
+
+@pytest.mark.asyncio
+async def test_calendar_fully_booked_offers_alternative_dates(db_session):
+    """
+    TEST-ID: 9
+    Module: Interview Scheduling
+    Scenario: Calendar Fully booked
+    Steps: Request slots when no time is free
+    Expected Result: Message offers alternative dates
+    Priority: H
+    """
+    hr_user = User(
+        email="hr_fullybooked_service@example.com",
+        password="password123",
+        role="HR",
+        fullname="HR Scheduler Booked",
+        google_credentials='{"access_token": "valid_token"}',
+    )
+    db_session.add(hr_user)
+    await db_session.flush()
+
+    # Requested date: Monday, 2026-10-26 (09:00 - 17:00)
+    req_start = datetime(2026, 10, 26, 9, 0, 0)
+    req_end = datetime(2026, 10, 26, 17, 0, 0)
+
+    # Mock query_freebusy:
+    # 1. On Monday (2026-10-26), calendar is completely booked (09:00 - 17:00)
+    # 2. On upcoming days (Tuesday 2026-10-27, Wednesday 2026-10-28), calendar has free time
+    def mock_freebusy_side_effect(credentials_json, calendars, time_min, time_max):
+        if "2026-10-26" in time_min:
+            return {
+                "primary": {
+                    "busy": [
+                        {"start": "2026-10-26T09:00:00Z", "end": "2026-10-26T17:00:00Z"}
+                    ]
+                }
+            }
+        else:
+            return {"primary": {"busy": []}}
+
+    with patch("app.services.interview_service.query_freebusy", side_effect=mock_freebusy_side_effect):
+        slots = await interview_service.get_available_slots(
+            db_session,
+            req_start,
+            req_end,
+            user_id=hr_user.id
+        )
+
+    # Verification:
+    # 1. No slots are free on the requested fully booked date
+    assert len(slots) == 0
+
+    # 2. Message is generated and offers alternative dates
+    assert hasattr(slots, "message")
+    assert slots.message is not None
+    assert "fully booked" in slots.message.lower()
+    assert "alternative dates" in slots.message.lower()
+
+    # 3. Alternative dates are provided (e.g. 2026-10-27, 2026-10-28)
+    assert hasattr(slots, "alternative_dates")
+    assert len(slots.alternative_dates) > 0
+    assert any("2026-10-27" in d for d in slots.alternative_dates)
+
+
+@pytest.mark.asyncio
+async def test_concurrent_scheduling_five_candidates_no_duplicates_or_lost_events(db_session):
+    """
+    TEST-ID: 10
+    Module: Interview Scheduling
+    Scenario: Concurrent scheduling
+    Steps: Schedule 5 candidates at once
+    Expected Result: No duplicate or lost events
+    Priority: M
+    """
+    import asyncio
+
+    # Setup HR user with Google credentials
+    hr_user = User(
+        email="hr_concurrent_srv@example.com",
+        password="password123",
+        role="HR",
+        fullname="HR Concurrent Scheduler",
+        google_credentials='{"access_token": "valid_token"}',
+    )
+    db_session.add(hr_user)
+    await db_session.flush()
+
+    # Setup Job Description
+    job = JobDescription(
+        job_id="CONCUR-JOB-10",
+        job_title="Software Architect",
+        department="Engineering",
+        job_type=JobType.FULL_TIME,
+        location="Manila",
+        description="Architecture and distributed systems"
+    )
+    db_session.add(job)
+    await db_session.flush()
+
+    # Setup 5 Candidate Applications
+    applications = []
+    for i in range(1, 6):
+        app = JobApplication(
+            job_id=job.id,
+            candidate_name=f"Candidate Concurrent {i}",
+            candidate_email=f"cand_concur_{i}@example.com",
+            phone=f"+63917000000{i}",
+            job_title="Software Architect",
+            status="SHORTLISTED"
+        )
+        applications.append(app)
+        db_session.add(app)
+
+    await db_session.commit()
+    await db_session.refresh(hr_user)
+    for app in applications:
+        await db_session.refresh(app)
+
+    # 5 distinct 1-hour slots on Tuesday, 2026-10-27
+    slot_hours = [
+        (9, 10),
+        (10, 11),
+        (11, 12),
+        (13, 14), # after lunch break (12:00 - 13:00)
+        (14, 15),
+    ]
+
+    schedule_payloads = []
+    for i, (sh, eh) in enumerate(slot_hours):
+        payload = InterviewCreateSchema(
+            job_application_id=applications[i].id,
+            interviewer_id=hr_user.id,
+            title=f"Architect Interview - Candidate {i+1}",
+            description=f"Technical round for candidate {i+1}",
+            start_time=datetime(2026, 10, 27, sh, 0, 0),
+            end_time=datetime(2026, 10, 27, eh, 0, 0),
+        )
+        schedule_payloads.append(payload)
+
+    # Mock Google calendar creation returning unique event IDs for each candidate
+    call_count = 0
+    def mock_create_event_side_effect(*args, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        return {
+            "id": f"g_event_concur_{call_count}_{int(datetime.utcnow().timestamp()*1000)}",
+            "summary": kwargs.get("summary", "Interview Event"),
+            "status": "confirmed"
+        }
+
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+    session_factory = async_sessionmaker(db_session.bind, class_=AsyncSession, expire_on_commit=False)
+
+    async def schedule_candidate(payload):
+        async with session_factory() as sess:
+            return await interview_service.schedule_interview(sess, payload, hr_user.id)
+
+    with patch("app.services.interview_service.create_real_google_event", side_effect=mock_create_event_side_effect), \
+         patch("app.services.notification_service.create_notification", new_callable=AsyncMock), \
+         patch("app.tasks.initiate_interview_call_task.delay"):
+
+        # Execute 5 interview scheduling calls concurrently
+        tasks = [
+            schedule_candidate(payload)
+            for payload in schedule_payloads
+        ]
+        results = await asyncio.gather(*tasks)
+
+    # Verification:
+    # 1. Exactly 5 interviews scheduled
+    assert len(results) == 5
+
+    # 2. No duplicate event IDs / exactly 5 unique interview IDs
+    interview_ids = [iv.id for iv in results]
+    assert len(set(interview_ids)) == 5
+
+    # 3. No duplicate Google Calendar events
+    google_event_ids = [iv.google_event_id for iv in results]
+    assert len(set(google_event_ids)) == 5
+    assert all(gid is not None for gid in google_event_ids)
+
+    # 4. Each candidate has their own interview scheduled (no duplicates across candidates)
+    app_ids = [iv.job_application_id for iv in results]
+    assert len(set(app_ids)) == 5
+    assert set(app_ids) == {a.id for a in applications}
+
+    # 5. No lost events in database
+    all_ivs = await interview_service.get_all_interviews(db_session)
+    scheduled_in_db = [iv for iv in all_ivs if iv.id in interview_ids]
+    assert len(scheduled_in_db) == 5
+
+
+@pytest.mark.asyncio
+async def test_calendar_api_rate_limit_retry_and_no_partial_booking(db_session, mock_interview_emails):
+    """
+    TEST-ID: 11 (Part 1 - Rate Limit 429)
+    Module: Interview Scheduling
+    Scenario: API timeout or rate limit
+    Steps: Simulate 429 from Calendar API
+    Expected Result: Graceful retry or error message; no partial booking
+    Priority: M
+    """
+    hr_user = User(
+        email="hr_ratelimit_srv@example.com",
+        password="password123",
+        role="HR",
+        fullname="HR RateLimit Coordinator",
+        google_credentials='{"access_token": "valid_token"}',
+    )
+    db_session.add(hr_user)
+    await db_session.flush()
+
+    job = JobDescription(
+        job_id="RATELIMIT-JOB-11",
+        job_title="DevOps Lead",
+        department="Engineering",
+        job_type=JobType.FULL_TIME,
+        location="Manila",
+        description="Kubernetes & Terraform"
+    )
+    db_session.add(job)
+    await db_session.flush()
+
+    app = JobApplication(
+        job_id=job.id,
+        candidate_name="Brandon RateLimit",
+        candidate_email="brandon.ratelimit@example.com",
+        phone="+639179998888",
+        job_title="DevOps Lead",
+        status="SHORTLISTED"
+    )
+    db_session.add(app)
+    await db_session.commit()
+    await db_session.refresh(hr_user)
+    await db_session.refresh(app)
+
+    payload = InterviewCreateSchema(
+        job_application_id=app.id,
+        interviewer_id=hr_user.id,
+        title="DevOps Interview - Rate Limit Test",
+        start_time=datetime(2026, 11, 2, 10, 0, 0),
+        end_time=datetime(2026, 11, 2, 11, 0, 0),
+    )
+
+    class MockResp:
+        def __init__(self, status):
+            self.status = status
+            self.reason = "Too Many Requests"
+
+    from googleapiclient.errors import HttpError
+    http_429 = HttpError(resp=MockResp(429), content=b'{"error": {"code": 429, "message": "rateLimitExceeded"}}')
+
+    m_email, _ = mock_interview_emails
+    m_email.reset_mock()
+
+    # Case A: Persistent 429 across retries -> Error message and NO partial booking
+    with patch("app.services.interview_service.create_real_google_event", side_effect=http_429), \
+         patch("app.services.notification_service.create_notification", new_callable=AsyncMock) as mock_notif, \
+         patch("app.tasks.initiate_interview_call_task.delay") as mock_voice:
+
+        with pytest.raises(ValueError) as exc_info:
+            await interview_service.schedule_interview(db_session, payload, hr_user.id)
+
+        # 1. Informative error message received
+        err_msg = str(exc_info.value).lower()
+        assert "429" in err_msg or "rate limit" in err_msg
+        assert "no booking was created" in err_msg
+
+    # 2. NO PARTIAL BOOKING Verification:
+    # (a) Zero interviews in database
+    all_ivs = await interview_service.get_all_interviews(db_session)
+    matching_ivs = [iv for iv in all_ivs if iv.job_application_id == app.id]
+    assert len(matching_ivs) == 0
+
+    # (b) Candidate application status remains SHORTLISTED (not changed to REVIEWED)
+    await db_session.refresh(app)
+    assert app.status == "SHORTLISTED"
+
+    # (c) No notification emails dispatched
+    assert m_email.call_count == 0
+
+    # (d) No in-app notifications created
+    assert mock_notif.call_count == 0
+
+    # (e) No voice call queued
+    assert mock_voice.call_count == 0
+
+
+@pytest.mark.asyncio
+async def test_calendar_api_timeout_retry_and_no_partial_booking(db_session, mock_interview_emails):
+    """
+    TEST-ID: 11 (Part 2 - Timeout)
+    Module: Interview Scheduling
+    Scenario: API timeout or rate limit
+    Steps: Simulate timeout from Calendar API
+    Expected Result: Graceful retry or error message; no partial booking
+    Priority: M
+    """
+    hr_user = User(
+        email="hr_timeout_srv@example.com",
+        password="password123",
+        role="HR",
+        fullname="HR Timeout Coordinator",
+        google_credentials='{"access_token": "valid_token"}',
+    )
+    db_session.add(hr_user)
+    await db_session.flush()
+
+    job = JobDescription(
+        job_id="TIMEOUT-JOB-11",
+        job_title="Data Platform Engineer",
+        department="Engineering",
+        job_type=JobType.FULL_TIME,
+        location="Manila",
+        description="Spark & Kafka"
+    )
+    db_session.add(job)
+    await db_session.flush()
+
+    app = JobApplication(
+        job_id=job.id,
+        candidate_name="Timothy Timeout",
+        candidate_email="timothy.timeout@example.com",
+        phone="+639171112222",
+        job_title="Data Platform Engineer",
+        status="SHORTLISTED"
+    )
+    db_session.add(app)
+    await db_session.commit()
+    await db_session.refresh(hr_user)
+    await db_session.refresh(app)
+
+    payload = InterviewCreateSchema(
+        job_application_id=app.id,
+        interviewer_id=hr_user.id,
+        title="Data Platform Interview - Timeout Test",
+        start_time=datetime(2026, 11, 3, 14, 0, 0),
+        end_time=datetime(2026, 11, 3, 15, 0, 0),
+    )
+
+    m_email, _ = mock_interview_emails
+    m_email.reset_mock()
+
+    # Case B: Persistent Timeout -> Error message and NO partial booking
+    with patch("app.services.interview_service.create_real_google_event", side_effect=TimeoutError("Request timed out after 30000ms")), \
+         patch("app.services.notification_service.create_notification", new_callable=AsyncMock) as mock_notif, \
+         patch("app.tasks.initiate_interview_call_task.delay") as mock_voice:
+
+        with pytest.raises(ValueError) as exc_info:
+            await interview_service.schedule_interview(db_session, payload, hr_user.id)
+
+        # 1. Informative error message received
+        err_msg = str(exc_info.value).lower()
+        assert "timed out" in err_msg or "timeout" in err_msg
+        assert "no booking was created" in err_msg
+
+    # 2. NO PARTIAL BOOKING Verification:
+    # (a) Zero interviews in database
+    all_ivs = await interview_service.get_all_interviews(db_session)
+    matching_ivs = [iv for iv in all_ivs if iv.job_application_id == app.id]
+    assert len(matching_ivs) == 0
+
+    # (b) Candidate application status remains SHORTLISTED
+    await db_session.refresh(app)
+    assert app.status == "SHORTLISTED"
+
+    # (c) No notification emails dispatched
+    assert m_email.call_count == 0
+
+    # (d) No in-app notifications created
+    assert mock_notif.call_count == 0
+
+    # (e) No voice call queued
+    assert mock_voice.call_count == 0
+
+
+@pytest.mark.asyncio
+async def test_calendar_api_transient_retry_success(db_session, mock_interview_emails):
+    """
+    TEST-ID: 11 (Part 3: Transient Retry Success)
+    Scenario: Google Calendar API fails transiently on attempt 1 (429 or timeout),
+              then succeeds on attempt 2.
+    Expected Result: execute_with_retry recovers gracefully, interview is booked successfully,
+                     application status is updated, and invitations are dispatched.
+    """
+    from app.services.google_calendar_service import execute_with_retry, GoogleCalendarRateLimitError, GoogleCalendarTimeoutError
+    from googleapiclient.errors import HttpError
+    from unittest.mock import MagicMock
+
+    # 1. Direct unit test of execute_with_retry with transient 429
+    call_counts = {"count": 0}
+    def mock_flaky_429_api():
+        call_counts["count"] += 1
+        if call_counts["count"] == 1:
+            mock_resp = MagicMock()
+            mock_resp.status = 429
+            mock_resp.reason = "Too Many Requests"
+            raise HttpError(resp=mock_resp, content=b'{"error": "rate_limit_exceeded"}')
+        return {"id": "event_transient_success_1", "status": "confirmed"}
+
+    result = execute_with_retry(
+        mock_flaky_429_api,
+        max_retries=3,
+        initial_delay=0.01,
+        backoff_factor=1.5,
+        operation_name="Flaky 429 test"
+    )
+    assert call_counts["count"] == 2
+    assert result["id"] == "event_transient_success_1"
+
+    # 2. Direct unit test of execute_with_retry with transient timeout
+    timeout_counts = {"count": 0}
+    def mock_flaky_timeout_api():
+        timeout_counts["count"] += 1
+        if timeout_counts["count"] == 1:
+            raise TimeoutError("Connection timed out")
+        return {"id": "event_transient_timeout_success", "status": "confirmed"}
+
+    result_timeout = execute_with_retry(
+        mock_flaky_timeout_api,
+        max_retries=3,
+        initial_delay=0.01,
+        backoff_factor=1.5,
+        operation_name="Flaky timeout test"
+    )
+    assert timeout_counts["count"] == 2
+    assert result_timeout["id"] == "event_transient_timeout_success"
+
+    # 3. Direct test of create_real_google_event recovering from transient 429
+    from app.services.google_calendar_service import create_real_google_event
+    mock_service = MagicMock()
+    insert_call_count = {"count": 0}
+    def mock_insert_execute():
+        insert_call_count["count"] += 1
+        if insert_call_count["count"] == 1:
+            mock_resp = MagicMock()
+            mock_resp.status = 429
+            raise HttpError(resp=mock_resp, content=b"Rate limit exceeded")
+        return {"id": "g_event_retry_recovered_123", "status": "confirmed"}
+
+    mock_service.events().insert().execute.side_effect = mock_insert_execute
+
+    with patch("app.services.google_calendar_service.get_google_calendar_service", return_value=(mock_service, None)):
+        created_event = create_real_google_event(
+            credentials_json='{"access_token": "valid"}',
+            calendar_id='primary',
+            summary="Test Flaky Event",
+            start_dt="2026-11-20T10:00:00",
+            end_dt="2026-11-20T11:00:00"
+        )
+        assert insert_call_count["count"] == 2
+        assert created_event["id"] == "g_event_retry_recovered_123"
+
+    # 4. End-to-end service schedule test with recovered calendar event
+    hr_user = User(
+        email="hr_transient_test@example.com",
+        password="password123",
+        role="HR",
+        fullname="Transient HR",
+        google_credentials='{"access_token": "valid_token"}',
+    )
+    db_session.add(hr_user)
+    await db_session.flush()
+
+    job = JobDescription(
+        job_id="TRANS-JOB-11",
+        job_title="DevOps Engineer",
+        department="Engineering",
+        job_type=JobType.FULL_TIME,
+        location="Remote",
+        description="DevOps & Cloud"
+    )
+    db_session.add(job)
+    await db_session.flush()
+
+    app = JobApplication(
+        job_id=job.id,
+        candidate_name="Transient Candidate",
+        candidate_email="transient.candidate@example.com",
+        phone="+1234567890",
+        status="PENDING"
+    )
+    db_session.add(app)
+    await db_session.commit()
+
+    payload = InterviewCreateSchema(
+        job_application_id=app.id,
+        interviewer_id=hr_user.id,
+        title="DevOps Technical Interview",
+        start_time=datetime(2026, 11, 20, 10, 0),
+        end_time=datetime(2026, 11, 20, 11, 0),
+        meeting_link="https://meet.google.com/retry-success"
+    )
+
+    m_email, _ = mock_interview_emails
+    m_email.reset_mock()
+
+    recovered_event = {
+        "id": "g_event_retry_recovered_123",
+        "htmlLink": "https://calendar.google.com/event?eid=recovered",
+        "hangoutLink": "https://meet.google.com/retry-success",
+        "status": "confirmed"
+    }
+
+    with patch("app.services.interview_service.create_real_google_event", return_value=recovered_event), \
+         patch("app.services.notification_service.create_notification", new_callable=AsyncMock) as mock_notif, \
+         patch("app.tasks.initiate_interview_call_task.delay"):
+
+        interview = await interview_service.schedule_interview(db_session, payload, hr_user.id)
+
+        assert interview is not None
+        assert interview.job_application_id == app.id
+        assert interview.google_event_id == "g_event_retry_recovered_123"
+
+        # Candidate application status updated to REVIEWED
+        await db_session.refresh(app)
+        assert app.status == "REVIEWED"
+
+        # Notification emails sent (candidate and HR)
+        assert m_email.call_count >= 1
+        assert any(c.kwargs.get("to_email") == "transient.candidate@example.com" for c in m_email.call_args_list)
+
+
+
+
+
+
+
+
+
 
 
 
