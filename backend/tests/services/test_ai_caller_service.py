@@ -1057,8 +1057,8 @@ async def test_retry_and_sms_backup_after_3_attempts(db_session):
     assert interview.call_status == "RETRY_SCHEDULED"
     assert interview.next_retry_at is not None
 
-    # Simulate 3rd attempt failure
-    interview.call_attempts = 3
+    # Simulate final attempt failure (retries exhausted)
+    interview.call_attempts = 4
     await db_session.commit()
 
     with patch("app.services.interview_service.send_sms_notification_sync", return_value=True) as mock_sms:
@@ -1074,6 +1074,324 @@ async def test_retry_and_sms_backup_after_3_attempts(db_session):
     await db_session.refresh(interview)
     assert interview.call_status in ["UNREACHABLE", "SMS_BACKUP_SENT"]
     assert interview.sms_backup_sent is True
+
+
+@pytest.mark.asyncio
+async def test_voice_notification_retry_logic_schedule_and_max_retries(db_session):
+    """
+    TEST-ID: 8
+    Module: AI Voice Notification
+    Scenario: Retry logic
+    Steps: Let calls go unanswered
+    Expected Result: Retries occur per schedule (2 h, 6 h, 12 h), maximum 3 within 24 h
+    Priority: H
+    """
+    from datetime import timedelta
+
+    hr = User(
+        email="hr_retry_schedule@mariwasa.com",
+        password="pwd",
+        role="HR",
+        fullname="Engr. Fernando Ma. Guerrero"
+    )
+    db_session.add(hr)
+    await db_session.flush()
+
+    job = JobDescription(
+        job_id="JOB-RETRY-8",
+        job_title="Industrial Robotics Specialist",
+        department="Engineering",
+        job_type=JobType.FULL_TIME,
+        location="Mariwasa Plant 1, Sto. Tomas, Batangas",
+        description="Automated conveyor and palletizing robots"
+    )
+    db_session.add(job)
+    await db_session.flush()
+
+    cand_name = "Juan Luna"
+    app = JobApplication(
+        job_id=job.id,
+        candidate_name=cand_name,
+        candidate_email="juan.luna@example.com",
+        phone="+639178887766",
+        status="SHORTLISTED"
+    )
+    db_session.add(app)
+    await db_session.flush()
+
+    interview = Interview(
+        job_application_id=app.id,
+        interviewer_id=hr.id,
+        title="Robotics Specialist Interview",
+        start_time=datetime(2026, 11, 30, 9, 0, 0),
+        end_time=datetime(2026, 11, 30, 10, 0, 0),
+        status="SCHEDULED",
+        call_status="PENDING",
+        call_attempts=0
+    )
+    db_session.add(interview)
+    await db_session.commit()
+    await db_session.refresh(interview)
+
+    # ── Step 1: Initial Call (Attempt 1) goes unanswered ─────────────────────────
+    # Dispatch call 1
+    call1_res = await ai_caller_service.initiate_candidate_interview_call(interview.id, db=db_session)
+    assert call1_res["status"] == "success"
+    await db_session.refresh(interview)
+    assert interview.call_attempts == 1
+
+    # Candidate lets Call 1 go unanswered
+    time_before_1 = datetime.utcnow()
+    await ai_caller_service.handle_call_status_callback(
+        interview_id=interview.id,
+        call_sid=call1_res["call_sid"],
+        call_status="no-answer",
+        duration=0,
+        db=db_session
+    )
+    await db_session.refresh(interview)
+
+    # Expected Result 1: Retry #1 scheduled in 2 hours
+    assert interview.call_status == "RETRY_SCHEDULED"
+    assert interview.next_retry_at is not None
+    expected_retry_1 = time_before_1 + timedelta(hours=2)
+    diff_seconds_1 = abs((interview.next_retry_at - expected_retry_1).total_seconds())
+    assert diff_seconds_1 < 60, f"Expected retry in 2h, got {interview.next_retry_at}"
+
+    # Verify log for Retry 1
+    log_q1 = await db_session.execute(
+        select(InterviewLog).where(
+            InterviewLog.interview_id == interview.id,
+            InterviewLog.log_type == "VOICE_CALL_RETRY_SCHEDULED"
+        ).order_by(InterviewLog.id.desc())
+    )
+    retry_log_1 = log_q1.scalars().first()
+    assert retry_log_1 is not None
+    assert "2 hours" in retry_log_1.details
+
+    # ── Step 2: Retry #1 (Attempt 2) goes unanswered ─────────────────────────────
+    # Worker executes Retry 1
+    call2_res = await ai_caller_service.initiate_candidate_interview_call(interview.id, db=db_session, force=True)
+    assert call2_res["status"] == "success"
+    await db_session.refresh(interview)
+    assert interview.call_attempts == 2
+
+    # Candidate lets Call 2 go unanswered
+    time_before_2 = datetime.utcnow()
+    await ai_caller_service.handle_call_status_callback(
+        interview_id=interview.id,
+        call_sid=call2_res["call_sid"],
+        call_status="no-answer",
+        duration=0,
+        db=db_session
+    )
+    await db_session.refresh(interview)
+
+    # Expected Result 2: Retry #2 scheduled in 6 hours
+    assert interview.call_status == "RETRY_SCHEDULED"
+    assert interview.next_retry_at is not None
+    expected_retry_2 = time_before_2 + timedelta(hours=6)
+    diff_seconds_2 = abs((interview.next_retry_at - expected_retry_2).total_seconds())
+    assert diff_seconds_2 < 60, f"Expected retry in 6h, got {interview.next_retry_at}"
+
+    # Verify log for Retry 2
+    log_q2 = await db_session.execute(
+        select(InterviewLog).where(
+            InterviewLog.interview_id == interview.id,
+            InterviewLog.log_type == "VOICE_CALL_RETRY_SCHEDULED"
+        ).order_by(InterviewLog.id.desc())
+    )
+    retry_log_2 = log_q2.scalars().first()
+    assert retry_log_2 is not None
+    assert "6 hours" in retry_log_2.details
+
+    # ── Step 3: Retry #2 (Attempt 3) goes unanswered ─────────────────────────────
+    # Worker executes Retry 2
+    call3_res = await ai_caller_service.initiate_candidate_interview_call(interview.id, db=db_session, force=True)
+    assert call3_res["status"] == "success"
+    await db_session.refresh(interview)
+    assert interview.call_attempts == 3
+
+    # Candidate lets Call 3 go unanswered
+    time_before_3 = datetime.utcnow()
+    await ai_caller_service.handle_call_status_callback(
+        interview_id=interview.id,
+        call_sid=call3_res["call_sid"],
+        call_status="no-answer",
+        duration=0,
+        db=db_session
+    )
+    await db_session.refresh(interview)
+
+    # Expected Result 3: Retry #3 scheduled in 12 hours
+    assert interview.call_status == "RETRY_SCHEDULED"
+    assert interview.next_retry_at is not None
+    expected_retry_3 = time_before_3 + timedelta(hours=12)
+    diff_seconds_3 = abs((interview.next_retry_at - expected_retry_3).total_seconds())
+    assert diff_seconds_3 < 60, f"Expected retry in 12h, got {interview.next_retry_at}"
+
+    # Verify log for Retry 3
+    log_q3 = await db_session.execute(
+        select(InterviewLog).where(
+            InterviewLog.interview_id == interview.id,
+            InterviewLog.log_type == "VOICE_CALL_RETRY_SCHEDULED"
+        ).order_by(InterviewLog.id.desc())
+    )
+    retry_log_3 = log_q3.scalars().first()
+    assert retry_log_3 is not None
+    assert "12 hours" in retry_log_3.details
+
+    # Cumulative scheduled delays: 2h + 6h + 12h = 20h <= 24 hours
+    assert (2 + 6 + 12) <= 24
+
+    # ── Step 4: Retry #3 (Attempt 4, Maximum 3 retries) goes unanswered ──────────
+    call4_res = await ai_caller_service.initiate_candidate_interview_call(interview.id, db=db_session, force=True)
+    assert call4_res["status"] == "success"
+    await db_session.refresh(interview)
+    assert interview.call_attempts == 4
+
+    # Call 4 goes unanswered -> maximum 3 retries within 24h exhausted
+    with patch("app.services.interview_service.send_sms_notification_sync", return_value=True) as mock_sms:
+        await ai_caller_service.handle_call_status_callback(
+            interview_id=interview.id,
+            call_sid=call4_res["call_sid"],
+            call_status="no-answer",
+            duration=0,
+            db=db_session
+        )
+        assert mock_sms.called
+
+    await db_session.refresh(interview)
+    # Expected Result 4: Retries stop, status UNREACHABLE, no further retries scheduled
+    assert interview.call_status in ["UNREACHABLE", "SMS_BACKUP_SENT"]
+    assert interview.next_retry_at is None
+    assert interview.sms_backup_sent is True
+
+
+@pytest.mark.asyncio
+async def test_voice_notification_stop_retries_after_confirm_attempt_2(db_session):
+    """
+    TEST-ID: 9
+    Module: AI Voice Notification
+    Scenario: Stop Retries after confirm
+    Steps: Confirm on attempt 2
+    Expected Result: No attempt 3
+    Priority: M
+    """
+    hr = User(
+        email="hr_confirm_attempt2@mariwasa.com",
+        password="pwd",
+        role="HR",
+        fullname="Engr. Gabriela Silang"
+    )
+    db_session.add(hr)
+    await db_session.flush()
+
+    job = JobDescription(
+        job_id="JOB-CONFIRM-ATT2",
+        job_title="Ceramics Glaze Chemist",
+        department="Quality Control",
+        job_type=JobType.FULL_TIME,
+        location="Mariwasa Plant 1, Sto. Tomas, Batangas",
+        description="Glaze formulation and color spectrum testing"
+    )
+    db_session.add(job)
+    await db_session.flush()
+
+    cand_name = "Melchora Aquino"
+    app = JobApplication(
+        job_id=job.id,
+        candidate_name=cand_name,
+        candidate_email="melchora.aquino@example.com",
+        phone="+639173332211",
+        status="SHORTLISTED"
+    )
+    db_session.add(app)
+    await db_session.flush()
+
+    interview = Interview(
+        job_application_id=app.id,
+        interviewer_id=hr.id,
+        title="Glaze Chemist Interview",
+        start_time=datetime(2026, 12, 1, 14, 0, 0),
+        end_time=datetime(2026, 12, 1, 15, 0, 0),
+        status="SCHEDULED",
+        call_status="PENDING",
+        call_attempts=0
+    )
+    db_session.add(interview)
+    await db_session.commit()
+    await db_session.refresh(interview)
+
+    # ── 1. Initial Call (Attempt 1): Unanswered ──────────────────────────────
+    call1_res = await ai_caller_service.initiate_candidate_interview_call(interview.id, db=db_session)
+    assert call1_res["status"] == "success"
+    await db_session.refresh(interview)
+    assert interview.call_attempts == 1
+
+    # Call 1 status callback: no-answer -> triggers retry schedule
+    await ai_caller_service.handle_call_status_callback(
+        interview_id=interview.id,
+        call_sid=call1_res["call_sid"],
+        call_status="no-answer",
+        duration=0,
+        db=db_session
+    )
+    await db_session.refresh(interview)
+    assert interview.call_status == "RETRY_SCHEDULED"
+    assert interview.next_retry_at is not None
+
+    # ── 2. Steps: Retry 1 placed (Attempt 2) and Candidate Confirms ──────────
+    call2_res = await ai_caller_service.initiate_candidate_interview_call(interview.id, db=db_session, force=True)
+    assert call2_res["status"] == "success"
+    await db_session.refresh(interview)
+    assert interview.call_attempts == 2
+
+    # Candidate confirms on attempt 2 (e.g. presses 1 on keypad)
+    twiml_reply = await ai_caller_service.handle_voice_response(
+        interview_id=interview.id,
+        speech_result=None,
+        digits="1",
+        call_sid=call2_res["call_sid"],
+        db=db_session,
+        language="bilingual",
+        attempt=2
+    )
+    assert "<Response>" in twiml_reply
+    assert "confirmed" in twiml_reply.lower() or "kumpirmado" in twiml_reply.lower() or "salamat" in twiml_reply.lower()
+
+    await db_session.refresh(interview)
+    assert interview.status == "CONFIRMED"
+    assert interview.call_status == "CONFIRMED"
+    assert interview.candidate_response == "CONFIRMED"
+    assert interview.next_retry_at is None
+
+    # Call 2 telecom status callback: completed
+    await ai_caller_service.handle_call_status_callback(
+        interview_id=interview.id,
+        call_sid=call2_res["call_sid"],
+        call_status="completed",
+        duration=32,
+        db=db_session
+    )
+    await db_session.refresh(interview)
+    assert interview.call_status == "CONFIRMED"
+    assert interview.next_retry_at is None
+
+    # ── 3. Expected Result: No attempt 3 ─────────────────────────────────────
+    # (a) Background retry worker runs for any due interviews
+    due_result = await ai_caller_service.process_due_retries(db_session)
+    assert due_result["retried_count"] == 0
+
+    # (b) Standard call initiation skips confirmed interview
+    call3_res = await ai_caller_service.initiate_candidate_interview_call(interview.id, db=db_session, force=False)
+    assert call3_res["status"] == "already_confirmed"
+
+    # (c) Confirm call_attempts stays strictly at 2 (no Attempt 3 occurred)
+    await db_session.refresh(interview)
+    assert interview.call_attempts == 2
+    assert interview.status == "CONFIRMED"
+    assert interview.next_retry_at is None
 
 
 @pytest.mark.asyncio

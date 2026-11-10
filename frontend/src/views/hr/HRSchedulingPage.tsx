@@ -126,17 +126,17 @@ const getVoiceCallBadge = (ev: FormattedCalendarEvent) => {
   }
   if (status === 'RETRY_SCHEDULED') {
     return (
-      <span className="inline-flex items-center gap-1 bg-orange-50 text-orange-700 border border-orange-200 text-[9px] font-black px-2 py-0.5 rounded-full uppercase" title={`Auto-retry scheduled (Attempt ${ev.call_attempts || 1}/3)`}>
+      <span className="inline-flex items-center gap-1 bg-orange-50 text-orange-700 border border-orange-200 text-[9px] font-black px-2 py-0.5 rounded-full uppercase" title={`Auto-retry scheduled per schedule (2h, 6h, 12h) - Call ${ev.call_attempts || 1}/4`}>
         <RotateCcw size={9} className="text-orange-600" />
-        Call Retry ({ev.call_attempts || 1}/3)
+        Call Retry ({ev.call_attempts || 1}/4)
       </span>
     );
   }
   if (status === 'FAILED') {
     return (
-      <span className="inline-flex items-center gap-1 bg-rose-50 text-rose-700 border border-rose-200 text-[9px] font-black px-2 py-0.5 rounded-full uppercase" title="Call attempts exhausted">
+      <span className="inline-flex items-center gap-1 bg-rose-50 text-rose-700 border border-rose-200 text-[9px] font-black px-2 py-0.5 rounded-full uppercase" title="Call retries exhausted">
         <AlertCircle size={9} className="text-rose-600" />
-        {ev.sms_backup_sent ? 'SMS Backup Sent' : 'Call Failed (3/3)'}
+        {ev.sms_backup_sent ? 'SMS Backup Sent' : 'Retries Exhausted'}
       </span>
     );
   }
@@ -756,10 +756,10 @@ const HRSchedulingPage: React.FC = () => {
                   {viewMode === 'day'
                     ? selectedDayForDayView.toLocaleDateString('en-US', { weekday: 'short', month: 'long', day: 'numeric', year: 'numeric' })
                     : viewMode === 'week'
-                    ? weekTitle
-                    : viewMode === 'agenda'
-                    ? `${MONTH_NAMES[currentDate.getMonth()]} ${currentDate.getFullYear()} Agenda`
-                    : `${MONTH_NAMES[currentDate.getMonth()]} ${currentDate.getFullYear()}`}
+                      ? weekTitle
+                      : viewMode === 'agenda'
+                        ? `${MONTH_NAMES[currentDate.getMonth()]} ${currentDate.getFullYear()} Agenda`
+                        : `${MONTH_NAMES[currentDate.getMonth()]} ${currentDate.getFullYear()}`}
                 </h3>
               </div>
 
@@ -768,33 +768,29 @@ const HRSchedulingPage: React.FC = () => {
                 <div className="grid grid-cols-4 sm:flex bg-gray-100 p-1 rounded-xl border border-gray-200/60 text-xs font-bold text-gray-600 w-full md:w-auto">
                   <button
                     onClick={() => setViewMode('month')}
-                    className={`px-2 sm:px-3 py-1.5 rounded-lg transition-all text-[11px] sm:text-xs text-center ${
-                      viewMode === 'month' ? 'bg-white text-[#D60041] shadow-sm font-black' : 'hover:text-gray-900'
-                    }`}
+                    className={`px-2 sm:px-3 py-1.5 rounded-lg transition-all text-[11px] sm:text-xs text-center ${viewMode === 'month' ? 'bg-white text-[#D60041] shadow-sm font-black' : 'hover:text-gray-900'
+                      }`}
                   >
                     Month
                   </button>
                   <button
                     onClick={() => setViewMode('week')}
-                    className={`px-2 sm:px-3 py-1.5 rounded-lg transition-all text-[11px] sm:text-xs text-center ${
-                      viewMode === 'week' ? 'bg-white text-[#D60041] shadow-sm font-black' : 'hover:text-gray-900'
-                    }`}
+                    className={`px-2 sm:px-3 py-1.5 rounded-lg transition-all text-[11px] sm:text-xs text-center ${viewMode === 'week' ? 'bg-white text-[#D60041] shadow-sm font-black' : 'hover:text-gray-900'
+                      }`}
                   >
                     Week
                   </button>
                   <button
                     onClick={() => setViewMode('day')}
-                    className={`px-2 sm:px-3 py-1.5 rounded-lg transition-all text-[11px] sm:text-xs text-center ${
-                      viewMode === 'day' ? 'bg-white text-[#D60041] shadow-sm font-black' : 'hover:text-gray-900'
-                    }`}
+                    className={`px-2 sm:px-3 py-1.5 rounded-lg transition-all text-[11px] sm:text-xs text-center ${viewMode === 'day' ? 'bg-white text-[#D60041] shadow-sm font-black' : 'hover:text-gray-900'
+                      }`}
                   >
                     Day
                   </button>
                   <button
                     onClick={() => setViewMode('agenda')}
-                    className={`px-2 sm:px-3 py-1.5 rounded-lg transition-all text-[11px] sm:text-xs text-center ${
-                      viewMode === 'agenda' ? 'bg-white text-[#D60041] shadow-sm font-black' : 'hover:text-gray-900'
-                    }`}
+                    className={`px-2 sm:px-3 py-1.5 rounded-lg transition-all text-[11px] sm:text-xs text-center ${viewMode === 'agenda' ? 'bg-white text-[#D60041] shadow-sm font-black' : 'hover:text-gray-900'
+                      }`}
                   >
                     Agenda
                   </button>
@@ -829,9 +825,8 @@ const HRSchedulingPage: React.FC = () => {
                   <select
                     value={statusFilter}
                     onChange={(e) => setStatusFilter(e.target.value)}
-                    className={`px-3 py-2 bg-white border rounded-xl text-xs font-bold transition-colors shadow-sm focus:outline-none focus:ring-2 focus:ring-[#D60041]/20 cursor-pointer ${
-                      statusFilter !== 'ALL' ? 'border-[#D60041] text-[#D60041] bg-pink-50/20' : 'border-gray-200 text-gray-700'
-                    }`}
+                    className={`px-3 py-2 bg-white border rounded-xl text-xs font-bold transition-colors shadow-sm focus:outline-none focus:ring-2 focus:ring-[#D60041]/20 cursor-pointer ${statusFilter !== 'ALL' ? 'border-[#D60041] text-[#D60041] bg-pink-50/20' : 'border-gray-200 text-gray-700'
+                      }`}
                   >
                     <option value="ALL">All Status</option>
                     <option value="SCHEDULED">Scheduled</option>
@@ -847,9 +842,8 @@ const HRSchedulingPage: React.FC = () => {
                   <select
                     value={sourceFilter}
                     onChange={(e) => setSourceFilter(e.target.value)}
-                    className={`px-3 py-2 bg-white border rounded-xl text-xs font-bold transition-colors shadow-sm focus:outline-none focus:ring-2 focus:ring-[#D60041]/20 cursor-pointer ${
-                      sourceFilter !== 'ALL' ? 'border-blue-500 text-blue-700 bg-blue-50/20' : 'border-gray-200 text-gray-700'
-                    }`}
+                    className={`px-3 py-2 bg-white border rounded-xl text-xs font-bold transition-colors shadow-sm focus:outline-none focus:ring-2 focus:ring-[#D60041]/20 cursor-pointer ${sourceFilter !== 'ALL' ? 'border-blue-500 text-blue-700 bg-blue-50/20' : 'border-gray-200 text-gray-700'
+                      }`}
                   >
                     <option value="ALL">All Sources</option>
                     <option value="INTERVIEWS">ARAS Interviews Only</option>
@@ -857,16 +851,14 @@ const HRSchedulingPage: React.FC = () => {
                   </select>
 
                   {/* HR Panelist Filter */}
-                  <div className={`flex items-center gap-1.5 bg-white border rounded-xl px-3 py-2 shadow-sm transition-colors ${
-                    hrFilter !== 'ALL' ? 'border-emerald-500 bg-emerald-50/20' : 'border-gray-200'
-                  }`}>
+                  <div className={`flex items-center gap-1.5 bg-white border rounded-xl px-3 py-2 shadow-sm transition-colors ${hrFilter !== 'ALL' ? 'border-emerald-500 bg-emerald-50/20' : 'border-gray-200'
+                    }`}>
                     <Users size={14} className={hrFilter !== 'ALL' ? 'text-emerald-600 shrink-0' : 'text-[#D60041] shrink-0'} />
                     <select
                       value={hrFilter}
                       onChange={(e) => setHrFilter(e.target.value)}
-                      className={`bg-transparent text-xs font-bold focus:outline-none cursor-pointer ${
-                        hrFilter !== 'ALL' ? 'text-emerald-700' : 'text-gray-700'
-                      }`}
+                      className={`bg-transparent text-xs font-bold focus:outline-none cursor-pointer ${hrFilter !== 'ALL' ? 'text-emerald-700' : 'text-gray-700'
+                        }`}
                     >
                       <option value="ALL">All HR Panelists</option>
                       {interviewers.map((hr: any) => (
@@ -972,13 +964,12 @@ const HRSchedulingPage: React.FC = () => {
                           <div
                             key={index}
                             onClick={isPast ? undefined : () => handleOpenNewSchedule(dayObj.date)}
-                            className={`min-h-[125px] p-2 flex flex-col justify-between transition-colors ${
-                              isPast
+                            className={`min-h-[125px] p-2 flex flex-col justify-between transition-colors ${isPast
                                 ? 'bg-gray-100/50 text-gray-400 cursor-not-allowed select-none'
                                 : dayObj.isCurrentMonth
-                                ? 'bg-white hover:bg-gray-50/50 cursor-pointer group'
-                                : 'bg-gray-50/30 text-gray-300 cursor-pointer group'
-                            }`}
+                                  ? 'bg-white hover:bg-gray-50/50 cursor-pointer group'
+                                  : 'bg-gray-50/30 text-gray-300 cursor-pointer group'
+                              }`}
                             title={isPast ? 'Unavailable: Date has passed' : 'Click to schedule an interview'}
                           >
                             {/* Day Number Header */}
@@ -998,13 +989,12 @@ const HRSchedulingPage: React.FC = () => {
                                     setSelectedDayForDayView(dayObj.date);
                                     setViewMode('day');
                                   }}
-                                  className={`text-xs font-black w-6 h-6 rounded-full flex items-center justify-center transition-all hover:scale-110 ${
-                                    dayIsToday
+                                  className={`text-xs font-black w-6 h-6 rounded-full flex items-center justify-center transition-all hover:scale-110 ${dayIsToday
                                       ? 'bg-[#D60041] text-white shadow-sm shadow-[#D60041]/30'
                                       : dayObj.isCurrentMonth
-                                      ? 'text-gray-800 hover:bg-pink-50 hover:text-[#D60041]'
-                                      : 'text-gray-300'
-                                  }`}
+                                        ? 'text-gray-800 hover:bg-pink-50 hover:text-[#D60041]'
+                                        : 'text-gray-300'
+                                    }`}
                                   title="Open Day View"
                                 >
                                   {dayObj.date.getDate()}
@@ -1126,9 +1116,8 @@ const HRSchedulingPage: React.FC = () => {
                                   setSelectedDayForDayView(d);
                                   setViewMode('day');
                                 }}
-                                className={`text-base font-black mt-0.5 inline-block px-2.5 py-0.5 rounded-full transition-all hover:scale-105 ${
-                                  isTod ? 'bg-[#D60041] text-white shadow-sm' : 'text-gray-900 hover:text-[#D60041]'
-                                }`}
+                                className={`text-base font-black mt-0.5 inline-block px-2.5 py-0.5 rounded-full transition-all hover:scale-105 ${isTod ? 'bg-[#D60041] text-white shadow-sm' : 'text-gray-900 hover:text-[#D60041]'
+                                  }`}
                                 title="View Day Schedule"
                               >
                                 {d.getDate()}
@@ -1143,9 +1132,8 @@ const HRSchedulingPage: React.FC = () => {
                                   Unavailable
                                 </span>
                               ) : (
-                                <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded-md ${
-                                  dayEvents.length > 0 ? 'bg-pink-100 text-[#D60041]' : 'text-gray-400'
-                                }`}>
+                                <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded-md ${dayEvents.length > 0 ? 'bg-pink-100 text-[#D60041]' : 'text-gray-400'
+                                  }`}>
                                   {dayEvents.length} {dayEvents.length === 1 ? 'session' : 'sessions'}
                                 </span>
                               )}
@@ -1163,9 +1151,8 @@ const HRSchedulingPage: React.FC = () => {
                         return (
                           <div
                             key={colIdx}
-                            className={`p-2.5 flex flex-col justify-between transition-colors ${
-                              isPast ? 'bg-gray-50/50' : 'hover:bg-gray-50/30'
-                            }`}
+                            className={`p-2.5 flex flex-col justify-between transition-colors ${isPast ? 'bg-gray-50/50' : 'hover:bg-gray-50/30'
+                              }`}
                           >
                             <div className="space-y-2 flex-1">
                               {dayEvents.length === 0 ? (
@@ -1201,17 +1188,16 @@ const HRSchedulingPage: React.FC = () => {
                                     <div
                                       key={ev.id}
                                       onClick={() => handleEventClick(ev)}
-                                      className={`p-2.5 rounded-2xl border text-xs cursor-pointer shadow-sm hover:shadow-md transition-all group ${
-                                        isGoogle
+                                      className={`p-2.5 rounded-2xl border text-xs cursor-pointer shadow-sm hover:shadow-md transition-all group ${isGoogle
                                           ? 'bg-blue-50/60 border-blue-200 text-blue-900'
                                           : isCompleted
-                                          ? 'bg-emerald-50/60 border-emerald-200 text-emerald-900'
-                                          : isCanceled
-                                          ? 'bg-gray-100 border-gray-200 text-gray-400 line-through'
-                                          : readOnly
-                                          ? 'bg-gray-50/70 border-gray-200 text-gray-800 hover:border-gray-300'
-                                          : 'bg-white border-pink-200/90 text-gray-900 hover:border-[#D60041]'
-                                      }`}
+                                            ? 'bg-emerald-50/60 border-emerald-200 text-emerald-900'
+                                            : isCanceled
+                                              ? 'bg-gray-100 border-gray-200 text-gray-400 line-through'
+                                              : readOnly
+                                                ? 'bg-gray-50/70 border-gray-200 text-gray-800 hover:border-gray-300'
+                                                : 'bg-white border-pink-200/90 text-gray-900 hover:border-[#D60041]'
+                                        }`}
                                     >
                                       <div className="flex items-center justify-between text-[10px] font-bold text-gray-500 mb-1">
                                         <span>{formatEventTime(ev.start)} – {formatEventTime(ev.end)}</span>
@@ -1231,9 +1217,8 @@ const HRSchedulingPage: React.FC = () => {
                                         {ev.job_title || (isGoogle ? 'External Google Event' : ev.title)}
                                       </p>
                                       {!isGoogle && (
-                                        <p className={`text-[10px] font-bold truncate mt-1 flex items-center gap-1 ${
-                                          readOnly ? 'text-gray-600' : 'text-[#D60041]'
-                                        }`}>
+                                        <p className={`text-[10px] font-bold truncate mt-1 flex items-center gap-1 ${readOnly ? 'text-gray-600' : 'text-[#D60041]'
+                                          }`}>
                                           {readOnly ? (
                                             <>
                                               <Lock size={10} className="text-amber-600 shrink-0" />
@@ -1283,185 +1268,184 @@ const HRSchedulingPage: React.FC = () => {
             {!isLoading && viewMode === 'day' && (() => {
               const isDayPast = isPastDate(selectedDayForDayView);
               return (
-              <div className="bg-white border border-gray-100 rounded-2xl sm:rounded-3xl shadow-sm p-4 sm:p-6 space-y-6">
-                {/* Day Header with Quick Date Selector */}
-                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-4 border-b border-gray-100">
-                  <div>
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <h4 className="text-lg sm:text-xl font-black text-gray-900">
-                        {selectedDayForDayView.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
-                      </h4>
-                      {isDayPast && (
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-gray-100 text-gray-500 border border-gray-200 select-none">
-                          Unavailable (Past Date)
-                        </span>
+                <div className="bg-white border border-gray-100 rounded-2xl sm:rounded-3xl shadow-sm p-4 sm:p-6 space-y-6">
+                  {/* Day Header with Quick Date Selector */}
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-4 border-b border-gray-100">
+                    <div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h4 className="text-lg sm:text-xl font-black text-gray-900">
+                          {selectedDayForDayView.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
+                        </h4>
+                        {isDayPast && (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-gray-100 text-gray-500 border border-gray-200 select-none">
+                            Unavailable (Past Date)
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-gray-500 font-medium mt-0.5">
+                        {getEventsForDay(selectedDayForDayView).length} scheduled session(s) on this date
+                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-3 w-full sm:w-auto">
+                      {/* Inline Date Input Picker */}
+                      <input
+                        type="date"
+                        value={toLocalDateString(selectedDayForDayView)}
+                        onChange={(e) => {
+                          if (e.target.value) {
+                            const parts = e.target.value.split('-');
+                            const newD = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+                            setSelectedDayForDayView(newD);
+                          }
+                        }}
+                        className="px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-xs font-bold text-gray-800 focus:outline-none focus:ring-2 focus:ring-[#D60041]/20 cursor-pointer shadow-sm"
+                      />
+
+                      {isDayPast ? (
+                        <button
+                          disabled
+                          className="px-4 py-2 bg-gray-100 border border-gray-200 text-gray-400 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-not-allowed select-none"
+                          title="Cannot schedule interviews on past dates"
+                        >
+                          <AlertCircle size={14} className="text-gray-400" />
+                          <span>Unavailable (Past Date)</span>
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => handleOpenNewSchedule(selectedDayForDayView)}
+                          className="px-4 py-2 bg-[#D60041] hover:bg-rose-700 text-white rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5 shadow-sm shadow-[#D60041]/20"
+                        >
+                          <Plus size={14} /> Schedule for this day
+                        </button>
                       )}
                     </div>
-                    <p className="text-xs text-gray-500 font-medium mt-0.5">
-                      {getEventsForDay(selectedDayForDayView).length} scheduled session(s) on this date
-                    </p>
                   </div>
 
-                  <div className="flex items-center gap-3 w-full sm:w-auto">
-                    {/* Inline Date Input Picker */}
-                    <input
-                      type="date"
-                      value={toLocalDateString(selectedDayForDayView)}
-                      onChange={(e) => {
-                        if (e.target.value) {
-                          const parts = e.target.value.split('-');
-                          const newD = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
-                          setSelectedDayForDayView(newD);
-                        }
-                      }}
-                      className="px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-xs font-bold text-gray-800 focus:outline-none focus:ring-2 focus:ring-[#D60041]/20 cursor-pointer shadow-sm"
-                    />
+                  {/* Day Hourly Schedule Timeline (8:00 AM - 5:00 PM) */}
+                  <div className="space-y-3">
+                    {WORKING_HOURS.map((slot) => {
+                      const hourEvents = getEventsForDay(selectedDayForDayView).filter((ev) => {
+                        const evHour = ev.start.getHours();
+                        return evHour === slot.hour;
+                      });
 
-                    {isDayPast ? (
-                      <button
-                        disabled
-                        className="px-4 py-2 bg-gray-100 border border-gray-200 text-gray-400 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-not-allowed select-none"
-                        title="Cannot schedule interviews on past dates"
-                      >
-                        <AlertCircle size={14} className="text-gray-400" />
-                        <span>Unavailable (Past Date)</span>
-                      </button>
-                    ) : (
-                      <button
-                        onClick={() => handleOpenNewSchedule(selectedDayForDayView)}
-                        className="px-4 py-2 bg-[#D60041] hover:bg-rose-700 text-white rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5 shadow-sm shadow-[#D60041]/20"
-                      >
-                        <Plus size={14} /> Schedule for this day
-                      </button>
-                    )}
-                  </div>
-                </div>
-
-                {/* Day Hourly Schedule Timeline (8:00 AM - 5:00 PM) */}
-                <div className="space-y-3">
-                  {WORKING_HOURS.map((slot) => {
-                    const hourEvents = getEventsForDay(selectedDayForDayView).filter((ev) => {
-                      const evHour = ev.start.getHours();
-                      return evHour === slot.hour;
-                    });
-
-                    return (
-                      <div
-                        key={slot.hour}
-                        className="flex items-start gap-4 p-3.5 rounded-2xl border border-gray-100 hover:border-gray-200 transition-colors bg-gray-50/20"
-                      >
-                        {/* Hour marker */}
-                        <div className="w-20 shrink-0 text-center py-1">
-                          <span className="text-xs font-black text-gray-700 block">{slot.label}</span>
-                          {slot.isLunch && (
-                            <span className="text-[9px] font-bold text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded-md mt-0.5 inline-block">
-                              Lunch Break
-                            </span>
-                          )}
-                        </div>
-
-                        {/* Hourly Content */}
-                        <div className="flex-1 min-w-0">
-                          {hourEvents.length === 0 ? (
-                            <div className="flex items-center justify-between p-3 bg-white border border-dashed border-gray-200 rounded-xl hover:border-pink-300 transition-colors group">
-                              <span className="text-xs text-gray-400 font-medium">
-                                {slot.isLunch ? 'Lunch break reservation window' : 'No interviews scheduled — Slot available'}
+                      return (
+                        <div
+                          key={slot.hour}
+                          className="flex items-start gap-4 p-3.5 rounded-2xl border border-gray-100 hover:border-gray-200 transition-colors bg-gray-50/20"
+                        >
+                          {/* Hour marker */}
+                          <div className="w-20 shrink-0 text-center py-1">
+                            <span className="text-xs font-black text-gray-700 block">{slot.label}</span>
+                            {slot.isLunch && (
+                              <span className="text-[9px] font-bold text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded-md mt-0.5 inline-block">
+                                Lunch Break
                               </span>
-                              {isDayPast ? (
-                                <span className="px-3 py-1 bg-gray-100 text-gray-400 border border-gray-200 rounded-lg text-xs font-semibold cursor-not-allowed select-none">
-                                  Unavailable (Past)
+                            )}
+                          </div>
+
+                          {/* Hourly Content */}
+                          <div className="flex-1 min-w-0">
+                            {hourEvents.length === 0 ? (
+                              <div className="flex items-center justify-between p-3 bg-white border border-dashed border-gray-200 rounded-xl hover:border-pink-300 transition-colors group">
+                                <span className="text-xs text-gray-400 font-medium">
+                                  {slot.isLunch ? 'Lunch break reservation window' : 'No interviews scheduled — Slot available'}
                                 </span>
-                              ) : (
-                                <button
-                                  type="button"
-                                  onClick={() => handleOpenNewSchedule(selectedDayForDayView, `${String(slot.hour).padStart(2, '0')}:00`)}
-                                  className="px-3 py-1 bg-gray-50 hover:bg-pink-50 text-gray-600 hover:text-[#D60041] border border-gray-200 hover:border-pink-200 rounded-lg text-xs font-bold transition-colors flex items-center gap-1 group-hover:border-[#D60041]/40"
-                                >
-                                  <Plus size={12} /> Schedule at {slot.label}
-                                </button>
-                              )}
-                            </div>
-                          ) : (
-                            <div className="space-y-2">
-                              {hourEvents.map((ev) => {
-                                const isGoogle = ev.isGoogleEvent;
-                                const readOnly = isEventReadOnly(ev);
-                                const isOwner = isEventOwnedByCurrentUser(ev);
-                                return (
-                                  <div
-                                    key={ev.id}
-                                    onClick={() => handleEventClick(ev)}
-                                    className="p-3.5 bg-white hover:bg-pink-50/30 border border-gray-200 hover:border-[#D60041]/40 rounded-xl cursor-pointer transition-all flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-sm"
+                                {isDayPast ? (
+                                  <span className="px-3 py-1 bg-gray-100 text-gray-400 border border-gray-200 rounded-lg text-xs font-semibold cursor-not-allowed select-none">
+                                    Unavailable (Past)
+                                  </span>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleOpenNewSchedule(selectedDayForDayView, `${String(slot.hour).padStart(2, '0')}:00`)}
+                                    className="px-3 py-1 bg-gray-50 hover:bg-pink-50 text-gray-600 hover:text-[#D60041] border border-gray-200 hover:border-pink-200 rounded-lg text-xs font-bold transition-colors flex items-center gap-1 group-hover:border-[#D60041]/40"
                                   >
-                                    <div className="flex items-center gap-3 min-w-0">
-                                      <div className="w-10 h-10 rounded-xl bg-pink-50 text-[#D60041] border border-pink-200 flex items-center justify-center font-bold text-sm shrink-0">
-                                        {isGoogle ? 'G' : (ev.candidate_name || 'C').charAt(0)}
-                                      </div>
-                                      <div className="truncate">
-                                        <div className="flex items-center gap-2 flex-wrap">
-                                          <h5 className="text-sm font-bold text-gray-900 truncate">
-                                            {ev.candidate_name && !isGoogle ? ev.candidate_name : ev.title}
-                                          </h5>
-                                          {isGoogle ? (
-                                            <span className="bg-blue-100 text-blue-700 text-[9px] font-black px-2 py-0.5 rounded-full uppercase">Google</span>
-                                          ) : (
-                                            <>
-                                              <span className={`text-[9px] font-black px-2 py-0.5 rounded-full uppercase ${
-                                                ev.status === 'COMPLETED'
-                                                  ? 'bg-emerald-100 text-emerald-700'
-                                                  : ev.status === 'CANCELED' || ev.status === 'CANCELLED'
-                                                  ? 'bg-rose-100 text-rose-700 line-through'
-                                                  : 'bg-pink-100 text-[#D60041]'
-                                              }`}>
-                                                {ev.status}
-                                              </span>
-                                              {getVoiceCallBadge(ev)}
-                                              {readOnly && (
-                                                <span className="bg-amber-100 text-amber-800 text-[9px] font-black px-2 py-0.5 rounded-full uppercase inline-flex items-center gap-1">
-                                                  <Lock size={9} /> Read-Only ({ev.interviewer_name ? `Assigned to ${ev.interviewer_name}` : 'Other HR'})
+                                    <Plus size={12} /> Schedule at {slot.label}
+                                  </button>
+                                )}
+                              </div>
+                            ) : (
+                              <div className="space-y-2">
+                                {hourEvents.map((ev) => {
+                                  const isGoogle = ev.isGoogleEvent;
+                                  const readOnly = isEventReadOnly(ev);
+                                  const isOwner = isEventOwnedByCurrentUser(ev);
+                                  return (
+                                    <div
+                                      key={ev.id}
+                                      onClick={() => handleEventClick(ev)}
+                                      className="p-3.5 bg-white hover:bg-pink-50/30 border border-gray-200 hover:border-[#D60041]/40 rounded-xl cursor-pointer transition-all flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-sm"
+                                    >
+                                      <div className="flex items-center gap-3 min-w-0">
+                                        <div className="w-10 h-10 rounded-xl bg-pink-50 text-[#D60041] border border-pink-200 flex items-center justify-center font-bold text-sm shrink-0">
+                                          {isGoogle ? 'G' : (ev.candidate_name || 'C').charAt(0)}
+                                        </div>
+                                        <div className="truncate">
+                                          <div className="flex items-center gap-2 flex-wrap">
+                                            <h5 className="text-sm font-bold text-gray-900 truncate">
+                                              {ev.candidate_name && !isGoogle ? ev.candidate_name : ev.title}
+                                            </h5>
+                                            {isGoogle ? (
+                                              <span className="bg-blue-100 text-blue-700 text-[9px] font-black px-2 py-0.5 rounded-full uppercase">Google</span>
+                                            ) : (
+                                              <>
+                                                <span className={`text-[9px] font-black px-2 py-0.5 rounded-full uppercase ${ev.status === 'COMPLETED'
+                                                    ? 'bg-emerald-100 text-emerald-700'
+                                                    : ev.status === 'CANCELED' || ev.status === 'CANCELLED'
+                                                      ? 'bg-rose-100 text-rose-700 line-through'
+                                                      : 'bg-pink-100 text-[#D60041]'
+                                                  }`}>
+                                                  {ev.status}
                                                 </span>
-                                              )}
-                                            </>
+                                                {getVoiceCallBadge(ev)}
+                                                {readOnly && (
+                                                  <span className="bg-amber-100 text-amber-800 text-[9px] font-black px-2 py-0.5 rounded-full uppercase inline-flex items-center gap-1">
+                                                    <Lock size={9} /> Read-Only ({ev.interviewer_name ? `Assigned to ${ev.interviewer_name}` : 'Other HR'})
+                                                  </span>
+                                                )}
+                                              </>
+                                            )}
+                                          </div>
+                                          <p className="text-xs text-gray-500 font-medium truncate mt-0.5">
+                                            {ev.job_title ? `${ev.job_title} • ` : ''}{ev.title} ({formatEventTime(ev.start)} – {formatEventTime(ev.end)})
+                                          </p>
+                                          {!isGoogle && (
+                                            <p className="text-[11px] text-[#D60041] font-semibold mt-0.5 flex items-center gap-1.5">
+                                              <Users size={12} /> Panelist: {isOwner ? 'You' : (ev.interviewer_name || 'Assigned HR')}
+                                            </p>
                                           )}
                                         </div>
-                                        <p className="text-xs text-gray-500 font-medium truncate mt-0.5">
-                                          {ev.job_title ? `${ev.job_title} • ` : ''}{ev.title} ({formatEventTime(ev.start)} – {formatEventTime(ev.end)})
-                                        </p>
-                                        {!isGoogle && (
-                                          <p className="text-[11px] text-[#D60041] font-semibold mt-0.5 flex items-center gap-1.5">
-                                            <Users size={12} /> Panelist: {isOwner ? 'You' : (ev.interviewer_name || 'Assigned HR')}
-                                          </p>
-                                        )}
+                                      </div>
+
+                                      <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+                                        <button
+                                          type="button"
+                                          onClick={() => handleEventClick(ev)}
+                                          className="px-3 py-1.5 bg-gray-50 hover:bg-gray-100 text-gray-700 border border-gray-200 rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5"
+                                        >
+                                          {readOnly ? (
+                                            <>
+                                              <Lock size={12} className="text-amber-600" />
+                                              <span>View (Read-Only)</span>
+                                            </>
+                                          ) : (
+                                            <span>Manage</span>
+                                          )}
+                                        </button>
                                       </div>
                                     </div>
-
-                                    <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
-                                      <button
-                                        type="button"
-                                        onClick={() => handleEventClick(ev)}
-                                        className="px-3 py-1.5 bg-gray-50 hover:bg-gray-100 text-gray-700 border border-gray-200 rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5"
-                                      >
-                                        {readOnly ? (
-                                          <>
-                                            <Lock size={12} className="text-amber-600" />
-                                            <span>View (Read-Only)</span>
-                                          </>
-                                        ) : (
-                                          <span>Manage</span>
-                                        )}
-                                      </button>
-                                    </div>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          )}
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    );
-                  })}
+                      );
+                    })}
+                  </div>
                 </div>
-              </div>
               );
             })()}
 
@@ -1481,33 +1465,29 @@ const HRSchedulingPage: React.FC = () => {
                   <div className="flex bg-gray-100 p-1 rounded-xl border border-gray-200 text-xs font-bold text-gray-600">
                     <button
                       onClick={() => setAgendaFilterTab('upcoming')}
-                      className={`px-3 py-1.5 rounded-lg transition-all ${
-                        agendaFilterTab === 'upcoming' ? 'bg-white text-[#D60041] shadow-sm font-black' : 'hover:text-gray-900'
-                      }`}
+                      className={`px-3 py-1.5 rounded-lg transition-all ${agendaFilterTab === 'upcoming' ? 'bg-white text-[#D60041] shadow-sm font-black' : 'hover:text-gray-900'
+                        }`}
                     >
                       All Upcoming
                     </button>
                     <button
                       onClick={() => setAgendaFilterTab('month')}
-                      className={`px-3 py-1.5 rounded-lg transition-all ${
-                        agendaFilterTab === 'month' ? 'bg-white text-[#D60041] shadow-sm font-black' : 'hover:text-gray-900'
-                      }`}
+                      className={`px-3 py-1.5 rounded-lg transition-all ${agendaFilterTab === 'month' ? 'bg-white text-[#D60041] shadow-sm font-black' : 'hover:text-gray-900'
+                        }`}
                     >
                       This Month
                     </button>
                     <button
                       onClick={() => setAgendaFilterTab('week')}
-                      className={`px-3 py-1.5 rounded-lg transition-all ${
-                        agendaFilterTab === 'week' ? 'bg-white text-[#D60041] shadow-sm font-black' : 'hover:text-gray-900'
-                      }`}
+                      className={`px-3 py-1.5 rounded-lg transition-all ${agendaFilterTab === 'week' ? 'bg-white text-[#D60041] shadow-sm font-black' : 'hover:text-gray-900'
+                        }`}
                     >
                       This Week
                     </button>
                     <button
                       onClick={() => setAgendaFilterTab('past')}
-                      className={`px-3 py-1.5 rounded-lg transition-all ${
-                        agendaFilterTab === 'past' ? 'bg-white text-[#D60041] shadow-sm font-black' : 'hover:text-gray-900'
-                      }`}
+                      className={`px-3 py-1.5 rounded-lg transition-all ${agendaFilterTab === 'past' ? 'bg-white text-[#D60041] shadow-sm font-black' : 'hover:text-gray-900'
+                        }`}
                     >
                       Past Sessions
                     </button>
@@ -1537,13 +1517,12 @@ const HRSchedulingPage: React.FC = () => {
                         <div key={toLocalDateString(group.date)} className="space-y-3">
                           {/* Date Section Header */}
                           <div className="flex items-center gap-3">
-                            <div className={`px-3 py-1 rounded-xl text-xs font-black uppercase tracking-wider ${
-                              isGroupToday
+                            <div className={`px-3 py-1 rounded-xl text-xs font-black uppercase tracking-wider ${isGroupToday
                                 ? 'bg-[#D60041] text-white shadow-sm'
                                 : isGroupPast
-                                ? 'bg-gray-100 text-gray-500 border border-gray-200'
-                                : 'bg-gray-100 text-gray-700 border border-gray-200'
-                            }`}>
+                                  ? 'bg-gray-100 text-gray-500 border border-gray-200'
+                                  : 'bg-gray-100 text-gray-700 border border-gray-200'
+                              }`}>
                               {isGroupToday ? 'Today — ' : ''}
                               {group.date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
                               {isGroupPast && !isGroupToday && (
@@ -1589,13 +1568,12 @@ const HRSchedulingPage: React.FC = () => {
                                           <span className="bg-blue-100 text-blue-700 text-[9px] font-black px-2 py-0.5 rounded-full uppercase">Google Calendar</span>
                                         ) : (
                                           <>
-                                            <span className={`text-[9px] font-black px-2 py-0.5 rounded-full uppercase ${
-                                              ev.status === 'COMPLETED'
+                                            <span className={`text-[9px] font-black px-2 py-0.5 rounded-full uppercase ${ev.status === 'COMPLETED'
                                                 ? 'bg-emerald-100 text-emerald-700'
                                                 : ev.status === 'CANCELED' || ev.status === 'CANCELLED'
-                                                ? 'bg-rose-100 text-rose-700'
-                                                : 'bg-pink-100 text-[#D60041]'
-                                            }`}>
+                                                  ? 'bg-rose-100 text-rose-700'
+                                                  : 'bg-pink-100 text-[#D60041]'
+                                              }`}>
                                               {ev.status}
                                             </span>
                                             {getVoiceCallBadge(ev)}

@@ -915,5 +915,251 @@ async def test_voice_notification_invalid_key_and_timeout_controller(client, db_
     assert sim_resp.json()["call_status"] == "RETRY_SCHEDULED"
 
 
+@pytest.mark.asyncio
+async def test_voice_notification_retry_logic_schedule_and_max_retries_controller(client, db_session):
+    """
+    TEST-ID: 8
+    Module: AI Voice Notification
+    Scenario: Retry logic
+    Steps: Let calls go unanswered
+    Expected Result: Retries occur per schedule (2 h, 6 h, 12 h), maximum 3 within 24 h
+    Priority: H
+    """
+    from datetime import timedelta
+    from app.utils.auth import create_access_token
+
+    hr = User(
+        email="hr_retry_ctrl@mariwasa.com",
+        password="pwd",
+        role="HR",
+        fullname="HR Scheduler Alvarez"
+    )
+    db_session.add(hr)
+    await db_session.flush()
+
+    job = JobDescription(
+        job_id="JOB-RETRY-CTRL",
+        job_title="Industrial Automation Engineer",
+        department="Engineering",
+        job_type=JobType.FULL_TIME,
+        location="Mariwasa Plant 1, Sto. Tomas, Batangas",
+        description="SCADA and PLC engineering"
+    )
+    db_session.add(job)
+    await db_session.flush()
+
+    cand_name = "Antonio Luna"
+    app = JobApplication(
+        job_id=job.id,
+        candidate_name=cand_name,
+        candidate_email="antonio.luna@example.com",
+        phone="+639179998877",
+        job_title="Industrial Automation Engineer",
+        status="SHORTLISTED"
+    )
+    db_session.add(app)
+    await db_session.flush()
+
+    interview = Interview(
+        job_application_id=app.id,
+        interviewer_id=hr.id,
+        title="Automation Engineer Interview",
+        start_time=datetime(2026, 11, 30, 10, 0, 0),
+        end_time=datetime(2026, 11, 30, 11, 0, 0),
+        status="SCHEDULED",
+        call_status="PENDING",
+        call_attempts=0
+    )
+    db_session.add(interview)
+    await db_session.commit()
+    await db_session.refresh(interview)
+
+    headers = {"Authorization": f"Bearer {create_access_token({'sub': hr.email, 'id': hr.id, 'role': 'HR'})}"}
+
+    # 1. Place initial call (Attempt 1)
+    call1_resp = await client.post(f"/ai-caller/interview/{interview.id}/call", headers=headers)
+    assert call1_resp.status_code == 200
+    call1_sid = call1_resp.json()["call_sid"]
+
+    # Call 1 status callback: no-answer
+    t1 = datetime.utcnow()
+    cb1 = await client.post(
+        f"/ai-caller/status-callback?interview_id={interview.id}",
+        data={"CallSid": call1_sid, "CallStatus": "no-answer", "CallDuration": "0"}
+    )
+    assert cb1.status_code == 200
+    await db_session.refresh(interview)
+    assert interview.call_status == "RETRY_SCHEDULED"
+    assert abs((interview.next_retry_at - (t1 + timedelta(hours=2))).total_seconds()) < 60
+
+    # 2. Place Retry #1 (Attempt 2)
+    call2_resp = await client.post(f"/ai-caller/interview/{interview.id}/retry", headers=headers)
+    assert call2_resp.status_code == 200
+    call2_sid = call2_resp.json()["call_sid"]
+
+    # Call 2 status callback: no-answer
+    t2 = datetime.utcnow()
+    cb2 = await client.post(
+        f"/ai-caller/status-callback?interview_id={interview.id}",
+        data={"CallSid": call2_sid, "CallStatus": "no-answer", "CallDuration": "0"}
+    )
+    assert cb2.status_code == 200
+    await db_session.refresh(interview)
+    assert interview.call_status == "RETRY_SCHEDULED"
+    assert abs((interview.next_retry_at - (t2 + timedelta(hours=6))).total_seconds()) < 60
+
+    # 3. Place Retry #2 (Attempt 3)
+    call3_resp = await client.post(f"/ai-caller/interview/{interview.id}/retry", headers=headers)
+    assert call3_resp.status_code == 200
+    call3_sid = call3_resp.json()["call_sid"]
+
+    # Call 3 status callback: no-answer
+    t3 = datetime.utcnow()
+    cb3 = await client.post(
+        f"/ai-caller/status-callback?interview_id={interview.id}",
+        data={"CallSid": call3_sid, "CallStatus": "no-answer", "CallDuration": "0"}
+    )
+    assert cb3.status_code == 200
+    await db_session.refresh(interview)
+    assert interview.call_status == "RETRY_SCHEDULED"
+    assert abs((interview.next_retry_at - (t3 + timedelta(hours=12))).total_seconds()) < 60
+
+    # 4. Place Retry #3 (Attempt 4, max 3 retries within 24h)
+    call4_resp = await client.post(f"/ai-caller/interview/{interview.id}/retry", headers=headers)
+    assert call4_resp.status_code == 200
+    call4_sid = call4_resp.json()["call_sid"]
+
+    # Call 4 status callback: no-answer -> all retries exhausted
+    with patch("app.services.interview_service.send_sms_notification_sync", return_value=True) as mock_sms:
+        cb4 = await client.post(
+            f"/ai-caller/status-callback?interview_id={interview.id}",
+            data={"CallSid": call4_sid, "CallStatus": "no-answer", "CallDuration": "0"}
+        )
+        assert cb4.status_code == 200
+
+    await db_session.refresh(interview)
+    assert interview.call_status in ["UNREACHABLE", "SMS_BACKUP_SENT"]
+    assert interview.next_retry_at is None
+    assert interview.sms_backup_sent is True
+
+
+@pytest.mark.asyncio
+async def test_voice_notification_stop_retries_after_confirm_attempt_2_controller(client, db_session):
+    """
+    TEST-ID: 9
+    Module: AI Voice Notification
+    Scenario: Stop Retries after confirm
+    Steps: Confirm on attempt 2
+    Expected Result: No attempt 3
+    Priority: M
+    """
+    from app.utils.auth import create_access_token
+
+    hr = User(
+        email="hr_stop_attempt2_ctrl@mariwasa.com",
+        password="pwd",
+        role="HR",
+        fullname="HR Scheduler Trinidad"
+    )
+    db_session.add(hr)
+    await db_session.flush()
+
+    job = JobDescription(
+        job_id="JOB-STOP-CTRL",
+        job_title="Kiln Thermal Systems Supervisor",
+        department="Manufacturing",
+        job_type=JobType.FULL_TIME,
+        location="Mariwasa Plant 1, Sto. Tomas, Batangas",
+        description="High-temperature kiln thermodynamics"
+    )
+    db_session.add(job)
+    await db_session.flush()
+
+    cand_name = "Teresa Magbanua"
+    app = JobApplication(
+        job_id=job.id,
+        candidate_name=cand_name,
+        candidate_email="teresa.magbanua@example.com",
+        phone="+639174445566",
+        job_title="Kiln Thermal Systems Supervisor",
+        status="SHORTLISTED"
+    )
+    db_session.add(app)
+    await db_session.flush()
+
+    interview = Interview(
+        job_application_id=app.id,
+        interviewer_id=hr.id,
+        title="Kiln Supervisor Interview",
+        start_time=datetime(2026, 12, 1, 11, 0, 0),
+        end_time=datetime(2026, 12, 1, 12, 0, 0),
+        status="SCHEDULED",
+        call_status="PENDING",
+        call_attempts=0
+    )
+    db_session.add(interview)
+    await db_session.commit()
+    await db_session.refresh(interview)
+
+    headers = {"Authorization": f"Bearer {create_access_token({'sub': hr.email, 'id': hr.id, 'role': 'HR'})}"}
+
+    # 1. Place initial call (Attempt 1)
+    call1_resp = await client.post(f"/ai-caller/interview/{interview.id}/call", headers=headers)
+    assert call1_resp.status_code == 200
+    call1_sid = call1_resp.json()["call_sid"]
+
+    # Call 1 status callback: no-answer
+    cb1 = await client.post(
+        f"/ai-caller/status-callback?interview_id={interview.id}",
+        data={"CallSid": call1_sid, "CallStatus": "no-answer", "CallDuration": "0"}
+    )
+    assert cb1.status_code == 200
+    await db_session.refresh(interview)
+    assert interview.call_status == "RETRY_SCHEDULED"
+    assert interview.call_attempts == 1
+
+    # 2. Place Retry #1 (Attempt 2)
+    call2_resp = await client.post(f"/ai-caller/interview/{interview.id}/retry", headers=headers)
+    assert call2_resp.status_code == 200
+    call2_sid = call2_resp.json()["call_sid"]
+    await db_session.refresh(interview)
+    assert interview.call_attempts == 2
+
+    # Steps: Candidate confirms on attempt 2 (e.g. presses 1)
+    conf_resp = await client.post(
+        f"/ai-caller/voice-response?interview_id={interview.id}&attempt=2",
+        data={"Digits": "1", "CallSid": call2_sid}
+    )
+    assert conf_resp.status_code == 200
+    await db_session.refresh(interview)
+    assert interview.status == "CONFIRMED"
+    assert interview.call_status == "CONFIRMED"
+    assert interview.candidate_response == "CONFIRMED"
+    assert interview.next_retry_at is None
+
+    # Call 2 status callback: completed
+    cb2 = await client.post(
+        f"/ai-caller/status-callback?interview_id={interview.id}",
+        data={"CallSid": call2_sid, "CallStatus": "completed", "CallDuration": "45"}
+    )
+    assert cb2.status_code == 200
+    await db_session.refresh(interview)
+    assert interview.call_status == "CONFIRMED"
+    assert interview.next_retry_at is None
+
+    # 3. Expected Result: No attempt 3
+    # Check interview attempts count remains strictly at 2
+    assert interview.call_attempts == 2
+
+    # Verify call logs list exactly 2 records, not 3
+    logs_resp = await client.get(f"/ai-caller/interview/{interview.id}/logs", headers=headers)
+    assert logs_resp.status_code == 200
+    call_records = logs_resp.json()
+    assert len(call_records) == 2
+    attempts_in_records = [r["attempt_number"] for r in call_records]
+    assert 3 not in attempts_in_records
+    assert attempts_in_records == [2, 1]  # Ordered desc
+
+
 
 

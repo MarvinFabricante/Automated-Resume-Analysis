@@ -65,6 +65,25 @@ SPEAK_TO_HR_KEYWORDS = [
     "kausapin", "makausap", "makipag-usap", "tao"
 ]
 
+# REQ031 / TEST-ID 8: Retry schedule (2 h, 6 h, 12 h), maximum 3 retries within 24 hours
+RETRY_SCHEDULE_HOURS: List[int] = [2, 6, 12]
+MAX_CALL_RETRIES: int = len(RETRY_SCHEDULE_HOURS)
+
+
+def get_retry_delay_hours(attempts: int) -> Optional[int]:
+    """
+    REQ031 & TEST-ID: 8
+    Returns the retry delay in hours per schedule (2 h, 6 h, 12 h).
+    - Initial call failure (attempt 1): Retry #1 scheduled in 2 hours
+    - Retry #1 failure (attempt 2): Retry #2 scheduled in 6 hours
+    - Retry #2 failure (attempt 3): Retry #3 scheduled in 12 hours
+    - After 3 retries (attempt >= 4): Retries exhausted, returns None
+    """
+    idx = (attempts or 1) - 1
+    if 0 <= idx < len(RETRY_SCHEDULE_HOURS):
+        return RETRY_SCHEDULE_HOURS[idx]
+    return None
+
 
 def format_to_e164(phone: Optional[str]) -> Optional[str]:
     """Ensures phone number is in E.164 format for telecom / Twilio routing."""
@@ -471,9 +490,9 @@ async def initiate_candidate_interview_call(
         await db.commit()
         return {"status": "skipped", "message": "Candidate has no phone number on file."}
 
-    # Don't place call if already confirmed unless forced
-    if interview.call_status == "CONFIRMED" and not force:
-        return {"status": "already_confirmed", "message": "Candidate has already confirmed this interview."}
+    # Don't place call if already confirmed (REQ031 & TEST-ID: 9)
+    if (interview.call_status == "CONFIRMED" or interview.status == "CONFIRMED" or interview.candidate_response == "CONFIRMED") and not force:
+        return {"status": "already_confirmed", "message": "Candidate has already confirmed this interview. No further retry needed."}
 
     # REQ031: Check if already reached 3 attempts
     current_attempts = interview.call_attempts or 0
@@ -554,15 +573,15 @@ async def initiate_candidate_interview_call(
     )
     db.add(log_entry)
 
-    # If call failed directly upon dispatch, schedule retry or send SMS if 3rd attempt
+    # If call failed directly upon dispatch, schedule retry per schedule (2 h, 6 h, 12 h) or send SMS if retries exhausted
     if call_status == "FAILED":
-        if new_attempt < 3:
+        delay_hours = get_retry_delay_hours(new_attempt)
+        if delay_hours is not None:
             interview.call_status = "RETRY_SCHEDULED"
-            # Schedule retry: 2 hours for attempt 2, 4 hours for attempt 3
-            delay_hours = 2 if new_attempt == 1 else 4
             interview.next_retry_at = datetime.utcnow() + timedelta(hours=delay_hours)
         else:
             interview.call_status = "UNREACHABLE"
+            interview.next_retry_at = None
             await send_backup_sms_notification(interview_id, db)
 
     await db.commit()
@@ -843,9 +862,9 @@ async def handle_voice_response(
             interview.candidate_response = "NO_RESPONSE"
             interview.verbal_notes = "No response (Timeout - 30s)" if is_timeout else f"Invalid input ({candidate_input_display})"
 
-            if (interview.call_attempts or 1) < 3:
+            delay_hours = get_retry_delay_hours(interview.call_attempts or 1)
+            if delay_hours is not None:
                 interview.call_status = "RETRY_SCHEDULED"
-                delay_hours = 2 if (interview.call_attempts or 1) == 1 else 4
                 interview.next_retry_at = datetime.utcnow() + timedelta(hours=delay_hours)
             else:
                 interview.call_status = "UNREACHABLE"
@@ -907,8 +926,13 @@ async def handle_call_status_callback(
         call_record.status = call_status.upper()
         call_record.duration = duration
 
-    # If call was successful or candidate already confirmed/rescheduled, nothing further to retry
-    if interview.call_status in ["CONFIRMED", "RESCHEDULE_REQUESTED"]:
+    # If candidate already confirmed, rescheduled, or escalated, stop all retries (REQ031 & TEST-ID: 9)
+    if (
+        interview.call_status in ["CONFIRMED", "RESCHEDULE_REQUESTED", "ESCALATED_TO_HR"]
+        or interview.status in ["CONFIRMED", "RESCHEDULE_REQUESTED", "ESCALATED_TO_HR"]
+        or interview.candidate_response in ["CONFIRMED", "RESCHEDULE_REQUESTED", "ESCALATED_TO_HR"]
+    ):
+        interview.next_retry_at = None
         await db.commit()
         return
 
@@ -923,18 +947,22 @@ async def handle_call_status_callback(
             details=f"Call Attempt #{attempts} unsuccessful ({call_status.upper()})."
         ))
 
-        # REQ031: Retry unsuccessful calls up to 3 times within 24 hours
-        if attempts < 3:
+        # REQ031 & TEST-ID: 8: Retry schedule (2 h, 6 h, 12 h), maximum 3 retries within 24 hours
+        delay_hours = get_retry_delay_hours(attempts)
+        if delay_hours is not None:
             interview.call_status = "RETRY_SCHEDULED"
-            # Schedule retry intervals: Attempt 2 in 2 hours, Attempt 3 in 4 hours
-            delay_hours = 2 if attempts == 1 else 4
             interview.next_retry_at = datetime.utcnow() + timedelta(hours=delay_hours)
-            logger.info(f"[AI Caller] Scheduled retry #{attempts + 1} for Interview {interview_id} at {interview.next_retry_at.isoformat()}")
+            logger.info(f"[AI Caller] Scheduled retry #{attempts} for Interview {interview_id} at {interview.next_retry_at.isoformat()} (in {delay_hours}h per schedule: 2h, 6h, 12h)")
+            db.add(InterviewLog(
+                interview_id=interview.id,
+                log_type="VOICE_CALL_RETRY_SCHEDULED",
+                details=f"Call Attempt #{attempts} unanswered. Scheduled Retry #{attempts} in {delay_hours} hours per schedule (2 h, 6 h, 12 h)."
+            ))
         else:
-            # REQ033: Send SMS backup notification if voice calls are unsuccessful
+            # REQ033: Max 3 retries within 24h exhausted -> send SMS backup
             interview.call_status = "UNREACHABLE"
             interview.next_retry_at = None
-            logger.info(f"[AI Caller] Max 3 call attempts reached for Interview {interview_id}. Sending SMS backup.")
+            logger.info(f"[AI Caller] Max 3 retries reached for Interview {interview_id}. Sending SMS backup.")
             await send_backup_sms_notification(interview_id, db)
 
     await db.commit()
@@ -1008,17 +1036,25 @@ async def process_due_retries(db: AsyncSession) -> Dict[str, Any]:
     now = datetime.utcnow()
     query = select(Interview).where(
         Interview.call_status == "RETRY_SCHEDULED",
+        Interview.status.not_in(["CONFIRMED", "RESCHEDULE_REQUESTED", "ESCALATED_TO_HR"]),
+        Interview.next_retry_at.is_not(None),
         Interview.next_retry_at <= now,
-        Interview.call_attempts < 3
+        Interview.call_attempts <= MAX_CALL_RETRIES
     )
     result = await db.execute(query)
     due_interviews = result.scalars().all()
 
     retried = 0
     for iv in due_interviews:
+        if (
+            iv.status in ["CONFIRMED", "RESCHEDULE_REQUESTED", "ESCALATED_TO_HR"]
+            or iv.call_status in ["CONFIRMED", "RESCHEDULE_REQUESTED", "ESCALATED_TO_HR"]
+            or iv.candidate_response in ["CONFIRMED", "RESCHEDULE_REQUESTED", "ESCALATED_TO_HR"]
+        ):
+            continue
         try:
-            logger.info(f"[AI Caller Retries] Executing retry for Interview {iv.id} (Attempt {iv.call_attempts + 1}/3)...")
-            await initiate_candidate_interview_call(iv.id, db=db, force=True)
+            logger.info(f"[AI Caller Retries] Executing retry for Interview {iv.id} (Attempt {iv.call_attempts + 1})...")
+            await initiate_candidate_interview_call(iv.id, db=db, force=False)
             retried += 1
         except Exception as e:
             logger.error(f"[AI Caller Retries] Error executing retry for Interview {iv.id}: {e}")
@@ -1187,9 +1223,9 @@ async def simulate_voice_call(
         
         interview.candidate_response = "NO_RESPONSE"
         interview.verbal_notes = "No response (Timeout - 30s)"
-        if attempt < 3:
+        delay_hours = get_retry_delay_hours(attempt)
+        if delay_hours is not None:
             interview.call_status = "RETRY_SCHEDULED"
-            delay_hours = 2 if attempt == 1 else 4
             interview.next_retry_at = datetime.utcnow() + timedelta(hours=delay_hours)
         else:
             interview.call_status = "UNREACHABLE"
@@ -1242,9 +1278,9 @@ async def simulate_voice_call(
             details=f"Simulated Voice Call Attempt #{attempt} unsuccessful ({outcome})."
         ))
 
-        if attempt < 3:
+        delay_hours = get_retry_delay_hours(attempt)
+        if delay_hours is not None:
             interview.call_status = "RETRY_SCHEDULED"
-            delay_hours = 2 if attempt == 1 else 4
             interview.next_retry_at = datetime.utcnow() + timedelta(hours=delay_hours)
         else:
             interview.call_status = "UNREACHABLE"
