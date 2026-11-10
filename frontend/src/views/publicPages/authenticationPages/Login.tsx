@@ -217,18 +217,15 @@ const Login: React.FC = () => {
       localStorage.setItem('saved_email', normalizedEmail);
       if (profile_image_url) {
         localStorage.setItem('profile_image_url', profile_image_url);
+      } else {
+        localStorage.removeItem('profile_image_url');
       }
 
       // Broadcast login to all other open windows/tabs so they automatically logout
       broadcastAuthLogin(user_id, normalizedEmail, verifiedRole);
 
       setVerifiedUserRole(verifiedRole);
-      setModalState({
-        isOpen: true,
-        type: 'success',
-        title: 'Success!',
-        message: `Authentication successful. Welcome back to the ${verifiedRole} portal.`
-      });
+      handleRedirect(verifiedRole);
 
     } catch (err: any) {
       const message = err.response?.data?.detail || "Invalid email or password";

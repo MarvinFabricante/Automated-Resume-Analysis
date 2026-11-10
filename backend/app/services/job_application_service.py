@@ -16,13 +16,22 @@ def _resume_data_from_application(app: JobApplication) -> dict:
     else:
         skills_text = str(skills or "")
 
-    experience_text = " | ".join(
-        part for part in [
-            app.relevance,
-            f"{app.job_title} at {app.company}" if app.job_title or app.company else "",
-        ]
-        if part
-    )
+    exp_parts = []
+    if app.job_title or app.company:
+        exp_parts.append(f"{app.job_title} at {app.company}" if (app.job_title and app.company) else (app.job_title or app.company))
+    if getattr(app, "work_experiences", None) and isinstance(app.work_experiences, list):
+        for we in app.work_experiences:
+            if isinstance(we, dict):
+                r_title = we.get("job_title") or we.get("role") or we.get("title") or ""
+                r_comp = we.get("company_name") or we.get("company") or ""
+                if r_title or r_comp:
+                    entry_str = f"{r_title} at {r_comp}" if (r_title and r_comp) else (r_title or r_comp)
+                    if entry_str not in exp_parts:
+                        exp_parts.append(entry_str)
+    if app.relevant_experience and app.relevant_experience not in exp_parts:
+        exp_parts.append(app.relevant_experience)
+
+    experience_text = " | ".join(part for part in exp_parts if part)
 
     years_experience = 0
     if getattr(app, "total_experience_months", 0):
@@ -217,8 +226,57 @@ def _enrich_applications(apps: list[JobApplication]) -> list[JobApplication]:
                     pass
     return apps
 
-async def create_job_application(db: AsyncSession, application_in: JobApplicationCreate, db_job_id: int):
-    """Create a new job application and trigger AI analysis."""
+async def check_duplicate(db: AsyncSession, db_job_id: int, candidate_email: str) -> Optional[JobApplication]:
+    """Check if an applicant has already applied for a specific job."""
+    if not candidate_email or not db_job_id:
+        return None
+    return await JobApplicationRepository.get_by_job_and_email(db, db_job_id, candidate_email)
+
+
+async def create_job_application(
+    db: AsyncSession, 
+    application_in: JobApplicationCreate, 
+    db_job_id: int,
+    duplicate_policy: Optional[str] = None
+):
+    """Create a new job application or handle duplicates according to policy (block or version)."""
+    # ── Duplicate Detection (REQ: Limit / TC-RES-016) ───────────────────────────
+    existing_app = await JobApplicationRepository.get_by_job_and_email(
+        db, db_job_id, application_in.candidate_email
+    )
+    if existing_app:
+        policy = (duplicate_policy or "block").lower().strip()
+        if policy == "block":
+            from fastapi import HTTPException, status
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Duplicate application: An application for this role has already been submitted by {application_in.candidate_email}."
+            )
+        elif policy == "version":
+            # Update/version existing record without creating double records
+            from datetime import datetime
+            data = application_in.model_dump()
+            if 'job_id' in data:
+                del data['job_id']
+            for k, v in data.items():
+                if v is not None:
+                    setattr(existing_app, k, v)
+            existing_app.updated_at = datetime.utcnow()
+            existing_app.status = "PENDING"
+            updated_app = await JobApplicationRepository.update(db, existing_app)
+            try:
+                from app.tasks import analyze_application_task
+                analyze_application_task.delay(updated_app.id)
+            except Exception as task_err:
+                logger.warning(f"Failed to dispatch background task for versioned app: {task_err}")
+            return updated_app
+        else:
+            from fastapi import HTTPException, status
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Duplicate application: An application for this role has already been submitted by {application_in.candidate_email}."
+            )
+
     data = application_in.model_dump()
 
     # Remove job_id from data as we'll pass the internal ID

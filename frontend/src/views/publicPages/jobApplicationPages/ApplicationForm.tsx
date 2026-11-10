@@ -92,11 +92,39 @@ const ApplicationForm: React.FC = () => {
       if (jobId === 'smart') return; // Do not calculate score for a specific job if it's a smart upload
       setIsCalculating(true);
       try {
+        const expParts: string[] = [];
+        if (formData.jobTitle || formData.company) {
+          expParts.push(`${formData.jobTitle || ''}${formData.company ? ` at ${formData.company}` : ''}`.trim());
+        }
+        if (location.state?.extractedData?.experience) {
+          expParts.push(location.state.extractedData.experience);
+        }
+        if (formData.relevance) {
+          expParts.push(formData.relevance);
+        }
+        const experienceText = Array.from(new Set(expParts.filter(Boolean))).join(' | ');
+
+        let yearsExp = 0;
+        if (location.state?.extractedData?.years_experience) {
+          yearsExp = Number(location.state.extractedData.years_experience) || 0;
+        } else if (formData.relevance) {
+          const match = formData.relevance.match(/(\d+)\+?\s*(?:years?|yrs?)/i);
+          if (match) yearsExp = parseInt(match[1], 10);
+        }
+
         const payload = {
           skills: formData.skills.join(', '),
-          experience: formData.relevance,
-          education: formData.degree,
+          skills_list: formData.skills,
+          job_title: formData.jobTitle,
+          company: formData.company,
+          experience: experienceText,
+          relevance: formData.relevance,
+          years_experience: yearsExp,
+          work_experiences: location.state?.extractedData?.work_experiences || [],
+          education: [formData.degree, formData.college].filter(Boolean).join(' - '),
           highest_degree: formData.degree,
+          education_entries: location.state?.extractedData?.education_entries || [],
+          certifications: location.state?.extractedData?.certifications || undefined,
           fullname: formData.fullName,
           location: formData.location
         };
@@ -117,7 +145,7 @@ const ApplicationForm: React.FC = () => {
     }, 800);
 
     return () => clearTimeout(timeoutId);
-  }, [formData.skills, formData.relevance, formData.degree, formData.fullName, formData.location, jobId]);
+  }, [formData.skills, formData.jobTitle, formData.company, formData.relevance, formData.degree, formData.college, formData.fullName, formData.location, jobId, location.state]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;

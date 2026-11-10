@@ -13,9 +13,14 @@ from app.utils.cache import cache_response, clear_cache_pattern
 router = APIRouter(prefix="/applications", tags=["Job Applications"])
 
 @router.post("/", response_model=JobApplicationResponse, status_code=status.HTTP_201_CREATED)
-async def create_job_application(application_in: JobApplicationCreate, db: AsyncSession = Depends(get_db)):
+async def create_job_application(
+    application_in: JobApplicationCreate, 
+    duplicate_policy: Optional[str] = None,
+    db: AsyncSession = Depends(get_db)
+):
     """
     Submit a new job application.
+    Supports duplicate handling policy ('block' or 'version').
     """
     # Verify job exists via service
     job = await job_application_service.get_and_validate_job(db, application_in.job_id)
@@ -23,7 +28,9 @@ async def create_job_application(application_in: JobApplicationCreate, db: Async
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
         
-    res = await job_application_service.create_job_application(db, application_in, job.id)
+    res = await job_application_service.create_job_application(
+        db, application_in, job.id, duplicate_policy=duplicate_policy
+    )
     
     # Invalidate cache so HR immediately sees the new applicant
     from app.utils.cache import delete_cache
@@ -34,6 +41,25 @@ async def create_job_application(application_in: JobApplicationCreate, db: Async
     await clear_cache_pattern("cand_apps*")
     
     return res
+
+
+@router.get("/check-duplicate")
+async def check_duplicate_application(
+    job_id: int, 
+    email: str, 
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Check if a candidate has already applied for a specific job (REQ: Limit / TC-RES-016).
+    """
+    existing = await job_application_service.check_duplicate(db, job_id, email)
+    return {
+        "is_duplicate": existing is not None,
+        "existing_application_id": existing.id if existing else None,
+        "status": existing.status if existing else None,
+        "applied_at": existing.created_at.isoformat() if existing and existing.created_at else None,
+    }
+
 
 @router.get("/", response_model=List[JobApplicationResponse])
 @cache_response("all_apps", ttl=60)

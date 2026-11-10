@@ -797,6 +797,129 @@ def test_tc_res_014_no_data_loss_across_formats(temp_files):
     assert res_utf16.get("candidate_company") == "Tech Mahindra"
 
 
+@pytest.mark.asyncio
+async def test_tc_res_016_duplicate_submission_policy_and_matching_score_stability(temp_files, db_session):
+    """
+    Test Case: TC-RES-016
+    Module: Resume Processing
+    Requirement: Limit
+    Scenario: Duplicate Submission
+    Steps: Upload R1 twice for J1 as same applicant
+    Expected Result: Duplicate handled by policy (block or version); no double records.
+                     Matching scores for the same information are identical.
+    """
+    from app.services.job_matching_service import calculate_match_score
+    from app.services import job_application_service
+    from app.schemas.job_application_schema import JobApplicationCreate
+    from app.models.job_description import JobDescription, JobType
+    from fastapi import HTTPException
+    from unittest.mock import patch
+
+    # 1. Prepare Job J1 in database
+    job = JobDescription(
+        job_id="JOB-TC016-J1",
+        job_title="Production Operator (Manufacturing)",
+        department="Operations",
+        job_type=JobType.FULL_TIME,
+        location="Batangas",
+        skills_requirements="kiln operation, safety training, machine maintenance, ISO 9001",
+        experience_requirements="3 years",
+        education_requirements="Vocational or High School",
+        description="Machine operation and preventive maintenance in tile manufacturing."
+    )
+    db_session.add(job)
+    await db_session.flush()
+
+    # 2. Prepare Resume R1 (DOCX)
+    r1_doc = docx.Document()
+    r1_doc.add_heading("JUAN DELA CRUZ", level=0)
+    r1_doc.add_paragraph("juan.delacruz@gmail.com | 09171234567 | Laguna, Philippines")
+    r1_doc.add_heading("WORK EXPERIENCE", level=1)
+    r1_doc.add_paragraph(
+        "Production Operator\n"
+        "Luzon Plastics Industries Inc. - Laguna\n"
+        "2020 - 2024 (4 years)\n"
+        "Machine setup, routine preventive maintenance, and line clearance."
+    )
+    r1_doc.add_heading("EDUCATION", level=1)
+    r1_doc.add_paragraph("Technical-Vocational Track (Electronics)\nTESDA Institute\n2018 - 2020")
+    r1_doc.add_heading("SKILLS", level=1)
+    r1_doc.add_paragraph("ISO 9001 Quality Standards, Preventive Maintenance, Machine Maintenance, Safety Training")
+
+    with tempfile.NamedTemporaryFile(suffix=".docx", delete=False) as f:
+        r1_doc.save(f.name)
+        r1_path = temp_files(f.name)
+
+    r1_extracted = process_resume(r1_path, "docx")
+    assert r1_extracted.get("candidate_name") == "Juan Dela Cruz"
+    assert r1_extracted.get("candidate_email") == "juan.delacruz@gmail.com"
+
+    # 3. Verify deterministic matching score (same info MUST produce identical matching score)
+    with patch("app.ml_engine.get_feedback_db"):
+        score_run1 = calculate_match_score(r1_extracted, job)
+        score_run2 = calculate_match_score(r1_extracted, job)
+
+    assert score_run1["match_percentage"] == score_run2["match_percentage"], (
+        f"Matching scores must be identical for the same resume and job: {score_run1['match_percentage']} != {score_run2['match_percentage']}"
+    )
+    assert score_run1["skills_score"] == score_run2["skills_score"]
+    assert score_run1["experience_score"] == score_run2["experience_score"]
+    assert score_run1["education_score"] == score_run2["education_score"]
+
+    # 4. Prepare JobApplicationCreate payload for upload 1
+    app_in = JobApplicationCreate(
+        job_id="JOB-TC016-J1",
+        candidate_name=r1_extracted["candidate_name"],
+        candidate_email=r1_extracted["candidate_email"],
+        phone=r1_extracted.get("candidate_phone") or "09171234567",
+        location=r1_extracted.get("candidate_location") or "Laguna",
+        job_title=r1_extracted.get("candidate_job_title") or "Production Operator",
+        company=r1_extracted.get("candidate_company") or "Luzon Plastics Industries Inc.",
+        skills=r1_extracted.get("skills_list") or ["Preventive Maintenance", "ISO 9001"],
+        degree=r1_extracted.get("candidate_degree") or "Technical-Vocational Track",
+        college="TESDA Institute",
+        relevance=r1_extracted.get("candidate_experience") or "4 years of experience",
+        match_score=score_run1["match_percentage"],
+        skills_score=score_run1["skills_score"],
+        experience_score=score_run1["experience_score"],
+        education_score=score_run1["education_score"]
+    )
+
+    with patch("app.tasks.analyze_application_task.delay"):
+        # Upload 1: First submission succeeds
+        first_app = await job_application_service.create_job_application(
+            db=db_session, application_in=app_in, db_job_id=job.id
+        )
+        assert first_app is not None
+        assert first_app.id is not None
+        assert first_app.candidate_email == "juan.delacruz@gmail.com"
+
+        # Upload 2: Same applicant, same role with default BLOCK policy
+        with pytest.raises(HTTPException) as exc_info:
+            await job_application_service.create_job_application(
+                db=db_session, application_in=app_in, db_job_id=job.id, duplicate_policy="block"
+            )
+        assert exc_info.value.status_code == 409
+        assert "Duplicate application" in exc_info.value.detail
+
+        # Verify database has exactly 1 application record (no double records)
+        all_apps = await job_application_service.get_applications_by_job(db_session, job.id)
+        assert len(all_apps) == 1, f"Expected 1 application record, found {len(all_apps)}"
+
+        # Upload 3: Same applicant, same role with VERSION policy
+        updated_in = app_in.model_copy(update={"relevance": "5 years of experience"})
+        versioned_app = await job_application_service.create_job_application(
+            db=db_session, application_in=updated_in, db_job_id=job.id, duplicate_policy="version"
+        )
+        assert versioned_app.id == first_app.id
+        assert versioned_app.relevance == "5 years of experience"
+
+        # Verify database still has exactly 1 application record (no double records)
+        all_apps_after_version = await job_application_service.get_applications_by_job(db_session, job.id)
+        assert len(all_apps_after_version) == 1, f"Expected 1 application record after version, found {len(all_apps_after_version)}"
+
+
+
 
 
 

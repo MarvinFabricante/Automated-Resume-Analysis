@@ -190,3 +190,103 @@ def test_resume_data_and_needs_enrichment_helpers():
     assert "UP Diliman" in data["education"]
 
     assert job_application_service._needs_analysis_enrichment(app) is True
+
+
+@pytest.mark.asyncio
+async def test_duplicate_submission_blocked_by_policy(db_session, mock_celery_task):
+    """
+    Test Case: TC-RES-016 (Duplicate Submission - Limit / Block Policy)
+    Uploading same applicant application twice for same job should be blocked; no double records.
+    """
+    from fastapi import HTTPException
+
+    job = JobDescription(
+        job_id="JOB-DUP-01",
+        job_title="Frontend Developer",
+        department="Engineering",
+        job_type=JobType.FULL_TIME,
+        location="Manila",
+        description="Build user interfaces"
+    )
+    db_session.add(job)
+    await db_session.flush()
+
+    app_in = JobApplicationCreate(
+        job_id="JOB-DUP-01",
+        candidate_name="Juan Dela Cruz",
+        candidate_email="juan.delacruz@example.com",
+        job_title="Frontend Developer",
+        skills=["JavaScript", "React", "CSS"],
+        degree="B.S. Information Technology",
+        relevance="3 years of experience"
+    )
+
+    # First submission succeeds
+    created = await job_application_service.create_job_application(
+        db=db_session, application_in=app_in, db_job_id=job.id
+    )
+    assert created is not None
+
+    # Second submission (duplicate) is blocked by policy
+    with pytest.raises(HTTPException) as exc_info:
+        await job_application_service.create_job_application(
+            db=db_session, application_in=app_in, db_job_id=job.id, duplicate_policy="block"
+        )
+    assert exc_info.value.status_code == 409
+    assert "Duplicate application" in exc_info.value.detail
+
+    # Verify no double records exist
+    apps = await job_application_service.get_applications_by_job(db_session, job.id)
+    assert len(apps) == 1
+
+
+@pytest.mark.asyncio
+async def test_duplicate_submission_version_policy(db_session, mock_celery_task):
+    """
+    Test Case: TC-RES-016 (Duplicate Submission - Version Policy)
+    When policy is 'version', updates the existing application without creating double records.
+    """
+    job = JobDescription(
+        job_id="JOB-DUP-02",
+        job_title="DevOps Engineer",
+        department="Infrastructure",
+        job_type=JobType.FULL_TIME,
+        location="Batangas",
+        description="Kubernetes & CI/CD"
+    )
+    db_session.add(job)
+    await db_session.flush()
+
+    app_in1 = JobApplicationCreate(
+        job_id="JOB-DUP-02",
+        candidate_name="Maria Santos",
+        candidate_email="maria.santos@example.com",
+        job_title="Junior DevOps",
+        skills=["Docker", "Linux"],
+        relevance="2 years experience"
+    )
+    created = await job_application_service.create_job_application(
+        db=db_session, application_in=app_in1, db_job_id=job.id
+    )
+    first_id = created.id
+
+    # Second submission with updated resume data using 'version' policy
+    app_in2 = JobApplicationCreate(
+        job_id="JOB-DUP-02",
+        candidate_name="Maria Santos",
+        candidate_email="maria.santos@example.com",
+        job_title="Mid-level DevOps",
+        skills=["Docker", "Linux", "Kubernetes", "Terraform"],
+        relevance="3 years experience"
+    )
+    versioned = await job_application_service.create_job_application(
+        db=db_session, application_in=app_in2, db_job_id=job.id, duplicate_policy="version"
+    )
+
+    # Same application record updated, no double record
+    assert versioned.id == first_id
+    assert "Kubernetes" in versioned.skills
+
+    apps = await job_application_service.get_applications_by_job(db_session, job.id)
+    assert len(apps) == 1
+

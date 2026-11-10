@@ -144,11 +144,18 @@ async def update_online_status_orm(db: AsyncSession, user: User, now) -> None:
     try:
         user.is_online = True
         user.last_active = now
+        await db.execute(
+            text("UPDATE users SET is_online = true, last_active = :now WHERE id = :uid"),
+            {"now": now, "uid": user.id}
+        )
         await db.commit()
         await redis_tx_manager.commit_transaction(tx_id, {"user_id": user.id})
         await delete_cache(f"user:id:{user.id}")
         if user.email:
-            await delete_cache(f"user:email:{user.email.lower()}")
+            email_clean = user.email.lower()
+            await delete_cache(f"user:email:{email_clean}")
+            await delete_cache(f"user:raw_email:{email_clean}")
+            await delete_cache(f"user:email_role:{email_clean}:*")
     except Exception as e:
         await redis_tx_manager.fail_transaction(tx_id, str(e))
         raise
@@ -233,8 +240,10 @@ async def update_user_password(db: AsyncSession, user: User, hashed_password: st
         # Evict cached user credentials
         await delete_cache(f"user:id:{user.id}")
         if user.email:
-            await delete_cache(f"user:email:{user.email.lower()}")
-            await delete_cache(f"user:raw_email:{user.email.lower()}")
+            email_clean = user.email.lower()
+            await delete_cache(f"user:email:{email_clean}")
+            await delete_cache(f"user:raw_email:{email_clean}")
+            await delete_cache(f"user:email_role:{email_clean}:*")
     except Exception as e:
         await redis_tx_manager.fail_transaction(tx_id, str(e))
         raise

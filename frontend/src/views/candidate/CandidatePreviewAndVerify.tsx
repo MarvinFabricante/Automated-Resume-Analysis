@@ -212,9 +212,10 @@ const CandidatePreviewAndVerify: React.FC = () => {
       localStorage.removeItem('draft_application_job_id');
       localStorage.removeItem('draft_application_step');
       setShowSuccessModal(true);
-    } catch (err) {
+    } catch (err: any) {
       console.error("Failed to submit application:", err);
-      alert("Failed to submit application. Please try again.");
+      const detail = err?.data?.detail || err?.response?.data?.detail || "Failed to submit application. Please try again.";
+      alert(detail);
     }
   };
 

@@ -299,10 +299,20 @@ async def check_email_role(email: str, db: AsyncSession = Depends(get_db)):
 
     row = await AuthRepository.get_raw_user_by_email(db, clean_email)
     if row:
+        detected_role = (row.role or "CANDIDATE").upper()
         return {
             "exists": True, 
-            "role": (row.role or "CANDIDATE").upper(),
-            "fullname": row.fullname or ""
+            "role": detected_role,
+            "fullname": row.fullname or "",
+            "is_authorized_staff": detected_role in ["HR", "ADMIN"]
+        }
+
+    if clean_email in auth_service.KNOWN_HR_EMAILS:
+        return {
+            "exists": True,
+            "role": "HR",
+            "fullname": "",
+            "is_authorized_staff": True
         }
 
     return {"exists": False, "role": "CANDIDATE", "is_authorized_staff": False}
