@@ -16,6 +16,7 @@ import {
   PhoneForwarded,
   PhoneMissed,
   PhoneOff,
+  RotateCcw,
   MessageSquare,
   Radio,
   Sparkles,
@@ -337,6 +338,12 @@ const InterviewDetailsModal: React.FC<InterviewDetailsModalProps> = ({ isOpen, o
         return (
           <span className="bg-purple-50 text-purple-700 border border-purple-200 px-3 py-1 rounded-full text-[11px] font-black tracking-wider uppercase flex items-center gap-1.5 shadow-xs">
             <RefreshCw size={13} className="animate-spin text-purple-600" /> Retry Scheduled
+          </span>
+        );
+      case 'NO_RESPONSE':
+        return (
+          <span className="bg-orange-50 text-orange-700 border border-orange-200 px-3 py-1 rounded-full text-[11px] font-black tracking-wider uppercase flex items-center gap-1.5 shadow-xs">
+            <PhoneMissed size={13} className="text-orange-600" /> No Response (Timed Out)
           </span>
         );
       case 'IN_PROGRESS':
@@ -767,6 +774,14 @@ const InterviewDetailsModal: React.FC<InterviewDetailsModalProps> = ({ isOpen, o
                             </button>
                             <button
                               type="button"
+                              onClick={() => handleSimulateResponse('INVALID_KEY_THEN_TIMEOUT', '9')}
+                              className="w-full text-left px-3 py-2 hover:bg-orange-50 text-orange-800 rounded-xl text-xs font-bold flex items-center justify-between"
+                            >
+                              <span>Press 9, then Timeout 30s</span>
+                              <RotateCcw size={14} className="text-orange-600" />
+                            </button>
+                            <button
+                              type="button"
                               onClick={() => handleSimulateResponse('NO_ANSWER')}
                               className="w-full text-left px-3 py-2 hover:bg-rose-50 text-rose-800 rounded-xl text-xs font-bold flex items-center justify-between"
                             >
@@ -821,6 +836,8 @@ const InterviewDetailsModal: React.FC<InterviewDetailsModalProps> = ({ isOpen, o
                                       ? 'bg-amber-100 text-amber-800'
                                       : log.extracted_intent === 'ESCALATED_TO_HR'
                                       ? 'bg-blue-100 text-blue-800'
+                                      : log.extracted_intent === 'NO_RESPONSE'
+                                      ? 'bg-orange-100 text-orange-800'
                                       : 'bg-rose-100 text-rose-800'
                                   }`}>
                                     {log.status || log.extracted_intent}
