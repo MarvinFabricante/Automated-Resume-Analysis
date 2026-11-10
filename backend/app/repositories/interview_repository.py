@@ -2,7 +2,7 @@ from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_
 from sqlalchemy.orm import selectinload
-from typing import List, Optional
+from typing import List, Optional, Union
 import logging
 
 from app.models.interview import Interview, InterviewLog
@@ -135,7 +135,7 @@ async def get_interviews_for_application(db: AsyncSession, application_id: int) 
 
 
 async def get_interviews_in_range(
-    db: AsyncSession, start_time: datetime, end_time: datetime, interviewer_id: Optional[int] = None
+    db: AsyncSession, start_time: datetime, end_time: datetime, interviewer_id: Optional[Union[int, List[int]]] = None
 ) -> List[Interview]:
     """Fetch non-canceled interviews overlapping with range."""
     conditions = [
@@ -145,7 +145,10 @@ async def get_interviews_in_range(
     ]
     if interviewer_id:
         from sqlalchemy import or_
-        conditions.append(or_(Interview.interviewer_id == interviewer_id, Interview.interviewer_id.is_(None)))
+        if isinstance(interviewer_id, (list, tuple, set)):
+            conditions.append(or_(Interview.interviewer_id.in_(interviewer_id), Interview.interviewer_id.is_(None)))
+        else:
+            conditions.append(or_(Interview.interviewer_id == interviewer_id, Interview.interviewer_id.is_(None)))
     result = await db.execute(
         select(Interview).filter(and_(*conditions))
     )

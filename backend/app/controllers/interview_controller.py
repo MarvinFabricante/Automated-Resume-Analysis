@@ -93,12 +93,26 @@ async def get_available_slots(
     Automatically view available time slots by syncing HR and panel calendars using Google Calendar API.
     """
     try:
-        target_id = request.hr_id if request.hr_id else current_user.get("id")
+        target_ids = []
+        if request.user_ids:
+            target_ids.extend(request.user_ids)
+        if request.interviewer_ids:
+            target_ids.extend(request.interviewer_ids)
+        if request.panelist_ids:
+            target_ids.extend(request.panelist_ids)
+        if request.hr_id:
+            target_ids.append(request.hr_id)
+        if request.manager_id:
+            target_ids.append(request.manager_id)
+
+        if not target_ids:
+            target_ids = [current_user.get("id")]
+
         slots = await interview_service.get_available_slots(
             db,
             request.start_date,
             request.end_date,
-            target_id
+            user_ids=target_ids
         )
         return slots
     except Exception as e:
@@ -112,7 +126,7 @@ async def schedule_interview(
 ):
     """
     Allow one-click interview scheduling based on system-recommended available time slots.
-    Validates that the requested slot falls within working hours (8 AM–5 PM, Mon–Fri)
+    Validates that the requested slot falls within working hours (9 AM–5 PM, Mon–Fri)
     and does not conflict with existing interviews.
     """
     # ── Server-side working-hours validation ──────────────────────────
@@ -126,11 +140,11 @@ async def schedule_interview(
             detail="Interviews can only be scheduled on weekdays (Monday – Friday)."
         )
 
-    # Working-hours check (8:00 AM – 5:00 PM)
-    if start.hour < 8 or end.hour > 17 or (end.hour == 17 and end.minute > 0):
+    # Working-hours check (9:00 AM – 5:00 PM)
+    if start.hour < 9 or end.hour > 17 or (end.hour == 17 and end.minute > 0):
         raise HTTPException(
             status_code=400,
-            detail="Interviews must be scheduled within working hours (8:00 AM – 5:00 PM)."
+            detail="Interviews must be scheduled within working hours (9:00 AM – 5:00 PM)."
         )
 
     # ── Conflict check against existing DB interviews ─────────────────
@@ -201,7 +215,7 @@ async def schedule_interview(
         await clear_cache_pattern("admin:stats*")
         return result
     except ValueError as e:
-        if "already scheduled" in str(e).lower():
+        if "already scheduled" in str(e).lower() or "conflict" in str(e).lower():
             raise HTTPException(status_code=409, detail=str(e))
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:

@@ -80,6 +80,24 @@ async def get_by_email(db: AsyncSession, email: str) -> List[JobApplication]:
     return apps
 
 
+async def get_by_job_and_email(db: AsyncSession, job_id: int, email: str) -> Optional[JobApplication]:
+    """Get existing application for a candidate and job (case-insensitive email)."""
+    if not email:
+        return None
+    normalized_email = email.strip().lower()
+    result = await db.execute(
+        select(JobApplication)
+        .options(selectinload(JobApplication.job))
+        .filter(
+            JobApplication.job_id == job_id,
+            JobApplication.candidate_email.ilike(normalized_email)
+        )
+        .order_by(JobApplication.created_at.desc())
+    )
+    return result.scalars().first()
+
+
+
 async def get_all(db: AsyncSession) -> List[JobApplication]:
     """Get all applications (checks Redis cache first)."""
     cache_key = "all_apps:list"

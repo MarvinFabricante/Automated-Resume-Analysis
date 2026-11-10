@@ -145,7 +145,11 @@ const CandidateSmartUploadPage: React.FC = () => {
     if (
       selectedFile &&
       (validTypes.includes(selectedFile.type) ||
-        /\.(pdf|docx|doc|txt)$/i.test(selectedFile.name) ||
+        selectedFile.type.startsWith('text/') ||
+        selectedFile.type.includes('pdf') ||
+        selectedFile.type.includes('word') ||
+        selectedFile.type.includes('officedocument') ||
+        /\.(pdf|docx|doc|txt|text)$/i.test(selectedFile.name) ||
         (!selectedFile.type && !/\.[a-zA-Z0-9]+$/i.test(selectedFile.name)))
     ) {
       if (selectedFile.size > 10 * 1024 * 1024) {
@@ -644,7 +648,7 @@ const CandidateSmartUploadPage: React.FC = () => {
                             </div>
                           </div>
 
-                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3">
                             <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
                               <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 block mb-0.5">
                                 Candidate Name
@@ -659,6 +663,22 @@ const CandidateSmartUploadPage: React.FC = () => {
                               </span>
                               <p className="text-xs sm:text-sm font-bold text-slate-900 truncate">
                                 {extractedData.email || email}
+                              </p>
+                            </div>
+                            <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
+                              <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 block mb-0.5">
+                                Role / Title
+                              </span>
+                              <p className="text-xs sm:text-sm font-bold text-slate-900 truncate">
+                                {extractedData.job_title || extractedData.candidate_job_title || 'Role Recorded'}
+                              </p>
+                            </div>
+                            <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
+                              <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 block mb-0.5">
+                                Company
+                              </span>
+                              <p className="text-xs sm:text-sm font-bold text-slate-900 truncate">
+                                {extractedData.company || extractedData.candidate_company || 'Company Recorded'}
                               </p>
                             </div>
                             <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">

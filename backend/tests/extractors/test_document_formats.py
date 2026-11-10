@@ -675,6 +675,252 @@ async def test_tc_res_013_missing_section_flagged_incomplete(temp_files):
     assert res_complete.get("completeness_score") == 100.0
 
 
+def test_tc_res_014_no_data_loss_across_formats(temp_files):
+    """
+    Test Case: TC-RES-014
+    Module: Resume Processing
+    Requirement: REQ051
+    Scenario: No data loss across formats
+    Steps: Upload same content as DOCX, PDF, TXT
+    Expected Result: Extracted fields identical across three (including candidate_company, degree, role, name, email).
+    """
+    resume_text = (
+        "EDUARDO SANTOS\n"
+        "Email: eduardo.santos@gmail.com\n"
+        "Phone: +63 918 765 4321\n"
+        "Address: Pasig City, Metro Manila\n\n"
+        "PROFESSIONAL SUMMARY\n"
+        "Experienced Senior Full Stack Developer specializing in Python, React, and cloud architectures.\n\n"
+        "WORK EXPERIENCE\n"
+        "Senior Full Stack Developer\n"
+        "Tech Mahindra\n"
+        "August 2021 - Present\n"
+        "• Designed and developed resilient microservices using FastAPI and PostgreSQL.\n"
+        "• Optimized distributed data pipelines and Redis caching layers.\n\n"
+        "EDUCATION\n"
+        "BS Computer Engineering\n"
+        "Mapúa University\n"
+        "2015 - 2019\n\n"
+        "SKILLS & COMPETENCIES\n"
+        "Python, FastAPI, TypeScript, React, PostgreSQL, Docker, Redis, Git, Linux\n"
+    )
+
+    # 1. Plain text format (.txt)
+    with tempfile.NamedTemporaryFile(suffix=".txt", mode="w", encoding="utf-8", delete=False) as f:
+        f.write(resume_text)
+        txt_path = temp_files(f.name)
+    res_txt = process_resume(txt_path, "txt")
+
+    # 2. PDF format (.pdf)
+    pdf_doc = fitz.open()
+    page = pdf_doc.new_page()
+    page.insert_text((50, 50), resume_text)
+    with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as f:
+        pdf_doc.save(f.name)
+        pdf_path = temp_files(f.name)
+    res_pdf = process_resume(pdf_path, "pdf")
+
+    # 3. DOCX format (.docx) with paragraphs
+    w_doc = docx.Document()
+    for line in resume_text.split("\n"):
+        w_doc.add_paragraph(line)
+    with tempfile.NamedTemporaryFile(suffix=".docx", delete=False) as f:
+        w_doc.save(f.name)
+        docx_path = temp_files(f.name)
+    res_docx = process_resume(docx_path, "docx")
+
+    # 4. Verify identical extraction across all three formats
+    fields_to_compare = [
+        "candidate_name",
+        "candidate_email",
+        "candidate_company",
+        "candidate_job_title",
+        "candidate_degree",
+        "is_incomplete",
+        "completeness_status"
+    ]
+
+    for field in fields_to_compare:
+        val_txt = res_txt.get(field)
+        val_pdf = res_pdf.get(field)
+        val_docx = res_docx.get(field)
+        assert val_txt == val_pdf == val_docx, (
+            f"Discrepancy across formats for field '{field}': "
+            f"TXT='{val_txt}', PDF='{val_pdf}', DOCX='{val_docx}'"
+        )
+
+    # Specifically verify company was captured identically
+    assert res_docx.get("candidate_company") == "Tech Mahindra"
+    assert res_pdf.get("candidate_company") == "Tech Mahindra"
+    assert res_txt.get("candidate_company") == "Tech Mahindra"
+
+    # Specifically verify job title was captured identically
+    assert res_docx.get("candidate_job_title") == "Full Stack Developer"
+    assert res_pdf.get("candidate_job_title") == "Full Stack Developer"
+    assert res_txt.get("candidate_job_title") == "Full Stack Developer"
+
+    # 5. Test DOCX table layout (Dates in Col 0, Position & Company in Col 1, Duties in Col 2)
+    w_table_doc = docx.Document()
+    w_table_doc.add_heading("EDUARDO SANTOS", level=0)
+    w_table_doc.add_paragraph("eduardo.santos@gmail.com | 09187654321 | Pasig City")
+    w_table_doc.add_heading("WORK EXPERIENCE", level=1)
+
+    tbl = w_table_doc.add_table(rows=2, cols=3)
+    tbl.cell(0, 0).text = "Dates"
+    tbl.cell(0, 1).text = "Role & Company"
+    tbl.cell(0, 2).text = "Responsibilities"
+    tbl.cell(1, 0).text = "2021 - Present"
+    tbl.cell(1, 1).text = "Senior Full Stack Developer\nTech Mahindra"
+    tbl.cell(1, 2).text = "Designed and developed microservices in Python"
+
+    w_table_doc.add_heading("EDUCATION", level=1)
+    w_table_doc.add_paragraph("BS Computer Engineering\nMapúa University\n2015 - 2019")
+    w_table_doc.add_heading("SKILLS", level=1)
+    w_table_doc.add_paragraph("Python, FastAPI, Redis, Docker, SQL")
+
+    with tempfile.NamedTemporaryFile(suffix=".docx", delete=False) as f:
+        w_table_doc.save(f.name)
+        docx_table_path = temp_files(f.name)
+    res_table_docx = process_resume(docx_table_path, "docx")
+    assert res_table_docx.get("candidate_company") == "Tech Mahindra", (
+        f"Table DOCX must capture company 'Tech Mahindra', got '{res_table_docx.get('candidate_company')}'"
+    )
+    assert res_table_docx.get("candidate_job_title") == "Full Stack Developer"
+
+    # 6. Test TXT file with UTF-16 encoding
+    utf16_content = resume_text.encode("utf-16")
+    with tempfile.NamedTemporaryFile(suffix=".txt", mode="wb", delete=False) as f:
+        f.write(utf16_content)
+        txt_utf16_path = temp_files(f.name)
+    res_utf16 = process_resume(txt_utf16_path, "txt")
+    assert res_utf16.get("candidate_name") == "Eduardo Santos"
+    assert res_utf16.get("candidate_company") == "Tech Mahindra"
+
+
+@pytest.mark.asyncio
+async def test_tc_res_016_duplicate_submission_policy_and_matching_score_stability(temp_files, db_session):
+    """
+    Test Case: TC-RES-016
+    Module: Resume Processing
+    Requirement: Limit
+    Scenario: Duplicate Submission
+    Steps: Upload R1 twice for J1 as same applicant
+    Expected Result: Duplicate handled by policy (block or version); no double records.
+                     Matching scores for the same information are identical.
+    """
+    from app.services.job_matching_service import calculate_match_score
+    from app.services import job_application_service
+    from app.schemas.job_application_schema import JobApplicationCreate
+    from app.models.job_description import JobDescription, JobType
+    from fastapi import HTTPException
+    from unittest.mock import patch
+
+    # 1. Prepare Job J1 in database
+    job = JobDescription(
+        job_id="JOB-TC016-J1",
+        job_title="Production Operator (Manufacturing)",
+        department="Operations",
+        job_type=JobType.FULL_TIME,
+        location="Batangas",
+        skills_requirements="kiln operation, safety training, machine maintenance, ISO 9001",
+        experience_requirements="3 years",
+        education_requirements="Vocational or High School",
+        description="Machine operation and preventive maintenance in tile manufacturing."
+    )
+    db_session.add(job)
+    await db_session.flush()
+
+    # 2. Prepare Resume R1 (DOCX)
+    r1_doc = docx.Document()
+    r1_doc.add_heading("JUAN DELA CRUZ", level=0)
+    r1_doc.add_paragraph("juan.delacruz@gmail.com | 09171234567 | Laguna, Philippines")
+    r1_doc.add_heading("WORK EXPERIENCE", level=1)
+    r1_doc.add_paragraph(
+        "Production Operator\n"
+        "Luzon Plastics Industries Inc. - Laguna\n"
+        "2020 - 2024 (4 years)\n"
+        "Machine setup, routine preventive maintenance, and line clearance."
+    )
+    r1_doc.add_heading("EDUCATION", level=1)
+    r1_doc.add_paragraph("Technical-Vocational Track (Electronics)\nTESDA Institute\n2018 - 2020")
+    r1_doc.add_heading("SKILLS", level=1)
+    r1_doc.add_paragraph("ISO 9001 Quality Standards, Preventive Maintenance, Machine Maintenance, Safety Training")
+
+    with tempfile.NamedTemporaryFile(suffix=".docx", delete=False) as f:
+        r1_doc.save(f.name)
+        r1_path = temp_files(f.name)
+
+    r1_extracted = process_resume(r1_path, "docx")
+    assert r1_extracted.get("candidate_name") == "Juan Dela Cruz"
+    assert r1_extracted.get("candidate_email") == "juan.delacruz@gmail.com"
+
+    # 3. Verify deterministic matching score (same info MUST produce identical matching score)
+    with patch("app.ml_engine.get_feedback_db"):
+        score_run1 = calculate_match_score(r1_extracted, job)
+        score_run2 = calculate_match_score(r1_extracted, job)
+
+    assert score_run1["match_percentage"] == score_run2["match_percentage"], (
+        f"Matching scores must be identical for the same resume and job: {score_run1['match_percentage']} != {score_run2['match_percentage']}"
+    )
+    assert score_run1["skills_score"] == score_run2["skills_score"]
+    assert score_run1["experience_score"] == score_run2["experience_score"]
+    assert score_run1["education_score"] == score_run2["education_score"]
+
+    # 4. Prepare JobApplicationCreate payload for upload 1
+    app_in = JobApplicationCreate(
+        job_id="JOB-TC016-J1",
+        candidate_name=r1_extracted["candidate_name"],
+        candidate_email=r1_extracted["candidate_email"],
+        phone=r1_extracted.get("candidate_phone") or "09171234567",
+        location=r1_extracted.get("candidate_location") or "Laguna",
+        job_title=r1_extracted.get("candidate_job_title") or "Production Operator",
+        company=r1_extracted.get("candidate_company") or "Luzon Plastics Industries Inc.",
+        skills=r1_extracted.get("skills_list") or ["Preventive Maintenance", "ISO 9001"],
+        degree=r1_extracted.get("candidate_degree") or "Technical-Vocational Track",
+        college="TESDA Institute",
+        relevance=r1_extracted.get("candidate_experience") or "4 years of experience",
+        match_score=score_run1["match_percentage"],
+        skills_score=score_run1["skills_score"],
+        experience_score=score_run1["experience_score"],
+        education_score=score_run1["education_score"]
+    )
+
+    with patch("app.tasks.analyze_application_task.delay"):
+        # Upload 1: First submission succeeds
+        first_app = await job_application_service.create_job_application(
+            db=db_session, application_in=app_in, db_job_id=job.id
+        )
+        assert first_app is not None
+        assert first_app.id is not None
+        assert first_app.candidate_email == "juan.delacruz@gmail.com"
+
+        # Upload 2: Same applicant, same role with default BLOCK policy
+        with pytest.raises(HTTPException) as exc_info:
+            await job_application_service.create_job_application(
+                db=db_session, application_in=app_in, db_job_id=job.id, duplicate_policy="block"
+            )
+        assert exc_info.value.status_code == 409
+        assert "Duplicate application" in exc_info.value.detail
+
+        # Verify database has exactly 1 application record (no double records)
+        all_apps = await job_application_service.get_applications_by_job(db_session, job.id)
+        assert len(all_apps) == 1, f"Expected 1 application record, found {len(all_apps)}"
+
+        # Upload 3: Same applicant, same role with VERSION policy
+        updated_in = app_in.model_copy(update={"relevance": "5 years of experience"})
+        versioned_app = await job_application_service.create_job_application(
+            db=db_session, application_in=updated_in, db_job_id=job.id, duplicate_policy="version"
+        )
+        assert versioned_app.id == first_app.id
+        assert versioned_app.relevance == "5 years of experience"
+
+        # Verify database still has exactly 1 application record (no double records)
+        all_apps_after_version = await job_application_service.get_applications_by_job(db_session, job.id)
+        assert len(all_apps_after_version) == 1, f"Expected 1 application record after version, found {len(all_apps_after_version)}"
+
+
+
+
 
 
 

@@ -2,7 +2,7 @@ from fastapi.logger import logger
 import os
 import asyncio
 from datetime import datetime, timedelta
-from typing import List, Optional
+from typing import List, Optional, Union
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from twilio.rest import Client as TwilioClient
@@ -126,7 +126,7 @@ def _get_valid_credentials(user) -> Optional[str]:
 
 
 # ── Working-hours constants ────────────────────────────────────────
-WORK_START_HOUR = 8   # 8:00 AM
+WORK_START_HOUR = 9   # 9:00 AM
 WORK_END_HOUR = 17    # 5:00 PM
 BREAK_START_HOUR = 12 # 12:00 PM
 BREAK_END_HOUR = 13   # 1:00 PM
@@ -134,17 +134,36 @@ BREAK_END_HOUR = 13   # 1:00 PM
 WORK_DAYS = {0, 1, 2, 3, 4}
 
 
-async def get_available_slots(db: AsyncSession, start_date: datetime, end_date: datetime, user_id: int):
+async def get_available_slots(
+    db: AsyncSession,
+    start_date: datetime,
+    end_date: datetime,
+    user_id: Optional[Union[int, List[int]]] = None,
+    manager_id: Optional[int] = None,
+    user_ids: Optional[List[int]] = None,
+):
     """
     Finds available 1-hour time slots that satisfy ALL of the following:
       • Falls on a weekday (Monday – Friday).
-      • Falls within HR working hours (8:00 AM – 5:00 PM).
-      • Not marked busy on the HR's Google Calendar (freebusy).
-      • Not occupied by an existing (non-canceled) interview in the DB.
+      • Falls within HR working hours (9:00 AM – 5:00 PM).
+      • Not marked busy on any participant's Google Calendar (freebusy for HR, Manager, Panelists).
+      • Not occupied by an existing (non-canceled) interview in the DB for any participant.
+      • Mutually free for all requested participants (HR and Manager).
     """
     from app.repositories.auth_repository import AuthRepository
-    user = await AuthRepository.get_user_by_id(db, user_id)
-    credentials_json = _get_valid_credentials(user)
+
+    # Normalize user/interviewer IDs (HR, manager, panelists)
+    target_ids = []
+    if user_ids:
+        target_ids.extend(user_ids)
+    if isinstance(user_id, (list, tuple, set)):
+        target_ids.extend(user_id)
+    elif user_id is not None:
+        target_ids.append(user_id)
+    if manager_id is not None and manager_id not in target_ids:
+        target_ids.append(manager_id)
+
+    target_ids = list(dict.fromkeys([int(uid) for uid in target_ids if uid is not None]))
 
     # Strip timezone info so all comparisons are naive (local time)
     start_date = start_date.replace(tzinfo=None)
@@ -154,29 +173,30 @@ async def get_available_slots(db: AsyncSession, start_date: datetime, end_date: 
     loop_start = start_date.replace(hour=WORK_START_HOUR, minute=0, second=0, microsecond=0)
     loop_end = end_date.replace(hour=WORK_END_HOUR, minute=0, second=0, microsecond=0)
 
-    # ── Fetch Google Calendar busy periods ───────────────────────
-    calendars = None
-    if credentials_json:
-        # Use the full day range for the freebusy query
-        calendars = await asyncio.to_thread(
-            query_freebusy,
-            credentials_json,
-            ["primary"],
-            loop_start.isoformat() + 'Z',
-            loop_end.isoformat() + 'Z',
-        )
-
-    # Collect Google Calendar busy intervals into a flat list
+    # ── Fetch Google Calendar busy periods for all participants ──
     google_busy: List[tuple] = []
-    if calendars:
-        for _email, data in calendars.items():
-            for busy in data.get('busy', []):
-                busy_start = datetime.fromisoformat(busy['start'].replace('Z', '+00:00')).replace(tzinfo=None)
-                busy_end = datetime.fromisoformat(busy['end'].replace('Z', '+00:00')).replace(tzinfo=None)
-                google_busy.append((busy_start, busy_end))
+    for uid in target_ids:
+        user = await AuthRepository.get_user_by_id(db, uid)
+        credentials_json = _get_valid_credentials(user)
+        if credentials_json:
+            calendars = await asyncio.to_thread(
+                query_freebusy,
+                credentials_json,
+                ["primary"],
+                loop_start.isoformat() + 'Z',
+                loop_end.isoformat() + 'Z',
+            )
+            if calendars:
+                for _email, data in calendars.items():
+                    for busy in data.get('busy', []):
+                        busy_start = datetime.fromisoformat(busy['start'].replace('Z', '+00:00')).replace(tzinfo=None)
+                        busy_end = datetime.fromisoformat(busy['end'].replace('Z', '+00:00')).replace(tzinfo=None)
+                        google_busy.append((busy_start, busy_end))
 
-    # ── Fetch existing DB interviews in the range for this interviewer ─
-    db_interviews = await InterviewRepository.get_interviews_in_range(db, loop_start, loop_end, interviewer_id=user_id)
+    # ── Fetch existing DB interviews in the range for these interviewers ─
+    db_interviews = await InterviewRepository.get_interviews_in_range(
+        db, loop_start, loop_end, interviewer_id=target_ids if target_ids else None
+    )
     db_busy: List[tuple] = [(iv.start_time, iv.end_time) for iv in db_interviews]
 
     # Merge both busy lists
@@ -267,8 +287,23 @@ async def schedule_interview(db: AsyncSession, data: InterviewCreateSchema, user
     interviewer_id = data.interviewer_id if data.interviewer_id else user_id
 
     from app.repositories.auth_repository import AuthRepository
-    user = await AuthRepository.get_user_by_id(db, interviewer_id)
-    credentials_json = _get_valid_credentials(user)
+    scheduler_user = await AuthRepository.get_user_by_id(db, user_id)
+    interviewer_user = await AuthRepository.get_user_by_id(db, interviewer_id) if interviewer_id != user_id else scheduler_user
+    user = interviewer_user or scheduler_user
+    credentials_json = _get_valid_credentials(user) or _get_valid_credentials(scheduler_user)
+
+    # Collect distinct panel recipients (assigned interviewer / additional panelists)
+    panel_recipients = []
+    if interviewer_user and getattr(interviewer_user, "email", None):
+        if not scheduler_user or interviewer_user.email != scheduler_user.email:
+            panel_recipients.append(interviewer_user)
+
+    if getattr(data, "panelist_ids", None):
+        for pid in data.panelist_ids:
+            p_user = await AuthRepository.get_user_by_id(db, pid)
+            if p_user and getattr(p_user, "email", None):
+                if p_user.email not in [pr.email for pr in panel_recipients] and (not scheduler_user or p_user.email != scheduler_user.email):
+                    panel_recipients.append(p_user)
 
     # Resolve real target position title safely without triggering lazy-load on detached instance
     job_name = None
@@ -301,6 +336,11 @@ async def schedule_interview(db: AsyncSession, data: InterviewCreateSchema, user
     if start < break_end and end > break_start:
         raise ValueError("Interviews cannot be scheduled during break time (12:00 PM – 1:00 PM).")
 
+    # Double-booking check: verify interviewer is not already booked in this slot
+    conflicts = await InterviewRepository.get_interviews_in_range(db, start, end, interviewer_id=interviewer_id)
+    if conflicts:
+        raise ValueError("The selected time slot conflicts with an existing interview for this HR panelist. Please choose another slot.")
+
     interview_data = {
         "job_application_id": data.job_application_id,
         "interviewer_id": interviewer_id,
@@ -331,6 +371,16 @@ async def schedule_interview(db: AsyncSession, data: InterviewCreateSchema, user
     if application.candidate_email:
         attendees.append({"email": application.candidate_email})
 
+    # Add HR scheduler to Google Calendar attendees
+    if scheduler_user and getattr(scheduler_user, "email", None):
+        if scheduler_user.email not in [a["email"] for a in attendees]:
+            attendees.append({"email": scheduler_user.email})
+
+    # Add Panelists to Google Calendar attendees
+    for p_user in panel_recipients:
+        if p_user.email not in [a["email"] for a in attendees]:
+            attendees.append({"email": p_user.email})
+
     if credentials_json:
         try:
             event = await asyncio.to_thread(
@@ -358,10 +408,12 @@ async def schedule_interview(db: AsyncSession, data: InterviewCreateSchema, user
         interview.meeting_link = None
         await InterviewRepository.commit_changes(db)
 
-    # 4. Email Candidate on their Gmail account
+    # 4. Email Invites: Candidate, HR, and Panel
+    interviewer_name = interviewer_user.fullname if interviewer_user else "Mariwasa HR Panel"
+
+    # (a) Candidate Invite
     if application.candidate_email:
         try:
-            interviewer_name = user.fullname if user and getattr(user, 'fullname', None) else None
             email_sent = await email_service.send_interview_invitation_email(
                 to_email=application.candidate_email,
                 candidate_name=application.candidate_name or "Candidate",
@@ -374,11 +426,53 @@ async def schedule_interview(db: AsyncSession, data: InterviewCreateSchema, user
             )
             if email_sent:
                 await InterviewRepository.add_interview_log(
-                    db, interview.id, "EMAIL_SENT", f"Interview invitation email sent to {application.candidate_email}"
+                    db, interview.id, "EMAIL_SENT", f"Interview invitation email sent to candidate {application.candidate_email}"
                 )
                 await InterviewRepository.commit_changes(db)
         except Exception as e:
-            print(f"Warning: Could not send interview invitation email: {e}")
+            print(f"Warning: Could not send interview invitation email to candidate: {e}")
+
+    # (b) HR Confirmation Invite
+    if scheduler_user and getattr(scheduler_user, "email", None):
+        try:
+            email_sent = await email_service.send_interview_invitation_email(
+                to_email=scheduler_user.email,
+                candidate_name=application.candidate_name or "Candidate",
+                job_title=job_name,
+                interview_title=f"[HR Confirmation] {data.title}",
+                start_time=data.start_time,
+                end_time=data.end_time,
+                interviewer_name=interviewer_name,
+                notes=f"HR Copy - Scheduled interview for candidate {application.candidate_name or 'Candidate'} ({application.candidate_email or 'N/A'}). Assigned Panelist: {interviewer_name}. Notes: {data.description or 'N/A'}"
+            )
+            if email_sent:
+                await InterviewRepository.add_interview_log(
+                    db, interview.id, "EMAIL_SENT", f"Interview confirmation email sent to HR {scheduler_user.email}"
+                )
+                await InterviewRepository.commit_changes(db)
+        except Exception as e:
+            print(f"Warning: Could not send interview confirmation email to HR: {e}")
+
+    # (c) Panel Invite(s)
+    for p_user in panel_recipients:
+        try:
+            email_sent = await email_service.send_interview_invitation_email(
+                to_email=p_user.email,
+                candidate_name=application.candidate_name or "Candidate",
+                job_title=job_name,
+                interview_title=f"[Panel Invite] {data.title}",
+                start_time=data.start_time,
+                end_time=data.end_time,
+                interviewer_name=p_user.fullname,
+                notes=f"Panel Interview Assignment - Candidate: {application.candidate_name or 'Candidate'} ({application.candidate_email or 'N/A'}). Job: {job_name}. Notes: {data.description or 'N/A'}"
+            )
+            if email_sent:
+                await InterviewRepository.add_interview_log(
+                    db, interview.id, "EMAIL_SENT", f"Interview panelist invitation email sent to {p_user.email}"
+                )
+                await InterviewRepository.commit_changes(db)
+        except Exception as e:
+            print(f"Warning: Could not send interview invitation email to panelist: {e}")
 
     # 5. Send SMS Notification (if phone configured)
     if getattr(application, "phone", None):
@@ -392,7 +486,6 @@ async def schedule_interview(db: AsyncSession, data: InterviewCreateSchema, user
         if sent:
             await InterviewRepository.add_interview_log(db, interview.id, "SMS_SENT", "Notification sent to candidate")
             await InterviewRepository.commit_changes(db)
-
 
     # 6. In-App Notifications
     try:
@@ -418,8 +511,21 @@ async def schedule_interview(db: AsyncSession, data: InterviewCreateSchema, user
             message=f"Interview with {application.candidate_name} for {job_name} scheduled on {time_str}.",
             type="schedule",
             target_role="HR",
+            target_email=scheduler_user.email if scheduler_user else None,
             sender_role="HR"
         )
+
+        # Operational alert for Panelists
+        for p_user in panel_recipients:
+            await create_notification(
+                db=db,
+                title="Panel Interview Assignment 📅",
+                message=f"You have been assigned as panelist for {application.candidate_name}'s interview for {job_name} on {time_str}.",
+                type="schedule",
+                target_role="HR",
+                target_email=p_user.email,
+                sender_role="HR"
+            )
     except Exception as e_notif:
         print(f"Warning: Could not create interview notification: {e_notif}")
 
@@ -470,9 +576,9 @@ async def update_interview(db: AsyncSession, interview_id: int, data: InterviewU
         if start.weekday() > 4:
             raise ValueError("Interviews can only be scheduled on weekdays (Monday – Friday).")
 
-        # Working-hours check (8:00 AM – 5:00 PM)
+        # Working-hours check (9:00 AM – 5:00 PM)
         if start.hour < WORK_START_HOUR or end.hour > WORK_END_HOUR or (end.hour == WORK_END_HOUR and end.minute > 0):
-            raise ValueError("Interviews must be scheduled within working hours (8:00 AM – 5:00 PM).")
+            raise ValueError("Interviews must be scheduled within working hours (9:00 AM – 5:00 PM).")
 
         # Conflict check against other interviews (excluding self)
         conflicts = await InterviewRepository.get_interviews_in_range_excluding(db, start, end, interview.id)
@@ -501,33 +607,100 @@ async def update_interview(db: AsyncSession, interview_id: int, data: InterviewU
 
     # Synchronize modification to Google Calendar if linked
     from app.repositories.auth_repository import AuthRepository
+    scheduler_user = await AuthRepository.get_user_by_id(db, user_id)
     interviewer_to_sync = interview.interviewer_id or user_id
     user = await AuthRepository.get_user_by_id(db, interviewer_to_sync)
     credentials_json = _get_valid_credentials(user)
     if not credentials_json and interviewer_to_sync != user_id:
         user_fallback = await AuthRepository.get_user_by_id(db, user_id)
         credentials_json = _get_valid_credentials(user_fallback)
+    if not credentials_json and scheduler_user:
+        credentials_json = _get_valid_credentials(scheduler_user)
 
-    if credentials_json and interview.google_event_id:
-        try:
-            summary_val = f"[CANCELED] {interview.title}" if interview.status == "CANCELED" else interview.title
-            cal_status = "cancelled" if interview.status == "CANCELED" else "confirmed"
-            await asyncio.to_thread(
-                update_real_google_event,
-                credentials_json=credentials_json,
-                calendar_id="primary",
-                event_id=interview.google_event_id,
-                summary=summary_val,
-                start_dt=interview.start_time.isoformat(),
-                end_dt=interview.end_time.isoformat(),
-                description=interview.description or "",
-                status=cal_status,
-            )
-        except Exception as e:
-            print(f"Warning: Could not modify Google Calendar event: {e}")
-
-    # If rescheduled time changed, notify candidate via email and SMS
     application = await InterviewRepository.get_job_application(db, interview.job_application_id)
+
+    # Collect panel recipients
+    panel_recipients = []
+    panelist_ids = list(getattr(data, "panelist_ids", None) or [])
+    if interview.interviewer_id and interview.interviewer_id not in panelist_ids:
+        panelist_ids.append(interview.interviewer_id)
+
+    for pid in panelist_ids:
+        p_user = await AuthRepository.get_user_by_id(db, pid)
+        if p_user and getattr(p_user, "email", None):
+            if not scheduler_user or p_user.email != getattr(scheduler_user, "email", None):
+                panel_recipients.append(p_user)
+
+    if credentials_json:
+        if time_changed:
+            old_event_id = interview.google_event_id
+            if old_event_id:
+                try:
+                    await asyncio.to_thread(
+                        delete_real_google_event,
+                        credentials_json=credentials_json,
+                        calendar_id="primary",
+                        event_id=old_event_id,
+                    )
+                    await InterviewRepository.add_interview_log(
+                        db, interview.id, "CALENDAR_SYNC", f"Removed old Google Calendar event {old_event_id}"
+                    )
+                except Exception as del_err:
+                    print(f"Warning: Could not remove old Google Calendar event {old_event_id}: {del_err}")
+                interview.google_event_id = None
+
+            # Create new Google Calendar event for the rescheduled slot with updated attendees
+            attendees = []
+            if application and getattr(application, "candidate_email", None):
+                attendees.append({"email": application.candidate_email})
+            if scheduler_user and getattr(scheduler_user, "email", None):
+                attendees.append({"email": scheduler_user.email})
+            for p_user in panel_recipients:
+                if p_user.email not in [a["email"] for a in attendees]:
+                    attendees.append({"email": p_user.email})
+
+            try:
+                new_event = await asyncio.to_thread(
+                    create_real_google_event,
+                    credentials_json,
+                    calendar_id="primary",
+                    summary=interview.title,
+                    start_dt=interview.start_time.isoformat(),
+                    end_dt=interview.end_time.isoformat(),
+                    description=interview.description or "",
+                    location="",
+                    is_all_day=False,
+                    attendees=attendees,
+                    create_meet_link=False,
+                    interview_id=interview.id,
+                )
+                if new_event:
+                    interview.google_event_id = new_event.get("id")
+                    await InterviewRepository.add_interview_log(
+                        db, interview.id, "CALENDAR_SYNC", f"Created new Google Calendar event {interview.google_event_id}"
+                    )
+                    await InterviewRepository.commit_changes(db)
+            except Exception as create_err:
+                print(f"Warning: Could not create new Google Calendar event: {create_err}")
+        elif interview.google_event_id:
+            try:
+                summary_val = f"[CANCELED] {interview.title}" if interview.status == "CANCELED" else interview.title
+                cal_status = "cancelled" if interview.status == "CANCELED" else "confirmed"
+                await asyncio.to_thread(
+                    update_real_google_event,
+                    credentials_json=credentials_json,
+                    calendar_id="primary",
+                    event_id=interview.google_event_id,
+                    summary=summary_val,
+                    start_dt=interview.start_time.isoformat(),
+                    end_dt=interview.end_time.isoformat(),
+                    description=interview.description or "",
+                    status=cal_status,
+                )
+            except Exception as e:
+                print(f"Warning: Could not modify Google Calendar event: {e}")
+
+    # If rescheduled time changed, notify candidate, HR, and panel
     if time_changed and application:
         # Resolve real target position title safely without triggering lazy-load on detached instance
         job_name = None
@@ -550,9 +723,53 @@ async def update_interview(db: AsyncSession, interview_id: int, data: InterviewU
         if not job_name:
             job_name = getattr(application, "job_title", None) or "Job Position"
 
+        interviewer_name = user.fullname if user and getattr(user, 'fullname', None) else "Mariwasa HR Panel"
+
+        # 1. HR Update / Confirmation Email
+        if scheduler_user and getattr(scheduler_user, "email", None):
+            try:
+                email_sent = await email_service.send_interview_rescheduled_email(
+                    to_email=scheduler_user.email,
+                    candidate_name=application.candidate_name or "Candidate",
+                    job_title=job_name,
+                    interview_title=f"[HR Update] {interview.title}",
+                    start_time=interview.start_time,
+                    end_time=interview.end_time,
+                    interviewer_name=interviewer_name,
+                    notes=f"HR Copy - Rescheduled interview for candidate {application.candidate_name or 'Candidate'} ({application.candidate_email or 'N/A'}). Assigned Interviewer: {interviewer_name}. Notes: {interview.description or 'N/A'}"
+                )
+                if email_sent:
+                    await InterviewRepository.add_interview_log(
+                        db, interview.id, "EMAIL_RESCHEDULED", f"Reschedule update email sent to HR {scheduler_user.email}"
+                    )
+                    await InterviewRepository.commit_changes(db)
+            except Exception as e:
+                print(f"Warning: Could not send reschedule email to HR: {e}")
+
+        # 2. Panelist Update Email(s)
+        for p_user in panel_recipients:
+            try:
+                email_sent = await email_service.send_interview_rescheduled_email(
+                    to_email=p_user.email,
+                    candidate_name=application.candidate_name or "Candidate",
+                    job_title=job_name,
+                    interview_title=f"[Panel Update] {interview.title}",
+                    start_time=interview.start_time,
+                    end_time=interview.end_time,
+                    interviewer_name=p_user.fullname or interviewer_name,
+                    notes=f"Panel Interview Rescheduled - Candidate: {application.candidate_name or 'Candidate'} ({application.candidate_email or 'N/A'}). Job: {job_name}. Notes: {interview.description or 'N/A'}"
+                )
+                if email_sent:
+                    await InterviewRepository.add_interview_log(
+                        db, interview.id, "EMAIL_RESCHEDULED", f"Reschedule update email sent to panelist {p_user.email}"
+                    )
+                    await InterviewRepository.commit_changes(db)
+            except Exception as e:
+                print(f"Warning: Could not send reschedule email to panelist: {e}")
+
+        # 3. Candidate Reschedule Notification Email
         if application.candidate_email:
             try:
-                interviewer_name = user.fullname if user and getattr(user, 'fullname', None) else None
                 email_sent = await email_service.send_interview_rescheduled_email(
                     to_email=application.candidate_email,
                     candidate_name=application.candidate_name or "Candidate",
@@ -571,6 +788,7 @@ async def update_interview(db: AsyncSession, interview_id: int, data: InterviewU
             except Exception as e:
                 print(f"Warning: Could not send reschedule email: {e}")
 
+        # 4. SMS Notification to Candidate
         if application.phone:
             sched_time_str = interview.start_time.strftime('%A, %b %d, %Y at %I:%M %p')
             message = (
@@ -583,8 +801,7 @@ async def update_interview(db: AsyncSession, interview_id: int, data: InterviewU
                 await InterviewRepository.add_interview_log(db, interview.id, "SMS_RESCHEDULED", "Reschedule SMS notification sent")
                 await InterviewRepository.commit_changes(db)
 
-
-        # In-App Notification for reschedule
+        # 5. In-App Notifications for Candidate, HR, and Panel
         try:
             from app.services.notification_service import create_notification
             time_str = interview.start_time.strftime('%b %d, %Y at %I:%M %p')
@@ -608,6 +825,18 @@ async def update_interview(db: AsyncSession, interview_id: int, data: InterviewU
                 target_role="HR",
                 sender_role="HR"
             )
+
+            for p_user in panel_recipients:
+                if getattr(p_user, "email", None):
+                    await create_notification(
+                        db=db,
+                        title="Panel Interview Rescheduled 📅",
+                        message=f"Panel interview with {application.candidate_name} for {job_name} has been rescheduled to {time_str}.",
+                        type="schedule",
+                        target_role="PANELIST",
+                        target_email=p_user.email,
+                        sender_role="HR"
+                    )
         except Exception as e_notif:
             print(f"Warning: Could not create interview reschedule notification: {e_notif}")
 

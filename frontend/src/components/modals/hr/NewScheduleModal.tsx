@@ -147,7 +147,7 @@ const NewScheduleModal: React.FC<NewScheduleModalProps> = ({
     const timer = setTimeout(async () => {
       try {
         const slots = await getSlots({
-          start_date: `${date}T08:00:00`,
+          start_date: `${date}T09:00:00`,
           end_date: `${date}T17:00:00`,
           hr_id: selectedInterviewerId || undefined
         }).unwrap();
@@ -216,8 +216,8 @@ const NewScheduleModal: React.FC<NewScheduleModalProps> = ({
       const [sH] = customStartTime.split(':').map(Number);
       const [eH, eM] = customEndTime.split(':').map(Number);
 
-      if (sH < 8 || eH > 17 || (eH === 17 && eM > 0)) {
-        setErrorMsg('Interviews must fall within working hours (8:00 AM – 5:00 PM).');
+      if (sH < 9 || eH > 17 || (eH === 17 && eM > 0)) {
+        setErrorMsg('Interviews must fall within working hours (9:00 AM – 5:00 PM).');
         return;
       }
       finalStart = `${date}T${customStartTime}:00`;
@@ -556,7 +556,7 @@ const NewScheduleModal: React.FC<NewScheduleModalProps> = ({
           <div>
             <div className="flex items-center justify-between mb-2">
               <label className="block text-xs font-black text-gray-700 uppercase tracking-wider">
-                4. Select Interview Time Window (8:00 AM – 5:00 PM)
+                4. Select Interview Time Window (9:00 AM – 5:00 PM)
               </label>
 
               <div className="flex items-center gap-1 bg-gray-100 p-0.5 rounded-xl text-[11px] font-bold">
@@ -643,10 +643,10 @@ const NewScheduleModal: React.FC<NewScheduleModalProps> = ({
               <div className="p-4 bg-white border border-gray-200 rounded-2xl space-y-3">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-[11px] font-bold text-gray-600 mb-1">Start Time (From 8:00 AM)</label>
+                    <label className="block text-[11px] font-bold text-gray-600 mb-1">Start Time (From 9:00 AM)</label>
                     <input
                       type="time"
-                      min="08:00"
+                      min="09:00"
                       max="16:30"
                       value={customStartTime}
                       onChange={(e) => setCustomStartTime(e.target.value)}
@@ -658,7 +658,7 @@ const NewScheduleModal: React.FC<NewScheduleModalProps> = ({
                     <label className="block text-[11px] font-bold text-gray-600 mb-1">End Time (Until 5:00 PM)</label>
                     <input
                       type="time"
-                      min="08:30"
+                      min="09:30"
                       max="17:00"
                       value={customEndTime}
                       onChange={(e) => setCustomEndTime(e.target.value)}

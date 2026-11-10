@@ -6,6 +6,10 @@ class AvailableSlotsRequest(BaseModel):
     start_date: datetime
     end_date: datetime
     hr_id: Optional[int] = None
+    manager_id: Optional[int] = None
+    user_ids: Optional[List[int]] = None
+    interviewer_ids: Optional[List[int]] = None
+    panelist_ids: Optional[List[int]] = None
 
     
 class InterviewCreateSchema(BaseModel):
@@ -15,6 +19,7 @@ class InterviewCreateSchema(BaseModel):
     start_time: datetime
     end_time: datetime
     interviewer_id: Optional[int] = None
+    panelist_ids: Optional[List[int]] = None
 
 class InterviewUpdateSchema(BaseModel):
     title: Optional[str] = None
@@ -23,6 +28,7 @@ class InterviewUpdateSchema(BaseModel):
     end_time: Optional[datetime] = None
     status: Optional[str] = None
     interviewer_id: Optional[int] = None
+    panelist_ids: Optional[List[int]] = None
 
 class VoiceCallRecordResponseSchema(BaseModel):
     id: int

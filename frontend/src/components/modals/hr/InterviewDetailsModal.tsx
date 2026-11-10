@@ -133,7 +133,7 @@ const InterviewDetailsModal: React.FC<InterviewDetailsModalProps> = ({ isOpen, o
       const timer = setTimeout(async () => {
         try {
           const slots = await getSlots({
-            start_date: `${formData.date}T08:00:00`,
+            start_date: `${formData.date}T09:00:00`,
             end_date: `${formData.date}T17:00:00`,
             hr_id: formData.interviewerId || undefined
           }).unwrap();
@@ -176,8 +176,8 @@ const InterviewDetailsModal: React.FC<InterviewDetailsModalProps> = ({ isOpen, o
       return;
     }
 
-    if (startHour < 8 || endHour > 17 || (endHour === 17 && endMin > 0)) {
-      setErrorMsg('Interviews must fall within working hours (8:00 AM – 5:00 PM).');
+    if (startHour < 9 || endHour > 17 || (endHour === 17 && endMin > 0)) {
+      setErrorMsg('Interviews must fall within working hours (9:00 AM – 5:00 PM).');
       return;
     }
 
@@ -970,7 +970,7 @@ const InterviewDetailsModal: React.FC<InterviewDetailsModalProps> = ({ isOpen, o
                       })}
                     </div>
                   ) : (
-                    <p className="text-xs text-amber-600 font-medium">No system recommendations found for this date. Ensure hours are between 8:00 AM - 5:00 PM.</p>
+                    <p className="text-xs text-amber-600 font-medium">No system recommendations found for this date. Ensure hours are between 9:00 AM - 5:00 PM.</p>
                   )}
                 </div>
               )}

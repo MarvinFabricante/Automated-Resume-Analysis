@@ -422,6 +422,7 @@ def query_freebusy(credentials_json: str, emails: list, time_min: str, time_max:
         body = {
             "timeMin": time_min,
             "timeMax": time_max,
+            "timeZone": "Asia/Manila",
             "items": [{"id": e} for e in emails],
         }
         result = service.freebusy().query(body=body).execute()
