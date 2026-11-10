@@ -556,11 +556,10 @@ const InterviewDetailsModal: React.FC<InterviewDetailsModalProps> = ({ isOpen, o
                           <MessageSquare size={13} className="text-[#D60041]" />
                           Candidate Verbal Response (REQ030)
                         </span>
-                        <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black tracking-wider uppercase ${
-                          interview.candidate_response === 'CONFIRMED'
+                        <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black tracking-wider uppercase ${interview.candidate_response === 'CONFIRMED'
                             ? 'bg-emerald-100 text-emerald-800'
                             : 'bg-amber-100 text-amber-800'
-                        }`}>
+                          }`}>
                           {interview.candidate_response === 'CONFIRMED' ? 'Confirmed' : 'Reschedule Requested'}
                         </span>
                       </div>
@@ -583,36 +582,35 @@ const InterviewDetailsModal: React.FC<InterviewDetailsModalProps> = ({ isOpen, o
                       </span>
                     </div>
 
-                    {/* Retry Attempts Progress (REQ031) */}
+                    {/* Retry Attempts Progress (REQ031 & TEST-ID: 8) */}
                     <div className="bg-white/80 p-3 rounded-2xl border border-rose-100/70">
                       <span className="text-[10px] font-black text-gray-400 uppercase tracking-wider block">
-                        Call Attempts (Max 3 / 24h)
+                        Call Schedule (2h, 6h, 12h – Max 3 Retries / 24h)
                       </span>
                       <div className="flex items-center gap-2 mt-1">
                         <div className="flex items-center gap-1">
-                          {[1, 2, 3].map((num) => {
+                          {[1, 2, 3, 4].map((num) => {
                             const isAttempted = (interview.call_attempts || 0) >= num;
                             return (
                               <div
                                 key={num}
-                                className={`h-2.5 w-6 rounded-full transition-colors ${
-                                  isAttempted
+                                className={`h-2.5 w-5 rounded-full transition-colors ${isAttempted
                                     ? interview.call_status === 'CONFIRMED'
                                       ? 'bg-emerald-500'
                                       : interview.call_status === 'RESCHEDULE_REQUESTED'
-                                      ? 'bg-amber-500'
-                                      : interview.call_status === 'ESCALATED_TO_HR'
-                                      ? 'bg-blue-500'
-                                      : 'bg-[#D60041]'
+                                        ? 'bg-amber-500'
+                                        : interview.call_status === 'ESCALATED_TO_HR'
+                                          ? 'bg-blue-500'
+                                          : 'bg-[#D60041]'
                                     : 'bg-gray-200'
-                                }`}
-                                title={`Attempt ${num} of 3`}
+                                  }`}
+                                title={num === 1 ? 'Initial Call' : `Retry #${num - 1} (${num === 2 ? '2h' : num === 3 ? '6h' : '12h'})`}
                               />
                             );
                           })}
                         </div>
                         <span className="text-xs font-bold text-gray-700">
-                          {interview.call_attempts || 0}/3
+                          {interview.call_attempts || 0}/4
                         </span>
                       </div>
                     </div>
@@ -829,17 +827,16 @@ const InterviewDetailsModal: React.FC<InterviewDetailsModalProps> = ({ isOpen, o
                                   <span className="font-black text-gray-900">
                                     Attempt #{log.attempt_number || 1}
                                   </span>
-                                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase ${
-                                    log.extracted_intent === 'CONFIRMED'
+                                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase ${log.extracted_intent === 'CONFIRMED'
                                       ? 'bg-emerald-100 text-emerald-800'
                                       : log.extracted_intent === 'RESCHEDULE_REQUESTED'
-                                      ? 'bg-amber-100 text-amber-800'
-                                      : log.extracted_intent === 'ESCALATED_TO_HR'
-                                      ? 'bg-blue-100 text-blue-800'
-                                      : log.extracted_intent === 'NO_RESPONSE'
-                                      ? 'bg-orange-100 text-orange-800'
-                                      : 'bg-rose-100 text-rose-800'
-                                  }`}>
+                                        ? 'bg-amber-100 text-amber-800'
+                                        : log.extracted_intent === 'ESCALATED_TO_HR'
+                                          ? 'bg-blue-100 text-blue-800'
+                                          : log.extracted_intent === 'NO_RESPONSE'
+                                            ? 'bg-orange-100 text-orange-800'
+                                            : 'bg-rose-100 text-rose-800'
+                                    }`}>
                                     {log.status || log.extracted_intent}
                                   </span>
                                   {log.sms_backup_sent && (
