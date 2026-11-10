@@ -300,6 +300,8 @@ const InterviewDetailsModal: React.FC<InterviewDetailsModalProps> = ({ isOpen, o
         return <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 px-3 py-1 rounded-full text-xs font-black tracking-wider uppercase">Confirmed</span>;
       case 'RESCHEDULE_REQUESTED':
         return <span className="bg-amber-50 text-amber-700 border border-amber-200 px-3 py-1 rounded-full text-xs font-black tracking-wider uppercase">Reschedule Requested</span>;
+      case 'ESCALATED_TO_HR':
+        return <span className="bg-blue-50 text-blue-700 border border-blue-200 px-3 py-1 rounded-full text-xs font-black tracking-wider uppercase">Escalated to HR</span>;
       case 'COMPLETED':
         return <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 px-3 py-1 rounded-full text-xs font-black tracking-wider uppercase">Completed</span>;
       case 'CANCELED':
@@ -323,6 +325,12 @@ const InterviewDetailsModal: React.FC<InterviewDetailsModalProps> = ({ isOpen, o
         return (
           <span className="bg-amber-50 text-amber-700 border border-amber-200 px-3 py-1 rounded-full text-[11px] font-black tracking-wider uppercase flex items-center gap-1.5 shadow-xs">
             <AlertCircle size={13} className="text-amber-600" /> Reschedule Requested
+          </span>
+        );
+      case 'ESCALATED_TO_HR':
+        return (
+          <span className="bg-blue-50 text-blue-700 border border-blue-200 px-3 py-1 rounded-full text-[11px] font-black tracking-wider uppercase flex items-center gap-1.5 shadow-xs">
+            <PhoneForwarded size={13} className="text-blue-600" /> Escalated to HR
           </span>
         );
       case 'RETRY_SCHEDULED':
@@ -586,6 +594,8 @@ const InterviewDetailsModal: React.FC<InterviewDetailsModalProps> = ({ isOpen, o
                                       ? 'bg-emerald-500'
                                       : interview.call_status === 'RESCHEDULE_REQUESTED'
                                       ? 'bg-amber-500'
+                                      : interview.call_status === 'ESCALATED_TO_HR'
+                                      ? 'bg-blue-500'
                                       : 'bg-[#D60041]'
                                     : 'bg-gray-200'
                                 }`}
@@ -709,19 +719,51 @@ const InterviewDetailsModal: React.FC<InterviewDetailsModalProps> = ({ isOpen, o
                             </p>
                             <button
                               type="button"
+                              onClick={() => handleSimulateResponse('CONFIRMED', '1')}
+                              className="w-full text-left px-3 py-2 hover:bg-emerald-50 text-emerald-800 rounded-xl text-xs font-bold flex items-center justify-between"
+                            >
+                              <span>Press 1 (Keypad Confirm)</span>
+                              <CheckCircle2 size={14} className="text-emerald-600" />
+                            </button>
+                            <button
+                              type="button"
                               onClick={() => handleSimulateResponse('CONFIRMED', selectedCallLang === 'fil' ? 'Oo, kumpirmado po ang aking pagdalo' : 'Yes, I confirm my attendance for this interview')}
                               className="w-full text-left px-3 py-2 hover:bg-emerald-50 text-emerald-800 rounded-xl text-xs font-bold flex items-center justify-between"
                             >
-                              <span>Confirm Attendance</span>
+                              <span>Verbal Confirm</span>
                               <CheckCircle2 size={14} className="text-emerald-600" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleSimulateResponse('RESCHEDULE_REQUESTED', '2')}
+                              className="w-full text-left px-3 py-2 hover:bg-amber-50 text-amber-800 rounded-xl text-xs font-bold flex items-center justify-between"
+                            >
+                              <span>Press 2 (Keypad Reschedule)</span>
+                              <AlertCircle size={14} className="text-amber-600" />
                             </button>
                             <button
                               type="button"
                               onClick={() => handleSimulateResponse('RESCHEDULE_REQUESTED', selectedCallLang === 'fil' ? 'May lakad po ako sa oras na iyan, pwede po bang mag-reschedule?' : 'Please reschedule, I have a conflict on Friday')}
                               className="w-full text-left px-3 py-2 hover:bg-amber-50 text-amber-800 rounded-xl text-xs font-bold flex items-center justify-between"
                             >
-                              <span>Request Reschedule</span>
+                              <span>Verbal Reschedule</span>
                               <AlertCircle size={14} className="text-amber-600" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleSimulateResponse('ESCALATED_TO_HR', '3')}
+                              className="w-full text-left px-3 py-2 hover:bg-blue-50 text-blue-800 rounded-xl text-xs font-bold flex items-center justify-between"
+                            >
+                              <span>Press 3 (Keypad Speak to HR)</span>
+                              <PhoneForwarded size={14} className="text-blue-600" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleSimulateResponse('ESCALATED_TO_HR', selectedCallLang === 'fil' ? 'Gusto ko pong makausap ang HR' : 'I would like to speak with an HR representative')}
+                              className="w-full text-left px-3 py-2 hover:bg-blue-50 text-blue-800 rounded-xl text-xs font-bold flex items-center justify-between"
+                            >
+                              <span>Verbal Speak to HR</span>
+                              <PhoneForwarded size={14} className="text-blue-600" />
                             </button>
                             <button
                               type="button"
@@ -777,6 +819,8 @@ const InterviewDetailsModal: React.FC<InterviewDetailsModalProps> = ({ isOpen, o
                                       ? 'bg-emerald-100 text-emerald-800'
                                       : log.extracted_intent === 'RESCHEDULE_REQUESTED'
                                       ? 'bg-amber-100 text-amber-800'
+                                      : log.extracted_intent === 'ESCALATED_TO_HR'
+                                      ? 'bg-blue-100 text-blue-800'
                                       : 'bg-rose-100 text-rose-800'
                                   }`}>
                                     {log.status || log.extracted_intent}

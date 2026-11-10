@@ -57,6 +57,14 @@ RESCHEDULE_KEYWORDS = [
     "ibang oras", "next week", "conflict", "may lakad", "pa-reschedule"
 ]
 
+SPEAK_TO_HR_KEYWORDS = [
+    "speak to hr", "speak with hr", "talk to hr", "talk with hr", "call hr",
+    "contact hr", "connect to hr", "connect with hr",
+    "hr", "representative", "agent", "human", "operator", "person",
+    "kausapin ang hr", "makipag-usap sa hr", "makausap ang hr", "kausapin si hr",
+    "kausapin", "makausap", "makipag-usap", "tao"
+]
+
 
 def format_to_e164(phone: Optional[str]) -> Optional[str]:
     """Ensures phone number is in E.164 format for telecom / Twilio routing."""
@@ -106,23 +114,30 @@ def format_ph_datetime(dt: datetime, lang: str = "en") -> str:
         return dt.strftime("%B %d, %Y at %I:%M %p")
 
 
-def interpret_verbal_response(speech_text: Optional[str], digits: Optional[str]) -> Tuple[str, str]:
+def interpret_verbal_response(speech_text: Optional[str], digits: Optional[Any]) -> Tuple[str, str]:
     """
     REQ030: Evaluates candidate verbal response or keypad input.
     Returns: (intent, notes)
-    Intent is one of: 'CONFIRMED', 'RESCHEDULE_REQUESTED', 'UNKNOWN'
+    Intent is one of: 'CONFIRMED', 'RESCHEDULE_REQUESTED', 'ESCALATED_TO_HR', 'UNKNOWN'
     """
-    clean_digits = (digits or "").strip()
-    if clean_digits == "1":
+    clean_digits = (str(digits) if digits is not None else "").strip()
+    if clean_digits in ["1", "1#"] or clean_digits == "1":
         return "CONFIRMED", "Candidate pressed 1 on keypad to confirm attendance."
-    if clean_digits == "2":
+    if clean_digits in ["2", "2#"] or clean_digits == "2":
         return "RESCHEDULE_REQUESTED", "Candidate pressed 2 on keypad to request rescheduling."
+    if clean_digits in ["3", "3#"] or clean_digits == "3":
+        return "ESCALATED_TO_HR", "Candidate pressed 3 on keypad to speak with HR."
 
     clean_speech = (speech_text or "").lower().strip()
     if not clean_speech:
         return "UNKNOWN", "No speech detected or audio inaudible."
 
-    # Check for reschedule/negation keywords first to prevent substrings (e.g. "hindi pwede" matching "pwede")
+    # Check for speak to HR keywords first
+    for kw in sorted(SPEAK_TO_HR_KEYWORDS, key=len, reverse=True):
+        if kw in clean_speech:
+            return "ESCALATED_TO_HR", f"Candidate requested to speak with HR (matched '{kw}'). Spoken: '{speech_text}'"
+
+    # Check for reschedule/negation keywords next to prevent substrings (e.g. "hindi pwede" matching "pwede")
     for kw in sorted(RESCHEDULE_KEYWORDS, key=len, reverse=True):
         if kw in clean_speech:
             return "RESCHEDULE_REQUESTED", f"Candidate requested reschedule (matched '{kw}'). Spoken: '{speech_text}'"
@@ -182,7 +197,8 @@ def build_interview_voice_twiml(
             f"Magandang araw {candidate_name}. Ito ay awtomatikong tawag mula sa Mariwasa Siam Ceramics. "
             f"Nais po naming ipaalam na ang inyong interbyu para sa posisyong {job_title} ay nakatakda sa {dt_fil} kasama si {interviewer_display} sa {loc_display}. "
             f"Upang kumpirmahin ang inyong pagdalo, sabihin lamang ang Kumpirma o Confirm, o pindutin ang 1. "
-            f"Kung nais ninyong humiling ng ibang petsa o mag-reschedule, sabihin ang Reschedule o pindutin ang 2.",
+            f"Kung nais ninyong humiling ng ibang petsa o mag-reschedule, sabihin ang Reschedule o pindutin ang 2. "
+            f"Kung nais ninyong makausap ang HR, sabihin ang Kausapin ang HR o pindutin ang 3.",
             language="fil-PH",
             voice="Google.fil-PH-Standard-A"
         )
@@ -191,7 +207,8 @@ def build_interview_voice_twiml(
             f"Hello {candidate_name}. This is an automated interview notification call from Mariwasa Siam Ceramics. "
             f"Your interview for the position of {job_title} has been scheduled on {dt_en} with {interviewer_display} at {loc_display}. "
             f"To confirm your attendance, please say Confirm or press 1. "
-            f"If you need to request a reschedule, please say Reschedule or press 2.",
+            f"If you need to request a reschedule, please say Reschedule or press 2. "
+            f"To speak with an HR representative, please say Speak to HR or press 3.",
             language="en-US",
             voice="Google.en-US-Standard-C"
         )
@@ -200,7 +217,8 @@ def build_interview_voice_twiml(
             f"Hello {candidate_name}. This is Mariwasa Siam Ceramics regarding your job application for {job_title}. "
             f"Your interview is scheduled on {dt_en} with {interviewer_display} at {loc_display}. "
             f"To confirm your attendance, please say Confirm or press 1. "
-            f"Para sa reschedule o bagong petsa, sabihin ang Reschedule o pindutin ang 2.",
+            f"Para sa reschedule o bagong petsa, sabihin ang Reschedule o pindutin ang 2. "
+            f"Para makausap ang HR, sabihin ang Speak to HR o pindutin ang 3.",
             language="en-US",
             voice="Google.en-US-Standard-C"
         )
@@ -587,6 +605,9 @@ async def handle_voice_response(
     intent, notes = interpret_verbal_response(speech_result, digits)
     logger.info(f"[AI Caller] Processed verbal response for Interview {interview_id}: intent='{intent}', phrase='{speech_result}'")
 
+    clean_digits = (str(digits) if digits is not None else "").strip()
+    candidate_input_display = f"Pressed key {clean_digits}" if clean_digits else (speech_result or "Unknown response")
+
     # Find matching call record
     rec_q = select(VoiceCallRecord).where(
         VoiceCallRecord.interview_id == interview_id
@@ -595,7 +616,7 @@ async def handle_voice_response(
     call_record = rec_res.scalars().first()
 
     if call_record:
-        call_record.candidate_verbal_response = speech_result or (f"Pressed key {digits}" if digits else None)
+        call_record.candidate_verbal_response = candidate_input_display
         call_record.extracted_intent = intent
         call_record.status = "COMPLETED"
         call_record.notes = notes
@@ -609,14 +630,15 @@ async def handle_voice_response(
         interview.status = "CONFIRMED"
         interview.call_status = "CONFIRMED"
         interview.candidate_response = "CONFIRMED"
-        interview.verbal_notes = speech_result or f"Keypad {digits}"
+        interview.verbal_notes = candidate_input_display
         interview.next_retry_at = None
 
         # REQ032: Log candidate response
+        log_desc = f"Candidate CONFIRMED interview attendance via Voice Call ({candidate_input_display})."
         db.add(InterviewLog(
             interview_id=interview.id,
             log_type="VOICE_CALL_CONFIRMED",
-            details=f"Candidate verbally CONFIRMED interview attendance via Voice Call. Verbal response: '{speech_result or f'Key {digits}'}'"
+            details=log_desc
         ))
 
         # Notify HR
@@ -627,7 +649,7 @@ async def handle_voice_response(
             await create_notification(
                 db=db,
                 title="Interview Confirmed ✅",
-                message=f"Candidate {cand_name} has verbally CONFIRMED their interview for {job_name}.",
+                message=f"Candidate {cand_name} has CONFIRMED their interview for {job_name} ({candidate_input_display}).",
                 type="schedule",
                 target_role="HR",
                 sender_role="SYSTEM"
@@ -653,14 +675,15 @@ async def handle_voice_response(
         interview.status = "RESCHEDULE_REQUESTED"
         interview.call_status = "RESCHEDULE_REQUESTED"
         interview.candidate_response = "RESCHEDULE_REQUESTED"
-        interview.verbal_notes = speech_result or f"Keypad {digits}"
+        interview.verbal_notes = candidate_input_display
         interview.next_retry_at = None
 
         # REQ032: Log candidate response
+        log_desc = f"Candidate requested interview RESCHEDULE via Voice Call ({candidate_input_display})."
         db.add(InterviewLog(
             interview_id=interview.id,
             log_type="VOICE_CALL_RESCHEDULE",
-            details=f"Candidate requested interview RESCHEDULE via Voice Call. Verbal response: '{speech_result or f'Key {digits}'}'"
+            details=log_desc
         ))
 
         # Notify HR
@@ -671,7 +694,7 @@ async def handle_voice_response(
             await create_notification(
                 db=db,
                 title="Reschedule Requested ⚠️",
-                message=f"Candidate {cand_name} requested to RESCHEDULE their interview for {job_name}. Spoken: '{speech_result or 'Key 2'}'",
+                message=f"Candidate {cand_name} requested to RESCHEDULE their interview for {job_name} ({candidate_input_display}).",
                 type="schedule",
                 target_role="HR",
                 sender_role="SYSTEM"
@@ -688,6 +711,51 @@ async def handle_voice_response(
         else:
             twiml_resp.say(
                 "We understand. Your reschedule request has been recorded. Our HR team will reach out with alternative schedule options. Thank you and goodbye!",
+                language="en-US",
+                voice="Google.en-US-Standard-C"
+            )
+
+    elif intent == "ESCALATED_TO_HR":
+        # REQ034: Update interview status
+        interview.status = "ESCALATED_TO_HR"
+        interview.call_status = "ESCALATED_TO_HR"
+        interview.candidate_response = "ESCALATED_TO_HR"
+        interview.verbal_notes = candidate_input_display
+        interview.next_retry_at = None
+
+        # REQ032: Log candidate response
+        log_desc = f"Candidate requested to SPEAK TO HR via Voice Call ({candidate_input_display}). Call escalated to HR."
+        db.add(InterviewLog(
+            interview_id=interview.id,
+            log_type="VOICE_CALL_ESCALATED",
+            details=log_desc
+        ))
+
+        # Notify HR
+        try:
+            from app.services.notification_service import create_notification
+            cand_name = application.candidate_name if application else "Candidate"
+            job_name = application.job_title if application else interview.title
+            await create_notification(
+                db=db,
+                title="Escalated to HR 📞",
+                message=f"Candidate {cand_name} requested to speak with HR regarding their interview for {job_name} ({candidate_input_display}).",
+                type="schedule",
+                target_role="HR",
+                sender_role="SYSTEM"
+            )
+        except Exception as e_notif:
+            logger.debug(f"HR notification notice: {e_notif}")
+
+        if norm_lang == "fil":
+            twiml_resp.say(
+                "Ipinapasa na po namin ang inyong kahilingan sa aming HR team. Makikipag-ugnayan ang isang kinatawan ng HR sa inyo sa lalong madaling panahon. Maraming salamat po at magandang araw!",
+                language="fil-PH",
+                voice="Google.fil-PH-Standard-A"
+            )
+        else:
+            twiml_resp.say(
+                "We have forwarded your request to our HR team. An HR representative will reach out to you shortly. Thank you and have a great day!",
                 language="en-US",
                 voice="Google.en-US-Standard-C"
             )
@@ -897,7 +965,15 @@ async def simulate_voice_call(
     sim_sid = f"SIM_{uuid.uuid4().hex[:10]}"
 
     if outcome == "CONFIRMED":
-        phrase = spoken_phrase or ("Oo, kumpirmado po ang aking pagdalo" if norm_lang == "fil" else "Yes, I confirm my attendance for the interview")
+        if spoken_phrase in ["1", "Keypad 1", "Pressed key 1"]:
+            phrase = "Pressed key 1"
+            notes = "Candidate pressed 1 on keypad to confirm attendance."
+            log_desc = f"Simulated Voice Call Attempt #{attempt}: Candidate confirmed attendance (Pressed key 1)."
+        else:
+            phrase = spoken_phrase or ("Oo, kumpirmado po ang aking pagdalo" if norm_lang == "fil" else "Yes, I confirm my attendance for the interview")
+            notes = "Candidate verbally confirmed attendance during simulated call."
+            log_desc = f"Simulated Voice Call Attempt #{attempt}: Candidate verbally confirmed attendance. Spoken: '{phrase}'"
+
         interview.status = "CONFIRMED"
         interview.call_status = "CONFIRMED"
         interview.candidate_response = "CONFIRMED"
@@ -914,17 +990,25 @@ async def simulate_voice_call(
             language=norm_lang,
             candidate_verbal_response=phrase,
             extracted_intent="CONFIRMED",
-            notes="Candidate verbally confirmed attendance during simulated call."
+            notes=notes
         ))
 
         db.add(InterviewLog(
             interview_id=interview.id,
             log_type="VOICE_CALL_CONFIRMED",
-            details=f"Simulated Voice Call Attempt #{attempt}: Candidate verbally confirmed attendance. Spoken: '{phrase}'"
+            details=log_desc
         ))
 
     elif outcome == "RESCHEDULE_REQUESTED":
-        phrase = spoken_phrase or ("May lakad po ako sa oras na iyan, pwede po bang mag-reschedule?" if norm_lang == "fil" else "I have a conflict, please reschedule my interview")
+        if spoken_phrase in ["2", "Keypad 2", "Pressed key 2"]:
+            phrase = "Pressed key 2"
+            notes = "Candidate pressed 2 on keypad to request rescheduling."
+            log_desc = f"Simulated Voice Call Attempt #{attempt}: Candidate requested interview reschedule (Pressed key 2)."
+        else:
+            phrase = spoken_phrase or ("May lakad po ako sa oras na iyan, pwede po bang mag-reschedule?" if norm_lang == "fil" else "I have a conflict, please reschedule my interview")
+            notes = "Candidate requested reschedule during simulated call."
+            log_desc = f"Simulated Voice Call Attempt #{attempt}: Candidate requested reschedule. Spoken: '{phrase}'"
+
         interview.status = "RESCHEDULE_REQUESTED"
         interview.call_status = "RESCHEDULE_REQUESTED"
         interview.candidate_response = "RESCHEDULE_REQUESTED"
@@ -941,14 +1025,64 @@ async def simulate_voice_call(
             language=norm_lang,
             candidate_verbal_response=phrase,
             extracted_intent="RESCHEDULE_REQUESTED",
-            notes="Candidate requested reschedule during simulated call."
+            notes=notes
         ))
 
         db.add(InterviewLog(
             interview_id=interview.id,
             log_type="VOICE_CALL_RESCHEDULE",
-            details=f"Simulated Voice Call Attempt #{attempt}: Candidate requested reschedule. Spoken: '{phrase}'"
+            details=log_desc
         ))
+
+    elif outcome in ["ESCALATED_TO_HR", "ESCALATED"]:
+        if spoken_phrase in ["3", "Keypad 3", "Pressed key 3"]:
+            phrase = "Pressed key 3"
+            notes = "Candidate pressed 3 on keypad to speak with HR."
+            log_desc = f"Simulated Voice Call Attempt #{attempt}: Candidate requested to speak with HR (Pressed key 3)."
+        else:
+            phrase = spoken_phrase or ("Gusto ko pong makausap ang HR" if norm_lang == "fil" else "I would like to speak with HR")
+            notes = "Candidate requested to speak with HR during simulated call."
+            log_desc = f"Simulated Voice Call Attempt #{attempt}: Candidate requested to speak with HR. Spoken: '{phrase}'"
+
+        interview.status = "ESCALATED_TO_HR"
+        interview.call_status = "ESCALATED_TO_HR"
+        interview.candidate_response = "ESCALATED_TO_HR"
+        interview.verbal_notes = phrase
+        interview.next_retry_at = None
+
+        db.add(VoiceCallRecord(
+            interview_id=interview.id,
+            call_sid=sim_sid,
+            phone_number=phone,
+            attempt_number=attempt,
+            status="COMPLETED",
+            duration=38,
+            language=norm_lang,
+            candidate_verbal_response=phrase,
+            extracted_intent="ESCALATED_TO_HR",
+            notes=notes
+        ))
+
+        db.add(InterviewLog(
+            interview_id=interview.id,
+            log_type="VOICE_CALL_ESCALATED",
+            details=log_desc
+        ))
+
+        try:
+            from app.services.notification_service import create_notification
+            cand_name = application.candidate_name if application else "Candidate"
+            job_name = application.job_title if application else interview.title
+            await create_notification(
+                db=db,
+                title="Escalated to HR 📞",
+                message=f"Candidate {cand_name} requested to speak with HR regarding their interview for {job_name} ({phrase}).",
+                type="schedule",
+                target_role="HR",
+                sender_role="SYSTEM"
+            )
+        except Exception as e_notif:
+            logger.debug(f"HR notification notice: {e_notif}")
 
     elif outcome in ["NO_ANSWER", "BUSY", "FAILED"]:
         db.add(VoiceCallRecord(

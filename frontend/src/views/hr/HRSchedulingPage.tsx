@@ -18,7 +18,8 @@ import {
   RotateCcw,
   Lock,
   Phone,
-  PhoneCall
+  PhoneCall,
+  PhoneForwarded
 } from 'lucide-react';
 import { useSelector } from 'react-redux';
 import { RootState } from '../../redux/store';
@@ -104,6 +105,14 @@ const getVoiceCallBadge = (ev: FormattedCalendarEvent) => {
       <span className="inline-flex items-center gap-1 bg-amber-50 text-amber-700 border border-amber-200 text-[9px] font-black px-2 py-0.5 rounded-full uppercase" title="Candidate requested reschedule via voice call">
         <RotateCcw size={9} className="text-amber-600" />
         AI Call: Reschedule Req
+      </span>
+    );
+  }
+  if (response === 'ESCALATED_TO_HR' || status === 'ESCALATED_TO_HR') {
+    return (
+      <span className="inline-flex items-center gap-1 bg-blue-50 text-blue-700 border border-blue-200 text-[9px] font-black px-2 py-0.5 rounded-full uppercase" title="Candidate requested to speak with HR via voice call">
+        <PhoneForwarded size={9} className="text-blue-600" />
+        AI Call: Escalated HR
       </span>
     );
   }
@@ -367,6 +376,8 @@ const HRSchedulingPage: React.FC = () => {
           if (evStatus !== 'CONFIRMED' && candResp !== 'CONFIRMED' && callStatus !== 'CONFIRMED') return false;
         } else if (statusFilter === 'RESCHEDULE_REQUESTED') {
           if (evStatus !== 'RESCHEDULE_REQUESTED' && candResp !== 'RESCHEDULE_REQUESTED') return false;
+        } else if (statusFilter === 'ESCALATED_TO_HR') {
+          if (evStatus !== 'ESCALATED_TO_HR' && candResp !== 'ESCALATED_TO_HR' && callStatus !== 'ESCALATED_TO_HR') return false;
         } else if (ev.isGoogleEvent) {
           if (statusFilter !== 'SCHEDULED') return false;
         } else {
@@ -826,6 +837,7 @@ const HRSchedulingPage: React.FC = () => {
                     <option value="SCHEDULED">Scheduled</option>
                     <option value="CONFIRMED">Confirmed (AI Voice)</option>
                     <option value="RESCHEDULE_REQUESTED">Reschedule Requested</option>
+                    <option value="ESCALATED_TO_HR">Escalated to HR</option>
                     <option value="COMPLETED">Completed</option>
                     <option value="CANCELED">Canceled</option>
                     <option value="NO_SHOW">No Show</option>

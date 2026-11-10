@@ -28,6 +28,7 @@ import {
   HelpCircle,
   Award,
   PhoneCall,
+  PhoneForwarded,
   RotateCcw
 } from 'lucide-react';
 import { useSelector } from 'react-redux';
@@ -536,6 +537,11 @@ const ApplicationTracking: React.FC = () => {
                                   {step.interviewInfo.candidate_response === 'RESCHEDULE_REQUESTED' && (
                                     <span className="bg-amber-100 text-amber-800 text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider inline-flex items-center gap-1">
                                       <RotateCcw size={10} className="text-amber-600" /> Reschedule Requested
+                                    </span>
+                                  )}
+                                  {step.interviewInfo.candidate_response === 'ESCALATED_TO_HR' && (
+                                    <span className="bg-blue-100 text-blue-800 text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider inline-flex items-center gap-1">
+                                      <PhoneForwarded size={10} className="text-blue-600" /> Escalated to HR
                                     </span>
                                   )}
                                   {step.interviewInfo.sms_backup_sent && (
