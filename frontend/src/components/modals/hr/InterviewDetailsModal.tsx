@@ -132,12 +132,12 @@ const InterviewDetailsModal: React.FC<InterviewDetailsModalProps> = ({ isOpen, o
     if (isEditing && formData.date && isWeekday(formData.date)) {
       const timer = setTimeout(async () => {
         try {
-          const slots = await getSlots({
+          const res = await getSlots({
             start_date: `${formData.date}T09:00:00`,
             end_date: `${formData.date}T17:00:00`,
             hr_id: formData.interviewerId || undefined
           }).unwrap();
-          setAvailableSlots(slots || []);
+          setAvailableSlots(Array.isArray(res) ? (res || []) : (res?.slots || []));
         } catch {
           setAvailableSlots([]);
         }

@@ -118,13 +118,13 @@ const ScheduleInterviewModal: React.FC<ScheduleInterviewModalProps> = ({ isOpen,
       setHasAttemptedFetch(true);
       try {
         const dateStr = formData.date;
-        const slots = await getSlots({
-          start_date: `${dateStr}T08:00:00`,
+        const res = await getSlots({
+          start_date: `${dateStr}T09:00:00`,
           end_date:   `${dateStr}T17:00:00`,
           hr_id: selectedInterviewerId || undefined
         }).unwrap();
         
-        setAvailableSlots(slots || []);
+        setAvailableSlots(Array.isArray(res) ? (res || []) : (res?.slots || []));
       } catch (error) {
         setAvailableSlots([]);
       }

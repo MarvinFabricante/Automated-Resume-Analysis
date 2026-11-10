@@ -91,6 +91,12 @@ class TimeSlotSchema(BaseModel):
     start_time: datetime
     end_time: datetime
 
+class AvailableSlotsResponseSchema(BaseModel):
+    slots: List[TimeSlotSchema] = []
+    message: Optional[str] = None
+    alternative_dates: List[str] = []
+    alternative_slots: List[TimeSlotSchema] = []
+
 class GoogleCalendarStatusSchema(BaseModel):
     connected: bool
     email: Optional[str] = None

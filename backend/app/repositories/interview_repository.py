@@ -108,7 +108,12 @@ async def get_interview_by_id(db: AsyncSession, interview_id: int) -> Optional[I
 
     result = await db.execute(
         select(Interview)
-        .options(selectinload(Interview.job_application), selectinload(Interview.interviewer))
+        .options(
+            selectinload(Interview.job_application),
+            selectinload(Interview.interviewer),
+            selectinload(Interview.logs),
+            selectinload(Interview.call_records),
+        )
         .filter(Interview.id == interview_id)
     )
     interview = result.scalars().first()

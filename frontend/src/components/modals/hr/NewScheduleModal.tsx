@@ -51,6 +51,8 @@ const NewScheduleModal: React.FC<NewScheduleModalProps> = ({
   const [description, setDescription] = useState<string>('');
   const [selectedSlot, setSelectedSlot] = useState<any>(null);
   const [availableSlots, setAvailableSlots] = useState<any[]>([]);
+  const [alternativeMessage, setAlternativeMessage] = useState<string>('');
+  const [alternativeDates, setAlternativeDates] = useState<string[]>([]);
   const [errorMsg, setErrorMsg] = useState<string>('');
   const [useCustomTime, setUseCustomTime] = useState<boolean>(false);
   const [customStartTime, setCustomStartTime] = useState<string>('09:00');
@@ -141,19 +143,31 @@ const NewScheduleModal: React.FC<NewScheduleModalProps> = ({
     const todayStr = toLocalDateString(new Date());
     if (!date || !isWeekday(date) || date < todayStr) {
       setAvailableSlots([]);
+      setAlternativeMessage('');
+      setAlternativeDates([]);
       return;
     }
 
     const timer = setTimeout(async () => {
       try {
-        const slots = await getSlots({
+        const res = await getSlots({
           start_date: `${date}T09:00:00`,
           end_date: `${date}T17:00:00`,
           hr_id: selectedInterviewerId || undefined
         }).unwrap();
-        setAvailableSlots(slots || []);
+        if (Array.isArray(res)) {
+          setAvailableSlots(res || []);
+          setAlternativeMessage('');
+          setAlternativeDates([]);
+        } else {
+          setAvailableSlots(res?.slots || []);
+          setAlternativeMessage(res?.message || '');
+          setAlternativeDates(res?.alternative_dates || []);
+        }
       } catch {
         setAvailableSlots([]);
+        setAlternativeMessage('');
+        setAlternativeDates([]);
       }
     }, 350);
 
@@ -596,20 +610,50 @@ const NewScheduleModal: React.FC<NewScheduleModalProps> = ({
                     <p className="text-xs text-gray-500 font-semibold">Scanning conflict-free hours for {selectedInterviewer?.fullname || 'HR'}...</p>
                   </div>
                 ) : availableSlots.length === 0 ? (
-                  <div className="w-full text-center py-4 text-gray-400 space-y-2">
+                  <div className="w-full text-center py-3 text-gray-400 space-y-2">
                     <Clock size={24} className="mx-auto text-gray-300" />
                     <p className="text-xs font-semibold">
                       {date && isWeekday(date)
                         ? 'No 1-hour standard slots free on this date.'
                         : 'Select a valid weekday to view available slots.'}
                     </p>
-                    <button
-                      type="button"
-                      onClick={() => setUseCustomTime(true)}
-                      className="text-xs text-[#D60041] font-bold underline hover:text-rose-700"
-                    >
-                      Set custom start & end hours
-                    </button>
+
+                    {alternativeMessage && (
+                      <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-900 text-xs text-left space-y-2 max-w-lg mx-auto">
+                        <div className="flex items-center gap-1.5 font-bold text-amber-800">
+                          <AlertCircle size={14} className="text-amber-600 shrink-0" />
+                          <span>Fully Booked Schedule</span>
+                        </div>
+                        <p className="text-[11px] leading-relaxed text-amber-700">{alternativeMessage}</p>
+                        {alternativeDates.length > 0 && (
+                          <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                            <span className="text-[10px] font-black uppercase tracking-wider text-amber-800 mr-1">
+                              Switch Date:
+                            </span>
+                            {alternativeDates.map((altD) => (
+                              <button
+                                key={altD}
+                                type="button"
+                                onClick={() => setDate(altD)}
+                                className="px-2.5 py-1 bg-white hover:bg-amber-100 text-amber-900 font-bold border border-amber-300 rounded-lg text-[11px] transition-colors shadow-sm"
+                              >
+                                {new Date(altD + 'T00:00:00').toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    <div>
+                      <button
+                        type="button"
+                        onClick={() => setUseCustomTime(true)}
+                        className="text-xs text-[#D60041] font-bold underline hover:text-rose-700"
+                      >
+                        Set custom start & end hours
+                      </button>
+                    </div>
                   </div>
                 ) : (
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 w-full">

@@ -10,6 +10,8 @@ the Google Calendar API, and read operations check Redis cache first.
 import hashlib
 import json
 import logging
+import socket
+import time
 from typing import Optional, List, Dict, Any
 from googleapiclient.errors import HttpError
 
@@ -21,6 +23,92 @@ from app.utils.redis_client import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+# ── Custom Exceptions for Google Calendar API ─────────────────────────────────
+
+class GoogleCalendarError(Exception):
+    """Base exception for Google Calendar operations."""
+    pass
+
+
+class GoogleCalendarRateLimitError(GoogleCalendarError):
+    """Raised when Google Calendar API returns 429 or rate limit/quota exceeded."""
+    pass
+
+
+class GoogleCalendarTimeoutError(GoogleCalendarError):
+    """Raised when Google Calendar API request times out."""
+    pass
+
+
+def _is_rate_limit_error(err: Exception) -> bool:
+    """Check if exception represents a 429 rate limit or quota exceeded error."""
+    if isinstance(err, GoogleCalendarRateLimitError):
+        return True
+    if isinstance(err, HttpError):
+        status = getattr(getattr(err, "resp", None), "status", None)
+        if status in [429, 403]:
+            content = str(getattr(err, "content", "")).lower()
+            if status == 429 or "ratelimit" in content or "user_rate_limit" in content or "quota" in content:
+                return True
+    err_str = str(err).lower()
+    return "429" in err_str or "rate limit" in err_str or "quota exceeded" in err_str or "user_rate_limit" in err_str or "too many requests" in err_str
+
+
+def _is_timeout_error(err: Exception) -> bool:
+    """Check if exception represents a network or API timeout."""
+    if isinstance(err, GoogleCalendarTimeoutError):
+        return True
+    if isinstance(err, (TimeoutError, socket.timeout)):
+        return True
+    err_str = str(err).lower()
+    return "timeout" in err_str or "timed out" in err_str or "deadline exceeded" in err_str
+
+
+def execute_with_retry(
+    api_call_fn,
+    max_retries: int = 3,
+    initial_delay: float = 0.05,
+    backoff_factor: float = 2.0,
+    operation_name: str = "Google Calendar API call",
+):
+    """
+    Executes a Google Calendar API callable with graceful retry on 429 rate limit or timeout.
+    If transient, retries up to max_retries with exponential backoff.
+    If retries are exhausted, raises GoogleCalendarRateLimitError or GoogleCalendarTimeoutError.
+    """
+    delay = initial_delay
+    last_err = None
+    for attempt in range(1, max_retries + 1):
+        try:
+            return api_call_fn()
+        except Exception as err:
+            last_err = err
+            is_429 = _is_rate_limit_error(err)
+            is_timeout = _is_timeout_error(err)
+
+            if (is_429 or is_timeout) and attempt < max_retries:
+                logger.warning(
+                    f"[{operation_name}] Transient error (attempt {attempt}/{max_retries}): {err}. Retrying in {delay:.2f}s..."
+                )
+                time.sleep(delay)
+                delay *= backoff_factor
+                continue
+
+            # Retries exhausted or non-retryable error
+            if is_429:
+                logger.error(f"[{operation_name}] Rate limit (429) exceeded after {attempt} attempts: {err}")
+                raise GoogleCalendarRateLimitError(
+                    "Google Calendar API rate limit exceeded (429). The interview could not be scheduled. No booking was created. Please try again later."
+                ) from err
+            elif is_timeout:
+                logger.error(f"[{operation_name}] Timeout after {attempt} attempts: {err}")
+                raise GoogleCalendarTimeoutError(
+                    "Google Calendar API request timed out. The interview could not be scheduled. No booking was created. Please try again later."
+                ) from err
+            else:
+                raise
 
 
 def _cred_hash(credentials_json: str) -> str:
@@ -289,14 +377,32 @@ def create_real_google_event(
         if attendees:
             kwargs['sendUpdates'] = 'all'
 
-        created = service.events().insert(**kwargs).execute()
+        def _do_insert():
+            return service.events().insert(**kwargs).execute()
+
+        created = execute_with_retry(_do_insert, max_retries=3, initial_delay=0.05, operation_name="create_real_google_event")
         redis_tx_manager.commit_transaction_sync(tx_id, created)
         _sync_del_pattern(f"google_cal:events:{_cred_hash(credentials_json)}")
         return created
+    except (GoogleCalendarRateLimitError, GoogleCalendarTimeoutError) as err:
+        logger.error(f"Google Calendar API rate limit/timeout creating event: {err}")
+        redis_tx_manager.fail_transaction_sync(tx_id, str(err))
+        raise
     except HttpError as err:
         logger.error(f"Google Calendar API Error creating event: {err}")
         redis_tx_manager.fail_transaction_sync(tx_id, str(err))
-        return None
+        if _is_rate_limit_error(err):
+            raise GoogleCalendarRateLimitError(
+                "Google Calendar API rate limit exceeded (429). The interview could not be scheduled. No booking was created. Please try again later."
+            ) from err
+        raise
+    except Exception as err:
+        redis_tx_manager.fail_transaction_sync(tx_id, str(err))
+        if _is_timeout_error(err):
+            raise GoogleCalendarTimeoutError(
+                "Google Calendar API request timed out. The interview could not be scheduled. No booking was created. Please try again later."
+            ) from err
+        raise
 
 
 def update_real_google_event(
@@ -342,18 +448,36 @@ def update_real_google_event(
         if end_dt:
             body['end'] = {'dateTime': end_dt}
 
-        updated = service.events().patch(
-            calendarId=calendar_id or 'primary',
-            eventId=event_id,
-            body=body,
-            sendUpdates='all',
-        ).execute()
+        def _do_patch():
+            return service.events().patch(
+                calendarId=calendar_id or 'primary',
+                eventId=event_id,
+                body=body,
+                sendUpdates='all',
+            ).execute()
+
+        updated = execute_with_retry(_do_patch, max_retries=3, initial_delay=0.05, operation_name="update_real_google_event")
         redis_tx_manager.commit_transaction_sync(tx_id, updated)
         _sync_del_pattern(f"google_cal:events:{_cred_hash(credentials_json)}")
         return updated
+    except (GoogleCalendarRateLimitError, GoogleCalendarTimeoutError) as err:
+        logger.error(f"Google Calendar API rate limit/timeout updating event {event_id}: {err}")
+        redis_tx_manager.fail_transaction_sync(tx_id, str(err))
+        raise
     except HttpError as err:
         logger.error(f"Google Calendar API Error updating event {event_id}: {err}")
         redis_tx_manager.fail_transaction_sync(tx_id, str(err))
+        if _is_rate_limit_error(err):
+            raise GoogleCalendarRateLimitError(
+                "Google Calendar API rate limit exceeded (429). The interview could not be updated. Please try again later."
+            ) from err
+        return None
+    except Exception as err:
+        redis_tx_manager.fail_transaction_sync(tx_id, str(err))
+        if _is_timeout_error(err):
+            raise GoogleCalendarTimeoutError(
+                "Google Calendar API request timed out. The interview could not be updated. Please try again later."
+            ) from err
         return None
 
 
@@ -393,15 +517,27 @@ def delete_real_google_event(credentials_json: str, calendar_id: str, event_id: 
         redis_tx_manager.fail_transaction_sync(tx_id, "Google service unavailable")
         return False
     try:
-        service.events().delete(
-            calendarId=calendar_id or 'primary',
-            eventId=event_id,
-        ).execute()
+        def _do_delete():
+            return service.events().delete(
+                calendarId=calendar_id or 'primary',
+                eventId=event_id,
+            ).execute()
+
+        execute_with_retry(_do_delete, max_retries=3, initial_delay=0.05, operation_name="delete_real_google_event")
         redis_tx_manager.commit_transaction_sync(tx_id, {"deleted": True})
         _sync_del_pattern(f"google_cal:events:{_cred_hash(credentials_json)}")
         return True
     except HttpError as err:
+        status = getattr(getattr(err, "resp", None), "status", None)
+        if status == 404:
+            # Event already deleted or not found
+            redis_tx_manager.commit_transaction_sync(tx_id, {"deleted": True, "already_gone": True})
+            return True
         logger.error(f"Google Calendar API Error deleting event: {err}")
+        redis_tx_manager.fail_transaction_sync(tx_id, str(err))
+        return False
+    except Exception as err:
+        logger.error(f"Error deleting event {event_id}: {err}")
         redis_tx_manager.fail_transaction_sync(tx_id, str(err))
         return False
 
