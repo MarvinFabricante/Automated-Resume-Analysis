@@ -583,7 +583,9 @@ async def handle_voice_response(
     digits: Optional[str],
     call_sid: Optional[str],
     db: AsyncSession,
-    language: str = "bilingual"
+    language: str = "bilingual",
+    attempt: int = 1,
+    request_host: Optional[str] = None
 ) -> str:
     """
     REQ030 & REQ034: Processes candidate verbal speech or DTMF keypress.
@@ -761,23 +763,117 @@ async def handle_voice_response(
             )
 
     else:
-        # Unknown response
-        db.add(InterviewLog(
-            interview_id=interview.id,
-            log_type="VOICE_CALL_UNRECOGNIZED",
-            details=f"Voice call response unclear: '{speech_result or f'Key {digits}'}'."
-        ))
-        if norm_lang == "fil":
-            twiml_resp.say(
-                "Paumanhin, hindi po namin naintindihan ang inyong tugon. Makikipag-ugnayan ang aming HR team sa inyong email. Maraming salamat po at magandang araw!",
-                language="fil-PH",
-                voice="Google.fil-PH-Standard-A"
+        # TEST-ID: 7 - Invalid key / unrecognized response or timeout
+        if attempt <= 1:
+            # Step 1: Candidate pressed invalid key (e.g. 9) or spoke unrecognized phrase. Prompt repeats once.
+            log_desc = f"Candidate entered invalid input ({candidate_input_display}). Prompt repeating once with 30s timeout."
+            db.add(InterviewLog(
+                interview_id=interview.id,
+                log_type="VOICE_CALL_INVALID_INPUT",
+                details=log_desc
+            ))
+            if call_record:
+                call_record.candidate_verbal_response = candidate_input_display
+                call_record.notes = f"Invalid input ({candidate_input_display}). Prompt repeating once with 30s timeout."
+
+            host = request_host or (PUBLIC_BASE_URL.replace("https://", "").replace("http://", "").split("/")[0] if PUBLIC_BASE_URL else "")
+            action_url_retry = f"https://{host}/ai-caller/voice-response?interview_id={interview.id}&attempt=2&lang={norm_lang}" if host else f"/ai-caller/voice-response?interview_id={interview.id}&attempt=2&lang={norm_lang}"
+
+            repeat_gather = Gather(
+                input="speech dtmf",
+                timeout=30,
+                speech_timeout="auto",
+                num_digits=1,
+                action=action_url_retry,
+                method="POST"
             )
+
+            if norm_lang == "fil":
+                repeat_gather.say(
+                    "Hindi wastong numero ang pinindot. Uulitin po namin ang mga opsyon: "
+                    "Upang kumpirmahin ang inyong pagdalo, sabihin lamang ang Kumpirma o Confirm, o pindutin ang 1. "
+                    "Kung nais ninyong humiling ng ibang petsa o mag-reschedule, sabihin ang Reschedule o pindutin ang 2. "
+                    "Kung nais ninyong makausap ang HR, sabihin ang Kausapin ang HR o pindutin ang 3.",
+                    language="fil-PH",
+                    voice="Google.fil-PH-Standard-A"
+                )
+            elif norm_lang == "en":
+                repeat_gather.say(
+                    "Invalid key pressed. Repeating the options: "
+                    "To confirm your attendance, please say Confirm or press 1. "
+                    "If you need to request a reschedule, please say Reschedule or press 2. "
+                    "To speak with an HR representative, please say Speak to HR or press 3.",
+                    language="en-US",
+                    voice="Google.en-US-Standard-C"
+                )
+            else: # Bilingual
+                repeat_gather.say(
+                    "Invalid key pressed. Uulitin po namin: "
+                    "To confirm your attendance, please say Confirm or press 1. "
+                    "Para sa reschedule o bagong petsa, sabihin ang Reschedule o pindutin ang 2. "
+                    "Para makausap ang HR, sabihin ang Speak to HR o pindutin ang 3.",
+                    language="en-US",
+                    voice="Google.en-US-Standard-C"
+                )
+
+            twiml_resp.append(repeat_gather)
+
+            # Fallback if candidate presses nothing for 30s and call falls through
+            if norm_lang == "fil":
+                twiml_resp.say(
+                    "Wala po kaming natanggap na tugon sa loob ng tatlumpung segundo. Naitala ito bilang walang sagot. Makikipag-ugnayan ang aming HR team sa inyong email. Maraming salamat po at magandang araw!",
+                    language="fil-PH",
+                    voice="Google.fil-PH-Standard-A"
+                )
+            else:
+                twiml_resp.say(
+                    "No response received within 30 seconds. This call has been logged as no response. Our HR team will follow up via email. Thank you and have a great day!",
+                    language="en-US"
+                )
+
         else:
-            twiml_resp.say(
-                "We were unable to confirm your response. Our HR team will follow up via email. Thank you and have a great day!",
-                language="en-US"
+            # Step 2: Attempt >= 2 (Candidate pressed nothing for 30s after prompt repeat, or timeout occurred)
+            is_timeout = not clean_digits and not speech_result
+            timeout_desc = (
+                "Voice call timed out after 30 seconds with no response following prompt repetition. Logged as no response."
+                if is_timeout
+                else f"Voice call response unclear on repeat attempt ({candidate_input_display}). Logged as no response."
             )
+
+            interview.candidate_response = "NO_RESPONSE"
+            interview.verbal_notes = "No response (Timeout - 30s)" if is_timeout else f"Invalid input ({candidate_input_display})"
+
+            if (interview.call_attempts or 1) < 3:
+                interview.call_status = "RETRY_SCHEDULED"
+                delay_hours = 2 if (interview.call_attempts or 1) == 1 else 4
+                interview.next_retry_at = datetime.utcnow() + timedelta(hours=delay_hours)
+            else:
+                interview.call_status = "UNREACHABLE"
+                interview.next_retry_at = None
+
+            db.add(InterviewLog(
+                interview_id=interview.id,
+                log_type="VOICE_CALL_NO_RESPONSE",
+                details=timeout_desc
+            ))
+
+            if call_record:
+                call_record.candidate_verbal_response = "No response (Timeout - 30s)" if is_timeout else candidate_input_display
+                call_record.extracted_intent = "NO_RESPONSE"
+                call_record.status = "NO_RESPONSE"
+                call_record.notes = timeout_desc
+
+            if norm_lang == "fil":
+                twiml_resp.say(
+                    "Wala po kaming natanggap na tugon sa loob ng tatlumpung segundo. Naitala ito bilang walang sagot. Makikipag-ugnayan ang aming HR team sa inyong rehistradong email. Maraming salamat po at magandang araw!",
+                    language="fil-PH",
+                    voice="Google.fil-PH-Standard-A"
+                )
+            else:
+                twiml_resp.say(
+                    "No response received within 30 seconds. This call has been logged as no response. Our HR team will follow up via email. Thank you and have a great day!",
+                    language="en-US"
+                )
 
     twiml_resp.hangup()
     await db.commit()
@@ -1083,6 +1179,48 @@ async def simulate_voice_call(
             )
         except Exception as e_notif:
             logger.debug(f"HR notification notice: {e_notif}")
+
+    elif outcome in ["INVALID_KEY_THEN_TIMEOUT", "TIMEOUT", "NO_RESPONSE"]:
+        # TEST-ID: 7 - Press 9, then press nothing for 30s
+        phrase = spoken_phrase or "Pressed key 9 -> Timeout (30s)"
+        notes = "Candidate pressed invalid key 9, prompt repeated once, followed by 30s timeout with no response."
+        
+        interview.candidate_response = "NO_RESPONSE"
+        interview.verbal_notes = "No response (Timeout - 30s)"
+        if attempt < 3:
+            interview.call_status = "RETRY_SCHEDULED"
+            delay_hours = 2 if attempt == 1 else 4
+            interview.next_retry_at = datetime.utcnow() + timedelta(hours=delay_hours)
+        else:
+            interview.call_status = "UNREACHABLE"
+            interview.next_retry_at = None
+
+        db.add(VoiceCallRecord(
+            interview_id=interview.id,
+            call_sid=sim_sid,
+            phone_number=phone,
+            attempt_number=attempt,
+            status="NO_RESPONSE",
+            duration=35,
+            language=norm_lang,
+            candidate_verbal_response=phrase,
+            extracted_intent="NO_RESPONSE",
+            notes=notes
+        ))
+
+        # Log 1: Invalid key pressed and prompt repeated once
+        db.add(InterviewLog(
+            interview_id=interview.id,
+            log_type="VOICE_CALL_INVALID_INPUT",
+            details="Simulated Voice Call: Candidate entered invalid input (Pressed key 9). Prompt repeating once with 30s timeout."
+        ))
+
+        # Log 2: Timeout logged as no response
+        db.add(InterviewLog(
+            interview_id=interview.id,
+            log_type="VOICE_CALL_NO_RESPONSE",
+            details="Simulated Voice Call: Voice call timed out after 30 seconds with no response following prompt repetition. Logged as no response."
+        ))
 
     elif outcome in ["NO_ANSWER", "BUSY", "FAILED"]:
         db.add(VoiceCallRecord(

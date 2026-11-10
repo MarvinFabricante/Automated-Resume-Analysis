@@ -229,7 +229,9 @@ async def handle_voice_response(
         digits=digits,
         call_sid=call_sid,
         db=db,
-        language=effective_lang
+        language=effective_lang,
+        attempt=attempt,
+        request_host=request.url.hostname
     )
     return HTMLResponse(content=twiml, media_type="application/xml")
 

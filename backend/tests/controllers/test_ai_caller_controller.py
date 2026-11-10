@@ -780,5 +780,140 @@ async def test_voice_notification_speak_to_hr_scenario_press_3_controller(client
     assert sim_resp.json()["call_status"] == "ESCALATED_TO_HR"
 
 
+@pytest.mark.asyncio
+async def test_voice_notification_invalid_key_and_timeout_controller(client, db_session):
+    """
+    TEST-ID: 7
+    Module: AI Voice Notification
+    Scenario: Invalid key and timeout
+    Steps: Press 9, then press nothing for 30 s
+    Expected Result: Prompt repeats once; timeout logged as no response
+    Priority: M
+    """
+    from app.utils.auth import create_access_token
+
+    hr = User(
+        email="hr_press9_ctrl@mariwasa.com",
+        password="pwd",
+        role="HR",
+        fullname="HR Officer Del Pilar"
+    )
+    db_session.add(hr)
+    await db_session.flush()
+
+    job = JobDescription(
+        job_id="JOB-PRESS9",
+        job_title="Production Line Controller",
+        department="Manufacturing",
+        job_type=JobType.FULL_TIME,
+        location="Mariwasa Plant 2, Sto. Tomas, Batangas",
+        description="Continuous tile extrusion and conveyor systems control"
+    )
+    db_session.add(job)
+    await db_session.flush()
+
+    cand_name = "Gregorio Del Pilar"
+    app = JobApplication(
+        job_id=job.id,
+        candidate_name=cand_name,
+        candidate_email="gregorio.delpilar@example.com",
+        phone="+639177778899",
+        job_title="Production Line Controller",
+        status="SHORTLISTED"
+    )
+    db_session.add(app)
+    await db_session.flush()
+
+    interview = Interview(
+        job_application_id=app.id,
+        interviewer_id=hr.id,
+        title="Production Line Controller Interview",
+        start_time=datetime(2026, 11, 29, 14, 0, 0),
+        end_time=datetime(2026, 11, 29, 15, 0, 0),
+        status="SCHEDULED",
+        call_status="PENDING"
+    )
+    db_session.add(interview)
+    await db_session.commit()
+    await db_session.refresh(interview)
+
+    headers = {"Authorization": f"Bearer {create_access_token({'sub': hr.email, 'id': hr.id, 'role': 'HR'})}"}
+
+    # Step 1: Place automated voice call
+    call_resp = await client.post(f"/ai-caller/interview/{interview.id}/call", headers=headers)
+    assert call_resp.status_code == 200
+    call_sid = call_resp.json()["call_sid"]
+
+    # Step 2: Candidate presses 9 (invalid key) on attempt 1
+    dtmf_resp = await client.post(
+        f"/ai-caller/voice-response?interview_id={interview.id}&attempt=1",
+        data={"Digits": "9", "CallSid": call_sid}
+    )
+    assert dtmf_resp.status_code == 200
+    assert "application/xml" in dtmf_resp.headers["content-type"]
+    assert "<Gather" in dtmf_resp.text
+    assert 'timeout="30"' in dtmf_resp.text
+    assert "attempt=2" in dtmf_resp.text
+    assert "Invalid key pressed" in dtmf_resp.text or "Repeating the options" in dtmf_resp.text
+
+    # Verify invalid input logged in InterviewLog
+    inv_logs_q = await db_session.execute(
+        select(InterviewLog).where(
+            InterviewLog.interview_id == interview.id,
+            InterviewLog.log_type == "VOICE_CALL_INVALID_INPUT"
+        )
+    )
+    inv_logs = inv_logs_q.scalars().all()
+    assert len(inv_logs) >= 1
+    assert "Pressed key 9" in inv_logs[0].details
+    assert "Prompt repeating once" in inv_logs[0].details
+
+    # Step 3: Candidate presses nothing for 30s (timeout callback on attempt 2)
+    timeout_resp = await client.post(
+        f"/ai-caller/voice-response?interview_id={interview.id}&attempt=2",
+        data={"CallSid": call_sid}
+    )
+    assert timeout_resp.status_code == 200
+    assert "application/xml" in timeout_resp.headers["content-type"]
+    assert "hangup" in timeout_resp.text.lower()
+
+    # Step 4: Expected Result: Timeout logged as no response
+    await db_session.refresh(interview)
+    assert interview.candidate_response == "NO_RESPONSE"
+    assert "Timeout" in interview.verbal_notes
+    assert interview.call_status == "RETRY_SCHEDULED"
+
+    # Verify timeout logged in InterviewLog
+    timeout_logs_q = await db_session.execute(
+        select(InterviewLog).where(
+            InterviewLog.interview_id == interview.id,
+            InterviewLog.log_type == "VOICE_CALL_NO_RESPONSE"
+        )
+    )
+    timeout_logs = timeout_logs_q.scalars().all()
+    assert len(timeout_logs) >= 1
+    assert "timed out after 30 seconds with no response" in timeout_logs[0].details
+    assert "Logged as no response" in timeout_logs[0].details
+
+    # Step 5: Verify Call Logs endpoint reflects NO_RESPONSE
+    logs_resp = await client.get(f"/ai-caller/interview/{interview.id}/logs", headers=headers)
+    assert logs_resp.status_code == 200
+    call_records = logs_resp.json()
+    assert len(call_records) >= 1
+    latest_rec = call_records[0]
+    assert latest_rec["extracted_intent"] == "NO_RESPONSE"
+    assert latest_rec["status"] == "NO_RESPONSE"
+    assert "no response" in latest_rec["notes"].lower()
+
+    # Step 6: Test simulation endpoint with INVALID_KEY_THEN_TIMEOUT
+    sim_resp = await client.post(
+        f"/ai-caller/interview/{interview.id}/simulate",
+        json={"outcome": "INVALID_KEY_THEN_TIMEOUT", "spoken_phrase": "Pressed key 9 -> Timeout (30s)", "language": "en"},
+        headers=headers
+    )
+    assert sim_resp.status_code == 200
+    assert sim_resp.json()["call_status"] == "RETRY_SCHEDULED"
+
+
 
 

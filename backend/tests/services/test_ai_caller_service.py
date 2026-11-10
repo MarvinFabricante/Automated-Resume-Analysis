@@ -878,6 +878,143 @@ async def test_voice_notification_speak_to_hr_scenario_press_3(db_session):
 
 
 @pytest.mark.asyncio
+async def test_voice_notification_invalid_key_and_timeout_scenario(db_session):
+    """
+    TEST-ID: 7
+    Module: AI Voice Notification
+    Scenario: Invalid key and timeout
+    Steps: Press 9, then press nothing for 30 s
+    Expected Result: Prompt repeats once; timeout logged as no response
+    Priority: M
+    """
+    hr = User(
+        email="hr_invalid_timeout@mariwasa.com",
+        password="pwd",
+        role="HR",
+        fullname="Mr. Roberto Silang"
+    )
+    db_session.add(hr)
+    await db_session.flush()
+
+    job = JobDescription(
+        job_id="JOB-DTMF-7",
+        job_title="Electrical Maintenance Specialist",
+        department="Maintenance",
+        job_type=JobType.FULL_TIME,
+        location="Mariwasa Plant 1, Sto. Tomas, Batangas",
+        description="High-voltage switchgear and automated facility maintenance"
+    )
+    db_session.add(job)
+    await db_session.flush()
+
+    cand_name = "Josefa Llanes Escoda"
+    app = JobApplication(
+        job_id=job.id,
+        candidate_name=cand_name,
+        candidate_email="josefa.escoda@example.com",
+        phone="+639171122334",
+        status="SHORTLISTED"
+    )
+    db_session.add(app)
+    await db_session.flush()
+
+    interview = Interview(
+        job_application_id=app.id,
+        interviewer_id=hr.id,
+        title="Electrical Specialist Interview",
+        start_time=datetime(2026, 11, 29, 11, 0, 0),
+        end_time=datetime(2026, 11, 29, 12, 0, 0),
+        status="SCHEDULED",
+        call_status="PENDING"
+    )
+    db_session.add(interview)
+    await db_session.commit()
+    await db_session.refresh(interview)
+
+    # 1. Place automated call
+    call_res = await ai_caller_service.initiate_candidate_interview_call(interview.id, db=db_session)
+    assert call_res["status"] == "success"
+    call_sid = call_res["call_sid"]
+
+    # 2. Steps: Press 9 (candidate enters invalid digit on keypad)
+    twiml_repeat = await ai_caller_service.handle_voice_response(
+        interview_id=interview.id,
+        speech_result=None,
+        digits="9",
+        call_sid=call_sid,
+        db=db_session,
+        language="en",
+        attempt=1
+    )
+
+    # 3. Expected Result: Prompt repeats once
+    assert "<Gather" in twiml_repeat
+    assert 'timeout="30"' in twiml_repeat
+    assert "attempt=2" in twiml_repeat
+    assert "Invalid key pressed" in twiml_repeat or "Repeating the options" in twiml_repeat
+    assert "press 1" in twiml_repeat
+    assert "press 2" in twiml_repeat
+    assert "press 3" in twiml_repeat
+
+    # Verify invalid key attempt logged in InterviewLog
+    inv_logs_q = await db_session.execute(
+        select(InterviewLog).where(
+            InterviewLog.interview_id == interview.id,
+            InterviewLog.log_type == "VOICE_CALL_INVALID_INPUT"
+        )
+    )
+    invalid_log = inv_logs_q.scalars().first()
+    assert invalid_log is not None
+    assert "Pressed key 9" in invalid_log.details
+    assert "repeating once" in invalid_log.details.lower()
+
+    # 4. Steps: Then press nothing for 30 s (Twilio timeout callback on attempt 2)
+    twiml_timeout = await ai_caller_service.handle_voice_response(
+        interview_id=interview.id,
+        speech_result=None,
+        digits=None,
+        call_sid=call_sid,
+        db=db_session,
+        language="en",
+        attempt=2
+    )
+
+    # 5. Expected Result: Timeout logged as no response
+    await db_session.refresh(interview)
+    assert interview.candidate_response == "NO_RESPONSE"
+    assert "Timeout" in interview.verbal_notes
+    assert interview.call_status == "RETRY_SCHEDULED"
+
+    # Verify timeout logged as no response in InterviewLog
+    timeout_logs_q = await db_session.execute(
+        select(InterviewLog).where(
+            InterviewLog.interview_id == interview.id,
+            InterviewLog.log_type == "VOICE_CALL_NO_RESPONSE"
+        )
+    )
+    timeout_log = timeout_logs_q.scalars().first()
+    assert timeout_log is not None
+    assert "timed out after 30 seconds with no response" in timeout_log.details
+    assert "Logged as no response" in timeout_log.details
+
+    # Verify logged in VoiceCallRecord
+    rec_q = await db_session.execute(
+        select(VoiceCallRecord).where(
+            VoiceCallRecord.interview_id == interview.id
+        ).order_by(VoiceCallRecord.id.desc())
+    )
+    call_rec = rec_q.scalars().first()
+    assert call_rec is not None
+    assert call_rec.extracted_intent == "NO_RESPONSE"
+    assert call_rec.status == "NO_RESPONSE"
+    assert "no response" in call_rec.notes.lower()
+
+    # Verify TwiML plays polite goodbye and terminates
+    assert "<Response>" in twiml_timeout
+    assert "hangup" in twiml_timeout.lower()
+
+
+@pytest.mark.asyncio
 async def test_retry_and_sms_backup_after_3_attempts(db_session):
     """REQ031 & REQ033: Retries up to 3 times within 24h, sends SMS backup on 3rd failure."""
     from app.models.user import User
