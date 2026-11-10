@@ -2,6 +2,7 @@ import pytest
 from datetime import datetime
 from unittest.mock import patch, MagicMock, AsyncMock
 from fastapi import HTTPException
+from sqlalchemy import select
 from app.services import ai_caller_service
 from app.models.user import User
 from app.models.job_application import JobApplication
@@ -377,6 +378,20 @@ def test_interpret_verbal_response():
     intent, _ = ai_caller_service.interpret_verbal_response(None, "2")
     assert intent == "RESCHEDULE_REQUESTED"
 
+    # Speak to HR verbal responses
+    intent, _ = ai_caller_service.interpret_verbal_response("I would like to speak to HR please", None)
+    assert intent == "ESCALATED_TO_HR"
+
+    intent, _ = ai_caller_service.interpret_verbal_response("Gusto ko pong makausap ang HR", None)
+    assert intent == "ESCALATED_TO_HR"
+
+    # Speak to HR keypad DTMF (Press 3)
+    intent, _ = ai_caller_service.interpret_verbal_response(None, "3")
+    assert intent == "ESCALATED_TO_HR"
+
+    intent, _ = ai_caller_service.interpret_verbal_response(None, "3#")
+    assert intent == "ESCALATED_TO_HR"
+
 
 @pytest.mark.asyncio
 async def test_initiate_candidate_interview_call(db_session):
@@ -471,6 +486,111 @@ async def test_handle_voice_response_confirm_updates_status(db_session):
 
 
 @pytest.mark.asyncio
+async def test_voice_notification_confirm_scenario_press_1(db_session):
+    """
+    TEST-ID: 4
+    Module: AI Voice Notification
+    Scenario: Confirm
+    Steps: Press 1
+    Expected Result: Status becomes Confirmed; logged
+    Priority: H
+    """
+    hr = User(
+        email="hr_confirm_dtmf@mariwasa.com",
+        password="pwd",
+        role="HR",
+        fullname="Engr. Alcantara"
+    )
+    db_session.add(hr)
+    await db_session.flush()
+
+    job = JobDescription(
+        job_id="JOB-DTMF-1",
+        job_title="Automation Technician",
+        department="Engineering",
+        job_type=JobType.FULL_TIME,
+        location="Mariwasa Plant 1, Sto. Tomas, Batangas",
+        description="PLC and robotic arm maintenance"
+    )
+    db_session.add(job)
+    await db_session.flush()
+
+    app = JobApplication(
+        job_id=job.id,
+        candidate_name="Danilo Reyes",
+        candidate_email="danilo.reyes@example.com",
+        phone="+639178887766",
+        status="SHORTLISTED"
+    )
+    db_session.add(app)
+    await db_session.flush()
+
+    interview = Interview(
+        job_application_id=app.id,
+        interviewer_id=hr.id,
+        title="Automation Technician Screening",
+        start_time=datetime(2026, 11, 26, 14, 0, 0),
+        end_time=datetime(2026, 11, 26, 15, 0, 0),
+        status="SCHEDULED",
+        call_status="PENDING"
+    )
+    db_session.add(interview)
+    await db_session.commit()
+    await db_session.refresh(interview)
+
+    # 1. Place automated call
+    call_res = await ai_caller_service.initiate_candidate_interview_call(interview.id, db=db_session)
+    assert call_res["status"] == "success"
+    call_sid = call_res["call_sid"]
+
+    # 2. Candidate receives call and presses 1 (DTMF Keypad)
+    twiml_reply = await ai_caller_service.handle_voice_response(
+        interview_id=interview.id,
+        speech_result=None,
+        digits="1",
+        call_sid=call_sid,
+        db=db_session,
+        language="bilingual"
+    )
+
+    # 3. Expected Result: Status becomes Confirmed
+    await db_session.refresh(interview)
+    assert interview.status == "CONFIRMED"
+    assert interview.call_status == "CONFIRMED"
+    assert interview.candidate_response == "CONFIRMED"
+    assert interview.verbal_notes == "Pressed key 1"
+
+    # 4. Expected Result: Logged in InterviewLog
+    logs_q = await db_session.execute(
+        select(InterviewLog).where(
+            InterviewLog.interview_id == interview.id,
+            InterviewLog.log_type == "VOICE_CALL_CONFIRMED"
+        )
+    )
+    confirm_log = logs_q.scalars().first()
+    assert confirm_log is not None
+    assert "CONFIRMED" in confirm_log.details
+    assert "Pressed key 1" in confirm_log.details
+
+    # 5. Expected Result: Logged in VoiceCallRecord
+    rec_q = await db_session.execute(
+        select(VoiceCallRecord).where(
+            VoiceCallRecord.interview_id == interview.id
+        ).order_by(VoiceCallRecord.id.desc())
+    )
+    call_record = rec_q.scalars().first()
+    assert call_record is not None
+    assert call_record.extracted_intent == "CONFIRMED"
+    assert call_record.status == "COMPLETED"
+    assert call_record.candidate_verbal_response == "Pressed key 1"
+    assert "Candidate pressed 1 on keypad" in call_record.notes
+
+    # 6. Response TwiML acknowledges confirmation
+    assert "<Response>" in twiml_reply
+    assert "Thank you" in twiml_reply or "Salamat" in twiml_reply
+
+
+@pytest.mark.asyncio
 async def test_handle_voice_response_reschedule_updates_status(db_session):
     """REQ034 & REQ032: Updates interview status to RESCHEDULE_REQUESTED and logs candidate response."""
     from app.models.user import User
@@ -515,6 +635,246 @@ async def test_handle_voice_response_reschedule_updates_status(db_session):
     assert interview.status == "RESCHEDULE_REQUESTED"
     assert interview.call_status == "RESCHEDULE_REQUESTED"
     assert interview.candidate_response == "RESCHEDULE_REQUESTED"
+
+
+@pytest.mark.asyncio
+async def test_voice_notification_reschedule_scenario_press_2(db_session):
+    """
+    TEST-ID: 5
+    Module: AI Voice Notification
+    Scenario: Reschedule
+    Steps: Press 2
+    Expected Result: Status becomes Reschedule requested; HR notified
+    Priority: H
+    """
+    from app.models.notification import Notification
+
+    hr = User(
+        email="hr_resched_press2@mariwasa.com",
+        password="pwd",
+        role="HR",
+        fullname="Ms. Judy Dela Cruz"
+    )
+    db_session.add(hr)
+    await db_session.flush()
+
+    job = JobDescription(
+        job_id="JOB-DTMF-2",
+        job_title="Ceramics Kiln Specialist",
+        department="Manufacturing",
+        job_type=JobType.FULL_TIME,
+        location="Mariwasa Plant 2, Sto. Tomas, Batangas",
+        description="High-temperature kiln operations"
+    )
+    db_session.add(job)
+    await db_session.flush()
+
+    cand_name = "Ramon Magsaysay"
+    app = JobApplication(
+        job_id=job.id,
+        candidate_name=cand_name,
+        candidate_email="ramon.magsaysay@example.com",
+        phone="+639174443322",
+        status="SHORTLISTED"
+    )
+    db_session.add(app)
+    await db_session.flush()
+
+    interview = Interview(
+        job_application_id=app.id,
+        interviewer_id=hr.id,
+        title="Kiln Specialist Interview",
+        start_time=datetime(2026, 11, 27, 9, 0, 0),
+        end_time=datetime(2026, 11, 27, 10, 0, 0),
+        status="SCHEDULED",
+        call_status="PENDING"
+    )
+    db_session.add(interview)
+    await db_session.commit()
+    await db_session.refresh(interview)
+
+    # 1. Place automated call
+    call_res = await ai_caller_service.initiate_candidate_interview_call(interview.id, db=db_session)
+    assert call_res["status"] == "success"
+    call_sid = call_res["call_sid"]
+
+    # 2. Steps: Press 2 (candidate presses 2 on keypad during call)
+    twiml_reply = await ai_caller_service.handle_voice_response(
+        interview_id=interview.id,
+        speech_result=None,
+        digits="2",
+        call_sid=call_sid,
+        db=db_session,
+        language="bilingual"
+    )
+
+    # 3. Expected Result: Status becomes Reschedule requested
+    await db_session.refresh(interview)
+    assert interview.status == "RESCHEDULE_REQUESTED"
+    assert interview.call_status == "RESCHEDULE_REQUESTED"
+    assert interview.candidate_response == "RESCHEDULE_REQUESTED"
+    assert interview.verbal_notes == "Pressed key 2"
+
+    # 4. Expected Result: HR notified (notification created in database)
+    notif_q = await db_session.execute(
+        select(Notification).where(
+            Notification.target_role == "HR",
+            Notification.title.like("%Reschedule Requested%")
+        ).order_by(Notification.id.desc())
+    )
+    hr_notif = notif_q.scalars().first()
+    assert hr_notif is not None
+    assert cand_name in hr_notif.message
+    assert "RESCHEDULE" in hr_notif.message
+    assert "Pressed key 2" in hr_notif.message
+
+    # 5. Logged in InterviewLog
+    logs_q = await db_session.execute(
+        select(InterviewLog).where(
+            InterviewLog.interview_id == interview.id,
+            InterviewLog.log_type == "VOICE_CALL_RESCHEDULE"
+        )
+    )
+    resched_log = logs_q.scalars().first()
+    assert resched_log is not None
+    assert "RESCHEDULE" in resched_log.details
+    assert "Pressed key 2" in resched_log.details
+
+    # 6. Logged in VoiceCallRecord
+    rec_q = await db_session.execute(
+        select(VoiceCallRecord).where(
+            VoiceCallRecord.interview_id == interview.id
+        ).order_by(VoiceCallRecord.id.desc())
+    )
+    call_rec = rec_q.scalars().first()
+    assert call_rec is not None
+    assert call_rec.extracted_intent == "RESCHEDULE_REQUESTED"
+    assert call_rec.candidate_verbal_response == "Pressed key 2"
+    assert "Candidate pressed 2 on keypad" in call_rec.notes
+
+    # 7. TwiML politely acknowledges reschedule request
+    assert "<Response>" in twiml_reply
+    assert "reschedule" in twiml_reply.lower() or "naitala" in twiml_reply.lower()
+
+
+@pytest.mark.asyncio
+async def test_voice_notification_speak_to_hr_scenario_press_3(db_session):
+    """
+    TEST-ID: 6
+    Module: AI Voice Notification
+    Scenario: Speak to HR
+    Steps: Press 3
+    Expected Result: Escalated to HR; logged
+    Priority: L
+    """
+    from app.models.notification import Notification
+
+    hr = User(
+        email="hr_escalate_press3@mariwasa.com",
+        password="pwd",
+        role="HR",
+        fullname="Mr. Eduardo Santos"
+    )
+    db_session.add(hr)
+    await db_session.flush()
+
+    job = JobDescription(
+        job_id="JOB-DTMF-3",
+        job_title="Senior Logistics Coordinator",
+        department="Supply Chain",
+        job_type=JobType.FULL_TIME,
+        location="Mariwasa Plant, Sto. Tomas, Batangas",
+        description="Supply chain logistics and dispatch operations"
+    )
+    db_session.add(job)
+    await db_session.flush()
+
+    cand_name = "Corazon Aquino"
+    app = JobApplication(
+        job_id=job.id,
+        candidate_name=cand_name,
+        candidate_email="corazon.aquino@example.com",
+        phone="+639178889900",
+        status="SHORTLISTED"
+    )
+    db_session.add(app)
+    await db_session.flush()
+
+    interview = Interview(
+        job_application_id=app.id,
+        interviewer_id=hr.id,
+        title="Logistics Coordinator Interview",
+        start_time=datetime(2026, 11, 28, 14, 0, 0),
+        end_time=datetime(2026, 11, 28, 15, 0, 0),
+        status="SCHEDULED",
+        call_status="PENDING"
+    )
+    db_session.add(interview)
+    await db_session.commit()
+    await db_session.refresh(interview)
+
+    # 1. Place automated call
+    call_res = await ai_caller_service.initiate_candidate_interview_call(interview.id, db=db_session)
+    assert call_res["status"] == "success"
+    call_sid = call_res["call_sid"]
+
+    # 2. Steps: Press 3 (candidate presses 3 on keypad during call)
+    twiml_reply = await ai_caller_service.handle_voice_response(
+        interview_id=interview.id,
+        speech_result=None,
+        digits="3",
+        call_sid=call_sid,
+        db=db_session,
+        language="bilingual"
+    )
+
+    # 3. Expected Result: Escalated to HR
+    await db_session.refresh(interview)
+    assert interview.status == "ESCALATED_TO_HR"
+    assert interview.call_status == "ESCALATED_TO_HR"
+    assert interview.candidate_response == "ESCALATED_TO_HR"
+    assert interview.verbal_notes == "Pressed key 3"
+
+    # 4. Expected Result: Logged in InterviewLog
+    logs_q = await db_session.execute(
+        select(InterviewLog).where(
+            InterviewLog.interview_id == interview.id,
+            InterviewLog.log_type == "VOICE_CALL_ESCALATED"
+        )
+    )
+    escalate_log = logs_q.scalars().first()
+    assert escalate_log is not None
+    assert "SPEAK TO HR" in escalate_log.details or "ESCALATED" in escalate_log.details
+    assert "Pressed key 3" in escalate_log.details
+
+    # 5. Expected Result: Logged in VoiceCallRecord
+    rec_q = await db_session.execute(
+        select(VoiceCallRecord).where(
+            VoiceCallRecord.interview_id == interview.id
+        ).order_by(VoiceCallRecord.id.desc())
+    )
+    call_rec = rec_q.scalars().first()
+    assert call_rec is not None
+    assert call_rec.extracted_intent == "ESCALATED_TO_HR"
+    assert call_rec.candidate_verbal_response == "Pressed key 3"
+    assert "Candidate pressed 3 on keypad" in call_rec.notes
+
+    # 6. Expected Result: Escalated notification dispatched to HR
+    notif_q = await db_session.execute(
+        select(Notification).where(
+            Notification.target_role == "HR",
+            Notification.title.like("%Escalated to HR%")
+        ).order_by(Notification.id.desc())
+    )
+    hr_notif = notif_q.scalars().first()
+    assert hr_notif is not None
+    assert cand_name in hr_notif.message
+    assert "speak with HR" in hr_notif.message or "speak to HR" in hr_notif.message
+    assert "Pressed key 3" in hr_notif.message
+
+    # 7. TwiML politely confirms escalation to candidate
+    assert "<Response>" in twiml_reply
+    assert "hr" in twiml_reply.lower()
 
 
 @pytest.mark.asyncio

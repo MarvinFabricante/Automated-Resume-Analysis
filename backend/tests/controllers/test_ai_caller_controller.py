@@ -1,6 +1,7 @@
 import pytest
 from datetime import datetime
 from unittest.mock import patch, AsyncMock
+from sqlalchemy import select
 from app.models.user import User
 from app.models.job_application import JobApplication
 from app.models.job_description import JobDescription, JobType
@@ -429,6 +430,354 @@ async def test_filipino_message_call_delivers_clear_audio_and_correct_dates_time
     assert 'language="fil-PH"' in confirm_text
     assert "Maraming salamat!" in confirm_text
     assert "Kumpirmado na ang inyong pagdalo" in confirm_text
+
+
+@pytest.mark.asyncio
+async def test_voice_notification_confirm_scenario_press_1_controller(client, db_session):
+    """
+    TEST-ID: 4
+    Module: AI Voice Notification
+    Scenario: Confirm
+    Steps: Press 1
+    Expected Result: Status becomes Confirmed; logged
+    Priority: H
+    """
+    from app.utils.auth import create_access_token
+
+    hr = User(
+        email="hr_press1@mariwasa.com",
+        password="pwd",
+        role="HR",
+        fullname="Engr. Bautista"
+    )
+    db_session.add(hr)
+    await db_session.flush()
+
+    job = JobDescription(
+        job_id="JOB-PRESS1",
+        job_title="Electrical Supervisor",
+        department="Maintenance",
+        job_type=JobType.FULL_TIME,
+        location="Mariwasa Plant 1, Sto. Tomas, Batangas",
+        description="Power plant & substation monitoring"
+    )
+    db_session.add(job)
+    await db_session.flush()
+
+    cand_name = "Eduardo Ramos"
+    app = JobApplication(
+        job_id=job.id,
+        candidate_name=cand_name,
+        candidate_email="eduardo.ramos@example.com",
+        phone="+639175554433",
+        job_title="Electrical Supervisor",
+        status="SHORTLISTED"
+    )
+    db_session.add(app)
+    await db_session.flush()
+
+    interview = Interview(
+        job_application_id=app.id,
+        interviewer_id=hr.id,
+        title="Electrical Supervisor Screening",
+        start_time=datetime(2026, 11, 27, 11, 0, 0),
+        end_time=datetime(2026, 11, 27, 12, 0, 0),
+        status="SCHEDULED",
+        call_status="PENDING"
+    )
+    db_session.add(interview)
+    await db_session.commit()
+    await db_session.refresh(interview)
+
+    headers = {"Authorization": f"Bearer {create_access_token({'sub': hr.email, 'id': hr.id, 'role': 'HR'})}"}
+
+    # Step 1: Place automated voice call
+    call_resp = await client.post(f"/ai-caller/interview/{interview.id}/call", headers=headers)
+    assert call_resp.status_code == 200
+    call_sid = call_resp.json()["call_sid"]
+
+    # Step 2: Steps: Press 1 (candidate presses 1 on keypad during call)
+    dtmf_resp = await client.post(
+        f"/ai-caller/voice-response?interview_id={interview.id}",
+        data={"Digits": "1", "CallSid": call_sid}
+    )
+    assert dtmf_resp.status_code == 200
+    assert "application/xml" in dtmf_resp.headers["content-type"]
+    assert "confirmed" in dtmf_resp.text.lower() or "salamat" in dtmf_resp.text.lower()
+
+    # Step 3: Expected Result: Status becomes Confirmed
+    await db_session.refresh(interview)
+    assert interview.status == "CONFIRMED"
+    assert interview.call_status == "CONFIRMED"
+    assert interview.candidate_response == "CONFIRMED"
+    assert interview.verbal_notes == "Pressed key 1"
+
+    # Step 4: Expected Result: Logged in Call Logs endpoint
+    logs_resp = await client.get(f"/ai-caller/interview/{interview.id}/logs", headers=headers)
+    assert logs_resp.status_code == 200
+    call_records = logs_resp.json()
+
+    # Call record verification
+    assert len(call_records) >= 1
+    latest_rec = call_records[0]
+    assert latest_rec["extracted_intent"] == "CONFIRMED"
+    assert latest_rec["candidate_verbal_response"] == "Pressed key 1"
+    assert latest_rec["status"] == "COMPLETED"
+
+    # Interview logs verification
+    logs_q = await db_session.execute(
+        select(InterviewLog).where(
+            InterviewLog.interview_id == interview.id,
+            InterviewLog.log_type == "VOICE_CALL_CONFIRMED"
+        )
+    )
+    confirm_logs = logs_q.scalars().all()
+    assert len(confirm_logs) >= 1
+    assert "CONFIRMED" in confirm_logs[0].details
+    assert "Pressed key 1" in confirm_logs[0].details
+
+
+@pytest.mark.asyncio
+async def test_voice_notification_reschedule_scenario_press_2_controller(client, db_session):
+    """
+    TEST-ID: 5
+    Module: AI Voice Notification
+    Scenario: Reschedule
+    Steps: Press 2
+    Expected Result: Status becomes Reschedule requested; HR notified
+    Priority: H
+    """
+    from app.utils.auth import create_access_token
+    from app.models.notification import Notification
+
+    hr = User(
+        email="hr_press2_ctrl@mariwasa.com",
+        password="pwd",
+        role="HR",
+        fullname="HR Officer Mendoza"
+    )
+    db_session.add(hr)
+    await db_session.flush()
+
+    job = JobDescription(
+        job_id="JOB-PRESS2",
+        job_title="Quality Assurance Chemist",
+        department="Quality Control",
+        job_type=JobType.FULL_TIME,
+        location="Mariwasa Plant 1, Sto. Tomas, Batangas",
+        description="Raw material glaze and chemical formulation analysis"
+    )
+    db_session.add(job)
+    await db_session.flush()
+
+    cand_name = "Emilio Aguinaldo"
+    app = JobApplication(
+        job_id=job.id,
+        candidate_name=cand_name,
+        candidate_email="emilio.aguinaldo@example.com",
+        phone="+639176665544",
+        job_title="Quality Assurance Chemist",
+        status="SHORTLISTED"
+    )
+    db_session.add(app)
+    await db_session.flush()
+
+    interview = Interview(
+        job_application_id=app.id,
+        interviewer_id=hr.id,
+        title="QA Chemist Interview",
+        start_time=datetime(2026, 11, 27, 13, 30, 0),
+        end_time=datetime(2026, 11, 27, 14, 30, 0),
+        status="SCHEDULED",
+        call_status="PENDING"
+    )
+    db_session.add(interview)
+    await db_session.commit()
+    await db_session.refresh(interview)
+
+    headers = {"Authorization": f"Bearer {create_access_token({'sub': hr.email, 'id': hr.id, 'role': 'HR'})}"}
+
+    # Step 1: Place automated voice call
+    call_resp = await client.post(f"/ai-caller/interview/{interview.id}/call", headers=headers)
+    assert call_resp.status_code == 200
+    call_sid = call_resp.json()["call_sid"]
+
+    # Step 2: Candidate presses 2 on keypad during call
+    dtmf_resp = await client.post(
+        f"/ai-caller/voice-response?interview_id={interview.id}",
+        data={"Digits": "2", "CallSid": call_sid}
+    )
+    assert dtmf_resp.status_code == 200
+    assert "application/xml" in dtmf_resp.headers["content-type"]
+    assert "reschedule" in dtmf_resp.text.lower() or "naitala" in dtmf_resp.text.lower()
+
+    # Step 3: Expected Result: Status becomes Reschedule requested
+    await db_session.refresh(interview)
+    assert interview.status == "RESCHEDULE_REQUESTED"
+    assert interview.call_status == "RESCHEDULE_REQUESTED"
+    assert interview.candidate_response == "RESCHEDULE_REQUESTED"
+    assert interview.verbal_notes == "Pressed key 2"
+
+    # Step 4: Expected Result: HR notified (notification stored in database)
+    notif_q = await db_session.execute(
+        select(Notification).where(
+            Notification.target_role == "HR",
+            Notification.title.like("%Reschedule Requested%")
+        ).order_by(Notification.id.desc())
+    )
+    hr_notif = notif_q.scalars().first()
+    assert hr_notif is not None
+    assert cand_name in hr_notif.message
+    assert "RESCHEDULE" in hr_notif.message
+    assert "Pressed key 2" in hr_notif.message
+
+    # Step 5: Logged in Call Logs endpoint
+    logs_resp = await client.get(f"/ai-caller/interview/{interview.id}/logs", headers=headers)
+    assert logs_resp.status_code == 200
+    call_records = logs_resp.json()
+    assert len(call_records) >= 1
+    latest_rec = call_records[0]
+    assert latest_rec["extracted_intent"] == "RESCHEDULE_REQUESTED"
+    assert latest_rec["candidate_verbal_response"] == "Pressed key 2"
+    assert latest_rec["status"] == "COMPLETED"
+
+    # Interview logs verification
+    logs_q = await db_session.execute(
+        select(InterviewLog).where(
+            InterviewLog.interview_id == interview.id,
+            InterviewLog.log_type == "VOICE_CALL_RESCHEDULE"
+        )
+    )
+    resched_logs = logs_q.scalars().all()
+    assert len(resched_logs) >= 1
+    assert "RESCHEDULE" in resched_logs[0].details
+    assert "Pressed key 2" in resched_logs[0].details
+
+
+@pytest.mark.asyncio
+async def test_voice_notification_speak_to_hr_scenario_press_3_controller(client, db_session):
+    """
+    TEST-ID: 6
+    Module: AI Voice Notification
+    Scenario: Speak to HR
+    Steps: Press 3
+    Expected Result: Escalated to HR; logged
+    Priority: L
+    """
+    from app.utils.auth import create_access_token
+    from app.models.notification import Notification
+
+    hr = User(
+        email="hr_press3_ctrl@mariwasa.com",
+        password="pwd",
+        role="HR",
+        fullname="HR Officer Bautista"
+    )
+    db_session.add(hr)
+    await db_session.flush()
+
+    job = JobDescription(
+        job_id="JOB-PRESS3",
+        job_title="Automation & Robotics Technician",
+        department="Engineering",
+        job_type=JobType.FULL_TIME,
+        location="Mariwasa Plant 1, Sto. Tomas, Batangas",
+        description="PLC, sensors, and robotics automation maintenance"
+    )
+    db_session.add(job)
+    await db_session.flush()
+
+    cand_name = "Manuel L. Quezon"
+    app = JobApplication(
+        job_id=job.id,
+        candidate_name=cand_name,
+        candidate_email="manuel.quezon@example.com",
+        phone="+639175551122",
+        job_title="Automation & Robotics Technician",
+        status="SHORTLISTED"
+    )
+    db_session.add(app)
+    await db_session.flush()
+
+    interview = Interview(
+        job_application_id=app.id,
+        interviewer_id=hr.id,
+        title="Automation Technician Interview",
+        start_time=datetime(2026, 11, 28, 10, 0, 0),
+        end_time=datetime(2026, 11, 28, 11, 0, 0),
+        status="SCHEDULED",
+        call_status="PENDING"
+    )
+    db_session.add(interview)
+    await db_session.commit()
+    await db_session.refresh(interview)
+
+    headers = {"Authorization": f"Bearer {create_access_token({'sub': hr.email, 'id': hr.id, 'role': 'HR'})}"}
+
+    # Step 1: Place automated voice call
+    call_resp = await client.post(f"/ai-caller/interview/{interview.id}/call", headers=headers)
+    assert call_resp.status_code == 200
+    call_sid = call_resp.json()["call_sid"]
+
+    # Step 2: Candidate presses 3 on keypad during call
+    dtmf_resp = await client.post(
+        f"/ai-caller/voice-response?interview_id={interview.id}",
+        data={"Digits": "3", "CallSid": call_sid}
+    )
+    assert dtmf_resp.status_code == 200
+    assert "application/xml" in dtmf_resp.headers["content-type"]
+    assert "hr" in dtmf_resp.text.lower()
+
+    # Step 3: Expected Result: Status becomes Escalated to HR
+    await db_session.refresh(interview)
+    assert interview.status == "ESCALATED_TO_HR"
+    assert interview.call_status == "ESCALATED_TO_HR"
+    assert interview.candidate_response == "ESCALATED_TO_HR"
+    assert interview.verbal_notes == "Pressed key 3"
+
+    # Step 4: Expected Result: HR notified (notification stored in database)
+    notif_q = await db_session.execute(
+        select(Notification).where(
+            Notification.target_role == "HR",
+            Notification.title.like("%Escalated to HR%")
+        ).order_by(Notification.id.desc())
+    )
+    hr_notif = notif_q.scalars().first()
+    assert hr_notif is not None
+    assert cand_name in hr_notif.message
+    assert "Pressed key 3" in hr_notif.message
+
+    # Step 5: Logged in Call Logs endpoint
+    logs_resp = await client.get(f"/ai-caller/interview/{interview.id}/logs", headers=headers)
+    assert logs_resp.status_code == 200
+    call_records = logs_resp.json()
+    assert len(call_records) >= 1
+    latest_rec = call_records[0]
+    assert latest_rec["extracted_intent"] == "ESCALATED_TO_HR"
+    assert latest_rec["candidate_verbal_response"] == "Pressed key 3"
+    assert latest_rec["status"] == "COMPLETED"
+
+    # Interview logs verification
+    logs_q = await db_session.execute(
+        select(InterviewLog).where(
+            InterviewLog.interview_id == interview.id,
+            InterviewLog.log_type == "VOICE_CALL_ESCALATED"
+        )
+    )
+    escalate_logs = logs_q.scalars().all()
+    assert len(escalate_logs) >= 1
+    assert "SPEAK TO HR" in escalate_logs[0].details or "ESCALATED" in escalate_logs[0].details
+    assert "Pressed key 3" in escalate_logs[0].details
+
+    # Step 6: Test simulation endpoint with Press 3
+    sim_resp = await client.post(
+        f"/ai-caller/interview/{interview.id}/simulate",
+        json={"outcome": "ESCALATED_TO_HR", "spoken_phrase": "Pressed key 3", "language": "fil"},
+        headers=headers
+    )
+    assert sim_resp.status_code == 200
+    assert sim_resp.json()["interview_status"] == "ESCALATED_TO_HR"
+    assert sim_resp.json()["call_status"] == "ESCALATED_TO_HR"
 
 
 
