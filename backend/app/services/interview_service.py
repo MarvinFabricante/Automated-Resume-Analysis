@@ -461,6 +461,8 @@ async def schedule_interview(db: AsyncSession, data: InterviewCreateSchema, user
             "start_time": start,
             "end_time": end
         }
+        if hasattr(data, "call_language") and data.call_language:
+            interview_data["call_language"] = data.call_language
         interview = await InterviewRepository.create_interview(db, interview_data)
         await InterviewRepository.commit_changes(db)
 
@@ -745,6 +747,8 @@ async def update_interview(db: AsyncSession, interview_id: int, data: InterviewU
         interview.description = data.description
     if data.interviewer_id is not None:
         interview.interviewer_id = data.interviewer_id
+    if hasattr(data, "call_language") and data.call_language is not None:
+        interview.call_language = data.call_language
     if data.status is not None:
         old_status = interview.status
         interview.status = data.status

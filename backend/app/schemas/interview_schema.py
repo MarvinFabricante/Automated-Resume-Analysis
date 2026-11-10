@@ -20,6 +20,7 @@ class InterviewCreateSchema(BaseModel):
     end_time: datetime
     interviewer_id: Optional[int] = None
     panelist_ids: Optional[List[int]] = None
+    call_language: Optional[str] = "bilingual"
 
 class InterviewUpdateSchema(BaseModel):
     title: Optional[str] = None
@@ -28,6 +29,7 @@ class InterviewUpdateSchema(BaseModel):
     end_time: Optional[datetime] = None
     status: Optional[str] = None
     interviewer_id: Optional[int] = None
+    call_language: Optional[str] = None
     panelist_ids: Optional[List[int]] = None
 
 class VoiceCallRecordResponseSchema(BaseModel):
