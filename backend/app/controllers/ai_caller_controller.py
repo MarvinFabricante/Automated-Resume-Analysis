@@ -38,18 +38,21 @@ async def handle_media_stream(websocket: WebSocket):
 async def place_interview_call(
     interview_id: int,
     request: Request,
+    language: Optional[str] = Query(None),
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
     """
     REQ028: Places an automated voice call to the candidate for a scheduled interview.
+    Accepts optional language parameter (e.g. 'fil', 'en', 'bilingual').
     """
     try:
         result = await ai_caller_service.initiate_candidate_interview_call(
             interview_id=interview_id,
             db=db,
             request_host=request.url.hostname,
-            force=True
+            force=True,
+            language=language
         )
         return result
     except Exception as e:
@@ -60,6 +63,7 @@ async def place_interview_call(
 async def retry_interview_call(
     interview_id: int,
     request: Request,
+    language: Optional[str] = Query(None),
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
@@ -71,7 +75,8 @@ async def retry_interview_call(
             interview_id=interview_id,
             db=db,
             request_host=request.url.hostname,
-            force=True
+            force=True,
+            language=language
         )
         return result
     except Exception as e:
@@ -142,7 +147,7 @@ async def get_interview_twiml(
     interview_id: int,
     request: Request,
     attempt: int = Query(1),
-    lang: str = Query("bilingual"),
+    lang: Optional[str] = Query(None),
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -178,13 +183,15 @@ async def get_interview_twiml(
     if not location:
         location = "Mariwasa Plant, Sto. Tomas, Batangas"
 
+    effective_lang = lang or getattr(interview, "call_language", None) or "bilingual"
+
     twiml = ai_caller_service.build_interview_voice_twiml(
         interview_id=interview_id,
         candidate_name=cand_name,
         job_title=job_name,
         start_time=interview.start_time,
         interviewer_name=interviewer_name,
-        language=lang,
+        language=effective_lang,
         attempt=attempt,
         request_host=request.url.hostname,
         location=location
@@ -197,7 +204,7 @@ async def handle_voice_response(
     request: Request,
     interview_id: int = Query(...),
     attempt: int = Query(1),
-    lang: str = Query("bilingual"),
+    lang: Optional[str] = Query(None),
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -210,13 +217,19 @@ async def handle_voice_response(
     digits = form_data.get("Digits")
     call_sid = form_data.get("CallSid")
 
+    from sqlalchemy import select
+    from app.models.interview import Interview
+    res = await db.execute(select(Interview).where(Interview.id == interview_id))
+    interview = res.scalar_one_or_none()
+    effective_lang = lang or (interview.call_language if interview else None) or "bilingual"
+
     twiml = await ai_caller_service.handle_voice_response(
         interview_id=interview_id,
         speech_result=speech_result,
         digits=digits,
         call_sid=call_sid,
         db=db,
-        language=lang
+        language=effective_lang
     )
     return HTMLResponse(content=twiml, media_type="application/xml")
 

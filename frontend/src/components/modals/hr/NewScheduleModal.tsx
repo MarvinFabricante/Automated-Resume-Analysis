@@ -55,6 +55,7 @@ const NewScheduleModal: React.FC<NewScheduleModalProps> = ({
   const [alternativeDates, setAlternativeDates] = useState<string[]>([]);
   const [errorMsg, setErrorMsg] = useState<string>('');
   const [useCustomTime, setUseCustomTime] = useState<boolean>(false);
+  const [callLanguage, setCallLanguage] = useState<string>('fil');
   const [customStartTime, setCustomStartTime] = useState<string>('09:00');
   const [customEndTime, setCustomEndTime] = useState<string>('10:00');
 
@@ -256,7 +257,8 @@ const NewScheduleModal: React.FC<NewScheduleModalProps> = ({
         title: title.trim() || 'Technical Interview',
         description: description.trim() || undefined,
         start_time: finalStart,
-        end_time: finalEnd
+        end_time: finalEnd,
+        call_language: callLanguage
       }).unwrap();
 
       if (selectedCandidate) {
@@ -757,6 +759,21 @@ const NewScheduleModal: React.FC<NewScheduleModalProps> = ({
               placeholder="Add key evaluation criteria or panel discussion topics..."
               className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-2xl text-sm font-medium text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#D60041]/20 focus:border-[#D60041] resize-none"
             />
+          </div>
+
+          <div>
+            <label className="block text-xs font-black text-gray-700 uppercase tracking-wider mb-2">
+              AI Voice Notification Language
+            </label>
+            <select
+              value={callLanguage}
+              onChange={(e) => setCallLanguage(e.target.value)}
+              className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-2xl text-xs font-bold text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#D60041]/20 focus:border-[#D60041] cursor-pointer"
+            >
+              <option value="fil">🇵🇭 Filipino (Tagalog) - Recommended</option>
+              <option value="bilingual">🌐 Bilingual (Filipino & English)</option>
+              <option value="en">🇺🇸 English</option>
+            </select>
           </div>
 
           {/* Auto Sync Banner */}

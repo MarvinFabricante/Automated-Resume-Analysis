@@ -327,11 +327,15 @@ export const apiSlice = createApi({
     }),
 
     // --- AI VOICE NOTIFICATION CALLER (REQ028 - REQ034) ---
-    placeInterviewCall: builder.mutation<any, number | string>({
-      query: (interviewId) => ({
-        url: `/ai-caller/interview/${interviewId}/call`,
-        method: 'POST',
-      }),
+    placeInterviewCall: builder.mutation<any, number | string | { interviewId: number | string; language?: string }>({
+      query: (arg) => {
+        const interviewId = typeof arg === 'object' ? arg.interviewId : arg;
+        const language = typeof arg === 'object' ? arg.language : undefined;
+        return {
+          url: `/ai-caller/interview/${interviewId}/call${language ? `?language=${encodeURIComponent(language)}` : ''}`,
+          method: 'POST',
+        };
+      },
       invalidatesTags: ['Interviews', 'CalendarEvents'],
     }),
 

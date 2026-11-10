@@ -70,6 +70,7 @@ const ScheduleInterviewModal: React.FC<ScheduleInterviewModalProps> = ({ isOpen,
     selectedSlot: null
   });
 
+  const [callLanguage, setCallLanguage] = useState<string>('fil');
   const [availableSlots, setAvailableSlots] = useState<any[]>([]);
   const [hasAttemptedFetch, setHasAttemptedFetch] = useState<boolean>(false);
 
@@ -193,7 +194,8 @@ const ScheduleInterviewModal: React.FC<ScheduleInterviewModalProps> = ({ isOpen,
         title: formData.title,
         description: formData.description,
         start_time: finalStart,
-        end_time: finalEnd
+        end_time: finalEnd,
+        call_language: callLanguage
       }).unwrap();
       
       setSuccessMsg(`Interview scheduled successfully! Candidate marked as Reviewed and notification sent.`);
@@ -356,6 +358,18 @@ const ScheduleInterviewModal: React.FC<ScheduleInterviewModalProps> = ({ isOpen,
                       value={formData.description}
                       onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                     />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">AI Voice Notification Language</label>
+                    <select
+                      value={callLanguage}
+                      onChange={(e) => setCallLanguage(e.target.value)}
+                      className="w-full px-4 py-2.5 bg-gray-50 border border-gray-100 rounded-xl text-sm font-medium text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#d81159]/20 focus:border-[#d81159] transition-all cursor-pointer"
+                    >
+                      <option value="fil">🇵🇭 Filipino (Tagalog) - Recommended</option>
+                      <option value="bilingual">🌐 Bilingual (Filipino & English)</option>
+                      <option value="en">🇺🇸 English</option>
+                    </select>
                   </div>
                 </div>
               </div>

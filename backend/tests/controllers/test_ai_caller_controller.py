@@ -1,5 +1,10 @@
 import pytest
+from datetime import datetime
 from unittest.mock import patch, AsyncMock
+from app.models.user import User
+from app.models.job_application import JobApplication
+from app.models.job_description import JobDescription, JobType
+from app.models.interview import Interview, InterviewLog, VoiceCallRecord
 
 
 @pytest.mark.asyncio
@@ -319,6 +324,111 @@ async def test_interview_twiml_endpoint_includes_name_date_time_location(client,
     assert "Nobyembre" in text_fil
     assert "3:30 PM" in text_fil
     assert job_loc in text_fil
+
+
+@pytest.mark.asyncio
+async def test_filipino_message_call_delivers_clear_audio_and_correct_dates_times(client, db_session):
+    """
+    TEST-ID: 3
+    Module: AI Voice Notification
+    Scenario: Filipino message
+    Steps: Set language to Filipino and call
+    Expected Result: Clear Filipino audio with correct dates and times
+    Priority: H
+    """
+    # Setup HR user
+    hr = User(
+        email="recruiter_fil@mariwasa.com",
+        password="pw",
+        role="HR",
+        fullname="Recruiter Santos"
+    )
+    db_session.add(hr)
+    await db_session.flush()
+
+    # Setup Job Description
+    job = JobDescription(
+        job_id="JOB-FIL-CTRL",
+        job_title="Maintenance Engineer",
+        department="Engineering",
+        job_type=JobType.FULL_TIME,
+        location="Mariwasa Plant, Sto. Tomas, Batangas",
+        description="Maintenance of manufacturing equipment"
+    )
+    db_session.add(job)
+    await db_session.flush()
+
+    # Setup Candidate Application
+    cand_name = "Basilio Dela Cruz"
+    app = JobApplication(
+        job_id=job.id,
+        candidate_name=cand_name,
+        candidate_email="basilio@example.com",
+        phone="+639198765432",
+        job_title="Maintenance Engineer",
+        status="PENDING"
+    )
+    db_session.add(app)
+    await db_session.flush()
+
+    # Schedule interview on Wednesday at 10:30 AM
+    sched_dt = datetime(2026, 11, 25, 10, 30, 0)
+    interview = Interview(
+        job_application_id=app.id,
+        interviewer_id=hr.id,
+        title="Maintenance Engineer Screening",
+        start_time=sched_dt,
+        end_time=datetime(2026, 11, 25, 11, 30, 0),
+        status="SCHEDULED",
+        call_language="fil"
+    )
+    db_session.add(interview)
+    await db_session.commit()
+    await db_session.refresh(interview)
+
+    # Step 1: Set language to Filipino and call candidate via POST /ai-caller/interview/{id}/call?language=fil
+    from app.utils.auth import create_access_token
+    headers = {"Authorization": f"Bearer {create_access_token({'sub': hr.email, 'id': hr.id, 'role': 'HR'})}"}
+    call_resp = await client.post(f"/ai-caller/interview/{interview.id}/call?language=fil", headers=headers)
+    assert call_resp.status_code == 200
+    call_data = call_resp.json()
+    assert call_data["status"] == "success"
+    assert call_data["call_status"] == "IN_PROGRESS"
+
+    # Step 2: Fetch generated TwiML from /ai-caller/interview-twiml/{id}
+    twiml_resp = await client.get(f"/ai-caller/interview-twiml/{interview.id}")
+    assert twiml_resp.status_code == 200
+    twiml_text = twiml_resp.text
+
+    # Expected Result: Clear Filipino audio settings with correct dates and times
+    # 1) Natural high-quality Filipino voice & language tag
+    assert 'language="fil-PH"' in twiml_text
+    assert 'voice="Google.fil-PH-Standard-A"' in twiml_text
+
+    # 2) Candidate personalized name
+    assert cand_name in twiml_text
+    assert "Magandang araw Basilio Dela Cruz" in twiml_text
+
+    # 3) Correct Filipino Date & Time
+    assert "Miyerkules" in twiml_text # Wednesday
+    assert "ika-25 ng Nobyembre, 2026" in twiml_text # November 25, 2026
+    assert "10:30 AM" in twiml_text # 10:30 AM
+
+    # 4) Filipino DTMF & Verbal instructions
+    assert "Kumpirma" in twiml_text or "kumpirma" in twiml_text
+    assert "Reschedule" in twiml_text
+    assert "Mariwasa Plant, Sto. Tomas, Batangas" in twiml_text
+
+    # Step 3: Candidate confirms in Filipino via voice response webhook
+    confirm_resp = await client.post(
+        f"/ai-caller/voice-response?interview_id={interview.id}&lang=fil",
+        data={"SpeechResult": "Opo, kumpirma", "CallSid": call_data["call_sid"]}
+    )
+    assert confirm_resp.status_code == 200
+    confirm_text = confirm_resp.text
+    assert 'language="fil-PH"' in confirm_text
+    assert "Maraming salamat!" in confirm_text
+    assert "Kumpirmado na ang inyong pagdalo" in confirm_text
 
 
 

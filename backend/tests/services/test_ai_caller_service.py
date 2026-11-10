@@ -3,6 +3,10 @@ from datetime import datetime
 from unittest.mock import patch, MagicMock, AsyncMock
 from fastapi import HTTPException
 from app.services import ai_caller_service
+from app.models.user import User
+from app.models.job_application import JobApplication
+from app.models.job_description import JobDescription, JobType
+from app.models.interview import Interview, InterviewLog, VoiceCallRecord
 
 
 @pytest.mark.asyncio
@@ -195,6 +199,155 @@ def test_voice_message_content_includes_name_date_time_location():
     assert "Nobyembre" in twiml_fil
     assert "9:30 AM" in twiml_fil
     assert location_onsite in twiml_fil
+
+
+def test_filipino_message_date_time_and_audio_formatting():
+    """
+    TEST-ID: 3
+    Module: AI Voice Notification
+    Scenario: Filipino message
+    Steps: Set language to Filipino and call
+    Expected Result: Clear Filipino audio with correct dates and times
+    Priority: H
+    """
+    # 1. Verify format_ph_datetime across multiple dates and times in Filipino
+    dt_morning = datetime(2026, 11, 16, 9, 0, 0) # Monday 9:00 AM
+    formatted_morning = ai_caller_service.format_ph_datetime(dt_morning, lang="fil")
+    assert "Lunes" in formatted_morning
+    assert "ika-16" in formatted_morning
+    assert "Nobyembre" in formatted_morning
+    assert "2026" in formatted_morning
+    assert "9:00 AM" in formatted_morning
+
+    dt_afternoon = datetime(2026, 12, 2, 14, 30, 0) # Wednesday 2:30 PM
+    formatted_afternoon = ai_caller_service.format_ph_datetime(dt_afternoon, lang="filipino")
+    assert "Miyerkules" in formatted_afternoon
+    assert "ika-2" in formatted_afternoon
+    assert "Disyembre" in formatted_afternoon
+    assert "2:30 PM" in formatted_afternoon
+
+    # 2. Verify build_interview_voice_twiml produces clear Filipino audio & correct date/time
+    cand_name = "Maria Clara Santos"
+    job_role = "Ceramic Process Engineer"
+    loc_plant = "Mariwasa Plant 1, Sto. Tomas, Batangas"
+
+    twiml_fil = ai_caller_service.build_interview_voice_twiml(
+        interview_id=201,
+        candidate_name=cand_name,
+        job_title=job_role,
+        start_time=dt_morning,
+        interviewer_name="Engr. Santos",
+        language="fil",
+        location=loc_plant
+    )
+
+    # Check clear audio settings for Filipino TTS
+    assert 'language="fil-PH"' in twiml_fil
+    assert 'voice="Google.fil-PH-Standard-A"' in twiml_fil
+    assert f"Magandang araw {cand_name}" in twiml_fil
+    assert "Mariwasa Siam Ceramics" in twiml_fil
+    assert job_role in twiml_fil
+    assert "Lunes" in twiml_fil
+    assert "ika-16 ng Nobyembre, 2026" in twiml_fil
+    assert "9:00 AM" in twiml_fil
+    assert loc_plant in twiml_fil
+    assert "Kumpirma" in twiml_fil or "kumpirma" in twiml_fil
+    assert "Reschedule" in twiml_fil
+    # Filipino no-input fallback
+    assert "Wala po kaming natanggap na tugon" in twiml_fil
+
+
+@pytest.mark.asyncio
+async def test_filipino_call_execution_and_response_twiml(db_session):
+    """
+    TEST-ID: 3 (End-to-End Service Level)
+    Verify setting language to Filipino when initiating a call:
+    - Call record persists 'fil' language
+    - Response TwiML provides clear Filipino audio for confirmation and reschedule
+    """
+    # Create test candidate and interview
+    hr = User(
+        email="hr_fil@mariwasa.com",
+        password="pw",
+        role="HR",
+        fullname="HR Coordinator Cruz"
+    )
+    db_session.add(hr)
+    await db_session.flush()
+
+    job = JobDescription(
+        job_id="JOB-FIL-SVC",
+        job_title="Plant Operations Specialist",
+        department="Operations",
+        job_type=JobType.FULL_TIME,
+        location="Mariwasa Plant 1, Sto. Tomas, Batangas",
+        description="Plant operations supervision"
+    )
+    db_session.add(job)
+    await db_session.flush()
+
+    app = JobApplication(
+        job_id=job.id,
+        candidate_name="Crisostomo Ibarra",
+        candidate_email="ibarra@example.com",
+        phone="+639181112233",
+        status="PENDING"
+    )
+    db_session.add(app)
+    await db_session.flush()
+
+    sched_dt = datetime(2026, 11, 23, 10, 0, 0) # Monday 10:00 AM
+    interview = Interview(
+        job_application_id=app.id,
+        interviewer_id=hr.id,
+        title="Plant Operations Specialist Interview",
+        start_time=sched_dt,
+        end_time=datetime(2026, 11, 23, 11, 0, 0),
+        status="SCHEDULED",
+        call_language="fil"
+    )
+    db_session.add(interview)
+    await db_session.commit()
+    await db_session.refresh(interview)
+
+    # 1. Initiate candidate call with language="fil"
+    result = await ai_caller_service.initiate_candidate_interview_call(
+        interview_id=interview.id,
+        db=db_session,
+        force=True,
+        language="fil"
+    )
+    assert result["status"] == "success"
+    await db_session.refresh(interview)
+    assert interview.call_language == "fil"
+    assert interview.call_status == "IN_PROGRESS"
+
+    # 2. Candidate confirms in Filipino
+    confirm_twiml = await ai_caller_service.handle_voice_response(
+        interview_id=interview.id,
+        speech_result="Oo, kumpirmado po ang aking pagdalo",
+        digits=None,
+        call_sid=result["call_sid"],
+        db=db_session,
+        language="fil"
+    )
+    assert 'language="fil-PH"' in confirm_twiml
+    assert 'voice="Google.fil-PH-Standard-A"' in confirm_twiml
+    assert "Maraming salamat!" in confirm_twiml
+    assert "Kumpirmado na ang inyong pagdalo" in confirm_twiml
+
+    # 3. Candidate requests reschedule in Filipino
+    resched_twiml = await ai_caller_service.handle_voice_response(
+        interview_id=interview.id,
+        speech_result="Nais ko pong mag-reschedule dahil may lakad ako",
+        digits=None,
+        call_sid=result["call_sid"],
+        db=db_session,
+        language="fil"
+    )
+    assert 'language="fil-PH"' in resched_twiml
+    assert 'voice="Google.fil-PH-Standard-A"' in resched_twiml
+    assert "Naitala na ang inyong kahilingan na mag-reschedule" in resched_twiml
 
 
 def test_interpret_verbal_response():

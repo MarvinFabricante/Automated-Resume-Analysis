@@ -76,8 +76,9 @@ def format_to_e164(phone: Optional[str]) -> Optional[str]:
 
 def format_ph_datetime(dt: datetime, lang: str = "en") -> str:
     """Formats datetime clearly for text-to-speech engine in English or Filipino."""
+    norm_lang = "fil" if lang and lang.lower() in ["fil", "filipino", "tagalog"] else "en"
     if not dt:
-        return "the scheduled time"
+        return "ang nakatakdang oras" if norm_lang == "fil" else "the scheduled time"
     try:
         weekday_en = dt.strftime("%A")
         month_en = dt.strftime("%B")
@@ -85,7 +86,7 @@ def format_ph_datetime(dt: datetime, lang: str = "en") -> str:
         year = dt.strftime("%Y")
         time_str = dt.strftime("%I:%M %p").lstrip("0")
 
-        if lang == "fil":
+        if norm_lang == "fil":
             fil_weekdays = {
                 "Monday": "Lunes", "Tuesday": "Martes", "Wednesday": "Miyerkules",
                 "Thursday": "Huwebes", "Friday": "Biyernes", "Saturday": "Sabado", "Sunday": "Linggo"
@@ -157,8 +158,10 @@ def build_interview_voice_twiml(
     """
     response = VoiceResponse()
 
+    norm_lang = "fil" if language and language.lower() in ["fil", "filipino", "tagalog"] else ("en" if language and language.lower() in ["en", "english"] else "bilingual")
+
     host = request_host or (PUBLIC_BASE_URL.replace("https://", "").replace("http://", "").split("/")[0] if PUBLIC_BASE_URL else "")
-    action_url = f"https://{host}/ai-caller/voice-response?interview_id={interview_id}&attempt={attempt}&lang={language}" if host else f"/ai-caller/voice-response?interview_id={interview_id}&attempt={attempt}&lang={language}"
+    action_url = f"https://{host}/ai-caller/voice-response?interview_id={interview_id}&attempt={attempt}&lang={norm_lang}" if host else f"/ai-caller/voice-response?interview_id={interview_id}&attempt={attempt}&lang={norm_lang}"
 
     interviewer_display = interviewer_name or "our HR team"
     loc_display = location or "Mariwasa Plant, Sto. Tomas, Batangas"
@@ -174,7 +177,7 @@ def build_interview_voice_twiml(
         method="POST"
     )
 
-    if language == "fil":
+    if norm_lang == "fil":
         gather.say(
             f"Magandang araw {candidate_name}. Ito ay awtomatikong tawag mula sa Mariwasa Siam Ceramics. "
             f"Nais po naming ipaalam na ang inyong interbyu para sa posisyong {job_title} ay nakatakda sa {dt_fil} kasama si {interviewer_display} sa {loc_display}. "
@@ -183,7 +186,7 @@ def build_interview_voice_twiml(
             language="fil-PH",
             voice="Google.fil-PH-Standard-A"
         )
-    elif language == "en":
+    elif norm_lang == "en":
         gather.say(
             f"Hello {candidate_name}. This is an automated interview notification call from Mariwasa Siam Ceramics. "
             f"Your interview for the position of {job_title} has been scheduled on {dt_en} with {interviewer_display} at {loc_display}. "
@@ -205,10 +208,17 @@ def build_interview_voice_twiml(
     response.append(gather)
 
     # Fallback if no input received
-    response.say(
-        "We did not receive any response. We will contact you again shortly, or you may check your registered email for interview details. Salamat at magandang araw!",
-        language="en-US"
-    )
+    if norm_lang == "fil":
+        response.say(
+            "Wala po kaming natanggap na tugon. Makikipag-ugnayan kami muli sa inyo sa lalong madaling panahon, o maaari ninyong suriin ang inyong rehistradong email para sa mga detalye ng panayam. Maraming salamat at magandang araw!",
+            language="fil-PH",
+            voice="Google.fil-PH-Standard-A"
+        )
+    else:
+        response.say(
+            "We did not receive any response. We will contact you again shortly, or you may check your registered email for interview details. Salamat at magandang araw!",
+            language="en-US"
+        )
     response.hangup()
     return str(response)
 
@@ -410,7 +420,8 @@ async def initiate_candidate_interview_call(
     interview_id: int,
     db: Optional[AsyncSession] = None,
     request_host: Optional[str] = None,
-    force: bool = False
+    force: bool = False,
+    language: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     REQ028 & REQ031: Places an automated voice call to the candidate for a scheduled interview.
@@ -420,7 +431,7 @@ async def initiate_candidate_interview_call(
     if db is None:
         from app.utils.database import AsyncSessionLocal
         async with AsyncSessionLocal() as session:
-            return await initiate_candidate_interview_call(interview_id, db=session, request_host=request_host, force=force)
+            return await initiate_candidate_interview_call(interview_id, db=session, request_host=request_host, force=force, language=language)
 
     # 1. Fetch Interview and Job Application
     result = await db.execute(select(Interview).where(Interview.id == interview_id))
@@ -459,8 +470,13 @@ async def initiate_candidate_interview_call(
     interview.last_call_at = datetime.utcnow()
     interview.call_status = "IN_PROGRESS"
 
+    if language:
+        norm_input_lang = "fil" if language.lower() in ["fil", "filipino", "tagalog"] else ("en" if language.lower() in ["en", "english"] else "bilingual")
+        interview.call_language = norm_input_lang
+
     formatted_phone = format_to_e164(phone) or phone
-    lang = interview.call_language or "bilingual"
+    raw_lang = interview.call_language or "bilingual"
+    lang = "fil" if raw_lang.lower() in ["fil", "filipino", "tagalog"] else ("en" if raw_lang.lower() in ["en", "english"] else "bilingual")
 
     effective_host = request_host or (PUBLIC_BASE_URL.replace("https://", "").replace("http://", "").split("/")[0] if PUBLIC_BASE_URL else "localhost:8000")
 
@@ -586,6 +602,8 @@ async def handle_voice_response(
 
     twiml_resp = VoiceResponse()
 
+    norm_lang = "fil" if language and language.lower() in ["fil", "filipino", "tagalog"] else ("en" if language and language.lower() in ["en", "english"] else "bilingual")
+
     if intent == "CONFIRMED":
         # REQ034: Update interview status
         interview.status = "CONFIRMED"
@@ -617,9 +635,9 @@ async def handle_voice_response(
         except Exception as e_notif:
             logger.debug(f"HR notification notice: {e_notif}")
 
-        if language == "fil":
+        if norm_lang == "fil":
             twiml_resp.say(
-                "Maraming salamat! Kumpirmado na ang inyong pagdalo sa panayam. Inaasahan namin ang inyong pagdating. Paalam!",
+                "Maraming salamat! Kumpirmado na ang inyong pagdalo sa panayam. Inaasahan namin ang inyong pagdating. Paalam po!",
                 language="fil-PH",
                 voice="Google.fil-PH-Standard-A"
             )
@@ -661,7 +679,7 @@ async def handle_voice_response(
         except Exception as e_notif:
             logger.debug(f"HR notification notice: {e_notif}")
 
-        if language == "fil":
+        if norm_lang == "fil":
             twiml_resp.say(
                 "Naintindihan po namin. Naitala na ang inyong kahilingan na mag-reschedule. Makikipag-ugnayan ang HR para sa bagong schedule. Salamat po!",
                 language="fil-PH",
@@ -681,10 +699,17 @@ async def handle_voice_response(
             log_type="VOICE_CALL_UNRECOGNIZED",
             details=f"Voice call response unclear: '{speech_result or f'Key {digits}'}'."
         ))
-        twiml_resp.say(
-            "We were unable to confirm your response. Our HR team will follow up via email. Thank you and have a great day!",
-            language="en-US"
-        )
+        if norm_lang == "fil":
+            twiml_resp.say(
+                "Paumanhin, hindi po namin naintindihan ang inyong tugon. Makikipag-ugnayan ang aming HR team sa inyong email. Maraming salamat po at magandang araw!",
+                language="fil-PH",
+                voice="Google.fil-PH-Standard-A"
+            )
+        else:
+            twiml_resp.say(
+                "We were unable to confirm your response. Our HR team will follow up via email. Thank you and have a great day!",
+                language="en-US"
+            )
 
     twiml_resp.hangup()
     await db.commit()
@@ -862,15 +887,17 @@ async def simulate_voice_call(
     application = app_res.scalar_one_or_none()
     phone = getattr(application, "phone", "+639171234567") if application else "+639171234567"
 
+    norm_lang = "fil" if language and language.lower() in ["fil", "filipino", "tagalog"] else ("en" if language and language.lower() in ["en", "english"] else "bilingual")
+
     attempt = (interview.call_attempts or 0) + 1
     interview.call_attempts = attempt
     interview.last_call_at = datetime.utcnow()
-    interview.call_language = language
+    interview.call_language = norm_lang
 
     sim_sid = f"SIM_{uuid.uuid4().hex[:10]}"
 
     if outcome == "CONFIRMED":
-        phrase = spoken_phrase or ("Yes, I confirm my attendance for the interview" if language == "en" else "Oo, kumpirmado po ang aking pagdalo")
+        phrase = spoken_phrase or ("Oo, kumpirmado po ang aking pagdalo" if norm_lang == "fil" else "Yes, I confirm my attendance for the interview")
         interview.status = "CONFIRMED"
         interview.call_status = "CONFIRMED"
         interview.candidate_response = "CONFIRMED"
@@ -884,7 +911,7 @@ async def simulate_voice_call(
             attempt_number=attempt,
             status="COMPLETED",
             duration=35,
-            language=language,
+            language=norm_lang,
             candidate_verbal_response=phrase,
             extracted_intent="CONFIRMED",
             notes="Candidate verbally confirmed attendance during simulated call."
@@ -897,7 +924,7 @@ async def simulate_voice_call(
         ))
 
     elif outcome == "RESCHEDULE_REQUESTED":
-        phrase = spoken_phrase or ("I have a conflict, please reschedule my interview" if language == "en" else "May lakad po ako sa oras na iyan, pwede po bang mag-reschedule?")
+        phrase = spoken_phrase or ("May lakad po ako sa oras na iyan, pwede po bang mag-reschedule?" if norm_lang == "fil" else "I have a conflict, please reschedule my interview")
         interview.status = "RESCHEDULE_REQUESTED"
         interview.call_status = "RESCHEDULE_REQUESTED"
         interview.candidate_response = "RESCHEDULE_REQUESTED"
@@ -911,7 +938,7 @@ async def simulate_voice_call(
             attempt_number=attempt,
             status="COMPLETED",
             duration=42,
-            language=language,
+            language=norm_lang,
             candidate_verbal_response=phrase,
             extracted_intent="RESCHEDULE_REQUESTED",
             notes="Candidate requested reschedule during simulated call."
