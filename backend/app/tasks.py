@@ -107,10 +107,9 @@ async def async_analyze_application(application_id: int):
             compare_candidates_task.delay(app.job_id)
             
             # Optionally clear cache
-            from app.utils.cache import delete_cache
+            from app.utils.cache import invalidate_application_dashboard_caches
             try:
-                # Clear stale cache entries after analysis
-                await delete_cache("app_stats:*")
+                await invalidate_application_dashboard_caches(application_id)
             except Exception as e:
                 logger.warning(f"Failed to clear cache: {e}")
         else:
@@ -269,14 +268,13 @@ def recalculate_all_applications_task() -> dict:
     async def _async_recalculate():
         async with async_session() as db:
             from app.services.system_config_service import recalculate_all_applications
-            from app.utils.cache import clear_cache_pattern
+            from app.utils.cache import clear_cache_pattern, invalidate_application_dashboard_caches
             result = await recalculate_all_applications(db)
             await clear_cache_pattern("ai_analysis:*")
             await clear_cache_pattern("job_matches:*")
             await clear_cache_pattern("job_comparison:*")
-            await clear_cache_pattern("app_stats:*")
             await clear_cache_pattern("screening:*")
-            await clear_cache_pattern("all_apps*")
+            await invalidate_application_dashboard_caches()
             logger.info(f"[Celery] Recalculation finished: {result.get('updated_applications', 0)} applications updated.")
             return result
     return asyncio.run(_async_recalculate())

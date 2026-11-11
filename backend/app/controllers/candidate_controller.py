@@ -145,7 +145,7 @@ async def parse_resume(request: Request, file: UploadFile = File(...), db: Async
         raise HTTPException(status_code=400, detail="Failed to parse resume or unsupported file type.")
     
     # Invalidate HR stats cache
-    await delete_cache("resume_count:{}")
-    await delete_cache("app_stats:{}")
+    from app.utils.cache import invalidate_application_dashboard_caches
+    await invalidate_application_dashboard_caches()
     
     return extracted_data

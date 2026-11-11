@@ -126,3 +126,79 @@ async def test_duplicate_application_controller_block_and_check(client, db_sessi
     assert apps_res.status_code == 200
     assert len(apps_res.json()) == 1
 
+
+@pytest.mark.asyncio
+async def test_new_application_updates_hr_dashboard_counts_list_and_invalidates_caches(
+    client, db_session, mock_celery_task
+):
+    from unittest.mock import AsyncMock
+
+    job = JobDescription(
+        job_id="JOB-HR-RT-01",
+        job_title="Production Planner",
+        department="Planning",
+        job_type=JobType.FULL_TIME,
+        location="Laguna",
+        description="Coordinate factory production schedules.",
+    )
+    db_session.add(job)
+    await db_session.commit()
+
+    before_stats = (await client.get("/hr/application-stats")).json()
+    before_resumes = (await client.get("/hr/resume-count")).json()
+    before_apps = (await client.get("/applications/")).json()
+
+    cleared_patterns = []
+
+    async def capture_clear(pattern: str):
+        cleared_patterns.append(pattern)
+
+    with patch("app.utils.cache.clear_cache_pattern", side_effect=capture_clear), \
+         patch("app.services.notification_service.manager.broadcast", new_callable=AsyncMock) as mock_ws:
+        create_res = await client.post(
+            "/applications/",
+            json={
+                "job_id": "JOB-HR-RT-01",
+                "candidate_name": "Realtime Applicant",
+                "candidate_email": "realtime.app@example.com",
+                "skills": ["Scheduling", "SAP"],
+                "years_experience": 3,
+            },
+        )
+        assert create_res.status_code == 201
+        created_id = create_res.json()["id"]
+
+    # Real-time WebSocket broadcast must target HR on new application
+    assert any(
+        call.kwargs.get("target_role") == "HR" and '"application"' in call.args[0]
+        for call in mock_ws.await_args_list
+    )
+
+    # Repository + controller invalidation must cover all HR dashboard stat/list patterns
+    for expected_pattern in (
+        "all_apps",
+        "job_apps",
+        "cand_apps",
+        "app_stats",
+        "candidate_count",
+        "resume_count",
+        "dashboard_trends",
+        "hr:stats",
+    ):
+        assert expected_pattern in cleared_patterns
+
+    after_stats = (await client.get("/hr/application-stats")).json()
+    after_resumes = (await client.get("/hr/resume-count")).json()
+    after_trends = (await client.get("/hr/dashboard-trends")).json()
+    after_apps = (await client.get("/applications/")).json()
+
+    assert after_stats["pending"] == before_stats["pending"] + 1
+    assert after_stats["total"] == before_stats["total"] + 1
+    assert after_resumes["count"] == before_resumes["count"] + 1
+    assert len(after_apps) == len(before_apps) + 1
+    assert after_apps[0]["id"] == created_id
+    assert any(
+        d["label"] == "Planning" and d["value"] >= 1
+        for d in after_trends["department_distribution"]
+    )
+

@@ -7,7 +7,7 @@ from app.schemas.job_application_schema import JobApplicationCreate, JobApplicat
 from app.services import job_application_service
 from app.services.audit_service import record_activity
 from app.utils.auth import get_current_user, get_optional_current_user
-from app.utils.cache import cache_response, clear_cache_pattern
+from app.utils.cache import cache_response, invalidate_application_dashboard_caches
 
 
 router = APIRouter(prefix="/applications", tags=["Job Applications"])
@@ -32,13 +32,8 @@ async def create_job_application(
         db, application_in, job.id, duplicate_policy=duplicate_policy
     )
     
-    # Invalidate cache so HR immediately sees the new applicant
-    from app.utils.cache import delete_cache
-    await delete_cache("app_stats:{}")
-    await delete_cache("resume_count:{}")
-    await clear_cache_pattern("all_apps*")
-    await clear_cache_pattern("job_apps*")
-    await clear_cache_pattern("cand_apps*")
+    # Invalidate cache so HR immediately sees the new applicant and updated counts
+    await invalidate_application_dashboard_caches(res.id if res else None)
     
     return res
 
@@ -123,12 +118,8 @@ async def update_application_status(
         details=f"HR updated application status for {db_application.candidate_name} to {status_update.status}"
     )
         
-    # Invalidate cache since stats might change
-    from app.utils.cache import delete_cache
-    await delete_cache("app_stats:{}")
-    await clear_cache_pattern("all_apps*")
-    await clear_cache_pattern("job_apps*")
-    await clear_cache_pattern("cand_apps*")
+    # Invalidate cache since stats and lists changed
+    await invalidate_application_dashboard_caches(application_id)
 
     # Record Human-in-the-Loop recruiter feedback in ML feedback database
     try:
@@ -297,12 +288,8 @@ async def delete_application(
         details=f"HR deleted application for {db_application.candidate_name}"
     )
     
-    # Invalidate cache since stats might change
-    from app.utils.cache import delete_cache
-    await delete_cache("app_stats:{}")
-    await clear_cache_pattern("all_apps*")
-    await clear_cache_pattern("job_apps*")
-    await clear_cache_pattern("cand_apps*")
+    # Invalidate cache since stats and lists changed
+    await invalidate_application_dashboard_caches(application_id)
     
     return None
 

@@ -14,6 +14,7 @@ import Footer from '../../../components/layout/Footer';
 import ResumePreviewModal from '../../../components/modals/shared/ResumePreviewModal';
 import ApplicationProgressBar from '../../../components/common/ApplicationProgressBar';
 import ExperienceGapAlert from '../../../components/common/ExperienceGapAlert';
+import { broadcastAtsUpdate } from '../../../utils/realtimeSync';
 
 
 interface InfoItemProps {
@@ -295,6 +296,7 @@ const PreviewAndVerifyPage: React.FC = () => {
       };
 
       await candidateService.submitApplication(payload);
+      broadcastAtsUpdate('applications_updated');
       navigate(`/submissionsuccess/${effectiveJobId}`, {
         state: {
           jobTitle: state?.job?.title || state?.jobTitle || "Position",
