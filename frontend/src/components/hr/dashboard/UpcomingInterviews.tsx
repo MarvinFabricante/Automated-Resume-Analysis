@@ -2,10 +2,14 @@ import React from 'react';
 import { useNavigate } from '@/utils/navigation';
 import { 
   Calendar, Clock, Video, User, ChevronRight, 
-  Plus, CheckCircle2, AlertCircle, ArrowUpRight, Sparkles 
+  Plus, ArrowUpRight, Phone 
 } from 'lucide-react';
 import { useGetAllInterviewsQuery } from '../../../redux/api/apiSlice';
 import { Interview } from '../../../types';
+import {
+  filterAndSortUpcomingInterviews,
+  getCallOutcomeBadgeClass,
+} from '../../../utils/interviewUtils';
 
 interface UpcomingInterviewsProps {
   onScheduleClick?: () => void;
@@ -16,16 +20,12 @@ const UpcomingInterviews: React.FC<UpcomingInterviewsProps> = ({ onScheduleClick
   const { data: interviews = [], isLoading } = useGetAllInterviewsQuery(undefined, {
     pollingInterval: 5000,
     refetchOnFocus: true,
+    refetchOnMountOrArgChange: true,
+    refetchOnReconnect: true,
   });
 
-  // Filter and sort for upcoming interviews
-  const upcomingInterviews = [...(interviews as Interview[])]
-    .filter(item => {
-      const status = (item.status || '').toUpperCase();
-      return status !== 'CANCELLED' && status !== 'REJECTED';
-    })
-    .sort((a, b) => new Date(a.start_time || 0).getTime() - new Date(b.start_time || 0).getTime())
-    .slice(0, 4);
+  // Filter and sort for truly upcoming active interviews
+  const upcomingInterviews = filterAndSortUpcomingInterviews(interviews as Interview[]).slice(0, 4);
 
   const formatInterviewTime = (startStr?: string) => {
     if (!startStr) return { dateStr: 'TBD', timeStr: 'TBD', isToday: false };
@@ -50,7 +50,10 @@ const UpcomingInterviews: React.FC<UpcomingInterviewsProps> = ({ onScheduleClick
   };
 
   return (
-    <div className="bg-white border border-slate-200/80 rounded-2xl sm:rounded-3xl p-4 sm:p-5 lg:p-6 shadow-xs flex flex-col justify-between">
+    <div
+      data-testid="upcoming-interviews-card"
+      className="bg-white border border-slate-200/80 rounded-2xl sm:rounded-3xl p-4 sm:p-5 lg:p-6 shadow-xs flex flex-col justify-between"
+    >
       {/* Header */}
       <div>
         <div className="flex items-center justify-between pb-3.5 sm:pb-4 border-b border-slate-100 mb-3.5 sm:mb-4">
@@ -108,10 +111,14 @@ const UpcomingInterviews: React.FC<UpcomingInterviewsProps> = ({ onScheduleClick
           <div className="space-y-3">
             {upcomingInterviews.map((item) => {
               const { dateStr, timeStr, isToday } = formatInterviewTime(item.start_time);
+              const callAttempts = item.call_attempts ?? item.call_records?.length ?? 0;
+              const callStatus = item.call_status || 'PENDING';
               return (
                 <div
                   key={item.id}
-                  className="p-3 sm:p-3.5 rounded-2xl border border-slate-100 hover:border-pink-200/80 bg-slate-50/50 hover:bg-white hover:shadow-md transition-all duration-200 group flex items-center justify-between gap-3"
+                  data-testid="upcoming-interview-item"
+                  onClick={() => navigate('/hr/scheduling')}
+                  className="p-3 sm:p-3.5 rounded-2xl border border-slate-100 hover:border-pink-200/80 bg-slate-50/50 hover:bg-white hover:shadow-md transition-all duration-200 group flex items-center justify-between gap-3 cursor-pointer"
                 >
                   <div className="flex items-center gap-3 min-w-0">
                     {/* Time Badge */}
@@ -133,9 +140,20 @@ const UpcomingInterviews: React.FC<UpcomingInterviewsProps> = ({ onScheduleClick
 
                     {/* Candidate & Role Info */}
                     <div className="min-w-0">
-                      <h4 className="text-xs sm:text-sm font-bold text-slate-900 group-hover:text-[#D60041] transition-colors truncate">
-                        {item.candidate_name || item.title || 'Applicant'}
-                      </h4>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <h4 className="text-xs sm:text-sm font-bold text-slate-900 group-hover:text-[#D60041] transition-colors truncate">
+                          {item.candidate_name || item.title || 'Applicant'}
+                        </h4>
+                        {(callAttempts > 0 || callStatus !== 'PENDING') && (
+                          <span
+                            className={`inline-flex items-center gap-1 text-[9px] font-black uppercase px-1.5 py-0.5 rounded-full border ${getCallOutcomeBadgeClass(callStatus)}`}
+                            title="AI Voice Call Status"
+                          >
+                            <Phone size={8} />
+                            <span>{callStatus.replace(/_/g, ' ')}{callAttempts > 0 ? ` (${callAttempts})` : ''}</span>
+                          </span>
+                        )}
+                      </div>
                       <p className="text-[11px] text-slate-500 truncate mt-0.5">
                         {item.job_title || 'Position Interview'}
                       </p>
@@ -155,6 +173,7 @@ const UpcomingInterviews: React.FC<UpcomingInterviewsProps> = ({ onScheduleClick
                         href={item.meeting_link}
                         target="_blank"
                         rel="noopener noreferrer"
+                        onClick={(e) => e.stopPropagation()}
                         className="px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200/80 rounded-xl text-[11px] font-black flex items-center gap-1 transition-colors"
                         title="Join Virtual Room"
                       >
@@ -163,7 +182,11 @@ const UpcomingInterviews: React.FC<UpcomingInterviewsProps> = ({ onScheduleClick
                       </a>
                     ) : (
                       <button
-                        onClick={() => navigate('/hr/scheduling')}
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          navigate('/hr/scheduling');
+                        }}
                         className="p-1.5 text-slate-400 hover:text-[#D60041] hover:bg-pink-50 rounded-lg transition-colors"
                         title="View Interview in Calendar"
                       >

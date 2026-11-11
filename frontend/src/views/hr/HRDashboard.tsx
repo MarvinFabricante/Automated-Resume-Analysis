@@ -16,17 +16,22 @@ import NewScheduleModal from '../../components/modals/hr/NewScheduleModal';
 
 import {
   useGetDashboardStatsQuery,
+  useGetDashboardTrendsQuery,
   useGetCandidateCountQuery,
   useGetResumeCountQuery,
   useGetJobsQuery,
   useGetApplicationsQuery,
   useGetAllInterviewsQuery
 } from '../../redux/api/apiSlice';
-import { exportToCSV } from '../../utils/exportUtils';
+import {
+  exportDashboardAnalyticsToCSV,
+  exportDashboardPDFWithFallback,
+} from '../../utils/exportUtils';
 
 const HRDashboard: React.FC = () => {
   const navigate = useNavigate();
   const [isScheduleModalOpen, setIsScheduleModalOpen] = useState<boolean>(false);
+  const [isExportingPdf, setIsExportingPdf] = useState<boolean>(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   // RTK Query hooks with real-time automatic polling + WebSocket tag invalidation
@@ -64,6 +69,12 @@ const HRDashboard: React.FC = () => {
     refetchOnFocus: true,
     refetchOnReconnect: true,
   });
+  const { data: trendsData } = useGetDashboardTrendsQuery(undefined, {
+    pollingInterval: 5000,
+    refetchOnFocus: true,
+    refetchOnMountOrArgChange: true,
+    refetchOnReconnect: true,
+  });
 
   const activeJobsCount = jobs.filter((j: any) => j.is_active).length;
   const totalCandidates = candidateCountData?.count || applications.length || 0;
@@ -98,27 +109,29 @@ const HRDashboard: React.FC = () => {
     }
   }, [applications]);
 
-  const handleExportFullReport = () => {
-    if (!applications.length) {
-      alert('No application data available to export.');
-      return;
-    }
-    const reportData = applications.map((app: any) => ({
-      ID: app.id,
-      CandidateName: app.name,
-      PreferredRole: app.preferredJob,
-      Department: app.jobDepartment || 'General',
-      Status: app.status,
-      MatchScore: `${app.matchScore || 0}%`,
-      SkillsScore: `${app.skillsScore || 0}%`,
-      ExperienceScore: `${app.experienceScore || 0}%`,
-      EducationScore: `${app.educationScore || 0}%`,
-      ApplicationDate: app.date ? new Date(app.date).toISOString().split('T')[0] : 'N/A',
-      Location: app.location || 'N/A'
-    }));
+  const buildExportPayload = () => ({
+    applications,
+    appStats,
+    activeJobsCount,
+    totalCandidates,
+    totalResumes,
+    trendsData,
+  });
 
-    exportToCSV(reportData, `Mariwasa_HR_Recruitment_Report_${new Date().toISOString().split('T')[0]}`);
-    showToast(`Exported ${reportData.length} candidate records to CSV`);
+  const handleExportFullReport = () => {
+    const { rowCount } = exportDashboardAnalyticsToCSV(buildExportPayload());
+    showToast(`Exported analytics and ${rowCount} candidate records to CSV`);
+  };
+
+  const handleExportPdfReport = async () => {
+    if (isExportingPdf) return;
+    setIsExportingPdf(true);
+    try {
+      const { rowCount } = await exportDashboardPDFWithFallback(buildExportPayload());
+      showToast(`Exported analytics and ${rowCount} candidate records to PDF`);
+    } finally {
+      setIsExportingPdf(false);
+    }
   };
 
   const userName = localStorage.getItem('fullname') || 'Recruitment Team';
@@ -223,12 +236,27 @@ const HRDashboard: React.FC = () => {
 
                     {/* Export CSV Report */}
                     <button
+                      type="button"
+                      data-testid="btn-export-csv"
                       onClick={handleExportFullReport}
                       className="flex-1 sm:flex-none px-3 sm:px-4 py-2.5 bg-white hover:bg-slate-50 text-slate-700 hover:text-slate-900 border border-slate-200/90 rounded-2xl text-xs font-bold transition-all shadow-2xs flex items-center justify-center gap-1.5 sm:gap-2 group active:scale-95 min-h-[42px] truncate cursor-pointer"
-                      title="Export candidate records to CSV"
+                      title="Export applicant data and analytics to CSV"
                     >
                       <Download size={15} className="text-slate-400 group-hover:text-[#D60041] transition-colors shrink-0" />
                       <span className="truncate">Export CSV</span>
+                    </button>
+
+                    {/* Export PDF Report */}
+                    <button
+                      type="button"
+                      data-testid="btn-export-pdf"
+                      onClick={handleExportPdfReport}
+                      disabled={isExportingPdf}
+                      className="flex-1 sm:flex-none px-3 sm:px-4 py-2.5 bg-white hover:bg-slate-50 disabled:opacity-60 text-slate-700 hover:text-slate-900 border border-slate-200/90 rounded-2xl text-xs font-bold transition-all shadow-2xs flex items-center justify-center gap-1.5 sm:gap-2 group active:scale-95 min-h-[42px] truncate cursor-pointer disabled:cursor-wait"
+                      title="Export applicant data and analytics to PDF"
+                    >
+                      <FileText size={15} className="text-slate-400 group-hover:text-[#D60041] transition-colors shrink-0" />
+                      <span className="truncate">{isExportingPdf ? 'Exporting PDF...' : 'Export PDF'}</span>
                     </button>
                   </div>
                 </div>

@@ -1,5 +1,5 @@
 import pytest
-from datetime import datetime
+from datetime import datetime, timedelta
 from unittest.mock import patch, AsyncMock
 from sqlalchemy import select
 from app.models.user import User
@@ -161,7 +161,7 @@ async def test_interview_booking_places_ai_voice_call_within_10_seconds(client, 
     Priority: H
     """
     import time
-    from datetime import datetime
+    from datetime import datetime, timedelta
     from app.models.user import User
     from app.models.job_description import JobDescription, JobType
     from app.models.job_application import JobApplication
@@ -251,7 +251,7 @@ async def test_interview_twiml_endpoint_includes_name_date_time_location(client,
     Expected Result: Message includes name, date, time, location in voice message
     Priority: H
     """
-    from datetime import datetime
+    from datetime import datetime, timedelta
     from app.models.user import User
     from app.models.job_description import JobDescription, JobType
     from app.models.job_application import JobApplication

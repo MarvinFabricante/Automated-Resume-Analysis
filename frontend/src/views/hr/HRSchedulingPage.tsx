@@ -34,6 +34,10 @@ import {
   useGetHRInterviewersQuery
 } from '../../redux/api/apiSlice';
 import { API_BASE_URL } from '../../services/api';
+import {
+  isInactiveInterviewStatus,
+  isUpcomingInterview,
+} from '../../utils/interviewUtils';
 
 const MONTH_NAMES = [
   'January', 'February', 'March', 'April', 'May', 'June',
@@ -176,7 +180,13 @@ const HRSchedulingPage: React.FC = () => {
   // API queries
   const { data: interviewers = [] } = useGetHRInterviewersQuery();
   const { data: calendarFeed, isLoading, refetch } = useGetCalendarFeedQuery(
-    hrFilter !== 'ALL' ? { hr_id: hrFilter } : undefined
+    hrFilter !== 'ALL' ? { hr_id: hrFilter } : undefined,
+    {
+      pollingInterval: 10000,
+      refetchOnFocus: true,
+      refetchOnMountOrArgChange: true,
+      refetchOnReconnect: true,
+    }
   );
   const { data: googleStatus } = useGetGoogleCalendarStatusQuery();
   const [syncGoogleCalendar, { isLoading: isSyncing }] = useSyncGoogleCalendarMutation();
@@ -442,7 +452,10 @@ const HRSchedulingPage: React.FC = () => {
     }).length;
 
     const completedCount = filteredEvents.filter((ev) => (ev.status || '').toUpperCase() === 'COMPLETED').length;
-    const totalScheduled = filteredEvents.filter((ev) => (ev.status || '').toUpperCase() === 'SCHEDULED' || ev.isGoogleEvent).length;
+    const now = new Date();
+    const totalScheduled = filteredEvents.filter((ev) =>
+      ev.isGoogleEvent ? ev.end >= now : isUpcomingInterview(ev, now)
+    ).length;
 
     return { todayCount, weekCount, completedCount, totalScheduled, totalCount: filteredEvents.length };
   }, [filteredEvents]);
@@ -544,7 +557,9 @@ const HRSchedulingPage: React.FC = () => {
     const list = [...filteredEvents];
 
     if (agendaFilterTab === 'upcoming') {
-      return list.filter((ev) => ev.end >= now).sort((a, b) => a.start.getTime() - b.start.getTime());
+      return list
+        .filter((ev) => ev.end >= now && (statusFilter !== 'ALL' || !isInactiveInterviewStatus(ev.status)))
+        .sort((a, b) => a.start.getTime() - b.start.getTime());
     } else if (agendaFilterTab === 'month') {
       const year = currentDate.getFullYear();
       const month = currentDate.getMonth();
@@ -1577,6 +1592,12 @@ const HRSchedulingPage: React.FC = () => {
                                               {ev.status}
                                             </span>
                                             {getVoiceCallBadge(ev)}
+                                            {(ev.call_attempts ?? 0) > 0 && (
+                                              <span className="inline-flex items-center gap-1 bg-slate-100 text-slate-700 border border-slate-200 text-[9px] font-black px-2 py-0.5 rounded-full uppercase">
+                                                <PhoneForwarded size={9} className="text-[#D60041]" />
+                                                {ev.call_attempts} Call Log{ev.call_attempts === 1 ? '' : 's'}
+                                              </span>
+                                            )}
                                             {readOnly && (
                                               <span className="bg-amber-100 text-amber-800 text-[9px] font-black px-2 py-0.5 rounded-full uppercase inline-flex items-center gap-1">
                                                 <Lock size={9} /> Read-Only ({ev.interviewer_name ? `Assigned to ${ev.interviewer_name}` : 'Other HR'})

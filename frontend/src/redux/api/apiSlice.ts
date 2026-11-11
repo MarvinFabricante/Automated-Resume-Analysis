@@ -331,12 +331,12 @@ export const apiSlice = createApi({
 
     getApplicationInterviews: builder.query<any[], number | string>({
       query: (applicationId) => `/interviews/application/${applicationId}`,
-      providesTags: (_result, _error, id) => [{ type: 'Applications' as const, id }],
+      providesTags: (_result, _error, id) => [{ type: 'Applications' as const, id }, 'Applications', 'Interviews'],
     }),
 
     getCandidateInterviews: builder.query<any[], string>({
-      query: (email) => `/interviews/candidate/${email}`,
-      providesTags: ['Applications'],
+      query: (email) => `/interviews/candidate/${encodeURIComponent(email)}`,
+      providesTags: ['Applications', 'Interviews'],
     }),
 
     // --- AI VOICE NOTIFICATION CALLER (REQ028 - REQ034) ---
@@ -349,7 +349,7 @@ export const apiSlice = createApi({
           method: 'POST',
         };
       },
-      invalidatesTags: ['Interviews', 'CalendarEvents'],
+      invalidatesTags: ['Interviews', 'CalendarEvents', 'Applications'],
     }),
 
     retryInterviewCall: builder.mutation<any, number | string>({
@@ -357,7 +357,7 @@ export const apiSlice = createApi({
         url: `/ai-caller/interview/${interviewId}/retry`,
         method: 'POST',
       }),
-      invalidatesTags: ['Interviews', 'CalendarEvents'],
+      invalidatesTags: ['Interviews', 'CalendarEvents', 'Applications'],
     }),
 
     sendInterviewBackupSMS: builder.mutation<any, number | string>({
@@ -365,7 +365,7 @@ export const apiSlice = createApi({
         url: `/ai-caller/interview/${interviewId}/send-backup-sms`,
         method: 'POST',
       }),
-      invalidatesTags: ['Interviews', 'CalendarEvents'],
+      invalidatesTags: ['Interviews', 'CalendarEvents', 'Applications'],
     }),
 
     simulateVoiceCall: builder.mutation<any, { interviewId: number | string; outcome: string; spoken_phrase?: string; language?: string }>({
@@ -374,12 +374,22 @@ export const apiSlice = createApi({
         method: 'POST',
         body,
       }),
-      invalidatesTags: ['Interviews', 'CalendarEvents'],
+      invalidatesTags: ['Interviews', 'CalendarEvents', 'Applications'],
     }),
 
     getInterviewCallLogs: builder.query<any[], number | string>({
       query: (interviewId) => `/ai-caller/interview/${interviewId}/logs`,
       providesTags: ['Interviews'],
+    }),
+
+    getApplicationCallLogs: builder.query<any[], number | string>({
+      query: (applicationId) => `/ai-caller/application/${applicationId}/logs`,
+      providesTags: ['Interviews', 'Applications'],
+    }),
+
+    getCandidateCallLogs: builder.query<any[], string>({
+      query: (email) => `/ai-caller/candidate/${encodeURIComponent(email)}/logs`,
+      providesTags: ['Interviews', 'Applications'],
     }),
 
 
@@ -719,6 +729,8 @@ export const {
   useSimulateVoiceCallMutation,
   useGetInterviewCallLogsQuery,
   useLazyGetInterviewCallLogsQuery,
+  useGetApplicationCallLogsQuery,
+  useGetCandidateCallLogsQuery,
   useGetPhysicalResumesQuery,
   useGetPhysicalResumeStatsQuery,
   useGetPhysicalResumeByIdQuery,
