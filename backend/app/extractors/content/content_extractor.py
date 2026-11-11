@@ -287,7 +287,167 @@ def _cross_validate(data: dict, sections: dict) -> dict:
     return data
 
 
-def assess_resume_completeness(data: dict, sections: Optional[dict] = None) -> dict:
+def _has_explicit_skill_list(full_text: str, extracted_items: list[dict]) -> bool:
+    """
+    Detect whether the resume contains an explicit skill list or competency
+    statement even if section headers were missing or mis-segmented.
+    """
+    if not full_text or not extracted_items:
+        return False
+
+    if re.search(
+        r'\b(?:proficient\s+in|skilled\s+in|knowledgeable\s+in|expertise\s+in|'
+        r'specializing\s+in|well[\s\-]versed\s+in|tech\s+stack\s*:|'
+        r'(?:technical\s+|core\s+|key\s+)?skills\s*(?:used|include|list)?\s*:)\b',
+        full_text,
+        re.I,
+    ):
+        return True
+
+    raw_mentions = {
+        s["raw_mention"].lower()
+        for s in extracted_items
+        if s.get("raw_mention") and len(s["raw_mention"].strip()) >= 2
+    }
+    if len(raw_mentions) < 3:
+        return False
+
+    _EXP_VERB_START = re.compile(
+        r'^(?:[•\-*▪►✓]\s*)?(?:developed|built|managed|supervised|performed|'
+        r'assisted|handled|conducted|prepared|designed|created|led|worked|'
+        r'maintained|operated|implemented|executed|engineered|monitored)\b',
+        re.I,
+    )
+    for line in full_text.split('\n'):
+        stripped = line.strip()
+        if not stripped or (',' not in stripped and '|' not in stripped and '/' not in stripped):
+            continue
+        if _EXP_VERB_START.match(stripped):
+            continue
+        line_lower = stripped.lower()
+        hits = 0
+        for mention in raw_mentions:
+            if len(mention) <= 2:
+                if re.search(rf'(?<![A-Za-z0-9]){re.escape(mention)}(?![A-Za-z0-9])', line_lower):
+                    hits += 1
+            elif mention in line_lower:
+                hits += 1
+        if hits >= 3:
+            return True
+
+    return False
+
+
+def _supplement_skills_from_section(skills_section_text: str, skills_details: dict, skills_list: list[str]) -> list[str]:
+    """
+    Capture any skills explicitly listed in the SKILLS section that were not
+    already matched by the taxonomy engine (e.g. niche tools or domain terms),
+    without duplicating already-covered canonical skills.
+    """
+    if not skills_section_text or not skills_section_text.strip():
+        return skills_list
+
+    extracted_items = skills_details.get("extracted_skills", []) if isinstance(skills_details, dict) else []
+    covered_terms = set()
+    for item in extracted_items:
+        if item.get("canonical_skill"):
+            covered_terms.add(item["canonical_skill"].lower())
+        if item.get("raw_mention"):
+            covered_terms.add(item["raw_mention"].lower())
+
+    ignore_labels = {
+        "skills", "technical skills", "competencies", "core competencies",
+        "soft skills", "hard skills", "tools", "technologies", "languages",
+        "frameworks", "frameworks & libraries", "databases", "databases & cloud",
+        "tools & testing", "software", "none", "n/a", "na", "not applicable",
+    }
+    category_prefix_re = re.compile(
+        r'^(?:languages|frameworks(?:\s*(?:&|and)\s*libraries)?|'
+        r'databases(?:\s*(?:&|and)\s*cloud)?|tools(?:\s*(?:&|and)\s*testing)?|'
+        r'technologies|software|platforms|cloud|testing|other|others|'
+        r'hard\s+skills|soft\s+skills|technical\s+skills|core\s+skills)\s*:\s*(.+)$',
+        re.I,
+    )
+
+    added_items: list[str] = []
+    existing_lower = {s.lower() for s in skills_list}
+
+    for raw_line in skills_section_text.split('\n'):
+        line = raw_line.strip()
+        if not line:
+            continue
+        m_cat = category_prefix_re.match(line)
+        if m_cat:
+            line = m_cat.group(1).strip()
+
+        # Split on delimiters outside parentheses and on spaced slashes (" / ")
+        parts = re.split(r'(?:[,|•*▪►✓\t;]+(?![^()]*\))|\s+/\s+)', line)
+        for part in parts:
+            item_clean = part.strip(' -•*▪►✓.:')
+            if not item_clean or len(item_clean) < 2 or len(item_clean) > 55:
+                continue
+            if len(item_clean.split()) > 5:
+                continue
+            item_lower = item_clean.lower()
+            if item_lower in ignore_labels or item_lower in existing_lower:
+                continue
+
+            # Skip if already covered by an extracted canonical skill or raw mention
+            is_covered = item_lower in covered_terms
+            if not is_covered:
+                for term in covered_terms:
+                    if len(term) >= 3:
+                        if re.search(rf'(?<![A-Za-z0-9+#.]){re.escape(term)}(?![A-Za-z0-9+#.])', item_lower):
+                            is_covered = True
+                            break
+                        if re.search(rf'(?<![A-Za-z0-9+#.]){re.escape(item_lower)}(?![A-Za-z0-9+#.])', term):
+                            is_covered = True
+                            break
+            if is_covered:
+                continue
+
+            formatted = item_clean.title() if item_clean.islower() else item_clean
+            if formatted.lower() not in existing_lower:
+                existing_lower.add(formatted.lower())
+                skills_list.append(formatted)
+                added_items.append(formatted)
+
+    if added_items and isinstance(skills_details, dict):
+        for sk in added_items:
+            entry = {
+                "canonical_skill": sk,
+                "raw_mention": sk,
+                "skill_type": "Hard Skill",
+                "domain_category": "Listed Skills Section",
+                "source_section": "Skills",
+                "extraction_method": "Gazetteer_Exact",
+                "confidence_score": 0.90,
+            }
+            skills_details.setdefault("extracted_skills", []).append(entry)
+            skills_details.setdefault("skills", []).append({
+                **entry,
+                "skill_name": sk,
+                "category": "Hard Skill",
+            })
+            cat_view = skills_details.setdefault("categorized_view", {})
+            cat_view.setdefault("hard_skills", []).append(sk)
+
+        total = len(skills_details.get("extracted_skills", []))
+        skills_details["total_unique_skills"] = total
+        skills_details["total_skills_count"] = total
+        if isinstance(skills_details.get("skill_summary_by_type"), dict):
+            skills_details["skill_summary_by_type"]["hard_skills_count"] = (
+                skills_details["skill_summary_by_type"].get("hard_skills_count", 0) + len(added_items)
+            )
+        if isinstance(skills_details.get("summary_by_category"), dict):
+            skills_details["summary_by_category"]["hard_skills"] = (
+                skills_details["summary_by_category"].get("hard_skills", 0) + len(added_items)
+            )
+
+    return skills_list
+
+
+def assess_resume_completeness(data: dict, sections: Optional[dict] = None, raw_text: Optional[str] = None) -> dict:
     """
     Evaluates whether the resume contains all essential core sections:
       1. Personal & Contact Information (Candidate Name + Email or Phone)
@@ -396,17 +556,35 @@ def assess_resume_completeness(data: dict, sections: Optional[dict] = None) -> d
     # ── 4. Skills Assessment ──────────────────────────────────────────────────
     skills_list = data.get("skills_list") or []
     skills_str = (data.get("skills") or "").strip()
+    skills_details = data.get("skills_details") or {}
+    skills_section_present = bool(sections and "SKILLS" in sections)
     skills_section = sections.get("SKILLS", "").strip() if sections else ""
+    has_extracted_skills = bool(skills_list or (skills_str and len(skills_str) > 2))
 
-    placeholder_skills = bool(re.search(r'^(?:none|n/?a|not\s+applicable)$', skills_section, re.I))
+    placeholder_skills = bool(re.search(r'^(?:none|n/?a|not\s+applicable)\.?$', skills_section, re.I))
     has_other_headers_for_skills = bool(sections and any(k in sections for k in ("EXPERIENCE", "EDUCATION", "CERTIFICATIONS")))
-    if has_other_headers_for_skills and not skills_section:
+
+    if placeholder_skills:
         has_skills = False
-    else:
-        has_skills = (
-            bool(skills_list or (skills_str and len(skills_str) > 2))
-            and not placeholder_skills
+    elif skills_section:
+        has_skills = has_extracted_skills or len(re.sub(r'[^a-zA-Z0-9]', '', skills_section)) >= 2
+    elif has_other_headers_for_skills:
+        extracted_items = skills_details.get("extracted_skills", []) if isinstance(skills_details, dict) else []
+        from_skills_sec = any(s.get("source_section") == "Skills" for s in extracted_items)
+        non_exp_skills = [
+            s for s in extracted_items
+            if s.get("source_section") in ("Skills", "Summary", "Projects", "Languages", "General")
+        ]
+        full_text_for_check = raw_text or ("\n".join(sections.values()) if sections else "")
+        has_explicit_skill_list = _has_explicit_skill_list(full_text_for_check, extracted_items)
+        has_skills = has_extracted_skills and (
+            skills_section_present
+            or from_skills_sec
+            or len(non_exp_skills) >= 2
+            or has_explicit_skill_list
         )
+    else:
+        has_skills = has_extracted_skills
 
     if not has_skills:
         missing_sections.append("Skills")
@@ -497,20 +675,11 @@ def extract_content(text: str) -> dict:
     experience_str = extract_experience(text)
     years_experience = extract_years_experience(text)
 
-    skills_str = extract_skills(text)
-    skills_list = extract_skills_list(text)
     skills_details = extract_structured_skills(text)
-    if not skills_list and sections.get("SKILLS"):
-        raw_items = []
-        for s_line in sections["SKILLS"].split('\n'):
-            for item in re.split(r'[,|•*▪►✓\t]+', s_line):
-                item_clean = item.strip(' -•*▪►✓.')
-                if item_clean and len(item_clean) >= 2 and item_clean.lower() not in ["skills", "technical skills", "competencies"]:
-                    if item_clean not in raw_items:
-                        raw_items.append(item_clean)
-        if raw_items:
-            skills_list = raw_items
-            skills_str = " | ".join(raw_items)
+    skills_list = [s["canonical_skill"] for s in skills_details.get("extracted_skills", [])]
+    if sections.get("SKILLS"):
+        skills_list = _supplement_skills_from_section(sections["SKILLS"], skills_details, skills_list)
+    skills_str = " | ".join(skills_list[:50]) if skills_list else ""
 
     relevance = extract_relevance(text, years_experience, job_title, skills_str)
 
@@ -577,14 +746,14 @@ def extract_content(text: str) -> dict:
     # Cross-validate using section boundaries
     data = _cross_validate(data, sections)
 
-    # Generate summary from extracted data
-    data["summary"] = _generate_summary(data)
-
     # Post-process for cleanliness and validation
     data = _post_process(data)
 
     # Assess completeness against core resume sections (TC-RES-013 / REQ006)
-    data = assess_resume_completeness(data, sections)
+    data = assess_resume_completeness(data, sections, raw_text=text)
+
+    # Generate summary from validated/finalized extracted data
+    data["summary"] = _generate_summary(data).strip()
 
     return data
 

@@ -386,3 +386,131 @@ CORE SKILLS
     assert details["total_unique_skills"] >= 4
     assert details["skill_summary_by_type"]["hard_skills_count"] >= 2
     assert details["skill_summary_by_type"]["soft_skills_count"] >= 1
+
+
+def test_skills_extraction_known_list_not_flagged_incomplete():
+    """
+    Validates that resumes with a known skill list across inline headers,
+    alternate/numbered headers, Summary declarations, or 2-column layouts
+    capture all listed skills without falsely flagging Skills as missing.
+    """
+    # 1. Inline Skills: with >= 7 words
+    inline_resume = """
+JUAN DELA CRUZ
+juan@gmail.com | 09171234567 | Makati City
+
+WORK EXPERIENCE
+Software Engineer | Tech Corp | 2021 - Present
+- Built enterprise APIs.
+
+EDUCATION
+BS Computer Science | UP Diliman | 2017 - 2021
+
+Skills: Python, FastAPI, React, TypeScript, PostgreSQL, Docker, Git, AWS
+"""
+    res_inline = extract_content(inline_resume)
+    assert res_inline["is_incomplete"] is False
+    assert "Skills" not in res_inline["missing_sections"]
+    assert len(res_inline["skills_list"]) >= 8
+    assert "Python" in res_inline["skills_list"]
+    assert "FastAPI" in res_inline["skills_list"]
+    assert "Docker" in res_inline["skills_list"]
+
+    # 2. Numbered / parenthesized / alternate Skills header
+    alt_header_resume = """
+MARIA SANTOS
+maria@gmail.com | 09181234567 | Pasig City
+
+WORK EXPERIENCE
+Accountant | SGV & Co | 2020 - Present
+- Prepared tax returns and audits.
+
+EDUCATION
+BS Accountancy | University of Santo Tomas | 2016 - 2020
+
+IV. SKILLS & QUALIFICATIONS (TECHNICAL)
+QuickBooks, SAP, Philippine Taxation, Microsoft Excel, Financial Accounting
+"""
+    res_alt = extract_content(alt_header_resume)
+    assert res_alt["is_incomplete"] is False
+    assert "Skills" not in res_alt["missing_sections"]
+    assert "Financial Accounting" in res_alt["skills_list"]
+    assert "Philippine Taxation" in res_alt["skills_list"]
+
+    # 3. Skills declared in Summary ("Proficient in ...") without standalone SKILLS header
+    summary_skills_resume = """
+PEDRO REYES
+pedro@gmail.com | 09191234567 | Quezon City
+
+SUMMARY
+Full stack engineer proficient in Python, FastAPI, React, Docker, PostgreSQL, and Git.
+
+WORK EXPERIENCE
+Developer | Accenture | 2021 - Present
+- Built microservices.
+
+EDUCATION
+BS Information Technology | PUP | 2017 - 2021
+"""
+    res_summary = extract_content(summary_skills_resume)
+    assert res_summary["is_incomplete"] is False
+    assert "Skills" not in res_summary["missing_sections"]
+    assert len(res_summary["skills_list"]) >= 6
+
+    # 4. Placeholder Skills ("N/A") must still flag Skills as missing and not leak into summary
+    placeholder_resume = """
+DIANA REYES
+diana.reyes@gmail.com | 0919-333-4444 | Quezon City
+
+EDUCATION
+BS Civil Engineering | PUP | 2018 - 2022
+
+WORK EXPERIENCE
+Site Engineer | Megawide | 2022 - Present
+- Supervised concrete pouring.
+
+SKILLS
+N/A
+"""
+    res_na = extract_content(placeholder_resume)
+    assert res_na["is_incomplete"] is True
+    assert "Skills" in res_na["missing_sections"]
+    assert res_na["skills_list"] == []
+    assert res_na["skills"] == ""
+    assert "Core competencies include" not in res_na["summary"]
+
+
+def test_skills_section_captures_custom_and_taxonomy_skills():
+    """
+    Ensures all listed skills in the SKILLS section (including custom/domain
+    skills alongside taxonomy-matched skills) are captured in skills and skills_list.
+    """
+    r1_text = """
+JUAN DELA CRUZ
+juan.delacruz@gmail.com | 09171234567 | Laguna
+
+WORK EXPERIENCE
+QA Lead | Mariwasa Ceramics | 2020 - Present
+- Supervised ceramic tile inspection and quality adherence.
+
+EDUCATION
+BS Materials Engineering | Mapua University | 2016 - 2020
+
+SKILLS
+Quality Control, ISO 9001, Six Sigma, Tile Inspection, Ceramic Glazing, Kiln Operation, Minitab
+"""
+    res = extract_content(r1_text)
+    assert res["is_incomplete"] is False
+    assert res["missing_sections"] == []
+    captured = res["skills_list"]
+    for expected in [
+        "ISO 9001 Quality Standards",
+        "Six Sigma Quality Management",
+        "Quality Control",
+        "Tile Inspection",
+        "Ceramic Glazing",
+        "Kiln Operation",
+        "Minitab",
+    ]:
+        assert expected in captured, f"Expected '{expected}' in captured skills: {captured}"
+        assert expected in res["skills"]

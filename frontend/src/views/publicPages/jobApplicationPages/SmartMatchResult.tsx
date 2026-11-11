@@ -23,11 +23,15 @@ const SmartMatchResult: React.FC = () => {
   const location = useLocation();
   const { matches, extractedData, fileName } = location.state || {};
   const [expandedJobId, setExpandedJobId] = useState<string | number | null>(null);
+  const hasMountedRef = React.useRef(false);
 
   useEffect(() => {
     window.scrollTo(0, 0);
-    if (!matches) {
-      navigate('/smart-upload');
+    if (!hasMountedRef.current) {
+      hasMountedRef.current = true;
+      if (!matches) {
+        navigate('/smart-upload');
+      }
     }
   }, [matches, navigate]);
 
@@ -98,10 +102,23 @@ const SmartMatchResult: React.FC = () => {
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-12 items-stretch">
           {sortedMatches.length > 0 ? (
-            sortedMatches.map((match: any) => (
+            sortedMatches.map((match: any) => {
+              const effectiveJobId = match.job_id || match.id;
+              return (
               <div 
-                key={match.job_id}
-                onClick={() => navigate(`/preview-and-verify/${match.job_id}`, { state: { job: { job_id: match.job_id, title: match.job_title, department: match.department, location: match.location, job_type: match.job_type }, extractedData, matchData: match, fileName } })}
+                key={effectiveJobId}
+                onClick={() => navigate(`/preview-and-verify/${effectiveJobId}`, {
+                  state: {
+                    job: { job_id: effectiveJobId, title: match.job_title, department: match.department, location: match.location, job_type: match.job_type },
+                    extractedData,
+                    matchData: match,
+                    matches,
+                    fileName,
+                    file: location.state?.file,
+                    resumeUrl: location.state?.resumeUrl || extractedData?.file_url || extractedData?.resume_url,
+                    rawText: location.state?.rawText || extractedData?.raw_text
+                  }
+                })}
                 className="bg-white p-8 rounded-[32px] border border-slate-100 shadow-sm hover:shadow-xl hover:shadow-pink-100/50 transition-all duration-300 group flex flex-col relative overflow-hidden cursor-pointer active:scale-[0.99]"
               >
                 <div className="absolute top-0 right-0 w-32 h-32 bg-red-50 rounded-bl-[100px] opacity-0 group-hover:opacity-50 transition-opacity duration-300"></div>
@@ -247,7 +264,18 @@ const SmartMatchResult: React.FC = () => {
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
-                      navigate(`/job-details/${match.job_id}`, { state: { job: { job_id: match.job_id, title: match.job_title, department: match.department, location: match.location, job_type: match.job_type } } });
+                      navigate(`/job-details/${effectiveJobId}`, {
+                        state: {
+                          job: { job_id: effectiveJobId, title: match.job_title, department: match.department, location: match.location, job_type: match.job_type },
+                          extractedData,
+                          matchData: match,
+                          matches,
+                          fileName,
+                          file: location.state?.file,
+                          resumeUrl: location.state?.resumeUrl || extractedData?.file_url || extractedData?.resume_url,
+                          rawText: location.state?.rawText || extractedData?.raw_text
+                        }
+                      });
                     }}
                     className="flex-1 py-4 rounded-full border border-slate-200 font-bold text-sm text-slate-700 hover:bg-slate-50 hover:border-slate-300 transition-all active:scale-95"
                   >
@@ -256,7 +284,18 @@ const SmartMatchResult: React.FC = () => {
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
-                      navigate(`/preview-and-verify/${match.job_id}`, { state: { job: { job_id: match.job_id, title: match.job_title, department: match.department, location: match.location, job_type: match.job_type }, extractedData, matchData: match, fileName } });
+                      navigate(`/preview-and-verify/${effectiveJobId}`, {
+                        state: {
+                          job: { job_id: effectiveJobId, title: match.job_title, department: match.department, location: match.location, job_type: match.job_type },
+                          extractedData,
+                          matchData: match,
+                          matches,
+                          fileName,
+                          file: location.state?.file,
+                          resumeUrl: location.state?.resumeUrl || extractedData?.file_url || extractedData?.resume_url,
+                          rawText: location.state?.rawText || extractedData?.raw_text
+                        }
+                      });
                     }}
                     className="flex-[2] py-4 rounded-full bg-slate-900 text-white font-bold text-sm flex items-center justify-center gap-2 hover:bg-[#D60041] transition-colors shadow-lg active:scale-95 group/btn"
                   >
@@ -265,7 +304,8 @@ const SmartMatchResult: React.FC = () => {
                   </button>
                 </div>
               </div>
-            ))
+            );
+            })
           ) : (
             <div className="col-span-full py-24 text-center bg-white rounded-[32px] border border-slate-100 shadow-sm">
               <h3 className="text-slate-900 font-black text-xl mb-2">No strong matches found</h3>

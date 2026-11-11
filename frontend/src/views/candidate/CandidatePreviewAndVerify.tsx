@@ -20,19 +20,22 @@ const CandidatePreviewAndVerify: React.FC = () => {
   const { state } = useLocation();
   const navigate = useNavigate();
   const { jobId } = useParams<{ jobId: string }>();
+  const effectiveJobId = (jobId && jobId !== 'smart' && jobId !== 'undefined')
+    ? jobId
+    : (state?.job?.job_id || state?.job?.id || (typeof window !== 'undefined' ? localStorage.getItem('draft_application_job_id') : null));
 
   const [submitApplication, { isLoading: isSubmitting }] = useSubmitApplicationMutation();
   const [showSuccessModal, setShowSuccessModal] = useState<boolean>(false);
 
   useEffect(() => {
-    if (jobId) {
+    if (effectiveJobId) {
       localStorage.setItem('draft_application_step', '3');
       if (state?.job?.title) {
         localStorage.setItem('draft_application_job_title', state.job.title);
       }
-      localStorage.setItem('draft_application_job_id', jobId);
+      localStorage.setItem('draft_application_job_id', String(effectiveJobId));
     }
-  }, [jobId, state]);
+  }, [effectiveJobId, state]);
 
   const data = state?.extractedData;
   const matchData = state?.matchData;
@@ -148,28 +151,29 @@ const CandidatePreviewAndVerify: React.FC = () => {
   };
 
   const handleBackToEdit = () => {
-    navigate(jobId ? `/candidate/update-profile/${jobId}` : '/candidate/update-profile', {
+    navigate(effectiveJobId ? `/candidate/update-profile/${effectiveJobId}` : '/candidate/update-profile', {
       state: {
         ...extractedData,
         formData: state?.formData,
         fileName: state?.fileName,
         job: state?.job,
         matchData: state?.matchData,
+        matches: state?.matches,
         resumeUrl: extractedData.resumeUrl
       }
     });
   };
 
   const handleSubmitFinalApplication = async () => {
-    if (!jobId || jobId === 'smart') {
+    if (!effectiveJobId || effectiveJobId === 'smart') {
       navigate('/candidate/smart-matches', {
-        state: { matches: matchData, extractedData: data, fileName: state?.fileName }
+        state: { matches: state?.matches || matchData, extractedData: data, fileName: state?.fileName }
       });
       return;
     }
 
     const payload = {
-      job_id: jobId,
+      job_id: effectiveJobId,
       candidate_name: extractedData.personal.name,
       candidate_email: extractedData.personal.email,
       phone: extractedData.personal.phone,
@@ -553,9 +557,9 @@ const CandidatePreviewAndVerify: React.FC = () => {
                 <span>Preview Resume</span>
               </button>
 
-              {!jobId ? (
+              {!effectiveJobId ? (
                 <button
-                  onClick={() => navigate('/candidate/smart-matches', { state: { matches: activeMatch, extractedData: activeData, fileName: currentFileName } })}
+                  onClick={() => navigate('/candidate/smart-matches', { state: { matches: state?.matches || activeMatch, extractedData: activeData, fileName: currentFileName } })}
                   className="flex-[2] bg-[#D60041] hover:bg-slate-900 text-white py-5 rounded-[24px] font-bold flex items-center justify-center gap-3 transition-all shadow-xl shadow-pink-100 active:scale-95 cursor-pointer"
                 >
                   <Target size={22} />

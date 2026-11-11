@@ -71,11 +71,12 @@ const CandidateSmartMatchResult: React.FC = () => {
 
   const handleApplyFromModal = (targetJobId: string | number) => {
     setIsDetailsOpen(false);
-    const matchedJob = matches?.find((m: any) => String(m.job_id) === String(targetJobId));
-    navigate(`/candidate/preview-profile/${targetJobId}`, {
+    const matchedJob = matches?.find((m: any) => String(m.job_id || m.id) === String(targetJobId));
+    const effectiveJobId = targetJobId || matchedJob?.job_id || matchedJob?.id;
+    navigate(`/candidate/preview-profile/${effectiveJobId}`, {
       state: {
         job: {
-          job_id: targetJobId,
+          job_id: effectiveJobId,
           title: matchedJob?.job_title || selectedJobForModal?.title,
           department: matchedJob?.department || selectedJobForModal?.department,
           location: matchedJob?.location || selectedJobForModal?.location,
@@ -83,15 +84,21 @@ const CandidateSmartMatchResult: React.FC = () => {
         },
         extractedData,
         matchData: matchedJob,
+        matches,
         fileName
       }
     });
   };
 
+  const hasMountedRef = React.useRef(false);
+
   useEffect(() => {
     window.scrollTo(0, 0);
-    if (!matches) {
-      navigate('/candidate/smart-upload');
+    if (!hasMountedRef.current) {
+      hasMountedRef.current = true;
+      if (!matches) {
+        navigate('/candidate/smart-upload');
+      }
     }
   }, [matches, navigate]);
 
@@ -164,10 +171,12 @@ const CandidateSmartMatchResult: React.FC = () => {
 
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-8 mb-12 items-stretch animate-in fade-in slide-in-from-bottom-6 duration-700 delay-200">
             {sortedMatches.length > 0 ? (
-              sortedMatches.map((match: any) => (
+              sortedMatches.map((match: any) => {
+                const effectiveJobId = match.job_id || match.id;
+                return (
                 <div 
-                  key={match.job_id}
-                  onClick={() => navigate(`/candidate/preview-profile/${match.job_id}`, { state: { job: { job_id: match.job_id, title: match.job_title, department: match.department, location: match.location, job_type: match.job_type }, extractedData, matchData: match, fileName } })}
+                  key={effectiveJobId}
+                  onClick={() => navigate(`/candidate/preview-profile/${effectiveJobId}`, { state: { job: { job_id: effectiveJobId, title: match.job_title, department: match.department, location: match.location, job_type: match.job_type }, extractedData, matchData: match, matches, fileName } })}
                   className="bg-white p-8 rounded-[40px] border border-slate-100 shadow-xl shadow-slate-200/40 hover:shadow-2xl hover:shadow-pink-100/50 transition-all duration-500 group flex flex-col relative overflow-hidden cursor-pointer active:scale-[0.99]"
                 >
                   <div className="absolute top-0 right-0 w-48 h-48 bg-[#D60041]/5 rounded-bl-[100px] opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
@@ -340,7 +349,7 @@ const CandidateSmartMatchResult: React.FC = () => {
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
-                        navigate(`/candidate/preview-profile/${match.job_id}`, { state: { job: { job_id: match.job_id, title: match.job_title, department: match.department, location: match.location, job_type: match.job_type }, extractedData, matchData: match, fileName } });
+                        navigate(`/candidate/preview-profile/${effectiveJobId}`, { state: { job: { job_id: effectiveJobId, title: match.job_title, department: match.department, location: match.location, job_type: match.job_type }, extractedData, matchData: match, matches, fileName } });
                       }}
                       className="flex-[2] py-4 rounded-2xl bg-slate-900 text-white font-bold text-sm flex items-center justify-center gap-2 hover:bg-[#D60041] transition-all shadow-xl shadow-slate-200 hover:shadow-pink-200 active:scale-95 group/btn"
                     >
@@ -349,7 +358,8 @@ const CandidateSmartMatchResult: React.FC = () => {
                     </button>
                   </div>
                 </div>
-              ))
+              );
+              })
             ) : (
               <div className="col-span-full py-24 text-center bg-white rounded-[40px] border border-slate-100 shadow-xl shadow-slate-200/40">
                 <div className="w-20 h-20 bg-slate-50 rounded-3xl flex items-center justify-center mx-auto mb-6 text-slate-300">

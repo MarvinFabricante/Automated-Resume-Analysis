@@ -133,6 +133,23 @@ const JobDetailsPage: React.FC = () => {
     return "Mid Level";
   };
 
+  const handleBack = () => {
+    if (location.state?.matches) {
+      navigate('/smart-matches', {
+        state: {
+          matches: location.state.matches,
+          extractedData,
+          fileName,
+          file: location.state.file,
+          resumeUrl: location.state.resumeUrl,
+          rawText: location.state.rawText,
+        },
+      });
+      return;
+    }
+    navigate('/careerspage');
+  };
+
   return (
     <div className="min-h-screen bg-[#F8FAFC] text-slate-900 antialiased font-['Inter',_sans-serif]">
       <Helmet>
@@ -157,7 +174,7 @@ const JobDetailsPage: React.FC = () => {
         ) : job ? (
           <div className="space-y-8">
             <button
-              onClick={() => navigate(-1)}
+              onClick={handleBack}
               className="flex items-center text-slate-500 hover:text-[#D10043] transition-all mb-4 font-semibold text-sm group w-fit"
             >
               <ArrowLeft size={18} className="mr-2 group-hover:-translate-x-1 transition-transform" />
@@ -381,7 +398,25 @@ const JobDetailsPage: React.FC = () => {
                   
                   {matchData ? (
                     <button
-                      onClick={() => navigate(`/candidate/preview-profile/${job.job_id || job.id}`, { state: { job, extractedData, matchData, fileName } })}
+                      onClick={() => {
+                        const role = typeof localStorage !== 'undefined' ? localStorage.getItem('role') : null;
+                        const targetId = job.job_id || job.id;
+                        const targetState = {
+                          job,
+                          extractedData,
+                          matchData,
+                          matches: location.state?.matches,
+                          fileName,
+                          file: location.state?.file,
+                          resumeUrl: location.state?.resumeUrl || extractedData?.file_url || extractedData?.resume_url,
+                          rawText: location.state?.rawText || extractedData?.raw_text
+                        };
+                        if (role === 'CANDIDATE') {
+                          navigate(`/candidate/preview-profile/${targetId}`, { state: targetState });
+                        } else {
+                          navigate(`/preview-and-verify/${targetId}`, { state: targetState });
+                        }
+                      }}
                       className="w-full bg-[#D60041] text-white py-4 sm:py-5 rounded-xl sm:rounded-[24px] font-bold text-xs sm:text-sm hover:bg-white hover:text-slate-900 transition-all shadow-xl flex items-center justify-center gap-2 sm:gap-3 active:scale-95 relative z-10"
                     >
                       Start Application

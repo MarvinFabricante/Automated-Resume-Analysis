@@ -42,9 +42,42 @@ _SECTION_DEFINITIONS: dict[str, list[str]] = {
         "TECHNICAL SKILLS & COMPETENCIES", "TECHNICAL SKILLS AND COMPETENCIES",
         "PROFESSIONAL SKILLS & COMPETENCIES", "COMPETENCIES & SKILLS",
         "COMPETENCIES AND SKILLS", "SKILLS & ABILITIES", "SKILLS AND ABILITIES",
+        "SKILLS / ABILITIES", "SKILLS/ABILITIES",
         "SKILLS & PROFICIENCIES", "SKILLS AND PROFICIENCIES",
         "SKILLS & CAPABILITIES", "SKILLS AND CAPABILITIES",
-        "CORE SKILLS", "FUNCTIONAL SKILLS", "SPECIAL SKILLS",
+        "SKILLS & TRAITS", "SKILLS AND TRAITS",
+        "SKILLS & QUALITIES", "SKILLS AND QUALITIES",
+        "SKILLS & QUALIFICATIONS", "SKILLS AND QUALIFICATIONS",
+        "QUALIFICATIONS & SKILLS", "QUALIFICATIONS AND SKILLS",
+        "KEY QUALIFICATIONS", "SUMMARY OF QUALIFICATIONS",
+        "CORE QUALIFICATIONS", "TECHNICAL QUALIFICATIONS",
+        "SKILLS & TOOLS", "SKILLS AND TOOLS", "TOOLS & SKILLS", "TOOLS AND SKILLS",
+        "SOFTWARE & TOOLS", "TOOLS & SOFTWARE",
+        "SKILLS & LANGUAGES", "SKILLS AND LANGUAGES",
+        "SKILLS & KNOWLEDGE", "SKILLS AND KNOWLEDGE",
+        "SKILLS & EXPERTISE", "SKILLS AND EXPERTISE",
+        "SKILLS SUMMARY", "SUMMARY OF SKILLS", "SKILLS OVERVIEW", "SKILL SUMMARY",
+        "SKILLS PROFILE", "SKILLS MATRIX", "SKILL LIST", "LIST OF SKILLS",
+        "COMPUTER SKILLS", "IT SKILLS", "DIGITAL SKILLS", "SOFTWARE SKILLS",
+        "OFFICE SKILLS", "LANGUAGE & COMPUTER SKILLS", "TECHNICAL & COMPUTER SKILLS",
+        "TECHNICAL & ENGINEERING SKILLS", "TECHNICAL AND ENGINEERING SKILLS",
+        "ENGINEERING SKILLS", "PERSONAL SKILLS", "INTERPERSONAL SKILLS",
+        "WORKPLACE SKILLS", "JOB SKILLS", "CAREER SKILLS", "INDUSTRY SKILLS",
+        "TRANSFERABLE SKILLS", "APPLICABLE SKILLS", "ADDITIONAL SKILLS",
+        "OTHER SKILLS", "PRIMARY SKILLS", "MAIN SKILLS", "GENERAL SKILLS",
+        "PRACTICAL SKILLS", "LABORATORY SKILLS", "CLINICAL SKILLS",
+        "TEACHING SKILLS", "ACCOUNTING SKILLS",
+        "HARD & SOFT SKILLS", "HARD AND SOFT SKILLS",
+        "SOFT & HARD SKILLS", "SOFT AND HARD SKILLS",
+        "TECHNICAL & SOFT SKILLS", "TECHNICAL AND SOFT SKILLS",
+        "CAPABILITIES", "CORE CAPABILITIES", "TECHNICAL CAPABILITIES",
+        "PROFESSIONAL COMPETENCIES", "KEY COMPETENCIES", "RELEVANT COMPETENCIES",
+        "COMPETENCIES & TOOLS", "AREAS OF COMPETENCE", "FIELDS OF EXPERTISE",
+        "KEY STRENGTHS", "STRENGTHS", "SKILLSET", "MY SKILLS", "KNOWN SKILLS",
+        "TECHNICAL KNOWLEDGE", "TECHNICAL BACKGROUND", "TECHNICAL SUMMARY",
+        "TECH TOOLS", "LANGUAGES & TECHNOLOGIES", "LANGUAGES & FRAMEWORKS",
+        "FRAMEWORKS & LIBRARIES", "DATABASES & CLOUD", "TOOLS & TESTING",
+        "SKILLS USED", "CORE SKILLS", "FUNCTIONAL SKILLS", "SPECIAL SKILLS",
     ],
     "EXPERIENCE": [
         "EXPERIENCE", "WORK HISTORY", "EMPLOYMENT", "PROFESSIONAL BACKGROUND",
@@ -145,31 +178,24 @@ for label, headers in _SECTION_DEFINITIONS.items():
 _DECORATION_RE = re.compile(r'^[\s\-–—=_*#•►◆■□▪▸▹:│┃]+|[\s\-–—=_*#•►◆■□▪▸▹:│┃]+$')
 
 
+_LEADING_NUM_RE = re.compile(r'^(?:\(?(?:\d{1,2}|[ivxlc]{1,4})\)?[\.\)\-:]\s+|\(\d{1,2}\)\s+)', re.I)
+_TRAILING_PAREN_RE = re.compile(r'\s*\([^)]*\)\s*$')
+
+
 def _normalise_header(line: str) -> str:
-    """Strip decorations and normalise a candidate header line to UPPER with normalized spaces."""
+    """Strip decorations, numbering, and normalise a candidate header line to UPPER with normalized spaces."""
     clean = _DECORATION_RE.sub('', line).strip()
+    if (clean.startswith('(') and clean.endswith(')')) or (clean.startswith('[') and clean.endswith(']')):
+        clean = clean[1:-1].strip()
+    clean = _LEADING_NUM_RE.sub('', clean).strip()
+    clean = _DECORATION_RE.sub('', clean).strip()
     clean = clean.rstrip(':').strip()
     clean = re.sub(r'\s+', ' ', clean)
     return clean.upper()
 
 
-def detect_section_label(line: str) -> Optional[str]:
-    """
-    If *line* looks like a section header, return the canonical label
-    (e.g. ``"SKILLS"``). Otherwise return ``None``.
-
-    A header must be short (< 7 words) and match one of the known patterns.
-    """
-    stripped = line.strip()
-    if not stripped:
-        return None
-
-    # Headers are short
-    word_count = len(stripped.split())
-    if word_count >= 7:
-        return None
-
-    normalised = _normalise_header(stripped)
+def _match_header_text(normalised: str, allow_fuzzy: bool = True) -> Optional[str]:
+    """Match an already-normalised uppercase header candidate to a canonical label."""
     if not normalised:
         return None
 
@@ -177,14 +203,96 @@ def detect_section_label(line: str) -> Optional[str]:
     if res:
         return res
 
+    without_paren = _TRAILING_PAREN_RE.sub('', normalised).strip()
+    if without_paren and without_paren != normalised:
+        res = _HEADER_MAP.get(without_paren)
+        if res:
+            return res
+
+    if not allow_fuzzy or ':' in normalised or '|' in normalised:
+        return None
+
     # Flexible matching for compound headers
-    if re.search(r'\bSKILLS?\b', normalised) and re.search(r'\b(?:COMPETENC|PROFICIENC|ABILIT|TECH|KNOWLEDGE|EXPERTISE)\w*\b', normalised):
+    if re.search(r'\bSKILLS?\b', normalised) and re.search(
+        r'\b(?:COMPETENC|PROFICIENC|ABILIT|TECH|KNOWLEDGE|EXPERTISE|TRAIT|QUALIFICAT|CAPABILIT|STRENGTH|TOOL|INVENTORY|SUMMARY|OVERVIEW|HIGHLIGHT|MATRIX|SET)\w*\b',
+        normalised
+    ):
         return "SKILLS"
     if re.search(r'\b(?:WORK|EMPLOYMENT|PROFESSIONAL|CAREER)\b', normalised) and re.search(r'\b(?:EXPERIENCE|HISTORY|BACKGROUND|RECORD)\b', normalised):
         return "EXPERIENCE"
-    if re.search(r'\b(?:EDUCATION|EDUCATIONAL|ACADEMIC|SCHOLASTIC)\b', normalised):
+    if re.search(r'\b(?:EDUCATION|EDUCATIONAL|ACADEMIC|SCHOLASTIC)\b', normalised) and not re.search(
+        r'\b(?:PHYSICAL|SPECIAL|CONTINUING|DEPARTMENT|MINISTRY|BOARD)\s+EDUCATION\b', normalised
+    ):
         return "EDUCATION"
 
+    return None
+
+
+def detect_section_label(line: str) -> Optional[str]:
+    """
+    If *line* looks like a section header, return the canonical label
+    (e.g. ``"SKILLS"``). Otherwise return ``None``.
+
+    Supports standalone headers, inline colon headers (``"Skills: a, b, c"``),
+    and pipe-delimited table headers (``"Skills | a, b, c"``).
+    """
+    stripped = line.strip()
+    if not stripped:
+        return None
+
+    # 1. Exact header map check first (even if line has punctuation)
+    word_count = len(stripped.split())
+    if word_count <= 9:
+        normalised = _normalise_header(stripped)
+        exact = _match_header_text(normalised, allow_fuzzy=False)
+        if exact:
+            return exact
+
+    # 2. Inline colon header (e.g. "Skills: Python, FastAPI, React, TypeScript, Docker, Git")
+    colon_idx = stripped.find(':')
+    if colon_idx > 0:
+        prefix = stripped[:colon_idx].strip()
+        if prefix and len(prefix.split()) <= 5:
+            norm_prefix = _normalise_header(prefix)
+            if norm_prefix and norm_prefix != "COMMUNICATION":
+                res = _match_header_text(norm_prefix)
+                if res:
+                    return res
+
+    # 3. Inline pipe table row (e.g. "Skills | Python, React, Docker, PostgreSQL")
+    pipe_idx = stripped.find('|')
+    if pipe_idx > 0:
+        left = stripped[:pipe_idx].strip()
+        right = stripped[pipe_idx + 1:].strip()
+        if left and right and len(left.split()) <= 4:
+            norm_left = _normalise_header(left)
+            if norm_left and norm_left != "COMMUNICATION":
+                res = _match_header_text(norm_left)
+                if res:
+                    return res
+
+    # 4. Full-line flexible compound header match (only when no inline delimiter)
+    if word_count <= 9:
+        normalised = _normalise_header(stripped)
+        res = _match_header_text(normalised, allow_fuzzy=True)
+        if res:
+            return res
+
+    return None
+
+
+def _split_dual_column_header(line: str) -> Optional[tuple[str, str]]:
+    """Detect two distinct section headers merged on a single line in 2-column PDFs."""
+    words = line.strip().split()
+    if not (2 <= len(words) <= 6):
+        return None
+    for idx in range(1, len(words)):
+        left = _normalise_header(" ".join(words[:idx]))
+        right = _normalise_header(" ".join(words[idx:]))
+        left_label = _HEADER_MAP.get(left)
+        right_label = _HEADER_MAP.get(right)
+        if left_label and right_label and left_label != right_label:
+            return left_label, right_label
     return None
 
 
@@ -226,10 +334,44 @@ def split_into_sections(text: str) -> dict[str, str]:
             continue
 
         label = detect_section_label(cleaned_line)
+        if not label:
+            dual = _split_dual_column_header(cleaned_line)
+            if dual:
+                left_label, right_label = dual
+                if left_label not in sections:
+                    sections[left_label] = []
+                current_label = right_label
+                if current_label not in sections:
+                    sections[current_label] = []
+                continue
+
         if label:
+            # Extract inline content after ':' or '|' if full line itself wasn't a bare header
+            inline_after = ""
+            full_norm = _normalise_header(cleaned_line)
+            is_bare_header = bool(_match_header_text(full_norm, allow_fuzzy=False))
+            if not is_bare_header:
+                colon_idx = cleaned_line.find(':')
+                pipe_idx = cleaned_line.find('|')
+                split_idx = colon_idx if (colon_idx > 0 and (pipe_idx < 0 or colon_idx < pipe_idx)) else pipe_idx
+                if split_idx > 0:
+                    inline_after = cleaned_line[split_idx + 1:].strip()
+                    is_colon_split = (split_idx == colon_idx)
+                    # Inside PROJECTS or EXPERIENCE, inline colon lines ("Technologies: ...", "Skills: ...")
+                    # should enrich SKILLS without hijacking subsequent project/job lines
+                    if (
+                        is_colon_split
+                        and inline_after
+                        and label == "SKILLS"
+                        and current_label in ("PROJECTS", "EXPERIENCE")
+                    ):
+                        sections.setdefault("SKILLS", []).append(inline_after)
+                        sections[current_label].append(line)
+                        continue
+
             # Check if previous section has trailing lines that actually belong to this new section
             # e.g. "STI Colleges Ortigas-Cainta\nBachelor..." preceding EDUCATION header
-            if label == "EDUCATION" and sections.get(current_label) and current_label != "EXPERIENCE":
+            if label == "EDUCATION" and sections.get(current_label) and current_label not in ("EXPERIENCE", "SKILLS"):
                 prev_lines = [l for l in sections[current_label] if l.strip()]
                 if prev_lines:
                     tail = prev_lines[-4:]
@@ -252,7 +394,7 @@ def split_into_sections(text: str) -> dict[str, str]:
                             sections[label] = []
                         sections[label].extend(moved)
 
-            elif label == "EXPERIENCE" and sections.get(current_label) and current_label != "EDUCATION":
+            elif label == "EXPERIENCE" and sections.get(current_label) and current_label not in ("EDUCATION", "SKILLS"):
                 prev_lines = [l for l in sections[current_label] if l.strip()]
                 if prev_lines:
                     tail = prev_lines[-4:]
@@ -279,12 +421,15 @@ def split_into_sections(text: str) -> dict[str, str]:
             if current_label not in sections:
                 sections[current_label] = []
 
-            # If the header line contains inline content after a colon, keep it
-            colon_idx = cleaned_line.find(':')
-            if colon_idx >= 0:
-                after = cleaned_line[colon_idx + 1:].strip()
-                if after:
-                    sections[current_label].append(after)
+            # Keep inline content after ':' or '|' if present
+            if inline_after:
+                sections[current_label].append(inline_after)
+            else:
+                colon_idx = cleaned_line.find(':')
+                if colon_idx >= 0:
+                    after = cleaned_line[colon_idx + 1:].strip()
+                    if after:
+                        sections[current_label].append(after)
         else:
             # Check if this line is an education graduation date right at top of SKILLS
             if current_label == "SKILLS" and not [l for l in sections["SKILLS"] if l.strip()]:
