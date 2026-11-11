@@ -698,62 +698,112 @@ def calculate_skills_match(resume_skills: str, job_skills: str, fuzzy_threshold:
     return {"score": score, "matched": matched, "missing": missing}
 
 
-def _extract_years_from_text(text: str) -> int:
-    """Extract years of experience mentioned in a job description."""
+def _extract_years_from_text(text: str, explicit_req: bool = False) -> int:
+    """Extract minimum required years of experience from a job requirement or description."""
     if not text:
         return 0
-    
-    patterns = [
-        r'(\d+)\+?\s*(?:years?|yrs?)\s*(?:of\s+)?(?:experience|exp)',
-        r'(?:minimum|at least|min)\s*(?:of\s+)?(\d+)\s*(?:years?|yrs?)',
-        r'(\d+)\+?\s*(?:years?|yrs?)\s*(?:relevant|professional|work)',
-    ]
-    
+
+    raw = text.strip()
+    if explicit_req and re.fullmatch(r'\d+', raw):
+        val = int(raw)
+        return val if 0 < val <= 50 else 0
+
     max_years = 0
+    # Parse ranges like "3-5 years" or "2 to 4 yrs" by taking the minimum bound ("3", "2")
+    range_pattern = r'\b(\d+)\s*(?:-|–|—|to)\s*\d+\s*\+?\s*(?:years?|yrs?)\b'
+    cleaned = raw
+    for m in re.finditer(range_pattern, raw, re.IGNORECASE):
+        try:
+            val = int(m.group(1))
+            if 0 < val <= 50:
+                max_years = max(max_years, val)
+        except ValueError:
+            continue
+    cleaned = re.sub(range_pattern, ' ', cleaned, flags=re.IGNORECASE)
+
+    patterns = [
+        r'(?:minimum|at least|min)\s*(?:of\s+)?(\d+)\s*\+?\s*(?:years?|yrs?)',
+        r'(\d+)\+?\s*(?:years?|yrs?)\s*(?:of\s+)?(?:experience|exp|relevant|professional|work|in\s+)',
+    ]
+    if explicit_req:
+        patterns.append(r'\b(\d+)\s*\+?\s*(?:years?|yrs?)\b')
+
     for pattern in patterns:
-        matches = re.findall(pattern, text, re.IGNORECASE)
-        for m in matches:
+        for m in re.findall(pattern, cleaned, re.IGNORECASE):
             try:
-                max_years = max(max_years, int(m))
+                val = int(m)
+                if 0 < val <= 50:
+                    max_years = max(max_years, val)
             except ValueError:
                 continue
-    
+
     return max_years
 
 
 def calculate_experience_match(resume_years: int, job_description: str, experience_req: str = None) -> dict:
     """
     Compare resume years of experience against job requirements.
-    Returns a dict with score and details.
+    Returns a dict with score, gap flags, and details.
     """
-    required_years = 0
-    if experience_req:
-        # Check if experience_req is a pure number or text with number
-        try:
-            required_years = int(re.sub(r'[^\d]', '', experience_req))
-        except ValueError:
-            required_years = _extract_years_from_text(experience_req)
-            
+    required_years = _extract_years_from_text(experience_req, explicit_req=True) if experience_req else 0
     if required_years == 0:
-        required_years = _extract_years_from_text(job_description)
-        
+        required_years = _extract_years_from_text(job_description, explicit_req=False)
+
     resume_years = resume_years or 0
-    
+
+    def _yr_label(val: int | float) -> str:
+        num = int(val) if float(val).is_integer() else val
+        return f"{num} yr{'s' if num != 1 else ''}"
+
     if required_years == 0:
         # No explicit requirement — give full marks if candidate has any experience
         score = 1.0 if resume_years > 0 else 0.5
         reason = "No specific experience requirement found in job description." if resume_years > 0 else "No specific experience requirement, but no experience provided."
-        return {"score": score, "required_years": 0, "candidate_years": resume_years, "reason": reason}
-    
+        return {
+            "score": score,
+            "required_years": 0,
+            "candidate_years": resume_years,
+            "below_minimum": False,
+            "gap_years": 0,
+            "reason": reason,
+        }
+
     if resume_years <= 0:
-        return {"score": 0.2, "required_years": required_years, "candidate_years": 0, "reason": f"Required {required_years} years, but no experience was extracted from resume."}
-    
+        return {
+            "score": 0.2,
+            "required_years": required_years,
+            "candidate_years": 0,
+            "below_minimum": True,
+            "gap_years": required_years,
+            "reason": (
+                f"Gap reported: experience below minimum — required {_yr_label(required_years)}, "
+                f"but no experience duration was extracted from resume."
+            ),
+        }
+
     if resume_years >= required_years:
-        return {"score": 1.0, "required_years": required_years, "candidate_years": resume_years, "reason": f"Your {resume_years} years of experience meets or exceeds the required {required_years} years."}
-    
-    # Proportional score
+        return {
+            "score": 1.0,
+            "required_years": required_years,
+            "candidate_years": resume_years,
+            "below_minimum": False,
+            "gap_years": 0,
+            "reason": f"Your {resume_years} years of experience meets or exceeds the required {required_years} years.",
+        }
+
     score = round(resume_years / required_years, 2)
-    return {"score": score, "required_years": required_years, "candidate_years": resume_years, "reason": f"You have {resume_years} years of experience, meeting {int(score*100)}% of the {required_years}-year requirement."}
+    gap_years = max(0, required_years - resume_years)
+    return {
+        "score": score,
+        "required_years": required_years,
+        "candidate_years": resume_years,
+        "below_minimum": True,
+        "gap_years": gap_years,
+        "reason": (
+            f"Gap reported: experience below minimum — {_yr_label(resume_years)} vs "
+            f"{_yr_label(required_years)} required ({int(score * 100)}% of minimum; {_yr_label(gap_years)} short)."
+        ),
+    }
 
 
 def _extract_education_requirement(text: str) -> str:
@@ -948,11 +998,17 @@ def _generate_nlp_strengths(skills_result: dict, experience_result: dict, educat
 def _generate_nlp_weaknesses(skills_result: dict, experience_result: dict, education_result: dict, relevance_result: dict, certs_result: dict) -> list[str]:
     """Generate weaknesses list from NLP analysis results."""
     weaknesses = []
+    req_years = experience_result.get("required_years", 0) or 0
+    cand_years = experience_result.get("candidate_years", 0) or 0
+    if req_years > 0 and (experience_result.get("below_minimum") or cand_years < req_years):
+        gap = max(0, req_years - cand_years)
+        weaknesses.append(
+            f"Gap reported: experience below minimum ({cand_years} yr{'s' if cand_years != 1 else ''} "
+            f"vs {req_years} yr{'s' if req_years != 1 else ''} required; {gap} yr{'s' if gap != 1 else ''} short)."
+        )
     if skills_result["missing"] and len(skills_result["missing"]) > 0:
         missing_sample = ", ".join([s.title() for s in skills_result["missing"][:4]])
         weaknesses.append(f"Missing critical skills: {missing_sample}.")
-    if experience_result["score"] < 0.5 and experience_result.get("required_years", 0) > 0:
-        weaknesses.append(f"Experience gap: {experience_result.get('candidate_years', 0)} of {experience_result.get('required_years', 0)} required years.")
     irr_count = relevance_result.get("irrelevant_count", 0)
     total = relevance_result.get("total_entries", 0)
     if irr_count > 0 and irr_count == total:
@@ -1222,6 +1278,12 @@ def calculate_match_score(resume_data: dict, job, use_ai: bool = False, matching
             experience_result["score"] * 0.25 +
             relevance_score * 0.75
         )
+        if experience_result.get("below_minimum"):
+            max_below_min_score = round(
+                experience_result["score"] * 0.65 + min(relevance_score, experience_result["score"]) * 0.35,
+                4,
+            )
+            combined_exp_score = min(combined_exp_score, max_below_min_score)
 
     # Education matching
     resume_education = resume_data.get("education", "")
@@ -1320,6 +1382,8 @@ def calculate_match_score(resume_data: dict, job, use_ai: bool = False, matching
                 f"None of the {total_exp} work experience(s) are relevant to this position. "
                 f"Experience score reflects zero qualifying entries."
             )
+            if experience_result.get("below_minimum"):
+                experience_reason_strict += f" {experience_result['reason']}"
         elif irr_count > 0:
             experience_reason_strict = (
                 f"{rel_count} of {total_exp} experience(s) are relevant. "
@@ -1396,6 +1460,23 @@ def calculate_match_score(resume_data: dict, job, use_ai: bool = False, matching
         relevance_result=relevance_result,
     )
 
+    req_yrs_gap = experience_result.get("required_years", 0) or 0
+    cand_yrs_gap = experience_result.get("candidate_years", 0) or 0
+    below_min_exp = bool(experience_result.get("below_minimum", req_yrs_gap > 0 and cand_yrs_gap < req_yrs_gap))
+    gap_years_val = int(experience_result.get("gap_years", max(0, req_yrs_gap - cand_yrs_gap)) or 0) if below_min_exp else 0
+    if below_min_exp:
+        experience_gaps_text = (
+            f"Gap reported: experience below minimum — Required: {req_yrs_gap} yrs | "
+            f"Candidate: {cand_yrs_gap} yr{'s' if cand_yrs_gap != 1 else ''} "
+            f"({gap_years_val} yr{'s' if gap_years_val != 1 else ''} short)"
+        )
+        requirement_gaps = [experience_gaps_text]
+        if experience_gaps_text not in ai_summary:
+            ai_summary = f"{ai_summary} {experience_gaps_text}."
+    else:
+        experience_gaps_text = None
+        requirement_gaps = []
+
     return {
         "job_id": job.get("job_id") if isinstance(job, dict) else getattr(job, "job_id", None),
         "job_title": job.get("job_title", "Unknown Job") if isinstance(job, dict) else getattr(job, "job_title", "Unknown Job"),
@@ -1432,7 +1513,10 @@ def calculate_match_score(resume_data: dict, job, use_ai: bool = False, matching
         "location_reason": location_result.get("reason", ""),
         # ── Experience ──
         "relevant_experience": relevant_experience,
-        "experience_gaps": f"Required: {experience_result.get('required_years', 0)} yrs | Candidate: {experience_result.get('candidate_years', 0)} yrs",
+        "experience_gaps": experience_gaps_text,
+        "experience_below_minimum": below_min_exp,
+        "experience_gap_years": gap_years_val,
+        "requirement_gaps": requirement_gaps,
         # ── Education / Certifications ──
         "required_degree": education_result.get("required_education", "Not specified"),
         "candidate_degree": education_result.get("candidate_education", "Not specified"),
@@ -1499,6 +1583,13 @@ def nlp_analyze_match(resume_data: dict, job_data: dict, matching_config: Option
         "matched_skills": result["matched_skills"],
         "missing_skills": result["missing_skills"],
         "transferable_skills": result["transferable_skills"],
+        "skills_reason": result.get("skills_reason"),
+        "experience_reason": result.get("experience_reason"),
+        "education_reason": result.get("education_reason"),
+        "experience_gaps": result.get("experience_gaps"),
+        "experience_below_minimum": result.get("experience_below_minimum", False),
+        "experience_gap_years": result.get("experience_gap_years", 0),
+        "requirement_gaps": result.get("requirement_gaps", []),
         "relevance_level": result["relevance_level"],
         "match_level": result["match_level"],
         "score_explanation": result["score_explanation"],

@@ -15,6 +15,7 @@ import Sidebar from '../../components/layout/Sidebar';
 import ApplicationProgressBar from '../../components/common/ApplicationProgressBar';
 import ApplicationSuccessModal from '../../components/modals/shared/ApplicationSuccessModal';
 import ClarificationQuestionsPanel from '../../components/common/ClarificationQuestionsPanel';
+import ExperienceGapAlert from '../../components/common/ExperienceGapAlert';
 import { useJobClarifications } from '../../hooks/useJobClarifications';
 import {
   ClarificationQuestion,
@@ -325,6 +326,17 @@ const CandidateProfileForm: React.FC = () => {
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-6 sm:space-y-8">
+
+          <ExperienceGapAlert
+            matchData={matchData}
+            job={activeJob}
+            yearsExperience={resolveClarifiedYears(
+              clarificationQuestions,
+              clarificationAnswers,
+              location.state?.extractedData?.years_experience,
+              formData.relevance
+            )}
+          />
 
           <ClarificationQuestionsPanel
             questions={clarificationQuestions}

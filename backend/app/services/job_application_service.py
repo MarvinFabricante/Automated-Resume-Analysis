@@ -9,6 +9,90 @@ from app.repositories.job_application_repository import JobApplicationRepository
 logger = logging.getLogger(__name__)
 
 
+def _resolve_application_years(
+    explicit_years=None,
+    total_months=0,
+    work_experiences=None,
+    relevance: str = "",
+    relevant_experience: str = "",
+) -> int:
+    if explicit_years is not None:
+        try:
+            return max(0, int(explicit_years))
+        except (TypeError, ValueError):
+            pass
+    if total_months:
+        try:
+            if int(total_months) > 0:
+                return max(1, round(int(total_months) / 12.0))
+        except (TypeError, ValueError):
+            pass
+    if isinstance(work_experiences, list) and work_experiences:
+        summed_months = sum(
+            int(we.get("duration_months") or 0)
+            for we in work_experiences
+            if isinstance(we, dict)
+        )
+        if summed_months > 0:
+            return max(1, round(summed_months / 12.0))
+    try:
+        import re
+        combined = f"{relevance or ''} | {relevant_experience or ''}"
+        matches = re.findall(r"(\d+)\+?\s*(?:years?|yrs?)", combined, re.IGNORECASE)
+        if matches:
+            return max(int(match) for match in matches)
+    except Exception:
+        pass
+    return 0
+
+
+def _apply_experience_gap_evaluation(data: dict, job_desc) -> None:
+    """Ensure minimum experience gaps are computed and flagged on submitted applications."""
+    explicit_years = data.pop("years_experience", None)
+    cand_years = _resolve_application_years(
+        explicit_years=explicit_years,
+        total_months=data.get("total_experience_months") or 0,
+        work_experiences=data.get("work_experiences"),
+        relevance=data.get("relevance") or "",
+        relevant_experience=data.get("relevant_experience") or "",
+    )
+    if cand_years > 0 and not data.get("total_experience_months"):
+        data["total_experience_months"] = cand_years * 12
+
+    if not job_desc:
+        return
+
+    from app.services.job_matching_service import calculate_experience_match
+
+    job_context = f"{getattr(job_desc, 'description', '') or ''} {getattr(job_desc, 'skills_requirements', '') or ''}"
+    exp_res = calculate_experience_match(
+        cand_years,
+        job_context,
+        getattr(job_desc, "experience_requirements", None),
+    )
+    req_yrs = exp_res.get("required_years", 0) or 0
+    if exp_res.get("below_minimum") and req_yrs > 0:
+        gap_yrs = exp_res.get("gap_years", max(0, req_yrs - cand_years))
+        gap_msg = (
+            f"Gap reported: experience below minimum — Required: {req_yrs} yrs | "
+            f"Candidate: {cand_years} yr{'s' if cand_years != 1 else ''} "
+            f"({gap_yrs} yr{'s' if gap_yrs != 1 else ''} short)"
+        )
+        data["experience_gaps"] = gap_msg
+        if not data.get("experience_reason") or "below minimum" not in str(data.get("experience_reason")).lower():
+            data["experience_reason"] = exp_res["reason"]
+
+        weaknesses = list(data.get("weaknesses") or [])
+        short_note = (
+            f"Gap reported: experience below minimum ({cand_years} yr{'s' if cand_years != 1 else ''} "
+            f"vs {req_yrs} yr{'s' if req_yrs != 1 else ''} required)."
+        )
+        if not any("below minimum" in str(w).lower() for w in weaknesses):
+            data["weaknesses"] = [short_note] + weaknesses
+    elif data.get("experience_gaps") == "":
+        data["experience_gaps"] = None
+
+
 def _resume_data_from_application(app: JobApplication) -> dict:
     skills = app.skills or []
     if isinstance(skills, list):
@@ -33,17 +117,13 @@ def _resume_data_from_application(app: JobApplication) -> dict:
 
     experience_text = " | ".join(part for part in exp_parts if part)
 
-    years_experience = 0
-    if getattr(app, "total_experience_months", 0):
-        years_experience = max(1, round(app.total_experience_months / 12.0))
-    else:
-        try:
-            import re
-            matches = re.findall(r"(\d+)\+?\s*(?:years?|yrs?)", app.relevance or "", re.IGNORECASE)
-            if matches:
-                years_experience = max(int(match) for match in matches)
-        except Exception:
-            years_experience = 0
+    years_experience = _resolve_application_years(
+        explicit_years=getattr(app, "years_experience", None),
+        total_months=getattr(app, "total_experience_months", 0) or 0,
+        work_experiences=getattr(app, "work_experiences", None),
+        relevance=app.relevance or "",
+        relevant_experience=app.relevant_experience or "",
+    )
 
     return {
         "id": app.id,
@@ -244,6 +324,13 @@ async def create_job_application(
     existing_app = await JobApplicationRepository.get_by_job_and_email(
         db, db_job_id, application_in.candidate_email
     )
+    job_desc = None
+    try:
+        from app.repositories.job_description_repository import JobDescriptionRepository
+        job_desc = await JobDescriptionRepository.get_by_id(db, db_job_id)
+    except Exception:
+        job_desc = None
+
     if existing_app:
         policy = (duplicate_policy or "block").lower().strip()
         if policy == "block":
@@ -258,6 +345,7 @@ async def create_job_application(
             data = application_in.model_dump()
             if 'job_id' in data:
                 del data['job_id']
+            _apply_experience_gap_evaluation(data, job_desc)
             for k, v in data.items():
                 if v is not None:
                     setattr(existing_app, k, v)
@@ -283,6 +371,8 @@ async def create_job_application(
     if 'job_id' in data:
         del data['job_id']
 
+    _apply_experience_gap_evaluation(data, job_desc)
+
     # Create the application via repository
     new_application = await JobApplicationRepository.create(db, {
         "job_id": db_job_id,
@@ -292,20 +382,12 @@ async def create_job_application(
     # Trigger notifications
     try:
         # Resolve the exact job title of the position applied for
-        applied_job_title = None
-        try:
-            app_dict = getattr(new_application, "__dict__", {})
-            if "job" in app_dict and app_dict["job"] and getattr(app_dict["job"], "job_title", None):
-                applied_job_title = app_dict["job"].job_title
-        except Exception:
-            pass
-
+        applied_job_title = getattr(job_desc, "job_title", None) if job_desc else None
         if not applied_job_title:
-            from app.repositories.job_description_repository import JobDescriptionRepository
             try:
-                job_desc = await JobDescriptionRepository.get_by_id(db, db_job_id)
-                if job_desc and getattr(job_desc, "job_title", None):
-                    applied_job_title = job_desc.job_title
+                app_dict = getattr(new_application, "__dict__", {})
+                if "job" in app_dict and app_dict["job"] and getattr(app_dict["job"], "job_title", None):
+                    applied_job_title = app_dict["job"].job_title
             except Exception:
                 pass
 

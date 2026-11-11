@@ -22,6 +22,7 @@ import Footer from '../../../components/layout/Footer';
 import RecruitmentTermsModal from '../../../components/modals/shared/RecruitmentTermsModal';
 import ResumePreviewModal from '../../../components/modals/shared/ResumePreviewModal';
 import ApplicationProgressBar from '../../../components/common/ApplicationProgressBar';
+import ExperienceGapAlert from '../../../components/common/ExperienceGapAlert';
 import { Job } from '../../../types';
 
 
@@ -543,11 +544,23 @@ const ApplyForJobPage: React.FC = () => {
                                 <span className="text-[9px] font-black uppercase tracking-widest opacity-80">{item.label}</span>
                               </div>
                               <p className="text-base font-black uppercase tracking-wider">
-                                {item.score >= 70 ? 'High' : item.score >= 40 ? 'Medium' : 'Basic'}
+                                {item.label === 'Experience' && matchData.experience_below_minimum
+                                  ? 'Below Min'
+                                  : item.score >= 70
+                                  ? 'High'
+                                  : item.score >= 40
+                                  ? 'Medium'
+                                  : 'Basic'}
                               </p>
                             </div>
                           ))}
                         </div>
+
+                        <ExperienceGapAlert
+                          matchData={matchData}
+                          job={job}
+                          yearsExperience={extractedData?.years_experience}
+                        />
 
                         {/* Matched Skills Preview */}
                         {matchData.matched_skills && matchData.matched_skills.length > 0 && (

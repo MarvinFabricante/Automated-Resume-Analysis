@@ -311,3 +311,7 @@ Some experience in factory work. Willing to learn and hardworking.
         for q in questions2
     )
     assert len(questions2) >= 2
+
+
+def test_explicit_single_year_experience_label():
+    assert extract_years_experience("Experience: 1 yr\nProduction Operator at Plant A") == 1

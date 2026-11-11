@@ -1181,6 +1181,7 @@ def extract_years_experience(text: str) -> int:
         return 0
 
     explicit_patterns = [
+        r'(?:experience|tenure)\s*[:\-–]\s*(\d+)\+?\s*(?:years?|yrs?)',
         r'(\d+)\+?\s*(?:years?|yrs?)\s+(?:of\s+)?(?:experience|exp|work|expertise)',
         r'(?:over|more\s+than|at\s+least)\s+(\d+)\s*(?:years?|yrs?)',
         r'(\d+)\+?\s*(?:years?|yrs?)\s+(?:in\s+(?:the\s+)?(?:industry|field|practice|IT|tech|software))',

@@ -36,6 +36,7 @@ import Sidebar from '../../components/layout/Sidebar';
 import RecruitmentTermsModal from '../../components/modals/shared/RecruitmentTermsModal';
 import ResumePreviewModal from '../../components/modals/shared/ResumePreviewModal';
 import ApplicationProgressBar from '../../components/common/ApplicationProgressBar';
+import ExperienceGapAlert from '../../components/common/ExperienceGapAlert';
 
 
 const CandidateSmartUpload: React.FC = () => {
@@ -668,7 +669,7 @@ const CandidateSmartUpload: React.FC = () => {
                                   {Math.round(matchData.experience_score || 0)}%
                                 </span>
                                 <span className="text-[10px] font-black uppercase tracking-widest text-slate-500 mt-0.5">
-                                  Experience Fit
+                                  {matchData.experience_below_minimum ? 'Experience (Below Min)' : 'Experience Fit'}
                                 </span>
                               </div>
 
@@ -683,6 +684,12 @@ const CandidateSmartUpload: React.FC = () => {
                               </div>
                             </div>
                           </div>
+
+                          <ExperienceGapAlert
+                            matchData={matchData}
+                            job={job}
+                            yearsExperience={extractedData?.years_experience}
+                          />
 
                           {/* AI Summary */}
                           {matchData.ai_summary && (

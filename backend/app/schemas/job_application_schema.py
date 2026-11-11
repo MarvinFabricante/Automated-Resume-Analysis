@@ -35,6 +35,7 @@ class JobApplicationBase(BaseModel):
     missing_skills: Optional[List[str]] = None
     relevant_experience: Optional[str] = None
     experience_gaps: Optional[str] = None
+    years_experience: Optional[int] = None
     work_experiences: Optional[List[Dict[str, Any]]] = None
     total_experience_months: Optional[int] = None
     education_entries: Optional[List[Dict[str, Any]]] = None

@@ -484,3 +484,87 @@ export function resolveClarifiedYears(
   }
   return 0;
 }
+
+export interface ExperienceGapStatus {
+  belowMinimum: boolean;
+  requiredYears: number;
+  candidateYears: number;
+  gapYears: number;
+  message: string;
+}
+
+export function parseRequiredYearsFromJob(job?: any): number {
+  const reqText = String(
+    job?.experience_requirements || job?.description || ''
+  ).trim();
+  if (!reqText) return 0;
+
+  if (/^\d+$/.test(reqText)) {
+    const val = Number(reqText);
+    return val > 0 && val <= 50 ? val : 0;
+  }
+
+  const rangeMatch = reqText.match(
+    /\b(\d+)\s*(?:-|–|—|to)\s*\d+\s*\+?\s*(?:years?|yrs?)\b/i
+  );
+  if (rangeMatch) {
+    const val = Number(rangeMatch[1]);
+    if (val > 0 && val <= 50) return val;
+  }
+
+  const explicitMatch =
+    reqText.match(/(?:minimum|at\s+least|min)\s*(?:of\s+)?(\d+)\s*\+?\s*(?:years?|yrs?)/i) ||
+    reqText.match(/\b(\d+)\s*\+?\s*(?:years?|yrs?)\b/i);
+  if (explicitMatch) {
+    const val = Number(explicitMatch[1]);
+    if (val > 0 && val <= 50) return val;
+  }
+  return 0;
+}
+
+export function getExperienceGapStatus(
+  matchData?: any,
+  job?: any,
+  candidateYearsOverride?: number | string | null
+): ExperienceGapStatus | null {
+  const reqFromJob = parseRequiredYearsFromJob(job);
+  const gapStr = String(matchData?.experience_gaps || '').trim();
+  const parsedGap = gapStr.match(/Required:\s*(\d+)\s*yrs?\s*\|\s*Candidate:\s*(\d+)/i);
+
+  const requiredYears = parsedGap ? Number(parsedGap[1]) : reqFromJob;
+  const candidateYears =
+    candidateYearsOverride !== undefined && candidateYearsOverride !== null && candidateYearsOverride !== ''
+      ? Math.max(0, Number(candidateYearsOverride) || 0)
+      : parsedGap
+      ? Number(parsedGap[2])
+      : 0;
+
+  const flaggedBelow =
+    Boolean(matchData?.experience_below_minimum) ||
+    /below minimum/i.test(gapStr) ||
+    /below minimum/i.test(String(matchData?.experience_reason || '')) ||
+    (requiredYears > 0 && candidateYears < requiredYears);
+
+  if (!flaggedBelow || (requiredYears <= 0 && !matchData?.experience_below_minimum)) {
+    return null;
+  }
+
+  const effectiveReq = requiredYears > 0 ? requiredYears : 1;
+  const gapYears =
+    Number(matchData?.experience_gap_years) > 0
+      ? Number(matchData.experience_gap_years)
+      : Math.max(0, effectiveReq - candidateYears);
+
+  const candLabel = `${candidateYears} yr${candidateYears !== 1 ? 's' : ''}`;
+  const reqLabel = `${effectiveReq} yr${effectiveReq !== 1 ? 's' : ''}`;
+  const shortLabel = `${gapYears} yr${gapYears !== 1 ? 's' : ''}`;
+  const defaultMsg = `Gap reported: experience below minimum — Required: ${reqLabel} | Candidate: ${candLabel} (${shortLabel} short).`;
+
+  return {
+    belowMinimum: true,
+    requiredYears: effectiveReq,
+    candidateYears,
+    gapYears,
+    message: gapStr && /below minimum/i.test(gapStr) ? gapStr : defaultMsg,
+  };
+}
