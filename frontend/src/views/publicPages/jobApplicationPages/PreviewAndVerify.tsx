@@ -37,6 +37,9 @@ const PreviewAndVerifyPage: React.FC = () => {
   const { state } = useLocation();
   const navigate = useNavigate();
   const { jobId } = useParams<{ jobId: string }>();
+  const effectiveJobId = (jobId && jobId !== 'smart' && jobId !== 'undefined')
+    ? jobId
+    : (state?.job?.job_id || state?.job?.id || null);
 
   const data = state?.extractedData;
   const matchData = state?.matchData;
@@ -185,7 +188,7 @@ const PreviewAndVerifyPage: React.FC = () => {
   };
 
   const handleBackToEdit = () => {
-    navigate(`/applicationform/${jobId}`, {
+    navigate(effectiveJobId ? `/applicationform/${effectiveJobId}` : `/applicationform/smart`, {
       state: {
         ...extractedData,
         formData: state?.formData,
@@ -201,6 +204,7 @@ const PreviewAndVerifyPage: React.FC = () => {
         job: state?.job,
         fileName: state?.fileName,
         matchData: state?.matchData,
+        matches: state?.matches || smartMatches,
         matchScore: state?.matchScore,
         profile_image_url: extractedData.profile_image_url
       }
@@ -208,10 +212,10 @@ const PreviewAndVerifyPage: React.FC = () => {
   };
 
   const handleFinalSubmit = async () => {
-    if (jobId === 'smart') {
+    if (!effectiveJobId || effectiveJobId === 'smart') {
       navigate('/smart-matches', {
         state: {
-          matches: smartMatches,
+          matches: smartMatches || state?.matches,
           extractedData: data,
           fileName: state?.fileName
         }
@@ -219,12 +223,10 @@ const PreviewAndVerifyPage: React.FC = () => {
       return;
     }
 
-    if (!jobId) return;
-
     setIsSubmitting(true);
     try {
       const payload = {
-        job_id: jobId,
+        job_id: effectiveJobId,
         candidate_name: extractedData.personal.name,
         candidate_email: extractedData.personal.email,
         phone: extractedData.personal.phone,
@@ -247,6 +249,7 @@ const PreviewAndVerifyPage: React.FC = () => {
         education_score: matchData?.education_score || 0,
         certifications_score: matchData?.certifications_score || 0,
         profile_image_url: extractedData.profile_image_url || null,
+        resume_url: currentResumeUrl || state?.resumeUrl || data?.file_url || null,
         skills_reason: matchData?.skills_reason || "",
         experience_reason: matchData?.experience_reason || "",
         education_reason: matchData?.education_reason || "",
@@ -265,7 +268,7 @@ const PreviewAndVerifyPage: React.FC = () => {
       };
 
       await candidateService.submitApplication(payload);
-      navigate(`/submissionsuccess/${jobId}`, {
+      navigate(`/submissionsuccess/${effectiveJobId}`, {
         state: {
           jobTitle: state?.job?.title || state?.jobTitle || "Position",
           fileName: state?.fileName,
@@ -608,10 +611,10 @@ const PreviewAndVerifyPage: React.FC = () => {
               <span>Preview Resume</span>
             </button>
 
-            {jobId === 'smart' ? (
+            {(!effectiveJobId || effectiveJobId === 'smart') ? (
               <button
                 disabled={isLoadingSmartMatches || !smartMatches}
-                onClick={() => navigate(`/smart-matches`, { state: { matches: smartMatches, extractedData: activeData, fileName: currentFileName } })}
+                onClick={() => navigate(`/smart-matches`, { state: { matches: smartMatches || state?.matches, extractedData: activeData, fileName: currentFileName } })}
                 className={`flex-[2] py-5 rounded-[24px] font-bold flex items-center justify-center gap-3 transition-all shadow-xl active:scale-95 cursor-pointer ${
                   isLoadingSmartMatches || !smartMatches
                     ? "bg-slate-200 text-slate-400 cursor-not-allowed shadow-none"

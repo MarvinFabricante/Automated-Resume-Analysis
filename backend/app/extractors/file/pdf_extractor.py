@@ -90,6 +90,13 @@ def extract_text_from_pdf(file_input: Union[str, bytes, io.BytesIO]) -> str:
                 p = t.find(c)
                 if 0 <= p < exp_pos:
                     penalty += 50
+        try:
+            from app.extractors.content.section_parser import split_into_sections
+            secs = split_into_sections(t)
+            if "SKILLS" in secs and not secs["SKILLS"].strip():
+                penalty += 50
+        except Exception:
+            pass
         return penalty
 
     p_fitz = _inversion_penalty(fitz_text)

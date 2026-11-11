@@ -335,7 +335,13 @@ const ApplyForJobPage: React.FC = () => {
       <main className="max-w-7xl mx-auto px-6 py-12">
         {/* Reversal of action: Back to Job Details */}
         <button
-          onClick={() => navigate(job?.job_id ? `/job-details/${job.job_id}` : '/careerspage')}
+          onClick={() => {
+            const targetJobId = job?.job_id || job?.id || jobId;
+            navigate(targetJobId ? `/job-details/${targetJobId}` : '/careerspage', {
+              state: job ? { job } : undefined,
+              replace: true,
+            });
+          }}
           className="flex items-center text-slate-500 hover:text-[#D10043] transition-all mb-6 font-semibold text-sm group"
         >
           <ArrowLeft size={18} className="mr-2 group-hover:-translate-x-1 transition-transform" />

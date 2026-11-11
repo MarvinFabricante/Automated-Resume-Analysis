@@ -201,7 +201,7 @@ const ApplicationForm: React.FC = () => {
       });
 
     } else {
-      navigate(-1);
+      navigate('/smart-upload');
     }
   };
 
@@ -215,16 +215,29 @@ const ApplicationForm: React.FC = () => {
 
     if (jobId === 'smart') {
       const updatedExtractedData = {
+        ...location.state?.extractedData,
         fullname: formData.fullName,
         email: formData.email,
         phone: formData.phone,
         location: formData.location,
+        job_title: formData.jobTitle,
+        company: formData.company,
         experience: formData.jobTitle + (formData.company ? " | " + formData.company : ""),
         years_experience: formData.relevance ? (formData.relevance.match(/\d+/) ? parseInt(formData.relevance.match(/\d+/)![0], 10) : 0) : 0,
         relevance: formData.relevance,
         highest_degree: formData.degree,
+        degree: formData.degree,
         education: formData.college,
+        college: formData.college,
         skills: formData.skills.join(' | '),
+        skills_list: formData.skills,
+        work_experiences: location.state?.extractedData?.work_experiences || [],
+        education_entries: location.state?.extractedData?.education_entries || [],
+        certifications: location.state?.extractedData?.certifications || [],
+        summary: location.state?.extractedData?.summary || "",
+        file_url: location.state?.resumeUrl || location.state?.extractedData?.file_url || null,
+        resume_url: location.state?.resumeUrl || location.state?.extractedData?.file_url || null,
+        raw_text: location.state?.rawText || location.state?.extractedData?.raw_text || null,
         profile_image_url: location.state?.profile_image_url || null
       };
 
@@ -244,7 +257,10 @@ const ApplicationForm: React.FC = () => {
             state: {
               matches,
               extractedData: updatedExtractedData,
-              fileName: location.state?.fileName
+              fileName: location.state?.fileName,
+              file: location.state?.file,
+              resumeUrl: location.state?.resumeUrl || updatedExtractedData.file_url,
+              rawText: location.state?.rawText || updatedExtractedData.raw_text
             }
           });
         } catch (err) {
