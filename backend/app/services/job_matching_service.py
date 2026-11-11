@@ -58,6 +58,19 @@ DEGREE_HIERARCHY = {
     "PHD": 6
 }
 
+_SKILL_SYNONYMS = {
+    "ml": "machine learning",
+    "ai/ml": "machine learning",
+    "qc": "quality control",
+    "qa/qc": "quality control",
+    "qa": "quality assurance",
+    "js": "javascript",
+    "ts": "typescript",
+    "k8s": "kubernetes",
+    "nlp": "natural language processing",
+}
+
+
 def _normalize_skill(s: str) -> str:
     """Normalize a skill string for comparison."""
     if not s:
@@ -65,8 +78,8 @@ def _normalize_skill(s: str) -> str:
     s = s.lower().strip()
     # Remove common suffixes/versions to improve matching (e.g., React.js -> react)
     s = re.sub(r'\.js$', '', s)
-    s = re.sub(r'[^a-z0-9+#/ ]', '', s)
-    return s.strip()
+    s = re.sub(r'[^a-z0-9+#/ ]', '', s).strip()
+    return _SKILL_SYNONYMS.get(s, s)
 
 
 def _tokenize_skills(skills_str: str) -> list[str]:

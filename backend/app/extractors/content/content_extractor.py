@@ -214,13 +214,28 @@ def _cross_validate(data: dict, sections: dict) -> dict:
             if lines:
                 data["experience"] = " | ".join(lines[:5])
 
-    # If certifications empty but training section exists, scan it
-    if not data.get("certifications") and sections.get("TRAINING"):
-        training = sections["TRAINING"].strip()
-        if training and len(training) > 5:
-            lines = [l.strip() for l in training.split('\n') if l.strip() and len(l.strip()) > 3]
-            if lines:
-                data["certifications"] = " | ".join(lines[:10])
+    # If certifications empty but certifications/training/awards section exists, scan it
+    if not data.get("certifications"):
+        cert_sec = (
+            sections.get("CERTIFICATIONS")
+            or sections.get("TRAINING")
+            or sections.get("AWARDS")
+            or ""
+        ).strip()
+        if cert_sec and len(cert_sec) > 3:
+            fallback_items = [
+                re.sub(r'^(?:[•\-–—▪►✓*]|\(?\d{1,2}[\.\)])\s*', '', l.strip()).strip()
+                for l in cert_sec.split('\n')
+            ]
+            fallback_items = [
+                item for item in fallback_items
+                if len(item) >= 3
+                and not re.match(r'^(?:none|n/?a|not\s+applicable|(?:19|20)\d{2})$', item, re.I)
+            ]
+            if fallback_items:
+                data["certifications"] = " | ".join(fallback_items[:25])
+                if not data.get("certifications_list"):
+                    data["certifications_list"] = fallback_items[:25]
 
     # If email is empty, re-scan PERSONAL/CONTACT section
     if not data.get("email") and sections.get("PERSONAL"):

@@ -34,6 +34,13 @@ CANONICAL_REPLACEMENTS = {
     "fast-api": "fastapi",
     "rest-api": "api",
     "restful": "api",
+    "ml": "machine learning",
+    "ai/ml": "machine learning",
+    "qc": "quality control",
+    "qa/qc": "quality control",
+    "nlp": "natural language processing",
+    "js": "javascript",
+    "ts": "typescript",
 }
 
 

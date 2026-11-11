@@ -302,3 +302,76 @@ def test_backward_compatible_string_output():
     str_out = extract_certifications(text)
     assert isinstance(str_out, str)
     assert "PRC Registered Civil Engineer" in str_out
+
+
+def test_certification_and_achievements_two_certificates():
+    """
+    Validates that resumes under 'Certifications and Achievements' / 'Certificates'
+    or inline/comma/pipe formats capture all listed certificates with their names
+    without misclassifying 'Certificate in/of ...' bullets as section headers.
+    """
+    from app.extractors.content.content_extractor import extract_content
+
+    resume_bullets = """
+JUAN DELA CRUZ
+juan@gmail.com | 09171234567
+
+WORK EXPERIENCE
+Production Operator | Luzon Plastics Inc. | 2020 - 2024 (4 years)
+
+EDUCATION
+BS Industrial Technology | 2016 - 2020
+
+CERTIFICATIONS AND ACHIEVEMENTS
+- Certificate in Food Safety
+- Certificate in Industrial Maintenance
+"""
+    res1 = extract_content(resume_bullets)
+    assert len(res1["certifications_list"]) == 2
+    assert "Certificate in Food Safety" in res1["certifications_list"]
+    assert "Certificate in Industrial Maintenance" in res1["certifications_list"]
+
+    resume_unbulleted = """
+JUAN DELA CRUZ
+juan@gmail.com | 09171234567
+
+CERTIFICATION AND ACHIEVEMENTS
+Certificate of Safety Training (2023)
+Certificate of Machine Operation (2022)
+"""
+    res2 = extract_content(resume_unbulleted)
+    assert len(res2["certifications_list"]) == 2
+    assert "Certificate of Safety Training" in res2["certifications_list"]
+    assert "Certificate of Machine Operation" in res2["certifications_list"]
+
+    resume_inline_and_mixed = """
+CERTIFICATIONS
+Certifications: Safety Training Certificate, Quality Control Certificate
+- AWS Certified Cloud Practitioner, Workplace Safety Certificate
+1. 5S Housekeeping Certification
+2. 10-Hour OSHA General Industry Certificate
+
+CHARACTER REFERENCES
+Maria Clara - Supervisor, ABC Corp
+"""
+    res3 = extract_content(resume_inline_and_mixed)
+    names3 = res3["certifications_list"]
+    for expected in [
+        "Safety Training Certificate",
+        "Quality Control Certificate",
+        "AWS Certified Cloud Practitioner",
+        "Workplace Safety Certificate",
+        "5S Housekeeping Certification",
+        "10-Hour OSHA General Industry Certificate",
+    ]:
+        assert expected in names3, f"Expected {expected!r} in {names3}"
+    assert all("Maria Clara" not in n for n in names3)
+
+    resume_pipe = """
+CERTIFICATIONS & ACHIEVEMENTS
+Workplace Safety Certificate | Quality Control Certificate
+"""
+    res4 = extract_content(resume_pipe)
+    assert len(res4["certifications_list"]) == 2
+    assert "Workplace Safety Certificate" in res4["certifications_list"]
+    assert "Quality Control Certificate" in res4["certifications_list"]

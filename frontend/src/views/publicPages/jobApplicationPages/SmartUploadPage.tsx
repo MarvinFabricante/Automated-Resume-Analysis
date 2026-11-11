@@ -401,6 +401,47 @@ const SmartUploadPage: React.FC = () => {
                               </div>
                             ))}
                           </div>
+
+                          {(() => {
+                            const skillItems: string[] = Array.isArray(extractedData?.skills_list) && extractedData.skills_list.length > 0
+                              ? extractedData.skills_list
+                              : (extractedData?.skills ? String(extractedData.skills).split(' | ').map((s: string) => s.trim()).filter(Boolean) : []);
+                            const certItems: string[] = Array.isArray(extractedData?.certifications_list) && extractedData.certifications_list.length > 0
+                              ? extractedData.certifications_list
+                              : (extractedData?.certifications ? String(extractedData.certifications).split(' | ').map((s: string) => s.trim()).filter(Boolean) : []);
+                            return (
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6 pt-6 border-t border-slate-200/70">
+                                <div className="space-y-2">
+                                  <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400 block">Skills ({skillItems.length})</span>
+                                  {skillItems.length > 0 ? (
+                                    <div className="flex flex-wrap gap-1.5">
+                                      {skillItems.slice(0, 12).map((sk, idx) => (
+                                        <span key={idx} className="px-2.5 py-1 rounded-lg bg-white text-slate-700 border border-slate-200 text-xs font-semibold">
+                                          {sk}
+                                        </span>
+                                      ))}
+                                    </div>
+                                  ) : (
+                                    <p className="text-sm font-bold text-slate-400 italic">Not detected</p>
+                                  )}
+                                </div>
+                                <div className="space-y-2">
+                                  <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400 block">Certifications & Achievements ({certItems.length})</span>
+                                  {certItems.length > 0 ? (
+                                    <div className="flex flex-wrap gap-1.5">
+                                      {certItems.map((cert, idx) => (
+                                        <span key={idx} className="px-2.5 py-1 rounded-lg bg-rose-50 text-rose-800 border border-rose-200 text-xs font-semibold">
+                                          {cert}
+                                        </span>
+                                      ))}
+                                    </div>
+                                  ) : (
+                                    <p className="text-sm font-bold text-slate-400 italic">Not detected</p>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })()}
                         </div>
                       </div>
                     </div>
@@ -442,6 +483,10 @@ const SmartUploadPage: React.FC = () => {
                             skills: Array.isArray(extractedData?.skills_list) && extractedData.skills_list.length > 0
                               ? extractedData.skills_list
                               : (extractedData?.skills ? extractedData.skills.split(' | ').filter(Boolean) : []),
+                            certifications: Array.isArray(extractedData?.certifications_list) && extractedData.certifications_list.length > 0
+                              ? extractedData.certifications_list
+                              : (extractedData?.certifications ? String(extractedData.certifications).split(' | ').filter(Boolean) : []),
+                            certifications_details: extractedData?.certifications_details || null,
                             resumeUrl: extractedData?.file_url,
                             rawText: extractedData?.raw_text
                           } 

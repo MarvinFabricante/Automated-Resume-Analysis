@@ -963,37 +963,50 @@ _PROTECTED_PHRASES = [
 
 _SECTION_HEADERS = {
     "Certifications": re.compile(
-        r'^(?:certifications?|certificates?|credentials?|accreditations?|'
-        r'professional\s+certifications?|certifications?\s*(?:&|and)\s*credentials?|'
-        r'certifications?\s*(?:&|and)\s*licenses?)\b',
+        r'^(?:'
+        r'(?:professional|technical|relevant|industry|key|other|additional)?\s*(?:certifications?|certificates?|credentials?|accreditations?)|'
+        r'(?:certifications?|certificates?|credentials?|licenses?)\s*(?:&|and|/|or)\s*(?:achievements?|awards?|honors?|accomplishments?|recognitions?|credentials?|licenses?|certifications?|certificates?|trainings?|seminars?)|'
+        r'(?:achievements?|awards?|honors?)\s*(?:&|and|/|or)\s*(?:certifications?|certificates?|credentials?|licenses?|achievements?|awards?)|'
+        r'achievements?|awards?|accomplishments?|honors?\s*(?:&|and|/)\s*recognitions?'
+        r')(?:\s*[:\-–—])?$',
         re.IGNORECASE
     ),
     "Eligibility": re.compile(
-        r'^(?:licenses?\s*(?:&|and)\s*certifications?|licenses?\s*(?:&|and)\s*eligibility|'
-        r'eligibility(?:\s*&\s*licenses?)?|eligibility\s*&\s*professional\s*certifications?|'
-        r'board\s+exams?|government\s+eligibility|licenses?|licensures?)\b',
+        r'^(?:licenses?\s*(?:&|and|/)\s*(?:certifications?|certificates?|eligibility)|'
+        r'eligibilit(?:y|ies)(?:\s*(?:&|and|/)\s*(?:licenses?|(?:professional\s+)?certifications?))?|'
+        r'board\s+exams?|government\s+eligibilit(?:y|ies)|professional\s+licenses?|licenses?|licensures?)(?:\s*[:\-–—])?$',
         re.IGNORECASE
     ),
     "Seminars & Trainings": re.compile(
-        r'^(?:seminars?\s*(?:&|and)\s*trainings?(?:\s+attended)?|trainings?\s*(?:&|and)\s*seminars?|'
-        r'trainings?\s*attended|seminars?\s*attended|trainings?\s*(?:&|and)\s*workshops?|'
-        r'workshops?\s*(?:&|and)\s*seminars?|bootcamps?|trainings?\s*(?:&|and)\s*bootcamps?|'
-        r'trainings?|professional\s+development)\b',
+        r'^(?:seminars?(?:,?\s*trainings?)?\s*(?:&|and|/)\s*(?:trainings?(?:\s+attended)?|certifications?|certificates?|workshops?)|'
+        r'trainings?\s*(?:&|and|/)\s*(?:seminars?(?:\s+attended)?|workshops?|bootcamps?|certifications?|certificates?)|'
+        r'workshops?\s*(?:&|and|/)\s*(?:seminars?|certifications?|certificates?)|'
+        r'trainings?(?:\s+attended)?|seminars?(?:\s+attended)?|workshops?(?:\s+attended)?|'
+        r'bootcamps?|professional\s+development)(?:\s*[:\-–—])?$',
         re.IGNORECASE
     ),
     "Education": re.compile(
         r'^(?:education|educational\s+background|educational\s+attainment|'
-        r'academic\s+background)\b',
+        r'academic\s+background|academic\s+qualifications?)(?:\s*[:\-–—])?$',
         re.IGNORECASE
     ),
     "Skills": re.compile(
-        r'^(?:technical\s+skills?|skills?\s*(?:&|and)\s*abilities|core\s+competencies|'
-        r'skills?|competencies)\b',
+        r'^(?:technical\s+skills?|skills?\s*(?:&|and|/)\s*(?:abilities|competencies|qualifications?)|'
+        r'core\s+competencies|skills?|competencies)(?:\s*[:\-–—])?$',
         re.IGNORECASE
     ),
     "Work Experience": re.compile(
         r'^(?:work\s+experience|professional\s+experience|employment\s+history|'
-        r'experience)\b',
+        r'career\s+history|relevant\s+experience|experience)(?:\s*[:\-–—])?$',
+        re.IGNORECASE
+    ),
+    "Other": re.compile(
+        r'^(?:(?:character|professional|personal)\s+references?|references?|'
+        r'(?:personal|academic|key)?\s*projects?|portfolio|capstone|'
+        r'(?:professional\s+|executive\s+)?summary|(?:career\s+)?objective|profile|about\s+me|'
+        r'languages?|affiliations?|memberships?|volunteer(?:\s+experience|\s+work)?|'
+        r'interests?|hobbies(?:\s*(?:&|and)\s*interests?)?|'
+        r'personal\s+(?:data|information|details)|contact(?:\s+information|\s+details)?)(?:\s*[:\-–—])?$',
         re.IGNORECASE
     ),
 }
@@ -1002,15 +1015,18 @@ _CREDENTIAL_MARKERS = [
     r'\bNC\s*(?:I|II|III|IV)\b',
     r'\bCOC(?:\s*\d+)?\b',
     r'\bCertified\b',
-    r'\bLicense\b',
+    r'\bCertificat(?:e|ion)s?\b',
+    r'\bLicenses?\b',
+    r'\bLicensed\b',
+    r'\bRegistered\b',
     r'\bPasser\b',
     r'\bEligibility\b',
-    r'\bCertificate\b',
     r'\bAssociate\b',
     r'\bProfessional\b',
     r'\bAuditor\b',
     r'\bBelt\b',
     r'\bSpecialist\b',
+    r'\bAwards?\b',
     r'\bDriver\'?s?\s*License\b',
 ]
 

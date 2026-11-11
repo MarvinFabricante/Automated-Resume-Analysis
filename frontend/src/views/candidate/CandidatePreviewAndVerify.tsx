@@ -137,7 +137,11 @@ const CandidatePreviewAndVerify: React.FC = () => {
     summary: activeData?.summary || state?.summary || "",
     work_experiences: activeData?.work_experiences || state?.work_experiences || [],
     education_entries: activeData?.education_entries || state?.education_entries || [],
-    certifications: activeData?.certifications_list || (activeData?.certifications ? (Array.isArray(activeData.certifications) ? activeData.certifications : activeData.certifications.split(' | ')) : (state?.certifications || [])),
+    certifications: (Array.isArray(activeData?.certifications_list) && activeData.certifications_list.length > 0)
+      ? activeData.certifications_list
+      : (activeData?.certifications
+        ? (Array.isArray(activeData.certifications) ? activeData.certifications : String(activeData.certifications).split(' | ').map((s: string) => s.trim()).filter(Boolean))
+        : (state?.certifications || [])),
     certifications_details: activeData?.certifications_details || state?.certifications_details || null,
     skills_details: activeData?.skills_details || state?.skills_details || null,
     resumeUrl: currentResumeUrl || activeData?.file_url || activeData?.resumeUrl || state?.resumeUrl || null
@@ -154,6 +158,25 @@ const CandidatePreviewAndVerify: React.FC = () => {
     navigate(effectiveJobId ? `/candidate/update-profile/${effectiveJobId}` : '/candidate/update-profile', {
       state: {
         ...extractedData,
+        extractedData: {
+          ...(activeData || {}),
+          fullname: extractedData.personal.name,
+          email: extractedData.personal.email,
+          phone: extractedData.personal.phone,
+          location: extractedData.personal.location,
+          job_title: extractedData.experience.title,
+          company: extractedData.experience.company,
+          relevance: extractedData.experience.relevance,
+          degree: extractedData.education.degree,
+          college: extractedData.education.college,
+          skills: extractedData.skills.join(' | '),
+          skills_list: extractedData.skills,
+          certifications: Array.isArray(extractedData.certifications) ? extractedData.certifications.join(' | ') : (extractedData.certifications || ''),
+          certifications_list: extractedData.certifications,
+          certifications_details: extractedData.certifications_details,
+          work_experiences: extractedData.work_experiences,
+          education_entries: extractedData.education_entries
+        },
         formData: state?.formData,
         fileName: state?.fileName,
         job: state?.job,
@@ -172,6 +195,10 @@ const CandidatePreviewAndVerify: React.FC = () => {
       return;
     }
 
+    const certString = Array.isArray(extractedData.certifications)
+      ? extractedData.certifications.join(' | ')
+      : (extractedData.certifications || data?.certifications || "");
+
     const payload = {
       job_id: effectiveJobId,
       candidate_name: extractedData.personal.name,
@@ -187,14 +214,17 @@ const CandidatePreviewAndVerify: React.FC = () => {
       work_experiences: extractedData.work_experiences,
       education_entries: extractedData.education_entries,
       highest_educational_attainment: data?.highest_educational_attainment || state?.highest_educational_attainment || "",
-      candidate_certifications: Array.isArray(extractedData.certifications) ? extractedData.certifications.join(' | ') : "",
+      certifications: certString || undefined,
+      candidate_certifications: certString,
       match_score: matchData?.match_percentage || state?.matchScore || 0,
       skills_score: matchData?.skills_score || 0,
       experience_score: matchData?.experience_score || 0,
       education_score: matchData?.education_score || 0,
+      certifications_score: matchData?.certifications_score || 0,
       skills_reason: matchData?.skills_reason || "",
       experience_reason: matchData?.experience_reason || "",
       education_reason: matchData?.education_reason || "",
+      certifications_reason: matchData?.certifications_reason || "",
       matched_skills: matchData?.matched_skills || [],
       missing_skills: matchData?.missing_skills || [],
       relevant_experience: matchData?.relevant_experience || "",
