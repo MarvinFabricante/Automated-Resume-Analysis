@@ -237,3 +237,60 @@ def test_skill_synonym_matching_ml_and_qc():
     assert res_rev["score"] == 1.0
     assert res_rev["missing"] == []
 
+
+def test_job_specific_followup_questions_differ_for_j1_and_j3():
+    same_resume = {
+        "fullname": "Juan Dela Cruz",
+        "skills": "Quality Control, Documentation",
+        "experience": "General Staff",
+        "relevance": "",
+        "years_experience": 0,
+        "education": "High School Diploma",
+        "highest_degree": "High School",
+        "certifications": [],
+        "location": "Laguna",
+    }
+    j1 = {
+        "job_id": "J1",
+        "job_title": "Production Supervisor",
+        "department": "Manufacturing",
+        "description": "Oversee kiln operations, tile manufacturing lines, and safety compliance.",
+        "skills_requirements": "Production Planning, Lean Manufacturing, Six Sigma",
+        "experience_requirements": "3+ years in manufacturing supervision",
+        "education_requirements": "Bachelor's Degree in Industrial Engineering",
+        "certifications_requirements": "COSH Safety Officer",
+    }
+    j3 = {
+        "job_id": "J3",
+        "job_title": "HR Generalist",
+        "department": "Human Resources",
+        "description": "Manage talent acquisition, payroll processing, and DOLE labor compliance.",
+        "skills_requirements": "Recruitment, Payroll, HRIS, Onboarding",
+        "experience_requirements": "2+ years in human resources",
+        "education_requirements": "Bachelor's Degree in Psychology or HRDM",
+        "certifications_requirements": "CHRP",
+    }
+    cfg = {"weights": {}, "thresholds": {}}
+
+    res_j1 = job_matching_service.calculate_match_score(same_resume, j1, matching_config=cfg)
+    res_j3 = job_matching_service.calculate_match_score(same_resume, j3, matching_config=cfg)
+
+    q_j1 = res_j1.get("followup_questions") or []
+    q_j3 = res_j3.get("followup_questions") or []
+    assert len(q_j1) >= 2
+    assert len(q_j3) >= 2
+    assert q_j1 == res_j1.get("clarification_questions")
+    assert q_j3 == res_j3.get("clarification_questions")
+
+    texts_j1 = [q["question"] for q in q_j1]
+    texts_j3 = [q["question"] for q in q_j3]
+    ids_j1 = {q["id"] for q in q_j1}
+    ids_j3 = {q["id"] for q in q_j3}
+
+    assert texts_j1 != texts_j3
+    assert ids_j1.isdisjoint(ids_j3)
+    assert any("Production Supervisor" in t or "manufacturing" in t.lower() for t in texts_j1)
+    assert any("HR Generalist" in t or "hr" in t.lower() or "recruitment" in t.lower() for t in texts_j3)
+    assert all(q.get("job_id") == "J1" for q in q_j1)
+    assert all(q.get("job_id") == "J3" for q in q_j3)
+
