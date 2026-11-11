@@ -38,6 +38,8 @@ class JobMatchResult(BaseModel):
     meets_threshold: Optional[bool] = None
     minimum_match_score: Optional[float] = None
     transferable_skills: Optional[list[str]] = None
+    followup_questions: Optional[list[dict]] = None
+    clarification_questions: Optional[list[dict]] = None
     applied_weights: Optional[dict] = None
 
 

@@ -258,3 +258,56 @@ ISO 9001 Quality Standards, Preventive Maintenance, Machine Maintenance, Safety 
     assert parsed["institution"] == "TESDA Institute"
     assert parsed["college"] == "TESDA Institute"
     assert parsed["is_incomplete"] is False
+    assert parsed["needs_clarification"] is False
+    assert parsed["is_vague"] is False
+    assert parsed["clarification_questions"] == []
+
+
+def test_vague_r4_triggers_clarification_questions():
+    """
+    Validates vague resume handling (R4):
+    - Undated / vague manufacturing or work descriptions trigger clarification
+    - Includes follow-up question asking years of manufacturing experience
+    """
+    r4_vague_mfg = """
+ROBERTO SANTOS
+roberto.santos@gmail.com | 09181234567
+
+WORK EXPERIENCE
+Worked in manufacturing
+Handled production tasks and assembly work
+
+EDUCATION
+High School
+
+SKILLS
+Teamwork
+"""
+    res1 = extract_content(r4_vague_mfg)
+    assert res1["needs_clarification"] is True
+    assert res1["is_vague"] is True
+    questions1 = res1["clarification_questions"]
+    assert len(questions1) >= 1
+    assert any(
+        q["field"] == "years_experience"
+        and "years of manufacturing experience" in q["question"].lower()
+        for q in questions1
+    )
+
+    r4_sparse = """
+R4 APPLICANT
+r4@gmail.com | 09179998888
+
+SUMMARY
+Some experience in factory work. Willing to learn and hardworking.
+"""
+    res2 = extract_content(r4_sparse)
+    assert res2["needs_clarification"] is True
+    assert res2["is_vague"] is True
+    questions2 = res2["clarification_questions"]
+    assert any(
+        q["field"] == "years_experience"
+        and "years of manufacturing experience" in q["question"].lower()
+        for q in questions2
+    )
+    assert len(questions2) >= 2

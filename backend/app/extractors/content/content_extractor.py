@@ -467,6 +467,155 @@ def _supplement_skills_from_section(skills_section_text: str, skills_details: di
     return skills_list
 
 
+_MFG_CONTEXT_RE = re.compile(
+    r'\b(?:manufactur\w*|production|factory|plant|operator|machin\w*|assembly|assembl\w*|'
+    r'warehouse|kiln|glazing|tile|ceramic|welding|smaw|tig|fabrication|forklift|'
+    r'quality\s+control|qc|maintenance|iso\s*9001|bosh|cosh|industrial|technician)\b',
+    re.I,
+)
+_NON_MFG_CONTEXT_RE = re.compile(
+    r'\b(?:software\s+(?:engineer|developer)|web\s+developer|full[\s\-]stack|'
+    r'react|fastapi|nurse|registered\s+nurse|teacher|accountant|cpa|call\s+center|bpo)\b',
+    re.I,
+)
+_VAGUE_PHRASES_RE = re.compile(
+    r'\b(?:some\s+experience|several\s+years|various|worked\s+(?:in|at|as|before)|'
+    r'experienced\s+in|hardworking|fast\s+learner|flexible|willing\s+to\s+learn|'
+    r'any\s+(?:position|role|job)|general\s+worker)\b',
+    re.I,
+)
+_VAGUE_ROLE_TITLES = {
+    "worker", "helper", "staff", "employee", "operator", "factory worker",
+    "production worker", "assistant", "freelancer", "trainee", "crew",
+}
+
+
+def _build_clarification_questions(
+    data: dict,
+    sections: dict | None = None,
+    raw_text: str = "",
+) -> dict:
+    """
+    Detect vague or under-specified resume details and generate follow-up
+    clarification questions (e.g. years of manufacturing experience, employer, skills).
+    """
+    full_text = raw_text or ("\n".join(sections.values()) if sections else "")
+    work_exps = data.get("work_experiences") or []
+    years_exp = data.get("years_experience") or 0
+    total_months = data.get("total_experience_months") or 0
+    exp_section = (sections.get("EXPERIENCE") if sections else "") or ""
+    job_title = (data.get("job_title") or "").strip()
+    company = (data.get("company") or "").strip()
+    degree = (data.get("degree") or "").strip()
+    institution = (data.get("institution") or "").strip()
+    skills_list = data.get("skills_list") or []
+    flags = data.get("completeness_flags") or {}
+
+    has_undated_exp = bool(work_exps) and all(
+        not e.get("start_date") and not e.get("end_date") and not e.get("duration_months")
+        for e in work_exps
+    )
+    word_count = len(re.findall(r'\b\w+\b', full_text))
+    has_vague_phrases = bool(_VAGUE_PHRASES_RE.search(full_text))
+    has_mfg_context = bool(_MFG_CONTEXT_RE.search(full_text))
+    has_non_mfg_context = bool(_NON_MFG_CONTEXT_RE.search(full_text)) and not has_mfg_context
+
+    reasons: list[str] = []
+    questions: list[dict] = []
+
+    needs_exp_years = (years_exp <= 0 and total_months <= 0) and (
+        has_undated_exp
+        or bool(exp_section.strip())
+        or bool(job_title)
+        or not flags.get("work_experience", True)
+        or has_vague_phrases
+        or has_mfg_context
+        or word_count < 45
+    )
+
+    if needs_exp_years:
+        reasons.append("Missing or vague duration / years of work experience.")
+        if has_non_mfg_context:
+            q_text = "How many years of relevant work experience do you have? (Enter 0 if none)"
+            q_id = "clarify_experience_years"
+            q_domain = "General"
+        else:
+            q_text = "How many years of manufacturing experience do you have?"
+            q_id = "clarify_manufacturing_experience_years"
+            q_domain = "Manufacturing"
+        questions.append({
+            "id": q_id,
+            "field": "years_experience",
+            "question": q_text,
+            "type": "number",
+            "placeholder": "e.g. 2 (enter 0 if none)",
+            "required": True,
+            "domain": q_domain,
+            "reason": "Resume does not state exact dates or total years of experience.",
+        })
+
+    vague_role = (
+        not flags.get("work_experience", True)
+        or (bool(job_title or exp_section.strip()) and not company)
+        or (bool(company) and not job_title)
+        or (job_title.lower() in _VAGUE_ROLE_TITLES and (not company or not work_exps))
+    )
+    if vague_role:
+        reasons.append("Vague or missing job title, employer, or role responsibilities.")
+        questions.append({
+            "id": "clarify_role_and_employer",
+            "field": "job_title_company",
+            "question": "What was your specific job title, employer/company name, and main tasks in your most recent role?",
+            "type": "text",
+            "placeholder": "e.g. Production Operator at Mariwasa Siam Ceramics (Kiln & QC checks)",
+            "required": False,
+            "domain": "Manufacturing" if not has_non_mfg_context else "General",
+            "reason": "Job title, employer, or responsibilities were vague or omitted.",
+        })
+
+    if not flags.get("skills", True) or len(skills_list) == 0 or (bool(reasons) and len(skills_list) < 2):
+        reasons.append("No specific tools, machines, or technical skills identified.")
+        questions.append({
+            "id": "clarify_skills",
+            "field": "skills",
+            "question": "Which specific machines, tools, processes, or technical skills can you operate or perform?",
+            "type": "text",
+            "placeholder": "e.g. Machine setup, Quality control, Forklift operation",
+            "required": False,
+            "domain": "General",
+            "reason": "Resume does not clearly list concrete technical or operational skills.",
+        })
+
+    if not flags.get("education", True) or (bool(reasons) and bool(degree) and not institution):
+        reasons.append("Educational attainment or school details are incomplete.")
+        questions.append({
+            "id": "clarify_education",
+            "field": "education",
+            "question": "What is your highest educational attainment (course/strand, school name, and year completed)?",
+            "type": "text",
+            "placeholder": "e.g. Vocational Diploma / BS Industrial Technology - TESDA Institute (2020)",
+            "required": False,
+            "domain": "General",
+            "reason": "Resume lacks complete school or degree details.",
+        })
+
+    is_vague = bool(questions) and (
+        needs_exp_years
+        or vague_role
+        or has_vague_phrases
+        or word_count < 35
+        or bool(data.get("is_incomplete"))
+    )
+
+    return {
+        "is_vague": is_vague,
+        "needs_clarification": bool(questions),
+        "clarification_reasons": list(dict.fromkeys(reasons)),
+        "clarification_questions": questions,
+        "followup_questions": questions,
+    }
+
+
 def assess_resume_completeness(data: dict, sections: Optional[dict] = None, raw_text: Optional[str] = None) -> dict:
     """
     Evaluates whether the resume contains all essential core sections:
@@ -640,6 +789,9 @@ def assess_resume_completeness(data: dict, sections: Optional[dict] = None, raw_
     data["completeness_flags"] = core_flags
     data["completeness_score"] = completeness_score
     data["completeness_notes"] = notes
+
+    clarification = _build_clarification_questions(data, sections=sections, raw_text=raw_text)
+    data.update(clarification)
 
     return data
 
@@ -923,6 +1075,9 @@ def format_resume_display(data: dict) -> str:
         lines.append(f"  • Missing Sections:    {', '.join(data['missing_sections'])}")
     if data.get("missing_fields"):
         lines.append(f"  • Missing Fields:      {', '.join(data['missing_fields'])}")
+    lines.append(f"  • Needs Clarification: {'Yes' if data.get('needs_clarification') else 'No'}")
+    for q in data.get("clarification_questions", []):
+        lines.append(f"    - Follow-up: {q.get('question')}")
     lines.append(bar)
 
     return "\n".join(lines)

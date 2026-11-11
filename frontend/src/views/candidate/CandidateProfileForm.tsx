@@ -15,6 +15,14 @@ import Header from '../../components/layout/Header';
 import Sidebar from '../../components/layout/Sidebar';
 import ApplicationProgressBar from '../../components/common/ApplicationProgressBar';
 import ApplicationSuccessModal from '../../components/modals/shared/ApplicationSuccessModal';
+import ClarificationQuestionsPanel from '../../components/common/ClarificationQuestionsPanel';
+import {
+  ClarificationQuestion,
+  deriveClarificationQuestions,
+  applyClarificationAnswerToFormData,
+  finalizeFormWithClarifications,
+  resolveClarifiedYears,
+} from '../../utils/clarificationQuestions';
 import { useSubmitApplicationMutation } from '../../redux/api/apiSlice';
 
 interface ProfileFormData {
@@ -57,18 +65,34 @@ const CandidateProfileForm: React.FC = () => {
     }
   }, [jobId, location.state]);
 
-  const [formData, setFormData] = useState<ProfileFormData>({
-    fullName: location.state?.personal?.name || "Alex Thompson",
-    email: (typeof loggedInEmail === 'string' ? loggedInEmail : (loggedInEmail as any)?.email) || location.state?.personal?.email || "alex.t@example.com",
-    phone: location.state?.personal?.phone || "+1 (555) 000-1234",
-    location: location.state?.personal?.location || "Chicago, IL",
-    jobTitle: location.state?.experience?.title || "Senior Operations Lead",
-    company: location.state?.experience?.company || "Global Tech Manufacturing",
-    relevance: location.state?.experience?.relevance || "7+ years in high-volume production environments",
-    degree: location.state?.education?.degree || "B.S. in Industrial Engineering",
-    college: location.state?.education?.college || "University of Illinois",
-    skills: location.state?.skills || ["Process Optimization", "Team Leadership", "Lean Manufacturing", "Safety Compliance", "ERP Systems"]
-  });
+  const hasUploadContext = Boolean(
+    location.state?.extractedData || location.state?.fileName || location.state?.rawText
+  );
+  const initialFormData: ProfileFormData = {
+    fullName: location.state?.personal?.name || (hasUploadContext ? "" : "Alex Thompson"),
+    email: (typeof loggedInEmail === 'string' ? loggedInEmail : (loggedInEmail as any)?.email) || location.state?.personal?.email || (hasUploadContext ? "" : "alex.t@example.com"),
+    phone: location.state?.personal?.phone || (hasUploadContext ? "" : "+1 (555) 000-1234"),
+    location: location.state?.personal?.location || (hasUploadContext ? "" : "Chicago, IL"),
+    jobTitle: location.state?.experience?.title || (hasUploadContext ? "" : "Senior Operations Lead"),
+    company: location.state?.experience?.company || (hasUploadContext ? "" : "Global Tech Manufacturing"),
+    relevance: location.state?.experience?.relevance || (hasUploadContext ? "" : "7+ years in high-volume production environments"),
+    degree: location.state?.education?.degree || (hasUploadContext ? "" : "B.S. in Industrial Engineering"),
+    college: location.state?.education?.college ?? (hasUploadContext ? "" : "University of Illinois"),
+    skills: location.state?.skills || (hasUploadContext ? [] : ["Process Optimization", "Team Leadership", "Lean Manufacturing", "Safety Compliance", "ERP Systems"])
+  };
+
+  const [formData, setFormData] = useState<ProfileFormData>(initialFormData);
+  const [clarificationQuestions] = useState<ClarificationQuestion[]>(() =>
+    deriveClarificationQuestions(location.state, initialFormData)
+  );
+  const [clarificationAnswers, setClarificationAnswers] = useState<Record<string, string>>(
+    location.state?.clarificationAnswers || {}
+  );
+
+  const handleClarificationChange = (question: ClarificationQuestion, value: string) => {
+    setClarificationAnswers((prev) => ({ ...prev, [question.id]: value }));
+    setFormData((prev) => applyClarificationAnswerToFormData(question, value, prev));
+  };
 
   const [currentSkill, setCurrentSkill] = useState<string>("");
   const [showSuccessModal, setShowSuccessModal] = useState<boolean>(false);
@@ -100,13 +124,12 @@ const CandidateProfileForm: React.FC = () => {
         }
         const experienceText = Array.from(new Set(expParts.filter(Boolean))).join(' | ');
 
-        let yearsExp = 0;
-        if (location.state?.extractedData?.years_experience) {
-          yearsExp = Number(location.state.extractedData.years_experience) || 0;
-        } else if (formData.relevance) {
-          const match = formData.relevance.match(/(\d+)\+?\s*(?:years?|yrs?)/i);
-          if (match) yearsExp = parseInt(match[1], 10);
-        }
+        const yearsExp = resolveClarifiedYears(
+          clarificationQuestions,
+          clarificationAnswers,
+          location.state?.extractedData?.years_experience,
+          formData.relevance
+        );
 
         const payload = {
           skills: formData.skills.join(', '),
@@ -147,7 +170,7 @@ const CandidateProfileForm: React.FC = () => {
     }, 800);
 
     return () => clearTimeout(timeoutId);
-  }, [formData.skills, formData.jobTitle, formData.company, formData.relevance, formData.degree, formData.college, formData.fullName, formData.location, jobId, location.state]);
+  }, [formData.skills, formData.jobTitle, formData.company, formData.relevance, formData.degree, formData.college, formData.fullName, formData.location, clarificationAnswers, clarificationQuestions, jobId, location.state]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
@@ -176,30 +199,45 @@ const CandidateProfileForm: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
+    const finalForm = finalizeFormWithClarifications(clarificationQuestions, clarificationAnswers, formData);
+    const clarifiedYears = resolveClarifiedYears(
+      clarificationQuestions,
+      clarificationAnswers,
+      location.state?.extractedData?.years_experience,
+      finalForm.relevance
+    );
+
     if (!jobId || jobId === 'smart') {
       const updatedExtractedData = {
-        fullname: formData.fullName,
-        email: formData.email,
-        phone: formData.phone,
-        location: formData.location,
-        experience: formData.jobTitle + (formData.company ? " | " + formData.company : ""),
-        years_experience: formData.relevance ? (formData.relevance.match(/\d+/) ? parseInt(formData.relevance.match(/\d+/)![0], 10) : 0) : 0,
-        relevance: formData.relevance,
-        highest_degree: formData.degree,
-        education: formData.college,
-        skills: formData.skills.join(' | '),
+        ...location.state?.extractedData,
+        fullname: finalForm.fullName,
+        email: finalForm.email,
+        phone: finalForm.phone,
+        location: finalForm.location,
+        experience: finalForm.jobTitle + (finalForm.company ? " | " + finalForm.company : ""),
+        years_experience: clarifiedYears,
+        relevance: finalForm.relevance,
+        highest_degree: finalForm.degree,
+        education: finalForm.college,
+        college: finalForm.college,
+        skills: finalForm.skills.join(' | '),
+        skills_list: finalForm.skills,
+        clarification_questions: clarificationQuestions,
+        clarification_answers: clarificationAnswers,
         file_url: location.state?.resumeUrl || null
       };
 
       try {
         const payload = {
-          skills: formData.skills.join(', '),
-          experience: formData.relevance,
-          education: formData.degree,
-          highest_degree: formData.degree,
-          fullname: formData.fullName,
-          location: formData.location
+          skills: finalForm.skills.join(', '),
+          skills_list: finalForm.skills,
+          experience: finalForm.relevance,
+          years_experience: clarifiedYears,
+          education: [finalForm.degree, finalForm.college].filter(Boolean).join(' - '),
+          highest_degree: finalForm.degree,
+          fullname: finalForm.fullName,
+          location: finalForm.location
         };
         const matchRes = await candidateService.matchData(null, payload);
         const matches = matchRes.data.results || [];
@@ -226,39 +264,44 @@ const CandidateProfileForm: React.FC = () => {
         fileName: location.state?.fileName,
         resumeUrl: location.state?.resumeUrl || location.state?.extractedData?.file_url || null,
         rawText: location.state?.rawText || location.state?.extractedData?.raw_text || null,
-        formData,
+        formData: finalForm,
+        clarificationQuestions,
+        clarificationAnswers,
         extractedData: {
           ...location.state?.extractedData,
-          fullname: formData.fullName,
-          email: (typeof loggedInEmail === 'string' ? loggedInEmail : (loggedInEmail as any)?.email) || formData.email,
-          phone: formData.phone,
-          location: formData.location,
-          job_title: formData.jobTitle,
-          company: formData.company,
-          relevance: formData.relevance,
-          degree: formData.degree,
-          college: formData.college,
-          skills: formData.skills.join(' | '),
-          skills_list: formData.skills,
+          fullname: finalForm.fullName,
+          email: (typeof loggedInEmail === 'string' ? loggedInEmail : (loggedInEmail as any)?.email) || finalForm.email,
+          phone: finalForm.phone,
+          location: finalForm.location,
+          job_title: finalForm.jobTitle,
+          company: finalForm.company,
+          relevance: finalForm.relevance,
+          years_experience: clarifiedYears,
+          degree: finalForm.degree,
+          college: finalForm.college,
+          skills: finalForm.skills.join(' | '),
+          skills_list: finalForm.skills,
+          clarification_questions: clarificationQuestions,
+          clarification_answers: clarificationAnswers,
           resumeUrl: location.state?.resumeUrl || location.state?.extractedData?.file_url || null,
           raw_text: location.state?.rawText || location.state?.extractedData?.raw_text || null
         },
         personal: {
-          name: formData.fullName,
-          email: (typeof loggedInEmail === 'string' ? loggedInEmail : (loggedInEmail as any)?.email) || formData.email,
-          phone: formData.phone,
-          location: formData.location
+          name: finalForm.fullName,
+          email: (typeof loggedInEmail === 'string' ? loggedInEmail : (loggedInEmail as any)?.email) || finalForm.email,
+          phone: finalForm.phone,
+          location: finalForm.location
         },
         experience: {
-          title: formData.jobTitle,
-          company: formData.company,
-          relevance: formData.relevance
+          title: finalForm.jobTitle,
+          company: finalForm.company,
+          relevance: finalForm.relevance
         },
         education: {
-          degree: formData.degree,
-          college: formData.college
+          degree: finalForm.degree,
+          college: finalForm.college
         },
-        skills: formData.skills,
+        skills: finalForm.skills,
         matchData,
         matchScore
       }
@@ -316,6 +359,13 @@ const CandidateProfileForm: React.FC = () => {
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-6 sm:space-y-8">
+
+          <ClarificationQuestionsPanel
+            questions={clarificationQuestions}
+            answers={clarificationAnswers}
+            onAnswerChange={handleClarificationChange}
+            reasons={location.state?.extractedData?.clarification_reasons || location.state?.clarification_reasons}
+          />
 
           <section className="bg-white p-5 sm:p-8 md:p-10 rounded-2xl sm:rounded-[32px] shadow-sm border border-slate-100">
             <div className="flex items-center gap-3 mb-8 text-[#D10043]">

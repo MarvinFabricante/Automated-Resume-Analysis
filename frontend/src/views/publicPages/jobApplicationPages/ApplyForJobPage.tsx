@@ -536,6 +536,24 @@ const ApplyForJobPage: React.FC = () => {
                       </div>
                     )}
 
+                    {/* Clarification Needed Notice for Vague / Incomplete Resumes */}
+                    {extractedData?.needs_clarification && (
+                      <div className="bg-amber-50 border border-amber-200 rounded-2xl p-5 flex items-start gap-4">
+                        <div className="p-2.5 bg-white rounded-xl border border-amber-200 text-amber-600 shrink-0">
+                          <ShieldCheck size={20} />
+                        </div>
+                        <div>
+                          <h5 className="text-xs font-black uppercase tracking-wider text-amber-900 mb-1">
+                            Follow-Up Clarification Required on Next Step
+                          </h5>
+                          <p className="text-xs sm:text-sm text-amber-800 font-medium">
+                            {extractedData?.clarification_questions?.[0]?.question ||
+                              'Please specify your years of manufacturing experience and role details on the applicant form.'}
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
                     {/* Extracted Data Display (Clean without literal 'null') */}
                     <div className="bg-slate-50 border border-slate-100 rounded-2xl sm:rounded-[32px] p-6 sm:p-8 space-y-6">
                       <div className="flex flex-col md:flex-row gap-6 items-start">

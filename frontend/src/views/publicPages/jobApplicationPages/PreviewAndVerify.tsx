@@ -215,6 +215,8 @@ const PreviewAndVerifyPage: React.FC = () => {
           education_entries: extractedData.education_entries
         },
         formData: state?.formData,
+        clarificationQuestions: state?.clarificationQuestions || activeData?.clarification_questions,
+        clarificationAnswers: state?.clarificationAnswers || activeData?.clarification_answers,
         personal: {
           name: extractedData.personal.name,
           email: extractedData.personal.email,

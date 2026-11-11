@@ -12,6 +12,14 @@ import {
 import Header from '../../../components/layout/Header';
 import Footer from '../../../components/layout/Footer';
 import ApplicationProgressBar from '../../../components/common/ApplicationProgressBar';
+import ClarificationQuestionsPanel from '../../../components/common/ClarificationQuestionsPanel';
+import {
+  ClarificationQuestion,
+  deriveClarificationQuestions,
+  applyClarificationAnswerToFormData,
+  finalizeFormWithClarifications,
+  resolveClarifiedYears,
+} from '../../../utils/clarificationQuestions';
 
 interface InputFieldProps {
   icon: React.ReactNode;
@@ -52,7 +60,7 @@ const ApplicationForm: React.FC = () => {
   const location = useLocation();
   const { jobId } = useParams<{ jobId: string }>();
 
-  const [formData, setFormData] = useState({
+  const initialFormData = {
     fullName: location.state?.personal?.name && location.state.personal.name !== "null" ? location.state.personal.name : "",
     email: location.state?.personal?.email && location.state.personal.email !== "null" ? location.state.personal.email : "",
     phone: location.state?.personal?.phone && location.state.personal.phone !== "null" ? location.state.personal.phone : "",
@@ -63,7 +71,20 @@ const ApplicationForm: React.FC = () => {
     degree: location.state?.education?.degree && location.state.education.degree !== "null" ? location.state.education.degree : "",
     college: location.state?.education?.college && location.state.education.college !== "null" ? location.state.education.college : "",
     skills: location.state?.skills && location.state.skills[0] !== "Extraction in progress" ? location.state.skills : [] as string[]
-  });
+  };
+
+  const [formData, setFormData] = useState(initialFormData);
+  const [clarificationQuestions] = useState<ClarificationQuestion[]>(() =>
+    deriveClarificationQuestions(location.state, initialFormData)
+  );
+  const [clarificationAnswers, setClarificationAnswers] = useState<Record<string, string>>(
+    location.state?.clarificationAnswers || {}
+  );
+
+  const handleClarificationChange = (question: ClarificationQuestion, value: string) => {
+    setClarificationAnswers((prev) => ({ ...prev, [question.id]: value }));
+    setFormData((prev) => applyClarificationAnswerToFormData(question, value, prev));
+  };
 
   const [jobTitle, setJobTitle] = useState(location.state?.job?.title || "Position");
   const [currentSkill, setCurrentSkill] = useState("");
@@ -104,13 +125,12 @@ const ApplicationForm: React.FC = () => {
         }
         const experienceText = Array.from(new Set(expParts.filter(Boolean))).join(' | ');
 
-        let yearsExp = 0;
-        if (location.state?.extractedData?.years_experience) {
-          yearsExp = Number(location.state.extractedData.years_experience) || 0;
-        } else if (formData.relevance) {
-          const match = formData.relevance.match(/(\d+)\+?\s*(?:years?|yrs?)/i);
-          if (match) yearsExp = parseInt(match[1], 10);
-        }
+        const yearsExp = resolveClarifiedYears(
+          clarificationQuestions,
+          clarificationAnswers,
+          location.state?.extractedData?.years_experience,
+          formData.relevance
+        );
 
         const payload = {
           skills: formData.skills.join(', '),
@@ -145,7 +165,7 @@ const ApplicationForm: React.FC = () => {
     }, 800);
 
     return () => clearTimeout(timeoutId);
-  }, [formData.skills, formData.jobTitle, formData.company, formData.relevance, formData.degree, formData.college, formData.fullName, formData.location, jobId, location.state]);
+  }, [formData.skills, formData.jobTitle, formData.company, formData.relevance, formData.degree, formData.college, formData.fullName, formData.location, clarificationAnswers, clarificationQuestions, jobId, location.state]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
@@ -213,27 +233,37 @@ const ApplicationForm: React.FC = () => {
       return;
     }
 
+    const finalForm = finalizeFormWithClarifications(clarificationQuestions, clarificationAnswers, formData);
+    const clarifiedYears = resolveClarifiedYears(
+      clarificationQuestions,
+      clarificationAnswers,
+      location.state?.extractedData?.years_experience,
+      finalForm.relevance
+    );
+
     if (jobId === 'smart') {
       const updatedExtractedData = {
         ...location.state?.extractedData,
-        fullname: formData.fullName,
-        email: formData.email,
-        phone: formData.phone,
-        location: formData.location,
-        job_title: formData.jobTitle,
-        company: formData.company,
-        experience: formData.jobTitle + (formData.company ? " | " + formData.company : ""),
-        years_experience: formData.relevance ? (formData.relevance.match(/\d+/) ? parseInt(formData.relevance.match(/\d+/)![0], 10) : 0) : 0,
-        relevance: formData.relevance,
-        highest_degree: formData.degree,
-        degree: formData.degree,
-        education: formData.college,
-        college: formData.college,
-        skills: formData.skills.join(' | '),
-        skills_list: formData.skills,
+        fullname: finalForm.fullName,
+        email: finalForm.email,
+        phone: finalForm.phone,
+        location: finalForm.location,
+        job_title: finalForm.jobTitle,
+        company: finalForm.company,
+        experience: finalForm.jobTitle + (finalForm.company ? " | " + finalForm.company : ""),
+        years_experience: clarifiedYears,
+        relevance: finalForm.relevance,
+        highest_degree: finalForm.degree,
+        degree: finalForm.degree,
+        education: finalForm.college,
+        college: finalForm.college,
+        skills: finalForm.skills.join(' | '),
+        skills_list: finalForm.skills,
         work_experiences: location.state?.extractedData?.work_experiences || [],
         education_entries: location.state?.extractedData?.education_entries || [],
         certifications: location.state?.extractedData?.certifications || [],
+        clarification_questions: clarificationQuestions,
+        clarification_answers: clarificationAnswers,
         summary: location.state?.extractedData?.summary || "",
         file_url: location.state?.resumeUrl || location.state?.extractedData?.file_url || null,
         resume_url: location.state?.resumeUrl || location.state?.extractedData?.file_url || null,
@@ -244,16 +274,17 @@ const ApplicationForm: React.FC = () => {
       const runSmartMatch = async () => {
         try {
           const payload = {
-            skills: formData.skills.join(', '),
-            skills_list: formData.skills,
-            experience: formData.relevance,
+            skills: finalForm.skills.join(', '),
+            skills_list: finalForm.skills,
+            experience: finalForm.relevance,
+            years_experience: clarifiedYears,
             work_experiences: location.state?.extractedData?.work_experiences || [],
-            education: [formData.degree, formData.college].filter(Boolean).join(' - '),
-            highest_degree: formData.degree,
+            education: [finalForm.degree, finalForm.college].filter(Boolean).join(' - '),
+            highest_degree: finalForm.degree,
             education_entries: location.state?.extractedData?.education_entries || [],
             certifications: location.state?.extractedData?.certifications || undefined,
-            fullname: formData.fullName,
-            location: formData.location
+            fullname: finalForm.fullName,
+            location: finalForm.location
           };
           const matchRes = await candidateService.matchData(null, payload);
           const matches = matchRes.data.results || [];
@@ -285,20 +316,25 @@ const ApplicationForm: React.FC = () => {
         fileName: location.state?.fileName,
         resumeUrl: location.state?.resumeUrl || location.state?.extractedData?.file_url || null,
         rawText: location.state?.rawText || location.state?.extractedData?.raw_text || null,
-        formData,
+        formData: finalForm,
+        clarificationQuestions,
+        clarificationAnswers,
         extractedData: {
           ...location.state?.extractedData,
-          fullname: formData.fullName,
-          email: formData.email,
-          phone: formData.phone,
-          location: formData.location,
-          job_title: formData.jobTitle,
-          company: formData.company,
-          relevance: formData.relevance,
-          degree: formData.degree,
-          college: formData.college,
-          skills: formData.skills.join(' | '),
-          skills_list: formData.skills,
+          fullname: finalForm.fullName,
+          email: finalForm.email,
+          phone: finalForm.phone,
+          location: finalForm.location,
+          job_title: finalForm.jobTitle,
+          company: finalForm.company,
+          relevance: finalForm.relevance,
+          years_experience: clarifiedYears,
+          degree: finalForm.degree,
+          college: finalForm.college,
+          skills: finalForm.skills.join(' | '),
+          skills_list: finalForm.skills,
+          clarification_questions: clarificationQuestions,
+          clarification_answers: clarificationAnswers,
           file_url: location.state?.resumeUrl || location.state?.extractedData?.file_url || null,
           raw_text: location.state?.rawText || location.state?.extractedData?.raw_text || null,
           profile_image_url: location.state?.profile_image_url || location.state?.extractedData?.profile_image_url
@@ -343,6 +379,13 @@ const ApplicationForm: React.FC = () => {
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-8">
+
+          <ClarificationQuestionsPanel
+            questions={clarificationQuestions}
+            answers={clarificationAnswers}
+            onAnswerChange={handleClarificationChange}
+            reasons={location.state?.extractedData?.clarification_reasons || location.state?.clarification_reasons}
+          />
 
           <section className="bg-white p-8 md:p-10 rounded-[32px] shadow-sm border border-slate-100">
             <div className="flex items-center gap-3 mb-8 text-[#D10043]">
