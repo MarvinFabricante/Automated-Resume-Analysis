@@ -10,7 +10,7 @@ from typing import Optional, Tuple, Dict, Any, List
 import websockets
 from fastapi import WebSocket, HTTPException, Request
 from fastapi.websockets import WebSocketDisconnect
-from sqlalchemy import select, update
+from sqlalchemy import select, update, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from twilio.twiml.voice_response import VoiceResponse, Gather, Connect, Say
 from twilio.rest import Client as TwilioClient
@@ -20,6 +20,13 @@ from app.models.job_application import JobApplication
 from app.models.user import User
 
 logger = logging.getLogger(__name__)
+
+
+async def _invalidate_interview_call_caches() -> None:
+    """Invalidate Redis caches for interview lists and call logs after voice-call state changes."""
+    from app.utils.cache import clear_cache_pattern
+    for pattern in ("interviews:", "interview:id:", "app_interviews", "cand_interviews", "calendar_events"):
+        await clear_cache_pattern(pattern)
 
 # Configuration from Environment
 GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
@@ -488,6 +495,7 @@ async def initiate_candidate_interview_call(
         logger.warning(f"[AI Caller] No phone number for candidate {application.candidate_name}.")
         interview.call_status = "NO_PHONE"
         await db.commit()
+        await _invalidate_interview_call_caches()
         return {"status": "skipped", "message": "Candidate has no phone number on file."}
 
     # Don't place call if already confirmed (REQ031 & TEST-ID: 9)
@@ -586,6 +594,7 @@ async def initiate_candidate_interview_call(
 
     await db.commit()
     await db.refresh(interview)
+    await _invalidate_interview_call_caches()
 
     return {
         "status": "success",
@@ -896,6 +905,7 @@ async def handle_voice_response(
 
     twiml_resp.hangup()
     await db.commit()
+    await _invalidate_interview_call_caches()
     return str(twiml_resp)
 
 
@@ -934,6 +944,7 @@ async def handle_call_status_callback(
     ):
         interview.next_retry_at = None
         await db.commit()
+        await _invalidate_interview_call_caches()
         return
 
     # Check for unsuccessful call outcomes
@@ -966,6 +977,7 @@ async def handle_call_status_callback(
             await send_backup_sms_notification(interview_id, db)
 
     await db.commit()
+    await _invalidate_interview_call_caches()
 
 
 async def send_backup_sms_notification(interview_id: int, db: AsyncSession) -> bool:
@@ -1025,6 +1037,7 @@ async def send_backup_sms_notification(interview_id: int, db: AsyncSession) -> b
         logger.debug(f"HR SMS notification notice: {e_notif}")
 
     await db.commit()
+    await _invalidate_interview_call_caches()
     logger.info(f"[AI Caller] Backup SMS dispatched to {phone} for Interview {interview_id}. Sent={sent}")
     return sent or True
 
@@ -1289,6 +1302,7 @@ async def simulate_voice_call(
 
     await db.commit()
     await db.refresh(interview)
+    await _invalidate_interview_call_caches()
 
     return {
         "status": "success",
@@ -1302,32 +1316,70 @@ async def simulate_voice_call(
     }
 
 
+def _format_call_record(r: VoiceCallRecord, interview: Optional[Interview] = None) -> Dict[str, Any]:
+    """Serialize a VoiceCallRecord into a consistent JSON dictionary."""
+    item: Dict[str, Any] = {
+        "id": r.id,
+        "interview_id": r.interview_id,
+        "call_sid": r.call_sid,
+        "phone_number": r.phone_number,
+        "attempt_number": r.attempt_number,
+        "status": r.status,
+        "duration": r.duration,
+        "language": r.language,
+        "candidate_verbal_response": r.candidate_verbal_response,
+        "extracted_intent": r.extracted_intent,
+        "notes": r.notes,
+        "sms_backup_sent": r.sms_backup_sent,
+        "created_at": r.created_at.isoformat() if r.created_at else None,
+    }
+    if interview is not None:
+        item["interview_title"] = getattr(interview, "title", None)
+        item["interview_status"] = getattr(interview, "status", None)
+        item["interview_start_time"] = (
+            interview.start_time.isoformat() if getattr(interview, "start_time", None) else None
+        )
+    return item
+
+
 async def get_interview_call_logs(interview_id: int, db: AsyncSession) -> List[Dict[str, Any]]:
     """Returns all call records and logs for an interview (REQ032)."""
-    q = select(VoiceCallRecord).where(
-        VoiceCallRecord.interview_id == interview_id
-    ).order_by(VoiceCallRecord.id.desc())
+    q = (
+        select(VoiceCallRecord)
+        .where(VoiceCallRecord.interview_id == interview_id)
+        .order_by(VoiceCallRecord.id.desc())
+    )
     res = await db.execute(q)
     records = res.scalars().all()
+    return [_format_call_record(r) for r in records]
 
-    return [
-        {
-            "id": r.id,
-            "interview_id": r.interview_id,
-            "call_sid": r.call_sid,
-            "phone_number": r.phone_number,
-            "attempt_number": r.attempt_number,
-            "status": r.status,
-            "duration": r.duration,
-            "language": r.language,
-            "candidate_verbal_response": r.candidate_verbal_response,
-            "extracted_intent": r.extracted_intent,
-            "notes": r.notes,
-            "sms_backup_sent": r.sms_backup_sent,
-            "created_at": r.created_at.isoformat() if r.created_at else None
-        }
-        for r in records
-    ]
+
+async def get_application_call_logs(application_id: int, db: AsyncSession) -> List[Dict[str, Any]]:
+    """Return all voice call logs across interviews for a job application, newest first."""
+    q = (
+        select(VoiceCallRecord, Interview)
+        .join(Interview, VoiceCallRecord.interview_id == Interview.id)
+        .where(Interview.job_application_id == application_id)
+        .order_by(VoiceCallRecord.id.desc())
+    )
+    res = await db.execute(q)
+    return [_format_call_record(record, interview) for record, interview in res.all()]
+
+
+async def get_candidate_call_logs(email: str, db: AsyncSession) -> List[Dict[str, Any]]:
+    """Return all voice call logs for a candidate email across interviews, newest first."""
+    normalized_email = (email or "").strip().lower()
+    if not normalized_email:
+        return []
+    q = (
+        select(VoiceCallRecord, Interview)
+        .join(Interview, VoiceCallRecord.interview_id == Interview.id)
+        .join(JobApplication, Interview.job_application_id == JobApplication.id)
+        .where(func.lower(JobApplication.candidate_email) == normalized_email)
+        .order_by(VoiceCallRecord.id.desc())
+    )
+    res = await db.execute(q)
+    return [_format_call_record(record, interview) for record, interview in res.all()]
 
 
 # ── Gemini Media Stream Bridge ──────────────────────────────────────────────

@@ -221,3 +221,4 @@ def generate_hr_pdf_bytes(export_data: Dict[str, Any]) -> bytes:
                 write_line(f"   Skills: {skills_preview[:95]}", fontsize=7.5, color=(0.42, 0.47, 0.55))
 
     return doc.tobytes()
+

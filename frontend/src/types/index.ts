@@ -155,6 +155,12 @@ export interface Interview {
   meeting_link?: string;
   location?: string;
   notes?: string;
+  call_status?: string;
+  call_attempts?: number;
+  candidate_response?: string;
+  call_language?: string;
+  sms_backup_sent?: boolean;
+  call_records?: any[];
   created_at?: string;
 }
 

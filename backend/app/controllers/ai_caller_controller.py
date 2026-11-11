@@ -140,6 +140,32 @@ async def get_call_logs(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/application/{application_id}/logs")
+async def get_application_call_logs(
+    application_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    """Retrieve all voice call history records across interviews for a job application."""
+    try:
+        return await ai_caller_service.get_application_call_logs(application_id, db)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/candidate/{email}/logs")
+async def get_candidate_call_logs(
+    email: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    """Retrieve all voice call history records across interviews for a candidate email."""
+    try:
+        return await ai_caller_service.get_candidate_call_logs(email, db)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # ── Twilio Webhooks (Voice Generation & Speech Interpretation) ───────────────
 
 @router.api_route("/interview-twiml/{interview_id}", methods=["GET", "POST"])

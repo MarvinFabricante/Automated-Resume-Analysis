@@ -1,12 +1,26 @@
 import React, { useState } from 'react';
 import { Helmet } from 'react-helmet-async';
 import { 
-  X, MapPin, Briefcase, GraduationCap, Mail, Phone, 
+  X, MapPin, Briefcase, GraduationCap, Mail, Phone, PhoneForwarded, Video, User,
   Target, TrendingUp, Lightbulb, CheckCircle2, XCircle, AlertTriangle,
   Zap, BarChart3, BookOpen, Award, Copy, Check, Calendar, Download,
   Building2, Clock, Sparkles, ShieldCheck, Printer, CheckCircle
 } from 'lucide-react';
 import { getAssetUrl } from '../../../services/api';
+import {
+  useGetApplicationInterviewsQuery,
+  useGetCandidateInterviewsQuery,
+  useGetApplicationCallLogsQuery,
+  useGetCandidateCallLogsQuery,
+} from '../../../redux/api/apiSlice';
+import {
+  filterAndSortUpcomingInterviews,
+  mergeInterviewsById,
+  mergeCallLogs,
+  formatUtcLogTimestamp,
+  getCallOutcomeBadgeClass,
+  isUpcomingInterview,
+} from '../../../utils/interviewUtils';
 
 /* ─── Types & Interfaces ─── */
 export interface ViewCandidateDetailsModalProps {
@@ -18,7 +32,7 @@ export interface ViewCandidateDetailsModalProps {
   onUpdateStatus?: (id: string | number, status: string) => Promise<any> | void;
 }
 
-type TabType = 'overview' | 'skills' | 'experience' | 'education' | 'recommendations' | 'all' | 'dossier';
+type TabType = 'overview' | 'schedule_calls' | 'skills' | 'experience' | 'education' | 'recommendations' | 'all' | 'dossier';
 
 /* ─── Fit Tier Helper ─── */
 const getFitTier = (score: number) => {
@@ -215,7 +229,42 @@ const ViewCandidateDetailsModal: React.FC<ViewCandidateDetailsModalProps> = ({
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<TabType>('overview');
 
+  const candidateAppId = candidate?.id;
+  const rawCandidateEmail = String(candidate?.email || candidate?.candidate_email || '').trim();
+  const validCandidateEmail =
+    rawCandidateEmail &&
+    rawCandidateEmail !== 'Not provided' &&
+    rawCandidateEmail !== 'N/A' &&
+    rawCandidateEmail.includes('@')
+      ? rawCandidateEmail
+      : '';
+
+  const queryOpts = { refetchOnMountOrArgChange: true, refetchOnFocus: true };
+  const { data: appInterviews = [], isLoading: isLoadingAppInterviews } = useGetApplicationInterviewsQuery(
+    candidateAppId,
+    { skip: !isOpen || !candidateAppId, ...queryOpts }
+  );
+  const { data: emailInterviews = [], isLoading: isLoadingEmailInterviews } = useGetCandidateInterviewsQuery(
+    validCandidateEmail,
+    { skip: !isOpen || !validCandidateEmail, ...queryOpts }
+  );
+  const { data: appCallLogs = [], isLoading: isLoadingAppLogs } = useGetApplicationCallLogsQuery(
+    candidateAppId,
+    { skip: !isOpen || !candidateAppId, ...queryOpts }
+  );
+  const { data: emailCallLogs = [], isLoading: isLoadingEmailLogs } = useGetCandidateCallLogsQuery(
+    validCandidateEmail,
+    { skip: !isOpen || !validCandidateEmail, ...queryOpts }
+  );
+
   if (!isOpen || !candidate) return null;
+
+  const allCandidateInterviews = mergeInterviewsById(appInterviews, emailInterviews);
+  const upcomingInterviews = filterAndSortUpcomingInterviews(allCandidateInterviews);
+  const pastOrCompletedInterviews = allCandidateInterviews.filter((iv) => !isUpcomingInterview(iv));
+  const callLogs = mergeCallLogs(appCallLogs, emailCallLogs, allCandidateInterviews);
+  const isLoadingHistory =
+    isLoadingAppInterviews || isLoadingEmailInterviews || isLoadingAppLogs || isLoadingEmailLogs;
 
   const handleCopy = (text?: string, field?: string) => {
     if (!text || text === 'N/A' || !field) return;
@@ -390,12 +439,260 @@ const ViewCandidateDetailsModal: React.FC<ViewCandidateDetailsModalProps> = ({
   // Tab definitions
   const tabs: { id: TabType; label: string; count?: number; icon: React.ComponentType<{ size?: number; className?: string }> }[] = [
     { id: 'overview', label: 'Executive Overview', icon: Target },
+    {
+      id: 'schedule_calls',
+      label: 'Interviews & Calls',
+      count: upcomingInterviews.length + callLogs.length || undefined,
+      icon: Calendar,
+    },
     { id: 'skills', label: 'Skills Gap', count: missingSkills.length ? missingSkills.length : undefined, icon: Zap },
     { id: 'experience', label: 'Work History', count: candidate.work_experiences?.length || undefined, icon: Briefcase },
     { id: 'education', label: 'Education & Licenses', count: (candidate.education_entries?.length || 0) + extractedCertifications.length || undefined, icon: GraduationCap },
     { id: 'recommendations', label: 'Recommendations', count: recommendations.length || undefined, icon: Lightbulb },
     { id: 'all', label: 'Full Report', icon: BookOpen },
   ];
+
+  const formatInterviewSlot = (startStr?: string, endStr?: string) => {
+    if (!startStr) return 'TBD';
+    const start = new Date(startStr);
+    if (Number.isNaN(start.getTime())) return String(startStr);
+    const dateLabel = start.toLocaleDateString('en-US', {
+      weekday: 'short',
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    });
+    const startTime = start.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+    if (!endStr) return `${dateLabel} • ${startTime}`;
+    const end = new Date(endStr);
+    const endTime = Number.isNaN(end.getTime())
+      ? ''
+      : end.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+    return endTime ? `${dateLabel} • ${startTime} – ${endTime}` : `${dateLabel} • ${startTime}`;
+  };
+
+  const renderScheduleAndCallHistory = (compact: boolean) => {
+    const displayedUpcoming = compact ? upcomingInterviews.slice(0, 3) : upcomingInterviews;
+    const displayedPast = compact ? [] : pastOrCompletedInterviews;
+    const displayedLogs = compact ? callLogs.slice(0, 4) : callLogs;
+
+    return (
+      <div className="space-y-4">
+        {/* Upcoming Interviews Section */}
+        <div
+          data-testid={compact ? 'overview-upcoming-interviews' : 'candidate-profile-interviews'}
+          className="bg-white border border-gray-200/80 rounded-2xl p-4 sm:p-5 space-y-3"
+        >
+          <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-gray-100">
+            <div className="flex items-center gap-2">
+              <div className="w-7 h-7 rounded-xl bg-pink-50 border border-pink-100 flex items-center justify-center text-[#D60041]">
+                <Calendar size={14} />
+              </div>
+              <div>
+                <h4 className="text-xs font-black text-gray-900 uppercase tracking-wider">
+                  Upcoming Interviews ({upcomingInterviews.length})
+                </h4>
+                <p className="text-[11px] text-gray-500 font-medium">
+                  Scheduled evaluation sessions for {candidateName}
+                </p>
+              </div>
+            </div>
+
+            {compact && (upcomingInterviews.length > 0 || callLogs.length > 0) && (
+              <button
+                type="button"
+                onClick={() => setActiveTab('schedule_calls')}
+                className="text-[11px] font-bold text-[#D60041] hover:underline cursor-pointer"
+              >
+                View Full History →
+              </button>
+            )}
+          </div>
+
+          {isLoadingHistory ? (
+            <div className="h-14 rounded-xl bg-slate-50 animate-pulse" />
+          ) : displayedUpcoming.length === 0 ? (
+            <div className="py-4 px-3 rounded-xl bg-slate-50/80 border border-slate-100 flex flex-wrap items-center justify-between gap-3">
+              <p className="text-xs text-gray-500 font-medium">
+                No upcoming interviews scheduled for this candidate yet.
+              </p>
+              {handleInterviewAction && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onClose();
+                    handleInterviewAction(candidate);
+                  }}
+                  className="px-3 py-1.5 bg-[#D60041] hover:bg-[#b50037] text-white rounded-xl text-[11px] font-bold transition-colors cursor-pointer"
+                >
+                  Schedule Interview
+                </button>
+              )}
+            </div>
+          ) : (
+            <div className="space-y-2.5">
+              {displayedUpcoming.map((iv: any) => (
+                <div
+                  key={iv.id}
+                  data-testid="candidate-upcoming-interview-item"
+                  className="p-3 rounded-xl bg-slate-50/70 border border-slate-200/70 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5"
+                >
+                  <div className="space-y-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-xs font-black text-gray-900 truncate">
+                        {iv.title || 'Interview Session'}
+                      </span>
+                      <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase bg-pink-100 text-[#D60041]">
+                        {iv.status || 'SCHEDULED'}
+                      </span>
+                      {iv.call_status && iv.call_status !== 'PENDING' && (
+                        <span
+                          className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase border ${getCallOutcomeBadgeClass(iv.call_status)}`}
+                        >
+                          Call: {String(iv.call_status).replace(/_/g, ' ')}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[11px] text-gray-600 font-semibold flex items-center gap-1.5">
+                      <Clock size={12} className="text-[#D60041] shrink-0" />
+                      <span>{formatInterviewSlot(iv.start_time, iv.end_time)}</span>
+                    </p>
+                    {iv.interviewer_name && (
+                      <p className="text-[11px] text-gray-500 font-medium flex items-center gap-1.5">
+                        <User size={11} className="shrink-0" />
+                        <span>Interviewer: {iv.interviewer_name}</span>
+                      </p>
+                    )}
+                  </div>
+
+                  {iv.meeting_link && (
+                    <a
+                      href={iv.meeting_link}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-xl text-[11px] font-bold shrink-0"
+                    >
+                      <Video size={12} />
+                      <span>Join Meeting</span>
+                    </a>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {displayedPast.length > 0 && (
+            <div className="pt-2 border-t border-gray-100 space-y-2">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">
+                Past / Completed Interviews ({displayedPast.length})
+              </p>
+              <div className="space-y-1.5">
+                {displayedPast.map((iv: any) => (
+                  <div
+                    key={iv.id}
+                    className="p-2.5 rounded-xl bg-gray-50 border border-gray-200/70 flex flex-wrap items-center justify-between gap-2 text-xs"
+                  >
+                    <span className="font-bold text-gray-700">{iv.title || 'Interview Session'}</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[11px] text-gray-500">{formatInterviewSlot(iv.start_time, iv.end_time)}</span>
+                      <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase bg-gray-200 text-gray-700">
+                        {iv.status || 'COMPLETED'}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Call Logs Section */}
+        <div
+          data-testid={compact ? 'overview-call-logs' : 'candidate-profile-call-logs'}
+          className="bg-white border border-gray-200/80 rounded-2xl p-4 sm:p-5 space-y-3"
+        >
+          <div className="flex items-center justify-between gap-2 pb-2 border-b border-gray-100">
+            <div className="flex items-center gap-2">
+              <div className="w-7 h-7 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center text-blue-600">
+                <PhoneForwarded size={14} />
+              </div>
+              <div>
+                <h4 className="text-xs font-black text-gray-900 uppercase tracking-wider">
+                  AI Voice Call Logs ({callLogs.length})
+                </h4>
+                <p className="text-[11px] text-gray-500 font-medium">
+                  Outbound call attempts, candidate responses, and SMS backups
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {isLoadingHistory ? (
+            <div className="h-14 rounded-xl bg-slate-50 animate-pulse" />
+          ) : displayedLogs.length === 0 ? (
+            <div className="py-4 px-3 rounded-xl bg-slate-50/80 border border-slate-100 text-xs text-gray-500 font-medium">
+              No voice call attempts or logs recorded for this candidate yet.
+            </div>
+          ) : (
+            <div className="space-y-2.5 max-h-72 overflow-y-auto pr-1">
+              {displayedLogs.map((log: any, idx: number) => {
+                const outcomeLabel = log.extracted_intent || log.status || 'INITIATED';
+                return (
+                  <div
+                    key={log.id || `${log.call_sid || 'log'}-${idx}`}
+                    data-testid="candidate-call-log-item"
+                    className="p-3 rounded-xl bg-slate-50/70 border border-slate-200/70 flex flex-col sm:flex-row sm:items-start justify-between gap-2 text-xs"
+                  >
+                    <div className="space-y-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-black text-gray-900">
+                          Attempt #{log.attempt_number || 1}
+                        </span>
+                        <span
+                          className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase border ${getCallOutcomeBadgeClass(outcomeLabel)}`}
+                        >
+                          {log.status || outcomeLabel}
+                        </span>
+                        {log.extracted_intent && log.extracted_intent !== log.status && (
+                          <span
+                            className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase border ${getCallOutcomeBadgeClass(log.extracted_intent)}`}
+                          >
+                            {log.extracted_intent}
+                          </span>
+                        )}
+                        {log.sms_backup_sent && (
+                          <span className="px-2 py-0.5 bg-blue-100 text-blue-800 border border-blue-200 rounded-full text-[9px] font-black uppercase">
+                            SMS Backup Sent
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-[11px] text-gray-500 font-medium">
+                        {log.phone_number ? `To ${log.phone_number}` : 'Outbound Call'}
+                        {log.language ? ` • Lang: ${String(log.language).toUpperCase()}` : ''}
+                        {typeof log.duration === 'number' && log.duration > 0 ? ` • ${log.duration}s` : ''}
+                        {log.interview_title ? ` • ${log.interview_title}` : ''}
+                      </p>
+                      {log.candidate_verbal_response && (
+                        <p className="text-[11px] font-medium text-gray-800 italic">
+                          "{log.candidate_verbal_response}"
+                        </p>
+                      )}
+                      {log.notes && (
+                        <p className="text-[11px] text-gray-600">{log.notes}</p>
+                      )}
+                    </div>
+                    <span className="text-[10px] text-gray-400 font-mono shrink-0">
+                      {formatUtcLogTimestamp(log.created_at)}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
 
   const handlePrint = () => {
     window.print();
@@ -690,7 +987,7 @@ const ViewCandidateDetailsModal: React.FC<ViewCandidateDetailsModalProps> = ({
           <main className="flex-1 flex flex-col min-w-0 bg-white">
             
             {/* Desktop Navigation Tabs */}
-            <div className="hidden md:flex border-b border-gray-200 bg-gray-50/60 px-6 pt-3 gap-2 shrink-0">
+            <div className="hidden md:flex border-b border-gray-200 bg-gray-50/60 px-6 pt-3 gap-2 shrink-0 overflow-x-auto scrollbar-none">
               {tabs.map((tab) => {
                 const Icon = tab.icon;
                 const isActive = activeTab === tab.id;
@@ -896,6 +1193,26 @@ const ViewCandidateDetailsModal: React.FC<ViewCandidateDetailsModalProps> = ({
                       )}
                     </div>
                   </div>
+
+                  {activeTab === 'overview' && renderScheduleAndCallHistory(true)}
+                </div>
+              )}
+
+              {/* ══════════ TAB 1B: INTERVIEWS & CALL LOGS ══════════ */}
+              {(activeTab === 'schedule_calls' || activeTab === 'all') && (
+                <div className="space-y-6 animate-in fade-in duration-150 pt-2">
+                  <div className="flex flex-wrap items-center justify-between gap-3 pb-2 border-b border-gray-100">
+                    <div>
+                      <h3 className="text-sm font-black text-gray-900 uppercase tracking-tight">
+                        Interview Schedule & Voice Call History
+                      </h3>
+                      <p className="text-xs text-gray-500 font-medium">
+                        Upcoming interviews, historical sessions, and automated AI call logs
+                      </p>
+                    </div>
+                  </div>
+
+                  {renderScheduleAndCallHistory(false)}
                 </div>
               )}
 

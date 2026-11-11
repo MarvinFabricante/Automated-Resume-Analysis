@@ -37,6 +37,7 @@ import {
   useSimulateVoiceCallMutation,
   useGetInterviewCallLogsQuery
 } from '../../../redux/api/apiSlice';
+import { formatUtcLogTimestamp } from '../../../utils/interviewUtils';
 
 interface InterviewDetailsModalProps {
   isOpen: boolean;
@@ -69,7 +70,7 @@ const InterviewDetailsModal: React.FC<InterviewDetailsModalProps> = ({ isOpen, o
 
   const [isEditing, setIsEditing] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string>('');
-  const [showCallLogs, setShowCallLogs] = useState<boolean>(false);
+  const [showCallLogs, setShowCallLogs] = useState<boolean>(true);
   const [actionFeedback, setActionFeedback] = useState<string>('');
   const [showSimulateMenu, setShowSimulateMenu] = useState<boolean>(false);
   const [selectedCallLang, setSelectedCallLang] = useState<string>(interview?.call_language || 'fil');
@@ -87,7 +88,11 @@ const InterviewDetailsModal: React.FC<InterviewDetailsModalProps> = ({ isOpen, o
   const [availableSlots, setAvailableSlots] = useState<any[]>([]);
 
   const actualInterviewId = interview?.rawId || (typeof interview?.id === 'string' && interview.id.startsWith('iv-') ? parseInt(interview.id.replace('iv-', ''), 10) : interview?.id);
-  const { data: callLogs = [], refetch: refetchLogs } = useGetInterviewCallLogsQuery(actualInterviewId, { skip: !actualInterviewId || Boolean(interview?.isGoogleEvent) });
+  const { data: callLogs = [], refetch: refetchLogs } = useGetInterviewCallLogsQuery(actualInterviewId, {
+    skip: !actualInterviewId || Boolean(interview?.isGoogleEvent),
+    refetchOnMountOrArgChange: true,
+    refetchOnFocus: true,
+  });
 
   const toLocalDateString = (d?: Date | null) => {
     if (!d) return '';
@@ -852,7 +857,7 @@ const InterviewDetailsModal: React.FC<InterviewDetailsModalProps> = ({ isOpen, o
                                 )}
                               </div>
                               <span className="text-[10px] text-gray-400 font-mono self-start sm:self-auto shrink-0">
-                                {log.created_at ? new Date(log.created_at).toLocaleString() : ''}
+                                {formatUtcLogTimestamp(log.created_at)}
                               </span>
                             </div>
                           ))

@@ -1,6 +1,6 @@
 from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_
+from sqlalchemy import select, and_, func
 from sqlalchemy.orm import selectinload
 from typing import List, Optional, Union
 import logging
@@ -99,6 +99,16 @@ async def commit_changes(db: AsyncSession) -> None:
     await db.commit()
 
 
+def _interview_load_options():
+    """Shared SQLAlchemy eager-loading options for interview relationships and call logs."""
+    return (
+        selectinload(Interview.job_application),
+        selectinload(Interview.interviewer),
+        selectinload(Interview.logs),
+        selectinload(Interview.call_records),
+    )
+
+
 async def get_interview_by_id(db: AsyncSession, interview_id: int) -> Optional[Interview]:
     """Get interview by ID (checks Redis cache first)."""
     cache_key = f"interview:id:{interview_id}"
@@ -108,12 +118,7 @@ async def get_interview_by_id(db: AsyncSession, interview_id: int) -> Optional[I
 
     result = await db.execute(
         select(Interview)
-        .options(
-            selectinload(Interview.job_application),
-            selectinload(Interview.interviewer),
-            selectinload(Interview.logs),
-            selectinload(Interview.call_records),
-        )
+        .options(*_interview_load_options())
         .filter(Interview.id == interview_id)
     )
     interview = result.scalars().first()
@@ -131,8 +136,9 @@ async def get_interviews_for_application(db: AsyncSession, application_id: int) 
 
     result = await db.execute(
         select(Interview)
-        .options(selectinload(Interview.job_application), selectinload(Interview.interviewer))
+        .options(*_interview_load_options())
         .filter(Interview.job_application_id == application_id)
+        .order_by(Interview.start_time.asc())
     )
     interviews = result.scalars().all()
     await set_cache(cache_key, interviews, ttl=300)
@@ -162,16 +168,18 @@ async def get_interviews_in_range(
 
 async def get_interviews_for_candidate(db: AsyncSession, email: str) -> List[Interview]:
     """Get interviews for candidate by email (checks Redis cache first)."""
-    cache_key = f"interviews:cand:{email}"
+    normalized_email = (email or "").strip().lower()
+    cache_key = f"interviews:cand:{normalized_email}"
     cached = await get_cache(cache_key)
     if cached is not None:
         return cached
 
     result = await db.execute(
         select(Interview)
-        .options(selectinload(Interview.job_application), selectinload(Interview.interviewer))
+        .options(*_interview_load_options())
         .join(JobApplication)
-        .filter(JobApplication.candidate_email == email)
+        .filter(func.lower(JobApplication.candidate_email) == normalized_email)
+        .order_by(Interview.start_time.asc())
     )
     interviews = result.scalars().all()
     await set_cache(cache_key, interviews, ttl=300)
@@ -187,7 +195,7 @@ async def get_all_interviews(db: AsyncSession) -> List[Interview]:
 
     result = await db.execute(
         select(Interview)
-        .options(selectinload(Interview.job_application), selectinload(Interview.interviewer))
+        .options(*_interview_load_options())
         .order_by(Interview.start_time.asc())
     )
     interviews = result.scalars().all()
@@ -199,7 +207,7 @@ async def get_interview_by_google_event_id(db: AsyncSession, google_event_id: st
     """Fetch an interview by its Google Calendar event ID."""
     result = await db.execute(
         select(Interview)
-        .options(selectinload(Interview.job_application), selectinload(Interview.interviewer))
+        .options(*_interview_load_options())
         .filter(Interview.google_event_id == google_event_id)
     )
     return result.scalars().first()
