@@ -357,6 +357,18 @@ const ResumePreviewModal: React.FC<ResumePreviewModalProps> = ({
                             <span className="text-xs font-bold text-slate-900">{extractedData.highest_degree || extractedData.degree || 'Not detected'}</span>
                           </div>
                         </div>
+                        {((Array.isArray(extractedData.certifications_list) && extractedData.certifications_list.length > 0) || extractedData.certifications) && (
+                          <div className="p-3 bg-rose-50/50 rounded-xl border border-rose-100">
+                            <span className="text-[10px] text-rose-700 font-bold uppercase block mb-1">Certifications & Achievements</span>
+                            <span className="text-xs font-bold text-slate-900">
+                              {Array.isArray(extractedData.certifications_list) && extractedData.certifications_list.length > 0
+                                ? extractedData.certifications_list.join(' | ')
+                                : Array.isArray(extractedData.certifications)
+                                ? extractedData.certifications.join(' | ')
+                                : extractedData.certifications}
+                            </span>
+                          </div>
+                        )}
                       </div>
                     )}
 

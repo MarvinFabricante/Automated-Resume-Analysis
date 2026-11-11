@@ -40,6 +40,7 @@ except ImportError:
     process = None
 
 from app.extractors.nlp.nlp_engine import get_doc, get_verb_object_pairs
+from app.extractors.content.section_parser import detect_section_label
 from app.extractors.content.skills_taxonomy import (
     PHILIPPINE_SKILLS_TAXONOMY,
     load_external_skill_datasets as taxonomy_load_external,
@@ -152,7 +153,18 @@ _SHORT_KEYWORDS_REQUIRING_CONTEXT = {
     "GO": {"GOLANG", "PROGRAMMING", "BACKEND", "DEVELOPER", "DOCKER", "KUBERNETES"},
     "IT": {"SUPPORT", "INFORMATION TECHNOLOGY", "BSIT", "BS IT", "HARDWARE", "SYSTEMS", "ADMIN"},
     "AI": {"ARTIFICIAL INTELLIGENCE", "MACHINE LEARNING", "ML", "DEEP LEARNING", "DATA"},
-    "ML": {"MACHINE LEARNING", "AI", "DEEP LEARNING", "DATA SCIENCE", "ALGORITHMS"},
+    "ML": {
+        "MACHINE LEARNING", "AI", "DEEP LEARNING", "DATA SCIENCE", "ALGORITHMS",
+        "PYTHON", "SQL", "PANDAS", "NUMPY", "TENSORFLOW", "PYTORCH", "SCIKIT",
+        "DATA", "ANALYTICS", "NLP", "STATISTICS", "NEURAL", "MODEL",
+    },
+    "QC": {
+        "QUALITY", "QUALITY CONTROL", "QUALITY ASSURANCE", "QA", "INSPECTION",
+        "ISO", "SIX SIGMA", "PRODUCTION", "MANUFACTURING", "OPERATOR", "LINE",
+        "DEFECT", "AUDIT", "TESTING", "COMPLIANCE", "CALIBRATION", "SAMPLE",
+        "ML", "SKILLS",
+    },
+    "NLP": {"NATURAL LANGUAGE", "PYTHON", "ML", "MACHINE LEARNING", "AI", "SPACY", "TEXT", "SKILLS"},
     "QA": {"QUALITY ASSURANCE", "TESTING", "MANUAL TESTING", "AUTOMATION", "TESTER"},
     "UI": {"USER INTERFACE", "UX", "FRONTEND", "DESIGN", "FIGMA"},
     "UX": {"USER EXPERIENCE", "UI", "FRONTEND", "DESIGN", "RESEARCH"},
@@ -289,6 +301,15 @@ class PhilippineSkillsExtractor:
         current_section = "General"
         section_start = 0
         char_offset = 0
+        _sec_map = {
+            "SKILLS": "Skills",
+            "EXPERIENCE": "Work Experience",
+            "EDUCATION": "Education",
+            "CERTIFICATIONS": "Certifications",
+            "TRAINING": "Certifications",
+            "AWARDS": "Certifications",
+            "SUMMARY": "Summary",
+        }
 
         for line in lines:
             line_len = len(line) + 1  # newline length
@@ -300,6 +321,10 @@ class PhilippineSkillsExtractor:
                     if pattern.match(clean_line):
                         matched_header = sec_name
                         break
+                if not matched_header:
+                    lbl = detect_section_label(clean_line)
+                    if lbl:
+                        matched_header = _sec_map.get(lbl, "General")
 
                 if matched_header:
                     if char_offset > section_start:
@@ -321,13 +346,53 @@ class PhilippineSkillsExtractor:
                 return name
         return "General"
 
-    def _is_valid_short_mention(self, raw: str, start: int, end: int, text: str) -> bool:
+    def _is_valid_short_mention(self, raw: str, start: int, end: int, text: str, section: str = "General") -> bool:
         """Filters out ambiguous short tokens to prevent false positives."""
         raw_upper = raw.strip().upper()
         if raw_upper not in _SHORT_KEYWORDS_REQUIRING_CONTEXT:
             return True
 
         exact_snippet = text[start:end].strip()
+        line_start = text.rfind('\n', 0, start) + 1
+        line_end = text.find('\n', end)
+        if line_end < 0:
+            line_end = len(text)
+        line_text = text[line_start:line_end]
+
+        if raw_upper == "ML":
+            # Exclude milliliter units like "500 ml" or "10mL"
+            if re.search(r'\d\s*$', text[max(0, start - 5):start]):
+                return False
+            if section in {"Skills", "Certifications"}:
+                return True
+            if not exact_snippet.isupper():
+                return False
+            window = text[max(0, start - 100):min(len(text), end + 100)].upper()
+            if section in {"Work Experience", "Summary"} or any(w in window for w in _SHORT_KEYWORDS_REQUIRING_CONTEXT["ML"]):
+                return True
+            return bool(re.search(r'(?:^|[,|;/•]\s*)ML(?:\s*[,|;/•]|$)', line_text))
+
+        if raw_upper == "QC":
+            # Avoid mistaking Quezon City addresses / contact headers for Quality Control
+            if re.search(
+                r'\b(?:address|location|city|metro\s+manila|ncr|brgy|barangay|ave\.?|avenue|'
+                r'st\.?|street|rd\.?|road|blvd|diliman|cubao|commonwealth|fairview|'
+                r'katipunan|novaliches|philippines|quezon)\b',
+                line_text,
+                re.IGNORECASE,
+            ):
+                return False
+            if section != "Skills" and re.search(r'(?:@|\+?63\d{7,}|09\d{8,})', line_text):
+                return False
+            if section in {"Skills", "Certifications"}:
+                return True
+            if not exact_snippet.isupper():
+                return False
+            window = text[max(0, start - 100):min(len(text), end + 100)].upper()
+            if section in {"Work Experience", "Summary"} or any(w in window for w in _SHORT_KEYWORDS_REQUIRING_CONTEXT["QC"]):
+                return True
+            return bool(re.search(r'(?:^|[,|;/•]\s*)QC(?:\s*[,|;/•]|$)', line_text))
+
         if not exact_snippet.isupper() and len(exact_snippet) <= 2:
             return False
 
@@ -372,10 +437,10 @@ class PhilippineSkillsExtractor:
             matches = self.keyword_processor.extract_keywords(text, span_info=True)
             for canonical, start, end in matches:
                 raw_mention = text[start:end].strip()
-                if not self._is_valid_short_mention(raw_mention, start, end, text):
+                sec = self._get_section(start, section_spans)
+                if not self._is_valid_short_mention(raw_mention, start, end, text, section=sec):
                     continue
 
-                sec = self._get_section(start, section_spans)
                 candidates.append({
                     "canonical_skill": canonical,
                     "raw_mention": raw_mention,
@@ -496,10 +561,12 @@ class PhilippineSkillsExtractor:
             items = re.split(r'[,;|]|\band\b|\bwith\b', phrase)
             for item in items:
                 clean_item = item.strip().strip("-•*►▪()")
-                if not clean_item or len(clean_item) < 3:
+                if not clean_item or len(clean_item) < 2:
                     continue
 
                 item_lower = clean_item.lower()
+                if len(clean_item) < 3 and item_lower not in self.alias_to_canonical:
+                    continue
                 if item_lower in _COMPOUND_SKILL_MAP:
                     for mapped_canonical in _COMPOUND_SKILL_MAP[item_lower]:
                         candidates.append({

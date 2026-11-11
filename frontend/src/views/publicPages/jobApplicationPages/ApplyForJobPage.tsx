@@ -149,6 +149,10 @@ const ApplyForJobPage: React.FC = () => {
         skills: (Array.isArray(extractedData?.skills_list) && extractedData.skills_list.length > 0)
           ? extractedData.skills_list
           : (extractedData?.skills ? extractedData.skills.split(' | ').filter(Boolean) : []),
+        certifications: (Array.isArray(extractedData?.certifications_list) && extractedData.certifications_list.length > 0)
+          ? extractedData.certifications_list
+          : (extractedData?.certifications ? String(extractedData.certifications).split(' | ').filter(Boolean) : []),
+        certifications_details: extractedData?.certifications_details || null,
         profile_image_url: extractedData?.profile_image_url || null
       }
     });
@@ -573,6 +577,48 @@ const ApplyForJobPage: React.FC = () => {
                               </div>
                             ))}
                           </div>
+
+                          {/* Extracted Skills & Certifications Summary */}
+                          {(() => {
+                            const certItems: string[] = Array.isArray(extractedData?.certifications_list) && extractedData.certifications_list.length > 0
+                              ? extractedData.certifications_list
+                              : (extractedData?.certifications ? String(extractedData.certifications).split(' | ').map((s: string) => s.trim()).filter(Boolean) : []);
+                            const skillItems: string[] = Array.isArray(extractedData?.skills_list) && extractedData.skills_list.length > 0
+                              ? extractedData.skills_list
+                              : (extractedData?.skills ? String(extractedData.skills).split(' | ').map((s: string) => s.trim()).filter(Boolean) : []);
+                            return (
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                                <div className="bg-white p-3.5 rounded-xl border border-slate-100 shadow-2xs">
+                                  <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">Skills ({skillItems.length})</span>
+                                  {skillItems.length > 0 ? (
+                                    <div className="flex flex-wrap gap-1.5">
+                                      {skillItems.slice(0, 12).map((sk, idx) => (
+                                        <span key={idx} className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 text-[11px] font-semibold">
+                                          {sk}
+                                        </span>
+                                      ))}
+                                    </div>
+                                  ) : (
+                                    <p className="text-xs text-slate-400 italic">Not detected</p>
+                                  )}
+                                </div>
+                                <div className="bg-white p-3.5 rounded-xl border border-slate-100 shadow-2xs">
+                                  <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">Certifications & Achievements ({certItems.length})</span>
+                                  {certItems.length > 0 ? (
+                                    <div className="flex flex-wrap gap-1.5">
+                                      {certItems.map((cert, idx) => (
+                                        <span key={idx} className="px-2 py-0.5 rounded-md bg-rose-50 text-rose-800 border border-rose-200/70 text-[11px] font-semibold">
+                                          {cert}
+                                        </span>
+                                      ))}
+                                    </div>
+                                  ) : (
+                                    <p className="text-xs text-slate-400 italic">Not detected</p>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })()}
                         </div>
                       </div>
                     </div>

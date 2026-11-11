@@ -174,7 +174,11 @@ const PreviewAndVerifyPage: React.FC = () => {
     summary: activeData?.summary || state?.summary || "",
     work_experiences: activeData?.work_experiences || state?.work_experiences || [],
     education_entries: activeData?.education_entries || state?.education_entries || [],
-    certifications: activeData?.certifications_list || (activeData?.certifications ? activeData.certifications.split(' | ') : (state?.certifications || [])),
+    certifications: (Array.isArray(activeData?.certifications_list) && activeData.certifications_list.length > 0)
+      ? activeData.certifications_list
+      : (activeData?.certifications
+        ? (Array.isArray(activeData.certifications) ? activeData.certifications : String(activeData.certifications).split(' | ').map((s: string) => s.trim()).filter(Boolean))
+        : (state?.certifications || [])),
     certifications_details: activeData?.certifications_details || state?.certifications_details || null,
     skills_details: activeData?.skills_details || state?.skills_details || null,
     profile_image_url: activeData?.profile_image_url || state?.profile_image_url || null
@@ -191,6 +195,25 @@ const PreviewAndVerifyPage: React.FC = () => {
     navigate(effectiveJobId ? `/applicationform/${effectiveJobId}` : `/applicationform/smart`, {
       state: {
         ...extractedData,
+        extractedData: {
+          ...(activeData || {}),
+          fullname: extractedData.personal.name,
+          email: extractedData.personal.email,
+          phone: extractedData.personal.phone,
+          location: extractedData.personal.location,
+          job_title: extractedData.experience.title,
+          company: extractedData.experience.company,
+          relevance: extractedData.experience.relevance,
+          degree: extractedData.education.degree,
+          college: extractedData.education.college,
+          skills: extractedData.skills.join(' | '),
+          skills_list: extractedData.skills,
+          certifications: Array.isArray(extractedData.certifications) ? extractedData.certifications.join(' | ') : (extractedData.certifications || ''),
+          certifications_list: extractedData.certifications,
+          certifications_details: extractedData.certifications_details,
+          work_experiences: extractedData.work_experiences,
+          education_entries: extractedData.education_entries
+        },
         formData: state?.formData,
         personal: {
           name: extractedData.personal.name,

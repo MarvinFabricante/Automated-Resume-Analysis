@@ -728,6 +728,36 @@ const CandidateSmartUploadPage: React.FC = () => {
                             </div>
                           )}
 
+                          {/* Certifications Preview */}
+                          {((Array.isArray(extractedData.certifications_list) && extractedData.certifications_list.length > 0) ||
+                            extractedData.certifications) && (
+                            <div className="pt-2">
+                              <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 block mb-2">
+                                Certifications & Achievements
+                              </span>
+                              <div className="flex flex-wrap gap-1.5">
+                                {(Array.isArray(extractedData.certifications_list) && extractedData.certifications_list.length > 0
+                                  ? extractedData.certifications_list
+                                  : typeof extractedData.certifications === 'string'
+                                  ? extractedData.certifications.split('|')
+                                  : Array.isArray(extractedData.certifications)
+                                  ? extractedData.certifications
+                                  : []
+                                )
+                                  .map((c: string) => c.trim())
+                                  .filter(Boolean)
+                                  .map((cert: string, cIdx: number) => (
+                                    <span
+                                      key={cIdx}
+                                      className="px-2.5 py-0.5 rounded-lg text-xs font-semibold bg-rose-50 text-rose-800 border border-rose-200/70"
+                                    >
+                                      {cert}
+                                    </span>
+                                  ))}
+                              </div>
+                            </div>
+                          )}
+
                           <div className="pt-2">
                             <button
                               type="button"

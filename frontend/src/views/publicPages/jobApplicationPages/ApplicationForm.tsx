@@ -245,9 +245,13 @@ const ApplicationForm: React.FC = () => {
         try {
           const payload = {
             skills: formData.skills.join(', '),
+            skills_list: formData.skills,
             experience: formData.relevance,
-            education: formData.degree,
+            work_experiences: location.state?.extractedData?.work_experiences || [],
+            education: [formData.degree, formData.college].filter(Boolean).join(' - '),
             highest_degree: formData.degree,
+            education_entries: location.state?.extractedData?.education_entries || [],
+            certifications: location.state?.extractedData?.certifications || undefined,
             fullname: formData.fullName,
             location: formData.location
           };

@@ -55,8 +55,67 @@ from app.extractors.content.certifications_taxonomy import (
     _CREDENTIAL_MARKERS,
     load_external_certification_datasets,
 )
+from app.extractors.content.section_parser import (
+    detect_section_label,
+    split_dual_column_header,
+)
 
 logger = logging.getLogger(__name__)
+
+_CERT_SECTIONS = {"Certifications", "Eligibility", "Seminars & Trainings"}
+_CANONICAL_SEC_MAP = {
+    "CERTIFICATIONS": "Certifications",
+    "TRAINING": "Seminars & Trainings",
+    "AWARDS": "Certifications",
+    "EXPERIENCE": "Work Experience",
+    "EDUCATION": "Education",
+    "SKILLS": "Skills",
+}
+_BULLET_PREFIX_RE = re.compile(r'^(?:[•▪►✓*]|\-(?=\s)|\d{1,2}[\.\)])\s+')
+_LEADING_YEAR_RE = re.compile(r'^((?:19|20)\d{2})\s*(?:[-–—|:]\s+)(.+)$')
+_PURE_DATE_OR_YEAR_RE = re.compile(
+    r'^(?:(?:19|20)\d{2}(?:\s*[-–—to]+\s*(?:(?:19|20)\d{2}|present))?|'
+    r'(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|'
+    r'jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\.?\s+\d{4})$',
+    re.IGNORECASE,
+)
+_NON_ITEM_METADATA_RE = re.compile(
+    r'^(?:issued\s*(?:by|on|date)?|issuer|provider|organization|valid\s*(?:until|thru|through)|'
+    r'expir(?:es?|ation)|date(?:\s+issued)?|rating|score|reg(?:\.|istration)?\s*(?:no\.?|#)?|'
+    r'license\s*(?:no\.?|#|id)|cert(?:ificate)?\s*(?:no\.?|#|id)|validation\s*(?:id|no\.?)?|'
+    r'status|hours?|none|n/?a|not\s+applicable)\s*(?:[:\-–—]|$)',
+    re.IGNORECASE,
+)
+_NON_SPLIT_COMMA_PART_RE = re.compile(
+    r'^(?:inc\.?|corp\.?|ltd\.?|llc|co\.?|philippines|metro\s+manila|manila|city|province|'
+    r'laguna|cavite|batangas|rizal|cebu|davao|quezon\s+city|makati|taguig|pasig|'
+    r'active|passed|completed|expired|'
+    r'(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|'
+    r'jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\.?\s+\d{4}|'
+    r'(?:19|20)\d{2}|\d+\s*hours?|rating\s*[:\-].*|'
+    r'(?:cert|license|reg|validation)\s*(?:no\.?|id|#).*|issued\s+.*|valid\s+.*)$',
+    re.IGNORECASE,
+)
+
+
+def _strip_list_prefix(line: str) -> str:
+    """Strip leading bullet markers or numbering without eating leading digits in cert names (e.g. '5S')."""
+    return re.sub(r'^(?:[•\-–—▪►✓*]|\(?\d{1,2}[\.\)])\s*', '', line.strip()).strip()
+
+
+def _match_cert_header(candidate: str) -> Optional[str]:
+    """Match a standalone header text against certification section headers and canonical labels."""
+    clean = candidate.strip().strip("-=_*#•►:│┃ ")
+    if not clean or len(clean.split()) > 8:
+        return None
+    for sec_name, pat in _SECTION_HEADERS.items():
+        if pat.match(clean) or pat.match(candidate.strip()):
+            return sec_name
+    if ':' not in candidate and '|' not in candidate:
+        sec_lbl = detect_section_label(clean)
+        if sec_lbl:
+            return _CANONICAL_SEC_MAP.get(sec_lbl, "Other")
+    return None
 
 
 # ─── Multi-Item Line Splitter & Header Helper ──────────────────────────────────
@@ -66,16 +125,62 @@ def is_header_line(line: str) -> Optional[str]:
     Checks if a given line is a section header (e.g., 'LICENSES AND ELIGIBILITY').
     Returns section name if matched, else None.
     """
-    clean = line.strip().strip("-=_*#•►: ")
-    if not clean or len(clean.split()) > 7:
+    stripped = line.strip()
+    if not stripped or _BULLET_PREFIX_RE.match(stripped):
         return None
-    for sec_name, pat in _SECTION_HEADERS.items():
-        if pat.match(clean) or pat.match(line.strip()):
-            return sec_name
-    return None
+    if split_dual_column_header(stripped):
+        return None
+    return _match_cert_header(stripped)
 
 
-def split_compound_cert_line(line: str) -> List[str]:
+def parse_header_line(
+    line: str, current_section: str = "Header"
+) -> Tuple[Optional[str], Optional[str], Optional[Tuple[str, str]]]:
+    """
+    Parse a header line into ``(section_name, inline_content, dual_columns)``.
+    Supports standalone headers, inline ``Header: items`` / ``Header | items``,
+    and dual-column table headers like ``CERTIFICATIONS | SKILLS``.
+    """
+    stripped = line.strip()
+    if not stripped or _BULLET_PREFIX_RE.match(stripped):
+        return None, None, None
+
+    dual = split_dual_column_header(stripped)
+    if dual:
+        mapped_l = _CANONICAL_SEC_MAP.get(dual[0], "Other")
+        mapped_r = _CANONICAL_SEC_MAP.get(dual[1], "Other")
+        return None, None, (mapped_l, mapped_r)
+
+    colon_idx = stripped.find(':')
+    if colon_idx > 0:
+        prefix = stripped[:colon_idx].strip()
+        remainder = stripped[colon_idx + 1:].strip()
+        sec = _match_cert_header(prefix)
+        if sec:
+            if (
+                current_section == "Education"
+                and prefix.lower() in {"honors", "awards", "honors/awards", "awards/honors", "honors & awards"}
+            ):
+                return None, None, None
+            return sec, (remainder or None), None
+
+    pipe_idx = stripped.find('|')
+    if pipe_idx > 0:
+        left = stripped[:pipe_idx].strip()
+        right = stripped[pipe_idx + 1:].strip()
+        if left and len(left.split()) <= 5:
+            sec = _match_cert_header(left)
+            if sec:
+                return sec, (right or None), None
+
+    sec = _match_cert_header(stripped)
+    if sec:
+        return sec, None, None
+
+    return None, None, None
+
+
+def split_compound_cert_line(line: str, in_cert_section: bool = False) -> List[str]:
     """
     Splits compound certification lines while preserving unified course names.
     Examples:
@@ -86,7 +191,7 @@ def split_compound_cert_line(line: str) -> List[str]:
     - 'Certified Kubernetes Administrator (CKA) - Cloud Native Computing Foundation / Linux Foundation'
       -> Remains intact (does not split on ' / ' because 'Linux Foundation' is an org, not a separate cert)
     """
-    temp = line.strip().lstrip('•-–▪►✓*1234567890. ').strip()
+    temp = _strip_list_prefix(line)
     if not temp:
         return []
 
@@ -104,6 +209,28 @@ def split_compound_cert_line(line: str) -> List[str]:
 
     has_marker = lambda s: any(re.search(m, s, re.IGNORECASE) for m in _CREDENTIAL_MARKERS)
 
+    def _restore(s: str) -> str:
+        for ph, orig in placeholders.items():
+            s = s.replace(ph, orig)
+        return s.strip()
+
+    def _can_split_commas(segment: str, parts: List[str]) -> bool:
+        if len(parts) <= 1:
+            return False
+        if all(has_marker(c) for c in parts):
+            return True
+        if not in_cert_section:
+            return False
+        if re.search(r'\s+[-–—]\s+', segment.split(',', 1)[0]):
+            return False
+        for c in parts:
+            c_rest = _restore(c)
+            if len(c_rest) < 4:
+                return False
+            if _NON_SPLIT_COMMA_PART_RE.match(c_rest) or c_rest.upper() in _KNOWN_ORGANIZATIONS:
+                return False
+        return True
+
     items: List[str] = []
     for rp in raw_parts:
         rp = rp.strip()
@@ -116,29 +243,24 @@ def split_compound_cert_line(line: str) -> List[str]:
         splits = delim_pat.split(rp)
         if len(splits) > 1 and all(has_marker(s) for s in splits):
             for s in splits:
-                s_clean = s.strip()
-                for ph, orig in placeholders.items():
-                    s_clean = s_clean.replace(ph, orig)
-                if len(s_clean) >= 4:
+                s_clean = _restore(s)
+                if len(s_clean) >= 3:
                     items.append(s_clean)
             continue
 
         # 4. Check comma outside parentheses
         c_parts = re.split(r',\s*(?![^()]*\))', rp)
-        if len(c_parts) > 1 and all(has_marker(c) for c in c_parts):
+        if _can_split_commas(rp, c_parts):
             for cp in c_parts:
-                cp_clean = cp.strip()
-                for ph, orig in placeholders.items():
-                    cp_clean = cp_clean.replace(ph, orig)
-                if len(cp_clean) >= 4:
+                cp_clean = _restore(cp)
+                if len(cp_clean) >= 3:
                     items.append(cp_clean)
             continue
 
         # 5. Keep as single item and restore placeholders
-        for ph, orig in placeholders.items():
-            rp = rp.replace(ph, orig)
-        if len(rp) >= 4:
-            items.append(rp)
+        rp_rest = _restore(rp)
+        if len(rp_rest) >= 3:
+            items.append(rp_rest)
 
     return items
 
@@ -220,7 +342,10 @@ class PhilippineCertificationsExtractor:
             clean = line.strip()
 
             if clean:
-                matched_header = is_header_line(clean)
+                matched_header, _, dual_hdr = parse_header_line(clean, current_section)
+                if dual_hdr:
+                    cert_col = next((c for c in dual_hdr if c in _CERT_SECTIONS), None)
+                    matched_header = cert_col or dual_hdr[0]
                 if matched_header:
                     if char_offset > section_start:
                         spans.append((section_start, char_offset, current_section))
@@ -382,7 +507,6 @@ class PhilippineCertificationsExtractor:
                 "certifications": []
             }
 
-        spans = self._segment_document(text)
         extracted_map: Dict[str, Dict[str, Any]] = {}
         lines = text.split('\n')
 
@@ -409,228 +533,299 @@ class PhilippineCertificationsExtractor:
                         }
 
         # ── Document Line Traversal (Layers 1, 2, 3, 4) ───────────────────────
-        char_offset = 0
-        for line in lines:
-            line_len = len(line) + 1
-            clean_line = line.strip()
+        current_section = "Header"
+        dual_cols: Optional[Tuple[str, str]] = None
+        cert_col_idx: Optional[int] = None
 
-            if clean_line:
-                # Avoid parsing section headers as certifications
-                if is_header_line(clean_line):
-                    char_offset += line_len
+        for idx, line in enumerate(lines):
+            clean_line = line.strip()
+            if not clean_line:
+                continue
+
+            hdr_sec, inline_content, dual_hdr = parse_header_line(clean_line, current_section)
+            if dual_hdr:
+                dual_cols = dual_hdr
+                cert_col_idx = (
+                    0 if dual_hdr[0] in _CERT_SECTIONS else (1 if dual_hdr[1] in _CERT_SECTIONS else None)
+                )
+                current_section = dual_hdr[cert_col_idx] if cert_col_idx is not None else dual_hdr[0]
+                continue
+
+            if hdr_sec:
+                dual_cols = None
+                cert_col_idx = None
+                current_section = hdr_sec
+                if not inline_content:
+                    continue
+                target_line = inline_content
+                sec = hdr_sec
+            else:
+                if dual_cols is not None and '|' in clean_line and '@' not in clean_line:
+                    parts = [p.strip() for p in clean_line.split('|')]
+                    if len(parts) == 2:
+                        if cert_col_idx is not None:
+                            target_line = parts[cert_col_idx]
+                            sec = dual_cols[cert_col_idx]
+                            if not target_line:
+                                continue
+                        else:
+                            target_line = clean_line
+                            sec = dual_cols[0]
+                    else:
+                        target_line = clean_line
+                        sec = dual_cols[cert_col_idx] if cert_col_idx is not None else current_section
+                else:
+                    if idx > 5 and current_section == "Header" and dual_cols is None:
+                        current_section = "General"
+                    target_line = clean_line
+                    sec = dual_cols[cert_col_idx] if (dual_cols and cert_col_idx is not None) else current_section
+
+            in_cert_section = sec in _CERT_SECTIONS
+
+            line_year: Optional[str] = None
+            if in_cert_section:
+                m_lead_yr = _LEADING_YEAR_RE.match(target_line)
+                if m_lead_yr:
+                    line_year = m_lead_yr.group(1)
+                    target_line = m_lead_yr.group(2).strip()
+
+            items = split_compound_cert_line(target_line, in_cert_section=in_cert_section)
+
+            for item in items:
+                if _NON_ITEM_METADATA_RE.match(item) or _PURE_DATE_OR_YEAR_RE.match(item):
                     continue
 
-                sec = self._get_section(char_offset, spans)
-                items = split_compound_cert_line(clean_line)
+                matched_for_item = False
 
-                line_had_match = False
-                for item in items:
-                    matched_for_item = False
-
-                    # ── Layer 1: Gazetteer & Ontology Matching ────────────────
-                    # 1a. FlashText exact match
-                    if self.keyword_processor is not None:
-                        kw_matches = self.keyword_processor.extract_keywords(item)
-                        if kw_matches:
-                            for canonical in kw_matches:
-                                meta = self.taxonomy.get(canonical, {})
-                                iss, dt, exp, det = self._extract_metadata_from_context(item, canonical)
-                                if not dt and clean_line != item:
-                                    _, line_dt, _, _ = self._extract_metadata_from_context(clean_line, canonical)
-                                    dt = line_dt
-                                if not iss:
-                                    iss = meta.get("default_issuer")
-
-                                self._merge_or_add_entry(
-                                    extracted_map=extracted_map,
-                                    canonical=canonical,
-                                    raw_text=item,
-                                    category=meta.get("category", "Seminar / Training Certificate"),
-                                    issuer=iss or "Professional Organization",
-                                    issue_date=dt,
-                                    expiration=exp,
-                                    details=det,
-                                    source_section=sec,
-                                    method="Gazetteer_Exact",
-                                    confidence=0.98
-                                )
-                                matched_for_item = True
-                                line_had_match = True
-
-                    # 1b. spaCy EntityRuler match (if FlashText missed)
-                    if not matched_for_item and self.spacy_nlp is not None:
-                        try:
-                            doc = self.spacy_nlp(item)
-                            for ent in doc.ents:
-                                if ent.label_ == "CERT" and ent.ent_id_:
-                                    canonical = ent.ent_id_
-                                    meta = self.taxonomy.get(canonical, {})
-                                    iss, dt, exp, det = self._extract_metadata_from_context(item, canonical)
-                                    if not dt and clean_line != item:
-                                        _, line_dt, _, _ = self._extract_metadata_from_context(clean_line, canonical)
-                                        dt = line_dt
-                                    self._merge_or_add_entry(
-                                        extracted_map=extracted_map,
-                                        canonical=canonical,
-                                        raw_text=item,
-                                        category=meta.get("category", "Seminar / Training Certificate"),
-                                        issuer=iss or meta.get("default_issuer", "Professional Organization"),
-                                        issue_date=dt,
-                                        expiration=exp,
-                                        details=det,
-                                        source_section=sec,
-                                        method="Gazetteer_Exact",
-                                        confidence=0.97
-                                    )
-                                    matched_for_item = True
-                                    line_had_match = True
-                        except Exception:
-                            pass
-
-                    # 1c. RapidFuzz Near-Match (for typos inside cert sections)
-                    if not matched_for_item and fuzz and process and sec in {"Certifications", "Eligibility", "Seminars & Trainings"}:
-                        best = process.extractOne(
-                            item,
-                            list(self.taxonomy.keys()),
-                            scorer=fuzz.token_sort_ratio
-                        )
-                        if best and best[1] >= 89.0:
-                            canonical = best[0]
+                # ── Layer 1: Gazetteer & Ontology Matching ────────────────
+                # 1a. FlashText exact match
+                if self.keyword_processor is not None:
+                    kw_matches = self.keyword_processor.extract_keywords(item)
+                    if kw_matches:
+                        for canonical in kw_matches:
                             meta = self.taxonomy.get(canonical, {})
                             iss, dt, exp, det = self._extract_metadata_from_context(item, canonical)
-                            if not dt and clean_line != item:
-                                _, line_dt, _, _ = self._extract_metadata_from_context(clean_line, canonical)
+                            if not dt and target_line != item:
+                                _, line_dt, _, _ = self._extract_metadata_from_context(target_line, canonical)
                                 dt = line_dt
+                            dt = dt or line_year
+                            if not iss:
+                                iss = meta.get("default_issuer")
+
                             self._merge_or_add_entry(
                                 extracted_map=extracted_map,
                                 canonical=canonical,
                                 raw_text=item,
                                 category=meta.get("category", "Seminar / Training Certificate"),
-                                issuer=iss or meta.get("default_issuer", "Professional Organization"),
+                                issuer=iss or "Professional Organization",
                                 issue_date=dt,
                                 expiration=exp,
                                 details=det,
                                 source_section=sec,
                                 method="Gazetteer_Exact",
-                                confidence=0.94
+                                confidence=0.98
                             )
                             matched_for_item = True
-                            line_had_match = True
 
-                    if matched_for_item:
-                        continue
+                # 1b. spaCy EntityRuler match (if FlashText missed)
+                if not matched_for_item and self.spacy_nlp is not None:
+                    try:
+                        doc = self.spacy_nlp(item)
+                        for ent in doc.ents:
+                            if ent.label_ == "CERT" and ent.ent_id_:
+                                canonical = ent.ent_id_
+                                meta = self.taxonomy.get(canonical, {})
+                                iss, dt, exp, det = self._extract_metadata_from_context(item, canonical)
+                                if not dt and target_line != item:
+                                    _, line_dt, _, _ = self._extract_metadata_from_context(target_line, canonical)
+                                    dt = line_dt
+                                dt = dt or line_year
+                                self._merge_or_add_entry(
+                                    extracted_map=extracted_map,
+                                    canonical=canonical,
+                                    raw_text=item,
+                                    category=meta.get("category", "Seminar / Training Certificate"),
+                                    issuer=iss or meta.get("default_issuer", "Professional Organization"),
+                                    issue_date=dt,
+                                    expiration=exp,
+                                    details=det,
+                                    source_section=sec,
+                                    method="Gazetteer_Exact",
+                                    confidence=0.97
+                                )
+                                matched_for_item = True
+                    except Exception:
+                        pass
 
-                    # ── Layer 2: Dynamic Regex Catchers ───────────────────────
-                    # 2a. Dynamic TESDA NC / COC
-                    m_tesda = re.search(
-                        r'(?:TESDA\s+)?([A-Za-z0-9\s/&,()\-]+?)\s*(NC\s*(?:I|II|III|IV)|National\s*Certificate\s*(?:I|II|III|IV)|COC(?:\s*\d+)?|Certificate\s*of\s*Competency)\b',
-                        item, re.IGNORECASE
+                # 1c. RapidFuzz Near-Match (for typos inside cert sections)
+                if not matched_for_item and fuzz and process and in_cert_section:
+                    best = process.extractOne(
+                        item,
+                        list(self.taxonomy.keys()),
+                        scorer=fuzz.token_sort_ratio
                     )
-                    if m_tesda:
-                        trade = m_tesda.group(1).strip().strip("-:,")
-                        level = m_tesda.group(2).strip().upper()
-                        level = re.sub(r'NATIONAL\s*CERTIFICATE', 'NC', level, flags=re.IGNORECASE)
-                        canonical = f"{trade.title()} {level}"
+                    if best and best[1] >= 89.0:
+                        canonical = best[0]
+                        meta = self.taxonomy.get(canonical, {})
                         iss, dt, exp, det = self._extract_metadata_from_context(item, canonical)
-                        if not dt and clean_line != item:
-                            _, line_dt, _, _ = self._extract_metadata_from_context(clean_line, canonical)
+                        if not dt and target_line != item:
+                            _, line_dt, _, _ = self._extract_metadata_from_context(target_line, canonical)
                             dt = line_dt
+                        dt = dt or line_year
                         self._merge_or_add_entry(
                             extracted_map=extracted_map,
                             canonical=canonical,
                             raw_text=item,
-                            category="TESDA National Certificate",
-                            issuer=iss or "TESDA",
+                            category=meta.get("category", "Seminar / Training Certificate"),
+                            issuer=iss or meta.get("default_issuer", "Professional Organization"),
                             issue_date=dt,
                             expiration=exp,
                             details=det,
                             source_section=sec,
-                            method="Regex_Pattern",
-                            confidence=0.95
+                            method="Gazetteer_Exact",
+                            confidence=0.94
                         )
                         matched_for_item = True
-                        line_had_match = True
-                        continue
 
-                    # 2b. Dynamic PRC / Board Exam
-                    m_prc = re.search(
-                        r'(?:PRC\s+)?(?:Registered|Licensed)?\s*([A-Za-z\s]+?)(?:Board\s*Exam(?:ination)?\s*Passer|Licensure\s*Exam(?:ination)?\s*Passer)\b',
-                        item, re.IGNORECASE
-                    )
-                    if m_prc:
-                        field = m_prc.group(1).strip().title()
-                        canonical = f"PRC Licensed {field}"
-                        iss, dt, exp, det = self._extract_metadata_from_context(item, canonical)
-                        if not dt and clean_line != item:
-                            _, line_dt, _, _ = self._extract_metadata_from_context(clean_line, canonical)
-                            dt = line_dt
-                        self._merge_or_add_entry(
-                            extracted_map=extracted_map,
-                            canonical=canonical,
-                            raw_text=item,
-                            category="PRC / Government License",
-                            issuer=iss or "PRC",
-                            issue_date=dt,
-                            expiration=exp or "Passed",
-                            details=det,
-                            source_section=sec,
-                            method="Regex_Pattern",
-                            confidence=0.95
-                        )
-                        matched_for_item = True
-                        line_had_match = True
-                        continue
+                if matched_for_item:
+                    continue
 
-                    # 2c. Dynamic Civil Service / Government Eligibility
-                    m_csc = re.search(
-                        r'(?:Civil\s+Service|Career\s+Service)\s+(Professional|Sub-?Professional)(?:\s+(?:Eligib(?:le|ility)|Exam(?:ination)?(?:\s+Passer)?))?',
-                        item, re.IGNORECASE
+                # ── Layer 2: Dynamic Regex Catchers ───────────────────────
+                # 2a. Dynamic TESDA NC / COC
+                m_coc_prefix = re.search(
+                    r'(?:TESDA\s+)?Certificate\s+of\s+Competency\s+(?:in\s+)?([A-Za-z0-9\s/&,()\-]+?)(?:\s*\(|$)',
+                    item, re.IGNORECASE
+                )
+                m_tesda = re.search(
+                    r'(?:TESDA\s+)?([A-Za-z0-9\s/&,()\-]+?)\s*(NC\s*(?:I|II|III|IV)|National\s*Certificate\s*(?:I|II|III|IV)|COC(?:\s*\d+)?|Certificate\s*of\s*Competency)\b',
+                    item, re.IGNORECASE
+                )
+                if m_coc_prefix or m_tesda:
+                    if m_coc_prefix:
+                        trade = m_coc_prefix.group(1).strip().strip("-:,")
+                        canonical = f"TESDA COC in {trade.title()}"
+                    else:
+                        trade = m_tesda.group(1).strip().strip("-:,")
+                        level = m_tesda.group(2).strip().upper()
+                        level = re.sub(r'NATIONAL\s*CERTIFICATE', 'NC', level, flags=re.IGNORECASE)
+                        canonical = f"{trade.title()} {level}"
+                    iss, dt, exp, det = self._extract_metadata_from_context(item, canonical)
+                    if not dt and target_line != item:
+                        _, line_dt, _, _ = self._extract_metadata_from_context(target_line, canonical)
+                        dt = line_dt
+                    dt = dt or line_year
+                    self._merge_or_add_entry(
+                        extracted_map=extracted_map,
+                        canonical=canonical,
+                        raw_text=item,
+                        category="TESDA National Certificate",
+                        issuer=iss or "TESDA",
+                        issue_date=dt,
+                        expiration=exp,
+                        details=det,
+                        source_section=sec,
+                        method="Regex_Pattern",
+                        confidence=0.95
                     )
-                    if m_csc:
-                        sub = m_csc.group(1).title()
-                        canonical = f"Civil Service {sub} Eligibility"
-                        iss, dt, exp, det = self._extract_metadata_from_context(item, canonical)
-                        if not dt and clean_line != item:
-                            _, line_dt, _, _ = self._extract_metadata_from_context(clean_line, canonical)
-                            dt = line_dt
-                        self._merge_or_add_entry(
-                            extracted_map=extracted_map,
-                            canonical=canonical,
-                            raw_text=item,
-                            category="PRC / Government License",
-                            issuer=iss or "Civil Service Commission",
-                            issue_date=dt,
-                            expiration=exp or "Passed",
-                            details=det,
-                            source_section=sec,
-                            method="Regex_Pattern",
-                            confidence=0.95
-                        )
-                        matched_for_item = True
-                        line_had_match = True
-                        continue
+                    matched_for_item = True
+                    continue
 
-                    # 2d. Dynamic Online & Training Bootcamp Certificate
-                    m_boot = re.search(
-                        r'\b(?:Certificate\s+of\s+(?:Completion|Participation|Attendance|Achievement|Excellence)|Certified\s+in|Certificate\s+in)\s+(?:in\s+)?'
-                        r'([^.\n|;(\-]+?)'
-                        r'(?:\s+(?:[-–—|]|issued\s+by|by|from|via|at)\s+([A-Za-z0-9\s&]+))?'
-                        r'(?:\s*\(.*?\))?'
-                        r'(?=[.\n|;]|$)',
-                        item, re.IGNORECASE
+                # 2b. Dynamic PRC / Board Exam
+                m_prc = re.search(
+                    r'(?:PRC\s+)?(?:Registered|Licensed)?\s*([A-Za-z\s]+?)(?:Board\s*Exam(?:ination)?\s*Passer|Licensure\s*Exam(?:ination)?\s*Passer)\b',
+                    item, re.IGNORECASE
+                )
+                if m_prc:
+                    field = m_prc.group(1).strip().title()
+                    canonical = f"PRC Licensed {field}"
+                    iss, dt, exp, det = self._extract_metadata_from_context(item, canonical)
+                    if not dt and target_line != item:
+                        _, line_dt, _, _ = self._extract_metadata_from_context(target_line, canonical)
+                        dt = line_dt
+                    dt = dt or line_year
+                    self._merge_or_add_entry(
+                        extracted_map=extracted_map,
+                        canonical=canonical,
+                        raw_text=item,
+                        category="PRC / Government License",
+                        issuer=iss or "PRC",
+                        issue_date=dt,
+                        expiration=exp or "Passed",
+                        details=det,
+                        source_section=sec,
+                        method="Regex_Pattern",
+                        confidence=0.95
                     )
-                    if m_boot:
-                        c_title = m_boot.group(1).strip().strip("()-: ")
-                        c_title = re.sub(r'^(?:in|for|on)\s+', '', c_title, flags=re.IGNORECASE).strip()
-                        canonical = f"Certificate of Completion in {c_title.title()}"
+                    matched_for_item = True
+                    continue
+
+                # 2c. Dynamic Civil Service / Government Eligibility
+                m_csc = re.search(
+                    r'(?:Civil\s+Service|Career\s+Service)\s+(Professional|Sub-?Professional)(?:\s+(?:Eligib(?:le|ility)|Exam(?:ination)?(?:\s+Passer)?))?',
+                    item, re.IGNORECASE
+                )
+                if m_csc:
+                    sub = m_csc.group(1).title()
+                    canonical = f"Civil Service {sub} Eligibility"
+                    iss, dt, exp, det = self._extract_metadata_from_context(item, canonical)
+                    if not dt and target_line != item:
+                        _, line_dt, _, _ = self._extract_metadata_from_context(target_line, canonical)
+                        dt = line_dt
+                    dt = dt or line_year
+                    self._merge_or_add_entry(
+                        extracted_map=extracted_map,
+                        canonical=canonical,
+                        raw_text=item,
+                        category="PRC / Government License",
+                        issuer=iss or "Civil Service Commission",
+                        issue_date=dt,
+                        expiration=exp or "Passed",
+                        details=det,
+                        source_section=sec,
+                        method="Regex_Pattern",
+                        confidence=0.95
+                    )
+                    matched_for_item = True
+                    continue
+
+                # 2d. Dynamic Online & Training Bootcamp Certificate
+                m_boot = re.search(
+                    r'\b(Certificate\s+of\s+(?:Completion|Participation|Attendance|Achievement|Excellence|Appreciation|Recognition|Training|Merit)|Certified\s+in|Certificate\s+in)\s+(?:in\s+)?'
+                    r'([^.\n|;()]+)',
+                    item, re.IGNORECASE
+                )
+                if m_boot:
+                    prefix_raw = re.sub(r'\s+', ' ', m_boot.group(1).strip())
+                    raw_rest = m_boot.group(2).strip()
+                    cand_provider: Optional[str] = None
+                    m_org = re.search(
+                        r'\s+(?:[-–—|]|issued\s+by|by|from|via|at)\s+([A-Za-z0-9\s&.,\-]+)$',
+                        raw_rest, re.IGNORECASE
+                    )
+                    if m_org:
+                        c_title = raw_rest[:m_org.start()].strip("()-: ")
+                        cand_provider = m_org.group(1).strip()
+                    else:
+                        c_title = raw_rest.strip("()-: ")
+
+                    c_title = re.sub(r'^(?:in|for|on)\s+', '', c_title, flags=re.IGNORECASE).strip()
+                    if len(c_title) >= 3:
+                        if c_title.islower():
+                            c_title = c_title.title()
+                        if prefix_raw.lower().startswith("certificate in"):
+                            canonical = f"Certificate in {c_title}"
+                        elif prefix_raw.lower().startswith("certified in"):
+                            canonical = f"Certified in {c_title}"
+                        else:
+                            canonical = f"{prefix_raw.title().replace(' Of ', ' of ')} in {c_title}"
+
                         iss, dt, exp, det = self._extract_metadata_from_context(item, canonical)
-                        if not dt and clean_line != item:
-                            _, line_dt, _, _ = self._extract_metadata_from_context(clean_line, canonical)
+                        if not dt and target_line != item:
+                            _, line_dt, _, _ = self._extract_metadata_from_context(target_line, canonical)
                             dt = line_dt
-                        if m_boot.group(2):
-                            cand_provider = m_boot.group(2).strip()
-                            if len(cand_provider) > 2 and not any(w in cand_provider.lower() for w in ["hours", "rating", "valid"]):
-                                iss = cand_provider
+                        dt = dt or line_year
+                        if cand_provider and len(cand_provider) > 2 and not any(w in cand_provider.lower() for w in ["hours", "rating", "valid"]):
+                            iss = cand_provider
 
                         self._merge_or_add_entry(
                             extracted_map=extracted_map,
@@ -646,42 +841,55 @@ class PhilippineCertificationsExtractor:
                             confidence=0.92
                         )
                         matched_for_item = True
-                        line_had_match = True
                         continue
 
-                # ── Layer 3: Bullet-Level Fallback Extractor ──────────────────
-                # Only triggers if the ENTIRE line had zero matches from Layer 1 or 2
-                if not line_had_match and sec in {"Certifications", "Eligibility", "Seminars & Trainings"}:
-                    clean_item = clean_line.lstrip('•-–▪►✓*1234567890. ').strip()
-                    if len(clean_item) >= 8 and not re.match(r'^(?:19|20)\d{2}\b', clean_item):
-                        # Extract title before dash or parenthesis (preserving intra-word hyphens like De-escalation)
-                        clean_title = re.sub(r'\s*\(.*?\)', '', clean_item)
-                        clean_title = re.split(r'\s+[-–—|]\s+', clean_title)[0].strip()
+                # ── Layer 3: Item-Level Fallback Extractor Inside Cert Sections ─
+                if not matched_for_item and in_cert_section:
+                    clean_item = _strip_list_prefix(item)
+                    m_item_yr = _LEADING_YEAR_RE.match(clean_item)
+                    item_year = line_year
+                    if m_item_yr:
+                        item_year = m_item_yr.group(1)
+                        clean_item = m_item_yr.group(2).strip()
 
-                        iss, dt, exp, det = self._extract_metadata_from_context(clean_item, clean_title)
-                        cat = "Seminar / Training Certificate"
-                        if any(w in clean_item.lower() for w in ["safety", "bosh", "cosh", "iso", "hazard", "risk"]):
-                            cat = "Safety & Compliance"
-                        elif any(w in clean_item.lower() for w in ["board", "prc", "csc", "license", "eligibility"]):
-                            cat = "PRC / Government License"
-                        elif any(w in clean_item.lower() for w in ["aws", "azure", "google", "cloud", "cisco", "python", "developer", "engineer"]):
-                            cat = "IT & Professional Certification"
+                    if _NON_ITEM_METADATA_RE.match(clean_item) or _PURE_DATE_OR_YEAR_RE.match(clean_item):
+                        continue
 
-                        self._merge_or_add_entry(
-                            extracted_map=extracted_map,
-                            canonical=clean_title,
-                            raw_text=clean_item,
-                            category=cat,
-                            issuer=iss or "Seminar / Training Provider",
-                            issue_date=dt,
-                            expiration=exp or "Active",
-                            details=det,
-                            source_section=sec,
-                            method="Section_Bullet_Parse",
-                            confidence=0.85
-                        )
+                    clean_title = re.sub(r'\s*\([^)]*\)', '', clean_item).strip()
+                    clean_title = re.split(r'\s+[-–—]\s+', clean_title, maxsplit=1)[0].strip()
+                    if len(clean_title) < 3 or _NON_ITEM_METADATA_RE.match(clean_title) or _PURE_DATE_OR_YEAR_RE.match(clean_title):
+                        continue
 
-            char_offset += line_len
+                    iss, dt, exp, det = self._extract_metadata_from_context(clean_item, clean_title)
+                    if not dt and target_line != item:
+                        _, line_dt, _, _ = self._extract_metadata_from_context(target_line, clean_title)
+                        dt = line_dt
+                    dt = dt or item_year
+
+                    cat = "Seminar / Training Certificate"
+                    low_item = clean_item.lower()
+                    if any(w in low_item for w in ["safety", "bosh", "cosh", "iso", "hazard", "risk", "osha", "first aid", "bls", "haccp"]):
+                        cat = "Safety & Compliance"
+                    elif any(w in low_item for w in ["board", "prc", "csc", "license", "eligibility", "passed"]):
+                        cat = "PRC / Government License"
+                    elif any(w in low_item for w in ["tesda", "nc i", "nc ii", "nc iii", "nc iv", "national certificate", "coc"]):
+                        cat = "TESDA National Certificate"
+                    elif any(w in low_item for w in ["aws", "azure", "google", "cloud", "cisco", "python", "developer", "engineer"]):
+                        cat = "IT & Professional Certification"
+
+                    self._merge_or_add_entry(
+                        extracted_map=extracted_map,
+                        canonical=clean_title,
+                        raw_text=clean_item,
+                        category=cat,
+                        issuer=iss or "Seminar / Training Provider",
+                        issue_date=dt,
+                        expiration=exp or "Active",
+                        details=det,
+                        source_section=sec,
+                        method="Section_Bullet_Parse",
+                        confidence=0.85
+                    )
 
         # ── Output Formatting & Summary Aggregation ───────────────────────────
         final_certs = list(extracted_map.values())

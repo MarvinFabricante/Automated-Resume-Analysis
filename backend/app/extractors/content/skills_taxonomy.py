@@ -724,6 +724,28 @@ PHILIPPINE_SKILLS_TAXONOMY: Dict[str, Dict[str, Any]] = {
         "is_tool": True,
         "aliases": ["LAN/WAN", "Networking", "Network configuration", "Router configuration", "RJ45 crimping", "Network cabling", "IP subnetting", "DNS/DHCP"]
     },
+    "Machine Learning": {
+        "type": "Hard Skill",
+        "domain": "Software Development & IT",
+        "is_tool": False,
+        "aliases": [
+            "Machine learning", "ML", "AI/ML", "ML modeling", "ML engineering",
+            "Predictive modeling", "Deep learning", "Scikit-learn", "TensorFlow",
+            "PyTorch", "Artificial intelligence", "Supervised learning", "Unsupervised learning"
+        ]
+    },
+    "Natural Language Processing (NLP)": {
+        "type": "Hard Skill",
+        "domain": "Software Development & IT",
+        "is_tool": False,
+        "aliases": ["Natural Language Processing", "NLP", "Text mining", "Text classification"]
+    },
+    "Data Science & Analytics": {
+        "type": "Hard Skill",
+        "domain": "Software Development & IT",
+        "is_tool": False,
+        "aliases": ["Data science", "Data analytics", "Data analysis", "Statistical modeling", "Pandas", "NumPy"]
+    },
 
     # ══════════════════════════════════════════════════════════════════════════
     # 6. ENGINEERING, CONSTRUCTION & ARCHITECTURE
@@ -817,6 +839,16 @@ PHILIPPINE_SKILLS_TAXONOMY: Dict[str, Dict[str, Any]] = {
         "domain": "Engineering, Construction & Architecture",
         "is_tool": False,
         "aliases": ["ISO 9001", "Quality management system", "QMS", "ISO compliance", "Quality inspection"]
+    },
+    "Quality Control": {
+        "type": "Hard Skill",
+        "domain": "Engineering, Construction & Architecture",
+        "is_tool": False,
+        "aliases": [
+            "Quality control", "QC", "QA/QC", "Quality assurance", "Quality check",
+            "Quality testing", "Quality monitoring", "In-process quality control",
+            "Quality audit", "Defect inspection", "Quality compliance"
+        ]
     },
     "PLC Programming & Mechatronics": {
         "type": "Hard Skill",
