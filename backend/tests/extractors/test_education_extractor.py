@@ -248,3 +248,78 @@ ABC Software Solutions Inc. - Makati City
     assert "highest_educational_attainment" in extracted
     assert extracted["highest_educational_attainment"] == "Tertiary / College"
     assert len(extracted["education_entries"]) >= 4
+
+
+def test_institution_never_captures_skills():
+    """
+    Ensures skills sections, pipe-delimited skill lists, or unheaded skill lines
+    following Education never bleed into institution or college fields.
+    """
+    case_alt_stop = """
+JUAN DELA CRUZ
+juan@gmail.com | 09171234567
+
+WORK EXPERIENCE
+Production Operator
+Luzon Plastics Inc.
+2020 - 2024 (4 years)
+
+EDUCATION
+Technical-Vocational Course
+
+KEY SKILLS
+Machine Maintenance, ISO 9001, Safety Training
+"""
+    res1 = extract_content(case_alt_stop)
+    assert res1["institution"] == ""
+    assert res1["college"] == ""
+    assert all("SKILLS" not in (e.get("institution_name") or "").upper() for e in res1["education_entries"])
+    assert all("Maintenance" not in (e.get("institution_name") or "") for e in res1["education_entries"])
+
+    case_skills_below_deg = """
+JUAN DELA CRUZ
+juan@gmail.com | 09171234567
+
+WORK EXPERIENCE
+Production Operator
+Luzon Plastics Inc.
+2020 - 2024 (4 years)
+
+EDUCATION
+BS Industrial Technology
+2016 - 2020
+Machine Maintenance, ISO 9001, Safety Training
+"""
+    res2 = extract_content(case_skills_below_deg)
+    assert res2["degree"] == "Bachelor of Science in Industrial Technology"
+    assert res2["institution"] == ""
+    assert res2["college"] == ""
+
+    case_no_edu_pipe = """
+JUAN DELA CRUZ
+juan@gmail.com | 09171234567
+
+EXPERIENCE
+Production Operator | Luzon Plastics Inc. | 2020 - 2024 (4 years)
+
+SKILLS & COMPETENCIES
+ISO 9001 | Machine Maintenance | Safety Training
+"""
+    res3 = extract_content(case_no_edu_pipe)
+    assert res3["institution"] == ""
+    assert res3["education_entries"] == []
+    assert res3["is_incomplete"] is True
+    assert "Education" in res3["missing_sections"]
+
+    case_inline_table = """
+CARLO MENDOZA
+carlo@gmail.com | 09171234567 | Pasig City
+Education | BS IT, Mapua University, 2018-2022
+Experience | Web Developer, ChanzIT, 2022-Present
+Skills | Python, FastAPI, React, Docker, PostgreSQL, Git
+"""
+    res4 = extract_content(case_inline_table)
+    assert res4["institution"] == "Mapua University"
+    assert res4["degree"] == "Bachelor of Science in Information Technology"
+    assert res4["job_title"] == "Web Developer"
+    assert res4["company"] == "ChanzIT"
