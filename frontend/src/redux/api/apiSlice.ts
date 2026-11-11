@@ -2,6 +2,64 @@ import { createApi, fetchBaseQuery } from '@reduxjs/toolkit/query/react';
 import { API_BASE_URL } from '../../services/api';
 import { broadcastAtsUpdate } from '../../utils/realtimeSync';
 
+const normalizeApplicationItem = (app: any) => ({
+  id: app.id,
+  name: app.candidate_name,
+  status: app.status,
+  preferredJob: app.job?.job_title || app.job_title || 'Unknown',
+  skills: app.skills || [],
+  profileImage: app.profile_image_url || null,
+  resumeUrl: app.resume_url || null,
+  date: app.created_at,
+  location: app.location || 'N/A',
+  jobLocation: app.job?.location || 'N/A',
+  jobDepartment: app.job?.department || 'N/A',
+  company: app.company || 'N/A',
+  degree: app.degree || '',
+  college: app.college || '',
+  relevance: app.relevance || '',
+  matchScore:
+    app.match_score !== null && app.match_score !== undefined
+      ? Number(app.match_score)
+      : Math.round(
+        (app.skills_score || 0) * 0.4 +
+        (app.experience_score || 0) * 0.4 +
+        (app.certifications_score || app.education_score || 0) * 0.2
+      ) || 0,
+  skillsScore: app.skills_score || 0,
+  experienceScore: app.experience_score || 0,
+  educationScore: app.education_score || 0,
+  certificationsScore: app.certifications_score || 0,
+  certifications_score: app.certifications_score || 0,
+  skills_reason: app.skills_reason,
+  experience_reason: app.experience_reason,
+  education_reason: app.education_reason,
+  certifications_reason: app.certifications_reason,
+  matched_skills: app.matched_skills || [],
+  missing_skills: app.missing_skills || [],
+  relevant_experience: app.relevant_experience || null,
+  experience_gaps: app.experience_gaps || null,
+  work_experiences: app.work_experiences || [],
+  total_experience_months: app.total_experience_months || 0,
+  highest_educational_attainment: app.highest_educational_attainment || null,
+  education_entries: app.education_entries || [],
+  required_degree: app.required_degree || null,
+  candidate_degree: app.candidate_degree || null,
+  certifications: app.certifications || app.candidate_certifications || null,
+  candidate_certifications: app.candidate_certifications || app.certifications || null,
+  certifications_details: app.certifications_details || null,
+  skills_details: app.skills_details || null,
+  recommendations: app.recommendations || [],
+  ai_summary: app.ai_summary || '',
+  strengths: app.strengths || [],
+  weaknesses: app.weaknesses || [],
+  ai_powered: Boolean(app.ai_powered),
+  email: app.candidate_email,
+  candidate_email: app.candidate_email,
+  phone: app.phone || 'N/A',
+  candidate_name: app.candidate_name,
+});
+
 export const apiSlice = createApi({
   reducerPath: 'api',
   baseQuery: fetchBaseQuery({
@@ -103,60 +161,21 @@ export const apiSlice = createApi({
       query: () => '/applications/',
       providesTags: ['Applications'],
       keepUnusedDataFor: 300,
-      transformResponse: (response: any[]) => {
-        return (response || []).map((app: any) => ({
-          id: app.id,
-          name: app.candidate_name,
-          status: app.status,
-          preferredJob: app.job?.job_title || app.job_title || "Unknown",
-          skills: app.skills || [],
-          profileImage: app.profile_image_url || null,
-          resumeUrl: app.resume_url || null,
-          date: app.created_at,
-          location: app.location || "N/A",
-          jobLocation: app.job?.location || "N/A",
-          jobDepartment: app.job?.department || "N/A",
-          company: app.company || "N/A",
-          degree: app.degree || "",
-          college: app.college || "",
-          relevance: app.relevance || "",
-          matchScore: (app.match_score !== null && app.match_score !== undefined)
-            ? Number(app.match_score)
-            : (Math.round(((app.skills_score || 0) * 0.4) + ((app.experience_score || 0) * 0.4) + ((app.certifications_score || app.education_score || 0) * 0.2)) || 0),
-          skillsScore: app.skills_score || 0,
-          experienceScore: app.experience_score || 0,
-          educationScore: app.education_score || 0,
-          certificationsScore: app.certifications_score || 0,
-          certifications_score: app.certifications_score || 0,
-          skills_reason: app.skills_reason,
-          experience_reason: app.experience_reason,
-          education_reason: app.education_reason,
-          certifications_reason: app.certifications_reason,
-          matched_skills: app.matched_skills || [],
-          missing_skills: app.missing_skills || [],
-          relevant_experience: app.relevant_experience || null,
-          experience_gaps: app.experience_gaps || null,
-          work_experiences: app.work_experiences || [],
-          total_experience_months: app.total_experience_months || 0,
-          highest_educational_attainment: app.highest_educational_attainment || null,
-          education_entries: app.education_entries || [],
-          required_degree: app.required_degree || null,
-          candidate_degree: app.candidate_degree || null,
-          certifications: app.certifications || app.candidate_certifications || null,
-          candidate_certifications: app.candidate_certifications || app.certifications || null,
-          certifications_details: app.certifications_details || null,
-          skills_details: app.skills_details || null,
-          recommendations: app.recommendations || [],
-          ai_summary: app.ai_summary || "",
-          strengths: app.strengths || [],
-          weaknesses: app.weaknesses || [],
-          ai_powered: Boolean(app.ai_powered),
-          email: app.candidate_email,
-          candidate_email: app.candidate_email,
-          phone: app.phone || "N/A",
-          candidate_name: app.candidate_name
-        }));
-      },
+      transformResponse: (response: any[]) => (response || []).map(normalizeApplicationItem),
+    }),
+
+    getApplicationsSummary: builder.query<any[], void>({
+      query: () => '/applications/?summary=true',
+      providesTags: ['Applications'],
+      keepUnusedDataFor: 300,
+      transformResponse: (response: any[]) => (response || []).map(normalizeApplicationItem),
+    }),
+
+    getApplicationById: builder.query<any, number | string>({
+      query: (applicationId) => `/applications/${applicationId}`,
+      providesTags: (_result, _error, id) => [{ type: 'Applications' as const, id }, 'Applications'],
+      keepUnusedDataFor: 300,
+      transformResponse: (response: any) => (response ? normalizeApplicationItem(response) : null),
     }),
 
     getCandidateApplications: builder.query<any[], string>({
@@ -180,11 +199,11 @@ export const apiSlice = createApi({
                     uStatus === 'ACCEPTED' ? "text-emerald-600 bg-emerald-50 border-emerald-100" :
                       uStatus === 'REJECTED' ? "text-rose-600 bg-rose-50 border-rose-100" :
                         "text-slate-600 bg-slate-50 border-slate-100",
-            step: uStatus === 'PENDING' ? 1 : 
-                  (uStatus === 'REVIEWED' || uStatus === 'SCHEDULED') ? 2 : 
-                  uStatus === 'TECHNICAL INTERVIEW' ? 3 : 
-                  uStatus === 'FINAL INTERVIEW' ? 4 : 
-                  (uStatus === 'ACCEPTED' || uStatus === 'REJECTED') ? 5 : 1,
+            step: uStatus === 'PENDING' ? 1 :
+              (uStatus === 'REVIEWED' || uStatus === 'SCHEDULED') ? 2 :
+                uStatus === 'TECHNICAL INTERVIEW' ? 3 :
+                  uStatus === 'FINAL INTERVIEW' ? 4 :
+                    (uStatus === 'ACCEPTED' || uStatus === 'REJECTED') ? 5 : 1,
             totalSteps: 5,
             originalData: app
           };
@@ -312,7 +331,7 @@ export const apiSlice = createApi({
       invalidatesTags: ['Applications', 'Dashboard', 'Interviews', 'CalendarEvents'],
     }),
 
-    updateInterview: builder.mutation<any, { interviewId: number | string; [key: string]: any }>({
+    updateInterview: builder.mutation<any, { interviewId: number | string;[key: string]: any }>({
       query: ({ interviewId, ...body }) => ({
         url: `/interviews/${interviewId}`,
         method: 'PUT',
@@ -678,6 +697,8 @@ export const {
   useGetDashboardTrendsQuery,
   useGetJobsQuery,
   useGetApplicationsQuery,
+  useGetApplicationsSummaryQuery,
+  useGetApplicationByIdQuery,
   useGetCandidateApplicationsQuery,
   useSubmitApplicationMutation,
   useDeleteApplicationMutation,

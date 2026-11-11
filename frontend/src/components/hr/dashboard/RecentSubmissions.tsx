@@ -1,8 +1,8 @@
-import React, { useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { useNavigate } from '@/utils/navigation';
-import { 
-  Users, ArrowRight, Search, 
-  Eye, Calendar, CheckCircle2, Clock, Sparkles, 
+import {
+  Users, ArrowRight, Search,
+  Eye, Calendar, CheckCircle2, Clock, Sparkles,
   ChevronRight, X, Briefcase, MapPin, Award,
   Filter, ArrowUpDown, RotateCcw
 } from 'lucide-react';
@@ -117,11 +117,11 @@ const getStatusInfo = (rawStatus?: string) => {
   };
 };
 
-const CandidateCard: React.FC<CandidateCardProps> = ({ 
-  candidate, 
-  onQuickView, 
-  onSchedule, 
-  onScreen 
+const CandidateCard: React.FC<CandidateCardProps> = ({
+  candidate,
+  onQuickView,
+  onSchedule,
+  onScreen
 }) => {
   const name = candidate.candidate_name || candidate.name || 'Candidate';
   const preferredJob = candidate.job_title || candidate.preferredJob || 'Applicant';
@@ -139,17 +139,17 @@ const CandidateCard: React.FC<CandidateCardProps> = ({
     ? skills
     : (typeof skills === 'string' ? skills.split(',').map((s: string) => s.trim()) : []);
 
-  const scoreStyles = score >= 80 
-    ? 'bg-emerald-50 text-emerald-700 border-emerald-200/90' 
+  const scoreStyles = score >= 80
+    ? 'bg-emerald-50 text-emerald-700 border-emerald-200/90'
     : score >= 60
-    ? 'bg-amber-50 text-amber-700 border-amber-200/90'
-    : 'bg-slate-50 text-slate-600 border-slate-200/90';
+      ? 'bg-amber-50 text-amber-700 border-amber-200/90'
+      : 'bg-slate-50 text-slate-600 border-slate-200/90';
 
-  const scoreTierText = score >= 80 
-    ? 'High Match' 
-    : score >= 60 
-    ? 'Moderate Fit' 
-    : 'Basic Fit';
+  const scoreTierText = score >= 80
+    ? 'High Match'
+    : score >= 60
+      ? 'Moderate Fit'
+      : 'Basic Fit';
 
   return (
     <div className="flex flex-col xl:flex-row xl:items-center justify-between p-4 sm:p-5 bg-white border border-slate-200/90 rounded-2xl hover:border-rose-200/90 hover:shadow-md transition-all duration-200 group gap-4">
@@ -165,9 +165,9 @@ const CandidateCard: React.FC<CandidateCardProps> = ({
               </span>
             )}
           </div>
-          <span 
+          <span
             className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-white ${statusInfo.dotClass}`}
-            title={`Status: ${statusInfo.label}`} 
+            title={`Status: ${statusInfo.label}`}
           />
         </div>
 
@@ -214,8 +214,8 @@ const CandidateCard: React.FC<CandidateCardProps> = ({
           {skillsList.length > 0 && (
             <div className="flex items-center gap-1.5 mt-2 flex-wrap">
               {skillsList.slice(0, 3).map((skill: string, i: number) => (
-                <span 
-                  key={i} 
+                <span
+                  key={i}
                   className="px-2 py-0.5 bg-slate-50 hover:bg-slate-100 rounded-md text-[10px] font-bold text-slate-600 border border-slate-200/60 truncate max-w-[130px] transition-colors"
                 >
                   {skill}
@@ -308,6 +308,7 @@ const RecentSubmissions: React.FC<RecentSubmissionsProps> = ({ candidates = [] }
   const [positionFilter, setPositionFilter] = useState<string>('ALL');
   const [sortBy, setSortBy] = useState<string>('date_desc');
   const [showAllFiltered, setShowAllFiltered] = useState<boolean>(false);
+  const [visibleLimit, setVisibleLimit] = useState<number>(20);
   const [modalCandidate, setModalCandidate] = useState<RecentCandidate | null>(null);
   const [scheduleCandidate, setScheduleCandidate] = useState<RecentCandidate | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -317,54 +318,75 @@ const RecentSubmissions: React.FC<RecentSubmissionsProps> = ({ candidates = [] }
     setTimeout(() => setToastMessage(null), 3500);
   };
 
-  // Unique positions with applicant counts
-  const positionOptions = useMemo(() => {
-    const counts = new Map<string, number>();
-    candidates.forEach((c) => {
-      const pos = getCandidatePosition(c);
-      if (pos) {
-        counts.set(pos, (counts.get(pos) || 0) + 1);
-      }
+  useEffect(() => {
+    setVisibleLimit(20);
+  }, [positionFilter, selectedFilter, searchTerm, sortBy]);
+
+  // Single-pass index + category counts so 500+ applicants never trigger repeated full scans
+  const {
+    indexedCandidates,
+    positionOptions,
+    highMatchCount,
+    pendingCount,
+    reviewedCount,
+    acceptedCount,
+  } = useMemo(() => {
+    const posCounts = new Map<string, number>();
+    let highMatch = 0;
+    let pending = 0;
+    let reviewed = 0;
+    let accepted = 0;
+
+    const indexed = candidates.map((can) => {
+      const pos = getCandidatePosition(can);
+      if (pos) posCounts.set(pos, (posCounts.get(pos) || 0) + 1);
+
+      const score = Number(can.match_score ?? can.matchScore ?? 0) || 0;
+      const status = String(can.status || '').toUpperCase();
+      if (score >= 80) highMatch += 1;
+      if (status === 'PENDING') pending += 1;
+      else if (status === 'REVIEWED') reviewed += 1;
+      else if (status === 'ACCEPTED') accepted += 1;
+
+      const skillsText = Array.isArray(can.skills)
+        ? can.skills.join(' ')
+        : String(can.skills || '');
+      const haystack = `${can.candidate_name || can.name || ''} ${can.job_title || can.preferredJob || ''} ${can.jobDepartment || can.job?.department || ''} ${skillsText}`.toLowerCase();
+
+      return { can, score, status, haystack };
     });
-    return Array.from(counts.entries())
+
+    const opts = Array.from(posCounts.entries())
       .sort((a, b) => a[0].localeCompare(b[0]))
       .map(([title, count]) => ({ title, count }));
-  }, [candidates]);
 
-  // Compute live counts for each filter category
-  const highMatchCount = useMemo(() => candidates.filter(c => (c.match_score ?? c.matchScore ?? 0) >= 80).length, [candidates]);
-  const pendingCount = useMemo(() => candidates.filter(c => (c.status || '').toUpperCase() === 'PENDING').length, [candidates]);
-  const reviewedCount = useMemo(() => candidates.filter(c => (c.status || '').toUpperCase() === 'REVIEWED').length, [candidates]);
-  const acceptedCount = useMemo(() => candidates.filter(c => (c.status || '').toUpperCase() === 'ACCEPTED').length, [candidates]);
+    return {
+      indexedCandidates: indexed,
+      positionOptions: opts,
+      highMatchCount: highMatch,
+      pendingCount: pending,
+      reviewedCount: reviewed,
+      acceptedCount: accepted,
+    };
+  }, [candidates]);
 
   // Filter by position/search/status and sort deterministically by score or date
   const filteredCandidates = useMemo(() => {
-    const filtered = candidates.filter((can: RecentCandidate) => {
-      if (!matchesPositionFilter(can, positionFilter)) return false;
+    const search = searchTerm.toLowerCase().trim();
+    const filtered: RecentCandidate[] = [];
 
-      const name = (can.candidate_name || can.name || '').toLowerCase();
-      const role = (can.job_title || can.preferredJob || '').toLowerCase();
-      const dept = (can.jobDepartment || can.job?.department || '').toLowerCase();
-      const skillsStr = Array.isArray(can.skills) 
-        ? can.skills.join(' ').toLowerCase() 
-        : String(can.skills || '').toLowerCase();
-      const search = searchTerm.toLowerCase().trim();
+    for (const entry of indexedCandidates) {
+      if (!matchesPositionFilter(entry.can, positionFilter)) continue;
+      if (search && !entry.haystack.includes(search)) continue;
+      if (selectedFilter === 'HIGH_MATCH' && entry.score < 80) continue;
+      if (selectedFilter === 'PENDING' && entry.status !== 'PENDING') continue;
+      if (selectedFilter === 'REVIEWED' && entry.status !== 'REVIEWED') continue;
+      if (selectedFilter === 'ACCEPTED' && entry.status !== 'ACCEPTED') continue;
+      filtered.push(entry.can);
+    }
 
-      const matchesSearch = !search || name.includes(search) || role.includes(search) || dept.includes(search) || skillsStr.includes(search);
-
-      if (!matchesSearch) return false;
-
-      const score = can.match_score ?? can.matchScore ?? 0;
-      const status = (can.status || '').toUpperCase();
-
-      if (selectedFilter === 'HIGH_MATCH') return score >= 80;
-      if (selectedFilter === 'PENDING') return status === 'PENDING';
-      if (selectedFilter === 'REVIEWED') return status === 'REVIEWED';
-      if (selectedFilter === 'ACCEPTED') return status === 'ACCEPTED';
-      return true;
-    });
     return sortCandidatesByOption(filtered, sortBy);
-  }, [candidates, positionFilter, searchTerm, selectedFilter, sortBy]);
+  }, [indexedCandidates, positionFilter, searchTerm, selectedFilter, sortBy]);
 
   const hasActiveControls =
     positionFilter !== 'ALL' ||
@@ -373,7 +395,9 @@ const RecentSubmissions: React.FC<RecentSubmissionsProps> = ({ candidates = [] }
     sortBy !== 'date_desc';
 
   const displayedList =
-    hasActiveControls || showAllFiltered ? filteredCandidates : filteredCandidates.slice(0, 6);
+    hasActiveControls || showAllFiltered
+      ? filteredCandidates.slice(0, visibleLimit)
+      : filteredCandidates.slice(0, 6);
 
   return (
     <div className="bg-white border border-slate-200/80 rounded-2xl sm:rounded-3xl shadow-xs p-4 sm:p-6 lg:p-7 mb-6 sm:mb-8 relative">
@@ -401,8 +425,8 @@ const RecentSubmissions: React.FC<RecentSubmissionsProps> = ({ candidates = [] }
           </p>
         </div>
 
-        <button 
-          onClick={() => navigate('/hr/screeningportal')} 
+        <button
+          onClick={() => navigate('/hr/screeningportal')}
           className="group inline-flex items-center gap-1.5 text-xs font-bold text-[#D60041] hover:text-[#b50037] transition-colors cursor-pointer"
         >
           <span>Open Full Screening Queue</span>
@@ -442,11 +466,10 @@ const RecentSubmissions: React.FC<RecentSubmissionsProps> = ({ candidates = [] }
                 aria-label="Filter by position"
                 value={positionFilter}
                 onChange={(e) => setPositionFilter(e.target.value)}
-                className={`w-full pl-8 pr-7 py-2.5 border rounded-xl text-xs font-bold focus:outline-none focus:ring-2 focus:ring-[#D60041]/20 cursor-pointer transition-all ${
-                  positionFilter !== 'ALL'
+                className={`w-full pl-8 pr-7 py-2.5 border rounded-xl text-xs font-bold focus:outline-none focus:ring-2 focus:ring-[#D60041]/20 cursor-pointer transition-all ${positionFilter !== 'ALL'
                     ? 'bg-pink-50/70 border-pink-200 text-[#D60041]'
                     : 'bg-slate-50 border-slate-200/80 text-slate-700'
-                }`}
+                  }`}
               >
                 <option value="ALL">All Positions ({candidates.length})</option>
                 {positionOptions.map((opt) => (
@@ -464,11 +487,10 @@ const RecentSubmissions: React.FC<RecentSubmissionsProps> = ({ candidates = [] }
                 aria-label="Sort submissions"
                 value={sortBy}
                 onChange={(e) => setSortBy(e.target.value)}
-                className={`w-full pl-8 pr-7 py-2.5 border rounded-xl text-xs font-bold focus:outline-none focus:ring-2 focus:ring-[#D60041]/20 cursor-pointer transition-all ${
-                  sortBy !== 'date_desc'
+                className={`w-full pl-8 pr-7 py-2.5 border rounded-xl text-xs font-bold focus:outline-none focus:ring-2 focus:ring-[#D60041]/20 cursor-pointer transition-all ${sortBy !== 'date_desc'
                     ? 'bg-purple-50/70 border-purple-200 text-purple-800'
                     : 'bg-slate-50 border-slate-200/80 text-slate-700'
-                }`}
+                  }`}
               >
                 <option value="date_desc">Sort: Date (Newest)</option>
                 <option value="date_asc">Sort: Date (Oldest)</option>
@@ -510,16 +532,14 @@ const RecentSubmissions: React.FC<RecentSubmissionsProps> = ({ candidates = [] }
               <button
                 key={tab.id}
                 onClick={() => setSelectedFilter(tab.id)}
-                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
-                  isActive
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${isActive
                     ? 'bg-slate-900 text-white shadow-xs'
                     : 'bg-slate-50 text-slate-600 hover:bg-slate-100 hover:text-slate-900'
-                }`}
+                  }`}
               >
                 <span>{tab.label}</span>
-                <span className={`text-[10px] font-black px-1.5 py-0.2 rounded-md ${
-                  isActive ? 'bg-slate-800 text-rose-300' : 'bg-slate-200/80 text-slate-600'
-                }`}>
+                <span className={`text-[10px] font-black px-1.5 py-0.2 rounded-md ${isActive ? 'bg-slate-800 text-rose-300' : 'bg-slate-200/80 text-slate-600'
+                  }`}>
                   {tab.count}
                 </span>
               </button>
@@ -561,20 +581,43 @@ const RecentSubmissions: React.FC<RecentSubmissionsProps> = ({ candidates = [] }
         </div>
       )}
 
-      {/* Footer view all link */}
-      {!hasActiveControls && filteredCandidates.length > 6 && (
-        <div className="mt-5 pt-4 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500 font-medium">
+      {/* Footer pagination & view all link */}
+      {filteredCandidates.length > 6 && (
+        <div className="mt-5 pt-4 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-500 font-medium">
           <span>
             Showing {displayedList.length} of {filteredCandidates.length} applicants
           </span>
-          <div className="flex items-center gap-4">
-            <button
-              type="button"
-              onClick={() => setShowAllFiltered((prev) => !prev)}
-              className="font-bold text-slate-700 hover:text-[#D60041] cursor-pointer"
-            >
-              {showAllFiltered ? 'Show compact (6)' : `Show all (${filteredCandidates.length})`}
-            </button>
+          <div className="flex flex-wrap items-center gap-4">
+            {displayedList.length < filteredCandidates.length && (
+              <button
+                type="button"
+                onClick={() => {
+                  if (!hasActiveControls && !showAllFiltered) {
+                    setShowAllFiltered(true);
+                    setVisibleLimit(20);
+                  } else {
+                    setVisibleLimit((prev) => prev + 20);
+                  }
+                }}
+                className="font-bold text-slate-700 hover:text-[#D60041] cursor-pointer"
+              >
+                {!hasActiveControls && !showAllFiltered
+                  ? `Show more (${Math.min(20, filteredCandidates.length)} of ${filteredCandidates.length})`
+                  : `Load more (+${Math.min(20, filteredCandidates.length - displayedList.length)})`}
+              </button>
+            )}
+            {(showAllFiltered || displayedList.length > 6) && !hasActiveControls && (
+              <button
+                type="button"
+                onClick={() => {
+                  setShowAllFiltered(false);
+                  setVisibleLimit(20);
+                }}
+                className="font-bold text-slate-500 hover:text-slate-900 cursor-pointer"
+              >
+                Show compact (6)
+              </button>
+            )}
             <button
               onClick={() => navigate('/hr/screeningportal')}
               className="font-bold text-[#D60041] hover:underline flex items-center gap-1 cursor-pointer"

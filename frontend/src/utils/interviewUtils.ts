@@ -121,3 +121,4 @@ export const getCallOutcomeBadgeClass = (value?: string | null): string => {
   }
   return 'bg-slate-100 text-slate-700 border-slate-200';
 };
+

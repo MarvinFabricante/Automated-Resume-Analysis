@@ -11,6 +11,7 @@ if backend_dir not in sys.path:
 import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
@@ -284,6 +285,25 @@ async def ensure_cascade_delete_constraints(conn):
             logger.debug(f"Notice on ensuring FK {constraint_name}: {e}")
 
 
+async def ensure_performance_indexes(conn):
+    """Ensure B-Tree indexes exist for fast dashboard querying and large dataset loads."""
+    index_ddls = [
+        "CREATE INDEX IF NOT EXISTS idx_job_applications_created_at ON job_applications (created_at)",
+        "CREATE INDEX IF NOT EXISTS idx_job_applications_job_id ON job_applications (job_id)",
+        "CREATE INDEX IF NOT EXISTS idx_job_applications_status ON job_applications (status)",
+        "CREATE INDEX IF NOT EXISTS idx_job_applications_match_score ON job_applications (match_score)",
+        "CREATE INDEX IF NOT EXISTS idx_job_applications_candidate_email ON job_applications (candidate_email)",
+        "CREATE INDEX IF NOT EXISTS idx_interviews_start_time ON interviews (start_time)",
+        "CREATE INDEX IF NOT EXISTS idx_interviews_job_application_id ON interviews (job_application_id)",
+        "CREATE INDEX IF NOT EXISTS idx_interviews_status ON interviews (status)",
+    ]
+    for ddl in index_ddls:
+        try:
+            await conn.execute(text(ddl))
+        except Exception as e:
+            logger.debug(f"Notice on ensuring index: {e}")
+
+
 async def create_tables():
     from app.models.user import User
     from app.models.candidate import Candidate
@@ -306,6 +326,7 @@ async def create_tables():
             await ensure_interview_voice_columns(conn)
             await ensure_physical_resumes_table(conn)
             await ensure_cascade_delete_constraints(conn)
+            await ensure_performance_indexes(conn)
     except Exception as e:
         logger.debug(f"Table creation notice (concurrent worker init): {e}")
 
@@ -408,6 +429,7 @@ app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)  # type: ignore
 
 # Middleware
+app.add_middleware(GZipMiddleware, minimum_size=1024)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,

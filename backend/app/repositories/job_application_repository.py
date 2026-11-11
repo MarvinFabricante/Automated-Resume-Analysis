@@ -1,10 +1,11 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, text
 from sqlalchemy.orm import selectinload
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 import logging
 
 from app.models.job_application import JobApplication
+from app.models.job_description import JobDescription
 from app.utils.redis_client import redis_tx_manager
 from app.utils.cache import (
     get_cache,
@@ -114,6 +115,92 @@ async def get_all(db: AsyncSession) -> List[JobApplication]:
     apps = result.scalars().all()
     await set_cache(cache_key, apps, ttl=300)
     return apps
+
+
+async def get_all_summaries(db: AsyncSession) -> List[Dict[str, Any]]:
+    """Get lightweight dashboard summary rows via SQL column projection (checks Redis cache first)."""
+    cache_key = "all_apps:summaries:list"
+    cached = await get_cache(cache_key)
+    if cached is not None:
+        return cached
+
+    result = await db.execute(
+        select(
+            JobApplication.id,
+            JobApplication.job_id,
+            JobApplication.candidate_name,
+            JobApplication.candidate_email,
+            JobApplication.phone,
+            JobApplication.location,
+            JobApplication.job_title,
+            JobApplication.company,
+            JobApplication.skills,
+            JobApplication.match_score,
+            JobApplication.skills_score,
+            JobApplication.experience_score,
+            JobApplication.education_score,
+            JobApplication.certifications_score,
+            JobApplication.profile_image_url,
+            JobApplication.resume_url,
+            JobApplication.matched_skills,
+            JobApplication.missing_skills,
+            JobApplication.total_experience_months,
+            JobApplication.highest_educational_attainment,
+            JobApplication.experience_gaps,
+            JobApplication.ai_powered,
+            JobApplication.status,
+            JobApplication.created_at,
+            JobApplication.updated_at,
+            JobDescription.id.label("rel_job_id"),
+            JobDescription.job_title.label("rel_job_title"),
+            JobDescription.location.label("rel_job_location"),
+            JobDescription.department.label("rel_job_department"),
+        )
+        .select_from(JobApplication)
+        .outerjoin(JobDescription, JobApplication.job_id == JobDescription.id)
+        .order_by(JobApplication.created_at.desc())
+    )
+    summaries: List[Dict[str, Any]] = []
+    for row in result.all():
+        summaries.append({
+            "id": row.id,
+            "job_id": row.job_id,
+            "candidate_name": row.candidate_name,
+            "candidate_email": row.candidate_email,
+            "phone": row.phone,
+            "location": row.location,
+            "job_title": row.job_title,
+            "company": row.company,
+            "skills": row.skills or [],
+            "match_score": row.match_score,
+            "skills_score": row.skills_score,
+            "experience_score": row.experience_score,
+            "education_score": row.education_score,
+            "certifications_score": row.certifications_score,
+            "profile_image_url": row.profile_image_url,
+            "resume_url": row.resume_url,
+            "matched_skills": row.matched_skills or [],
+            "missing_skills": row.missing_skills or [],
+            "total_experience_months": row.total_experience_months,
+            "highest_educational_attainment": row.highest_educational_attainment,
+            "experience_gaps": row.experience_gaps,
+            "ai_powered": bool(row.ai_powered),
+            "status": row.status,
+            "created_at": row.created_at.isoformat() if row.created_at else None,
+            "updated_at": row.updated_at.isoformat() if row.updated_at else None,
+            "job": (
+                {
+                    "id": row.rel_job_id,
+                    "job_title": row.rel_job_title,
+                    "location": row.rel_job_location,
+                    "department": row.rel_job_department,
+                }
+                if row.rel_job_id is not None
+                else None
+            ),
+        })
+    await set_cache(cache_key, summaries, ttl=300)
+    return summaries
 
 
 async def get_by_id(db: AsyncSession, application_id: int) -> Optional[JobApplication]:

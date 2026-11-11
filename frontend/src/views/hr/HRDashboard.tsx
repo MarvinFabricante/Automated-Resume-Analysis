@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from '@/utils/navigation';
-import { 
-  Download, FileText, AlertCircle, Briefcase, BarChart3, Calendar, 
+import {
+  Download, FileText, AlertCircle, Briefcase, BarChart3, Calendar,
   Sparkles, CheckCircle2, ChevronRight, Zap, Radio, FolderArchive
 } from 'lucide-react';
 import { Helmet } from 'react-helmet-async';
@@ -20,7 +20,7 @@ import {
   useGetCandidateCountQuery,
   useGetResumeCountQuery,
   useGetJobsQuery,
-  useGetApplicationsQuery,
+  useGetApplicationsSummaryQuery,
   useGetAllInterviewsQuery
 } from '../../redux/api/apiSlice';
 import {
@@ -34,43 +34,50 @@ const HRDashboard: React.FC = () => {
   const [isExportingPdf, setIsExportingPdf] = useState<boolean>(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
-  // RTK Query hooks with real-time automatic polling + WebSocket tag invalidation
-  const { data: appStats = { pending: 0, reviewed: 0, accepted: 0, rejected: 0 } } = useGetDashboardStatsQuery(undefined, {
-    pollingInterval: 3000,
+  // RTK Query hooks with real-time WebSocket invalidation + lightweight stats-driven sync
+  const { data: appStatsData } = useGetDashboardStatsQuery(undefined, {
+    pollingInterval: 4000,
     refetchOnFocus: true,
     refetchOnMountOrArgChange: true,
     refetchOnReconnect: true,
   });
+  const appStats = appStatsData ?? { pending: 0, reviewed: 0, accepted: 0, rejected: 0 };
   const { data: candidateCountData } = useGetCandidateCountQuery(undefined, {
-    pollingInterval: 3000,
+    pollingInterval: 10000,
     refetchOnFocus: true,
     refetchOnMountOrArgChange: true,
     refetchOnReconnect: true,
   });
   const { data: resumeCountData } = useGetResumeCountQuery(undefined, {
-    pollingInterval: 3000,
+    pollingInterval: 10000,
     refetchOnFocus: true,
     refetchOnMountOrArgChange: true,
     refetchOnReconnect: true,
   });
   const { data: jobs = [] } = useGetJobsQuery(undefined, {
-    pollingInterval: 10000,
+    pollingInterval: 15000,
     refetchOnFocus: true,
     refetchOnReconnect: true,
   });
-  const { data: applications = [] } = useGetApplicationsQuery(undefined, {
-    pollingInterval: 3000,
+  const {
+    data: applications = [],
+    refetch: refetchApplications,
+  } = useGetApplicationsSummaryQuery(undefined, {
+    pollingInterval: 15000,
     refetchOnFocus: true,
     refetchOnMountOrArgChange: true,
     refetchOnReconnect: true,
   });
   useGetAllInterviewsQuery(undefined, {
-    pollingInterval: 5000,
+    pollingInterval: 15000,
     refetchOnFocus: true,
     refetchOnReconnect: true,
   });
-  const { data: trendsData } = useGetDashboardTrendsQuery(undefined, {
-    pollingInterval: 5000,
+  const {
+    data: trendsData,
+    refetch: refetchTrends,
+  } = useGetDashboardTrendsQuery(undefined, {
+    pollingInterval: 15000,
     refetchOnFocus: true,
     refetchOnMountOrArgChange: true,
     refetchOnReconnect: true,
@@ -80,6 +87,21 @@ const HRDashboard: React.FC = () => {
   const totalCandidates = candidateCountData?.count || applications.length || 0;
   const totalResumes = resumeCountData?.count || 0;
   const seenAppIdsRef = useRef<Set<string> | null>(null);
+  const prevStatsSigRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!appStatsData) return;
+    const sig = `${appStatsData.total ?? ''}:${appStatsData.pending ?? 0}:${appStatsData.reviewed ?? 0}:${appStatsData.accepted ?? 0}:${appStatsData.rejected ?? 0}`;
+    if (prevStatsSigRef.current === null) {
+      prevStatsSigRef.current = sig;
+      return;
+    }
+    if (prevStatsSigRef.current !== sig) {
+      prevStatsSigRef.current = sig;
+      refetchApplications();
+      refetchTrends();
+    }
+  }, [appStatsData, refetchApplications, refetchTrends]);
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
@@ -147,7 +169,7 @@ const HRDashboard: React.FC = () => {
       <Helmet>
         <title>HR Dashboard | Mariwasa ARAS</title>
       </Helmet>
-      
+
       <Header />
 
       <div className="flex flex-1">
@@ -273,9 +295,9 @@ const HRDashboard: React.FC = () => {
             />
 
             {/* 3. Application Trends & Pipeline Distribution Analytics */}
-            <ApplicationTrends 
-              applications={applications} 
-              appStats={appStats} 
+            <ApplicationTrends
+              applications={applications}
+              appStats={appStats}
             />
 
             {/* 4. Split Operations Grid: Recent Submissions (2/3) + Upcoming Interviews (1/3) */}

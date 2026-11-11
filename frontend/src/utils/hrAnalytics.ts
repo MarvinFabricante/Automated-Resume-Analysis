@@ -78,9 +78,9 @@ export function computeSkillsDistribution(
       const tokens = Array.isArray(rawSkills)
         ? rawSkills.map((s: any) => String(s).trim()).filter(Boolean)
         : String(rawSkills)
-            .split(/[|,;•\n]+/)
-            .map((s) => s.trim())
-            .filter(Boolean);
+          .split(/[|,;•\n]+/)
+          .map((s) => s.trim())
+          .filter(Boolean);
 
       const seenInApp = new Set<string>();
       for (const tok of tokens) {
@@ -181,45 +181,46 @@ export function sortCandidatesByOption<T = any>(
   list: T[],
   sortBy: CandidateSortOption = 'match_desc'
 ): T[] {
-  return [...list].sort((a: any, b: any) => {
-    const scoreA = getCandidateScore(a);
-    const scoreB = getCandidateScore(b);
-    const timeA = extractAppTimestampMs(a?.created_at || a?.date);
-    const timeB = extractAppTimestampMs(b?.created_at || b?.date);
-    const idA = Number(a?.id || 0);
-    const idB = Number(b?.id || 0);
+  if (!Array.isArray(list) || list.length <= 1) return Array.isArray(list) ? [...list] : [];
+  const needName = sortBy === 'name_asc' || sortBy === 'name_desc';
+  const wrapped = list.map((item: any) => ({
+    item,
+    score: getCandidateScore(item),
+    time: extractAppTimestampMs(item?.created_at || item?.date),
+    id: Number(item?.id || 0),
+    nameLower: needName ? String(item?.name || item?.candidate_name || '').toLowerCase() : '',
+  }));
 
+  wrapped.sort((a, b) => {
     switch (sortBy) {
       case 'match_asc':
-        if (scoreA !== scoreB) return scoreA - scoreB;
-        if (timeB !== timeA) return timeB - timeA;
-        return idB - idA;
+        if (a.score !== b.score) return a.score - b.score;
+        if (b.time !== a.time) return b.time - a.time;
+        return b.id - a.id;
       case 'date_desc':
-        if (timeB !== timeA) return timeB - timeA;
-        if (scoreB !== scoreA) return scoreB - scoreA;
-        return idB - idA;
+        if (b.time !== a.time) return b.time - a.time;
+        if (b.score !== a.score) return b.score - a.score;
+        return b.id - a.id;
       case 'date_asc':
-        if (timeA !== timeB) return timeA - timeB;
-        if (scoreB !== scoreA) return scoreB - scoreA;
-        return idA - idB;
+        if (a.time !== b.time) return a.time - b.time;
+        if (b.score !== a.score) return b.score - a.score;
+        return a.id - b.id;
       case 'name_asc': {
-        const cmp = String(a?.name || a?.candidate_name || '').localeCompare(
-          String(b?.name || b?.candidate_name || '')
-        );
-        return cmp !== 0 ? cmp : timeB - timeA;
+        const cmp = a.nameLower.localeCompare(b.nameLower);
+        return cmp !== 0 ? cmp : b.time - a.time;
       }
       case 'name_desc': {
-        const cmp = String(b?.name || b?.candidate_name || '').localeCompare(
-          String(a?.name || a?.candidate_name || '')
-        );
-        return cmp !== 0 ? cmp : timeB - timeA;
+        const cmp = b.nameLower.localeCompare(a.nameLower);
+        return cmp !== 0 ? cmp : b.time - a.time;
       }
       case 'match_desc':
       default:
-        if (scoreB !== scoreA) return scoreB - scoreA;
-        if (timeB !== timeA) return timeB - timeA;
-        return idB - idA;
+        if (b.score !== a.score) return b.score - a.score;
+        if (b.time !== a.time) return b.time - a.time;
+        return b.id - a.id;
     }
   });
+
+  return wrapped.map((entry) => entry.item);
 }
 
