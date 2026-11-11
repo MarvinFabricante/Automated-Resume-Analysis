@@ -13,6 +13,7 @@ import Sidebar from '../../components/layout/Sidebar';
 import ApplicationProgressBar from '../../components/common/ApplicationProgressBar';
 import ApplicationSuccessModal from '../../components/modals/shared/ApplicationSuccessModal';
 import ResumePreviewModal from '../../components/modals/shared/ResumePreviewModal';
+import ExperienceGapAlert from '../../components/common/ExperienceGapAlert';
 import { useSubmitApplicationMutation } from '../../redux/api/apiSlice';
 
 
@@ -134,6 +135,7 @@ const CandidatePreviewAndVerify: React.FC = () => {
       degree: activeData?.highest_degree || activeData?.degree || state?.education?.degree || "Degree in Field",
       college: activeData?.institution || activeData?.college || state?.education?.college || ""
     },
+    years_experience: activeData?.years_experience || state?.years_experience || 0,
     summary: activeData?.summary || state?.summary || "",
     work_experiences: activeData?.work_experiences || state?.work_experiences || [],
     education_entries: activeData?.education_entries || state?.education_entries || [],
@@ -214,30 +216,32 @@ const CandidatePreviewAndVerify: React.FC = () => {
       college: extractedData.education.college,
       skills: extractedData.skills,
       work_experiences: extractedData.work_experiences,
+      total_experience_months: activeData?.total_experience_months || data?.total_experience_months || undefined,
+      years_experience: Number(extractedData.years_experience || 0) || undefined,
       education_entries: extractedData.education_entries,
       highest_educational_attainment: data?.highest_educational_attainment || state?.highest_educational_attainment || "",
       certifications: certString || undefined,
       candidate_certifications: certString,
-      match_score: matchData?.match_percentage || state?.matchScore || 0,
-      skills_score: matchData?.skills_score || 0,
-      experience_score: matchData?.experience_score || 0,
-      education_score: matchData?.education_score || 0,
-      certifications_score: matchData?.certifications_score || 0,
-      skills_reason: matchData?.skills_reason || "",
-      experience_reason: matchData?.experience_reason || "",
-      education_reason: matchData?.education_reason || "",
-      certifications_reason: matchData?.certifications_reason || "",
-      matched_skills: matchData?.matched_skills || [],
-      missing_skills: matchData?.missing_skills || [],
-      relevant_experience: matchData?.relevant_experience || "",
-      experience_gaps: matchData?.experience_gaps || "",
-      required_degree: matchData?.required_degree || "",
-      candidate_degree: matchData?.candidate_degree || "",
-      recommendations: matchData?.recommendations || [],
-      ai_summary: matchData?.ai_summary || "",
-      strengths: matchData?.strengths || [],
-      weaknesses: matchData?.weaknesses || [],
-      ai_powered: Boolean(matchData?.ai_powered),
+      match_score: activeMatch?.match_percentage || state?.matchScore || 0,
+      skills_score: activeMatch?.skills_score || 0,
+      experience_score: activeMatch?.experience_score || 0,
+      education_score: activeMatch?.education_score || 0,
+      certifications_score: activeMatch?.certifications_score || 0,
+      skills_reason: activeMatch?.skills_reason || "",
+      experience_reason: activeMatch?.experience_reason || "",
+      education_reason: activeMatch?.education_reason || "",
+      certifications_reason: activeMatch?.certifications_reason || "",
+      matched_skills: activeMatch?.matched_skills || [],
+      missing_skills: activeMatch?.missing_skills || [],
+      relevant_experience: activeMatch?.relevant_experience || "",
+      experience_gaps: activeMatch?.experience_gaps || "",
+      required_degree: activeMatch?.required_degree || "",
+      candidate_degree: activeMatch?.candidate_degree || "",
+      recommendations: activeMatch?.recommendations || [],
+      ai_summary: activeMatch?.ai_summary || "",
+      strengths: activeMatch?.strengths || [],
+      weaknesses: activeMatch?.weaknesses || [],
+      ai_powered: Boolean(activeMatch?.ai_powered),
       profile_image_url: localStorage.getItem('profile_image_url'),
       resume_url: extractedData.resumeUrl,
     };
@@ -390,13 +394,33 @@ const CandidatePreviewAndVerify: React.FC = () => {
                     <div key={idx} className="bg-slate-50/50 p-5 rounded-[24px] border border-slate-100/50 flex flex-col items-center">
                       <div className="text-slate-400 mb-2">{item.icon}</div>
                       <p className="text-lg font-black uppercase tracking-wider text-slate-900 mb-0.5">
-                        {item.score >= 70 ? 'High' : item.score >= 40 ? 'Medium' : 'Basic'}
+                        {item.label === 'Experience' && activeMatch.experience_below_minimum
+                          ? 'Below Min'
+                          : item.score >= 70
+                          ? 'High'
+                          : item.score >= 40
+                          ? 'Medium'
+                          : 'Basic'}
                       </p>
                       <span className="text-[9px] font-black uppercase tracking-widest text-slate-400">{item.label}</span>
                     </div>
                   ))}
                 </div>
+
+                <ExperienceGapAlert
+                  matchData={activeMatch}
+                  job={state?.job}
+                  yearsExperience={extractedData.years_experience}
+                />
               </div>
+            )}
+
+            {!activeMatch && (
+              <ExperienceGapAlert
+                matchData={activeMatch}
+                job={state?.job}
+                yearsExperience={extractedData.years_experience}
+              />
             )}
 
 

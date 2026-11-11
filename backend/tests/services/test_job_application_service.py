@@ -290,3 +290,39 @@ async def test_duplicate_submission_version_policy(db_session, mock_celery_task)
     apps = await job_application_service.get_applications_by_job(db_session, job.id)
     assert len(apps) == 1
 
+
+@pytest.mark.asyncio
+async def test_create_application_reports_experience_gap_below_minimum(db_session, mock_celery_task):
+    job = JobDescription(
+        job_id="JOB-EXP-GAP-01",
+        job_title="Production Operator",
+        department="Manufacturing",
+        job_type=JobType.FULL_TIME,
+        location="Laguna",
+        description="Operate production machinery.",
+        skills_requirements="Machine Operation, Quality Control",
+        experience_requirements="3yrs",
+    )
+    db_session.add(job)
+    await db_session.flush()
+
+    app_in = JobApplicationCreate(
+        job_id="JOB-EXP-GAP-01",
+        candidate_name="Junior Operator",
+        candidate_email="junior.op@example.com",
+        job_title="Production Operator",
+        skills=["Machine Operation", "Quality Control"],
+        relevance="1 year experience in production",
+        years_experience=1,
+    )
+
+    created = await job_application_service.create_job_application(
+        db=db_session,
+        application_in=app_in,
+        db_job_id=job.id,
+    )
+    assert created.experience_gaps is not None
+    assert "experience below minimum" in created.experience_gaps.lower()
+    assert "experience below minimum" in (created.experience_reason or "").lower()
+    assert any("experience below minimum" in w.lower() for w in (created.weaknesses or []))
+

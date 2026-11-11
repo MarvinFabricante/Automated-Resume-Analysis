@@ -67,7 +67,7 @@ async def async_analyze_application(application_id: int):
         hash_resume = {k: v for k, v in resume_data.items() if k not in ("id", "application_id")}
         hash_payload = json.dumps({"resume": hash_resume, "job": job_data}, sort_keys=True).encode("utf-8")
         content_hash = hashlib.sha256(hash_payload).hexdigest()
-        cache_key = f"ai_analysis:{content_hash}"
+        cache_key = f"ai_analysis:v2:{content_hash}"
         
         cached_result = await get_cache(cache_key)
         
@@ -93,6 +93,11 @@ async def async_analyze_application(application_id: int):
             app.ai_summary = ai_result.get("ai_summary")
             app.strengths = ai_result.get("strengths")
             app.weaknesses = ai_result.get("weaknesses")
+            app.skills_reason = ai_result.get("skills_reason") or app.skills_reason
+            app.experience_reason = ai_result.get("experience_reason") or app.experience_reason
+            app.education_reason = ai_result.get("education_reason") or app.education_reason
+            if "experience_gaps" in ai_result:
+                app.experience_gaps = ai_result.get("experience_gaps")
             app.ai_powered = False
             
             await JobApplicationRepository.update(db, app)

@@ -12,6 +12,7 @@ import Header from '../../../components/layout/Header';
 import Footer from '../../../components/layout/Footer';
 import ApplicationProgressBar from '../../../components/common/ApplicationProgressBar';
 import ClarificationQuestionsPanel from '../../../components/common/ClarificationQuestionsPanel';
+import ExperienceGapAlert from '../../../components/common/ExperienceGapAlert';
 import { useJobClarifications } from '../../../hooks/useJobClarifications';
 import {
   ClarificationQuestion,
@@ -344,6 +345,17 @@ const ApplicationForm: React.FC = () => {
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-8">
+
+          <ExperienceGapAlert
+            matchData={matchData}
+            job={activeJob}
+            yearsExperience={resolveClarifiedYears(
+              clarificationQuestions,
+              clarificationAnswers,
+              location.state?.extractedData?.years_experience,
+              formData.relevance
+            )}
+          />
 
           <ClarificationQuestionsPanel
             questions={clarificationQuestions}

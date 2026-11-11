@@ -294,3 +294,59 @@ def test_job_specific_followup_questions_differ_for_j1_and_j3():
     assert all(q.get("job_id") == "J1" for q in q_j1)
     assert all(q.get("job_id") == "J3" for q in q_j3)
 
+
+def test_insufficient_experience_1yr_vs_3yr_reports_gap():
+    exp_short = job_matching_service.calculate_experience_match(
+        resume_years=1,
+        job_description="Production Operator",
+        experience_req="3yrs",
+    )
+    assert exp_short["required_years"] == 3
+    assert exp_short["candidate_years"] == 1
+    assert exp_short["below_minimum"] is True
+    assert exp_short["gap_years"] == 2
+    assert "experience below minimum" in exp_short["reason"].lower()
+
+    # Range strings such as "3-5 years" must resolve minimum bound 3 (never 35)
+    exp_range = job_matching_service.calculate_experience_match(
+        resume_years=1,
+        job_description="Production Supervisor",
+        experience_req="3-5 years supervisory experience in a manufacturing plant",
+    )
+    assert exp_range["required_years"] == 3
+    assert exp_range["below_minimum"] is True
+    assert exp_range["gap_years"] == 2
+
+    j1 = {
+        "job_id": "J1",
+        "job_title": "Production Operator (Manufacturing)",
+        "department": "Manufacturing",
+        "description": "Operates tile production equipment and enforces quality checks.",
+        "skills_requirements": "Production Planning, Quality Control, Machine Operation",
+        "experience_requirements": "3yrs",
+    }
+    applicant_1yr = {
+        "fullname": "Applicant 1yr",
+        "skills": "Production Planning, Quality Control, Machine Operation",
+        "experience": "Production Operator at ABC Mfg (1 year)",
+        "years_experience": 1,
+        "education": "High School Diploma",
+    }
+    cfg = {"weights": {}, "thresholds": {}}
+    res = job_matching_service.calculate_match_score(applicant_1yr, j1, matching_config=cfg)
+
+    assert res["experience_below_minimum"] is True
+    assert res["experience_gap_years"] == 2
+    assert "experience below minimum" in (res.get("experience_gaps") or "").lower()
+    assert "experience below minimum" in (res.get("experience_reason") or "").lower()
+    assert any("experience below minimum" in w.lower() for w in (res.get("weaknesses") or []))
+    assert res["requirement_gaps"]
+    assert res["experience_score"] < 50.0
+
+    applicant_4yr = {**applicant_1yr, "years_experience": 4, "experience": "Production Operator at ABC Mfg (4 years)"}
+    res_ok = job_matching_service.calculate_match_score(applicant_4yr, j1, matching_config=cfg)
+    assert res_ok["experience_below_minimum"] is False
+    assert res_ok["experience_gap_years"] == 0
+    assert res_ok["experience_gaps"] is None
+    assert res_ok["requirement_gaps"] == []
+

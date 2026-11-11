@@ -13,6 +13,7 @@ import Header from '../../../components/layout/Header';
 import Footer from '../../../components/layout/Footer';
 import ResumePreviewModal from '../../../components/modals/shared/ResumePreviewModal';
 import ApplicationProgressBar from '../../../components/common/ApplicationProgressBar';
+import ExperienceGapAlert from '../../../components/common/ExperienceGapAlert';
 
 
 interface InfoItemProps {
@@ -263,33 +264,34 @@ const PreviewAndVerifyPage: React.FC = () => {
         college: extractedData.education.college || "",
         skills: extractedData.skills,
         work_experiences: extractedData.work_experiences || data?.work_experiences || undefined,
-        total_experience_months: data?.total_experience_months || undefined,
+        total_experience_months: activeData?.total_experience_months || data?.total_experience_months || undefined,
+        years_experience: Number(extractedData.years_experience || 0) || undefined,
         education_entries: extractedData.education_entries || data?.education_entries || undefined,
         highest_educational_attainment: data?.highest_educational_attainment || undefined,
         certifications: Array.isArray(extractedData.certifications) ? extractedData.certifications.join(' | ') : (extractedData.certifications || data?.certifications || undefined),
         candidate_certifications: Array.isArray(extractedData.certifications) ? extractedData.certifications.join(' | ') : (extractedData.certifications || data?.candidate_certifications || undefined),
-        match_score: state?.matchScore || matchData?.match_percentage || 0,
-        skills_score: matchData?.skills_score || 0,
-        experience_score: matchData?.experience_score || 0,
-        education_score: matchData?.education_score || 0,
-        certifications_score: matchData?.certifications_score || 0,
+        match_score: activeMatch?.match_percentage || state?.matchScore || 0,
+        skills_score: activeMatch?.skills_score || 0,
+        experience_score: activeMatch?.experience_score || 0,
+        education_score: activeMatch?.education_score || 0,
+        certifications_score: activeMatch?.certifications_score || 0,
         profile_image_url: extractedData.profile_image_url || null,
         resume_url: currentResumeUrl || state?.resumeUrl || data?.file_url || null,
-        skills_reason: matchData?.skills_reason || "",
-        experience_reason: matchData?.experience_reason || "",
-        education_reason: matchData?.education_reason || "",
-        certifications_reason: matchData?.certifications_reason || "",
-        matched_skills: matchData?.matched_skills || [],
-        missing_skills: matchData?.missing_skills || [],
-        relevant_experience: matchData?.relevant_experience || "",
-        experience_gaps: matchData?.experience_gaps || "",
-        required_degree: matchData?.required_degree || "",
-        candidate_degree: matchData?.candidate_degree || "",
-        recommendations: matchData?.recommendations || [],
-        ai_summary: matchData?.ai_summary || extractedData.summary || "",
-        strengths: matchData?.strengths || [],
-        weaknesses: matchData?.weaknesses || [],
-        ai_powered: Boolean(matchData?.ai_powered)
+        skills_reason: activeMatch?.skills_reason || "",
+        experience_reason: activeMatch?.experience_reason || "",
+        education_reason: activeMatch?.education_reason || "",
+        certifications_reason: activeMatch?.certifications_reason || "",
+        matched_skills: activeMatch?.matched_skills || [],
+        missing_skills: activeMatch?.missing_skills || [],
+        relevant_experience: activeMatch?.relevant_experience || "",
+        experience_gaps: activeMatch?.experience_gaps || "",
+        required_degree: activeMatch?.required_degree || "",
+        candidate_degree: activeMatch?.candidate_degree || "",
+        recommendations: activeMatch?.recommendations || [],
+        ai_summary: activeMatch?.ai_summary || extractedData.summary || "",
+        strengths: activeMatch?.strengths || [],
+        weaknesses: activeMatch?.weaknesses || [],
+        ai_powered: Boolean(activeMatch?.ai_powered)
       };
 
       await candidateService.submitApplication(payload);
@@ -426,12 +428,33 @@ const PreviewAndVerifyPage: React.FC = () => {
                     <div className="text-[#D60041] mb-1.5">{item.icon}</div>
                     <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 mb-0.5">{item.label}</span>
                     <p className="text-base font-black uppercase text-slate-900">
-                      {item.score >= 70 ? 'High Match' : item.score >= 40 ? 'Moderate' : 'Basic Match'}
+                      {item.label === 'Experience Level' && activeMatch.experience_below_minimum
+                        ? 'Below Minimum'
+                        : item.score >= 70
+                        ? 'High Match'
+                        : item.score >= 40
+                        ? 'Moderate'
+                        : 'Basic Match'}
                     </p>
                   </div>
                 ))}
               </div>
+
+              <ExperienceGapAlert
+                matchData={activeMatch}
+                job={state?.job}
+                yearsExperience={extractedData.years_experience}
+                className="mt-5"
+              />
             </section>
+          )}
+
+          {!activeMatch && (
+            <ExperienceGapAlert
+              matchData={activeMatch}
+              job={state?.job}
+              yearsExperience={extractedData.years_experience}
+            />
           )}
 
 

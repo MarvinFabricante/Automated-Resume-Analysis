@@ -23,6 +23,9 @@ class JobMatchResult(BaseModel):
     location_reason: Optional[str] = None
     relevant_experience: Optional[str] = None
     experience_gaps: Optional[str] = None
+    experience_below_minimum: Optional[bool] = False
+    experience_gap_years: Optional[int] = 0
+    requirement_gaps: Optional[list[str]] = None
     required_degree: Optional[str] = None
     candidate_degree: Optional[str] = None
     required_certifications: Optional[str] = None
