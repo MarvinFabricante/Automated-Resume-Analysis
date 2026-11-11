@@ -514,3 +514,61 @@ Quality Control, ISO 9001, Six Sigma, Tile Inspection, Ceramic Glazing, Kiln Ope
     ]:
         assert expected in captured, f"Expected '{expected}' in captured skills: {captured}"
         assert expected in res["skills"]
+
+
+def test_r5_synonym_recognition_ml_and_qc():
+    """
+    Validates Synonym recognition for R5 ('ML', 'QC'):
+    - 'ML' maps to 'Machine Learning'
+    - 'QC' maps to 'Quality Control' (without hijacking Quezon City addresses or '500 ml')
+    """
+    r5_text = """
+ALEXANDER REYES
+alex.reyes@gmail.com | 09171234567
+
+WORK EXPERIENCE
+Data & Quality Analyst | Metro Systems Inc.
+2021 - 2024
+- Built predictive pipelines using ML and performed daily QC checks.
+
+EDUCATION
+BS Computer Science | UP Diliman | 2017 - 2021
+
+SKILLS
+ML, QC
+"""
+    res = extract_content(r5_text)
+    assert res["is_incomplete"] is False
+    assert "Machine Learning" in res["skills_list"]
+    assert "Quality Control" in res["skills_list"]
+    assert "ML" not in res["skills_list"]
+    assert "QC" not in res["skills_list"]
+    assert res["location"] == "Philippines"
+
+    # Inline skills header without full resume headers
+    res_inline = extract_content("Skills: ML, QC")
+    assert "Machine Learning" in res_inline["skills_list"]
+    assert "Quality Control" in res_inline["skills_list"]
+
+    # QC in Quezon City address header must stay a location, not Quality Control skill
+    addr_only = """
+PEDRO SANTOS
+pedro@gmail.com | 09191234567 | Diliman, QC
+
+SKILLS
+Python, FastAPI
+"""
+    res_addr = extract_content(addr_only)
+    assert res_addr["location"] == "Quezon City, Metro Manila"
+    assert "Quality Control" not in res_addr["skills_list"]
+
+    # Milliliter units must not map to Machine Learning
+    ml_unit = """
+MARIA REYES
+maria@gmail.com | 09191234567
+
+SKILLS
+Baking, 500 ml measuring
+"""
+    res_unit = extract_content(ml_unit)
+    assert "Machine Learning" not in res_unit["skills_list"]
