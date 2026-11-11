@@ -47,6 +47,7 @@ from app.extractors.content.psgc_gazetteer import (
     is_philippine_province,
     get_gazetteer
 )
+from app.extractors.content.section_parser import detect_section_label
 
 
 # ─── 1. Sub-Municipality Regex Patterns ───────────────────────────────────────
@@ -214,10 +215,20 @@ def parse_philippine_address(raw_text: str) -> Dict[str, Any]:
                     continue
                 span = m_lgu.span()
 
+            preceding_str = text_without_zip[:span[0]]
             following_str = text_without_zip[span[1]:]
             # False-positive guard: institution suffix
             if re.search(r'^\s*(?:National\s+High\s+School|High\s+School|Science\s+High\s+School|University|College|Hospital)', following_str, re.I):
                 continue
+            # False-positive guard: "QC" in Quality Control role/skill contexts vs Quezon City
+            if alias.upper() == "QC":
+                matched_tok = text_without_zip[span[0]:span[1]]
+                if not matched_tok.isupper():
+                    continue
+                if re.search(r'^\s*(?:Inspector|Officer|Engineer|Analyst|Specialist|Lead|Supervisor|Auditor|Tester|Staff|Assistant|Control|Check)\b', following_str, re.I):
+                    continue
+                if re.search(r'(?:QA|Quality|Skills?|ML)\s*[/,;:\-]?\s*$', preceding_str, re.I):
+                    continue
 
             # Score this candidate:
             score = len(alias)
@@ -327,6 +338,23 @@ def _empty_location_dict(raw_text: str) -> Dict[str, Any]:
 
 # ─── 4. Public API Extraction Methods ─────────────────────────────────────────
 
+def _extract_personal_header_lines(resume_text: str, max_lines: int = 20) -> List[str]:
+    """Return candidate header/personal lines while excluding non-personal resume sections."""
+    lines = [line.strip() for line in resume_text.split('\n') if line.strip()]
+    header_lines: List[str] = []
+    in_personal = True
+    for line in lines:
+        sec_lbl = detect_section_label(line)
+        if sec_lbl is not None:
+            in_personal = (sec_lbl == "PERSONAL")
+            continue
+        if in_personal:
+            header_lines.append(line)
+            if len(header_lines) >= max_lines:
+                break
+    return header_lines
+
+
 def extract_applicant_address(resume_text: str) -> Dict[str, Any]:
     """
     Extracts the applicant's residential or permanent address from resume header or labeled fields.
@@ -335,8 +363,9 @@ def extract_applicant_address(resume_text: str) -> Dict[str, Any]:
     if not resume_text:
         return _empty_location_dict("")
 
-    lines = [line.strip() for line in resume_text.split('\n') if line.strip()]
-    header_lines = lines[:20]
+    header_lines = _extract_personal_header_lines(resume_text, max_lines=20)
+    if not header_lines:
+        return _empty_location_dict("")
 
     # Strategy 1: Explicitly labeled address field (e.g. "Address: ...", "Permanent Address: ...")
     labeled_pattern = r'(?:Permanent\s+Address|Present\s+Address|Current\s+Address|Residential\s+Address|Home\s+Address|Address|Location|Residence)\s*[:.\-]\s*(.+)'
@@ -396,9 +425,8 @@ def extract_location(text: str) -> str:
     if parsed["normalized_location"] and parsed["normalized_location"] != "Philippines":
         return parsed["normalized_location"]
 
-    # Fallback to general scan
-    lines = [line.strip() for line in text.split('\n') if line.strip()][:15]
-    for line in lines:
+    # Fallback to personal/header scan only (never scan Skills/Experience/Education sections)
+    for line in _extract_personal_header_lines(text, max_lines=15):
         for chunk in re.split(r'\s*[|•\t]\s*', line):
             if '@' in chunk or 'http' in chunk:
                 continue

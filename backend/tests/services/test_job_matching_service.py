@@ -228,3 +228,12 @@ def test_nlp_compare_candidates_zero_and_tie():
         assert any("lack matching skills" in insight for insight in comp["comparative_insights"])
         assert not any("separated by only 0" in insight for insight in comp["comparative_insights"])
 
+
+def test_skill_synonym_matching_ml_and_qc():
+    res = job_matching_service.calculate_skills_match("ML, QC", "Machine Learning, Quality")
+    assert res["score"] == 1.0
+    assert res["missing"] == []
+    res_rev = job_matching_service.calculate_skills_match("Machine Learning, Quality Control", "ML, QC")
+    assert res_rev["score"] == 1.0
+    assert res_rev["missing"] == []
+
