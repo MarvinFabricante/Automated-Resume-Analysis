@@ -8,11 +8,83 @@ import {
 } from 'lucide-react';
 import { useGetDashboardTrendsQuery } from '../../../redux/api/apiSlice';
 import { exportToCSV } from '../../../utils/exportUtils';
+import {
+  computeAverageMatchScore,
+  computeDepartmentDistribution,
+  computePositionDistribution,
+  computeSkillsDistribution,
+  extractAppUtcDateIso,
+} from '../../../utils/hrAnalytics';
 
 interface ApplicationTrendsProps {
   applications?: any[];
   appStats?: Record<string, any>;
 }
+
+interface MetricBreakdownCardProps {
+  testId: string;
+  icon: React.ReactNode;
+  title: string;
+  subtitle: React.ReactNode;
+  badgeText: string;
+  badgeClassName: string;
+  emptyText: string;
+  items: any[];
+  renderValue: (item: any) => React.ReactNode;
+}
+
+const MetricBreakdownCard: React.FC<MetricBreakdownCardProps> = ({
+  testId,
+  icon,
+  title,
+  subtitle,
+  badgeText,
+  badgeClassName,
+  emptyText,
+  items,
+  renderValue,
+}) => (
+  <div
+    data-testid={testId}
+    className="bg-white border border-slate-200/80 rounded-2xl sm:rounded-3xl p-5 sm:p-6 shadow-xs flex flex-col justify-between"
+  >
+    <div className="flex items-center justify-between gap-2 pb-4 mb-4 border-b border-slate-100">
+      <div>
+        <h3 className="text-base sm:text-lg font-black text-slate-900 tracking-tight flex items-center gap-2">
+          {icon}
+          <span>{title}</span>
+        </h3>
+        <p className="text-[11px] text-slate-500 font-medium mt-0.5">{subtitle}</p>
+      </div>
+      <span
+        className={`text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-full border shrink-0 ${badgeClassName}`}
+      >
+        {badgeText}
+      </span>
+    </div>
+
+    {items.length === 0 ? (
+      <p className="text-xs text-slate-400 font-medium py-6 text-center">{emptyText}</p>
+    ) : (
+      <div className="space-y-3 max-h-72 overflow-y-auto pr-1">
+        {items.map((item: any, idx: number) => (
+          <div key={idx} className="space-y-1">
+            <div className="flex items-center justify-between text-xs gap-2">
+              <span className="font-bold text-slate-800 truncate">{item.label}</span>
+              <span className="font-black text-slate-900 shrink-0">{renderValue(item)}</span>
+            </div>
+            <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
+              <div
+                className="h-full rounded-full transition-all duration-700"
+                style={{ width: item.percentage, backgroundColor: item.color }}
+              />
+            </div>
+          </div>
+        ))}
+      </div>
+    )}
+  </div>
+);
 
 const ApplicationTrends: React.FC<ApplicationTrendsProps> = ({ applications = [], appStats = {} }) => {
   const navigate = useNavigate();
@@ -32,7 +104,7 @@ const ApplicationTrends: React.FC<ApplicationTrendsProps> = ({ applications = []
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [selectedDay, setSelectedDay] = useState<any>(null);
   const [hoveredDay, setHoveredDay] = useState<any>(null);
-  const [distributionTab, setDistributionTab] = useState<'department' | 'status'>('department');
+  const [distributionTab, setDistributionTab] = useState<'position' | 'department' | 'skills' | 'status'>('position');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const calendarRef = useRef<HTMLDivElement>(null);
@@ -82,8 +154,8 @@ const ApplicationTrends: React.FC<ApplicationTrendsProps> = ({ applications = []
 
     if (hasApps) {
       applications.forEach((app: any) => {
-        if (!app.date) return;
-        const dStr = new Date(app.date).toISOString().split('T')[0];
+        const dStr = extractAppUtcDateIso(app.date || app.created_at);
+        if (!dStr) return;
         dateCounts[dStr] = (dateCounts[dStr] || 0) + 1;
         if (!dateBreakdown[dStr]) {
           dateBreakdown[dStr] = { pending: 0, reviewed: 0, accepted: 0, rejected: 0 };
@@ -193,34 +265,29 @@ const ApplicationTrends: React.FC<ApplicationTrendsProps> = ({ applications = []
   const label50 = Math.round(displayMax * 0.5);
   const label25 = Math.round(displayMax * 0.25);
 
-  // Department and Status Distribution data
+  // Department, Position, Skills, and Status Distribution data
   const backendDeptData = data?.department_distribution || [];
-  const totalBackendApps = data?.total_applications || applications.length || 0;
+  const totalBackendApps = applications.length > 0 ? applications.length : (data?.total_applications || 0);
 
-  const departmentData = useMemo(() => {
-    if (backendDeptData.length > 0) return backendDeptData;
-    // Calculate from applications if backend not ready
-    if (applications.length > 0) {
-      const deptCounts: Record<string, number> = {};
-      applications.forEach((a: any) => {
-        const dept = a.jobDepartment || a.company || 'Engineering';
-        deptCounts[dept] = (deptCounts[dept] || 0) + 1;
-      });
-      const colors = ['#D60041', '#3B82F6', '#10B981', '#8B5CF6', '#F59E0B', '#EC4899'];
-      const total = applications.length;
-      return Object.entries(deptCounts).map(([label, value], i) => ({
-        label,
-        value,
-        color: colors[i % colors.length],
-        percentage: `${Math.round((value / total) * 100)}%`
-      }));
-    }
-    return [
-      { label: 'Engineering', value: 0, color: '#D60041', percentage: '0%' },
-      { label: 'Operations', value: 0, color: '#3B82F6', percentage: '0%' },
-      { label: 'Human Resources', value: 0, color: '#10B981', percentage: '0%' }
-    ];
-  }, [backendDeptData, applications]);
+  const departmentData = useMemo(
+    () => computeDepartmentDistribution(applications, backendDeptData),
+    [applications, backendDeptData]
+  );
+
+  const positionData = useMemo(
+    () => computePositionDistribution(applications, data?.position_distribution),
+    [applications, data?.position_distribution]
+  );
+
+  const skillsData = useMemo(
+    () => computeSkillsDistribution(applications, data?.skills_distribution),
+    [applications, data?.skills_distribution]
+  );
+
+  const averageScore = useMemo(
+    () => computeAverageMatchScore(applications, data?.average_score ?? appStats?.average_score),
+    [applications, data?.average_score, appStats?.average_score]
+  );
 
   const statusDistributionData = useMemo(() => {
     let pending = appStats?.pending ?? 0;
@@ -245,7 +312,14 @@ const ApplicationTrends: React.FC<ApplicationTrendsProps> = ({ applications = []
     ];
   }, [appStats, applications]);
 
-  const activeDistribution = distributionTab === 'department' ? departmentData : statusDistributionData;
+  const activeDistribution =
+    distributionTab === 'position'
+      ? positionData
+      : distributionTab === 'skills'
+      ? skillsData
+      : distributionTab === 'status'
+      ? statusDistributionData
+      : departmentData;
 
   // Donut chart conic gradient
   const conicGradientString = useMemo(() => {
@@ -1086,32 +1160,38 @@ const ApplicationTrends: React.FC<ApplicationTrendsProps> = ({ applications = []
                 Application Distribution
               </h3>
               <p className="text-[10px] sm:text-xs text-slate-400 font-bold uppercase tracking-wider mt-0.5 sm:mt-1">
-                {distributionTab === 'department' ? 'Categorized by Department' : 'Categorized by Pipeline Status'}
+                {distributionTab === 'position'
+                  ? 'Applicants per Position'
+                  : distributionTab === 'skills'
+                  ? 'Candidate Skills Distribution'
+                  : distributionTab === 'status'
+                  ? 'Categorized by Pipeline Status'
+                  : 'Categorized by Department'}
               </p>
             </div>
 
             {/* Segmented Switcher Button */}
-            <div className="inline-flex bg-slate-50 p-1 rounded-2xl border border-slate-100 self-end sm:self-auto">
-              <button
-                onClick={() => setDistributionTab('department')}
-                className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all cursor-pointer ${
-                  distributionTab === 'department'
-                    ? 'bg-white text-slate-900 shadow-xs'
-                    : 'text-slate-400 hover:text-slate-700'
-                }`}
-              >
-                Department
-              </button>
-              <button
-                onClick={() => setDistributionTab('status')}
-                className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all cursor-pointer ${
-                  distributionTab === 'status'
-                    ? 'bg-white text-slate-900 shadow-xs'
-                    : 'text-slate-400 hover:text-slate-700'
-                }`}
-              >
-                Status
-              </button>
+            <div className="inline-flex flex-wrap bg-slate-50 p-1 rounded-2xl border border-slate-100 self-end sm:self-auto gap-0.5">
+              {(
+                [
+                  { id: 'position', label: 'Position' },
+                  { id: 'department', label: 'Department' },
+                  { id: 'skills', label: 'Skills' },
+                  { id: 'status', label: 'Status' },
+                ] as const
+              ).map((tab) => (
+                <button
+                  key={tab.id}
+                  onClick={() => setDistributionTab(tab.id)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all cursor-pointer ${
+                    distributionTab === tab.id
+                      ? 'bg-white text-slate-900 shadow-xs'
+                      : 'text-slate-400 hover:text-slate-700'
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
             </div>
           </div>
 
@@ -1150,6 +1230,8 @@ const ApplicationTrends: React.FC<ApplicationTrendsProps> = ({ applications = []
                   onClick={() => {
                     if (item.statusKey) {
                       navigate(`/hr/screeningportal?status=${item.statusKey}`);
+                    } else if (distributionTab === 'position' && item.label && item.label !== 'No Data') {
+                      navigate(`/hr/screeningportal?job=${encodeURIComponent(item.label)}`);
                     } else if (item.label && item.label !== 'No Data') {
                       navigate(`/hr/screeningportal?search=${encodeURIComponent(item.label)}`);
                     } else {
@@ -1224,12 +1306,12 @@ const ApplicationTrends: React.FC<ApplicationTrendsProps> = ({ applications = []
                 <span className="text-sm sm:text-base font-black text-white">{pendingCount}</span>
               </div>
               <div className="bg-black/15 backdrop-blur-md border border-white/10 rounded-xl sm:rounded-2xl p-2 sm:p-2.5 text-center min-w-0">
-                <span className="text-[8px] sm:text-[9px] uppercase font-black tracking-wider text-pink-200/90 block mb-0.5 truncate">Top Match</span>
-                <span className="text-sm sm:text-base font-black text-white">{topMatchScore > 0 ? `${topMatchScore}%` : 'N/A'}</span>
+                <span className="text-[8px] sm:text-[9px] uppercase font-black tracking-wider text-pink-200/90 block mb-0.5 truncate">Avg Score</span>
+                <span className="text-sm sm:text-base font-black text-white">{totalBackendApps > 0 ? `${averageScore}%` : 'N/A'}</span>
               </div>
               <div className="bg-black/15 backdrop-blur-md border border-white/10 rounded-xl sm:rounded-2xl p-2 sm:p-2.5 text-center min-w-0">
-                <span className="text-[8px] sm:text-[9px] uppercase font-black tracking-wider text-pink-200/90 block mb-0.5 truncate">Focus</span>
-                <span className="text-[10px] sm:text-[11px] font-black text-white truncate block">{topDepartment}</span>
+                <span className="text-[8px] sm:text-[9px] uppercase font-black tracking-wider text-pink-200/90 block mb-0.5 truncate">Top Match</span>
+                <span className="text-sm sm:text-base font-black text-white">{topMatchScore > 0 ? `${topMatchScore}%` : 'N/A'}</span>
               </div>
             </div>
           </div>
@@ -1245,6 +1327,50 @@ const ApplicationTrends: React.FC<ApplicationTrendsProps> = ({ applications = []
             </button>
           </div>
         </div>
+      </div>
+
+      {/* 4. Exact Analytics Summary: Applicants per Position, Average Score & Skills Distribution */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 sm:gap-8">
+        <MetricBreakdownCard
+          testId="applicants-per-position-card"
+          icon={<Briefcase size={17} className="text-[#D60041]" />}
+          title="Applicants per Position"
+          subtitle={
+            <>
+              {totalBackendApps} total applications • Overall Average Score:{' '}
+              <strong className="text-slate-900">{averageScore}%</strong>
+            </>
+          }
+          badgeText={`${positionData.length} Roles`}
+          badgeClassName="bg-rose-50 text-[#D60041] border-rose-100"
+          emptyText="No position application data yet."
+          items={positionData}
+          renderValue={(pos) => (
+            <>
+              {pos.value} applicant{pos.value === 1 ? '' : 's'}{' '}
+              <span className="text-slate-400 font-bold">
+                ({pos.percentage}
+                {pos.avg_score !== undefined ? ` • Avg ${pos.avg_score}%` : ''})
+              </span>
+            </>
+          )}
+        />
+
+        <MetricBreakdownCard
+          testId="skills-distribution-card"
+          icon={<Layers size={17} className="text-blue-600" />}
+          title="Skills Distribution"
+          subtitle={`Applicant count per extracted competency across ${totalBackendApps} submissions`}
+          badgeText={`${skillsData.length} Skills`}
+          badgeClassName="bg-blue-50 text-blue-700 border-blue-100"
+          emptyText="No extracted skill records yet."
+          items={skillsData}
+          renderValue={(skill) => (
+            <>
+              {skill.value} <span className="text-slate-400 font-bold">({skill.percentage})</span>
+            </>
+          )}
+        />
       </div>
     </div>
   );

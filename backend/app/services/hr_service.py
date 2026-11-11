@@ -70,6 +70,7 @@ async def get_application_stats(db: AsyncSession):
     rejected = stats.get("REJECTED", 0)
     archived = stats.get("ARCHIVED", 0)
     total_archived = rejected + archived
+    average_score = await HRRepository.get_average_match_score(db)
 
     return {
         "pending": pending,
@@ -78,8 +79,47 @@ async def get_application_stats(db: AsyncSession):
         "rejected": total_archived,
         "archived": archived,
         "raw_rejected": rejected,
-        "total": pending + reviewed + accepted + total_archived
+        "total": pending + reviewed + accepted + total_archived,
+        "average_score": average_score,
     }
+
+
+def _build_skills_distribution(skills_rows: list, total_apps: int, colors: list[str]) -> list[dict]:
+    """Compute normalized per-applicant skill counts matching manual tallying."""
+    import re
+
+    skill_counts: dict[str, int] = {}
+    skill_labels: dict[str, str] = {}
+
+    for raw_skills in skills_rows:
+        if not raw_skills:
+            continue
+        if isinstance(raw_skills, list):
+            tokens = [str(s).strip() for s in raw_skills if str(s).strip()]
+        else:
+            tokens = [s.strip() for s in re.split(r'[|,;•\n]+', str(raw_skills)) if s.strip()]
+
+        seen_in_app: set[str] = set()
+        for tok in tokens:
+            key = tok.lower()
+            if key in seen_in_app:
+                continue
+            seen_in_app.add(key)
+            skill_counts[key] = skill_counts.get(key, 0) + 1
+            if key not in skill_labels:
+                skill_labels[key] = tok
+
+    sorted_skills = sorted(skill_counts.items(), key=lambda kv: (-kv[1], skill_labels[kv[0]].lower()))
+    denom = total_apps if total_apps > 0 else 1
+    return [
+        {
+            "label": skill_labels[key],
+            "value": count,
+            "color": colors[idx % len(colors)],
+            "percentage": f"{round((count / denom) * 100)}%",
+        }
+        for idx, (key, count) in enumerate(sorted_skills)
+    ]
 
 
 async def get_dashboard_trends(db: AsyncSession):
@@ -141,7 +181,7 @@ async def get_dashboard_trends(db: AsyncSession):
     for idx, row in enumerate(dept_data):
         dept_name = row[0]
         count = row[1]
-        pct_val = int((count / total_apps) * 100) if total_apps > 0 else 0
+        pct_val = round((count / total_apps) * 100) if total_apps > 0 else 0
 
         department_distribution.append({
             "label": dept_name,
@@ -166,10 +206,94 @@ async def get_dashboard_trends(db: AsyncSession):
                 { "label": "No Data", "value": 0, "color": "#E2E8F0", "percentage": "0%" }
             ]
 
+    # 3. Applicants per Position Distribution
+    pos_rows = await HRRepository.get_position_application_counts(db)
+    pos_sorted = sorted(pos_rows, key=lambda r: (-int(r[1] or 0), str(r[0] or "").lower()))
+    position_distribution = []
+    pos_total = sum(int(r[1] or 0) for r in pos_sorted) or total_apps
+    for idx, row in enumerate(pos_sorted):
+        pos_name = row[0] or "Unspecified"
+        count = int(row[1] or 0)
+        avg_pos_score = round(float(row[2] or 0.0), 1)
+        pct_val = round((count / pos_total) * 100) if pos_total > 0 else 0
+        position_distribution.append({
+            "label": pos_name,
+            "value": count,
+            "avg_score": avg_pos_score,
+            "color": colors[idx % len(colors)],
+            "percentage": f"{pct_val}%",
+        })
+
+    # 4. Skills Distribution & Overall Average Score
+    skills_rows = await HRRepository.get_all_application_skills(db)
+    skills_distribution = _build_skills_distribution(skills_rows, total_apps, colors)
+    average_score = await HRRepository.get_average_match_score(db)
+
     return {
         "weekly_trends": weekly_trends,
         "department_distribution": department_distribution,
-        "total_applications": total_apps
+        "position_distribution": position_distribution,
+        "skills_distribution": skills_distribution,
+        "average_score": average_score,
+        "total_applications": total_apps,
+    }
+
+
+async def build_hr_dashboard_export_data(db: AsyncSession) -> dict:
+    """Collect unified HR Dashboard analytics + applicant records for CSV/PDF export."""
+    from datetime import datetime
+    from app.repositories.job_description_repository import JobDescriptionRepository
+    from app.services import job_application_service
+
+    stats = await get_application_stats(db)
+    trends = await get_dashboard_trends(db)
+    active_jobs = await JobDescriptionRepository.get_all_active(db, include_inactive=False)
+    applications = await job_application_service.get_all_applications(db)
+
+    applicants = []
+    for app in applications:
+        raw_skills = app.skills or []
+        skills_text = (
+            ", ".join(str(s).strip() for s in raw_skills if str(s).strip())
+            if isinstance(raw_skills, list)
+            else str(raw_skills or "")
+        )
+        job_obj = getattr(app, "job", None)
+        role_title = (getattr(job_obj, "job_title", None) if job_obj else None) or app.job_title or "Unspecified"
+        dept_name = (getattr(job_obj, "department", None) if job_obj else None) or "General"
+        score_val = round(float(app.match_score or 0.0), 1)
+        applied_date = app.created_at.strftime("%Y-%m-%d") if getattr(app, "created_at", None) else "N/A"
+        applicants.append({
+            "id": app.id,
+            "candidate_name": app.candidate_name or "Applicant",
+            "candidate_email": app.candidate_email or "",
+            "preferred_role": role_title,
+            "department": dept_name,
+            "status": (app.status or "PENDING").upper(),
+            "match_score": score_val,
+            "skills_score": round(float(app.skills_score or 0.0), 1),
+            "experience_score": round(float(app.experience_score or 0.0), 1),
+            "education_score": round(float(app.education_score or 0.0), 1),
+            "skills_text": skills_text,
+            "applied_date": applied_date,
+            "location": app.location or "N/A",
+        })
+
+    return {
+        "generated_at": datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC"),
+        "summary": {
+            "total_applications": len(applicants) if applicants else stats.get("total", 0),
+            "active_positions": len(active_jobs),
+            "average_score": stats.get("average_score", trends.get("average_score", 0.0)),
+            "pending": stats.get("pending", 0),
+            "reviewed": stats.get("reviewed", 0),
+            "accepted": stats.get("accepted", 0),
+            "rejected": stats.get("rejected", 0),
+        },
+        "position_distribution": trends.get("position_distribution", []),
+        "department_distribution": trends.get("department_distribution", []),
+        "skills_distribution": trends.get("skills_distribution", []),
+        "applicants": applicants,
     }
 
 

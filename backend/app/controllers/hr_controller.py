@@ -2,6 +2,7 @@ import os
 import shutil
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException, status, File, UploadFile
+from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.utils.database import get_db
@@ -127,6 +128,44 @@ async def upload_hr_profile_image(
 @cache_response("dashboard_trends", ttl=300)
 async def get_dashboard_trends_endpoint(db: AsyncSession = Depends(get_db)):
     return await hr_service.get_dashboard_trends(db)
+
+
+@router.get("/export/csv")
+async def export_hr_dashboard_csv(db: AsyncSession = Depends(get_db)):
+    """Export HR Dashboard analytics summary and applicant records as a CSV file."""
+    from datetime import datetime
+    from app.utils.hr_export import generate_hr_csv_bytes
+
+    export_data = await hr_service.build_hr_dashboard_export_data(db)
+    csv_bytes = generate_hr_csv_bytes(export_data)
+    date_tag = datetime.utcnow().strftime("%Y-%m-%d")
+    return Response(
+        content=csv_bytes,
+        media_type="text/csv; charset=utf-8",
+        headers={
+            "Content-Disposition": f'attachment; filename="Mariwasa_HR_Recruitment_Report_{date_tag}.csv"',
+            "Cache-Control": "no-store",
+        },
+    )
+
+
+@router.get("/export/pdf")
+async def export_hr_dashboard_pdf(db: AsyncSession = Depends(get_db)):
+    """Export HR Dashboard analytics summary and applicant records as a PDF file."""
+    from datetime import datetime
+    from app.utils.hr_export import generate_hr_pdf_bytes
+
+    export_data = await hr_service.build_hr_dashboard_export_data(db)
+    pdf_bytes = generate_hr_pdf_bytes(export_data)
+    date_tag = datetime.utcnow().strftime("%Y-%m-%d")
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="Mariwasa_HR_Recruitment_Report_{date_tag}.pdf"',
+            "Cache-Control": "no-store",
+        },
+    )
 
 
 @router.get("/interviewers")

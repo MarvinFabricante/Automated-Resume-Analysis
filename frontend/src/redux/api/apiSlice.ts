@@ -108,7 +108,7 @@ export const apiSlice = createApi({
           id: app.id,
           name: app.candidate_name,
           status: app.status,
-          preferredJob: app.job?.job_title || "Unknown",
+          preferredJob: app.job?.job_title || app.job_title || "Unknown",
           skills: app.skills || [],
           profileImage: app.profile_image_url || null,
           resumeUrl: app.resume_url || null,
@@ -120,7 +120,9 @@ export const apiSlice = createApi({
           degree: app.degree || "",
           college: app.college || "",
           relevance: app.relevance || "",
-          matchScore: (app.match_score && app.match_score > 0) ? app.match_score : Math.round(((app.skills_score || 0) * 0.4) + ((app.experience_score || 0) * 0.4) + ((app.certifications_score || app.education_score || 0) * 0.2)) || 0,
+          matchScore: (app.match_score !== null && app.match_score !== undefined)
+            ? Number(app.match_score)
+            : (Math.round(((app.skills_score || 0) * 0.4) + ((app.experience_score || 0) * 0.4) + ((app.certifications_score || app.education_score || 0) * 0.2)) || 0),
           skillsScore: app.skills_score || 0,
           experienceScore: app.experience_score || 0,
           educationScore: app.education_score || 0,

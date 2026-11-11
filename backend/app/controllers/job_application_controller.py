@@ -58,11 +58,15 @@ async def check_duplicate_application(
 
 @router.get("/", response_model=List[JobApplicationResponse])
 @cache_response("all_apps", ttl=60)
-async def get_all_applications(db: AsyncSession = Depends(get_db)):
+async def get_all_applications(
+    position: Optional[str] = None,
+    sort_by: Optional[str] = None,
+    db: AsyncSession = Depends(get_db),
+):
     """
-    Get all job applications from all jobs.
+    Get all job applications from all jobs, optionally filtered by position and sorted by score or date.
     """
-    return await job_application_service.get_all_applications(db)
+    return await job_application_service.get_all_applications(db, position=position, sort_by=sort_by)
 
 @router.get("/job/{job_id}", response_model=List[JobApplicationResponse])
 @cache_response("job_apps", ttl=60)

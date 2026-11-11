@@ -20,6 +20,10 @@ import {
   useDeleteApplicationMutation 
 } from '../../redux/api/apiSlice';
 import { exportToCSV } from '../../utils/exportUtils';
+import {
+  matchesPositionFilter,
+  sortCandidatesByOption,
+} from '../../utils/hrAnalytics';
 
 interface ConfirmModalState {
   isOpen: boolean;
@@ -168,9 +172,14 @@ const ScreeningPortal: React.FC = () => {
     }).length;
   }, [candidates, searchQuery, includeArchived, statusFilter]);
 
+  // Reset pagination whenever filters or sort order change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [jobFilter, statusFilter, scoreFilter, sortBy, searchQuery, includeArchived]);
+
   // Filtering and sorting candidates
   const filteredCandidates = useMemo(() => {
-    return candidates.filter((c: any) => {
+    const filtered = candidates.filter((c: any) => {
       const candidateStatus = (c.status || 'Pending').toLowerCase();
 
       // Status filtering
@@ -186,8 +195,8 @@ const ScreeningPortal: React.FC = () => {
         if (candidateStatus !== statusFilter.toLowerCase()) return false;
       }
 
-      // Job position filtering
-      if (jobFilter !== "All Jobs" && c.preferredJob !== jobFilter) {
+      // Job position filtering (normalized match)
+      if (!matchesPositionFilter(c, jobFilter)) {
         return false;
       }
 
@@ -217,23 +226,8 @@ const ScreeningPortal: React.FC = () => {
       }
 
       return true;
-    }).sort((a: any, b: any) => {
-      switch (sortBy) {
-        case 'match_asc':
-          return (a.matchScore || 0) - (b.matchScore || 0);
-        case 'date_desc':
-          return new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime();
-        case 'date_asc':
-          return new Date(a.date || 0).getTime() - new Date(b.date || 0).getTime();
-        case 'name_asc':
-          return (a.name || '').localeCompare(b.name || '');
-        case 'name_desc':
-          return (b.name || '').localeCompare(a.name || '');
-        case 'match_desc':
-        default:
-          return (b.matchScore || 0) - (a.matchScore || 0);
-      }
     });
+    return sortCandidatesByOption(filtered, sortBy);
   }, [candidates, statusFilter, jobFilter, scoreFilter, searchQuery, sortBy, includeArchived]);
 
   // Paginated slice

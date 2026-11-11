@@ -202,3 +202,88 @@ async def test_new_application_updates_hr_dashboard_counts_list_and_invalidates_
         for d in after_trends["department_distribution"]
     )
 
+
+@pytest.mark.asyncio
+async def test_filter_by_position_and_sort_by_score_and_date(
+    client, db_session, mock_celery_task
+):
+    from datetime import datetime, timedelta
+    from app.models.job_application import JobApplication
+
+    j_ops = JobDescription(
+        job_id="JOB-FS-1",
+        job_title="Forklift Operator",
+        department="Logistics",
+        job_type=JobType.FULL_TIME,
+        location="Laguna",
+        description="Forklift operations",
+    )
+    j_eng = JobDescription(
+        job_id="JOB-FS-2",
+        job_title="Process Engineer",
+        department="Engineering",
+        job_type=JobType.FULL_TIME,
+        location="Laguna",
+        description="Process improvements",
+    )
+    db_session.add_all([j_ops, j_eng])
+    await db_session.flush()
+
+    now = datetime.utcnow()
+    apps = [
+        JobApplication(
+            job_id=j_ops.id,
+            candidate_name="Ops Tie Earlier",
+            candidate_email="ops1@example.com",
+            match_score=80.0,
+            created_at=now - timedelta(days=2),
+        ),
+        JobApplication(
+            job_id=j_ops.id,
+            candidate_name="Ops Top Score",
+            candidate_email="ops2@example.com",
+            match_score=95.0,
+            created_at=now - timedelta(days=3),
+        ),
+        JobApplication(
+            job_id=j_ops.id,
+            candidate_name="Ops Tie Newer",
+            candidate_email="ops3@example.com",
+            match_score=80.0,
+            created_at=now - timedelta(days=1),
+        ),
+        JobApplication(
+            job_id=j_eng.id,
+            candidate_name="Other Position",
+            candidate_email="eng1@example.com",
+            match_score=99.0,
+            created_at=now,
+        ),
+    ]
+    db_session.add_all(apps)
+    await db_session.commit()
+
+    # Filter by position + sort by score descending (tiebroken by newest date)
+    by_score = (await client.get("/applications/?position=Forklift%20Operator&sort_by=match_desc")).json()
+    assert [a["candidate_name"] for a in by_score] == [
+        "Ops Top Score",
+        "Ops Tie Newer",
+        "Ops Tie Earlier",
+    ]
+
+    # Filter by position + sort by newest date descending
+    by_date_desc = (await client.get("/applications/?position=Forklift%20Operator&sort_by=date_desc")).json()
+    assert [a["candidate_name"] for a in by_date_desc] == [
+        "Ops Tie Newer",
+        "Ops Tie Earlier",
+        "Ops Top Score",
+    ]
+
+    # Filter by position + sort by oldest date ascending
+    by_date_asc = (await client.get("/applications/?position=Forklift%20Operator&sort_by=date_asc")).json()
+    assert [a["candidate_name"] for a in by_date_asc] == [
+        "Ops Top Score",
+        "Ops Tie Earlier",
+        "Ops Tie Newer",
+    ]
+

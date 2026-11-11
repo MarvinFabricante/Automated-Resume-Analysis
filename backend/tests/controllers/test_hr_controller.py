@@ -41,6 +41,9 @@ async def test_hr_counts_and_stats_endpoints(client, db_session):
     assert trends_res.status_code == 200
     assert "weekly_trends" in trends_res.json()
     assert "department_distribution" in trends_res.json()
+    assert "position_distribution" in trends_res.json()
+    assert "skills_distribution" in trends_res.json()
+    assert "average_score" in trends_res.json()
 
 
 @pytest.mark.asyncio

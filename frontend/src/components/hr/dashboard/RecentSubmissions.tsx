@@ -3,9 +3,15 @@ import { useNavigate } from '@/utils/navigation';
 import { 
   Users, ArrowRight, Search, 
   Eye, Calendar, CheckCircle2, Clock, Sparkles, 
-  ChevronRight, X, Briefcase, MapPin, Award
+  ChevronRight, X, Briefcase, MapPin, Award,
+  Filter, ArrowUpDown, RotateCcw
 } from 'lucide-react';
 import { getAssetUrl } from '../../../services/api';
+import {
+  getCandidatePosition,
+  matchesPositionFilter,
+  sortCandidatesByOption,
+} from '../../../utils/hrAnalytics';
 import ViewCandidateDetailsModal from '../../modals/hr/ViewCandidateDetailsModal';
 import NewScheduleModal from '../../modals/hr/NewScheduleModal';
 
@@ -299,6 +305,9 @@ const RecentSubmissions: React.FC<RecentSubmissionsProps> = ({ candidates = [] }
   const navigate = useNavigate();
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [selectedFilter, setSelectedFilter] = useState<string>('ALL'); // 'ALL' | 'PENDING' | 'REVIEWED' | 'HIGH_MATCH' | 'ACCEPTED'
+  const [positionFilter, setPositionFilter] = useState<string>('ALL');
+  const [sortBy, setSortBy] = useState<string>('date_desc');
+  const [showAllFiltered, setShowAllFiltered] = useState<boolean>(false);
   const [modalCandidate, setModalCandidate] = useState<RecentCandidate | null>(null);
   const [scheduleCandidate, setScheduleCandidate] = useState<RecentCandidate | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -308,21 +317,31 @@ const RecentSubmissions: React.FC<RecentSubmissionsProps> = ({ candidates = [] }
     setTimeout(() => setToastMessage(null), 3500);
   };
 
+  // Unique positions with applicant counts
+  const positionOptions = useMemo(() => {
+    const counts = new Map<string, number>();
+    candidates.forEach((c) => {
+      const pos = getCandidatePosition(c);
+      if (pos) {
+        counts.set(pos, (counts.get(pos) || 0) + 1);
+      }
+    });
+    return Array.from(counts.entries())
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([title, count]) => ({ title, count }));
+  }, [candidates]);
+
   // Compute live counts for each filter category
   const highMatchCount = useMemo(() => candidates.filter(c => (c.match_score ?? c.matchScore ?? 0) >= 80).length, [candidates]);
   const pendingCount = useMemo(() => candidates.filter(c => (c.status || '').toUpperCase() === 'PENDING').length, [candidates]);
   const reviewedCount = useMemo(() => candidates.filter(c => (c.status || '').toUpperCase() === 'REVIEWED').length, [candidates]);
   const acceptedCount = useMemo(() => candidates.filter(c => (c.status || '').toUpperCase() === 'ACCEPTED').length, [candidates]);
 
-  // Filter and sort newest submissions first
+  // Filter by position/search/status and sort deterministically by score or date
   const filteredCandidates = useMemo(() => {
-    const sorted = [...candidates].sort((a: RecentCandidate, b: RecentCandidate) => {
-      const timeA = new Date(a.created_at || a.date || 0).getTime();
-      const timeB = new Date(b.created_at || b.date || 0).getTime();
-      if (timeB !== timeA) return timeB - timeA;
-      return Number(b.id || 0) - Number(a.id || 0);
-    });
-    return sorted.filter((can: RecentCandidate) => {
+    const filtered = candidates.filter((can: RecentCandidate) => {
+      if (!matchesPositionFilter(can, positionFilter)) return false;
+
       const name = (can.candidate_name || can.name || '').toLowerCase();
       const role = (can.job_title || can.preferredJob || '').toLowerCase();
       const dept = (can.jobDepartment || can.job?.department || '').toLowerCase();
@@ -344,9 +363,17 @@ const RecentSubmissions: React.FC<RecentSubmissionsProps> = ({ candidates = [] }
       if (selectedFilter === 'ACCEPTED') return status === 'ACCEPTED';
       return true;
     });
-  }, [candidates, searchTerm, selectedFilter]);
+    return sortCandidatesByOption(filtered, sortBy);
+  }, [candidates, positionFilter, searchTerm, selectedFilter, sortBy]);
 
-  const displayedList = filteredCandidates.slice(0, 6);
+  const hasActiveControls =
+    positionFilter !== 'ALL' ||
+    selectedFilter !== 'ALL' ||
+    Boolean(searchTerm.trim()) ||
+    sortBy !== 'date_desc';
+
+  const displayedList =
+    hasActiveControls || showAllFiltered ? filteredCandidates : filteredCandidates.slice(0, 6);
 
   return (
     <div className="bg-white border border-slate-200/80 rounded-2xl sm:rounded-3xl shadow-xs p-4 sm:p-6 lg:p-7 mb-6 sm:mb-8 relative">
@@ -383,30 +410,94 @@ const RecentSubmissions: React.FC<RecentSubmissionsProps> = ({ candidates = [] }
         </button>
       </div>
 
-      {/* Filter and Search Bar */}
-      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 mb-5">
-        {/* Search Input */}
-        <div className="relative w-full sm:w-72">
-          <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
-          <input
-            type="text"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Search candidate, role, skill..."
-            className="w-full pl-9 pr-8 py-2.5 bg-slate-50 border border-slate-200/80 rounded-xl text-xs text-slate-800 placeholder-slate-400 font-medium focus:outline-none focus:ring-2 focus:ring-[#D60041]/20 focus:border-[#D60041] transition-all"
-          />
-          {searchTerm && (
-            <button
-              onClick={() => setSearchTerm('')}
-              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1"
-            >
-              <X size={13} />
-            </button>
-          )}
+      {/* Filter, Position, Sort, and Search Controls */}
+      <div className="flex flex-col gap-3 mb-5">
+        <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-2.5">
+          {/* Search Input */}
+          <div className="relative w-full lg:w-72">
+            <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Search candidate, role, skill..."
+              className="w-full pl-9 pr-8 py-2.5 bg-slate-50 border border-slate-200/80 rounded-xl text-xs text-slate-800 placeholder-slate-400 font-medium focus:outline-none focus:ring-2 focus:ring-[#D60041]/20 focus:border-[#D60041] transition-all"
+            />
+            {searchTerm && (
+              <button
+                onClick={() => setSearchTerm('')}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1"
+              >
+                <X size={13} />
+              </button>
+            )}
+          </div>
+
+          {/* Position Filter & Score/Date Sort Dropdowns */}
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="relative flex-1 sm:flex-none min-w-[175px]">
+              <Filter size={13} className={`absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none ${positionFilter !== 'ALL' ? 'text-[#D60041]' : 'text-slate-400'}`} />
+              <select
+                data-testid="dashboard-position-filter"
+                aria-label="Filter by position"
+                value={positionFilter}
+                onChange={(e) => setPositionFilter(e.target.value)}
+                className={`w-full pl-8 pr-7 py-2.5 border rounded-xl text-xs font-bold focus:outline-none focus:ring-2 focus:ring-[#D60041]/20 cursor-pointer transition-all ${
+                  positionFilter !== 'ALL'
+                    ? 'bg-pink-50/70 border-pink-200 text-[#D60041]'
+                    : 'bg-slate-50 border-slate-200/80 text-slate-700'
+                }`}
+              >
+                <option value="ALL">All Positions ({candidates.length})</option>
+                {positionOptions.map((opt) => (
+                  <option key={opt.title} value={opt.title}>
+                    {opt.title} ({opt.count})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="relative flex-1 sm:flex-none min-w-[180px]">
+              <ArrowUpDown size={13} className={`absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none ${sortBy !== 'date_desc' ? 'text-purple-600' : 'text-slate-400'}`} />
+              <select
+                data-testid="dashboard-sort-select"
+                aria-label="Sort submissions"
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value)}
+                className={`w-full pl-8 pr-7 py-2.5 border rounded-xl text-xs font-bold focus:outline-none focus:ring-2 focus:ring-[#D60041]/20 cursor-pointer transition-all ${
+                  sortBy !== 'date_desc'
+                    ? 'bg-purple-50/70 border-purple-200 text-purple-800'
+                    : 'bg-slate-50 border-slate-200/80 text-slate-700'
+                }`}
+              >
+                <option value="date_desc">Sort: Date (Newest)</option>
+                <option value="date_asc">Sort: Date (Oldest)</option>
+                <option value="match_desc">Sort: Score (High to Low)</option>
+                <option value="match_asc">Sort: Score (Low to High)</option>
+              </select>
+            </div>
+
+            {hasActiveControls && (
+              <button
+                type="button"
+                onClick={() => {
+                  setPositionFilter('ALL');
+                  setSelectedFilter('ALL');
+                  setSearchTerm('');
+                  setSortBy('date_desc');
+                }}
+                className="inline-flex items-center gap-1 px-2.5 py-2 rounded-xl text-xs font-bold text-[#D60041] hover:bg-rose-50 transition-colors cursor-pointer"
+                title="Reset filters and sorting"
+              >
+                <RotateCcw size={12} />
+                <span>Reset</span>
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Filter Pills with real-time counts */}
-        <div className="flex items-center gap-1.5 overflow-x-auto w-full sm:w-auto scrollbar-hide py-1">
+        <div className="flex items-center gap-1.5 overflow-x-auto w-full scrollbar-hide py-1">
           {[
             { id: 'ALL', label: 'All', count: candidates.length },
             { id: 'HIGH_MATCH', label: '≥80% Match', count: highMatchCount },
@@ -471,16 +562,27 @@ const RecentSubmissions: React.FC<RecentSubmissionsProps> = ({ candidates = [] }
       )}
 
       {/* Footer view all link */}
-      {filteredCandidates.length > 6 && (
+      {!hasActiveControls && filteredCandidates.length > 6 && (
         <div className="mt-5 pt-4 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500 font-medium">
-          <span>Showing 6 of {filteredCandidates.length} filtered applicants</span>
-          <button
-            onClick={() => navigate('/hr/screeningportal')}
-            className="font-bold text-[#D60041] hover:underline flex items-center gap-1 cursor-pointer"
-          >
-            <span>View all in Screening Portal</span>
-            <ChevronRight size={14} />
-          </button>
+          <span>
+            Showing {displayedList.length} of {filteredCandidates.length} applicants
+          </span>
+          <div className="flex items-center gap-4">
+            <button
+              type="button"
+              onClick={() => setShowAllFiltered((prev) => !prev)}
+              className="font-bold text-slate-700 hover:text-[#D60041] cursor-pointer"
+            >
+              {showAllFiltered ? 'Show compact (6)' : `Show all (${filteredCandidates.length})`}
+            </button>
+            <button
+              onClick={() => navigate('/hr/screeningportal')}
+              className="font-bold text-[#D60041] hover:underline flex items-center gap-1 cursor-pointer"
+            >
+              <span>View all in Screening Portal</span>
+              <ChevronRight size={14} />
+            </button>
+          </div>
         </div>
       )}
 
