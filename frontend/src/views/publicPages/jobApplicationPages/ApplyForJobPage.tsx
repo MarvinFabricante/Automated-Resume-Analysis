@@ -26,10 +26,34 @@ import { Job } from '../../../types';
 
 
 const STATIC_JOBS = [
-  { job_id: "1", title: "Production Supervisor", department: "Manufacturing" },
-  { job_id: "2", title: "Quality Control Analyst", department: "Quality Assurance" },
-  { job_id: "3", title: "HR Generalist", department: "Human Resources" },
-  { job_id: "4", title: "Maintenance Technician", department: "Engineering" }
+  {
+    job_id: "1",
+    title: "Production Supervisor",
+    department: "Manufacturing",
+    experience_requirements: "3+ years in manufacturing or production operations",
+    skills_requirements: "Production Planning, Lean Manufacturing, Quality Control, Team Leadership",
+  },
+  {
+    job_id: "2",
+    title: "Quality Control Analyst",
+    department: "Quality Assurance",
+    experience_requirements: "2+ years in quality assurance or laboratory inspection",
+    skills_requirements: "Quality Control, Inspection, Statistical Process Control, ISO 9001",
+  },
+  {
+    job_id: "3",
+    title: "HR Generalist",
+    department: "Human Resources",
+    experience_requirements: "2+ years in human resources and talent acquisition",
+    skills_requirements: "Recruitment, Employee Relations, Payroll, HRIS, Onboarding",
+  },
+  {
+    job_id: "4",
+    title: "Maintenance Technician",
+    department: "Engineering",
+    experience_requirements: "2+ years in industrial equipment maintenance",
+    skills_requirements: "Preventive Maintenance, Troubleshooting, PLC, Electrical Systems",
+  },
 ];
 
 const ApplyForJobPage: React.FC = () => {
@@ -56,19 +80,13 @@ const ApplyForJobPage: React.FC = () => {
 
   useEffect(() => {
     const loadJobData = async () => {
-      // 1. Check if job is in navigation state (Fastest)
-      if (location.state?.job) {
-        setJob(location.state.job);
-        setIsLoadingJob(false);
-        return;
-      }
-
-      // 2. Check static jobs (Fallback)
-      const staticJob = STATIC_JOBS.find(j => j.job_id === jobId);
-      if (staticJob) {
-        setJob(staticJob as any);
-        setIsLoadingJob(false);
-        return;
+      const stateJob = location.state?.job;
+      if (stateJob) {
+        setJob(stateJob);
+        if (stateJob.skills_requirements || !jobId) {
+          setIsLoadingJob(false);
+          return;
+        }
       }
 
       if (!jobId) {
@@ -76,22 +94,36 @@ const ApplyForJobPage: React.FC = () => {
         return;
       }
 
-      // 3. Fetch from API (Direct access/Refresh)
+      // Fetch full requirements from API first; fall back to STATIC_JOBS only if unavailable
       try {
-        setIsLoadingJob(true);
+        if (!stateJob) {
+          setIsLoadingJob(true);
+        }
         const response = await jobService.getJobById(jobId);
         if (response.data) {
           const fetchedJob = response.data;
           setJob({
+            ...(stateJob || {}),
             ...fetchedJob,
-            title: fetchedJob.job_title || "Untitled Position",
-            department: fetchedJob.department || "General"
+            title: fetchedJob.job_title || stateJob?.title || "Untitled Position",
+            department: fetchedJob.department || stateJob?.department || "General"
           });
+          return;
         }
       } catch (error) {
         console.error("Error fetching job details:", error);
       } finally {
         setIsLoadingJob(false);
+      }
+
+      const staticJob = STATIC_JOBS.find(j => j.job_id === jobId);
+      if (staticJob) {
+        setJob({
+          ...(stateJob || {}),
+          ...staticJob,
+          title: stateJob?.title || staticJob.title,
+          department: stateJob?.department || staticJob.department
+        } as any);
       }
     };
 

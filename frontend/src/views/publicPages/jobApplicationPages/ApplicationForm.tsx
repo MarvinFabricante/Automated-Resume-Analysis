@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { useLocation, useNavigate, useParams } from '@/utils/navigation';
-import jobService from '../../../services/jobService';
 import candidateService from '../../../services/candidateService';
 import { Helmet } from 'react-helmet-async';
 import {
@@ -13,10 +12,11 @@ import Header from '../../../components/layout/Header';
 import Footer from '../../../components/layout/Footer';
 import ApplicationProgressBar from '../../../components/common/ApplicationProgressBar';
 import ClarificationQuestionsPanel from '../../../components/common/ClarificationQuestionsPanel';
+import { useJobClarifications } from '../../../hooks/useJobClarifications';
 import {
   ClarificationQuestion,
-  deriveClarificationQuestions,
   applyClarificationAnswerToFormData,
+  buildCandidateMatchPayload,
   finalizeFormWithClarifications,
   resolveClarifiedYears,
 } from '../../../utils/clarificationQuestions';
@@ -74,38 +74,31 @@ const ApplicationForm: React.FC = () => {
   };
 
   const [formData, setFormData] = useState(initialFormData);
-  const [clarificationQuestions] = useState<ClarificationQuestion[]>(() =>
-    deriveClarificationQuestions(location.state, initialFormData)
-  );
-  const [clarificationAnswers, setClarificationAnswers] = useState<Record<string, string>>(
-    location.state?.clarificationAnswers || {}
-  );
-
-  const handleClarificationChange = (question: ClarificationQuestion, value: string) => {
-    setClarificationAnswers((prev) => ({ ...prev, [question.id]: value }));
-    setFormData((prev) => applyClarificationAnswerToFormData(question, value, prev));
-  };
-
-  const [jobTitle, setJobTitle] = useState(location.state?.job?.title || "Position");
   const [currentSkill, setCurrentSkill] = useState("");
   const [matchScore, setMatchScore] = useState(location.state?.matchData?.match_percentage || 0);
   const [matchData, setMatchData] = useState(location.state?.matchData || null);
   const [, setIsCalculating] = useState(false);
 
-  useEffect(() => {
-    const fetchJobTitle = async () => {
-      if (location.state?.job?.title || !jobId) return;
-      try {
-        const response = await jobService.getJobById(jobId);
-        if (response.data?.job_title) {
-          setJobTitle(response.data.job_title);
-        }
-      } catch (err) {
-        console.error("Failed to fetch job title for tab name:", err);
-      }
-    };
-    fetchJobTitle();
-  }, [jobId, location.state]);
+  const {
+    activeJob,
+    jobTitle,
+    clarificationQuestions,
+    clarificationAnswers,
+    setClarificationAnswers,
+    recordInitialMatch,
+  } = useJobClarifications({
+    jobId,
+    locationState: location.state,
+    onJobChanged: (scopedMatch) => {
+      setMatchScore(scopedMatch?.match_percentage || 0);
+      setMatchData(scopedMatch);
+    },
+  });
+
+  const handleClarificationChange = (question: ClarificationQuestion, value: string) => {
+    setClarificationAnswers((prev) => ({ ...prev, [question.id]: value }));
+    setFormData((prev) => applyClarificationAnswerToFormData(question, value, prev));
+  };
 
   useEffect(() => {
     const calculateMatchScore = async () => {
@@ -113,45 +106,17 @@ const ApplicationForm: React.FC = () => {
       if (jobId === 'smart') return; // Do not calculate score for a specific job if it's a smart upload
       setIsCalculating(true);
       try {
-        const expParts: string[] = [];
-        if (formData.jobTitle || formData.company) {
-          expParts.push(`${formData.jobTitle || ''}${formData.company ? ` at ${formData.company}` : ''}`.trim());
-        }
-        if (location.state?.extractedData?.experience) {
-          expParts.push(location.state.extractedData.experience);
-        }
-        if (formData.relevance) {
-          expParts.push(formData.relevance);
-        }
-        const experienceText = Array.from(new Set(expParts.filter(Boolean))).join(' | ');
-
-        const yearsExp = resolveClarifiedYears(
+        const payload = buildCandidateMatchPayload(
+          formData,
           clarificationQuestions,
           clarificationAnswers,
-          location.state?.extractedData?.years_experience,
-          formData.relevance
+          location.state?.extractedData
         );
-
-        const payload = {
-          skills: formData.skills.join(', '),
-          skills_list: formData.skills,
-          job_title: formData.jobTitle,
-          company: formData.company,
-          experience: experienceText,
-          relevance: formData.relevance,
-          years_experience: yearsExp,
-          work_experiences: location.state?.extractedData?.work_experiences || [],
-          education: [formData.degree, formData.college].filter(Boolean).join(' - '),
-          highest_degree: formData.degree,
-          education_entries: location.state?.extractedData?.education_entries || [],
-          certifications: location.state?.extractedData?.certifications || undefined,
-          fullname: formData.fullName,
-          location: formData.location
-        };
         const response = await candidateService.matchData(jobId, payload);
         if (response.data?.match_percentage !== undefined) {
           setMatchScore(response.data.match_percentage);
           setMatchData(response.data);
+          recordInitialMatch(response.data);
         }
       } catch (err) {
         console.error("Failed to recalculate match score:", err);
@@ -165,7 +130,7 @@ const ApplicationForm: React.FC = () => {
     }, 800);
 
     return () => clearTimeout(timeoutId);
-  }, [formData.skills, formData.jobTitle, formData.company, formData.relevance, formData.degree, formData.college, formData.fullName, formData.location, clarificationAnswers, clarificationQuestions, jobId, location.state]);
+  }, [formData, clarificationAnswers, clarificationQuestions, jobId, location.state, recordInitialMatch]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
@@ -310,7 +275,7 @@ const ApplicationForm: React.FC = () => {
     // Step 2 Submission -> NEXT is Step 3 Review
     navigate(`/preview-and-verify/${jobId}`, {
       state: {
-        job: location.state?.job,
+        job: activeJob || location.state?.job,
         jobTitle,
         file: location.state?.file,
         fileName: location.state?.fileName,
@@ -385,6 +350,7 @@ const ApplicationForm: React.FC = () => {
             answers={clarificationAnswers}
             onAnswerChange={handleClarificationChange}
             reasons={location.state?.extractedData?.clarification_reasons || location.state?.clarification_reasons}
+            jobTitle={jobTitle}
           />
 
           <section className="bg-white p-8 md:p-10 rounded-[32px] shadow-sm border border-slate-100">

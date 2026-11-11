@@ -139,6 +139,97 @@ function buildFallbackJobQuestions(
   return questions;
 }
 
+function extractMatchJobId(matchObj: any): string {
+  if (!matchObj) return '';
+  if (matchObj.job_id) return String(matchObj.job_id);
+  if (Array.isArray(matchObj.followup_questions)) {
+    const qWithJob = matchObj.followup_questions.find((q: any) => q?.job_id);
+    if (qWithJob?.job_id) return String(qWithJob.job_id);
+  }
+  return '';
+}
+
+export function getJobScopedState(state: any, jobId?: string) {
+  const normalizedJobId = jobId ? String(jobId) : '';
+  const stateJob = state?.job || null;
+  const stateJobId = stateJob?.job_id || stateJob?.id ? String(stateJob.job_id || stateJob.id) : '';
+  const jobMatches = !normalizedJobId || !stateJobId || stateJobId === normalizedJobId;
+
+  const stateMatch = state?.matchData || null;
+  const matchJobId = extractMatchJobId(stateMatch);
+  const matchMatches =
+    Boolean(stateMatch) &&
+    ((!normalizedJobId && !matchJobId) ||
+      (matchJobId ? matchJobId === normalizedJobId : jobMatches));
+
+  return {
+    job: jobMatches ? stateJob : null,
+    match: matchMatches ? stateMatch : null,
+  };
+}
+
+export function mergeInitialJobMatch(prev: any, next: any, jobId?: string) {
+  if (!next) return prev;
+  const normalizedJobId = jobId ? String(jobId) : '';
+  const prevJobId = extractMatchJobId(prev);
+  const sameJob = Boolean(prev) && (!prevJobId || !normalizedJobId || prevJobId === normalizedJobId);
+  if (sameJob && Array.isArray(prev.followup_questions) && prev.followup_questions.length > 0) {
+    return prev;
+  }
+  return next;
+}
+
+export function buildCandidateMatchPayload(
+  formData: {
+    skills: string[];
+    jobTitle: string;
+    company: string;
+    relevance: string;
+    degree: string;
+    college: string;
+    fullName: string;
+    location: string;
+  },
+  clarificationQuestions: ClarificationQuestion[],
+  clarificationAnswers: Record<string, string>,
+  extractedData: any
+) {
+  const expParts: string[] = [];
+  if (formData.jobTitle || formData.company) {
+    expParts.push(`${formData.jobTitle || ''}${formData.company ? ` at ${formData.company}` : ''}`.trim());
+  }
+  if (extractedData?.experience) {
+    expParts.push(extractedData.experience);
+  }
+  if (formData.relevance) {
+    expParts.push(formData.relevance);
+  }
+  const experienceText = Array.from(new Set(expParts.filter(Boolean))).join(' | ');
+  const yearsExp = resolveClarifiedYears(
+    clarificationQuestions,
+    clarificationAnswers,
+    extractedData?.years_experience,
+    formData.relevance
+  );
+
+  return {
+    skills: formData.skills.join(', '),
+    skills_list: formData.skills,
+    job_title: formData.jobTitle,
+    company: formData.company,
+    experience: experienceText,
+    relevance: formData.relevance,
+    years_experience: yearsExp,
+    work_experiences: extractedData?.work_experiences || [],
+    education: [formData.degree, formData.college].filter(Boolean).join(' - '),
+    highest_degree: formData.degree,
+    education_entries: extractedData?.education_entries || [],
+    certifications: extractedData?.certifications || undefined,
+    fullname: formData.fullName,
+    location: formData.location,
+  };
+}
+
 export function deriveClarificationQuestions(
   state: any,
   formData?: {
@@ -154,7 +245,7 @@ export function deriveClarificationQuestions(
   const activeJob = jobOverride || state?.job || null;
   const activeJobId = String(activeJob?.job_id || activeJob?.id || '');
   const rawMatch = matchOverride || state?.matchData || null;
-  const matchJobId = String(rawMatch?.job_id || '');
+  const matchJobId = extractMatchJobId(rawMatch);
   const activeMatch =
     rawMatch && (!activeJobId || !matchJobId || matchJobId === activeJobId) ? rawMatch : null;
 
