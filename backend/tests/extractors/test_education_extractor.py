@@ -323,3 +323,43 @@ Skills | Python, FastAPI, React, Docker, PostgreSQL, Git
     assert res4["degree"] == "Bachelor of Science in Information Technology"
     assert res4["job_title"] == "Web Developer"
     assert res4["company"] == "ChanzIT"
+
+    case_non_taxonomy_skills = """
+JUAN DELA CRUZ
+juan@gmail.com | 09171234567
+
+WORK EXPERIENCE
+Production Operator
+Luzon Plastics Inc.
+2020 - 2024 (4 years)
+
+EDUCATION
+BS Industrial Technology
+2016 - 2020
+
+Production Skills
+Machine setup
+Line clearance
+Safety training
+"""
+    res5 = extract_content(case_non_taxonomy_skills)
+    assert res5["degree"] == "Bachelor of Science in Industrial Technology"
+    assert res5["institution"] == ""
+    assert res5["college"] == ""
+    assert "Line clearance" not in res5["education"]
+
+    case_dual_header = """
+JUAN DELA CRUZ
+juan@gmail.com | 09171234567
+
+WORK EXPERIENCE
+Production Operator | Luzon Plastics Inc. | 2020 - 2024 (4 years)
+
+EDUCATION | SKILLS
+BS Industrial Technology
+Machine setup, Line clearance, Safety training
+"""
+    res6 = extract_content(case_dual_header)
+    assert res6["institution"] == ""
+    assert res6["college"] == ""
+    assert res6["degree"] == "Bachelor of Science in Industrial Technology"

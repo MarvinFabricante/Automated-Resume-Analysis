@@ -218,6 +218,18 @@ def _match_header_text(normalised: str, allow_fuzzy: bool = True) -> Optional[st
         normalised
     ):
         return "SKILLS"
+    if (
+        len(normalised.split()) <= 4
+        and re.search(r'\b(?:SKILLS|COMPETENCIES|PROFICIENCIES)\s*$', normalised)
+        and not re.match(
+            r'^(?:GOOD|STRONG|EXCELLENT|BASIC|PROVEN|DEMONSTRATED|PROBLEM[\s\-]SOLVING|'
+            r'CRITICAL|COMMUNICATION|INTERPERSONAL|ANALYTICAL|ORGANIZATIONAL|TIME|'
+            r'CUSTOMER|LEADERSHIP|PRESENTATION|NEGOTIATION|WRITING|READING|LISTENING|'
+            r'VERBAL|WRITTEN|SOCIAL|PEOPLE|MULTITASKING)\b',
+            normalised,
+        )
+    ):
+        return "SKILLS"
     if re.search(r'\b(?:WORK|EMPLOYMENT|PROFESSIONAL|CAREER)\b', normalised) and re.search(r'\b(?:EXPERIENCE|HISTORY|BACKGROUND|RECORD)\b', normalised):
         return "EXPERIENCE"
     if re.search(r'\b(?:EDUCATION|EDUCATIONAL|ACADEMIC|SCHOLASTIC)\b', normalised) and not re.search(
@@ -261,7 +273,7 @@ def detect_section_label(line: str) -> Optional[str]:
 
     # 3. Inline pipe table row (e.g. "Skills | Python, React, Docker, PostgreSQL")
     pipe_idx = stripped.find('|')
-    if pipe_idx > 0:
+    if pipe_idx > 0 and split_dual_column_header(stripped) is None:
         left = stripped[:pipe_idx].strip()
         right = stripped[pipe_idx + 1:].strip()
         if left and right and len(left.split()) <= 4:
@@ -281,9 +293,18 @@ def detect_section_label(line: str) -> Optional[str]:
     return None
 
 
-def _split_dual_column_header(line: str) -> Optional[tuple[str, str]]:
-    """Detect two distinct section headers merged on a single line in 2-column PDFs."""
-    words = line.strip().split()
+def split_dual_column_header(line: str) -> Optional[tuple[str, str]]:
+    """Detect two distinct section headers merged on a single line in 2-column PDFs/tables."""
+    stripped = line.strip()
+    if '|' in stripped:
+        parts = [p.strip() for p in stripped.split('|') if p.strip()]
+        if len(parts) == 2:
+            left_label = _match_header_text(_normalise_header(parts[0]), allow_fuzzy=False)
+            right_label = _match_header_text(_normalise_header(parts[1]), allow_fuzzy=False)
+            if left_label and right_label and left_label != right_label:
+                return left_label, right_label
+
+    words = stripped.split()
     if not (2 <= len(words) <= 6):
         return None
     for idx in range(1, len(words)):
@@ -294,6 +315,9 @@ def _split_dual_column_header(line: str) -> Optional[tuple[str, str]]:
         if left_label and right_label and left_label != right_label:
             return left_label, right_label
     return None
+
+
+_split_dual_column_header = split_dual_column_header
 
 
 # ─── Section Splitter ────────────────────────────────────────────────────────
@@ -327,6 +351,16 @@ def split_into_sections(text: str) -> dict[str, str]:
         "COORDINATOR", "DESIGNER", "INTERN", "DRIVER", "CASHIER", "CLERK"
     }
 
+    _EDU_DUAL_LINE_RE = re.compile(
+        r'\b(?:bachelor|master|doctor|associate|diploma|certificate|'
+        r'bs\s+|b\.s\.|ba\s+|b\.a\.|bsit|bscs|bsis|bsce|bsme|bsee|bsie|'
+        r'college|university|school|institute|academy|high\s+school|shs|jhs|'
+        r'tesda|expected|graduated?|graduation|class\s+of)\b',
+        re.I,
+    )
+
+    active_dual: Optional[tuple[str, str]] = None
+
     for line in lines:
         cleaned_line = line.strip()
         if not cleaned_line:
@@ -335,17 +369,21 @@ def split_into_sections(text: str) -> dict[str, str]:
 
         label = detect_section_label(cleaned_line)
         if not label:
-            dual = _split_dual_column_header(cleaned_line)
+            dual = split_dual_column_header(cleaned_line)
             if dual:
                 left_label, right_label = dual
-                if left_label not in sections:
-                    sections[left_label] = []
-                current_label = right_label
-                if current_label not in sections:
-                    sections[current_label] = []
+                sections.setdefault(left_label, [])
+                sections.setdefault(right_label, [])
+                if '|' in cleaned_line:
+                    active_dual = (left_label, right_label)
+                    current_label = left_label
+                else:
+                    active_dual = None
+                    current_label = right_label
                 continue
 
         if label:
+            active_dual = None
             # Extract inline content after ':' or '|' if full line itself wasn't a bare header
             inline_after = ""
             full_norm = _normalise_header(cleaned_line)
@@ -431,6 +469,23 @@ def split_into_sections(text: str) -> dict[str, str]:
                     if after:
                         sections[current_label].append(after)
         else:
+            if active_dual:
+                if '|' in cleaned_line and '@' not in cleaned_line:
+                    parts = [p.strip() for p in cleaned_line.split('|')]
+                    if len(parts) == 2:
+                        if parts[0]:
+                            sections[active_dual[0]].append(parts[0])
+                        if parts[1]:
+                            sections[active_dual[1]].append(parts[1])
+                        continue
+                if "EDUCATION" in active_dual and "SKILLS" in active_dual:
+                    if _EDU_DUAL_LINE_RE.search(cleaned_line):
+                        sections["EDUCATION"].append(line)
+                        continue
+                    if ',' in cleaned_line or not re.search(r'\b(?:19|20)\d{2}\b', cleaned_line):
+                        sections["SKILLS"].append(line)
+                        continue
+
             # Check if this line is an education graduation date right at top of SKILLS
             if current_label == "SKILLS" and not [l for l in sections["SKILLS"] if l.strip()]:
                 clean_up = cleaned_line.upper()

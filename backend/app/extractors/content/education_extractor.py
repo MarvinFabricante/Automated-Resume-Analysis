@@ -44,7 +44,11 @@ if backend_dir not in sys.path:
     sys.path.insert(0, backend_dir)
 
 from app.extractors.nlp.nlp_engine import get_doc, extract_advanced_education
-from app.extractors.content.section_parser import split_into_sections, detect_section_label
+from app.extractors.content.section_parser import (
+    split_into_sections,
+    detect_section_label,
+    split_dual_column_header,
+)
 
 
 # ─── 1. Philippine Education Taxonomy & Degree Map ────────────────────────────
@@ -306,7 +310,8 @@ _KNOWN_PH_INSTITUTIONS = [
     "Informatics College", "CIIT College of Arts and Technology", "CIIT", "iACADEMY", "ACLC College",
     "TESDA Provincial Training Center", "TESDA Regional Training Center", "TESDA Training Center", "TESDA",
     "DepEd Rizal", "DepEd Manila", "DepEd Quezon City", "DepEd",
-    "Universidad De Manila", "UDM", "University of Rizal System", "URS", "MMC-CAST"
+    "Universidad De Manila", "UDM", "University of Rizal System", "URS", "MMC-CAST",
+    "Don Bosco", "Lyceum", "Silliman"
 ]
 
 _SCHOOL_SUFFIXES = [
@@ -498,6 +503,18 @@ def _is_skills_text(text: str) -> bool:
     return False
 
 
+_NON_INSTITUTION_KEYWORDS = re.compile(
+    r'\b(?:skills?|competenc(?:y|ies)|proficienc(?:y|ies)|capabilit(?:y|ies)|strengths?|'
+    r'setup|clearance|maintenance|inspection|safety|training|quality\s+(?:control|assurance|standards?)|'
+    r'operations?|operator|handling|housekeeping|sanitation|troubleshooting|welding|soldering|'
+    r'machining|lathe|forklift|calibration|packaging|assembly|fabrication|testing|monitoring|'
+    r'supervision|encoding|programming|development|accounting|taxation|bookkeeping|cashiering|'
+    r'driving|communication|teamwork|adaptable|fast\s+learner|experienced|proficient|'
+    r'knowledgeable|skilled|familiar)\b',
+    re.I,
+)
+
+
 def _is_invalid_institution(name: str) -> bool:
     if not name or len(name.strip()) < 3:
         return True
@@ -510,7 +527,7 @@ def _is_invalid_institution(name: str) -> bool:
     no_years_lower = re.sub(r'\b(?:19|20)\d{2}\s*[-–—]\s*(?:19|20)\d{2}\b', '', lower)
     if '@' in lower or re.search(r'\b(?:\+?63\d{7,}|09\d{8,}|\d{3,}[-\s]\d{4,})\b', no_years_lower):
         return True
-    if detect_section_label(clean) is not None:
+    if detect_section_label(clean) is not None or split_dual_column_header(clean) is not None:
         return True
     if re.search(r'\b(?:\d+(?:st|nd|rd|th)?|first|second|third|fourth)?\s*year\s+college\b', lower):
         return True
@@ -526,6 +543,8 @@ def _is_invalid_institution(name: str) -> bool:
         if '|' in clean or ';' in clean or ',' in clean:
             return True
         if any(pat.search(clean) for pat, _ in _HONORS_PATTERNS):
+            return True
+        if _NON_INSTITUTION_KEYWORDS.search(clean):
             return True
         if _is_skills_text(clean):
             return True
@@ -792,14 +811,27 @@ def extract_structured_education(text: str) -> Dict[str, Any]:
 
     # 1. Isolate education section
     in_edu = False
+    dual_edu_col: Optional[int] = None
     edu_lines = []
     for line in lines:
         cleaned_line = re.sub(r'^[\s\-–—=_*#•►:]+|[\s\-–—=_*#•►:]+$', '', line.strip())
         is_sub_tier = any(tier_re.match(line) for _, tier_re in _SUB_TIER_HEADERS)
         sec_label = None if is_sub_tier else detect_section_label(line)
+        dual = None if (is_sub_tier or sec_label) else split_dual_column_header(line)
+
+        if dual:
+            if "EDUCATION" in dual:
+                in_edu = True
+                dual_edu_col = (0 if dual[0] == "EDUCATION" else 1) if '|' in line else None
+                continue
+            elif in_edu:
+                break
+            else:
+                continue
 
         if _EDUCATION_HEADERS_RE.match(cleaned_line) or _EDUCATION_HEADERS_RE.match(line) or sec_label == "EDUCATION":
             in_edu = True
+            dual_edu_col = None
             # Capture inline content after ':' or '|' if present (e.g. "Education: BS IT, Mapua")
             if not _EDUCATION_HEADERS_RE.match(cleaned_line):
                 for delim in (':', '|'):
@@ -815,19 +847,27 @@ def extract_structured_education(text: str) -> Dict[str, Any]:
                 break
             continue
         if in_edu:
+            if dual_edu_col is not None and '|' in line and '@' not in line:
+                parts = [p.strip() for p in line.split('|')]
+                if len(parts) == 2:
+                    if parts[dual_edu_col]:
+                        edu_lines.append(parts[dual_edu_col])
+                    continue
             edu_lines.append(line)
 
     if not edu_lines:
-        has_other_headers = any(
-            _STOP_SECTION_RE.match(l)
-            or _STOP_SECTION_RE.match(re.sub(r'^[\s\-–—=_*#•►:]+|[\s\-–—=_*#•►:]+$', '', l.strip()))
-            or (
-                not any(tier_re.match(l) for _, tier_re in _SUB_TIER_HEADERS)
-                and detect_section_label(l) not in (None, "EDUCATION")
-            )
-            for l in lines
-        )
-        if has_other_headers:
+        def _is_other_header(l: str) -> bool:
+            if _STOP_SECTION_RE.match(l) or _STOP_SECTION_RE.match(re.sub(r'^[\s\-–—=_*#•►:]+|[\s\-–—=_*#•►:]+$', '', l.strip())):
+                return True
+            if any(tier_re.match(l) for _, tier_re in _SUB_TIER_HEADERS):
+                return False
+            lbl = detect_section_label(l)
+            if lbl not in (None, "EDUCATION"):
+                return True
+            d = None if lbl else split_dual_column_header(l)
+            return d is not None and "EDUCATION" not in d
+
+        if any(_is_other_header(l) for l in lines):
             return {
                 "highest_educational_attainment": "",
                 "education_entries": []
@@ -1005,7 +1045,8 @@ def extract_structured_education(text: str) -> Dict[str, Any]:
                         continue
                     bline_clean = bline_raw.strip(' -•*')
                     if (
-                        not _is_degree_text(bline_clean)
+                        not bline_clean.islower()
+                        and not _is_degree_text(bline_clean)
                         and not any(_extract_years(bline_clean))
                         and not any(pat.search(bline_clean) for pat, _ in _HONORS_PATTERNS)
                         and not _is_invalid_institution(bline_clean)
