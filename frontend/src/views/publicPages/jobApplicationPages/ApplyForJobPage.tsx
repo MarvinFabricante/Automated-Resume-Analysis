@@ -144,7 +144,7 @@ const ApplyForJobPage: React.FC = () => {
         },
         education: {
           degree: extractedData?.degree || extractedData?.highest_degree || "",
-          college: extractedData?.institution || extractedData?.college || (extractedData?.education ? extractedData.education.split('|')[0]?.trim() : "")
+          college: extractedData?.institution || extractedData?.college || ""
         },
         skills: (Array.isArray(extractedData?.skills_list) && extractedData.skills_list.length > 0)
           ? extractedData.skills_list

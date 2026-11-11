@@ -39,7 +39,11 @@ try:
 except ImportError:
     dateparser = None
 
-from app.extractors.content.section_parser import split_into_sections, detect_section_label
+from app.extractors.content.section_parser import (
+    split_into_sections,
+    detect_section_label,
+    split_dual_column_header,
+)
 
 
 # ─── 1. Philippine Job Taxonomy & Canonical Map ──────────────────────────────
@@ -742,7 +746,12 @@ def _is_section_header(line: str) -> bool:
         "CHARACTER REFERENCES", "REFERENCES", "PERSONAL DATA", "SEMINARS/TRAININGS",
         "TRAINING", "SEMINARS", "PERSONAL INFORMATION", "AFFILIATIONS", "AWARDS"
     ]
-    return clean in headers or any(clean.startswith(h + ":") for h in headers) or detect_section_label(line) is not None
+    return (
+        clean in headers
+        or any(clean.startswith(h + ":") for h in headers)
+        or detect_section_label(line) is not None
+        or split_dual_column_header(line) is not None
+    )
 
 
 def _extract_experience_blocks(text: str) -> List[str]:
@@ -773,16 +782,31 @@ def _extract_experience_blocks(text: str) -> List[str]:
     extracted_blocks = []
     current_block = []
     in_exp = False
+    dual_exp_col: Optional[int] = None
 
     for line in lines:
         cleaned = re.sub(r'^[\s\-–—=_*#•►:]+|[\s\-–—=_*#•►:]+$', '', line.strip()).upper()
         sec_label = detect_section_label(line)
+        dual = None if sec_label else split_dual_column_header(line)
+
+        if dual:
+            if in_exp and current_block:
+                extracted_blocks.append('\n'.join(current_block))
+                current_block = []
+            if "EXPERIENCE" in dual:
+                in_exp = True
+                dual_exp_col = (0 if dual[0] == "EXPERIENCE" else 1) if '|' in line else None
+            else:
+                in_exp = False
+                dual_exp_col = None
+            continue
 
         if any(cleaned == h or cleaned.startswith(h + ":") for h in exp_headers) or sec_label == "EXPERIENCE":
             if current_block:
                 extracted_blocks.append('\n'.join(current_block))
                 current_block = []
             in_exp = True
+            dual_exp_col = None
             if not any(cleaned == h or cleaned.startswith(h + ":") for h in exp_headers):
                 for delim in (':', '|'):
                     d_idx = line.find(delim)
@@ -797,9 +821,16 @@ def _extract_experience_blocks(text: str) -> List[str]:
                 extracted_blocks.append('\n'.join(current_block))
                 current_block = []
             in_exp = False
+            dual_exp_col = None
             continue
 
         if in_exp:
+            if dual_exp_col is not None and '|' in line and '@' not in line:
+                parts = [p.strip() for p in line.split('|')]
+                if len(parts) == 2:
+                    if parts[dual_exp_col]:
+                        current_block.append(parts[dual_exp_col])
+                    continue
             current_block.append(line)
 
     if current_block:
@@ -810,14 +841,17 @@ def _extract_experience_blocks(text: str) -> List[str]:
 
     # If other section headers (like EDUCATION, SKILLS, etc.) exist in the document,
     # but NO experience header was found, then there is NO work experience section!
-    has_other_section_headers = any(
-        any(re.sub(r'^[\s\-–—=_*#•►:]+|[\s\-–—=_*#•►:]+$', '', l.strip()).upper() == sh or 
-            re.sub(r'^[\s\-–—=_*#•►:]+|[\s\-–—=_*#•►:]+$', '', l.strip()).upper().startswith(sh + ":")
-            for sh in stop_headers)
-        or detect_section_label(l) not in (None, "EXPERIENCE")
-        for l in lines
-    )
-    if has_other_section_headers:
+    def _is_other_exp_stop(l: str) -> bool:
+        c = re.sub(r'^[\s\-–—=_*#•►:]+|[\s\-–—=_*#•►:]+$', '', l.strip()).upper()
+        if any(c == sh or c.startswith(sh + ":") for sh in stop_headers):
+            return True
+        lbl = detect_section_label(l)
+        if lbl not in (None, "EXPERIENCE"):
+            return True
+        d = None if lbl else split_dual_column_header(l)
+        return d is not None and "EXPERIENCE" not in d
+
+    if any(_is_other_exp_stop(l) for l in lines):
         return []
 
     return [text]

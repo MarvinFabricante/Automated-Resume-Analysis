@@ -168,7 +168,7 @@ const PreviewAndVerifyPage: React.FC = () => {
     },
     education: {
       degree: activeData?.degree || activeData?.highest_degree || state?.formData?.degree || "",
-      college: activeData?.institution || activeData?.college || state?.formData?.college || (activeData?.education ? activeData.education.split('|')[0]?.trim() : "")
+      college: activeData?.institution || activeData?.college || state?.formData?.college || ""
     },
     years_experience: activeData?.years_experience || 0,
     summary: activeData?.summary || state?.summary || "",

@@ -195,10 +195,15 @@ def _cross_validate(data: dict, sections: dict) -> dict:
     Cross-validate extracted data using section awareness.
     Uses parsed sections to fill gaps left by individual extractors.
     """
-    # If education is empty but section has content, recheck
+    # If education is empty but section has actual academic content, recheck
     if not data.get("education") and sections.get("EDUCATION"):
         edu_section = sections["EDUCATION"].strip()
-        if edu_section and len(edu_section) > 5:
+        if edu_section and len(edu_section) > 5 and re.search(
+            r'\b(?:bachelor|master|doctor|associate|diploma|vocational|technical\s+course|'
+            r'university|college|school|institute|academy|polytechnic|tesda|bs|ba|shs|stem|abm|humss|tvl)\b',
+            edu_section,
+            re.I,
+        ):
             data["education"] = edu_section[:300]
 
     # If experience is empty but section has content, fallback

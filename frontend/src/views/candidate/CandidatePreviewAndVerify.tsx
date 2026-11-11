@@ -132,7 +132,7 @@ const CandidatePreviewAndVerify: React.FC = () => {
     },
     education: {
       degree: activeData?.highest_degree || activeData?.degree || state?.education?.degree || "Degree in Field",
-      college: activeData?.education ? (activeData.education.split('|')[0]?.trim()) : (state?.education?.college || "Educational Institution")
+      college: activeData?.institution || activeData?.college || state?.education?.college || ""
     },
     summary: activeData?.summary || state?.summary || "",
     work_experiences: activeData?.work_experiences || state?.work_experiences || [],

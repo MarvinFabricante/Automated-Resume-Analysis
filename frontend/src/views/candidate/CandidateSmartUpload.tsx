@@ -325,7 +325,7 @@ const CandidateSmartUpload: React.FC = () => {
         },
         education: {
           degree: extractedData?.highest_degree || extractedData?.degree,
-          college: extractedData?.institution || extractedData?.college || extractedData?.education
+          college: extractedData?.institution || extractedData?.college || ''
         },
         work_experiences: extractedData?.work_experiences || [],
         education_entries: extractedData?.education_entries || [],
