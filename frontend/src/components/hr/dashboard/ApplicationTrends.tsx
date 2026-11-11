@@ -16,7 +16,12 @@ interface ApplicationTrendsProps {
 
 const ApplicationTrends: React.FC<ApplicationTrendsProps> = ({ applications = [], appStats = {} }) => {
   const navigate = useNavigate();
-  const { data, isLoading, error, refetch } = useGetDashboardTrendsQuery();
+  const { data, isLoading, error, refetch } = useGetDashboardTrendsQuery(undefined, {
+    pollingInterval: 5000,
+    refetchOnFocus: true,
+    refetchOnMountOrArgChange: true,
+    refetchOnReconnect: true,
+  });
 
   // Functional interactive states
   const [timeRange, setTimeRange] = useState<'7D' | '14D' | '30D'>('7D');

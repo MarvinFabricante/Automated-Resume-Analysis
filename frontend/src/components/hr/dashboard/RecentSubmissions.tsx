@@ -314,9 +314,15 @@ const RecentSubmissions: React.FC<RecentSubmissionsProps> = ({ candidates = [] }
   const reviewedCount = useMemo(() => candidates.filter(c => (c.status || '').toUpperCase() === 'REVIEWED').length, [candidates]);
   const acceptedCount = useMemo(() => candidates.filter(c => (c.status || '').toUpperCase() === 'ACCEPTED').length, [candidates]);
 
-  // Filter candidates based on search & tab
+  // Filter and sort newest submissions first
   const filteredCandidates = useMemo(() => {
-    return candidates.filter((can: RecentCandidate) => {
+    const sorted = [...candidates].sort((a: RecentCandidate, b: RecentCandidate) => {
+      const timeA = new Date(a.created_at || a.date || 0).getTime();
+      const timeB = new Date(b.created_at || b.date || 0).getTime();
+      if (timeB !== timeA) return timeB - timeA;
+      return Number(b.id || 0) - Number(a.id || 0);
+    });
+    return sorted.filter((can: RecentCandidate) => {
       const name = (can.candidate_name || can.name || '').toLowerCase();
       const role = (can.job_title || can.preferredJob || '').toLowerCase();
       const dept = (can.jobDepartment || can.job?.department || '').toLowerCase();

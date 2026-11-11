@@ -20,6 +20,8 @@ import { WS_BASE_URL } from '../../services/api';
 import { formatNotificationTime } from '../../utils/notificationUtils';
 import logo from '../../assets/logo.png';
 import { RootState } from '../../redux/store';
+import { apiSlice } from '../../redux/api/apiSlice';
+import { getTagsForRealtimeEvent, subscribeAtsUpdates } from '../../utils/realtimeSync';
 import { clearAllAuthSessions, performUserLogout } from '../../utils/token';
 
 const BRAND_RED = "#D60041";
@@ -218,7 +220,14 @@ const Header: React.FC = () => {
 
     fetchNotifications();
 
-    if (isAdminRole || isHRRole || isCandidateRole) {
+    let isMounted = true;
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    const unsubscribeAts = subscribeAtsUpdates((eventType) => {
+      dispatch(apiSlice.util.invalidateTags(getTagsForRealtimeEvent(eventType) as any));
+    });
+
+    const connectNotificationsWs = () => {
+      if (!isMounted || !(isAdminRole || isHRRole || isCandidateRole)) return;
       const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
       const wsUrl = token
         ? `${WS_BASE_URL}/notifications/ws?token=${encodeURIComponent(token)}`
@@ -305,13 +314,24 @@ const Header: React.FC = () => {
           };
 
           dispatch(addNotification(formattedNewNotif));
+          dispatch(apiSlice.util.invalidateTags(getTagsForRealtimeEvent(n.type) as any));
           setPulse(true);
           setTimeout(() => setPulse(false), 2000);
         } catch (err) { console.error("Error processing websocket message:", err); }
       };
-    }
+      ws.onclose = () => {
+        if (isMounted) {
+          reconnectTimer = setTimeout(connectNotificationsWs, 3000);
+        }
+      };
+    };
+
+    connectNotificationsWs();
 
     return () => {
+      isMounted = false;
+      unsubscribeAts();
+      if (reconnectTimer) clearTimeout(reconnectTimer);
       if (ws && ws.readyState === WebSocket.OPEN) ws.close();
     };
   }, [userRole, userEmail, dispatch, isAdminRole, isHRRole, isCandidateRole]);

@@ -121,6 +121,23 @@ async def invalidate_entity_type(entity_type: str):
     await clear_cache_pattern(f"entity:{entity_type}:")
 
 
+async def invalidate_application_dashboard_caches(app_id: Optional[int] = None) -> None:
+    """Invalidate all controller and repository caches for applications and HR dashboard metrics."""
+    if app_id is not None:
+        await delete_cache(f"job_app:{app_id}")
+    for pattern in (
+        "all_apps",
+        "job_apps",
+        "cand_apps",
+        "app_stats",
+        "candidate_count",
+        "resume_count",
+        "dashboard_trends",
+        "hr:stats",
+    ):
+        await clear_cache_pattern(pattern)
+
+
 # ─── Decorators ────────────────────────────────────────────────────────
 
 def cache_response(key_prefix: str, ttl: int = 3600):

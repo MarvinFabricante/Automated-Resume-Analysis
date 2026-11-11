@@ -6,7 +6,11 @@ import logging
 
 from app.models.job_application import JobApplication
 from app.utils.redis_client import redis_tx_manager
-from app.utils.cache import get_cache, set_cache, delete_cache, clear_cache_pattern
+from app.utils.cache import (
+    get_cache,
+    set_cache,
+    invalidate_application_dashboard_caches,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -32,11 +36,8 @@ async def create(db: AsyncSession, application_data: dict) -> JobApplication:
 
         await redis_tx_manager.commit_transaction(tx_id, {"id": created_app.id if created_app else None})
 
-        # Invalidate related list caches
-        await clear_cache_pattern("job_apps")
-        await clear_cache_pattern("cand_apps")
-        await clear_cache_pattern("all_apps")
-        await clear_cache_pattern("app_stats")
+        # Invalidate related list & HR dashboard stats caches
+        await invalidate_application_dashboard_caches(created_app.id if created_app else None)
 
         return created_app
     except Exception as e:
@@ -156,12 +157,8 @@ async def update(db: AsyncSession, application: JobApplication) -> JobApplicatio
 
         await redis_tx_manager.commit_transaction(tx_id, {"id": application.id})
 
-        # Evict cache for this entity & lists
-        await delete_cache(f"job_app:{application.id}")
-        await clear_cache_pattern("job_apps")
-        await clear_cache_pattern("cand_apps")
-        await clear_cache_pattern("all_apps")
-        await clear_cache_pattern("app_stats")
+        # Evict cache for this entity & HR dashboard stats
+        await invalidate_application_dashboard_caches(application.id)
 
         return application
     except Exception as e:
@@ -204,11 +201,7 @@ async def delete(db: AsyncSession, application: JobApplication) -> None:
 
         await redis_tx_manager.commit_transaction(tx_id, {"deleted_id": application.id})
 
-        await delete_cache(f"job_app:{application.id}")
-        await clear_cache_pattern("job_apps")
-        await clear_cache_pattern("cand_apps")
-        await clear_cache_pattern("all_apps")
-        await clear_cache_pattern("app_stats")
+        await invalidate_application_dashboard_caches(application.id)
     except Exception as e:
         await redis_tx_manager.fail_transaction(tx_id, str(e))
         logger.error(f"[Redis-First] JobApplication delete failed: {e}")

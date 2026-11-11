@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from '@/utils/navigation';
 import { 
   Download, AlertCircle, Briefcase, BarChart3, Calendar, 
@@ -29,44 +29,74 @@ const HRDashboard: React.FC = () => {
   const [isScheduleModalOpen, setIsScheduleModalOpen] = useState<boolean>(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
-  // RTK Query hooks with real-time automatic polling
+  // RTK Query hooks with real-time automatic polling + WebSocket tag invalidation
   const { data: appStats = { pending: 0, reviewed: 0, accepted: 0, rejected: 0 } } = useGetDashboardStatsQuery(undefined, {
-    pollingInterval: 5000,
+    pollingInterval: 3000,
     refetchOnFocus: true,
     refetchOnMountOrArgChange: true,
     refetchOnReconnect: true,
   });
   const { data: candidateCountData } = useGetCandidateCountQuery(undefined, {
-    pollingInterval: 5000,
-    refetchOnFocus: true,
-  });
-  const { data: resumeCountData } = useGetResumeCountQuery(undefined, {
-    pollingInterval: 5000,
-    refetchOnFocus: true,
-  });
-  const { data: jobs = [] } = useGetJobsQuery(undefined, {
-    pollingInterval: 10000,
-    refetchOnFocus: true,
-  });
-  const { data: applications = [] } = useGetApplicationsQuery(undefined, {
-    pollingInterval: 5000,
+    pollingInterval: 3000,
     refetchOnFocus: true,
     refetchOnMountOrArgChange: true,
     refetchOnReconnect: true,
   });
-  const { data: allInterviews = [] } = useGetAllInterviewsQuery(undefined, {
+  const { data: resumeCountData } = useGetResumeCountQuery(undefined, {
+    pollingInterval: 3000,
+    refetchOnFocus: true,
+    refetchOnMountOrArgChange: true,
+    refetchOnReconnect: true,
+  });
+  const { data: jobs = [] } = useGetJobsQuery(undefined, {
+    pollingInterval: 10000,
+    refetchOnFocus: true,
+    refetchOnReconnect: true,
+  });
+  const { data: applications = [] } = useGetApplicationsQuery(undefined, {
+    pollingInterval: 3000,
+    refetchOnFocus: true,
+    refetchOnMountOrArgChange: true,
+    refetchOnReconnect: true,
+  });
+  useGetAllInterviewsQuery(undefined, {
     pollingInterval: 5000,
     refetchOnFocus: true,
+    refetchOnReconnect: true,
   });
 
   const activeJobsCount = jobs.filter((j: any) => j.is_active).length;
   const totalCandidates = candidateCountData?.count || applications.length || 0;
   const totalResumes = resumeCountData?.count || 0;
+  const seenAppIdsRef = useRef<Set<string> | null>(null);
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 3500);
   };
+
+  useEffect(() => {
+    if (!Array.isArray(applications)) return;
+    const currentIds = new Set(applications.map((a: any) => String(a.id)));
+    if (seenAppIdsRef.current === null) {
+      if (applications.length > 0) {
+        seenAppIdsRef.current = currentIds;
+      }
+      return;
+    }
+    const newlyArrived = applications.filter((a: any) => !seenAppIdsRef.current!.has(String(a.id)));
+    if (newlyArrived.length > 0) {
+      const latest = newlyArrived[0];
+      showToast(
+        newlyArrived.length === 1
+          ? `New application received: ${latest.name || 'Candidate'} (${latest.preferredJob || 'Role'})`
+          : `${newlyArrived.length} new applications received`
+      );
+      seenAppIdsRef.current = currentIds;
+    } else if (currentIds.size !== seenAppIdsRef.current.size) {
+      seenAppIdsRef.current = currentIds;
+    }
+  }, [applications]);
 
   const handleExportFullReport = () => {
     if (!applications.length) {

@@ -1,5 +1,6 @@
 import { createApi, fetchBaseQuery } from '@reduxjs/toolkit/query/react';
 import { API_BASE_URL } from '../../services/api';
+import { broadcastAtsUpdate } from '../../utils/realtimeSync';
 
 export const apiSlice = createApi({
   reducerPath: 'api',
@@ -23,7 +24,7 @@ export const apiSlice = createApi({
     }),
     getCandidateCount: builder.query<any, void>({
       query: () => '/hr/candidate-count',
-      providesTags: ['Candidates'],
+      providesTags: ['Candidates', 'Dashboard'],
     }),
     getResumeCount: builder.query<any, void>({
       query: () => '/hr/resume-count',
@@ -195,7 +196,15 @@ export const apiSlice = createApi({
         method: 'POST',
         body: application,
       }),
-      invalidatesTags: ['Applications', 'Dashboard'],
+      async onQueryStarted(_arg, { queryFulfilled }) {
+        try {
+          await queryFulfilled;
+          broadcastAtsUpdate('applications_updated');
+        } catch {
+          // submission failed
+        }
+      },
+      invalidatesTags: ['Applications', 'Dashboard', 'Candidates'],
     }),
 
     updateApplicationStatus: builder.mutation<any, { id: number | string; status: string }>({
@@ -215,11 +224,12 @@ export const apiSlice = createApi({
         );
         try {
           await queryFulfilled;
+          broadcastAtsUpdate('applications_updated');
         } catch {
           patchResult.undo();
         }
       },
-      invalidatesTags: ['Applications'],
+      invalidatesTags: ['Applications', 'Dashboard', 'Candidates'],
     }),
 
     deleteApplication: builder.mutation<any, number | string>({
@@ -238,11 +248,12 @@ export const apiSlice = createApi({
         );
         try {
           await queryFulfilled;
+          broadcastAtsUpdate('applications_updated');
         } catch {
           patchResult.undo();
         }
       },
-      invalidatesTags: ['Applications'],
+      invalidatesTags: ['Applications', 'Dashboard', 'Candidates'],
     }),
 
     getActiveUsersCount: builder.query<any, void>({
