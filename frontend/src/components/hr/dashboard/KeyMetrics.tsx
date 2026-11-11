@@ -3,6 +3,7 @@ import {
   FileText, Briefcase, Zap, Sparkles, ArrowUpRight, LucideIcon
 } from 'lucide-react';
 import { useNavigate } from '@/utils/navigation';
+import { computeAverageMatchScore } from '../../../utils/hrAnalytics';
 
 interface StatCardProps {
   icon: LucideIcon;
@@ -278,10 +279,8 @@ const KeyMetrics: React.FC<KeyMetricsProps> = ({
     (appStats.rejected || 0)
   );
 
-  const highMatchCount = applications.filter((a: any) => (a.matchScore || 0) >= 80).length;
-  const avgMatch = applications.length > 0 
-    ? Math.round(applications.reduce((acc: number, a: any) => acc + (a.matchScore || 0), 0) / applications.length)
-    : 0;
+  const highMatchCount = applications.filter((a: any) => Number(a.matchScore ?? 0) >= 80).length;
+  const avgMatch = computeAverageMatchScore(applications, appStats?.average_score);
 
   const handleFilterNavigation = (status: string) => {
     navigate(`/hr/screeningportal?status=${status}`);
@@ -338,13 +337,13 @@ const KeyMetrics: React.FC<KeyMetricsProps> = ({
           onFilterClick={handleFilterNavigation}
         />
 
-        {/* 4. High Match / Talent Quality Index (Spans 2 cols on mobile, 1 col on desktop) */}
+        {/* 4. Average Match Score & Top Talent Quality Index */}
         <StatCard
           icon={Sparkles}
           label="Top Talent (≥80%)"
           value={highMatchCount}
-          subtext={avgMatch > 0 ? `Avg match: ${avgMatch}%` : 'High match score applicants'}
-          badge="High Match"
+          subtext={`Avg score: ${avgMatch}%`}
+          badge={`Avg ${avgMatch}%`}
           badgeColor="bg-emerald-50 text-emerald-700 border-emerald-200"
           iconBg="bg-emerald-50"
           iconColor="text-emerald-600"

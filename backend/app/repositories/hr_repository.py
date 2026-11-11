@@ -156,14 +156,82 @@ async def get_department_application_counts(db: AsyncSession) -> List[Any]:
     result = await db.execute(
         select(
             JobDescription.department,
-            func.count(JobApplication.id)
+            func.count(JobApplication.id),
         )
-        .join(JobApplication, JobApplication.job_id == JobDescription.id)
+        .select_from(JobApplication)
+        .outerjoin(JobDescription, JobApplication.job_id == JobDescription.id)
         .group_by(JobDescription.department)
     )
-    counts = result.all()
+    merged: Dict[str, int] = {}
+    for dept_val, cnt in result.all():
+        label = (dept_val or "").strip() or "General"
+        merged[label] = merged.get(label, 0) + int(cnt or 0)
+    counts = sorted(merged.items(), key=lambda kv: (-kv[1], kv[0].lower()))
     await set_cache(cache_key, counts, ttl=300)
     return counts
+
+
+async def get_position_application_counts(db: AsyncSession) -> List[Any]:
+    """Get applicant counts and average match score per position (checks Redis cache first)."""
+    cache_key = "hr:stats:position_counts"
+    cached = await get_cache(cache_key)
+    if cached is not None:
+        return cached
+
+    result = await db.execute(
+        select(
+            JobDescription.job_title,
+            JobApplication.job_title,
+            JobApplication.match_score,
+        )
+        .select_from(JobApplication)
+        .outerjoin(JobDescription, JobApplication.job_id == JobDescription.id)
+    )
+    grouped: Dict[str, Dict[str, float]] = {}
+    for job_desc_title, app_title, raw_score in result.all():
+        title = (job_desc_title or app_title or "").strip() or "Unspecified"
+        score = float(raw_score or 0.0)
+        entry = grouped.setdefault(title, {"count": 0, "score_sum": 0.0})
+        entry["count"] += 1
+        entry["score_sum"] += score
+
+    rows = [
+        (title, int(stats["count"]), stats["score_sum"] / stats["count"])
+        for title, stats in grouped.items()
+    ]
+    await set_cache(cache_key, rows, ttl=300)
+    return rows
+
+
+async def get_average_match_score(db: AsyncSession) -> float:
+    """Get arithmetic average of match_score across all applications (checks Redis cache first)."""
+    cache_key = "hr:stats:avg_score"
+    cached = await get_cache(cache_key)
+    if cached is not None:
+        return cached
+
+    count_res = await db.execute(select(func.count(JobApplication.id)))
+    total = count_res.scalar() or 0
+    if total == 0:
+        return 0.0
+
+    avg_res = await db.execute(select(func.avg(func.coalesce(JobApplication.match_score, 0.0))))
+    avg_val = round(float(avg_res.scalar() or 0.0), 1)
+    await set_cache(cache_key, avg_val, ttl=300)
+    return avg_val
+
+
+async def get_all_application_skills(db: AsyncSession) -> List[Any]:
+    """Fetch stored skills per application for distribution calculation (checks Redis cache first)."""
+    cache_key = "hr:stats:skills_rows"
+    cached = await get_cache(cache_key)
+    if cached is not None:
+        return cached
+
+    result = await db.execute(select(JobApplication.skills))
+    rows = [r[0] for r in result.all()]
+    await set_cache(cache_key, rows, ttl=300)
+    return rows
 
 
 async def get_distinct_departments(db: AsyncSession) -> List[str]:

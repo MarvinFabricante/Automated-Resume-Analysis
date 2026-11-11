@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from '@/utils/navigation';
 import { 
-  Download, AlertCircle, Briefcase, BarChart3, Calendar, 
+  Download, FileText, AlertCircle, Briefcase, BarChart3, Calendar, 
   Sparkles, CheckCircle2, ChevronRight, Zap, Radio, FolderArchive
 } from 'lucide-react';
 import { Helmet } from 'react-helmet-async';

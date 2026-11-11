@@ -449,10 +449,42 @@ async def get_applications_by_email(db: AsyncSession, email: str):
     return _enrich_applications(applications)
 
 
-async def get_all_applications(db: AsyncSession):
-    """Get all job applications."""
+async def get_all_applications(
+    db: AsyncSession,
+    position: Optional[str] = None,
+    sort_by: Optional[str] = None,
+):
+    """Get all job applications, with optional position filter and score/date sorting."""
     applications = await JobApplicationRepository.get_all(db)
-    return _enrich_applications(applications)
+    enriched = _enrich_applications(applications)
+
+    if position and position.strip() and position.strip().lower() not in ("all", "all jobs"):
+        pos_q = position.strip().lower()
+        enriched = [
+            app for app in enriched
+            if ((getattr(getattr(app, "job", None), "job_title", None) or app.job_title or "").strip().lower() == pos_q)
+        ]
+
+    if sort_by:
+        sb = sort_by.strip().lower()
+
+        def _created_ts(app_obj) -> float:
+            dt = getattr(app_obj, "created_at", None)
+            return dt.timestamp() if dt else 0.0
+
+        def _score_val(app_obj) -> float:
+            return float(getattr(app_obj, "match_score", 0.0) or 0.0)
+
+        if sb == "match_desc":
+            enriched = sorted(enriched, key=lambda a: (_score_val(a), _created_ts(a), a.id or 0), reverse=True)
+        elif sb == "match_asc":
+            enriched = sorted(enriched, key=lambda a: (_score_val(a), -_created_ts(a), -(a.id or 0)))
+        elif sb == "date_desc":
+            enriched = sorted(enriched, key=lambda a: (_created_ts(a), _score_val(a), a.id or 0), reverse=True)
+        elif sb == "date_asc":
+            enriched = sorted(enriched, key=lambda a: (_created_ts(a), -_score_val(a), a.id or 0))
+
+    return enriched
 
 
 async def update_application_status(

@@ -220,6 +220,7 @@ const SearchAndFilter: React.FC<SearchAndFilterProps> = ({
               <Filter className={`h-3.5 w-3.5 ${isJobActive ? 'text-[#D60041]' : 'text-gray-400'}`} />
             </div>
             <select
+              data-testid="screening-position-filter"
               className={`w-full h-9 sm:h-10 border pl-7 sm:pl-8.5 pr-6 sm:pr-8 rounded-xl text-xs font-bold text-gray-700 focus:outline-none focus:border-pink-300 focus:bg-white transition-all cursor-pointer appearance-none truncate ${
                 isJobActive ? 'bg-pink-50/40 border-pink-200 text-[#D60041]' : 'bg-gray-50/70 border-gray-200'
               }`}
@@ -255,6 +256,7 @@ const SearchAndFilter: React.FC<SearchAndFilterProps> = ({
               <Filter className={`h-3.5 w-3.5 ${isStatusActive ? 'text-[#D60041]' : 'text-gray-400'}`} />
             </div>
             <select
+              data-testid="screening-status-filter"
               className={`w-full h-9 sm:h-10 border pl-7 sm:pl-8.5 pr-6 sm:pr-8 rounded-xl text-xs font-bold text-gray-700 focus:outline-none focus:border-pink-300 focus:bg-white transition-all cursor-pointer appearance-none truncate ${
                 isStatusActive ? 'bg-pink-50/40 border-pink-200 text-[#D60041]' : 'bg-gray-50/70 border-gray-200'
               }`}
@@ -289,6 +291,7 @@ const SearchAndFilter: React.FC<SearchAndFilterProps> = ({
               <Sparkles className={`h-3.5 w-3.5 ${isScoreActive ? 'text-emerald-600' : 'text-gray-400'}`} />
             </div>
             <select
+              data-testid="screening-score-filter"
               className={`w-full h-9 sm:h-10 border pl-7 sm:pl-8.5 pr-6 sm:pr-8 rounded-xl text-xs font-bold text-gray-700 focus:outline-none focus:border-pink-300 focus:bg-white transition-all cursor-pointer appearance-none truncate ${
                 isScoreActive ? 'bg-emerald-50/40 border-emerald-200 text-emerald-800' : 'bg-gray-50/70 border-gray-200'
               }`}
@@ -318,6 +321,7 @@ const SearchAndFilter: React.FC<SearchAndFilterProps> = ({
               <ArrowUpDown className={`h-3.5 w-3.5 ${isSortActive ? 'text-purple-600' : 'text-gray-400'}`} />
             </div>
             <select
+              data-testid="screening-sort-select"
               className={`w-full h-9 sm:h-10 border pl-7 sm:pl-8.5 pr-6 sm:pr-8 rounded-xl text-xs font-bold text-gray-700 focus:outline-none focus:border-pink-300 focus:bg-white transition-all cursor-pointer appearance-none truncate ${
                 isSortActive ? 'bg-purple-50/40 border-purple-200 text-purple-800' : 'bg-gray-50/70 border-gray-200'
               }`}
