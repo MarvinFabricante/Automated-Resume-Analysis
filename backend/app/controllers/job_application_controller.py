@@ -56,17 +56,28 @@ async def check_duplicate_application(
     }
 
 
-@router.get("/", response_model=List[JobApplicationResponse])
+@router.get("/", responses={200: {"model": List[JobApplicationResponse]}})
 @cache_response("all_apps", ttl=60)
 async def get_all_applications(
     position: Optional[str] = None,
     sort_by: Optional[str] = None,
+    limit: Optional[int] = None,
+    offset: int = 0,
+    summary: bool = False,
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Get all job applications from all jobs, optionally filtered by position and sorted by score or date.
+    Get all job applications from all jobs, optionally filtered by position, sorted, paginated,
+    or projected as lightweight dashboard summaries (`summary=true`).
     """
-    return await job_application_service.get_all_applications(db, position=position, sort_by=sort_by)
+    if summary:
+        return await job_application_service.get_all_applications_summary(
+            db, position=position, sort_by=sort_by, limit=limit, offset=offset
+        )
+    apps = await job_application_service.get_all_applications(
+        db, position=position, sort_by=sort_by, limit=limit, offset=offset
+    )
+    return [JobApplicationResponse.model_validate(app).model_dump(mode="json") for app in apps]
 
 @router.get("/job/{job_id}", response_model=List[JobApplicationResponse])
 @cache_response("job_apps", ttl=60)
@@ -95,6 +106,17 @@ async def get_applications_for_candidate(email: str, db: AsyncSession = Depends(
     Get all applications for a specific candidate by email.
     """
     return await job_application_service.get_applications_by_email(db, email)
+
+
+@router.get("/{application_id}", response_model=JobApplicationResponse)
+async def get_application_by_id(application_id: int, db: AsyncSession = Depends(get_db)):
+    """
+    Get full detailed evaluation and profile data for a single job application.
+    """
+    app = await job_application_service.get_application_by_id(db, application_id)
+    if not app:
+        raise HTTPException(status_code=404, detail="Application not found")
+    return app
 
 @router.patch("/{application_id}/status", response_model=JobApplicationResponse)
 async def update_application_status(

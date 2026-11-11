@@ -30,6 +30,7 @@ interface MetricBreakdownCardProps {
   badgeClassName: string;
   emptyText: string;
   items: any[];
+  initialLimit?: number;
   renderValue: (item: any) => React.ReactNode;
 }
 
@@ -42,54 +43,69 @@ const MetricBreakdownCard: React.FC<MetricBreakdownCardProps> = ({
   badgeClassName,
   emptyText,
   items,
+  initialLimit = 50,
   renderValue,
-}) => (
-  <div
-    data-testid={testId}
-    className="bg-white border border-slate-200/80 rounded-2xl sm:rounded-3xl p-5 sm:p-6 shadow-xs flex flex-col justify-between"
-  >
-    <div className="flex items-center justify-between gap-2 pb-4 mb-4 border-b border-slate-100">
-      <div>
-        <h3 className="text-base sm:text-lg font-black text-slate-900 tracking-tight flex items-center gap-2">
-          {icon}
-          <span>{title}</span>
-        </h3>
-        <p className="text-[11px] text-slate-500 font-medium mt-0.5">{subtitle}</p>
-      </div>
-      <span
-        className={`text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-full border shrink-0 ${badgeClassName}`}
-      >
-        {badgeText}
-      </span>
-    </div>
+}) => {
+  const [expanded, setExpanded] = useState(false);
+  const visibleItems = expanded || items.length <= initialLimit ? items : items.slice(0, initialLimit);
 
-    {items.length === 0 ? (
-      <p className="text-xs text-slate-400 font-medium py-6 text-center">{emptyText}</p>
-    ) : (
-      <div className="space-y-3 max-h-72 overflow-y-auto pr-1">
-        {items.map((item: any, idx: number) => (
-          <div key={idx} className="space-y-1">
-            <div className="flex items-center justify-between text-xs gap-2">
-              <span className="font-bold text-slate-800 truncate">{item.label}</span>
-              <span className="font-black text-slate-900 shrink-0">{renderValue(item)}</span>
-            </div>
-            <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
-              <div
-                className="h-full rounded-full transition-all duration-700"
-                style={{ width: item.percentage, backgroundColor: item.color }}
-              />
-            </div>
-          </div>
-        ))}
+  return (
+    <div
+      data-testid={testId}
+      className="bg-white border border-slate-200/80 rounded-2xl sm:rounded-3xl p-5 sm:p-6 shadow-xs flex flex-col justify-between"
+    >
+      <div className="flex items-center justify-between gap-2 pb-4 mb-4 border-b border-slate-100">
+        <div>
+          <h3 className="text-base sm:text-lg font-black text-slate-900 tracking-tight flex items-center gap-2">
+            {icon}
+            <span>{title}</span>
+          </h3>
+          <p className="text-[11px] text-slate-500 font-medium mt-0.5">{subtitle}</p>
+        </div>
+        <span
+          className={`text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-full border shrink-0 ${badgeClassName}`}
+        >
+          {badgeText}
+        </span>
       </div>
-    )}
-  </div>
-);
+
+      {items.length === 0 ? (
+        <p className="text-xs text-slate-400 font-medium py-6 text-center">{emptyText}</p>
+      ) : (
+        <div className="space-y-3 max-h-72 overflow-y-auto pr-1">
+          {visibleItems.map((item: any, idx: number) => (
+            <div key={idx} className="space-y-1">
+              <div className="flex items-center justify-between text-xs gap-2">
+                <span className="font-bold text-slate-800 truncate">{item.label}</span>
+                <span className="font-black text-slate-900 shrink-0">{renderValue(item)}</span>
+              </div>
+              <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                <div
+                  className="h-full rounded-full transition-all duration-700"
+                  style={{ width: item.percentage, backgroundColor: item.color }}
+                />
+              </div>
+            </div>
+          ))}
+          {items.length > initialLimit && (
+            <button
+              type="button"
+              onClick={() => setExpanded((prev) => !prev)}
+              className="w-full pt-2 text-[11px] font-bold text-[#D60041] hover:underline text-center cursor-pointer"
+            >
+              {expanded ? `Show top ${initialLimit}` : `Show all ${items.length} items`}
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
 
 const ApplicationTrends: React.FC<ApplicationTrendsProps> = ({ applications = [], appStats = {} }) => {
   const navigate = useNavigate();
   const { data, isLoading, error, refetch } = useGetDashboardTrendsQuery(undefined, {
-    pollingInterval: 5000,
+    pollingInterval: 15000,
     refetchOnFocus: true,
     refetchOnMountOrArgChange: true,
     refetchOnReconnect: true,
@@ -316,10 +332,10 @@ const ApplicationTrends: React.FC<ApplicationTrendsProps> = ({ applications = []
     distributionTab === 'position'
       ? positionData
       : distributionTab === 'skills'
-      ? skillsData
-      : distributionTab === 'status'
-      ? statusDistributionData
-      : departmentData;
+        ? skillsData
+        : distributionTab === 'status'
+          ? statusDistributionData
+          : departmentData;
 
   // Donut chart conic gradient
   const conicGradientString = useMemo(() => {
@@ -567,11 +583,10 @@ const ApplicationTrends: React.FC<ApplicationTrendsProps> = ({ applications = []
                     setTimeRange(tab.id);
                     setSelectedDay(null);
                   }}
-                  className={`px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-xl text-[11px] sm:text-xs font-black transition-all cursor-pointer ${
-                    timeRange === tab.id
+                  className={`px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-xl text-[11px] sm:text-xs font-black transition-all cursor-pointer ${timeRange === tab.id
                       ? 'bg-slate-900 text-white shadow-xs'
                       : 'text-slate-500 hover:text-slate-900 hover:bg-white/80'
-                  }`}
+                    }`}
                 >
                   <span className="sm:hidden">{tab.label}</span>
                   <span className="hidden sm:inline">{tab.full}</span>
@@ -584,22 +599,20 @@ const ApplicationTrends: React.FC<ApplicationTrendsProps> = ({ applications = []
               <button
                 onClick={() => setChartView('bar')}
                 title="Bar Chart View"
-                className={`p-1.5 rounded-xl transition-all cursor-pointer ${
-                  chartView === 'bar'
+                className={`p-1.5 rounded-xl transition-all cursor-pointer ${chartView === 'bar'
                     ? 'bg-white text-[#D60041] shadow-sm'
                     : 'text-gray-400 hover:text-gray-800'
-                }`}
+                  }`}
               >
                 <BarChart3 size={16} />
               </button>
               <button
                 onClick={() => setChartView('area')}
                 title="Trend Curve View"
-                className={`p-1.5 rounded-xl transition-all cursor-pointer ${
-                  chartView === 'area'
+                className={`p-1.5 rounded-xl transition-all cursor-pointer ${chartView === 'area'
                     ? 'bg-white text-[#D60041] shadow-sm'
                     : 'text-gray-400 hover:text-gray-800'
-                }`}
+                  }`}
               >
                 <Activity size={16} />
               </button>
@@ -609,11 +622,10 @@ const ApplicationTrends: React.FC<ApplicationTrendsProps> = ({ applications = []
             <div className="relative" ref={calendarRef}>
               <button
                 onClick={() => setIsCalendarOpen(!isCalendarOpen)}
-                className={`p-2.5 rounded-2xl transition-all border shadow-xs flex items-center gap-2 cursor-pointer ${
-                  isCalendarOpen
+                className={`p-2.5 rounded-2xl transition-all border shadow-xs flex items-center gap-2 cursor-pointer ${isCalendarOpen
                     ? 'bg-slate-900 text-white border-slate-900'
                     : 'bg-white text-gray-600 border-gray-200/90 hover:bg-gray-50 hover:border-pink-200'
-                }`}
+                  }`}
                 title="Select Date Window"
               >
                 <Calendar size={16} className={isCalendarOpen ? 'text-white' : 'text-gray-500'} />
@@ -638,11 +650,10 @@ const ApplicationTrends: React.FC<ApplicationTrendsProps> = ({ applications = []
                           setIsCalendarOpen(false);
                           setSelectedDay(null);
                         }}
-                        className={`w-full text-left px-3 py-2.5 rounded-xl text-xs flex items-center justify-between transition-colors cursor-pointer ${
-                          timeRange === opt.id
+                        className={`w-full text-left px-3 py-2.5 rounded-xl text-xs flex items-center justify-between transition-colors cursor-pointer ${timeRange === opt.id
                             ? 'bg-red-50 text-[#D60041] font-bold'
                             : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
-                        }`}
+                          }`}
                       >
                         <div>
                           <div className="font-bold">{opt.label}</div>
@@ -660,11 +671,10 @@ const ApplicationTrends: React.FC<ApplicationTrendsProps> = ({ applications = []
             <div className="relative" ref={menuRef}>
               <button
                 onClick={() => setIsMenuOpen(!isMenuOpen)}
-                className={`p-2.5 rounded-2xl transition-all border shadow-xs cursor-pointer ${
-                  isMenuOpen
+                className={`p-2.5 rounded-2xl transition-all border shadow-xs cursor-pointer ${isMenuOpen
                     ? 'bg-slate-900 text-white border-slate-900'
                     : 'bg-white text-gray-600 border-gray-200/90 hover:bg-gray-50 hover:border-pink-200'
-                }`}
+                  }`}
                 title="Chart Options"
               >
                 <MoreHorizontal size={16} />
@@ -825,14 +835,13 @@ const ApplicationTrends: React.FC<ApplicationTrendsProps> = ({ applications = []
             </div>
           )}
 
-          <div className={`${
-            timeRange === '7D' 
-              ? 'w-full min-w-0' 
-              : timeRange === '14D' 
-              ? 'min-w-[480px] sm:min-w-[600px]' 
-              : 'min-w-[660px] sm:min-w-[820px]'
-          } h-[260px] sm:h-[300px] relative mt-2 sm:mt-4 flex`}>
-            
+          <div className={`${timeRange === '7D'
+              ? 'w-full min-w-0'
+              : timeRange === '14D'
+                ? 'min-w-[480px] sm:min-w-[600px]'
+                : 'min-w-[660px] sm:min-w-[820px]'
+            } h-[260px] sm:h-[300px] relative mt-2 sm:mt-4 flex`}>
+
             {/* Sticky Y-Axis Labels (Always pinned on left even when scrolling) */}
             <div className="w-8 sm:w-10 h-full flex flex-col justify-between text-[10px] sm:text-[11px] text-slate-400 font-black tracking-widest py-1 pr-2 shrink-0 sticky left-0 bg-white/95 backdrop-blur-xs z-20 pb-9 border-r border-slate-100">
               <span>{displayMax}</span>
@@ -873,15 +882,13 @@ const ApplicationTrends: React.FC<ApplicationTrendsProps> = ({ applications = []
                         >
                           {/* Detailed Tooltip on Hover */}
                           <div
-                            className={`absolute -top-24 left-1/2 -translate-x-1/2 bg-slate-900 text-white p-3 rounded-2xl transition-all duration-200 pointer-events-none shadow-2xl z-30 min-w-[140px] ${
-                              isHovered ? 'opacity-100 -translate-y-2 scale-100' : 'opacity-0 scale-95 pointer-events-none'
-                            }`}
+                            className={`absolute -top-24 left-1/2 -translate-x-1/2 bg-slate-900 text-white p-3 rounded-2xl transition-all duration-200 pointer-events-none shadow-2xl z-30 min-w-[140px] ${isHovered ? 'opacity-100 -translate-y-2 scale-100' : 'opacity-0 scale-95 pointer-events-none'
+                              }`}
                           >
                             <div className="flex justify-between items-center mb-1">
                               <span className="text-[10px] text-gray-400 font-bold uppercase">{item.day}, {item.date}</span>
-                              <span className={`text-[9px] font-black px-1.5 py-0.5 rounded ${
-                                item.growth.startsWith('+') ? 'text-emerald-400 bg-emerald-500/20' : 'text-red-400 bg-red-500/20'
-                              }`}>
+                              <span className={`text-[9px] font-black px-1.5 py-0.5 rounded ${item.growth.startsWith('+') ? 'text-emerald-400 bg-emerald-500/20' : 'text-red-400 bg-red-500/20'
+                                }`}>
                                 {item.growth}
                               </span>
                             </div>
@@ -904,13 +911,12 @@ const ApplicationTrends: React.FC<ApplicationTrendsProps> = ({ applications = []
                             )}
 
                             <div
-                              className={`w-full max-w-[28px] sm:max-w-[40px] rounded-t-[10px] sm:rounded-t-[14px] transition-all duration-500 ease-out relative ${
-                                isSelected
+                              className={`w-full max-w-[28px] sm:max-w-[40px] rounded-t-[10px] sm:rounded-t-[14px] transition-all duration-500 ease-out relative ${isSelected
                                   ? 'bg-gradient-to-t from-slate-900 to-slate-700 ring-4 ring-slate-300 shadow-xl'
                                   : item.isPeak
-                                  ? 'bg-gradient-to-t from-[#D60041] to-[#ff4d7d] shadow-[0_4px_20px_rgba(214,0,65,0.25)]'
-                                  : 'bg-gradient-to-t from-gray-100 to-gray-200 group-hover:from-pink-100 group-hover:to-[#D60041] group-hover:shadow-[0_4px_20px_rgba(214,0,65,0.2)]'
-                              }`}
+                                    ? 'bg-gradient-to-t from-[#D60041] to-[#ff4d7d] shadow-[0_4px_20px_rgba(214,0,65,0.25)]'
+                                    : 'bg-gradient-to-t from-gray-100 to-gray-200 group-hover:from-pink-100 group-hover:to-[#D60041] group-hover:shadow-[0_4px_20px_rgba(214,0,65,0.2)]'
+                                }`}
                               style={{ height: item.height }}
                             >
                               {/* Glossy top cap */}
@@ -926,8 +932,8 @@ const ApplicationTrends: React.FC<ApplicationTrendsProps> = ({ applications = []
                   <div className="h-9 w-full flex items-center justify-between px-1 pt-1 shrink-0">
                     {chartData.map((item, index) => {
                       const isSelected = selectedDay?.date === item.date;
-                      const showLabel = 
-                        timeRange === '7D' || 
+                      const showLabel =
+                        timeRange === '7D' ||
                         (timeRange === '14D' && (index % 2 === 0 || index === chartData.length - 1)) ||
                         (timeRange === '30D' && (index % 5 === 0 || index === chartData.length - 1));
 
@@ -935,14 +941,12 @@ const ApplicationTrends: React.FC<ApplicationTrendsProps> = ({ applications = []
                         <div
                           key={index}
                           onClick={() => handleDayClick(item)}
-                          className={`flex flex-col items-center justify-center text-center cursor-pointer transition-colors ${
-                            showLabel ? 'visible' : 'invisible'
-                          }`}
+                          className={`flex flex-col items-center justify-center text-center cursor-pointer transition-colors ${showLabel ? 'visible' : 'invisible'
+                            }`}
                           style={{ width: `${Math.max(100 / chartData.length - (timeRange === '7D' ? 3 : 1.5), 2)}%` }}
                         >
-                          <span className={`text-[10px] sm:text-[11px] font-black tracking-tight leading-none ${
-                            isSelected ? 'text-[#D60041]' : 'text-slate-900 group-hover:text-[#D60041]'
-                          }`}>
+                          <span className={`text-[10px] sm:text-[11px] font-black tracking-tight leading-none ${isSelected ? 'text-[#D60041]' : 'text-slate-900 group-hover:text-[#D60041]'
+                            }`}>
                             {item.day}
                           </span>
                           <span className="text-[8px] sm:text-[9px] text-slate-400 font-bold leading-none mt-0.5 whitespace-nowrap">
@@ -1053,9 +1057,8 @@ const ApplicationTrends: React.FC<ApplicationTrendsProps> = ({ applications = []
                         style={{
                           left: `${(hoveredAreaPt.x / 800) * 100}%`,
                           top: `${(hoveredAreaPt.y / 240) * 100}%`,
-                          transform: `translate(${
-                            (hoveredAreaPt.x / 800) < 0.12 ? '0%' : (hoveredAreaPt.x / 800) > 0.88 ? '-100%' : '-50%'
-                          }, ${hoveredAreaPt.y < 70 ? '16px' : 'calc(-100% - 14px)'})`
+                          transform: `translate(${(hoveredAreaPt.x / 800) < 0.12 ? '0%' : (hoveredAreaPt.x / 800) > 0.88 ? '-100%' : '-50%'
+                            }, ${hoveredAreaPt.y < 70 ? '16px' : 'calc(-100% - 14px)'})`
                         }}
                       >
                         <div className="bg-slate-900 text-white p-3 rounded-2xl shadow-2xl min-w-[140px] relative">
@@ -1063,9 +1066,8 @@ const ApplicationTrends: React.FC<ApplicationTrendsProps> = ({ applications = []
                             <span className="text-[10px] text-gray-400 font-bold uppercase whitespace-nowrap">
                               {hoveredAreaPt.data.day}, {hoveredAreaPt.data.date}
                             </span>
-                            <span className={`text-[9px] font-black px-1.5 py-0.5 rounded ${
-                              hoveredAreaPt.data.growth.startsWith('+') ? 'text-emerald-400 bg-emerald-500/20' : 'text-red-400 bg-red-500/20'
-                            }`}>
+                            <span className={`text-[9px] font-black px-1.5 py-0.5 rounded ${hoveredAreaPt.data.growth.startsWith('+') ? 'text-emerald-400 bg-emerald-500/20' : 'text-red-400 bg-red-500/20'
+                              }`}>
                               {hoveredAreaPt.data.growth}
                             </span>
                           </div>
@@ -1075,9 +1077,8 @@ const ApplicationTrends: React.FC<ApplicationTrendsProps> = ({ applications = []
                           </div>
                           {/* Tooltip triangle arrow */}
                           <div
-                            className={`absolute w-3 h-3 bg-slate-900 ${
-                              hoveredAreaPt.y < 70 ? '-top-1.5' : '-bottom-1.5'
-                            }`}
+                            className={`absolute w-3 h-3 bg-slate-900 ${hoveredAreaPt.y < 70 ? '-top-1.5' : '-bottom-1.5'
+                              }`}
                             style={{
                               left: (hoveredAreaPt.x / 800) < 0.12 ? '20px' : (hoveredAreaPt.x / 800) > 0.88 ? 'calc(100% - 20px)' : '50%',
                               transform: 'translateX(-50%) rotate(45deg)'
@@ -1093,8 +1094,8 @@ const ApplicationTrends: React.FC<ApplicationTrendsProps> = ({ applications = []
                     {chartData.map((item, idx) => {
                       const isSelected = selectedDay?.date === item.date;
                       const isHovered = hoveredDay?.date === item.date;
-                      const showLabel = 
-                        timeRange === '7D' || 
+                      const showLabel =
+                        timeRange === '7D' ||
                         (timeRange === '14D' && (idx % 2 === 0 || idx === chartData.length - 1)) ||
                         (timeRange === '30D' && (idx % 5 === 0 || idx === chartData.length - 1));
 
@@ -1104,13 +1105,11 @@ const ApplicationTrends: React.FC<ApplicationTrendsProps> = ({ applications = []
                           onClick={() => handleDayClick(item)}
                           onMouseEnter={() => setHoveredDay(item)}
                           onMouseLeave={() => setHoveredDay(null)}
-                          className={`flex flex-col items-center justify-center text-center cursor-pointer transition-colors ${
-                            showLabel ? 'visible' : 'invisible'
-                          }`}
+                          className={`flex flex-col items-center justify-center text-center cursor-pointer transition-colors ${showLabel ? 'visible' : 'invisible'
+                            }`}
                         >
-                          <span className={`text-[10px] sm:text-[11px] font-black leading-none ${
-                            isSelected || isHovered ? 'text-[#D60041]' : 'text-slate-900 hover:text-[#D60041]'
-                          }`}>
+                          <span className={`text-[10px] sm:text-[11px] font-black leading-none ${isSelected || isHovered ? 'text-[#D60041]' : 'text-slate-900 hover:text-[#D60041]'
+                            }`}>
                             {item.day}
                           </span>
                           <span className="text-[8px] sm:text-[9px] text-slate-400 font-bold leading-none mt-0.5 whitespace-nowrap">
@@ -1163,10 +1162,10 @@ const ApplicationTrends: React.FC<ApplicationTrendsProps> = ({ applications = []
                 {distributionTab === 'position'
                   ? 'Applicants per Position'
                   : distributionTab === 'skills'
-                  ? 'Candidate Skills Distribution'
-                  : distributionTab === 'status'
-                  ? 'Categorized by Pipeline Status'
-                  : 'Categorized by Department'}
+                    ? 'Candidate Skills Distribution'
+                    : distributionTab === 'status'
+                      ? 'Categorized by Pipeline Status'
+                      : 'Categorized by Department'}
               </p>
             </div>
 
@@ -1183,11 +1182,10 @@ const ApplicationTrends: React.FC<ApplicationTrendsProps> = ({ applications = []
                 <button
                   key={tab.id}
                   onClick={() => setDistributionTab(tab.id)}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all cursor-pointer ${
-                    distributionTab === tab.id
+                  className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all cursor-pointer ${distributionTab === tab.id
                       ? 'bg-white text-slate-900 shadow-xs'
                       : 'text-slate-400 hover:text-slate-700'
-                  }`}
+                    }`}
                 >
                   {tab.label}
                 </button>
@@ -1223,8 +1221,8 @@ const ApplicationTrends: React.FC<ApplicationTrendsProps> = ({ applications = []
             </div>
 
             {/* List with Click-to-Filter */}
-            <div className="flex-grow w-full space-y-2.5 sm:space-y-3">
-              {activeDistribution.map((item: any, idx: number) => (
+            <div className="flex-grow w-full space-y-2.5 sm:space-y-3 max-h-72 overflow-y-auto pr-1">
+              {activeDistribution.slice(0, 25).map((item: any, idx: number) => (
                 <div
                   key={idx}
                   onClick={() => {
@@ -1365,6 +1363,7 @@ const ApplicationTrends: React.FC<ApplicationTrendsProps> = ({ applications = []
           badgeClassName="bg-blue-50 text-blue-700 border-blue-100"
           emptyText="No extracted skill records yet."
           items={skillsData}
+          initialLimit={25}
           renderValue={(skill) => (
             <>
               {skill.value} <span className="text-slate-400 font-bold">({skill.percentage})</span>

@@ -12,11 +12,11 @@ class JobApplication(Base):
     __tablename__ = "job_applications"
 
     id = Column(Integer, primary_key=True, index=True)
-    job_id = Column(Integer, ForeignKey("job_descriptions.id"), nullable=False)
+    job_id = Column(Integer, ForeignKey("job_descriptions.id"), nullable=False, index=True)
     
     # Candidate details
     candidate_name = Column(String, nullable=False)
-    candidate_email = Column(String, nullable=False)
+    candidate_email = Column(String, nullable=False, index=True)
     phone = Column(String, nullable=True)
     location = Column(String, nullable=True)
     
@@ -28,7 +28,7 @@ class JobApplication(Base):
     college = Column(String, nullable=True)
     certifications = Column(String, nullable=True)
     skills = Column(JSON, nullable=True)
-    match_score = Column(DOUBLE_PRECISION, nullable=True) # Percentage score 0-100
+    match_score = Column(DOUBLE_PRECISION, nullable=True, index=True) # Percentage score 0-100
     skills_score = Column(DOUBLE_PRECISION, nullable=True)
     experience_score = Column(DOUBLE_PRECISION, nullable=True)
     education_score = Column(DOUBLE_PRECISION, nullable=True)
@@ -61,9 +61,9 @@ class JobApplication(Base):
     weaknesses = Column(JSON, nullable=True)
     ai_powered = Column(Boolean, default=False)
     
-    status = Column(String, default="PENDING") # PENDING, REVIEWED, REJECTED, ACCEPTED
+    status = Column(String, default="PENDING", index=True) # PENDING, REVIEWED, REJECTED, ACCEPTED
     
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     # Relationships

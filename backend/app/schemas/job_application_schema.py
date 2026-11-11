@@ -8,6 +8,9 @@ class JobInfo(BaseModel):
     location: str
     department: str
 
+    class Config:
+        from_attributes = True
+
 class JobApplicationBase(BaseModel):
     candidate_name: str
     candidate_email: EmailStr

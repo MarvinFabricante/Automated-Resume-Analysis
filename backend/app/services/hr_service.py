@@ -72,6 +72,8 @@ async def get_application_stats(db: AsyncSession):
     total_archived = rejected + archived
     average_score = await HRRepository.get_average_match_score(db)
 
+    total_all = sum(int(row[1] or 0) for row in db_stats)
+
     return {
         "pending": pending,
         "reviewed": reviewed,
@@ -79,7 +81,7 @@ async def get_application_stats(db: AsyncSession):
         "rejected": total_archived,
         "archived": archived,
         "raw_rejected": rejected,
-        "total": pending + reviewed + accepted + total_archived,
+        "total": total_all,
         "average_score": average_score,
     }
 

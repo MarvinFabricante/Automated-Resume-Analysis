@@ -158,7 +158,8 @@ def _needs_analysis_enrichment(app: JobApplication) -> bool:
 
 
 _pending_analyses = set()
-_supabase_file_cache = {"files": [], "timestamp": 0}
+_supabase_file_cache = {"files": [], "timestamp": 0.0}
+_local_file_cache = {"files": [], "timestamp": 0.0}
 
 def _apply_transient_analysis(app: JobApplication):
     """
@@ -181,12 +182,15 @@ def _apply_transient_analysis(app: JobApplication):
         print(f"WARNING: Failed to dispatch background analysis for {app.id}: {e}")
 
 
-def _get_cached_supabase_files():
+def _get_cached_supabase_files(allow_network: bool = True):
     import time
     now = time.time()
-    if _supabase_file_cache["files"] and (now - _supabase_file_cache["timestamp"]) < 60:
+    if (now - _supabase_file_cache["timestamp"]) < 60:
+        return _supabase_file_cache["files"]
+    if not allow_network:
         return _supabase_file_cache["files"]
 
+    _supabase_file_cache["timestamp"] = now
     try:
         from app.utils.supabase_storage import _get_client, SUPABASE_BUCKET
         client = _get_client()
@@ -200,87 +204,110 @@ def _get_cached_supabase_files():
                     sub_files = client.storage.from_(SUPABASE_BUCKET).list(f"resumes/{folder_name}")
                     for sf in sub_files:
                         if sf.get("id"):
-                            all_files.append((f"resumes/{folder_name}/{sf['name']}", sf["name"]))
+                            all_files.append((f"resumes/{folder_name}/{sf['name']}", sf["name"].lower()))
                 except Exception:
                     pass
             else:
-                all_files.append((f"resumes/{item['name']}", item["name"]))
+                all_files.append((f"resumes/{item['name']}", item["name"].lower()))
 
         _supabase_file_cache["files"] = all_files
-        _supabase_file_cache["timestamp"] = now
         return all_files
-    except Exception as e:
+    except Exception:
+        return _supabase_file_cache["files"]
+
+
+def _get_cached_local_files():
+    import os
+    import re
+    import time
+
+    now = time.time()
+    if (now - _local_file_cache["timestamp"]) < 60:
+        return _local_file_cache["files"]
+
+    _local_file_cache["timestamp"] = now
+    upload_dir = "uploads/resumes"
+    if not os.path.exists(upload_dir):
+        _local_file_cache["files"] = []
         return []
 
+    parsed = []
+    try:
+        for filename in os.listdir(upload_dir):
+            match = re.match(r'^(\d+)_', filename)
+            ts = int(match.group(1)) if match else -1
+            parsed.append((filename, filename.lower(), ts))
+    except Exception as e:
+        print(f"WARNING: Error while listing local resumes: {e}")
 
-def _enrich_resume_url(app: JobApplication):
+    _local_file_cache["files"] = parsed
+    return parsed
+
+
+def _enrich_resume_url(app: JobApplication, allow_network: bool = True):
     if app.resume_url:
         return
 
     import re
 
-    name_parts = [p.lower() for p in re.split(r'\W+', app.candidate_name) if p]
+    name_parts = [p.lower() for p in re.split(r'\W+', app.candidate_name or "") if p]
     if not name_parts:
         return
 
-    # Try cached Supabase Storage files
-    try:
-        all_files = _get_cached_supabase_files()
-        best_match = None
-        best_time = -1
+    # 1. Try cached Supabase Storage files without per-row network storms
+    all_files = _get_cached_supabase_files(allow_network=allow_network)
+    if all_files:
+        try:
+            best_match = None
+            best_time = -1
 
-        for storage_path, filename in all_files:
-            filename_lower = filename.lower()
-            if all(part in filename_lower for part in name_parts):
-                match = re.match(r'^(\d+)_', filename)
-                if match:
-                    ts = int(match.group(1))
-                    if ts > best_time:
-                        best_time = ts
+            for storage_path, filename_lower in all_files:
+                if all(part in filename_lower for part in name_parts):
+                    base_name = filename_lower.rsplit("/", 1)[-1]
+                    match = re.match(r'^(\d+)_', base_name)
+                    if match:
+                        ts = int(match.group(1))
+                        if ts > best_time:
+                            best_time = ts
+                            best_match = storage_path
+                    elif not best_match:
                         best_match = storage_path
-                elif not best_match:
-                    best_match = storage_path
 
-        if best_match:
-            from app.utils.supabase_storage import _get_client, SUPABASE_BUCKET
-            client = _get_client()
-            public_url = client.storage.from_(SUPABASE_BUCKET).get_public_url(best_match)
-            app.resume_url = public_url
-            return
-    except Exception as e:
-        print(f"WARNING: Supabase resume lookup failed, trying local: {e}")
+            if best_match:
+                from app.utils.supabase_storage import _get_client, SUPABASE_BUCKET
+                client = _get_client()
+                public_url = client.storage.from_(SUPABASE_BUCKET).get_public_url(best_match)
+                app.resume_url = public_url
+                return
+        except Exception as e:
+            print(f"WARNING: Supabase resume lookup failed, trying local: {e}")
 
-    # Fallback: local filesystem
-    import os
-    upload_dir = "uploads/resumes"
-    if not os.path.exists(upload_dir):
-        return
-
+    # 2. Fallback: cached local filesystem entries
+    local_files = _get_cached_local_files()
     best_match = None
     best_time = -1
-
-    try:
-        for filename in os.listdir(upload_dir):
-            filename_lower = filename.lower()
-            if all(part in filename_lower for part in name_parts):
-                match = re.match(r'^(\d+)_', filename)
-                if match:
-                    ts = int(match.group(1))
-                    if ts > best_time:
-                        best_time = ts
-                        best_match = filename
-                elif not best_match:
-                    best_match = filename
-    except Exception as e:
-        print(f"WARNING: Error while trying to auto-resolve resume url: {e}")
+    for filename, filename_lower, ts in local_files:
+        if all(part in filename_lower for part in name_parts):
+            if ts > best_time:
+                best_time = ts
+                best_match = filename
+            elif not best_match:
+                best_match = filename
 
     if best_match:
-        app.resume_url = f"/{upload_dir}/{best_match}"
+        app.resume_url = f"/uploads/resumes/{best_match}"
 
-def _enrich_applications(apps: list[JobApplication]) -> list[JobApplication]:
+
+def _enrich_applications(apps: list[JobApplication], bulk_mode: bool = False) -> list[JobApplication]:
+    # Never block bulk HR Dashboard list fetches with per-row Supabase/local scans,
+    # mass Celery task queueing, or synchronous spaCy/regex extraction across 500+ rows.
+    is_heavy_batch = bulk_mode or len(apps) > 25
+    if is_heavy_batch:
+        return apps
+
     for app in apps:
         _apply_transient_analysis(app)
-        _enrich_resume_url(app)
+        _enrich_resume_url(app, allow_network=True)
         if not getattr(app, "work_experiences", None):
             exp_source = app.relevant_experience or app.relevance or ""
             if exp_source and len(exp_source.strip()) > 5:
@@ -437,54 +464,163 @@ async def create_job_application(
     return new_application
 
 
+def serialize_application_summary(app: JobApplication) -> dict:
+    """Project a JobApplication ORM instance into a lightweight JSON dict for large dashboard lists."""
+    job_obj = getattr(app, "job", None)
+    return {
+        "id": app.id,
+        "job_id": app.job_id,
+        "candidate_name": app.candidate_name,
+        "candidate_email": app.candidate_email,
+        "phone": app.phone,
+        "location": app.location,
+        "job_title": app.job_title,
+        "company": app.company,
+        "skills": app.skills or [],
+        "match_score": app.match_score,
+        "skills_score": app.skills_score,
+        "experience_score": app.experience_score,
+        "education_score": app.education_score,
+        "certifications_score": app.certifications_score,
+        "profile_image_url": app.profile_image_url,
+        "resume_url": app.resume_url,
+        "matched_skills": app.matched_skills or [],
+        "missing_skills": app.missing_skills or [],
+        "total_experience_months": app.total_experience_months,
+        "highest_educational_attainment": app.highest_educational_attainment,
+        "experience_gaps": app.experience_gaps,
+        "ai_powered": bool(app.ai_powered),
+        "status": app.status,
+        "created_at": app.created_at.isoformat() if app.created_at else None,
+        "updated_at": app.updated_at.isoformat() if app.updated_at else None,
+        "job": (
+            {
+                "id": job_obj.id,
+                "job_title": job_obj.job_title,
+                "location": job_obj.location,
+                "department": job_obj.department,
+            }
+            if job_obj
+            else None
+        ),
+    }
+
+
+async def get_application_by_id(db: AsyncSession, application_id: int) -> Optional[JobApplication]:
+    """Get a single job application by ID with full detail enrichment."""
+    app = await JobApplicationRepository.get_by_id(db, application_id)
+    if not app:
+        return None
+    _enrich_applications([app], bulk_mode=False)
+    return app
+
+
 async def get_applications_by_job(db: AsyncSession, job_id: int):
     """Get all applications for a specific job."""
     applications = await JobApplicationRepository.get_by_job_id(db, job_id)
-    return _enrich_applications(applications)
+    return _enrich_applications(applications, bulk_mode=len(applications) > 25)
 
 
 async def get_applications_by_email(db: AsyncSession, email: str):
     """Get all applications for a specific candidate email."""
     applications = await JobApplicationRepository.get_by_email(db, email)
-    return _enrich_applications(applications)
+    return _enrich_applications(applications, bulk_mode=False)
 
 
-async def get_all_applications(
-    db: AsyncSession,
+def _get_item_attr(item, key: str, default=None):
+    return item.get(key, default) if isinstance(item, dict) else getattr(item, key, default)
+
+
+def _filter_sort_slice_applications(
+    items: list,
     position: Optional[str] = None,
     sort_by: Optional[str] = None,
-):
-    """Get all job applications, with optional position filter and score/date sorting."""
-    applications = await JobApplicationRepository.get_all(db)
-    enriched = _enrich_applications(applications)
+    limit: Optional[int] = None,
+    offset: int = 0,
+) -> list:
+    """Filter by position, sort deterministically by score or date, and slice for pagination."""
+    from datetime import datetime
 
+    filtered = items
     if position and position.strip() and position.strip().lower() not in ("all", "all jobs"):
         pos_q = position.strip().lower()
-        enriched = [
-            app for app in enriched
-            if ((getattr(getattr(app, "job", None), "job_title", None) or app.job_title or "").strip().lower() == pos_q)
+        filtered = [
+            item for item in filtered
+            if (
+                (
+                    _get_item_attr(_get_item_attr(item, "job") or {}, "job_title")
+                    or _get_item_attr(item, "job_title")
+                    or ""
+                )
+                .strip()
+                .lower()
+                == pos_q
+            )
         ]
 
     if sort_by:
         sb = sort_by.strip().lower()
 
         def _created_ts(app_obj) -> float:
-            dt = getattr(app_obj, "created_at", None)
-            return dt.timestamp() if dt else 0.0
+            dt = _get_item_attr(app_obj, "created_at")
+            if not dt:
+                return 0.0
+            if isinstance(dt, str):
+                try:
+                    return datetime.fromisoformat(dt.replace("Z", "+00:00")).timestamp()
+                except ValueError:
+                    return 0.0
+            return dt.timestamp()
 
         def _score_val(app_obj) -> float:
-            return float(getattr(app_obj, "match_score", 0.0) or 0.0)
+            return float(_get_item_attr(app_obj, "match_score", 0.0) or 0.0)
+
+        def _id_val(app_obj) -> int:
+            return int(_get_item_attr(app_obj, "id", 0) or 0)
 
         if sb == "match_desc":
-            enriched = sorted(enriched, key=lambda a: (_score_val(a), _created_ts(a), a.id or 0), reverse=True)
+            filtered = sorted(filtered, key=lambda a: (_score_val(a), _created_ts(a), _id_val(a)), reverse=True)
         elif sb == "match_asc":
-            enriched = sorted(enriched, key=lambda a: (_score_val(a), -_created_ts(a), -(a.id or 0)))
+            filtered = sorted(filtered, key=lambda a: (_score_val(a), -_created_ts(a), -_id_val(a)))
         elif sb == "date_desc":
-            enriched = sorted(enriched, key=lambda a: (_created_ts(a), _score_val(a), a.id or 0), reverse=True)
+            filtered = sorted(filtered, key=lambda a: (_created_ts(a), _score_val(a), _id_val(a)), reverse=True)
         elif sb == "date_asc":
-            enriched = sorted(enriched, key=lambda a: (_created_ts(a), -_score_val(a), a.id or 0))
+            filtered = sorted(filtered, key=lambda a: (_created_ts(a), -_score_val(a), _id_val(a)))
 
-    return enriched
+    if offset > 0 or limit is not None:
+        end = (offset + limit) if (limit is not None and limit >= 0) else None
+        filtered = filtered[max(0, offset) : end]
+
+    return filtered
+
+
+async def get_all_applications(
+    db: AsyncSession,
+    position: Optional[str] = None,
+    sort_by: Optional[str] = None,
+    limit: Optional[int] = None,
+    offset: int = 0,
+):
+    """Get all job applications, with optional position filter, score/date sorting, and pagination."""
+    applications = await JobApplicationRepository.get_all(db)
+    enriched = _enrich_applications(applications, bulk_mode=True)
+    return _filter_sort_slice_applications(
+        enriched, position=position, sort_by=sort_by, limit=limit, offset=offset
+    )
+
+
+async def get_all_applications_summary(
+    db: AsyncSession,
+    position: Optional[str] = None,
+    sort_by: Optional[str] = None,
+    limit: Optional[int] = None,
+    offset: int = 0,
+) -> list[dict]:
+    """Return fast column-projected summary dictionaries for large HR Dashboard loads."""
+    summaries = await JobApplicationRepository.get_all_summaries(db)
+    return _filter_sort_slice_applications(
+        summaries, position=position, sort_by=sort_by, limit=limit, offset=offset
+    )
 
 
 async def update_application_status(

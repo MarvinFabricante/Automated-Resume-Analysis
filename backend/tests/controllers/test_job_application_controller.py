@@ -287,3 +287,95 @@ async def test_filter_by_position_and_sort_by_score_and_date(
         "Ops Tie Newer",
     ]
 
+
+@pytest.mark.asyncio
+async def test_large_dataset_550_applicants_loads_under_3_seconds(client, db_session, mock_celery_task):
+    """
+    Module: HR Dashboard -> Large Dataset
+    Steps: Load 500+ applicants (550 seeded applicants across positions and statuses)
+    Expected Result: Dashboard API endpoints load cleanly well within 3 seconds.
+    """
+    import time
+    from datetime import datetime, timedelta
+    from app.models.job_application import JobApplication
+
+    jobs = [
+        JobDescription(
+            job_id=f"JOB-LARGE-{i}",
+            job_title=f"Large Dataset Role {i}",
+            department=["Operations", "QA", "Engineering"][i % 3],
+            job_type=JobType.FULL_TIME,
+            location="Laguna",
+            description="High volume role",
+        )
+        for i in range(5)
+    ]
+    db_session.add_all(jobs)
+    await db_session.flush()
+
+    now = datetime.utcnow()
+    seeded_apps = [
+        JobApplication(
+            job_id=jobs[i % 5].id,
+            candidate_name=f"Large Applicant {i}",
+            candidate_email=f"large_app_{i}@example.com",
+            phone="+639171112233",
+            location="Batangas",
+            job_title=jobs[i % 5].job_title,
+            skills=["Quality Control", "Machine Learning", "CAD", f"SkillTag{i % 25}"],
+            match_score=float((i * 13) % 101),
+            skills_score=72.0,
+            experience_score=78.0,
+            education_score=80.0,
+            relevant_experience="3 years plant production line operation",
+            degree="BS Industrial Engineering",
+            college="Batangas State University",
+            status=["PENDING", "REVIEWED", "ACCEPTED", "REJECTED"][i % 4],
+            created_at=now - timedelta(days=i % 20, minutes=i),
+        )
+        for i in range(550)
+    ]
+    db_session.add_all(seeded_apps)
+    await db_session.commit()
+
+    start_time = time.perf_counter()
+    summary_res = await client.get("/applications/?summary=true")
+    stats_res = await client.get("/hr/application-stats")
+    trends_res = await client.get("/hr/dashboard-trends")
+    cand_cnt_res = await client.get("/hr/candidate-count")
+    res_cnt_res = await client.get("/hr/resume-count")
+    elapsed = time.perf_counter() - start_time
+
+    assert summary_res.status_code == 200
+    assert stats_res.status_code == 200
+    assert trends_res.status_code == 200
+    assert cand_cnt_res.status_code == 200
+    assert res_cnt_res.status_code == 200
+
+    summary_rows = summary_res.json()
+    assert len(summary_rows) >= 550
+    assert elapsed < 3.0, f"HR Dashboard 550-applicant API bundle took {elapsed:.3f}s (>= 3.0s)"
+
+    # Verify full GET /applications/ also runs fast without blocking enrichment
+    full_start = time.perf_counter()
+    full_res = await client.get("/applications/")
+    full_elapsed = time.perf_counter() - full_start
+    assert full_res.status_code == 200
+    assert len(full_res.json()) >= 550
+    assert full_elapsed < 3.0, f"Full /applications/ took {full_elapsed:.3f}s (>= 3.0s)"
+
+    # Verify paginated slice & single-item detail hydration endpoint
+    page_res = await client.get("/applications/?summary=true&sort_by=match_desc&limit=20&offset=0")
+    assert page_res.status_code == 200
+    page_rows = page_res.json()
+    assert len(page_rows) == 20
+    assert page_rows[0]["match_score"] >= page_rows[-1]["match_score"]
+
+    target_id = page_rows[0]["id"]
+    detail_res = await client.get(f"/applications/{target_id}")
+    assert detail_res.status_code == 200
+    detail = detail_res.json()
+    assert detail["id"] == target_id
+    assert "work_experiences" in detail
+    assert (await client.get("/applications/999999")).status_code == 404
+

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Helmet } from 'react-helmet-async';
-import { 
+import {
   X, MapPin, Briefcase, GraduationCap, Mail, Phone, PhoneForwarded, Video, User,
   Target, TrendingUp, Lightbulb, CheckCircle2, XCircle, AlertTriangle,
   Zap, BarChart3, BookOpen, Award, Copy, Check, Calendar, Download,
@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { getAssetUrl } from '../../../services/api';
 import {
+  useGetApplicationByIdQuery,
   useGetApplicationInterviewsQuery,
   useGetCandidateInterviewsQuery,
   useGetApplicationCallLogsQuery,
@@ -105,25 +106,25 @@ const ScoreRing: React.FC<ScoreRingProps> = ({ score, size = 124, strokeWidth = 
   return (
     <div className="relative inline-flex items-center justify-center" style={{ width: size, height: size }}>
       <svg width={size} height={size} className="-rotate-90">
-        <circle 
-          cx={size / 2} 
-          cy={size / 2} 
-          r={radius} 
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
           fill="none"
-          stroke="#f1f5f9" 
-          strokeWidth={strokeWidth} 
-        />
-        <circle 
-          cx={size / 2} 
-          cy={size / 2} 
-          r={radius} 
-          fill="none"
-          stroke={getColor()} 
+          stroke="#f1f5f9"
           strokeWidth={strokeWidth}
-          strokeDasharray={circumference} 
+        />
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          fill="none"
+          stroke={getColor()}
+          strokeWidth={strokeWidth}
+          strokeDasharray={circumference}
           strokeDashoffset={offset}
           strokeLinecap="round"
-          className="transition-all duration-1000 ease-out" 
+          className="transition-all duration-1000 ease-out"
         />
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
@@ -151,15 +152,15 @@ interface PillarBarProps {
   icon: React.ComponentType<{ size?: number; className?: string }>;
 }
 
-const PillarBar: React.FC<PillarBarProps> = ({ 
-  label, 
-  score, 
-  weight, 
-  color, 
-  barColor, 
-  bgColor, 
-  borderColor, 
-  icon: Icon 
+const PillarBar: React.FC<PillarBarProps> = ({
+  label,
+  score,
+  weight,
+  color,
+  barColor,
+  bgColor,
+  borderColor,
+  icon: Icon
 }) => {
   const contribution = Math.round(score * (weight / 100));
   const clampedScore = Math.max(0, Math.min(100, score));
@@ -218,28 +219,36 @@ const SkillTag: React.FC<SkillTagProps> = ({ skill, type }) => {
 };
 
 /* ─── Main Modal Component ─── */
-const ViewCandidateDetailsModal: React.FC<ViewCandidateDetailsModalProps> = ({ 
-  isOpen, 
-  onClose, 
-  candidate, 
-  onOpenInterview, 
+const ViewCandidateDetailsModal: React.FC<ViewCandidateDetailsModalProps> = ({
+  isOpen,
+  onClose,
+  candidate: initialCandidate,
+  onOpenInterview,
   onScheduleInterview,
-  onUpdateStatus 
+  onUpdateStatus
 }) => {
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<TabType>('overview');
 
-  const candidateAppId = candidate?.id;
-  const rawCandidateEmail = String(candidate?.email || candidate?.candidate_email || '').trim();
+  const candidateAppId = initialCandidate?.id;
+  const queryOpts = { refetchOnMountOrArgChange: true, refetchOnFocus: true };
+  const { data: fullApplication } = useGetApplicationByIdQuery(candidateAppId, {
+    skip: !isOpen || !candidateAppId,
+    ...queryOpts,
+  });
+
+  const resolvedEmailSource = fullApplication || initialCandidate;
+  const rawCandidateEmail = String(
+    resolvedEmailSource?.email || resolvedEmailSource?.candidate_email || ''
+  ).trim();
   const validCandidateEmail =
     rawCandidateEmail &&
-    rawCandidateEmail !== 'Not provided' &&
-    rawCandidateEmail !== 'N/A' &&
-    rawCandidateEmail.includes('@')
+      rawCandidateEmail !== 'Not provided' &&
+      rawCandidateEmail !== 'N/A' &&
+      rawCandidateEmail.includes('@')
       ? rawCandidateEmail
       : '';
 
-  const queryOpts = { refetchOnMountOrArgChange: true, refetchOnFocus: true };
   const { data: appInterviews = [], isLoading: isLoadingAppInterviews } = useGetApplicationInterviewsQuery(
     candidateAppId,
     { skip: !isOpen || !candidateAppId, ...queryOpts }
@@ -257,7 +266,9 @@ const ViewCandidateDetailsModal: React.FC<ViewCandidateDetailsModalProps> = ({
     { skip: !isOpen || !validCandidateEmail, ...queryOpts }
   );
 
-  if (!isOpen || !candidate) return null;
+  if (!isOpen || !initialCandidate) return null;
+
+  const candidate = fullApplication ? { ...initialCandidate, ...fullApplication } : initialCandidate;
 
   const allCandidateInterviews = mergeInterviewsById(appInterviews, emailInterviews);
   const upcomingInterviews = filterAndSortUpcomingInterviews(allCandidateInterviews);
@@ -705,7 +716,7 @@ const ViewCandidateDetailsModal: React.FC<ViewCandidateDetailsModalProps> = ({
       </Helmet>
 
       <div className="bg-white w-full max-w-6xl max-h-[96vh] sm:max-h-[92vh] rounded-2xl sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-250 border border-gray-100">
-        
+
         {/* ═══════ TOP HEADER ═══════ */}
         <header className="px-4 sm:px-6 py-3.5 border-b border-gray-100 flex flex-wrap justify-between items-center bg-white sticky top-0 z-20 shrink-0 gap-3">
           <div className="flex items-center gap-3 min-w-0">
@@ -750,8 +761,8 @@ const ViewCandidateDetailsModal: React.FC<ViewCandidateDetailsModalProps> = ({
               <span>Print</span>
             </button>
 
-            <button 
-              onClick={onClose} 
+            <button
+              onClick={onClose}
               aria-label="Close Analysis Modal"
               className="p-1.5 sm:p-2 hover:bg-gray-100 rounded-xl transition-colors text-gray-400 hover:text-gray-700 cursor-pointer"
             >
@@ -765,11 +776,10 @@ const ViewCandidateDetailsModal: React.FC<ViewCandidateDetailsModalProps> = ({
           <button
             type="button"
             onClick={() => setActiveTab('dossier')}
-            className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all whitespace-nowrap cursor-pointer ${
-              activeTab === 'dossier'
+            className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all whitespace-nowrap cursor-pointer ${activeTab === 'dossier'
                 ? 'bg-white text-[#D60041] shadow-xs'
                 : 'text-gray-600 hover:text-gray-900'
-            }`}
+              }`}
           >
             Profile
           </button>
@@ -778,17 +788,15 @@ const ViewCandidateDetailsModal: React.FC<ViewCandidateDetailsModalProps> = ({
               key={tab.id}
               type="button"
               onClick={() => setActiveTab(tab.id)}
-              className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all whitespace-nowrap flex items-center gap-1.5 cursor-pointer ${
-                activeTab === tab.id
+              className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all whitespace-nowrap flex items-center gap-1.5 cursor-pointer ${activeTab === tab.id
                   ? 'bg-white text-[#D60041] shadow-xs'
                   : 'text-gray-600 hover:text-gray-900'
-              }`}
+                }`}
             >
               <span>{tab.label}</span>
               {tab.count !== undefined && (
-                <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
-                  activeTab === tab.id ? 'bg-pink-50 text-[#D60041]' : 'bg-gray-200 text-gray-600'
-                }`}>
+                <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${activeTab === tab.id ? 'bg-pink-50 text-[#D60041]' : 'bg-gray-200 text-gray-600'
+                  }`}>
                   {tab.count}
                 </span>
               )}
@@ -798,11 +806,10 @@ const ViewCandidateDetailsModal: React.FC<ViewCandidateDetailsModalProps> = ({
 
         {/* ═══════ MAIN CONTENT BODY ═══════ */}
         <div className="flex flex-col md:flex-row flex-1 overflow-y-auto md:overflow-hidden min-h-0 bg-white">
-          
+
           {/* ─── LEFT DOSSIER SIDEBAR ─── */}
-          <aside className={`w-full md:w-[320px] bg-gradient-to-b from-slate-50/80 via-white to-slate-50/50 border-b md:border-b-0 md:border-r border-gray-200/80 p-5 sm:p-6 md:overflow-y-auto shrink-0 ${
-            activeTab === 'dossier' ? 'block' : 'hidden md:block'
-          }`}>
+          <aside className={`w-full md:w-[320px] bg-gradient-to-b from-slate-50/80 via-white to-slate-50/50 border-b md:border-b-0 md:border-r border-gray-200/80 p-5 sm:p-6 md:overflow-y-auto shrink-0 ${activeTab === 'dossier' ? 'block' : 'hidden md:block'
+            }`}>
             {/* Candidate Identity */}
             <div className="text-center mb-6">
               <div className="relative w-20 h-20 rounded-2xl overflow-hidden border-4 border-white shadow-md mx-auto mb-3 bg-pink-50">
@@ -843,47 +850,47 @@ const ViewCandidateDetailsModal: React.FC<ViewCandidateDetailsModalProps> = ({
                 <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Pillar Scoring Breakdown</span>
                 <span className="text-[10px] font-bold text-gray-500">Weight</span>
               </div>
-              
-              <PillarBar 
-                label="Skills Match" 
-                score={skillsScore} 
+
+              <PillarBar
+                label="Skills Match"
+                score={skillsScore}
                 weight={40}
-                color="text-blue-600" 
-                barColor="bg-blue-500" 
-                bgColor="bg-blue-50/50" 
-                borderColor="border-blue-100" 
-                icon={Zap} 
+                color="text-blue-600"
+                barColor="bg-blue-500"
+                bgColor="bg-blue-50/50"
+                borderColor="border-blue-100"
+                icon={Zap}
               />
-              <PillarBar 
-                label="Experience Fit" 
-                score={experienceScore} 
+              <PillarBar
+                label="Experience Fit"
+                score={experienceScore}
                 weight={40}
-                color="text-purple-600" 
-                barColor="bg-purple-500" 
-                bgColor="bg-purple-50/50" 
-                borderColor="border-purple-100" 
-                icon={Briefcase} 
+                color="text-purple-600"
+                barColor="bg-purple-500"
+                bgColor="bg-purple-50/50"
+                borderColor="border-purple-100"
+                icon={Briefcase}
               />
-              <PillarBar 
-                label="Education Level" 
-                score={educationScore} 
+              <PillarBar
+                label="Education Level"
+                score={educationScore}
                 weight={20}
-                color="text-amber-600" 
-                barColor="bg-amber-500" 
-                bgColor="bg-amber-50/50" 
-                borderColor="border-amber-100" 
-                icon={GraduationCap} 
+                color="text-amber-600"
+                barColor="bg-amber-500"
+                bgColor="bg-amber-50/50"
+                borderColor="border-amber-100"
+                icon={GraduationCap}
               />
               {certificationsScore !== undefined && certificationsScore > 0 && (
-                <PillarBar 
-                  label="Certifications" 
-                  score={certificationsScore} 
+                <PillarBar
+                  label="Certifications"
+                  score={certificationsScore}
                   weight={10}
-                  color="text-rose-600" 
-                  barColor="bg-rose-500" 
-                  bgColor="bg-rose-50/50" 
-                  borderColor="border-rose-100" 
-                  icon={Award} 
+                  color="text-rose-600"
+                  barColor="bg-rose-500"
+                  bgColor="bg-rose-50/50"
+                  borderColor="border-rose-100"
+                  icon={Award}
                 />
               )}
             </div>
@@ -891,7 +898,7 @@ const ViewCandidateDetailsModal: React.FC<ViewCandidateDetailsModalProps> = ({
             {/* Candidate Contact Snapshot */}
             <div className="p-3.5 bg-white rounded-2xl border border-gray-100 shadow-2xs space-y-2.5 mb-6 text-xs text-gray-600">
               <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1">Contact & Dossier</p>
-              
+
               <div className="flex items-center gap-2.5">
                 <MapPin size={14} className="text-gray-400 shrink-0" />
                 <span className="font-medium truncate">{candidateLocation}</span>
@@ -903,7 +910,7 @@ const ViewCandidateDetailsModal: React.FC<ViewCandidateDetailsModalProps> = ({
                   <span className="font-medium truncate text-gray-800">{candidateEmail}</span>
                 </div>
                 {candidateEmail && candidateEmail !== "Not provided" && (
-                  <button 
+                  <button
                     onClick={() => handleCopy(candidateEmail, 'email')}
                     title="Copy Email"
                     className="p-1 hover:bg-gray-100 rounded text-gray-400 hover:text-gray-700 transition-colors shrink-0 ml-1 cursor-pointer"
@@ -919,7 +926,7 @@ const ViewCandidateDetailsModal: React.FC<ViewCandidateDetailsModalProps> = ({
                   <span className="font-medium truncate text-gray-800">{candidatePhone}</span>
                 </div>
                 {candidatePhone && candidatePhone !== "Not provided" && (
-                  <button 
+                  <button
                     onClick={() => handleCopy(candidatePhone, 'phone')}
                     title="Copy Phone"
                     className="p-1 hover:bg-gray-100 rounded text-gray-400 hover:text-gray-700 transition-colors shrink-0 ml-1 cursor-pointer"
@@ -954,7 +961,7 @@ const ViewCandidateDetailsModal: React.FC<ViewCandidateDetailsModalProps> = ({
               )}
 
               {candidate.resumeUrl ? (
-                <button 
+                <button
                   type="button"
                   onClick={() => {
                     const fullUrl = getAssetUrl(candidate.resumeUrl);
@@ -972,7 +979,7 @@ const ViewCandidateDetailsModal: React.FC<ViewCandidateDetailsModalProps> = ({
                   <span>Download Resume</span>
                 </button>
               ) : (
-                <button 
+                <button
                   disabled
                   className="w-full py-2.5 px-4 bg-gray-100 text-gray-400 rounded-xl text-xs font-bold cursor-not-allowed flex items-center justify-center gap-2 border border-gray-200"
                 >
@@ -985,7 +992,7 @@ const ViewCandidateDetailsModal: React.FC<ViewCandidateDetailsModalProps> = ({
 
           {/* ─── RIGHT CONTENT AREA ─── */}
           <main className="flex-1 flex flex-col min-w-0 bg-white">
-            
+
             {/* Desktop Navigation Tabs */}
             <div className="hidden md:flex border-b border-gray-200 bg-gray-50/60 px-6 pt-3 gap-2 shrink-0 overflow-x-auto scrollbar-none">
               {tabs.map((tab) => {
@@ -996,18 +1003,16 @@ const ViewCandidateDetailsModal: React.FC<ViewCandidateDetailsModalProps> = ({
                     key={tab.id}
                     type="button"
                     onClick={() => setActiveTab(tab.id)}
-                    className={`pb-3 px-3 text-xs font-bold flex items-center gap-2 transition-all relative cursor-pointer border-b-2 ${
-                      isActive
+                    className={`pb-3 px-3 text-xs font-bold flex items-center gap-2 transition-all relative cursor-pointer border-b-2 ${isActive
                         ? 'border-[#D60041] text-[#D60041]'
                         : 'border-transparent text-gray-500 hover:text-gray-800 hover:border-gray-300'
-                    }`}
+                      }`}
                   >
                     <Icon size={14} />
                     <span>{tab.label}</span>
                     {tab.count !== undefined && (
-                      <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
-                        isActive ? 'bg-pink-100 text-[#D60041]' : 'bg-gray-200 text-gray-600'
-                      }`}>
+                      <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${isActive ? 'bg-pink-100 text-[#D60041]' : 'bg-gray-200 text-gray-600'
+                        }`}>
                         {tab.count}
                       </span>
                     )}
@@ -1022,7 +1027,7 @@ const ViewCandidateDetailsModal: React.FC<ViewCandidateDetailsModalProps> = ({
               {/* ══════════ TAB 1: EXECUTIVE OVERVIEW ══════════ */}
               {(activeTab === 'overview' || activeTab === 'all') && (
                 <div className="space-y-6 animate-in fade-in duration-150">
-                  
+
                   {/* Hero Match Verdict Banner */}
                   <div className="bg-gradient-to-r from-slate-900 to-slate-800 text-white p-5 rounded-2xl shadow-md border border-slate-700/50">
                     <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
@@ -1306,11 +1311,10 @@ const ViewCandidateDetailsModal: React.FC<ViewCandidateDetailsModalProps> = ({
                         return (
                           <span
                             key={idx}
-                            className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition-colors ${
-                              isMatched
+                            className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition-colors ${isMatched
                                 ? 'bg-emerald-50 text-emerald-800 border-emerald-200 font-bold'
                                 : 'bg-white text-gray-700 border-gray-200'
-                            }`}
+                              }`}
                           >
                             {skill}
                           </span>
@@ -1372,7 +1376,7 @@ const ViewCandidateDetailsModal: React.FC<ViewCandidateDetailsModalProps> = ({
                         const durationFormatted = formatMonths(exp.duration_months);
 
                         return (
-                          <div 
+                          <div
                             key={idx}
                             className="bg-white rounded-2xl border border-gray-200 p-5 shadow-2xs hover:border-purple-200 hover:shadow-xs transition-all relative pl-6"
                           >
@@ -1512,7 +1516,7 @@ const ViewCandidateDetailsModal: React.FC<ViewCandidateDetailsModalProps> = ({
                         const yearsDisplay = [edu.start_year, edu.end_year].filter(Boolean).join(' – ');
 
                         return (
-                          <div 
+                          <div
                             key={idx}
                             className="bg-white p-4 sm:p-5 rounded-2xl border border-gray-200 shadow-2xs hover:border-amber-200 transition-all"
                           >
@@ -1536,7 +1540,7 @@ const ViewCandidateDetailsModal: React.FC<ViewCandidateDetailsModalProps> = ({
                             </div>
 
                             <h5 className="text-sm font-bold text-gray-900">{displayDegree}</h5>
-                            
+
                             {edu.major_or_specialization && (
                               <p className="text-xs text-amber-700 font-medium mt-0.5">
                                 Major / Specialization: <span className="font-semibold">{edu.major_or_specialization}</span>
@@ -1582,7 +1586,7 @@ const ViewCandidateDetailsModal: React.FC<ViewCandidateDetailsModalProps> = ({
                         {extractedCertifications.map((c: any, idx: number) => {
                           const catBadge = getCertCategoryBadge(c.category);
                           return (
-                            <div 
+                            <div
                               key={idx}
                               className="bg-white p-4 rounded-xl border border-gray-200 shadow-2xs hover:border-rose-200 transition-colors"
                             >
@@ -1698,9 +1702,9 @@ const ViewCandidateDetailsModal: React.FC<ViewCandidateDetailsModalProps> = ({
               </div>
 
               <div className="flex items-center gap-2.5 w-full sm:w-auto justify-end">
-                <button 
+                <button
                   type="button"
-                  onClick={onClose} 
+                  onClick={onClose}
                   className="px-4 py-2 bg-white border border-gray-200 text-gray-700 rounded-xl text-xs font-bold hover:bg-gray-100 transition-all cursor-pointer"
                 >
                   Close

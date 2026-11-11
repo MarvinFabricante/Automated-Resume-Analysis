@@ -1161,5 +1161,105 @@ async def test_voice_notification_stop_retries_after_confirm_attempt_2_controlle
     assert attempts_in_records == [2, 1]  # Ordered desc
 
 
+@pytest.mark.asyncio
+async def test_calendar_feed_and_candidate_call_logs_endpoints(client, db_session):
+    """Verify upcoming interviews in calendar feed and call logs for candidate profile endpoints."""
+    from app.utils.auth import create_access_token
+
+    hr = User(
+        email="hr_calendar_calls@mariwasa.com",
+        password="pwd",
+        role="HR",
+        fullname="HR Calendar Reviewer",
+    )
+    db_session.add(hr)
+    await db_session.flush()
+
+    job = JobDescription(
+        job_id="JOB-CAL-LOGS-1",
+        job_title="Ceramics Production Lead",
+        department="Operations",
+        job_type=JobType.FULL_TIME,
+        location="Laguna",
+        description="Lead production line",
+    )
+    db_session.add(job)
+    await db_session.flush()
+
+    app = JobApplication(
+        job_id=job.id,
+        candidate_name="Liza Soberano",
+        candidate_email="liza.cal.logs@example.com",
+        phone="+639175551234",
+        job_title="Ceramics Production Lead",
+        status="REVIEWED",
+    )
+    db_session.add(app)
+    await db_session.flush()
+
+    upcoming_start = (datetime.utcnow() + timedelta(days=2)).replace(hour=10, minute=0, second=0, microsecond=0)
+    upcoming_end = upcoming_start + timedelta(hours=1)
+    interview = Interview(
+        job_application_id=app.id,
+        interviewer_id=hr.id,
+        title="Production Lead Panel Interview",
+        start_time=upcoming_start,
+        end_time=upcoming_end,
+        status="SCHEDULED",
+        call_status="PENDING",
+        call_attempts=0,
+    )
+    db_session.add(interview)
+    await db_session.commit()
+    await db_session.refresh(interview)
+
+    headers = {"Authorization": f"Bearer {create_access_token({'sub': hr.email, 'id': hr.id, 'role': 'HR'})}"}
+
+    # Simulate an outbound voice call confirmation so call log + interview state are recorded
+    sim_res = await client.post(
+        f"/ai-caller/interview/{interview.id}/simulate",
+        json={"outcome": "CONFIRMED", "spoken_phrase": "Yes, I will attend tomorrow.", "language": "en"},
+        headers=headers,
+    )
+    assert sim_res.status_code == 200
+
+    # 1. Calendar feed shows the upcoming interview and call attempts
+    feed_res = await client.get("/interviews/calendar-feed", headers=headers)
+    assert feed_res.status_code == 200
+    feed_interviews = feed_res.json().get("interviews", [])
+    matched_feed = [iv for iv in feed_interviews if iv["id"] == interview.id]
+    assert len(matched_feed) == 1
+    assert matched_feed[0]["candidate_name"] == "Liza Soberano"
+    assert matched_feed[0]["call_attempts"] == 1
+    assert matched_feed[0]["call_status"] == "CONFIRMED"
+    assert len(matched_feed[0]["call_records"]) == 1
+
+    # 2. Candidate profile endpoints (by application ID and case-insensitive email) return upcoming interview + call records
+    app_iv_res = await client.get(f"/interviews/application/{app.id}", headers=headers)
+    assert app_iv_res.status_code == 200
+    assert len(app_iv_res.json()) == 1
+    assert len(app_iv_res.json()[0]["call_records"]) == 1
+
+    cand_iv_res = await client.get("/interviews/candidate/LIZA.CAL.LOGS@EXAMPLE.COM", headers=headers)
+    assert cand_iv_res.status_code == 200
+    assert len(cand_iv_res.json()) == 1
+    assert cand_iv_res.json()[0]["id"] == interview.id
+
+    # 3. Dedicated candidate profile call log endpoints return full call history
+    app_logs_res = await client.get(f"/ai-caller/application/{app.id}/logs", headers=headers)
+    assert app_logs_res.status_code == 200
+    app_logs = app_logs_res.json()
+    assert len(app_logs) == 1
+    assert app_logs[0]["interview_title"] == "Production Lead Panel Interview"
+    assert app_logs[0]["extracted_intent"] == "CONFIRMED"
+    assert app_logs[0]["candidate_verbal_response"] == "Yes, I will attend tomorrow."
+
+    cand_logs_res = await client.get("/ai-caller/candidate/LIZA.CAL.LOGS@EXAMPLE.COM/logs", headers=headers)
+    assert cand_logs_res.status_code == 200
+    cand_logs = cand_logs_res.json()
+    assert len(cand_logs) == 1
+    assert cand_logs[0]["id"] == app_logs[0]["id"]
+
+
 
 
