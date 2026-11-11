@@ -770,7 +770,11 @@ const CandidateSmartUpload: React.FC = () => {
                               <div className="flex items-center gap-2 self-start sm:self-auto">
                                 <span className="px-3 py-1 bg-slate-900 text-white text-[11px] font-bold rounded-xl flex items-center gap-1">
                                   <Clock size={12} />
-                                  {extractedData.years_experience ? `${extractedData.years_experience} Years Exp` : 'Experience Recorded'}
+                                  {extractedData.years_experience
+                                    ? `${extractedData.years_experience} Years Exp`
+                                    : extractedData.needs_clarification
+                                    ? 'Clarification Needed'
+                                    : 'Experience Recorded'}
                                 </span>
                               </div>
                             </div>

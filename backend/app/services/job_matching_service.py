@@ -1006,6 +1006,153 @@ def _generate_nlp_skills_explanation(skills_result: dict) -> str:
     return " ".join(parts)
 
 
+_MFG_JOB_TITLE_RE = re.compile(
+    r'\b(?:manufactur\w*|production|factory|plant|operator|machin\w*|assembly|assembl\w*|'
+    r'warehouse|kiln|glazing|tile|ceramic|welding|smaw|tig|fabrication|forklift|industrial)\b',
+    re.I,
+)
+
+
+def build_job_specific_questions(
+    resume_data: dict,
+    job,
+    skills_result: dict,
+    experience_result: dict,
+    education_result: dict,
+    certs_result: dict,
+    relevance_result: dict,
+) -> list[dict]:
+    """
+    Generate follow-up clarification questions tailored to the target job
+    requisition (`job_title`, `department`, missing skills, certifications, experience).
+    """
+    job_id = str(getattr(job, "job_id", None) or getattr(job, "id", None) or "job")
+    job_slug = re.sub(r'[^a-zA-Z0-9]+', '_', job_id).strip('_').lower() or "job"
+    job_title = (getattr(job, "job_title", None) or getattr(job, "title", None) or "this position").strip()
+    department = (getattr(job, "department", None) or "").strip()
+    skills_req = (getattr(job, "skills_requirements", None) or "").strip()
+    job_desc = (getattr(job, "description", None) or "").strip()
+    job_text = f"{job_title} {department} {job_desc}"
+
+    questions: list[dict] = []
+
+    req_years = int(experience_result.get("required_years", 0) or 0)
+    cand_years = int(experience_result.get("candidate_years", 0) or 0)
+    rel_score = float(relevance_result.get("relevance_score", 0.0) or 0.0)
+    rel_count = int(relevance_result.get("relevant_count", 0) or 0)
+    is_mfg_job = bool(_MFG_JOB_TITLE_RE.search(job_text))
+
+    if cand_years <= 0 or (req_years > 0 and cand_years < req_years) or rel_count == 0 or rel_score < 0.7:
+        if is_mfg_job:
+            q_text = f"How many years of manufacturing experience do you have for the {job_title} role?"
+        elif department:
+            q_text = f"How many years of {job_title} ({department}) experience do you have?"
+        else:
+            q_text = f"How many years of {job_title} experience do you have?"
+        if req_years > 0:
+            q_text += f" (Target requirement: {req_years}+ years)"
+        questions.append({
+            "id": f"clarify_{job_slug}_years_experience",
+            "field": "years_experience",
+            "job_id": job_id,
+            "job_title": job_title,
+            "question": q_text,
+            "type": "number",
+            "placeholder": "e.g. 2",
+            "required": cand_years <= 0,
+            "domain": department or ("Manufacturing" if is_mfg_job else "General"),
+            "reason": f"Clarifying direct experience duration for {job_title}.",
+        })
+
+    missing_skills = [s.title() for s in (skills_result.get("missing") or []) if s][:5]
+    matched_skills = [s.title() for s in (skills_result.get("matched") or []) if s][:5]
+    if missing_skills:
+        questions.append({
+            "id": f"clarify_{job_slug}_skills",
+            "field": "skills",
+            "job_id": job_id,
+            "job_title": job_title,
+            "question": f"For {job_title}, which of these required skills have you used: {', '.join(missing_skills)}?",
+            "type": "text",
+            "placeholder": f"e.g. {', '.join(missing_skills[:3])}",
+            "required": False,
+            "domain": department or "General",
+            "reason": f"Required skills for {job_title} not explicitly found in resume.",
+        })
+    elif matched_skills:
+        questions.append({
+            "id": f"clarify_{job_slug}_skills",
+            "field": "skills",
+            "job_id": job_id,
+            "job_title": job_title,
+            "question": f"For {job_title}, please highlight your hands-on experience with {', '.join(matched_skills[:3])}.",
+            "type": "text",
+            "placeholder": f"Describe projects or tasks using {', '.join(matched_skills[:2])}",
+            "required": False,
+            "domain": department or "General",
+            "reason": f"Verifying practical proficiency for {job_title}.",
+        })
+    elif skills_req:
+        questions.append({
+            "id": f"clarify_{job_slug}_skills",
+            "field": "skills",
+            "job_id": job_id,
+            "job_title": job_title,
+            "question": f"Which key tools or competencies from {job_title} ({skills_req[:80]}) have you practiced?",
+            "type": "text",
+            "placeholder": "List relevant tools or processes",
+            "required": False,
+            "domain": department or "General",
+            "reason": f"Aligning candidate competencies with {job_title}.",
+        })
+
+    req_certs = (certs_result.get("required_certifications") or "").strip()
+    if req_certs and req_certs.lower() != "none" and float(certs_result.get("score", 1.0) or 0.0) < 1.0:
+        questions.append({
+            "id": f"clarify_{job_slug}_certifications",
+            "field": "certifications",
+            "job_id": job_id,
+            "job_title": job_title,
+            "question": f"For {job_title}, do you currently hold any required certifications/licenses ({req_certs})?",
+            "type": "text",
+            "placeholder": f"e.g. {req_certs}",
+            "required": False,
+            "domain": department or "General",
+            "reason": f"{job_title} lists preferred or required certifications.",
+        })
+
+    low_job = job_text.lower()
+    if re.search(r'\b(?:quality|qc|qa|inspection|audit)\b', low_job):
+        fit_q = f"What quality inspection standards, defect checks, or testing instruments have you used relevant to {job_title}?"
+    elif re.search(r'\b(?:maint|technician|mechanic|electric|engineer)\b', low_job):
+        fit_q = f"What equipment troubleshooting, preventive maintenance, or engineering systems have you handled for {job_title}?"
+    elif is_mfg_job:
+        fit_q = f"What production lines, factory machinery, or shift operations have you handled relevant to {job_title}?"
+    elif re.search(r'\b(?:hr|human\s+resource|recruit|payroll)\b', low_job):
+        fit_q = f"What HR processes (recruitment, timekeeping, payroll, or DOLE compliance) have you handled for {job_title}?"
+    elif re.search(r'\b(?:account|finance|bookkeep|audit|tax)\b', low_job):
+        fit_q = f"What accounting systems, tax compliance filings, or financial reporting tasks have you managed for {job_title}?"
+    elif re.search(r'\b(?:software|developer|programmer|it|data|network|cloud|backend|frontend)\b', low_job):
+        fit_q = f"What systems, codebases, or production deployments have you delivered relevant to {job_title}?"
+    else:
+        fit_q = f"What daily responsibilities or accomplishments best qualify you for {job_title} ({department or 'this role'})?"
+
+    questions.append({
+        "id": f"clarify_{job_slug}_role_fit",
+        "field": "relevance",
+        "job_id": job_id,
+        "job_title": job_title,
+        "question": fit_q,
+        "type": "text",
+        "placeholder": f"Describe experience relevant to {job_title}",
+        "required": False,
+        "domain": department or "General",
+        "reason": f"Role-specific clarification for {job_title}.",
+    })
+
+    return questions
+
+
 def calculate_match_score(resume_data: dict, job, use_ai: bool = False, matching_config: Optional[dict] = None) -> dict:
     """
     Calculate the overall match score between a parsed resume and a job.
@@ -1239,6 +1386,16 @@ def calculate_match_score(resume_data: dict, job, use_ai: bool = False, matching
     except Exception as ml_err:
         logger.debug(f"Notice during ML scoring or live prediction logging: {ml_err}")
 
+    followup_questions = build_job_specific_questions(
+        resume_data=resume_data,
+        job=job,
+        skills_result=skills_result,
+        experience_result=experience_result,
+        education_result=education_result,
+        certs_result=certs_result,
+        relevance_result=relevance_result,
+    )
+
     return {
         "job_id": job.get("job_id") if isinstance(job, dict) else getattr(job, "job_id", None),
         "job_title": job.get("job_title", "Unknown Job") if isinstance(job, dict) else getattr(job, "job_title", "Unknown Job"),
@@ -1291,6 +1448,8 @@ def calculate_match_score(resume_data: dict, job, use_ai: bool = False, matching
         "score_explanation": score_explanation,
         "meets_threshold": meets_threshold,
         "minimum_match_score": min_score,
+        "followup_questions": followup_questions,
+        "clarification_questions": followup_questions,
         "applied_weights": {
             "skills": pct_skills,
             "experience": pct_exp,

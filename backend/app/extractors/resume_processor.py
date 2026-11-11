@@ -77,6 +77,11 @@ def process_resume(file_path: str, file_extension: str) -> dict:
     extracted_data["missing_fields"] = extracted_data.get("missing_fields", [])
     extracted_data["completeness_flags"] = extracted_data.get("completeness_flags", {})
     extracted_data["completeness_score"] = extracted_data.get("completeness_score", 100.0 if not is_incomplete else 0.0)
+    extracted_data["is_vague"] = extracted_data.get("is_vague", False)
+    extracted_data["needs_clarification"] = extracted_data.get("needs_clarification", False)
+    extracted_data["clarification_reasons"] = extracted_data.get("clarification_reasons", [])
+    extracted_data["clarification_questions"] = extracted_data.get("clarification_questions", [])
+    extracted_data["followup_questions"] = extracted_data.get("followup_questions", extracted_data["clarification_questions"])
 
     # Ensure list representations for array consumers
     if "skills_list" in extracted_data and not isinstance(extracted_data.get("skills"), list):

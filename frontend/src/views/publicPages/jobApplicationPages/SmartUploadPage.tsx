@@ -337,21 +337,39 @@ const SmartUploadPage: React.FC = () => {
 
                 {isComplete && (
                   <div className="space-y-8 animate-in fade-in zoom-in-95 duration-500">
-                    {extractedData?.is_incomplete ? (
+                    {(extractedData?.is_incomplete || extractedData?.needs_clarification) ? (
                       <div className="bg-amber-50 border border-amber-200 p-8 rounded-[32px] flex items-center gap-6 shadow-sm">
                         <div className="bg-white text-amber-500 p-4 rounded-2xl shadow-md border border-amber-100 shrink-0">
                           <AlertTriangle size={32} />
                         </div>
                         <div>
-                          <div className="flex items-center gap-2 mb-1">
+                          <div className="flex items-center gap-2 mb-1 flex-wrap">
                             <h4 className="text-xl font-black text-slate-900">Resume Parsed</h4>
-                            <span className="px-2.5 py-0.5 bg-amber-100 text-amber-800 rounded-full text-[10px] font-black uppercase tracking-wider">
-                              Flagged Incomplete
-                            </span>
+                            {extractedData?.is_incomplete && (
+                              <span className="px-2.5 py-0.5 bg-amber-100 text-amber-800 rounded-full text-[10px] font-black uppercase tracking-wider">
+                                Flagged Incomplete
+                              </span>
+                            )}
+                            {extractedData?.needs_clarification && (
+                              <span className="px-2.5 py-0.5 bg-rose-100 text-[#D60041] rounded-full text-[10px] font-black uppercase tracking-wider">
+                                Clarification Needed
+                              </span>
+                            )}
                           </div>
-                          <p className="text-slate-600 font-medium">
-                            Missing section(s): <span className="font-bold text-amber-700">{extractedData?.missing_sections?.join(', ') || 'Required section'}</span>. Missing section left empty.
-                          </p>
+                          {extractedData?.is_incomplete && (
+                            <p className="text-slate-600 font-medium">
+                              Missing section(s): <span className="font-bold text-amber-700">{extractedData?.missing_sections?.join(', ') || 'Required section'}</span>. Missing section left empty.
+                            </p>
+                          )}
+                          {extractedData?.needs_clarification && (
+                            <p className="text-slate-600 font-medium mt-1">
+                              Follow-up questions will appear on the applicant form (e.g.,{' '}
+                              <span className="font-bold text-amber-800">
+                                {extractedData?.clarification_questions?.[0]?.question || 'years of manufacturing experience'}
+                              </span>
+                              ).
+                            </p>
+                          )}
                         </div>
                       </div>
                     ) : (

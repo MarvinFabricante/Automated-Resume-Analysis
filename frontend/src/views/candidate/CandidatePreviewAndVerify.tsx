@@ -178,6 +178,8 @@ const CandidatePreviewAndVerify: React.FC = () => {
           education_entries: extractedData.education_entries
         },
         formData: state?.formData,
+        clarificationQuestions: state?.clarificationQuestions || activeData?.clarification_questions,
+        clarificationAnswers: state?.clarificationAnswers || activeData?.clarification_answers,
         fileName: state?.fileName,
         job: state?.job,
         matchData: state?.matchData,
