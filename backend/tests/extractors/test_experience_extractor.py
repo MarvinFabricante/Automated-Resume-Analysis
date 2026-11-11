@@ -220,3 +220,41 @@ def test_content_extractor_structured_experience():
     assert isinstance(parsed["work_experiences"], list)
     assert len(parsed["work_experiences"]) == 3
     assert parsed["total_experience_months"] > 0
+
+
+def test_r1_production_operator_experience_and_institution():
+    """
+    Validates R1 (4 yrs Production Operator): job title, employer, dates,
+    computed years (4 years / 48 months), and clean institution extraction.
+    """
+    r1_text = """
+JUAN DELA CRUZ
+juan.delacruz@gmail.com | 09171234567 | Laguna, Philippines
+
+WORK EXPERIENCE
+Production Operator
+Luzon Plastics Industries Inc. - Laguna
+2020 - 2024 (4 years)
+Machine setup, routine preventive maintenance, and line clearance.
+
+EDUCATION
+Technical-Vocational Track (Electronics)
+TESDA Institute
+2018 - 2020
+
+SKILLS
+ISO 9001 Quality Standards, Preventive Maintenance, Machine Maintenance, Safety Training
+"""
+    parsed = extract_content(r1_text)
+    assert parsed["job_title"] == "Production Operator"
+    assert parsed["company"] == "Luzon Plastics Industries Inc."
+    assert parsed["years_experience"] == 4
+    assert parsed["total_experience_months"] == 48
+    assert len(parsed["work_experiences"]) == 1
+    exp = parsed["work_experiences"][0]
+    assert exp["start_date"] == "2020-01"
+    assert exp["end_date"] == "2024-12"
+    assert exp["duration_months"] == 48
+    assert parsed["institution"] == "TESDA Institute"
+    assert parsed["college"] == "TESDA Institute"
+    assert parsed["is_incomplete"] is False

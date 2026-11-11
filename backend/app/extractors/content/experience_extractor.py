@@ -39,7 +39,7 @@ try:
 except ImportError:
     dateparser = None
 
-from app.extractors.content.section_parser import split_into_sections
+from app.extractors.content.section_parser import split_into_sections, detect_section_label
 
 
 # ─── 1. Philippine Job Taxonomy & Canonical Map ──────────────────────────────
@@ -484,6 +484,14 @@ def _parse_date_and_duration(text: str) -> Tuple[Optional[str], Optional[str], i
     extra_text = text[:match.start()] + " " + text[match.end():]
     extra_text = re.sub(r'[\s\-–—()|]+', ' ', extra_text).strip()
 
+    # Honor explicit year duration annotations on year-only ranges like "2020 - 2024 (4 years)"
+    if re.fullmatch(r'\d{4}', raw_start.strip()) and re.fullmatch(r'\d{4}', raw_end.strip()) and extra_text:
+        yr_dur_m = re.search(r'\b(\d+(?:\.\d+)?)\s*(?:years?|yrs?)\b', extra_text, re.I)
+        if yr_dur_m:
+            explicit_yrs = float(yr_dur_m.group(1))
+            if 0 < explicit_yrs < 50:
+                duration = max(1, round(explicit_yrs * 12))
+
     return start_iso, end_iso, duration, extra_text
 
 
@@ -734,7 +742,7 @@ def _is_section_header(line: str) -> bool:
         "CHARACTER REFERENCES", "REFERENCES", "PERSONAL DATA", "SEMINARS/TRAININGS",
         "TRAINING", "SEMINARS", "PERSONAL INFORMATION", "AFFILIATIONS", "AWARDS"
     ]
-    return clean in headers or any(clean.startswith(h + ":") for h in headers)
+    return clean in headers or any(clean.startswith(h + ":") for h in headers) or detect_section_label(line) is not None
 
 
 def _extract_experience_blocks(text: str) -> List[str]:
@@ -768,14 +776,23 @@ def _extract_experience_blocks(text: str) -> List[str]:
 
     for line in lines:
         cleaned = re.sub(r'^[\s\-–—=_*#•►:]+|[\s\-–—=_*#•►:]+$', '', line.strip()).upper()
+        sec_label = detect_section_label(line)
 
-        if any(cleaned == h or cleaned.startswith(h + ":") for h in exp_headers):
+        if any(cleaned == h or cleaned.startswith(h + ":") for h in exp_headers) or sec_label == "EXPERIENCE":
             if current_block:
                 extracted_blocks.append('\n'.join(current_block))
                 current_block = []
             in_exp = True
+            if not any(cleaned == h or cleaned.startswith(h + ":") for h in exp_headers):
+                for delim in (':', '|'):
+                    d_idx = line.find(delim)
+                    if d_idx > 0:
+                        inline_exp = line[d_idx + 1:].strip()
+                        if inline_exp:
+                            current_block.append(inline_exp)
+                        break
             continue
-        elif any(cleaned == h or cleaned.startswith(h + ":") for h in stop_headers):
+        elif any(cleaned == h or cleaned.startswith(h + ":") for h in stop_headers) or (sec_label is not None and sec_label != "EXPERIENCE"):
             if in_exp and current_block:
                 extracted_blocks.append('\n'.join(current_block))
                 current_block = []
@@ -797,6 +814,7 @@ def _extract_experience_blocks(text: str) -> List[str]:
         any(re.sub(r'^[\s\-–—=_*#•►:]+|[\s\-–—=_*#•►:]+$', '', l.strip()).upper() == sh or 
             re.sub(r'^[\s\-–—=_*#•►:]+|[\s\-–—=_*#•►:]+$', '', l.strip()).upper().startswith(sh + ":")
             for sh in stop_headers)
+        or detect_section_label(l) not in (None, "EXPERIENCE")
         for l in lines
     )
     if has_other_section_headers:
@@ -1129,11 +1147,11 @@ def extract_years_experience(text: str) -> int:
         return 0
 
     explicit_patterns = [
-        r'(\d+)\+?\s*years?\s+(?:of\s+)?(?:experience|exp|work|expertise)',
-        r'(?:over|more\s+than|at\s+least)\s+(\d+)\s*years?',
-        r'(\d+)\+?\s*years?\s+(?:in\s+(?:the\s+)?(?:industry|field|practice|IT|tech|software))',
-        r'(\d+)\+?\s*years?\s+(?:as\s+(?:a\s+|an\s+)?)',
-        r'(\d+)\+?\s*years?\s+(?:of\s+)?(?:professional|related|relevant)\s+(?:experience|work)',
+        r'(\d+)\+?\s*(?:years?|yrs?)\s+(?:of\s+)?(?:experience|exp|work|expertise)',
+        r'(?:over|more\s+than|at\s+least)\s+(\d+)\s*(?:years?|yrs?)',
+        r'(\d+)\+?\s*(?:years?|yrs?)\s+(?:in\s+(?:the\s+)?(?:industry|field|practice|IT|tech|software))',
+        r'(\d+)\+?\s*(?:years?|yrs?)\s+(?:as\s+(?:a\s+|an\s+)?)',
+        r'(\d+)\+?\s*(?:years?|yrs?)\s+(?:of\s+)?(?:professional|related|relevant)\s+(?:experience|work)',
     ]
     for pattern in explicit_patterns:
         matches = re.findall(pattern, text, re.IGNORECASE)

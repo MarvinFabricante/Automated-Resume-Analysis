@@ -44,7 +44,7 @@ if backend_dir not in sys.path:
     sys.path.insert(0, backend_dir)
 
 from app.extractors.nlp.nlp_engine import get_doc, extract_advanced_education
-from app.extractors.content.section_parser import split_into_sections
+from app.extractors.content.section_parser import split_into_sections, detect_section_label
 
 
 # ─── 1. Philippine Education Taxonomy & Degree Map ────────────────────────────
@@ -52,6 +52,7 @@ from app.extractors.content.section_parser import split_into_sections
 _PHILIPPINE_DEGREE_MAP: Dict[str, str] = {
     # ── Information Technology & Computing
     "BSIT": "Bachelor of Science in Information Technology",
+    "BS IT": "Bachelor of Science in Information Technology",
     "B.S.I.T.": "Bachelor of Science in Information Technology",
     "BS INFORMATION TECHNOLOGY": "Bachelor of Science in Information Technology",
     "B.S. INFORMATION TECHNOLOGY": "Bachelor of Science in Information Technology",
@@ -462,20 +463,73 @@ def _extract_honors(text: str) -> List[str]:
     return honors
 
 
-def _is_invalid_institution(name: str) -> bool:
-    if not name or len(name) < 3:
+_SCHOOL_HINT_WORDS = (
+    "training center", "institute", "college", "colleges", "university",
+    "school", "academy", "polytechnic", "campus", "universidad", "colegio",
+    "deped", "tesda",
+)
+
+
+def _has_school_keyword(text: str) -> bool:
+    lower = text.lower()
+    if any(w in lower for w in _SCHOOL_HINT_WORDS):
         return True
-    lower = name.lower()
-    if '@' in lower or re.search(r'\b(?:\+?63|09|\d{3,}[-\s]?\d{3,})\b', lower):
+    return any(re.search(rf'(?<!\w){re.escape(ks.lower())}(?!\w)', lower) for ks in _KNOWN_PH_INSTITUTIONS)
+
+
+def _is_skills_text(text: str) -> bool:
+    """Detect whether a line represents skills/competencies rather than an academic school."""
+    lower = text.lower().strip()
+    if not lower or _has_school_keyword(text):
+        return False
+    try:
+        from app.extractors.content.skills_extractor import COMMON_SKILLS, extract_skills_list
+        if text.upper().strip() in COMMON_SKILLS:
+            return True
+        if ',' in text or '|' in text or ';' in text or ' and ' in lower:
+            if extract_skills_list(text):
+                return True
+        extracted = extract_skills_list(text)
+        if extracted:
+            # If any extracted skill matches a substantial portion of the text without school keywords
+            return True
+    except Exception:
+        pass
+    return False
+
+
+def _is_invalid_institution(name: str) -> bool:
+    if not name or len(name.strip()) < 3:
+        return True
+    clean = name.strip()
+    lower = clean.lower()
+    if lower in {"not specified", "none", "n/a", "na", "not applicable"}:
+        return True
+    if clean.startswith(('•', '-', '*', '▪', '►', '✓')):
+        return True
+    no_years_lower = re.sub(r'\b(?:19|20)\d{2}\s*[-–—]\s*(?:19|20)\d{2}\b', '', lower)
+    if '@' in lower or re.search(r'\b(?:\+?63\d{7,}|09\d{8,}|\d{3,}[-\s]\d{4,})\b', no_years_lower):
+        return True
+    if detect_section_label(clean) is not None:
         return True
     if re.search(r'\b(?:\d+(?:st|nd|rd|th)?|first|second|third|fourth)?\s*year\s+college\b', lower):
         return True
     if re.search(r'\bcollege\s+(?:level|undergrad(?:uate)?)\b', lower):
         return True
-    if any(lower == w or lower.startswith(w + " ") for w in ["grade", "level", "semester", "strand", "academic", "role:", "technologies:", "tech stack:"]):
+    if any(lower == w or lower.startswith(w + " ") for w in ["grade", "level", "semester", "strand", "academic", "role:", "technologies:", "tech stack:", "skills:", "duties:", "responsibilities:"]):
         return True
     if "hotel and restaurant management" in lower or "information technology" in lower:
         return True
+
+    has_school_word = _has_school_keyword(clean)
+    if not has_school_word:
+        if '|' in clean or ';' in clean or ',' in clean:
+            return True
+        if any(pat.search(clean) for pat, _ in _HONORS_PATTERNS):
+            return True
+        if _is_skills_text(clean):
+            return True
+
     if re.search(r'\b(?:course|curriculum|program|bachelor|master|doctor|diploma|certificate|associate|bs|ba|ms|ma|ab|phd)\b', lower):
         if not any(w in lower for w in ["training center", "institute", "college", "university", "school", "academy", "polytechnic"]):
             return True
@@ -518,7 +572,7 @@ def _extract_school_and_location(text: str) -> Tuple[str, Optional[str]]:
     clean = re.sub(r'\((?:19|20)\d{2}\)', '', clean).strip()
 
     # Check if TESDA + Training Center / Center / Institute
-    m_tesda = re.search(r'\b(TESDA\s+[A-Za-z0-9\s]+?(?:Training\s+Center|Center|Institute))\b', clean, re.I)
+    m_tesda = re.search(r'\b(TESDA\s+(?:[A-Za-z0-9\s]+?\s+)?(?:Training\s+Center|Center|Institute))\b', clean, re.I)
     if m_tesda:
         inst = m_tesda.group(1).strip()
         after_line = clean[m_tesda.end():].split('\n')[0].strip(' ,-–—')
@@ -658,6 +712,9 @@ def _normalize_degree_or_course(text: str, level: str) -> Tuple[Optional[str], O
     if level in ["Secondary / High School", "Primary / Elementary"]:
         return None, None, None
 
+    if detect_section_label(clean) is not None or '@' in clean or clean.startswith(('•', '-', '*', '▪', '►', '✓')) or _is_skills_text(clean):
+        return None, None, None
+
     return None, clean if clean else None, None
 
 
@@ -738,10 +795,22 @@ def extract_structured_education(text: str) -> Dict[str, Any]:
     edu_lines = []
     for line in lines:
         cleaned_line = re.sub(r'^[\s\-–—=_*#•►:]+|[\s\-–—=_*#•►:]+$', '', line.strip())
-        if _EDUCATION_HEADERS_RE.match(cleaned_line) or _EDUCATION_HEADERS_RE.match(line):
+        is_sub_tier = any(tier_re.match(line) for _, tier_re in _SUB_TIER_HEADERS)
+        sec_label = None if is_sub_tier else detect_section_label(line)
+
+        if _EDUCATION_HEADERS_RE.match(cleaned_line) or _EDUCATION_HEADERS_RE.match(line) or sec_label == "EDUCATION":
             in_edu = True
+            # Capture inline content after ':' or '|' if present (e.g. "Education: BS IT, Mapua")
+            if not _EDUCATION_HEADERS_RE.match(cleaned_line):
+                for delim in (':', '|'):
+                    d_idx = line.find(delim)
+                    if d_idx > 0:
+                        inline_edu = line[d_idx + 1:].strip()
+                        if inline_edu:
+                            edu_lines.append(inline_edu)
+                        break
             continue
-        elif _STOP_SECTION_RE.match(cleaned_line) or _STOP_SECTION_RE.match(line):
+        elif _STOP_SECTION_RE.match(cleaned_line) or _STOP_SECTION_RE.match(line) or (sec_label is not None and sec_label != "EDUCATION"):
             if in_edu:
                 break
             continue
@@ -750,7 +819,12 @@ def extract_structured_education(text: str) -> Dict[str, Any]:
 
     if not edu_lines:
         has_other_headers = any(
-            _STOP_SECTION_RE.match(l) or _STOP_SECTION_RE.match(re.sub(r'^[\s\-–—=_*#•►:]+|[\s\-–—=_*#•►:]+$', '', l.strip()))
+            _STOP_SECTION_RE.match(l)
+            or _STOP_SECTION_RE.match(re.sub(r'^[\s\-–—=_*#•►:]+|[\s\-–—=_*#•►:]+$', '', l.strip()))
+            or (
+                not any(tier_re.match(l) for _, tier_re in _SUB_TIER_HEADERS)
+                and detect_section_label(l) not in (None, "EDUCATION")
+            )
             for l in lines
         )
         if has_other_headers:
@@ -776,12 +850,15 @@ def extract_structured_education(text: str) -> Dict[str, Any]:
     edu_lines = merged_edu_lines
 
     # 2. Check if inline pipe-delimited format (Template 3)
-    is_pipe_format = any(l.count('|') >= 2 for l in edu_lines)
+    is_pipe_format = any(
+        l.count('|') >= 2 and detect_section_label(l) is None and '@' not in l
+        for l in edu_lines
+    )
     entries = []
 
     if is_pipe_format:
         for line in edu_lines:
-            if line.count('|') < 1:
+            if line.count('|') < 1 or detect_section_label(line) is not None or '@' in line:
                 continue
             parts = [p.strip() for p in line.split('|')]
             part_deg = parts[0]
@@ -805,6 +882,10 @@ def extract_structured_education(text: str) -> Dict[str, Any]:
             # Parse degree, school, dates, honors
             deg, raw_deg, spec = _normalize_degree_or_course(part_deg, level)
             inst, loc = _extract_school_and_location(part_inst)
+            if _is_invalid_institution(inst):
+                inst, loc = "", None
+            if not deg and not inst:
+                continue
             s_yr, e_yr = _extract_years(part_dates)
             honors = _extract_honors(part_honors + " " + line)
             status = _detect_status(line, e_yr, level)
@@ -919,8 +1000,16 @@ def extract_structured_education(text: str) -> Dict[str, Any]:
                         break
             if not inst and block_lines:
                 for bline in block_lines:
-                    bline_clean = bline.strip(' -•*')
-                    if not _is_degree_text(bline_clean) and not _extract_years(bline_clean)[0] and not _is_invalid_institution(bline_clean):
+                    bline_raw = bline.strip()
+                    if bline_raw.startswith(('•', '-', '*', '▪', '►', '✓')):
+                        continue
+                    bline_clean = bline_raw.strip(' -•*')
+                    if (
+                        not _is_degree_text(bline_clean)
+                        and not any(_extract_years(bline_clean))
+                        and not any(pat.search(bline_clean) for pat, _ in _HONORS_PATTERNS)
+                        and not _is_invalid_institution(bline_clean)
+                    ):
                         inst = bline_clean
                         break
 
@@ -936,9 +1025,11 @@ def extract_structured_education(text: str) -> Dict[str, Any]:
 
             if not deg and (not inst or inst == "Not Specified"):
                 return
-            if deg and ('@' in deg or re.search(r'\b(?:\+?63|09|\d{3,}[-\s]?\d{3,})\b', deg)):
+            deg_no_yrs = re.sub(r'\b(?:19|20)\d{2}\s*[-–—]\s*(?:19|20)\d{2}\b', '', deg or '')
+            inst_no_yrs = re.sub(r'\b(?:19|20)\d{2}\s*[-–—]\s*(?:19|20)\d{2}\b', '', inst or '')
+            if deg and ('@' in deg or re.search(r'\b(?:\+?63\d{7,}|09\d{8,}|\d{3,}[-\s]\d{4,})\b', deg_no_yrs)):
                 return
-            if inst and ('@' in inst or re.search(r'\b(?:\+?63|09|\d{3,}[-\s]?\d{3,})\b', inst)):
+            if inst and ('@' in inst or re.search(r'\b(?:\+?63\d{7,}|09\d{8,}|\d{3,}[-\s]\d{4,})\b', inst_no_yrs)):
                 return
 
             entries.append({
@@ -1150,19 +1241,21 @@ def extract_institution(text: str, entries: Optional[list[dict]] = None) -> str:
         for e in entries:
             inst = e.get("institution", "").strip()
             level = e.get("education_level", "")
-            if inst and level in ["Tertiary / College", "Postgraduate"]:
+            if inst and inst.lower() != "not specified" and not _is_invalid_institution(inst) and level in ["Tertiary / College", "Postgraduate"]:
                 return inst
 
     structured = extract_structured_education(text)
     for entry in structured.get("education_entries", []):
+        inst_name = (entry.get("institution_name") or "").strip()
         if entry.get("education_level") in ["Tertiary / College", "Postgraduate"]:
-            if entry.get("institution_name"):
-                return entry["institution_name"]
+            if inst_name and inst_name.lower() != "not specified" and not _is_invalid_institution(inst_name):
+                return inst_name
 
     # Fallback to any institution
     for entry in structured.get("education_entries", []):
-        if entry.get("institution_name"):
-            return entry["institution_name"]
+        inst_name = (entry.get("institution_name") or "").strip()
+        if inst_name and inst_name.lower() != "not specified" and not _is_invalid_institution(inst_name):
+            return inst_name
 
     return ""
 
