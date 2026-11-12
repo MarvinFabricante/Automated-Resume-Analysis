@@ -174,8 +174,9 @@ const InterviewDetailsModal: React.FC<InterviewDetailsModalProps> = ({ isOpen, o
     }
 
     const startHour = parseInt(formData.startTime.split(':')[0], 10);
+    const startMin = parseInt(formData.startTime.split(':')[1], 10) || 0;
     const endHour = parseInt(formData.endTime.split(':')[0], 10);
-    const endMin = parseInt(formData.endTime.split(':')[1], 10);
+    const endMin = parseInt(formData.endTime.split(':')[1], 10) || 0;
 
     const todayStr = toLocalDateString(new Date());
     if (formData.date < todayStr) {
@@ -185,6 +186,14 @@ const InterviewDetailsModal: React.FC<InterviewDetailsModalProps> = ({ isOpen, o
 
     if (startHour < 9 || endHour > 17 || (endHour === 17 && endMin > 0)) {
       setErrorMsg('Interviews must fall within working hours (9:00 AM – 5:00 PM).');
+      return;
+    }
+
+    const startMinutes = startHour * 60 + startMin;
+    const endMinutes = endHour * 60 + endMin;
+    // Lunch break: 12:00 PM (720 min) to 1:00 PM (780 min)
+    if (startMinutes < 780 && endMinutes > 720) {
+      setErrorMsg('Interviews cannot be scheduled during lunch break (12:00 PM – 1:00 PM).');
       return;
     }
 
@@ -1031,8 +1040,12 @@ const InterviewDetailsModal: React.FC<InterviewDetailsModalProps> = ({ isOpen, o
                   ) : availableSlots.length > 0 ? (
                     <div className="flex flex-wrap gap-2 pt-1">
                       {availableSlots.slice(0, 8).map((slot, i) => {
-                        const sTime = new Date(slot.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
-                        const eTime = new Date(slot.end_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+                        const formatTimeToHHMM = (dtStr: string | Date) => {
+                          const d = new Date(dtStr);
+                          return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+                        };
+                        const sTime = formatTimeToHHMM(slot.start_time);
+                        const eTime = formatTimeToHHMM(slot.end_time);
                         return (
                           <button
                             type="button"

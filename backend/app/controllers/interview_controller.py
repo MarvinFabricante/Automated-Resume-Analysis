@@ -166,8 +166,18 @@ async def schedule_interview(
             detail="Interviews must be scheduled within working hours (9:00 AM – 5:00 PM)."
         )
 
+    # Lunch break check (12:00 PM – 1:00 PM)
+    break_start = start.replace(hour=12, minute=0, second=0, microsecond=0)
+    break_end = start.replace(hour=13, minute=0, second=0, microsecond=0)
+    if start < break_end and end > break_start:
+        raise HTTPException(
+            status_code=400,
+            detail="Interviews cannot be scheduled during break time (12:00 PM – 1:00 PM)."
+        )
+
     # ── Conflict check against existing DB interviews ─────────────────
     from app.repositories.interview_repository import InterviewRepository
+    INACTIVE_INTERVIEW_STATUSES = {"CANCELED", "CANCELLED", "COMPLETED", "REJECTED", "NO_SHOW"}
     target_interviewer = data.interviewer_id if data.interviewer_id else current_user.get("id")
     existing = await InterviewRepository.get_interviews_in_range(
         db,
@@ -185,7 +195,9 @@ async def schedule_interview(
     cand_interviews = await InterviewRepository.get_interviews_for_application(db, data.job_application_id)
     cand_conflict = [
         iv for iv in cand_interviews
-        if iv.status != "CANCELED" and iv.start_time < end.replace(tzinfo=None) and iv.end_time > start.replace(tzinfo=None)
+        if (iv.status or "").upper() not in INACTIVE_INTERVIEW_STATUSES
+        and iv.start_time < end.replace(tzinfo=None)
+        and iv.end_time > start.replace(tzinfo=None)
     ]
     if cand_conflict:
         raise HTTPException(
@@ -196,10 +208,10 @@ async def schedule_interview(
     # Pre-check against existing active interviews for candidate/application (exclusivity)
     application = await InterviewRepository.get_job_application(db, data.job_application_id)
     if application:
-        active_interviews = [iv for iv in cand_interviews if iv.status != "CANCELED"]
+        active_interviews = [iv for iv in cand_interviews if (iv.status or "").upper() not in INACTIVE_INTERVIEW_STATUSES]
         if not active_interviews and application.candidate_email:
             cand_all_ivs = await InterviewRepository.get_interviews_for_candidate(db, application.candidate_email)
-            active_interviews = [iv for iv in cand_all_ivs if iv.status != "CANCELED"]
+            active_interviews = [iv for iv in cand_all_ivs if (iv.status or "").upper() not in INACTIVE_INTERVIEW_STATUSES]
 
         if active_interviews:
             existing_iv = active_interviews[0]

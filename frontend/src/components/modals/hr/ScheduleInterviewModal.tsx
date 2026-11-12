@@ -18,6 +18,7 @@ import {
   useGetAllInterviewsQuery
 } from '../../../redux/api/apiSlice';
 import { getAssetUrl } from '../../../services/api';
+import { isInactiveInterviewStatus, isUpcomingInterview } from '../../../utils/interviewUtils';
 
 interface ScheduleInterviewModalProps {
   isOpen: boolean;
@@ -137,10 +138,13 @@ const ScheduleInterviewModal: React.FC<ScheduleInterviewModalProps> = ({ isOpen,
   if (!isOpen || !candidate) return null;
 
   const candidateEmail = (candidate?.candidate_email || candidate?.email || '').toLowerCase().trim();
+  const candidateAppId = candidate?.id || candidate?.job_application_id || candidate?.application_id;
   const activeInterview = allInterviews.find((iv: any) => {
-    if (iv.status === 'CANCELED') return false;
-    if (candidate?.id && iv.job_application_id === candidate.id) return true;
-    if (candidateEmail && iv.candidate_email && iv.candidate_email.toLowerCase().trim() === candidateEmail) return true;
+    if (isInactiveInterviewStatus(iv.status)) return false;
+    if (!isUpcomingInterview(iv)) return false;
+    const ivAppId = iv.job_application_id || iv.job_application?.id;
+    if (candidateAppId && ivAppId && Number(ivAppId) === Number(candidateAppId)) return true;
+    if (candidateEmail && (iv.candidate_email || iv.job_application?.candidate_email) && (iv.candidate_email || iv.job_application?.candidate_email).toLowerCase().trim() === candidateEmail) return true;
     return false;
   });
 
@@ -159,6 +163,11 @@ const ScheduleInterviewModal: React.FC<ScheduleInterviewModalProps> = ({ isOpen,
       return;
     }
 
+    if (!candidateAppId) {
+      setErrorMsg('Invalid candidate application ID.');
+      return;
+    }
+
     if (formData.date < todayISO) {
       setErrorMsg('This date is unavailable because it is in the past. Please select today or a future date.');
       return;
@@ -172,6 +181,22 @@ const ScheduleInterviewModal: React.FC<ScheduleInterviewModalProps> = ({ isOpen,
         setErrorMsg('Please select start and end time.');
         return;
       }
+      const [sH, sM] = customStartTime.split(':').map(Number);
+      const [eH, eM] = customEndTime.split(':').map(Number);
+
+      if (sH < 9 || eH > 17 || (eH === 17 && (eM || 0) > 0)) {
+        setErrorMsg('Interviews must fall within working hours (9:00 AM – 5:00 PM).');
+        return;
+      }
+
+      const startMinutes = sH * 60 + (sM || 0);
+      const endMinutes = eH * 60 + (eM || 0);
+      // Lunch break: 12:00 PM (720 min) to 1:00 PM (780 min)
+      if (startMinutes < 780 && endMinutes > 720) {
+        setErrorMsg('Interviews cannot be scheduled during lunch break (12:00 PM – 1:00 PM).');
+        return;
+      }
+
       finalStart = `${formData.date}T${customStartTime}:00`;
       finalEnd = `${formData.date}T${customEndTime}:00`;
       if (new Date(finalStart) >= new Date(finalEnd)) {
@@ -189,7 +214,7 @@ const ScheduleInterviewModal: React.FC<ScheduleInterviewModalProps> = ({ isOpen,
 
     try {
       await scheduleInterview({
-        job_application_id: candidate.id,
+        job_application_id: Number(candidateAppId),
         interviewer_id: selectedInterviewerId || undefined,
         title: formData.title,
         description: formData.description,

@@ -47,7 +47,6 @@ const MONTH_NAMES = [
 const DAYS_OF_WEEK = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 const WORKING_HOURS = [
-  { hour: 8, label: '08:00 AM' },
   { hour: 9, label: '09:00 AM' },
   { hour: 10, label: '10:00 AM' },
   { hour: 11, label: '11:00 AM' },
@@ -56,7 +55,6 @@ const WORKING_HOURS = [
   { hour: 14, label: '02:00 PM' },
   { hour: 15, label: '03:00 PM' },
   { hour: 16, label: '04:00 PM' },
-  { hour: 17, label: '05:00 PM' },
 ];
 
 export interface FormattedCalendarEvent {
@@ -1365,9 +1363,13 @@ const HRSchedulingPage: React.FC = () => {
                             {hourEvents.length === 0 ? (
                               <div className="flex items-center justify-between p-3 bg-white border border-dashed border-gray-200 rounded-xl hover:border-pink-300 transition-colors group">
                                 <span className="text-xs text-gray-400 font-medium">
-                                  {slot.isLunch ? 'Lunch break reservation window' : 'No interviews scheduled — Slot available'}
+                                  {slot.isLunch ? 'Lunch break window (12:00 PM – 1:00 PM)' : 'No interviews scheduled — Slot available'}
                                 </span>
-                                {isDayPast ? (
+                                {slot.isLunch ? (
+                                  <span className="px-3 py-1 bg-amber-50 text-amber-700 border border-amber-200 rounded-lg text-xs font-semibold select-none flex items-center gap-1.5">
+                                    <Clock size={12} className="text-amber-500" /> Lunch Break (Protected)
+                                  </span>
+                                ) : isDayPast ? (
                                   <span className="px-3 py-1 bg-gray-100 text-gray-400 border border-gray-200 rounded-lg text-xs font-semibold cursor-not-allowed select-none">
                                     Unavailable (Past)
                                   </span>
