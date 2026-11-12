@@ -121,6 +121,14 @@ export const apiSlice = createApi({
         method: 'POST',
         body: newJob,
       }),
+      async onQueryStarted(_arg, { queryFulfilled }) {
+        try {
+          await queryFulfilled;
+          broadcastAtsUpdate('job_creation');
+        } catch {
+          // creation failed
+        }
+      },
       invalidatesTags: ['Jobs', 'Dashboard'],
     }),
 
@@ -130,6 +138,14 @@ export const apiSlice = createApi({
         method: 'PATCH',
         body,
       }),
+      async onQueryStarted(_arg, { queryFulfilled }) {
+        try {
+          await queryFulfilled;
+          broadcastAtsUpdate('job_update');
+        } catch {
+          // update failed
+        }
+      },
       invalidatesTags: ['Jobs', 'Applications', 'Dashboard'],
     }),
 
@@ -138,6 +154,14 @@ export const apiSlice = createApi({
         url: `/admins/archive-job/${jobId}`,
         method: 'PATCH',
       }),
+      async onQueryStarted(_arg, { queryFulfilled }) {
+        try {
+          await queryFulfilled;
+          broadcastAtsUpdate('job_update');
+        } catch {
+          // archive failed
+        }
+      },
       invalidatesTags: ['Jobs', 'Dashboard'],
     }),
 
@@ -146,6 +170,14 @@ export const apiSlice = createApi({
         url: `/admins/unarchive-job/${jobId}`,
         method: 'PATCH',
       }),
+      async onQueryStarted(_arg, { queryFulfilled }) {
+        try {
+          await queryFulfilled;
+          broadcastAtsUpdate('job_update');
+        } catch {
+          // unarchive failed
+        }
+      },
       invalidatesTags: ['Jobs', 'Dashboard'],
     }),
 
@@ -154,6 +186,14 @@ export const apiSlice = createApi({
         url: `/admins/delete-job/${jobId}`,
         method: 'DELETE',
       }),
+      async onQueryStarted(_arg, { queryFulfilled }) {
+        try {
+          await queryFulfilled;
+          broadcastAtsUpdate('job_update');
+        } catch {
+          // delete failed
+        }
+      },
       invalidatesTags: ['Jobs', 'Dashboard', 'Applications'],
     }),
 

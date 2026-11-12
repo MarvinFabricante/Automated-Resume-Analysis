@@ -118,8 +118,8 @@ const CreateJobModal: React.FC<CreateJobModalProps> = ({ isOpen, onClose, onSucc
       formattedValue = formatCurrency(parts[0]);
     }
 
-    setFormData({ ...formData, salary_range: formattedValue });
-    if (errors.salary_range) setErrors({ ...errors, salary_range: null });
+    setFormData(prev => ({ ...prev, salary_range: formattedValue }));
+    setErrors(prev => (prev.salary_range ? { ...prev, salary_range: null } : prev));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -276,8 +276,9 @@ const CreateJobModal: React.FC<CreateJobModalProps> = ({ isOpen, onClose, onSucc
                       className={inputClasses(errors.job_title)}
                       value={formData.job_title}
                       onChange={(e) => {
-                        setFormData({ ...formData, job_title: e.target.value });
-                        if (errors.job_title) setErrors({ ...errors, job_title: null });
+                        const val = e.target.value;
+                        setFormData(prev => ({ ...prev, job_title: val }));
+                        setErrors(prev => (prev.job_title ? { ...prev, job_title: null } : prev));
                       }}
                     />
                     {errors.job_title && <p className="text-[10px] text-red-500 mt-1.5 ml-1 font-bold">{errors.job_title}</p>}
@@ -291,8 +292,9 @@ const CreateJobModal: React.FC<CreateJobModalProps> = ({ isOpen, onClose, onSucc
                       className={inputClasses(errors.job_id)}
                       value={formData.job_id}
                       onChange={(e) => {
-                        setFormData({ ...formData, job_id: e.target.value });
-                        if (errors.job_id) setErrors({ ...errors, job_id: null });
+                        const val = e.target.value;
+                        setFormData(prev => ({ ...prev, job_id: val }));
+                        setErrors(prev => (prev.job_id ? { ...prev, job_id: null } : prev));
                       }}
                     />
                   </div>
@@ -302,7 +304,10 @@ const CreateJobModal: React.FC<CreateJobModalProps> = ({ isOpen, onClose, onSucc
                     <select
                       className={inputClasses()}
                       value={formData.department}
-                      onChange={(e) => setFormData({ ...formData, department: e.target.value })}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setFormData(prev => ({ ...prev, department: val }));
+                      }}
                     >
                       <option>Human Resources</option>
                       <option>Engineering</option>
@@ -323,7 +328,7 @@ const CreateJobModal: React.FC<CreateJobModalProps> = ({ isOpen, onClose, onSucc
                         <button
                           key={type}
                           type="button"
-                          onClick={() => setFormData({ ...formData, job_type: type })}
+                          onClick={() => setFormData(prev => ({ ...prev, job_type: type }))}
                           className={`py-2.5 sm:py-3 px-3 sm:px-4 rounded-xl text-xs font-bold transition-all border ${
                             formData.job_type === type 
                               ? 'bg-[#d81159] border-[#d81159] text-white shadow-lg shadow-pink-100' 
@@ -353,8 +358,9 @@ const CreateJobModal: React.FC<CreateJobModalProps> = ({ isOpen, onClose, onSucc
                       className={inputClasses(errors.location)}
                       value={formData.location}
                       onChange={(e) => {
-                        setFormData({ ...formData, location: e.target.value });
-                        if (errors.location) setErrors({ ...errors, location: null });
+                        const val = e.target.value;
+                        setFormData(prev => ({ ...prev, location: val }));
+                        setErrors(prev => (prev.location ? { ...prev, location: null } : prev));
                       }}
                     />
                     {errors.location && <p className="text-[10px] text-red-500 mt-1.5 ml-1 font-bold">{errors.location}</p>}
@@ -388,7 +394,7 @@ const CreateJobModal: React.FC<CreateJobModalProps> = ({ isOpen, onClose, onSucc
                       </div>
                       <button
                         type="button"
-                        onClick={() => setFormData({ ...formData, is_active: !formData.is_active })}
+                        onClick={() => setFormData(prev => ({ ...prev, is_active: !prev.is_active }))}
                         className={`relative inline-flex h-6 sm:h-7 w-11 sm:w-12 items-center rounded-full transition-all duration-300 ${
                           formData.is_active ? 'bg-emerald-500 shadow-lg shadow-emerald-100' : 'bg-gray-200'
                         }`}
@@ -416,8 +422,9 @@ const CreateJobModal: React.FC<CreateJobModalProps> = ({ isOpen, onClose, onSucc
                     className={`${inputClasses(errors.description)} resize-none leading-relaxed`}
                     value={formData.description}
                     onChange={(e) => {
-                      setFormData({ ...formData, description: e.target.value });
-                      if (errors.description) setErrors({ ...errors, description: null });
+                      const val = e.target.value;
+                      setFormData(prev => ({ ...prev, description: val }));
+                      setErrors(prev => (prev.description ? { ...prev, description: null } : prev));
                     }}
                   />
                 </div>
@@ -431,8 +438,9 @@ const CreateJobModal: React.FC<CreateJobModalProps> = ({ isOpen, onClose, onSucc
                     className={inputClasses(errors.skills_requirements)}
                     value={formData.skills_requirements}
                     onChange={(e) => {
-                      setFormData({ ...formData, skills_requirements: e.target.value });
-                      if (errors.skills_requirements) setErrors({ ...errors, skills_requirements: null });
+                      const val = e.target.value;
+                      setFormData(prev => ({ ...prev, skills_requirements: val }));
+                      setErrors(prev => (prev.skills_requirements ? { ...prev, skills_requirements: null } : prev));
                     }}
                   />
                   <div className="mt-3 flex flex-wrap gap-2">
@@ -457,7 +465,10 @@ const CreateJobModal: React.FC<CreateJobModalProps> = ({ isOpen, onClose, onSucc
                       placeholder="e.g. Bachelor's Degree"
                       className={inputClasses()}
                       value={formData.education_requirements}
-                      onChange={(e) => setFormData({ ...formData, education_requirements: e.target.value })}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setFormData(prev => ({ ...prev, education_requirements: val }));
+                      }}
                     />
                   </div>
 
@@ -468,7 +479,10 @@ const CreateJobModal: React.FC<CreateJobModalProps> = ({ isOpen, onClose, onSucc
                       placeholder="e.g. 3+ years"
                       className={inputClasses()}
                       value={formData.experience_requirements}
-                      onChange={(e) => setFormData({ ...formData, experience_requirements: e.target.value })}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setFormData(prev => ({ ...prev, experience_requirements: val }));
+                      }}
                     />
                   </div>
 
@@ -479,7 +493,10 @@ const CreateJobModal: React.FC<CreateJobModalProps> = ({ isOpen, onClose, onSucc
                       placeholder="e.g. PMP, AWS"
                       className={inputClasses()}
                       value={formData.certifications_requirements}
-                      onChange={(e) => setFormData({ ...formData, certifications_requirements: e.target.value })}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setFormData(prev => ({ ...prev, certifications_requirements: val }));
+                      }}
                     />
                   </div>
                 </div>

@@ -19,10 +19,21 @@ from app.services.job_description_service import (
     set_job_status,
     update_job,
 )
-from app.utils.auth import get_current_user
-from app.utils.cache import cache_response, clear_cache_pattern
+from app.utils.auth import get_current_user, get_optional_current_user
+from app.utils.cache import cache_response, clear_cache_pattern, invalidate_application_dashboard_caches
 
 logger = logging.getLogger(__name__)
+
+
+async def _invalidate_job_caches(job_id: Optional[str] = None) -> None:
+    """Clear active job listings, job details, matching results, and HR dashboard caches."""
+    await clear_cache_pattern("active_jobs:*")
+    await clear_cache_pattern("job_matches:*")
+    if job_id:
+        await clear_cache_pattern(f"job_detail:*{job_id}*")
+    else:
+        await clear_cache_pattern("job_detail:")
+    await invalidate_application_dashboard_caches()
 
 def get_optional_current_user(authorization: Optional[str] = Header(None)) -> Optional[dict]:
     if not authorization:
@@ -323,8 +334,14 @@ async def create_job_description(
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
+    existing_job = await get_job(db, job_id=job.job_id)
+    if existing_job:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Job ID '{job.job_id}' already exists."
+        )
     result = await create_job(db=db, job=job)
-    await clear_cache_pattern("active_jobs:*")
+    await _invalidate_job_caches(result.job_id if result else job.job_id)
     
     # Record in audit log
     await audit_service.record_activity(
@@ -363,8 +380,7 @@ async def update_job_details(
 ):
     db_job = await update_job(db=db, job_id=job_id, job_data=job_data)
     if db_job:
-        await clear_cache_pattern(f"job_detail:*job_id\":\"{job_id}\"*")
-        await clear_cache_pattern("active_jobs:*")
+        await _invalidate_job_caches(job_id)
     if not db_job:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, 
@@ -373,11 +389,21 @@ async def update_job_details(
     return db_job
 
 @router.patch("/archive-job/{job_id}", response_model=JobResponse)
-async def archive_job(job_id: str, db: AsyncSession = Depends(get_db)):
+async def archive_job(
+    job_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: Optional[dict] = Depends(get_optional_current_user),
+):
     db_job = await set_job_status(db=db, job_id=job_id, active_status=False)
     if db_job:
-        await clear_cache_pattern("active_jobs:*")
-        await clear_cache_pattern(f"job_detail:*job_id\":\"{job_id}\"*")
+        await _invalidate_job_caches(job_id)
+        await audit_service.record_activity(
+            db=db,
+            user_id=current_user.get("id") if current_user else None,
+            action="ARCHIVE_JOB",
+            target=f"Job: {db_job.job_title}",
+            details=f"Admin archived job posting {db_job.job_id} ({db_job.job_title})",
+        )
     if not db_job:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, 
@@ -386,11 +412,21 @@ async def archive_job(job_id: str, db: AsyncSession = Depends(get_db)):
     return db_job
 
 @router.patch("/unarchive-job/{job_id}", response_model=JobResponse)
-async def unarchive_job(job_id: str, db: AsyncSession = Depends(get_db)):
+async def unarchive_job(
+    job_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: Optional[dict] = Depends(get_optional_current_user),
+):
     db_job = await set_job_status(db=db, job_id=job_id, active_status=True)
     if db_job:
-        await clear_cache_pattern("active_jobs:*")
-        await clear_cache_pattern(f"job_detail:*job_id\":\"{job_id}\"*")
+        await _invalidate_job_caches(job_id)
+        await audit_service.record_activity(
+            db=db,
+            user_id=current_user.get("id") if current_user else None,
+            action="UNARCHIVE_JOB",
+            target=f"Job: {db_job.job_title}",
+            details=f"Admin unarchived job posting {db_job.job_id} ({db_job.job_title})",
+        )
     if not db_job:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, 
@@ -406,8 +442,7 @@ async def delete_job_endpoint(
 ):
     db_job = await delete_job(db=db, job_id=job_id)
     if db_job:
-        await clear_cache_pattern("active_jobs:*")
-        await clear_cache_pattern(f"job_detail:*job_id\":\"{job_id}\"*")
+        await _invalidate_job_caches(job_id)
         
         # Record in audit log
         await audit_service.record_activity(
@@ -419,7 +454,7 @@ async def delete_job_endpoint(
         )
     if not db_job:
         raise HTTPException(
-            status_code=status.HTTP_442_UNPROCESSABLE_ENTITY if not db_job else status.HTTP_404_NOT_FOUND,
+            status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Job {job_id} not found"
         )
     return db_job

@@ -1,5 +1,6 @@
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, desc
+from sqlalchemy import select, desc, inspect
+from sqlalchemy.orm import object_session
 from typing import Optional, List
 import logging
 
@@ -94,6 +95,18 @@ async def get_all_active(
     return jobs
 
 
+async def _ensure_persistent(db: AsyncSession, job: JobDescription) -> JobDescription:
+    """Re-attach a cached/detached JobDescription instance to the active DB session."""
+    state = inspect(job)
+    if state.persistent and object_session(job) is db.sync_session:
+        return job
+    result = await db.execute(select(JobDescription).filter(JobDescription.id == job.id))
+    db_job = result.scalars().first()
+    if db_job is None:
+        raise ValueError(f"JobDescription id={job.id} does not exist")
+    return db_job
+
+
 async def update(db: AsyncSession, job: JobDescription, update_data: dict) -> JobDescription:
     """Update a job description (Redis-first transaction)."""
     tx_id = await redis_tx_manager.stage_transaction(
@@ -102,6 +115,7 @@ async def update(db: AsyncSession, job: JobDescription, update_data: dict) -> Jo
         payload={"id": job.id, "job_id": job.job_id, **update_data},
     )
     try:
+        job = await _ensure_persistent(db, job)
         for key, value in update_data.items():
             setattr(job, key, value)
         await db.commit()
@@ -131,6 +145,7 @@ async def set_status(db: AsyncSession, job: JobDescription, is_active: bool) -> 
         payload={"id": job.id, "is_active": is_active},
     )
     try:
+        job = await _ensure_persistent(db, job)
         job.is_active = is_active
         await db.commit()
         await db.refresh(job)
@@ -141,6 +156,7 @@ async def set_status(db: AsyncSession, job: JobDescription, is_active: bool) -> 
         if job.job_id:
             await delete_cache(f"job_desc:code:{job.job_id}")
         await clear_cache_pattern("job_desc:active:")
+        await clear_cache_pattern("admin:stats")
 
         return job
     except Exception as e:
@@ -157,6 +173,7 @@ async def delete(db: AsyncSession, job: JobDescription) -> None:
         payload={"id": job.id, "job_id": job.job_id},
     )
     try:
+        job = await _ensure_persistent(db, job)
         job_id = job.id
         job_code = job.job_id
         await db.delete(job)

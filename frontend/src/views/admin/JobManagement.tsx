@@ -120,7 +120,23 @@ const JobManagementPage: React.FC = () => {
   const [currentPage, setCurrentPage] = useState<number>(1);
   const itemsPerPage = 10;
 
-  const departments = ["All Departments", "Information Technology", "Human Resources", "Marketing", "Finance", "Operations"];
+  const departments = useMemo(() => {
+    const defaults = [
+      "Human Resources",
+      "Engineering",
+      "Information Technology",
+      "Marketing",
+      "Finance",
+      "Operations",
+      "Quality Assurance",
+      "Maintenance",
+      "Environmental",
+    ];
+    const fromJobs = (jobs as Job[])
+      .map((j) => (j.department || "").trim())
+      .filter(Boolean);
+    return ["All Departments", ...Array.from(new Set([...defaults, ...fromJobs]))];
+  }, [jobs]);
 
   const closeModal = () => setModalState({ type: null, selectedJob: null });
 

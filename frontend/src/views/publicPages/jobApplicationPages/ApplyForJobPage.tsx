@@ -419,7 +419,25 @@ const ApplyForJobPage: React.FC = () => {
           </div>
 
           <div className="p-5 sm:p-8 md:p-12">
-            {!file ? (
+            {!isLoadingJob && job && job.is_active === false ? (
+              <div className="text-center py-12 px-4 max-w-lg mx-auto">
+                <div className="w-16 h-16 bg-slate-100 text-slate-500 rounded-2xl flex items-center justify-center mx-auto mb-5">
+                  <Briefcase size={28} />
+                </div>
+                <h2 className="text-xl font-black text-slate-900 mb-2">Applications Closed</h2>
+                <p className="text-sm text-slate-500 font-medium leading-relaxed mb-6">
+                  This position has been archived and is no longer accepting new applications.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => navigate('/careerspage')}
+                  className="inline-flex items-center gap-2 px-6 py-3 bg-[#D60041] hover:bg-slate-900 text-white rounded-2xl text-sm font-bold transition-colors cursor-pointer"
+                >
+                  <span>Browse Open Positions</span>
+                  <ArrowRight size={16} />
+                </button>
+              </div>
+            ) : !file ? (
               <div
                 onDragOver={handleDrag}
                 onDragLeave={handleDrag}

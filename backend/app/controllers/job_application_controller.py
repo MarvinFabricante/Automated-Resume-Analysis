@@ -22,11 +22,16 @@ async def create_job_application(
     Submit a new job application.
     Supports duplicate handling policy ('block' or 'version').
     """
-    # Verify job exists via service
+    # Verify job exists and is open for applications
     job = await job_application_service.get_and_validate_job(db, application_in.job_id)
-    
+
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
+    if getattr(job, "is_active", True) is False:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This job posting has been archived and is no longer accepting applications."
+        )
         
     res = await job_application_service.create_job_application(
         db, application_in, job.id, duplicate_policy=duplicate_policy

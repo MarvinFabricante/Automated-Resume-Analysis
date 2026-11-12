@@ -424,6 +424,7 @@ const JobDetailsPage: React.FC = () => {
                     </button>
                   ) : (
                     <button
+                      disabled={job.is_active === false}
                       onClick={() => {
                         const role = localStorage.getItem('role');
                         if (role === 'CANDIDATE') {
@@ -432,10 +433,20 @@ const JobDetailsPage: React.FC = () => {
                           navigate(`/apply/${job.job_id || job.id}`, { state: { job } });
                         }
                       }}
-                      className="w-full bg-[#D60041] text-white py-4 sm:py-5 rounded-xl sm:rounded-[24px] font-bold text-xs sm:text-sm hover:bg-white hover:text-slate-900 transition-all shadow-xl flex items-center justify-center gap-2 sm:gap-3 active:scale-95 relative z-10"
+                      className={`w-full py-4 sm:py-5 rounded-xl sm:rounded-[24px] font-bold text-xs sm:text-sm transition-all flex items-center justify-center gap-2 sm:gap-3 relative z-10 ${
+                        job.is_active === false
+                          ? 'bg-slate-700 text-slate-400 cursor-not-allowed'
+                          : 'bg-[#D60041] text-white hover:bg-white hover:text-slate-900 shadow-xl active:scale-95'
+                      }`}
                     >
-                      Apply Now
-                      <ArrowRight size={18} />
+                      {job.is_active === false ? (
+                        'Applications Closed'
+                      ) : (
+                        <>
+                          Apply Now
+                          <ArrowRight size={18} />
+                        </>
+                      )}
                     </button>
                   )}
                 </div>
