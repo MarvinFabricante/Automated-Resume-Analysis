@@ -1750,7 +1750,7 @@ async def match_resume_to_job(db, resume_data: dict, job_id: str, use_ai: bool =
         except (ValueError, TypeError):
             pass
 
-    if not job:
+    if not job or not getattr(job, "is_active", True):
         return None
     
     return calculate_match_score(resume_data, job, use_ai=use_ai)

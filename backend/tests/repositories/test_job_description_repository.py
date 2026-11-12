@@ -73,3 +73,33 @@ async def test_job_description_repo_lifecycle(db_session):
     # 8. Delete
     await job_description_repository.delete(db_session, reactivated)
     assert await job_description_repository.get_by_id(db_session, job_id) is None
+
+
+@pytest.mark.asyncio
+async def test_job_description_repo_mutations_reattach_detached_cached_entity(db_session):
+    created = await job_description_repository.create(db_session, {
+        "job_id": "JD-REPO-DETACHED-001",
+        "job_title": "Detached Title",
+        "department": "Engineering",
+        "job_type": JobType.FULL_TIME,
+        "location": "Remote",
+        "description": "Detached description",
+        "skills_requirements": "Python, SQL",
+        "is_active": True
+    })
+    job_pk = created.id
+
+    # Simulate deserializing a cached JobDescription object not attached to db_session
+    db_session.expunge(created)
+    updated = await job_description_repository.update(db_session, created, {
+        "job_title": "Reattached Title"
+    })
+    assert updated.job_title == "Reattached Title"
+
+    db_session.expunge(updated)
+    archived = await job_description_repository.set_status(db_session, updated, False)
+    assert archived.is_active is False
+
+    db_session.expunge(archived)
+    await job_description_repository.delete(db_session, archived)
+    assert await job_description_repository.get_by_id(db_session, job_pk) is None

@@ -3,7 +3,7 @@ import { Helmet } from 'react-helmet-async';
 import {
   X, Briefcase, MapPin, Building2, DollarSign,
   ListChecks, FileText, Clock, CheckCircle2,
-  AlertCircle, Globe, Wallet, GraduationCap, Trophy, LucideIcon
+  AlertCircle, Globe, Wallet, GraduationCap, Trophy, Award, LucideIcon
 } from 'lucide-react';
 import { Job } from '../../../types';
 
@@ -155,6 +155,18 @@ const ViewJobDetailsModal: React.FC<ViewJobDetailsModalProps> = ({ isOpen, onClo
                     </div>
                     <p className="text-xs sm:text-sm text-gray-800 font-bold leading-normal">
                       {job.experience_requirements}
+                    </p>
+                  </div>
+                )}
+
+                {job.certifications_requirements && (
+                  <div className="p-4 sm:p-6 rounded-2xl sm:rounded-3xl bg-purple-50/50 border border-purple-100/50">
+                    <div className="flex items-center gap-2 mb-2 text-purple-700">
+                      <Award size={16} />
+                      <span className="text-xs font-bold uppercase tracking-wider">Certifications</span>
+                    </div>
+                    <p className="text-xs sm:text-sm text-gray-800 font-bold leading-normal">
+                      {job.certifications_requirements}
                     </p>
                   </div>
                 )}

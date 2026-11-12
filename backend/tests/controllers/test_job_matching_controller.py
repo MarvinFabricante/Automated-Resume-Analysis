@@ -99,3 +99,50 @@ async def test_match_resume_file_endpoint(client, db_session):
         res = await client.post("/matching/match-resume", files=files)
         assert res.status_code == 200
         assert "results" in res.json()
+
+
+@pytest.mark.asyncio
+async def test_inactive_job_excluded_from_matching_endpoints(client, db_session):
+    active_job = JobDescription(
+        job_id="JOB-MATCH-ACT-01",
+        job_title="Active Site Reliability Engineer",
+        department="Engineering",
+        job_type=JobType.FULL_TIME,
+        location="Taguig",
+        description="Kubernetes and Python monitoring",
+        skills_requirements="Python, Kubernetes, Prometheus",
+        experience_requirements="3 years",
+        is_active=True
+    )
+    inactive_job = JobDescription(
+        job_id="JOB-MATCH-INACT-02",
+        job_title="Archived Infrastructure Engineer",
+        department="Engineering",
+        job_type=JobType.FULL_TIME,
+        location="Taguig",
+        description="Should never be matched while inactive",
+        skills_requirements="Python, Kubernetes, Prometheus",
+        experience_requirements="3 years",
+        is_active=False
+    )
+    db_session.add_all([active_job, inactive_job])
+    await db_session.commit()
+
+    match_payload = {
+        "fullname": "SRE Candidate",
+        "skills": "Python, Kubernetes, Prometheus",
+        "years_experience": 4
+    }
+
+    res_all = await client.post("/matching/match-data", json=match_payload)
+    assert res_all.status_code == 200
+    returned_ids = {item["job_id"] for item in res_all.json()["results"]}
+    assert "JOB-MATCH-ACT-01" in returned_ids
+    assert "JOB-MATCH-INACT-02" not in returned_ids
+
+    res_inactive_single = await client.post("/matching/match-data/JOB-MATCH-INACT-02", json=match_payload)
+    assert res_inactive_single.status_code == 404
+
+    res_active_single = await client.post("/matching/match-data/JOB-MATCH-ACT-01", json=match_payload)
+    assert res_active_single.status_code == 200
+    assert res_active_single.json()["job_id"] == "JOB-MATCH-ACT-01"

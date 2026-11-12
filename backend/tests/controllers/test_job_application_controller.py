@@ -379,3 +379,75 @@ async def test_large_dataset_550_applicants_loads_under_3_seconds(client, db_ses
     assert "work_experiences" in detail
     assert (await client.get("/applications/999999")).status_code == 404
 
+
+@pytest.mark.asyncio
+async def test_archived_job_rejects_new_applications_and_retains_existing(
+    client, db_session, mock_celery_task
+):
+    job = JobDescription(
+        job_id="JOB-FILL-ARCHIVE-CTRL",
+        job_title="Filled Ceramic Plant Chemist",
+        department="Quality Assurance",
+        job_type=JobType.FULL_TIME,
+        location="Batangas",
+        description="Formulate glazes and QA standards.",
+        skills_requirements="Chemistry, Glaze Formulation, ISO 9001",
+        is_active=True,
+    )
+    db_session.add(job)
+    await db_session.commit()
+
+    # Candidate applies and gets hired while posting is active
+    app_res = await client.post(
+        "/applications/",
+        json={
+            "job_id": "JOB-FILL-ARCHIVE-CTRL",
+            "candidate_name": "Filled Role Hire",
+            "candidate_email": "filled.hire@example.com",
+            "skills": ["Chemistry", "ISO 9001"],
+            "years_experience": 4,
+        },
+    )
+    assert app_res.status_code == 201
+    existing_app_id = app_res.json()["id"]
+
+    status_res = await client.patch(
+        f"/applications/{existing_app_id}/status",
+        json={"status": "ACCEPTED", "notes": "Offer accepted"},
+    )
+    assert status_res.status_code == 200
+
+    # Admin archives the filled job
+    arch_res = await client.patch("/admins/archive-job/JOB-FILL-ARCHIVE-CTRL")
+    assert arch_res.status_code == 200
+    assert arch_res.json()["is_active"] is False
+
+    # New application submission to the archived job must be rejected
+    new_apply_res = await client.post(
+        "/applications/",
+        json={
+            "job_id": "JOB-FILL-ARCHIVE-CTRL",
+            "candidate_name": "Blocked New Candidate",
+            "candidate_email": "blocked.candidate@example.com",
+            "skills": ["Chemistry", "ISO 9001"],
+        },
+    )
+    assert new_apply_res.status_code == 400
+    assert "archived" in new_apply_res.json()["detail"].lower()
+
+    # Historical application data remains intact
+    job_apps_res = await client.get(f"/applications/job/{job.id}")
+    assert job_apps_res.status_code == 200
+    assert len(job_apps_res.json()) == 1
+    assert job_apps_res.json()[0]["id"] == existing_app_id
+    assert job_apps_res.json()[0]["status"] == "ACCEPTED"
+
+    cand_apps_res = await client.get("/applications/candidate/filled.hire@example.com")
+    assert cand_apps_res.status_code == 200
+    assert len(cand_apps_res.json()) == 1
+    assert cand_apps_res.json()[0]["job"]["job_title"] == "Filled Ceramic Plant Chemist"
+
+    single_app_res = await client.get(f"/applications/{existing_app_id}")
+    assert single_app_res.status_code == 200
+    assert single_app_res.json()["status"] == "ACCEPTED"
+
