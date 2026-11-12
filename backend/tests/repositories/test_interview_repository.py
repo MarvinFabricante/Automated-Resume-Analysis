@@ -102,7 +102,8 @@ async def test_interview_repo_crud_and_queries(db_session):
         db_session,
         now + timedelta(hours=20),
         now + timedelta(days=2),
-        exclude_interview_id=int_id
+        exclude_interview_id=int_id,
+        interviewer_id=hr_id
     )
     assert len(excluding) == 0
 

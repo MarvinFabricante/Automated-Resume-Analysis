@@ -149,13 +149,13 @@ async def get_interviews_in_range(
     db: AsyncSession, start_time: datetime, end_time: datetime, interviewer_id: Optional[Union[int, List[int]]] = None
 ) -> List[Interview]:
     """Fetch non-canceled interviews overlapping with range."""
+    from sqlalchemy import or_
     conditions = [
         Interview.start_time < end_time,
         Interview.end_time > start_time,
-        Interview.status != "CANCELED",
+        ~Interview.status.in_(["CANCELED", "CANCELLED"]),
     ]
     if interviewer_id:
-        from sqlalchemy import or_
         if isinstance(interviewer_id, (list, tuple, set)):
             conditions.append(or_(Interview.interviewer_id.in_(interviewer_id), Interview.interviewer_id.is_(None)))
         else:
@@ -214,18 +214,27 @@ async def get_interview_by_google_event_id(db: AsyncSession, google_event_id: st
 
 
 async def get_interviews_in_range_excluding(
-    db: AsyncSession, start_time: datetime, end_time: datetime, exclude_interview_id: int
+    db: AsyncSession,
+    start_time: datetime,
+    end_time: datetime,
+    exclude_interview_id: int,
+    interviewer_id: Optional[Union[int, List[int]]] = None,
 ) -> List[Interview]:
     """Fetch overlapping interviews excluding specific ID."""
+    from sqlalchemy import or_
+    conditions = [
+        Interview.id != exclude_interview_id,
+        Interview.start_time < end_time,
+        Interview.end_time > start_time,
+        ~Interview.status.in_(["CANCELED", "CANCELLED"]),
+    ]
+    if interviewer_id:
+        if isinstance(interviewer_id, (list, tuple, set)):
+            conditions.append(or_(Interview.interviewer_id.in_(interviewer_id), Interview.interviewer_id.is_(None)))
+        else:
+            conditions.append(or_(Interview.interviewer_id == interviewer_id, Interview.interviewer_id.is_(None)))
     result = await db.execute(
-        select(Interview).filter(
-            and_(
-                Interview.id != exclude_interview_id,
-                Interview.start_time < end_time,
-                Interview.end_time > start_time,
-                Interview.status != "CANCELED",
-            )
-        )
+        select(Interview).filter(and_(*conditions))
     )
     return result.scalars().all()
 

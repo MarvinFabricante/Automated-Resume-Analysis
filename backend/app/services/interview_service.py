@@ -134,6 +134,7 @@ BREAK_START_HOUR = 12 # 12:00 PM
 BREAK_END_HOUR = 13   # 1:00 PM
 # Monday=0 … Friday=4  (Python weekday convention)
 WORK_DAYS = {0, 1, 2, 3, 4}
+INACTIVE_INTERVIEW_STATUSES = {"CANCELED", "CANCELLED", "COMPLETED", "REJECTED", "NO_SHOW"}
 
 
 class AvailableSlotsList(list):
@@ -365,12 +366,12 @@ async def schedule_interview(db: AsyncSession, data: InterviewCreateSchema, user
             raise ValueError("Application not found")
 
         # ── Candidate Exclusivity Check ──────────────────────────────────
-        # Check whether an active interview (status != "CANCELED") already exists for application or candidate email
+        # Check whether an active interview already exists for application or candidate email
         existing_for_app = await InterviewRepository.get_interviews_for_application(db, data.job_application_id)
-        active_interviews = [iv for iv in existing_for_app if iv.status != "CANCELED"]
+        active_interviews = [iv for iv in existing_for_app if (iv.status or "").upper() not in INACTIVE_INTERVIEW_STATUSES]
         if not active_interviews and application.candidate_email:
             cand_all_ivs = await InterviewRepository.get_interviews_for_candidate(db, application.candidate_email)
-            active_interviews = [iv for iv in cand_all_ivs if iv.status != "CANCELED"]
+            active_interviews = [iv for iv in cand_all_ivs if (iv.status or "").upper() not in INACTIVE_INTERVIEW_STATUSES]
 
         if active_interviews:
             existing_iv = active_interviews[0]
@@ -731,10 +732,31 @@ async def update_interview(db: AsyncSession, interview_id: int, data: InterviewU
         if start.hour < WORK_START_HOUR or end.hour > WORK_END_HOUR or (end.hour == WORK_END_HOUR and end.minute > 0):
             raise ValueError("Interviews must be scheduled within working hours (9:00 AM – 5:00 PM).")
 
+        # Break time check (12:00 PM – 1:00 PM)
+        break_start = start.replace(hour=BREAK_START_HOUR, minute=0, second=0, microsecond=0)
+        break_end = start.replace(hour=BREAK_END_HOUR, minute=0, second=0, microsecond=0)
+        if start < break_end and end > break_start:
+            raise ValueError("Interviews cannot be scheduled during break time (12:00 PM – 1:00 PM).")
+
         # Conflict check against other interviews (excluding self)
-        conflicts = await InterviewRepository.get_interviews_in_range_excluding(db, start, end, interview.id)
+        interviewer_to_check = data.interviewer_id or interview.interviewer_id or user_id
+        conflicts = await InterviewRepository.get_interviews_in_range_excluding(
+            db, start, end, interview.id, interviewer_id=interviewer_to_check
+        )
         if conflicts:
             raise ValueError("The selected time slot conflicts with an existing interview.")
+
+        # Candidate conflict check
+        if interview.job_application_id:
+            cand_interviews = await InterviewRepository.get_interviews_for_application(db, interview.job_application_id)
+            cand_conflict = [
+                iv for iv in cand_interviews
+                if iv.id != interview.id
+                and (iv.status or "").upper() not in INACTIVE_INTERVIEW_STATUSES
+                and iv.start_time < end and iv.end_time > start
+            ]
+            if cand_conflict:
+                raise ValueError("This candidate already has another interview scheduled at the selected time.")
 
         if start != interview.start_time or end != interview.end_time:
             time_changed = True
