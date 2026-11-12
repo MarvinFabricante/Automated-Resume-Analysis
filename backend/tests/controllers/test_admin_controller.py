@@ -513,9 +513,11 @@ async def test_archive_filled_posting_hides_from_applicants_and_retains_history(
     trends = (await client.get("/hr/dashboard-trends")).json()
     assert any(p["label"] == job_payload["job_title"] and p["value"] >= 1 for p in trends["position_distribution"])
 
-    sys_stats = (await client.get("/admins/system-stats", headers=headers)).json()
-    assert sys_stats["inactive_jobs"] >= 1
-    assert sys_stats["total_applications"] >= 1
+    perf_stats = (await client.get("/system-config/performance", headers=headers)).json()
+    assert perf_stats["inactive_jobs"] >= 1
+    assert perf_stats["total_applications"] >= 1
+    sys_stats_res = await client.get("/admins/system-stats", headers=headers)
+    assert sys_stats_res.status_code == 200
 
     audit_row = (
         await db_session.execute(
