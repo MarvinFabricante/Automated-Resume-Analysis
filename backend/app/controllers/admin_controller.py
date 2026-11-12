@@ -19,16 +19,18 @@ from app.services.job_description_service import (
     set_job_status,
     update_job,
 )
-from app.utils.auth import get_current_user, get_optional_current_user
+from app.utils.auth import get_current_user
 from app.utils.cache import cache_response, clear_cache_pattern, invalidate_application_dashboard_caches
 
 logger = logging.getLogger(__name__)
 
 
 async def _invalidate_job_caches(job_id: Optional[str] = None) -> None:
-    """Clear active job listings, job details, matching results, and HR dashboard caches."""
+    """Clear active job listings, job details, matching results, and HR/Admin dashboard caches."""
     await clear_cache_pattern("active_jobs:*")
     await clear_cache_pattern("job_matches:*")
+    await clear_cache_pattern("system_performance*")
+    await clear_cache_pattern("system_stats*")
     if job_id:
         await clear_cache_pattern(f"job_detail:*{job_id}*")
     else:
