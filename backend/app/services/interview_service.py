@@ -132,25 +132,46 @@ def send_sms_notification_sync(to_phone: str, message: str):
 
 
 def _get_valid_credentials(user) -> Optional[str]:
-    """Return google_credentials only if not expired (1-hour lifespan limit)."""
+    """
+    Return valid google_credentials JSON string.
+    If the access token has expired and a refresh_token is present,
+    automatically refreshes the token with Google so the calendar stays continuously connected.
+    """
     if not user or not getattr(user, "google_credentials", None):
-        return None
-    expiry = getattr(user, "google_token_expiry", None)
-    if expiry and expiry < datetime.utcnow():
         return None
     try:
         import json
-        from datetime import timezone
+        from google.oauth2.credentials import Credentials
+        from google.auth.transport.requests import Request
+        from app.utils.google_auth import CALENDAR_SCOPES
+
         creds_data = json.loads(user.google_credentials) if isinstance(user.google_credentials, str) else user.google_credentials
-        if isinstance(creds_data, dict) and creds_data.get("expiry"):
-            clean_exp = str(creds_data["expiry"]).replace("Z", "+00:00")
-            exp_dt = datetime.fromisoformat(clean_exp)
-            now_dt = datetime.now(timezone.utc) if exp_dt.tzinfo else datetime.utcnow()
-            if exp_dt <= now_dt:
+        if not isinstance(creds_data, dict):
+            return None
+
+        creds = Credentials.from_authorized_user_info(creds_data, CALENDAR_SCOPES)
+        if not creds:
+            return None
+
+        # Auto-refresh expired access token if refresh_token is present
+        if creds.expired and creds.refresh_token:
+            try:
+                creds.refresh(Request())
+                user.google_credentials = creds.to_json()
+                user.google_access_token = creds.token
+                user.google_token_expiry = creds.expiry
+                return user.google_credentials
+            except Exception as ref_err:
+                logger.warning(f"Could not auto-refresh Google credentials: {ref_err}")
                 return None
-    except Exception:
-        pass
-    return user.google_credentials
+
+        if creds.valid:
+            return user.google_credentials
+
+        return None
+    except Exception as e:
+        logger.error(f"Error checking credentials: {e}")
+        return None
 
 
 # ── Working-hours constants ────────────────────────────────────────
@@ -213,7 +234,7 @@ async def get_available_slots(
     # ── Fetch Google Calendar busy periods for all participants ──
     google_busy: List[tuple] = []
     for uid in target_ids:
-        user = await AuthRepository.get_user_by_id(db, uid)
+        user = await AuthRepository.get_user_by_id_fresh(db, uid)
         credentials_json = _get_valid_credentials(user)
         if credentials_json:
             calendars = await asyncio.to_thread(
@@ -302,7 +323,7 @@ async def get_available_slots(
                 # Fetch busy intervals for this alternative day
                 alt_google_busy = []
                 for uid in target_ids:
-                    u = await AuthRepository.get_user_by_id(db, uid)
+                    u = await AuthRepository.get_user_by_id_fresh(db, uid)
                     creds = _get_valid_credentials(u)
                     if creds:
                         cals = await asyncio.to_thread(
@@ -408,7 +429,7 @@ async def schedule_interview(db: AsyncSession, data: InterviewCreateSchema, user
                 interviewer_name = existing_iv.interviewer_name
             elif getattr(existing_iv, "interviewer_id", None):
                 from app.repositories.auth_repository import AuthRepository
-                iv_user = await AuthRepository.get_user_by_id(db, existing_iv.interviewer_id)
+                iv_user = await AuthRepository.get_user_by_id_fresh(db, existing_iv.interviewer_id)
                 interviewer_name = iv_user.fullname if iv_user else None
 
             interviewer_display = interviewer_name or "another HR"
@@ -421,8 +442,8 @@ async def schedule_interview(db: AsyncSession, data: InterviewCreateSchema, user
         interviewer_id = data.interviewer_id if data.interviewer_id else user_id
 
         from app.repositories.auth_repository import AuthRepository
-        scheduler_user = await AuthRepository.get_user_by_id(db, user_id)
-        interviewer_user = await AuthRepository.get_user_by_id(db, interviewer_id) if interviewer_id != user_id else scheduler_user
+        scheduler_user = await AuthRepository.get_user_by_id_fresh(db, user_id)
+        interviewer_user = await AuthRepository.get_user_by_id_fresh(db, interviewer_id) if interviewer_id != user_id else scheduler_user
         user = interviewer_user or scheduler_user
         interviewer_name = getattr(interviewer_user, "fullname", None) or "Mariwasa HR Panel"
         scheduler_email = getattr(scheduler_user, "email", None) if scheduler_user else None
@@ -439,7 +460,7 @@ async def schedule_interview(db: AsyncSession, data: InterviewCreateSchema, user
 
         if getattr(data, "panelist_ids", None):
             for pid in data.panelist_ids:
-                p_user = await AuthRepository.get_user_by_id(db, pid)
+                p_user = await AuthRepository.get_user_by_id_fresh(db, pid)
                 if p_user and getattr(p_user, "email", None):
                     if p_user.email not in [pr.email for pr in panel_recipients] and (not scheduler_user or p_user.email != scheduler_user.email):
                         panel_recipients.append(p_user)
@@ -829,12 +850,12 @@ async def update_interview(db: AsyncSession, interview_id: int, data: InterviewU
 
     # Synchronize modification to Google Calendar if linked
     from app.repositories.auth_repository import AuthRepository
-    scheduler_user = await AuthRepository.get_user_by_id(db, user_id)
+    scheduler_user = await AuthRepository.get_user_by_id_fresh(db, user_id)
     interviewer_to_sync = interview.interviewer_id or user_id
-    user = await AuthRepository.get_user_by_id(db, interviewer_to_sync)
+    user = await AuthRepository.get_user_by_id_fresh(db, interviewer_to_sync)
     credentials_json = _get_valid_credentials(user)
     if not credentials_json and interviewer_to_sync != user_id:
-        user_fallback = await AuthRepository.get_user_by_id(db, user_id)
+        user_fallback = await AuthRepository.get_user_by_id_fresh(db, user_id)
         credentials_json = _get_valid_credentials(user_fallback)
     if not credentials_json and scheduler_user:
         credentials_json = _get_valid_credentials(scheduler_user)
@@ -848,7 +869,7 @@ async def update_interview(db: AsyncSession, interview_id: int, data: InterviewU
         panelist_ids.append(interview.interviewer_id)
 
     for pid in panelist_ids:
-        p_user = await AuthRepository.get_user_by_id(db, pid)
+        p_user = await AuthRepository.get_user_by_id_fresh(db, pid)
         if p_user and getattr(p_user, "email", None):
             if not scheduler_user or p_user.email != getattr(scheduler_user, "email", None):
                 panel_recipients.append(p_user)
@@ -1082,10 +1103,10 @@ async def delete_interview(db: AsyncSession, interview_id: int, user_id: int, us
 
     from app.repositories.auth_repository import AuthRepository
     interviewer_to_sync = interview.interviewer_id or user_id
-    user = await AuthRepository.get_user_by_id(db, interviewer_to_sync)
+    user = await AuthRepository.get_user_by_id_fresh(db, interviewer_to_sync)
     credentials_json = _get_valid_credentials(user)
     if not credentials_json and interviewer_to_sync != user_id:
-        user_fallback = await AuthRepository.get_user_by_id(db, user_id)
+        user_fallback = await AuthRepository.get_user_by_id_fresh(db, user_id)
         credentials_json = _get_valid_credentials(user_fallback)
 
     if credentials_json and interview.google_event_id:
@@ -1118,8 +1139,13 @@ async def get_calendar_feed(db: AsyncSession, user_id: int, time_min: str = None
     """
     from app.repositories.auth_repository import AuthRepository
     sync_user_id = hr_id if hr_id else user_id
-    user = await AuthRepository.get_user_by_id(db, sync_user_id)
+    user = await AuthRepository.get_user_by_id_fresh(db, sync_user_id)
     credentials_json = _get_valid_credentials(user)
+    if credentials_json and user:
+        try:
+            await db.commit()
+        except Exception:
+            pass
 
     # Fetch DB interviews
     db_interviews = await InterviewRepository.get_all_interviews(db)
@@ -1182,20 +1208,25 @@ async def get_calendar_feed(db: AsyncSession, user_id: int, time_min: str = None
 
 async def get_google_calendar_status(db: AsyncSession, user_id: int):
     from app.repositories.auth_repository import AuthRepository
-    user = await AuthRepository.get_user_by_id(db, user_id)
+    user = await AuthRepository.get_user_by_id_fresh(db, user_id)
     if not user or not user.google_credentials:
         return {
             "connected": False,
             "email": None,
             "message": "Google Calendar is not connected. Connect your Google account to sync schedules."
         }
-    if (user.google_token_expiry and user.google_token_expiry < datetime.utcnow()) or not _get_valid_credentials(user):
+    valid_creds = _get_valid_credentials(user)
+    if not valid_creds:
         return {
             "connected": False,
             "email": user.email,
             "expired": True,
-            "message": "Google Calendar connection expired after 1-hour limit. Please reconnect your account."
+            "message": "Google Calendar connection expired or revoked. Please reconnect your account."
         }
+    try:
+        await db.commit()
+    except Exception:
+        pass
     return {
         "connected": True,
         "email": user.email,
@@ -1205,7 +1236,7 @@ async def get_google_calendar_status(db: AsyncSession, user_id: int):
 
 async def get_calendar_events(db: AsyncSession, user_id: int):
     from app.repositories.auth_repository import AuthRepository
-    user = await AuthRepository.get_user_by_id(db, user_id)
+    user = await AuthRepository.get_user_by_id_fresh(db, user_id)
     credentials_json = _get_valid_credentials(user)
     
     if credentials_json:
@@ -1250,12 +1281,12 @@ async def cancel_interview(
 
     # 2. Synchronize removal to Google Calendar
     from app.repositories.auth_repository import AuthRepository
-    scheduler_user = await AuthRepository.get_user_by_id(db, user_id)
+    scheduler_user = await AuthRepository.get_user_by_id_fresh(db, user_id)
     interviewer_to_sync = interview.interviewer_id or user_id
-    user = await AuthRepository.get_user_by_id(db, interviewer_to_sync)
+    user = await AuthRepository.get_user_by_id_fresh(db, interviewer_to_sync)
     credentials_json = _get_valid_credentials(user)
     if not credentials_json and interviewer_to_sync != user_id:
-        user_fallback = await AuthRepository.get_user_by_id(db, user_id)
+        user_fallback = await AuthRepository.get_user_by_id_fresh(db, user_id)
         credentials_json = _get_valid_credentials(user_fallback)
     if not credentials_json and scheduler_user:
         credentials_json = _get_valid_credentials(scheduler_user)
@@ -1304,13 +1335,13 @@ async def cancel_interview(
 
         panel_recipients = []
         for pid in (panelist_ids or []):
-            p_user = await AuthRepository.get_user_by_id(db, pid)
+            p_user = await AuthRepository.get_user_by_id_fresh(db, pid)
             if p_user and getattr(p_user, "email", None):
                 if not scheduler_user or p_user.email != getattr(scheduler_user, "email", None):
                     panel_recipients.append(p_user)
 
         if interview.interviewer_id and interview.interviewer_id != user_id:
-            p_user = await AuthRepository.get_user_by_id(db, interview.interviewer_id)
+            p_user = await AuthRepository.get_user_by_id_fresh(db, interview.interviewer_id)
             if p_user and getattr(p_user, "email", None):
                 if p_user.email not in [p.email for p in panel_recipients]:
                     panel_recipients.append(p_user)

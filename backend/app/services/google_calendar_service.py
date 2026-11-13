@@ -292,6 +292,10 @@ def get_real_google_events(
         }
         if time_min:
             kwargs["timeMin"] = time_min
+        else:
+            # Google Calendar requires timeMin when singleEvents=True and orderBy='startTime'
+            from datetime import datetime, timedelta, timezone
+            kwargs["timeMin"] = (datetime.now(timezone.utc) - timedelta(days=60)).isoformat().replace("+00:00", "Z")
         if time_max:
             kwargs["timeMax"] = time_max
 
