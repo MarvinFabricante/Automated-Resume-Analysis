@@ -222,20 +222,25 @@ const ScheduleInterviewModal: React.FC<ScheduleInterviewModalProps> = ({ isOpen,
         end_time: finalEnd,
         call_language: callLanguage
       }).unwrap();
-      
-      setSuccessMsg(`Interview scheduled successfully! Candidate marked as Reviewed and notification sent.`);
-      if (candidate) {
-        candidate.status = 'Reviewed';
-      }
-      if (onScheduled) {
-        onScheduled(candidate);
-      }
-      setTimeout(() => {
-        onClose();
-      }, 1200);
     } catch (error: any) {
       setErrorMsg(error?.data?.detail || 'Failed to schedule interview. Please check slot availability.');
+      return;
     }
+
+    setSuccessMsg(`Interview scheduled successfully! Candidate marked as Reviewed and notification sent.`);
+    try {
+      if (candidate && !Object.isFrozen(candidate)) {
+        candidate.status = 'Reviewed';
+      }
+    } catch {
+      // Ignore read-only property assignment on RTK Query frozen state objects
+    }
+    if (onScheduled) {
+      onScheduled(candidate ? { ...candidate, status: 'Reviewed' } : candidate);
+    }
+    setTimeout(() => {
+      onClose();
+    }, 1200);
   };
 
   const formatTime = (isoString: string) => {

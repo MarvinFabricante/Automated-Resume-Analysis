@@ -167,6 +167,24 @@ async def send_message(db: AsyncSession, current_user: User, other_user_id: int,
     await invalidate_contacts_cache(current_user.id)
     await invalidate_contacts_cache(other_user_id)
 
+    # Create notification for receiver
+    try:
+        from app.services.notification_service import create_notification
+        sender_name = (getattr(current_user, "fullname", None) or "").strip() or getattr(current_user, "email", "HR")
+        content_preview = content.strip()
+        preview = (content_preview[:100] + "...") if len(content_preview) > 100 else content_preview
+        await create_notification(
+            db=db,
+            title="New Message Alert",
+            message=f"{sender_name}: {preview}",
+            type="message",
+            target_role=receiver.role.upper() if receiver.role else None,
+            target_email=receiver.email.lower() if receiver.email else None,
+            sender_role=current_user.role.upper() if current_user.role else None,
+        )
+    except Exception as e_notif:
+        logging.warning(f"Failed to create chat notification: {e_notif}")
+
     return new_msg
 
 

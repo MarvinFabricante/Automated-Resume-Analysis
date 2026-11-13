@@ -22,9 +22,16 @@ from app.services.google_calendar_service import (
 )
 from app.services import email_service
 
-def _populate_candidate_info(interview):
+def _populate_candidate_info(interview, app_override=None, interviewer_override=None):
     """Helper to attach candidate details and interviewer info to the interview model."""
-    app = getattr(interview, "job_application", None)
+    app = interview.__dict__.get("job_application") if hasattr(interview, "__dict__") else None
+    if app is None:
+        app = app_override
+    if app is None:
+        try:
+            app = getattr(interview, "job_application", None)
+        except Exception:
+            app = None
     if app:
         setattr(interview, "candidate_name", getattr(app, "candidate_name", None))
         setattr(interview, "candidate_email", getattr(app, "candidate_email", None))
@@ -47,7 +54,14 @@ def _populate_candidate_info(interview):
         setattr(interview, "job_title", real_job_title)
         setattr(interview, "job_id", getattr(app, "job_id", None) or getattr(app, "job_description_id", None))
 
-    interviewer = getattr(interview, "interviewer", None)
+    interviewer = interview.__dict__.get("interviewer") if hasattr(interview, "__dict__") else None
+    if interviewer is None:
+        interviewer = interviewer_override
+    if interviewer is None:
+        try:
+            interviewer = getattr(interview, "interviewer", None)
+        except Exception:
+            interviewer = None
     if interviewer:
         setattr(interview, "interviewer_id", interviewer.id)
         setattr(interview, "interviewer_name", interviewer.fullname)
@@ -124,6 +138,18 @@ def _get_valid_credentials(user) -> Optional[str]:
     expiry = getattr(user, "google_token_expiry", None)
     if expiry and expiry < datetime.utcnow():
         return None
+    try:
+        import json
+        from datetime import timezone
+        creds_data = json.loads(user.google_credentials) if isinstance(user.google_credentials, str) else user.google_credentials
+        if isinstance(creds_data, dict) and creds_data.get("expiry"):
+            clean_exp = str(creds_data["expiry"]).replace("Z", "+00:00")
+            exp_dt = datetime.fromisoformat(clean_exp)
+            now_dt = datetime.now(timezone.utc) if exp_dt.tzinfo else datetime.utcnow()
+            if exp_dt <= now_dt:
+                return None
+    except Exception:
+        pass
     return user.google_credentials
 
 
@@ -477,6 +503,7 @@ async def schedule_interview(db: AsyncSession, data: InterviewCreateSchema, user
                 )
                 await InterviewRepository.commit_changes(db)
             except Exception as e_status:
+                await db.rollback()
                 logger.error(f"Error updating application status to REVIEWED: {e_status}")
 
         # 3. Create Google Calendar Event via centralized service if credentials exist
@@ -516,13 +543,8 @@ async def schedule_interview(db: AsyncSession, data: InterviewCreateSchema, user
                     interview.meeting_link = None
                     await InterviewRepository.commit_changes(db)
                 else:
-                    try:
-                        await InterviewRepository.delete_interview(db, interview)
-                        application.status = current_app_status
-                        await db.commit()
-                    except Exception as comp_err:
-                        logger.error(f"Compensation cleanup error: {comp_err}")
-                    raise ValueError("Failed to create Google Calendar event. No booking was created. Please try again.")
+                    interview.meeting_link = None
+                    await InterviewRepository.commit_changes(db)
             except (GoogleCalendarRateLimitError, GoogleCalendarTimeoutError) as e_cal:
                 try:
                     await InterviewRepository.delete_interview(db, interview)
@@ -550,6 +572,8 @@ async def schedule_interview(db: AsyncSession, data: InterviewCreateSchema, user
                     logger.error(f"{msg} Detail: {e}. Rolled back interview {interview.id} (no partial booking).")
                     raise ValueError(msg)
                 print(f"Warning: Could not create event on Google Calendar: {e}")
+                interview.meeting_link = None
+                await InterviewRepository.commit_changes(db)
         else:
             interview.meeting_link = None
             await InterviewRepository.commit_changes(db)
@@ -569,10 +593,14 @@ async def schedule_interview(db: AsyncSession, data: InterviewCreateSchema, user
                     notes=data.description or ""
                 )
                 if email_sent:
-                    await InterviewRepository.add_interview_log(
-                        db, interview.id, "EMAIL_SENT", f"Interview invitation email sent to candidate {candidate_email}"
-                    )
-                    await InterviewRepository.commit_changes(db)
+                    try:
+                        await InterviewRepository.add_interview_log(
+                            db, interview.id, "EMAIL_SENT", f"Interview invitation email sent to candidate {candidate_email}"
+                        )
+                        await InterviewRepository.commit_changes(db)
+                    except Exception as log_err:
+                        await db.rollback()
+                        logger.warning(f"Could not persist candidate email log: {log_err}")
             except Exception as e:
                 print(f"Warning: Could not send interview invitation email to candidate: {e}")
 
@@ -590,10 +618,14 @@ async def schedule_interview(db: AsyncSession, data: InterviewCreateSchema, user
                     notes=f"HR Copy - Scheduled interview for candidate {candidate_name} ({candidate_email or 'N/A'}). Assigned Panelist: {interviewer_name}. Notes: {data.description or 'N/A'}"
                 )
                 if email_sent:
-                    await InterviewRepository.add_interview_log(
-                        db, interview.id, "EMAIL_SENT", f"Interview confirmation email sent to HR {scheduler_email}"
-                    )
-                    await InterviewRepository.commit_changes(db)
+                    try:
+                        await InterviewRepository.add_interview_log(
+                            db, interview.id, "EMAIL_SENT", f"Interview confirmation email sent to HR {scheduler_email}"
+                        )
+                        await InterviewRepository.commit_changes(db)
+                    except Exception as log_err:
+                        await db.rollback()
+                        logger.warning(f"Could not persist HR email log: {log_err}")
             except Exception as e:
                 print(f"Warning: Could not send interview confirmation email to HR: {e}")
 
@@ -614,10 +646,14 @@ async def schedule_interview(db: AsyncSession, data: InterviewCreateSchema, user
                         notes=f"Panel Interview Assignment - Candidate: {candidate_name} ({candidate_email or 'N/A'}). Job: {job_name}. Notes: {data.description or 'N/A'}"
                     )
                     if email_sent:
-                        await InterviewRepository.add_interview_log(
-                            db, interview.id, "EMAIL_SENT", f"Interview panelist invitation email sent to {p_email}"
-                        )
-                        await InterviewRepository.commit_changes(db)
+                        try:
+                            await InterviewRepository.add_interview_log(
+                                db, interview.id, "EMAIL_SENT", f"Interview panelist invitation email sent to {p_email}"
+                            )
+                            await InterviewRepository.commit_changes(db)
+                        except Exception as log_err:
+                            await db.rollback()
+                            logger.warning(f"Could not persist panel email log: {log_err}")
             except Exception as e:
                 print(f"Warning: Could not send interview invitation email to panelist: {e}")
 
@@ -631,8 +667,12 @@ async def schedule_interview(db: AsyncSession, data: InterviewCreateSchema, user
             )
             sent = await asyncio.to_thread(send_sms_notification_sync, candidate_phone, message)
             if sent:
-                await InterviewRepository.add_interview_log(db, interview.id, "SMS_SENT", "Notification sent to candidate")
-                await InterviewRepository.commit_changes(db)
+                try:
+                    await InterviewRepository.add_interview_log(db, interview.id, "SMS_SENT", "Notification sent to candidate")
+                    await InterviewRepository.commit_changes(db)
+                except Exception as log_err:
+                    await db.rollback()
+                    logger.warning(f"Could not persist SMS log: {log_err}")
 
         # 6. In-App Notifications
         try:
@@ -683,10 +723,14 @@ async def schedule_interview(db: AsyncSession, data: InterviewCreateSchema, user
             try:
                 from app.tasks import initiate_interview_call_task
                 initiate_interview_call_task.delay(interview.id)
-                await InterviewRepository.add_interview_log(
-                    db, interview.id, "VOICE_CALL_QUEUED", f"Automated AI voice call queued for candidate phone {candidate_phone}"
-                )
-                await InterviewRepository.commit_changes(db)
+                try:
+                    await InterviewRepository.add_interview_log(
+                        db, interview.id, "VOICE_CALL_QUEUED", f"Automated AI voice call queued for candidate phone {candidate_phone}"
+                    )
+                    await InterviewRepository.commit_changes(db)
+                except Exception as log_err:
+                    await db.rollback()
+                    logger.warning(f"Could not persist voice call log: {log_err}")
             except Exception as e_voice:
                 logger.warning(f"Celery dispatch notice for interview voice call: {e_voice}. Falling back to background async...")
                 try:
@@ -699,9 +743,7 @@ async def schedule_interview(db: AsyncSession, data: InterviewCreateSchema, user
         fresh_interview = await InterviewRepository.get_interview_by_id(db, interview.id)
         if fresh_interview:
             interview = fresh_interview
-        setattr(interview, "job_application", application)
-        setattr(interview, "interviewer", user)
-        _populate_candidate_info(interview)
+        _populate_candidate_info(interview, app_override=application, interviewer_override=user)
         return interview
 
 
@@ -1020,8 +1062,7 @@ async def update_interview(db: AsyncSession, interview_id: int, data: InterviewU
         except Exception as e_notif:
             print(f"Warning: Could not create interview reschedule notification: {e_notif}")
 
-    setattr(interview, "job_application", application)
-    _populate_candidate_info(interview)
+    _populate_candidate_info(interview, app_override=application, interviewer_override=user)
     return interview
 
 
@@ -1148,7 +1189,7 @@ async def get_google_calendar_status(db: AsyncSession, user_id: int):
             "email": None,
             "message": "Google Calendar is not connected. Connect your Google account to sync schedules."
         }
-    if user.google_token_expiry and user.google_token_expiry < datetime.utcnow():
+    if (user.google_token_expiry and user.google_token_expiry < datetime.utcnow()) or not _get_valid_credentials(user):
         return {
             "connected": False,
             "email": user.email,
@@ -1415,8 +1456,7 @@ async def cancel_interview(
         except Exception as e_notif:
             print(f"Warning: Could not create interview cancellation notification: {e_notif}")
 
-    setattr(interview, "job_application", application)
-    return _populate_candidate_info(interview)
+    return _populate_candidate_info(interview, app_override=application, interviewer_override=user)
 
 
 async def update_interview_status(db: AsyncSession, interview_id: int, status: str, user_id: Optional[int] = None, user_role: Optional[str] = None):
