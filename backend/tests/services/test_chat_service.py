@@ -83,6 +83,46 @@ async def test_send_message_and_role_restrictions(db_session):
 
 
 @pytest.mark.asyncio
+async def test_hr_messaged_creates_new_message_alert_notification(db_session):
+    hr = HR(
+        fullname="Maria Recruiter",
+        email="maria.recruiter@example.com",
+        password="hash",
+        role="HR",
+        company_name="Mariwasa"
+    )
+    cand = Candidate(
+        fullname="Juan Candidate",
+        email="juan.candidate@example.com",
+        password="hash",
+        role="CANDIDATE"
+    )
+    db_session.add_all([hr, cand])
+    await db_session.flush()
+
+    with patch("app.services.chat_service.manager.send_personal_message", new_callable=AsyncMock):
+        msg = await chat_service.send_message(
+            db=db_session,
+            current_user=hr,
+            other_user_id=cand.id,
+            content="Hello Juan, please submit your updated resume."
+        )
+
+    assert msg is not None
+    from app.services.notification_service import get_all_notifications
+    notifs = await get_all_notifications(db_session, role="CANDIDATE", email=cand.email)
+    assert len(notifs) >= 1
+    target_notif = next((n for n in notifs if n.title == "New Message Alert"), None)
+    assert target_notif is not None
+    assert target_notif.type == "message"
+    assert target_notif.target_role == "CANDIDATE"
+    assert target_notif.target_email == cand.email.lower()
+    assert target_notif.sender_role == "HR"
+    assert "Maria Recruiter" in target_notif.message
+    assert "Hello Juan" in target_notif.message
+
+
+@pytest.mark.asyncio
 async def test_get_messages_and_mark_as_read(db_session):
     hr = HR(
         fullname="HR Reader",

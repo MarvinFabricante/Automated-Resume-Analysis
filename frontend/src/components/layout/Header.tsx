@@ -117,6 +117,12 @@ const Header: React.FC = () => {
               iconName = 'Radio';
               bgColor = 'bg-purple-50';
               textColor = 'text-purple-600';
+            } else if (n.type === 'message' || n.type === 'chat') {
+              iconName = 'MessageSquare';
+              bgColor = 'bg-blue-50';
+              textColor = 'text-blue-600';
+              tag = 'Message';
+              tagColor = 'bg-blue-100 text-blue-700';
             }
 
             const timeInfo = formatNotificationTime(n.created_at);
@@ -169,6 +175,12 @@ const Header: React.FC = () => {
               textColor = 'text-green-600';
               tag = 'Match';
               tagColor = 'bg-green-100 text-green-700';
+            } else if (n.type === 'message' || n.type === 'chat') {
+              iconName = 'MessageSquare';
+              bgColor = 'bg-blue-50';
+              textColor = 'text-blue-600';
+              tag = 'Message';
+              tagColor = 'bg-blue-100 text-blue-700';
             } else if (n.type === 'application_update') {
               if (n.title?.includes('Accepted') || n.title?.includes('🎉')) {
                 bgColor = 'bg-emerald-50';
@@ -261,6 +273,12 @@ const Header: React.FC = () => {
               textColor = 'text-green-600';
               tag = 'Match';
               tagColor = 'bg-green-100 text-green-700';
+            } else if (n.type === 'message' || n.type === 'chat') {
+              iconName = 'MessageSquare';
+              bgColor = 'bg-blue-50';
+              textColor = 'text-blue-600';
+              tag = 'Message';
+              tagColor = 'bg-blue-100 text-blue-700';
             } else if (n.type === 'application_update') {
               if (n.title?.includes('Accepted') || n.title?.includes('🎉')) {
                 bgColor = 'bg-emerald-50';
@@ -289,6 +307,7 @@ const Header: React.FC = () => {
             else if (n.type === 'job_update') { iconName = 'Edit3'; bgColor = 'bg-amber-50'; textColor = 'text-amber-600'; }
             else if (n.type === 'candidate_login') { iconName = 'Radio'; bgColor = 'bg-green-50'; textColor = 'text-green-600'; }
             else if (n.type === 'hr_login') { iconName = 'Radio'; bgColor = 'bg-purple-50'; textColor = 'text-purple-600'; }
+            else if (n.type === 'message' || n.type === 'chat') { iconName = 'MessageSquare'; bgColor = 'bg-blue-50'; textColor = 'text-blue-600'; tag = 'Message'; tagColor = 'bg-blue-100 text-blue-700'; }
           }
 
           const timeInfo = formatNotificationTime(n.created_at || new Date());

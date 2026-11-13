@@ -246,6 +246,7 @@ async def schedule_interview(
         await clear_cache_pattern("admin:stats*")
         return result
     except ValueError as e:
+        await db.rollback()
         if "already scheduled" in str(e).lower() or "conflict" in str(e).lower():
             raise HTTPException(status_code=409, detail=str(e))
         if "rate limit" in str(e).lower() or "429" in str(e).lower():
@@ -254,6 +255,7 @@ async def schedule_interview(
             raise HTTPException(status_code=504, detail=str(e))
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
+        await db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.put("/{interview_id}", response_model=InterviewResponseSchema)

@@ -279,24 +279,29 @@ const NewScheduleModal: React.FC<NewScheduleModalProps> = ({
         end_time: finalEnd,
         call_language: callLanguage
       }).unwrap();
-
-      if (selectedCandidate) {
-        selectedCandidate.status = 'Reviewed';
-      }
-
-      if (onScheduled) {
-        onScheduled({
-          candidateId: selectedCandidate.id,
-          candidateName: selectedCandidate.candidate_name || selectedCandidate.name || 'Candidate',
-          title: title.trim() || 'Technical Interview',
-          date: date,
-          startTime: finalStart
-        });
-      }
-      onClose();
     } catch (err: any) {
       setErrorMsg(err?.data?.detail || 'Failed to schedule interview. Please check slot availability.');
+      return;
     }
+
+    try {
+      if (selectedCandidate && !Object.isFrozen(selectedCandidate)) {
+        selectedCandidate.status = 'Reviewed';
+      }
+    } catch {
+      // Ignore read-only property assignment on RTK Query frozen state objects
+    }
+
+    if (onScheduled) {
+      onScheduled({
+        candidateId: selectedCandidate.id,
+        candidateName: selectedCandidate.candidate_name || selectedCandidate.name || 'Candidate',
+        title: title.trim() || 'Technical Interview',
+        date: date,
+        startTime: finalStart
+      });
+    }
+    onClose();
   };
 
   const formatTimeSlot = (isoString: string) => {
@@ -685,6 +690,7 @@ const NewScheduleModal: React.FC<NewScheduleModalProps> = ({
                           type="button"
                           key={idx}
                           onClick={() => {
+                            setErrorMsg('');
                             setSelectedSlot(slot);
                             setCustomStartTime(new Date(slot.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }));
                             setCustomEndTime(new Date(slot.end_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }));
