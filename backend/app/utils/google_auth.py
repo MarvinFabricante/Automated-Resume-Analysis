@@ -154,7 +154,7 @@ def get_candidate_google_auth_url(flow_type: str = "candidate_login", redirect_u
     return auth_url, state
 
 
-def get_hr_google_auth_url(flow_type: str = "hr_login", redirect_uri: str = None, user_id: int = None):
+def get_hr_google_auth_url(flow_type: str = "hr_login", redirect_uri: str = None, user_id: int = None, return_to: str = None):
     """
     Generate Google OAuth URL specifically for HR staff.
     Uses CALENDAR_SCOPES to allow Google Calendar synchronization for interview management.
@@ -176,7 +176,8 @@ def get_hr_google_auth_url(flow_type: str = "hr_login", redirect_uri: str = None
         "role": "hr",
         "scopes": CALENDAR_SCOPES,
         "redirect_uri": chosen_redirect_uri,
-        "user_id": user_id
+        "user_id": user_id,
+        "return_to": return_to
     })
     return auth_url, state
 
@@ -271,19 +272,26 @@ def exchange_code_for_credentials(code: str, state: str):
         "role": role,
         "scopes": scopes,
         "redirect_uri": redirect_uri,
-        "user_id": user_id
+        "user_id": user_id,
+        "return_to": flow_info.get("return_to")
     }
 
 
 def is_google_credentials_expired(credentials_json: str) -> bool:
     """
-    Check if Google OAuth credentials have expired beyond the 1-hour limit.
+    Check if Google OAuth credentials have permanently expired beyond refresh capability.
+    If a valid refresh_token is present, credentials can be refreshed automatically.
     """
     if not credentials_json:
         return True
     try:
         from datetime import datetime, timezone
         creds_data = json.loads(credentials_json) if isinstance(credentials_json, str) else credentials_json
+        if not isinstance(creds_data, dict):
+            return True
+        # If refresh_token is present, credentials are not permanently expired
+        if creds_data.get("refresh_token"):
+            return False
         expiry_val = creds_data.get('expiry')
         if expiry_val:
             clean_exp = str(expiry_val).replace("Z", "+00:00")
@@ -299,26 +307,31 @@ def is_google_credentials_expired(credentials_json: str) -> bool:
 def get_calendar_service(credentials_json: str):
     """
     Build a Google Calendar API service client.
-    Google OAuth credential tokens strictly expire in 1 hour.
-    If the token has expired, do NOT auto-refresh via refresh_token;
-    the user must re-authenticate with Google.
+    Automatically refreshes expired access tokens if a refresh_token is present.
     """
     if not credentials_json:
         return None, None
     try:
-        if is_google_credentials_expired(credentials_json):
-            print("Google OAuth credential token has expired (1-hour limit exceeded). Re-authentication required.")
+        creds_data = json.loads(credentials_json) if isinstance(credentials_json, str) else credentials_json
+        creds = Credentials.from_authorized_user_info(creds_data, SCOPES)
+
+        if not creds:
             return None, credentials_json
 
-        creds_data = json.loads(credentials_json)
-        creds = Credentials.from_authorized_user_info(creds_data, SCOPES)
-        
-        if not creds or creds.expired:
-            print("Google OAuth credentials expired or invalid.")
-            return None, credentials_json
-            
-        service = build('calendar', 'v3', credentials=creds)
-        return service, creds.to_json()
+        # Auto-refresh if access token expired and refresh_token exists
+        if creds.expired and creds.refresh_token:
+            try:
+                creds.refresh(Request())
+            except Exception as ref_err:
+                print(f"Error auto-refreshing Google credentials: {ref_err}")
+                return None, credentials_json
+
+        if creds.valid:
+            service = build('calendar', 'v3', credentials=creds)
+            return service, creds.to_json()
+
+        print("Google OAuth credentials invalid or expired without refresh token.")
+        return None, credentials_json
     except Exception as e:
         print(f"Error building calendar service: {e}")
         return None, credentials_json

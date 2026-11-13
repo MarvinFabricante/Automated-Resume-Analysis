@@ -193,6 +193,35 @@ async def get_user_by_id(db: AsyncSession, user_id: int) -> Optional[User]:
     return user
 
 
+async def get_user_by_id_fresh(db: AsyncSession, user_id: int) -> Optional[User]:
+    """Get user by ID directly from the DB (session-attached, bypasses Redis cache).
+    Use this whenever the returned user will be modified and committed."""
+    result = await db.execute(
+        select(User).where(User.id == user_id).execution_options(populate_existing=True)
+    )
+    return result.scalar_one_or_none()
+
+
+async def get_user_by_email_fresh(db: AsyncSession, email: str) -> Optional[User]:
+    """Get user by email directly from the DB (session-attached, bypasses Redis cache)."""
+    result = await db.execute(
+        select(User).where(User.email == email.strip().lower()).execution_options(populate_existing=True)
+    )
+    return result.scalar_one_or_none()
+
+
+async def invalidate_user_cache(user) -> None:
+    """Drop cached copies of a user so subsequent reads see committed changes."""
+    if not user:
+        return
+    try:
+        await delete_cache(f"user:id:{user.id}")
+        if getattr(user, "email", None):
+            await delete_cache(f"user:email:{user.email.lower()}")
+    except Exception as e:
+        logger.warning(f"Could not invalidate user cache: {e}")
+
+
 async def create_password_reset(db: AsyncSession, reset_entry: PasswordReset) -> PasswordReset:
     """Create password reset entry (Redis-first transaction)."""
     tx_id = await redis_tx_manager.stage_transaction(

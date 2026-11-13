@@ -152,28 +152,28 @@ const CandidateCard: React.FC<CandidateCardProps> = ({
       : 'Basic Fit';
 
   return (
-    <div className="flex flex-col xl:flex-row xl:items-center justify-between p-4 sm:p-5 bg-white border border-slate-200/90 rounded-2xl hover:border-rose-200/90 hover:shadow-md transition-all duration-200 group gap-4">
-      {/* Left: Avatar & Candidate Identity */}
-      <div className="flex items-start gap-3.5 min-w-0 flex-1">
-        <div className="relative shrink-0 mt-0.5">
-          <div className="w-12 h-12 rounded-2xl bg-rose-50/80 border border-rose-100 flex items-center justify-center overflow-hidden group-hover:scale-105 transition-transform duration-200 shadow-inner">
-            {profileImage ? (
-              <img src={getAssetUrl(profileImage)} alt={name} className="w-full h-full object-cover" />
-            ) : (
-              <span className="text-base font-black text-[#D60041]">
-                {name.charAt(0).toUpperCase()}
-              </span>
-            )}
+    <div className="flex flex-col p-4 sm:p-5 bg-white border border-slate-200/90 rounded-2xl hover:border-rose-200/90 hover:shadow-md transition-all duration-200 group gap-3.5">
+      {/* Top: Avatar & Candidate Identity + Status Badge */}
+      <div className="flex items-start justify-between gap-3 min-w-0">
+        <div className="flex items-start gap-3.5 min-w-0 flex-1">
+          <div className="relative shrink-0 mt-0.5">
+            <div className="w-12 h-12 rounded-2xl bg-rose-50/80 border border-rose-100 flex items-center justify-center overflow-hidden group-hover:scale-105 transition-transform duration-200 shadow-inner">
+              {profileImage ? (
+                <img src={getAssetUrl(profileImage)} alt={name} className="w-full h-full object-cover" />
+              ) : (
+                <span className="text-base font-black text-[#D60041]">
+                  {name.charAt(0).toUpperCase()}
+                </span>
+              )}
+            </div>
+            <span
+              className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-white ${statusInfo.dotClass}`}
+              title={`Status: ${statusInfo.label}`}
+            />
           </div>
-          <span
-            className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-white ${statusInfo.dotClass}`}
-            title={`Status: ${statusInfo.label}`}
-          />
-        </div>
 
-        <div className="min-w-0 flex-1">
-          {/* Name & Time row */}
-          <div className="flex items-center justify-between gap-2 flex-wrap">
+          <div className="min-w-0 flex-1">
+            {/* Name & Time row */}
             <div className="flex items-center gap-2 flex-wrap min-w-0">
               <h4 className="font-extrabold text-sm sm:text-base text-slate-900 truncate group-hover:text-[#D60041] transition-colors">
                 {name}
@@ -184,57 +184,57 @@ const CandidateCard: React.FC<CandidateCardProps> = ({
               </span>
             </div>
 
-            {/* Mobile-Only Status Badge */}
-            <span className={`inline-flex xl:hidden items-center gap-1 px-2.5 py-0.5 rounded-lg text-[10px] font-black uppercase tracking-wider border shrink-0 ${statusInfo.badgeClass}`}>
-              <span className={`w-1.5 h-1.5 rounded-full ${statusInfo.dotClass}`} />
-              <span>{statusInfo.label}</span>
-            </span>
-          </div>
-
-          {/* Role & Context Row */}
-          <div className="flex items-center gap-2 text-xs text-slate-600 font-semibold mt-1 flex-wrap">
-            <span className="text-slate-800 font-bold flex items-center gap-1.5 truncate max-w-[220px]">
-              <Briefcase size={12} className="text-slate-400 shrink-0" />
-              <span className="truncate">{preferredJob}</span>
-            </span>
-            {department && department !== 'N/A' && (
-              <span className="text-slate-400 text-[11px] font-medium hidden sm:inline">
-                • {department}
+            {/* Role & Context Row */}
+            <div className="flex items-center gap-2 text-xs text-slate-600 font-semibold mt-1 flex-wrap">
+              <span className="text-slate-800 font-bold flex items-center gap-1.5 truncate max-w-[240px]">
+                <Briefcase size={12} className="text-slate-400 shrink-0" />
+                <span className="truncate">{preferredJob}</span>
               </span>
-            )}
-            {location && location !== 'N/A' && (
-              <span className="inline-flex items-center gap-1 text-[11px] text-slate-400 font-normal">
-                <MapPin size={11} className="shrink-0" />
-                <span className="truncate max-w-[150px]">{location}</span>
-              </span>
-            )}
-          </div>
-
-          {/* Skills Tags */}
-          {skillsList.length > 0 && (
-            <div className="flex items-center gap-1.5 mt-2 flex-wrap">
-              {skillsList.slice(0, 3).map((skill: string, i: number) => (
-                <span
-                  key={i}
-                  className="px-2 py-0.5 bg-slate-50 hover:bg-slate-100 rounded-md text-[10px] font-bold text-slate-600 border border-slate-200/60 truncate max-w-[130px] transition-colors"
-                >
-                  {skill}
+              {department && department !== 'N/A' && (
+                <span className="text-slate-400 text-[11px] font-medium hidden sm:inline">
+                  • {department}
                 </span>
-              ))}
-              {skillsList.length > 3 && (
-                <span className="px-1.5 py-0.5 bg-slate-100 rounded-md text-[10px] font-black text-slate-400">
-                  +{skillsList.length - 3}
+              )}
+              {location && location !== 'N/A' && (
+                <span className="inline-flex items-center gap-1 text-[11px] text-slate-400 font-normal">
+                  <MapPin size={11} className="shrink-0" />
+                  <span className="truncate max-w-[150px]">{location}</span>
                 </span>
               )}
             </div>
-          )}
+
+            {/* Skills Tags */}
+            {skillsList.length > 0 && (
+              <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+                {skillsList.slice(0, 4).map((skill: string, i: number) => (
+                  <span
+                    key={i}
+                    className="px-2 py-0.5 bg-slate-50 hover:bg-slate-100 rounded-md text-[10px] font-bold text-slate-600 border border-slate-200/60 truncate max-w-[140px] transition-colors"
+                  >
+                    {skill}
+                  </span>
+                ))}
+                {skillsList.length > 4 && (
+                  <span className="px-1.5 py-0.5 bg-slate-100 rounded-md text-[10px] font-black text-slate-400">
+                    +{skillsList.length - 4}
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
         </div>
+
+        {/* Status Badge */}
+        <span className={`inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1 rounded-xl text-[10.5px] font-black uppercase tracking-wider border shrink-0 ${statusInfo.badgeClass}`}>
+          <span className={`w-1.5 h-1.5 rounded-full ${statusInfo.dotClass}`} />
+          <span>{statusInfo.label}</span>
+        </span>
       </div>
 
-      {/* Middle & Right: Score, Status & Actions */}
-      <div className="flex items-center justify-between xl:justify-end gap-3 sm:gap-4 pt-3 xl:pt-0 border-t xl:border-t-0 border-slate-100 w-full xl:w-auto shrink-0 flex-wrap sm:flex-nowrap">
+      {/* Bottom: Score & Actions */}
+      <div className="flex items-center justify-between gap-3 pt-3 border-t border-slate-100 w-full flex-wrap sm:flex-nowrap">
         {/* ATS Score & Match Label */}
-        <div className="flex items-center gap-2.5 min-w-0">
+        <div className="flex items-center gap-2.5 shrink-0">
           <div className={`px-2.5 py-1.5 rounded-xl border flex items-center gap-1.5 shadow-2xs font-black text-xs sm:text-sm shrink-0 ${scoreStyles}`}>
             {score >= 80 ? (
               <Sparkles size={13} className="text-emerald-500 shrink-0" />
@@ -243,7 +243,7 @@ const CandidateCard: React.FC<CandidateCardProps> = ({
             )}
             <span>{score}%</span>
           </div>
-          <div className="flex flex-col min-w-0">
+          <div className="flex flex-col">
             <span className="text-[9px] font-black uppercase tracking-wider text-slate-400 leading-none">ATS Match</span>
             <span className="text-[10.5px] font-bold text-slate-700 mt-0.5 whitespace-nowrap">
               {scoreTierText}
@@ -251,14 +251,8 @@ const CandidateCard: React.FC<CandidateCardProps> = ({
           </div>
         </div>
 
-        {/* Desktop-Only Status Badge */}
-        <span className={`hidden xl:inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-[10.5px] font-black uppercase tracking-wider border shrink-0 ${statusInfo.badgeClass}`}>
-          <span className={`w-1.5 h-1.5 rounded-full ${statusInfo.dotClass}`} />
-          <span>{statusInfo.label}</span>
-        </span>
-
         {/* Quick Action Buttons */}
-        <div className="flex items-center gap-2 shrink-0 ml-auto sm:ml-0">
+        <div className="flex items-center gap-2 shrink-0 ml-auto">
           {/* Inspect Button */}
           <button
             type="button"
@@ -267,7 +261,7 @@ const CandidateCard: React.FC<CandidateCardProps> = ({
             title="Inspect candidate resume & ATS score breakdown"
           >
             <Eye size={14} className="text-slate-500" />
-            <span className="hidden sm:inline">Inspect</span>
+            <span>Inspect</span>
           </button>
 
           {/* Schedule Interview Button */}

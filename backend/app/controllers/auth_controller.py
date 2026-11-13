@@ -335,7 +335,7 @@ async def google_register(request: Request, origin: str = None):
     return await google_candidate_register(request, origin)
 
 @router.get("/google/login")
-async def google_login(request: Request, flow: str = "login", role: str = "auto", origin: str = None, user_id: int = None):
+async def google_login(request: Request, flow: str = "login", role: str = "auto", origin: str = None, user_id: int = None, return_to: str = None):
     """
     Role-aware Google OAuth login and account-linking endpoint.
     - If flow is 'link_account': links Google credentials to an existing user session.
@@ -352,7 +352,7 @@ async def google_login(request: Request, flow: str = "login", role: str = "auto"
     
     if flow in ["link_account", "link_google"]:
         if norm_role == "hr":
-            url, state = get_hr_google_auth_url(flow_type="link_account", redirect_uri=redirect_uri, user_id=user_id)
+            url, state = get_hr_google_auth_url(flow_type="link_account", redirect_uri=redirect_uri, user_id=user_id, return_to=return_to)
         elif norm_role == "admin":
             url, state = get_admin_google_auth_url(flow_type="link_account", redirect_uri=redirect_uri, user_id=user_id)
         else:
@@ -360,7 +360,7 @@ async def google_login(request: Request, flow: str = "login", role: str = "auto"
     elif flow in ["candidate_register", "register"]:
         url, state = get_candidate_google_auth_url(flow_type="candidate_register", redirect_uri=redirect_uri, user_id=user_id)
     elif norm_role == "hr" or flow == "hr_login":
-        url, state = get_hr_google_auth_url(flow_type="hr_login", redirect_uri=redirect_uri, user_id=user_id)
+        url, state = get_hr_google_auth_url(flow_type="hr_login", redirect_uri=redirect_uri, user_id=user_id, return_to=return_to)
     elif norm_role == "admin" or flow == "admin_login":
         url, state = get_admin_google_auth_url(flow_type="admin_login", redirect_uri=redirect_uri, user_id=user_id)
     elif norm_role == "candidate":
@@ -427,11 +427,11 @@ async def google_callback(request: Request, code: str, state: str = "", db: Asyn
             user = None
             if target_user_id:
                 try:
-                    user = await AuthRepository.get_user_by_id(db, int(target_user_id))
+                    user = await AuthRepository.get_user_by_id_fresh(db, int(target_user_id))
                 except Exception:
                     pass
             if not user and email:
-                user = await AuthRepository.get_user_by_email(db, email)
+                user = await AuthRepository.get_user_by_email_fresh(db, email)
                 
             if user:
                 user.google_credentials = creds_json
@@ -441,6 +441,7 @@ async def google_callback(request: Request, code: str, state: str = "", db: Asyn
                 if picture and not user.profile_image_url:
                     user.profile_image_url = picture
                 await db.commit()
+                await AuthRepository.invalidate_user_cache(user)
                 
                 role_path = (user.role or "candidate").lower()
                 return RedirectResponse(f"{base_url}/{role_path}/settings?tab=security&google_linked=success")
@@ -474,6 +475,9 @@ async def google_callback(request: Request, code: str, state: str = "", db: Asyn
             "email": email,
             "picture": data.get("profile_image_url", "")
         }
+        return_to = flow_info.get("return_to") if isinstance(flow_info, dict) else None
+        if return_to:
+            params["return_to"] = return_to
         frontend_url = f"{base_url}/auth/callback?{urlencode(params)}"
         return RedirectResponse(frontend_url)
     except Exception as e:

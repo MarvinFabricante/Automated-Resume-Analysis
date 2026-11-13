@@ -49,7 +49,13 @@ const GoogleCallback: React.FC = () => {
       // Broadcast login to notify all other open windows/tabs to log out immediately
       broadcastAuthLogin(userId ? Number(userId) : null, email || '', role);
 
-      // Redirect based on role
+      // Redirect based on return_to or role
+      const returnTo = searchParams.get('return_to');
+      if (returnTo && returnTo.startsWith('/')) {
+        window.location.href = returnTo;
+        return;
+      }
+
       const normRole = (role || '').toUpperCase();
       if (normRole === 'ADMIN') {
         window.location.href = '/admin/dashboard';

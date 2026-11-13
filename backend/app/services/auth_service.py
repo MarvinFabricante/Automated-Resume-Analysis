@@ -354,7 +354,8 @@ async def login_with_google(
             )
             await db.commit()
 
-    user = await AuthRepository.get_user_by_id(db, user_id)
+    # Load a session-attached user (NOT the Redis-cached copy) so changes are persisted
+    user = await AuthRepository.get_user_by_id_fresh(db, user_id)
     if user:
         if getattr(user, 'is_archived', False) or (row and getattr(row, 'is_archived', False)):
             raise Exception("Account has been archived. Please contact administration.")
@@ -379,6 +380,7 @@ async def login_with_google(
         user.is_online = True
         user.last_active = datetime.utcnow()
         await db.commit()
+        await AuthRepository.invalidate_user_cache(user)
 
     token = create_access_token({
         "sub": email,
@@ -444,7 +446,7 @@ async def register_candidate_with_google(db: AsyncSession, email: str, fullname:
         )
         await db.commit()
 
-    user = await AuthRepository.get_user_by_id(db, user_id)
+    user = await AuthRepository.get_user_by_id_fresh(db, user_id)
     if user:
         # Explicitly do NOT set google_credentials - candidate has no calendar console integration
         user.google_credentials = None
@@ -455,6 +457,7 @@ async def register_candidate_with_google(db: AsyncSession, email: str, fullname:
         user.is_online = True
         user.last_active = datetime.utcnow()
         await db.commit()
+        await AuthRepository.invalidate_user_cache(user)
 
     token = create_access_token({
         "sub": email,
