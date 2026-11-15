@@ -71,7 +71,7 @@ const Register: React.FC = () => {
         }
       }
     };
-    
+
     checkExistingSession();
     window.addEventListener('storage', checkExistingSession);
     return () => window.removeEventListener('storage', checkExistingSession);
@@ -80,7 +80,7 @@ const Register: React.FC = () => {
   const handleGoogleRegister = () => {
     const existingToken = localStorage.getItem('token');
     const existingRole = localStorage.getItem('role');
-    
+
     if (existingToken && isTokenExpired(existingToken)) {
       clearAllAuthSessions();
     } else if (existingToken && existingRole) {
@@ -106,7 +106,7 @@ const Register: React.FC = () => {
 
     const existingToken = localStorage.getItem('token');
     const existingRole = localStorage.getItem('role');
-    
+
     if (existingToken && isTokenExpired(existingToken)) {
       clearAllAuthSessions();
     } else if (existingToken && existingRole) {
@@ -201,7 +201,7 @@ const Register: React.FC = () => {
         <title>Create Account - Mariwasa Portal</title>
       </Helmet>
 
-      <button 
+      <button
         onClick={() => window.location.href = '/'}
         className="fixed top-3 left-3 sm:top-8 sm:left-8 flex items-center gap-1.5 sm:gap-2 text-gray-600 hover:text-[#D60041] transition-all group font-bold text-[11px] sm:text-xs uppercase tracking-widest bg-white/70 backdrop-blur-sm py-2 px-3 sm:py-3 sm:px-5 rounded-xl sm:rounded-2xl border border-gray-200 hover:border-pink-100 hover:shadow-lg active:scale-95 z-50 shadow-sm"
       >
@@ -214,7 +214,7 @@ const Register: React.FC = () => {
           <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm p-6 sm:p-8 transform transition-all animate-in zoom-in-95 duration-200">
             <div className="flex flex-col items-center text-center">
               <div className={`w-14 h-14 sm:w-16 sm:h-16 rounded-full flex items-center justify-center mb-4 sm:mb-5 ${modalState.type === 'success' ? 'bg-green-50' :
-                  modalState.type === 'exists' ? 'bg-blue-50' : 'bg-red-50'
+                modalState.type === 'exists' ? 'bg-blue-50' : 'bg-red-50'
                 }`}>
                 {modalState.type === 'success' ? (
                   <CheckCircle2 className="w-7 h-7 sm:w-8 sm:h-8 text-green-500" />
@@ -239,8 +239,8 @@ const Register: React.FC = () => {
                   }
                 }}
                 className={`w-full font-medium py-2.5 px-4 rounded-full transition-all duration-200 text-xs sm:text-sm ${modalState.type === 'success' ? 'bg-[#D60041] hover:bg-[#b50037] text-white' :
-                    modalState.type === 'exists' ? 'bg-blue-600 hover:bg-blue-700 text-white' :
-                      'bg-gray-100 hover:bg-gray-200 text-gray-800'
+                  modalState.type === 'exists' ? 'bg-blue-600 hover:bg-blue-700 text-white' :
+                    'bg-gray-100 hover:bg-gray-200 text-gray-800'
                   }`}
               >
                 {modalState.type === 'success' ? 'Continue to Login' :
@@ -261,7 +261,7 @@ const Register: React.FC = () => {
               </button>
             </div>
             <div className="overflow-y-auto pr-2 text-xs sm:text-sm text-gray-700 space-y-4 mb-4 sm:mb-6 font-normal">
-              <p>Welcome to Mariwasa Siam Ceramics Inc. Resume Analysis System. By registering an account, you agree to comply with our terms and conditions.</p>
+              <p>Welcome to Mariwasa Recruitment. By registering an account, you agree to comply with our terms and conditions.</p>
               <h4 className="font-medium text-gray-900 mt-2">1. Data Privacy</h4>
               <p>We collect and process your personal and professional data strictly for recruitment and analytical purposes. We adhere to data protection regulations and ensure your data is kept secure.</p>
               <h4 className="font-medium text-gray-900 mt-2">2. Account Responsibilities</h4>
@@ -300,7 +300,7 @@ const Register: React.FC = () => {
             Candidate Registration
           </h1>
           <p className="text-sm sm:text-base font-normal text-gray-700 leading-relaxed mb-4 md:mb-0">
-            to access the Mariwasa Resume Analysis System. Register with your Google account or type your Gmail address and password below.
+            Create an account to apply for open positions at Mariwasa. Register with your Google account or type your Gmail address and password below.
           </p>
           <div className="mt-5 p-3.5 bg-rose-50/80 border border-rose-100 rounded-xl text-xs text-rose-800 leading-relaxed hidden md:block">
             <span className="font-semibold">Candidate Only:</span> Registration is exclusively for applicant and candidate accounts. HR and Administrator accounts cannot be registered publicly and are provisioned by the Administrator.
@@ -332,126 +332,126 @@ const Register: React.FC = () => {
 
             <form onSubmit={handleSubmit} className="w-full">
 
-            <div className="space-y-4 mb-6">
+              <div className="space-y-4 mb-6">
 
-              <div className="relative">
-                <input
-                  type="text"
-                  id="fullName"
-                  name="fullName"
-                  required
-                  value={formData.fullName}
-                  onChange={handleChange}
-                  className="peer w-full px-4 py-3.5 border border-gray-400 rounded-[4px] text-base text-gray-900 focus:outline-none focus:border-[#D60041] focus:border-2 focus:py-[13px] focus:px-[15px] transition-all placeholder-transparent bg-transparent"
-                  placeholder="Full Name"
-                />
-                <label htmlFor="fullName" className="absolute left-3.5 -top-2.5 bg-white px-1 text-xs font-normal text-gray-600 peer-placeholder-shown:text-base peer-placeholder-shown:text-gray-600 peer-placeholder-shown:top-3.5 peer-focus:-top-2.5 peer-focus:text-xs peer-focus:text-[#D60041] transition-all cursor-text pointer-events-none">
-                  Full name
-                </label>
-              </div>
-
-              <div className="relative">
-                <input
-                  type="email"
-                  id="email"
-                  name="email"
-                  required
-                  value={formData.email}
-                  onChange={handleChange}
-                  className="peer w-full px-4 py-3.5 border border-gray-400 rounded-[4px] text-base text-gray-900 focus:outline-none focus:border-[#D60041] focus:border-2 focus:py-[13px] focus:px-[15px] transition-all placeholder-transparent bg-transparent"
-                  placeholder="Google account or Email address"
-                />
-                <label htmlFor="email" className="absolute left-3.5 -top-2.5 bg-white px-1 text-xs font-normal text-gray-600 peer-placeholder-shown:text-base peer-placeholder-shown:text-gray-600 peer-placeholder-shown:top-3.5 peer-focus:-top-2.5 peer-focus:text-xs peer-focus:text-[#D60041] transition-all cursor-text pointer-events-none">
-                  Google Account / Gmail / Email address
-                </label>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="relative">
                   <input
-                    type={showPassword ? "text" : "password"}
-                    id="password"
-                    name="password"
+                    type="text"
+                    id="fullName"
+                    name="fullName"
                     required
-                    value={formData.password}
+                    value={formData.fullName}
                     onChange={handleChange}
-                    className="peer w-full pl-4 pr-10 py-3.5 border border-gray-400 rounded-[4px] text-base text-gray-900 focus:outline-none focus:border-[#D60041] focus:border-2 focus:py-[13px] focus:pl-[15px] transition-all placeholder-transparent bg-transparent"
-                    placeholder="Password"
+                    className="peer w-full px-4 py-3.5 border border-gray-400 rounded-[4px] text-base text-gray-900 focus:outline-none focus:border-[#D60041] focus:border-2 focus:py-[13px] focus:px-[15px] transition-all placeholder-transparent bg-transparent"
+                    placeholder="Full Name"
                   />
-                  <label htmlFor="password" className="absolute left-3.5 -top-2.5 bg-white px-1 text-xs font-normal text-gray-600 peer-placeholder-shown:text-base peer-placeholder-shown:text-gray-600 peer-placeholder-shown:top-3.5 peer-focus:-top-2.5 peer-focus:text-xs peer-focus:text-[#D60041] transition-all cursor-text pointer-events-none z-10">
-                    Password
+                  <label htmlFor="fullName" className="absolute left-3.5 -top-2.5 bg-white px-1 text-xs font-normal text-gray-600 peer-placeholder-shown:text-base peer-placeholder-shown:text-gray-600 peer-placeholder-shown:top-3.5 peer-focus:-top-2.5 peer-focus:text-xs peer-focus:text-[#D60041] transition-all cursor-text pointer-events-none">
+                    Full name
                   </label>
-                  <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-900 p-1 rounded-full hover:bg-gray-100 transition-colors z-20">
-                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-                  </button>
                 </div>
 
                 <div className="relative">
                   <input
-                    type={showConfirmPassword ? "text" : "password"}
-                    id="confirmPassword"
-                    name="confirmPassword"
+                    type="email"
+                    id="email"
+                    name="email"
                     required
-                    value={formData.confirmPassword}
+                    value={formData.email}
                     onChange={handleChange}
-                    className="peer w-full pl-4 pr-10 py-3.5 border border-gray-400 rounded-[4px] text-base text-gray-900 focus:outline-none focus:border-[#D60041] focus:border-2 focus:py-[13px] focus:pl-[15px] transition-all placeholder-transparent bg-transparent"
-                    placeholder="Confirm"
+                    className="peer w-full px-4 py-3.5 border border-gray-400 rounded-[4px] text-base text-gray-900 focus:outline-none focus:border-[#D60041] focus:border-2 focus:py-[13px] focus:px-[15px] transition-all placeholder-transparent bg-transparent"
+                    placeholder="Google account or Email address"
                   />
-                  <label htmlFor="confirmPassword" className="absolute left-3.5 -top-2.5 bg-white px-1 text-xs font-normal text-gray-600 peer-placeholder-shown:text-base peer-placeholder-shown:text-gray-600 peer-placeholder-shown:top-3.5 peer-focus:-top-2.5 peer-focus:text-xs peer-focus:text-[#D60041] transition-all cursor-text pointer-events-none z-10">
-                    Confirm
+                  <label htmlFor="email" className="absolute left-3.5 -top-2.5 bg-white px-1 text-xs font-normal text-gray-600 peer-placeholder-shown:text-base peer-placeholder-shown:text-gray-600 peer-placeholder-shown:top-3.5 peer-focus:-top-2.5 peer-focus:text-xs peer-focus:text-[#D60041] transition-all cursor-text pointer-events-none">
+                    Google Account / Gmail / Email address
                   </label>
-                  <button type="button" onClick={() => setShowConfirmPassword(!showConfirmPassword)} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-900 p-1 rounded-full hover:bg-gray-100 transition-colors z-20">
-                    {showConfirmPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="relative">
+                    <input
+                      type={showPassword ? "text" : "password"}
+                      id="password"
+                      name="password"
+                      required
+                      value={formData.password}
+                      onChange={handleChange}
+                      className="peer w-full pl-4 pr-10 py-3.5 border border-gray-400 rounded-[4px] text-base text-gray-900 focus:outline-none focus:border-[#D60041] focus:border-2 focus:py-[13px] focus:pl-[15px] transition-all placeholder-transparent bg-transparent"
+                      placeholder="Password"
+                    />
+                    <label htmlFor="password" className="absolute left-3.5 -top-2.5 bg-white px-1 text-xs font-normal text-gray-600 peer-placeholder-shown:text-base peer-placeholder-shown:text-gray-600 peer-placeholder-shown:top-3.5 peer-focus:-top-2.5 peer-focus:text-xs peer-focus:text-[#D60041] transition-all cursor-text pointer-events-none z-10">
+                      Password
+                    </label>
+                    <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-900 p-1 rounded-full hover:bg-gray-100 transition-colors z-20">
+                      {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                    </button>
+                  </div>
+
+                  <div className="relative">
+                    <input
+                      type={showConfirmPassword ? "text" : "password"}
+                      id="confirmPassword"
+                      name="confirmPassword"
+                      required
+                      value={formData.confirmPassword}
+                      onChange={handleChange}
+                      className="peer w-full pl-4 pr-10 py-3.5 border border-gray-400 rounded-[4px] text-base text-gray-900 focus:outline-none focus:border-[#D60041] focus:border-2 focus:py-[13px] focus:pl-[15px] transition-all placeholder-transparent bg-transparent"
+                      placeholder="Confirm"
+                    />
+                    <label htmlFor="confirmPassword" className="absolute left-3.5 -top-2.5 bg-white px-1 text-xs font-normal text-gray-600 peer-placeholder-shown:text-base peer-placeholder-shown:text-gray-600 peer-placeholder-shown:top-3.5 peer-focus:-top-2.5 peer-focus:text-xs peer-focus:text-[#D60041] transition-all cursor-text pointer-events-none z-10">
+                      Confirm
+                    </label>
+                    <button type="button" onClick={() => setShowConfirmPassword(!showConfirmPassword)} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-900 p-1 rounded-full hover:bg-gray-100 transition-colors z-20">
+                      {showConfirmPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                    </button>
+                  </div>
+                </div>
+                <p className="text-[11px] text-gray-600 ml-1 mt-1">Use 8 or more characters with a mix of letters & numbers</p>
+              </div>
+
+              <div className="flex items-start gap-3 mt-8 mb-10">
+                <div className="flex items-center h-5 mt-0.5">
+                  <input
+                    id="terms"
+                    type="checkbox"
+                    checked={agreedToTerms}
+                    onChange={(e) => setAgreedToTerms(e.target.checked)}
+                    className="w-4 h-4 border-gray-400 rounded text-[#D60041] focus:ring-[#D60041] cursor-pointer"
+                    required
+                  />
+                </div>
+                <div className="text-sm">
+                  <label htmlFor="terms" className="font-normal text-gray-700 cursor-pointer select-none">
+                    I agree to the Mariwasa{' '}
+                    <button
+                      type="button"
+                      onClick={(e) => { e.preventDefault(); setShowTermsModal(true); }}
+                      className="text-[#D60041] font-medium hover:underline focus:outline-none inline-block"
+                    >
+                      Terms and Conditions
+                    </button>
+                  </label>
                 </div>
               </div>
-              <p className="text-[11px] text-gray-600 ml-1 mt-1">Use 8 or more characters with a mix of letters & numbers</p>
-            </div>
 
-            <div className="flex items-start gap-3 mt-8 mb-10">
-              <div className="flex items-center h-5 mt-0.5">
-                <input
-                  id="terms"
-                  type="checkbox"
-                  checked={agreedToTerms}
-                  onChange={(e) => setAgreedToTerms(e.target.checked)}
-                  className="w-4 h-4 border-gray-400 rounded text-[#D60041] focus:ring-[#D60041] cursor-pointer"
-                  required
-                />
+              <div className="flex flex-col-reverse sm:flex-row justify-between items-center gap-4 sm:gap-0 mt-8">
+                <a
+                  href="/login"
+                  className="text-sm font-medium text-[#D60041] hover:bg-red-50 px-3 py-2 rounded-md transition-colors w-full sm:w-auto text-center"
+                >
+                  Sign in instead
+                </a>
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="w-full sm:w-auto bg-[#D60041] hover:bg-[#b50037] text-white text-sm font-medium px-6 py-2.5 rounded-full transition-colors disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center min-w-[100px]"
+                >
+                  {loading ? <Loader2 className="animate-spin h-5 w-5" /> : "Next"}
+                </button>
               </div>
-              <div className="text-sm">
-                <label htmlFor="terms" className="font-normal text-gray-700 cursor-pointer select-none">
-                  I agree to the Mariwasa{' '}
-                  <button
-                    type="button"
-                    onClick={(e) => { e.preventDefault(); setShowTermsModal(true); }}
-                    className="text-[#D60041] font-medium hover:underline focus:outline-none inline-block"
-                  >
-                    Terms and Conditions
-                  </button>
-                </label>
-              </div>
-            </div>
-
-            <div className="flex flex-col-reverse sm:flex-row justify-between items-center gap-4 sm:gap-0 mt-8">
-              <a
-                href="/login"
-                className="text-sm font-medium text-[#D60041] hover:bg-red-50 px-3 py-2 rounded-md transition-colors w-full sm:w-auto text-center"
-              >
-                Sign in instead
-              </a>
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full sm:w-auto bg-[#D60041] hover:bg-[#b50037] text-white text-sm font-medium px-6 py-2.5 rounded-full transition-colors disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center min-w-[100px]"
-              >
-                {loading ? <Loader2 className="animate-spin h-5 w-5" /> : "Next"}
-              </button>
-            </div>
-          </form>
+            </form>
+          </div>
         </div>
       </div>
-    </div>
 
       <div className="w-full max-w-[1040px] mt-4 flex flex-col sm:flex-row justify-between items-center text-xs text-gray-600 px-2">
         <div className="mb-4 sm:mb-0">

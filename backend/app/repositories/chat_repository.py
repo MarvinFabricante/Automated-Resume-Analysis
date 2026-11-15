@@ -106,9 +106,11 @@ async def get_unread_messages(db: AsyncSession, sender_id: int, receiver_id: int
 
 
 async def mark_messages_as_read(db: AsyncSession, messages: List[Message]):
-    """Mark messages as read (Redis-first transaction)."""
+    """Mark messages as read with timestamp (Redis-first transaction)."""
     if not messages:
         return
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc)
     msg_ids = [m.id for m in messages if m.id]
     tx_id = await redis_tx_manager.stage_transaction(
         target="chat_message",
@@ -118,6 +120,8 @@ async def mark_messages_as_read(db: AsyncSession, messages: List[Message]):
     try:
         for msg in messages:
             msg.is_read = True
+            if not msg.read_at:
+                msg.read_at = now
         await db.commit()
 
         await redis_tx_manager.commit_transaction(tx_id, {"count": len(messages)})
@@ -148,18 +152,33 @@ async def get_chat_history(db: AsyncSession, user1_id: int, user2_id: int) -> Li
     return messages
 
 
-async def create_message(db: AsyncSession, sender_id: int, receiver_id: int, content: str) -> Message:
+async def create_message(
+    db: AsyncSession, 
+    sender_id: int, 
+    receiver_id: int, 
+    content: str,
+    message_type: Optional[str] = "general",
+    application_id: Optional[int] = None
+) -> Message:
     """Create a new chat message (Redis-first transaction)."""
     tx_id = await redis_tx_manager.stage_transaction(
         target="chat_message",
         action="CREATE",
-        payload={"sender_id": sender_id, "receiver_id": receiver_id, "content_preview": content[:100]},
+        payload={
+            "sender_id": sender_id, 
+            "receiver_id": receiver_id, 
+            "content_preview": content[:100],
+            "message_type": message_type,
+            "application_id": application_id
+        },
     )
     try:
         new_msg = Message(
             sender_id=sender_id,
             receiver_id=receiver_id,
-            content=content
+            content=content,
+            message_type=message_type or "general",
+            application_id=application_id
         )
         db.add(new_msg)
         await db.commit()
@@ -291,6 +310,34 @@ async def unarchive_conversation(db: AsyncSession, user_id: int, contact_id: int
         await redis_tx_manager.fail_transaction(tx_id, str(e))
         logger.error(f"[Redis-First] unarchive_conversation failed: {e}")
         raise
+
+
+async def get_sent_messages(db: AsyncSession, sender_id: int) -> List[Message]:
+    """Get all messages sent by sender_id, ordered by timestamp descending (REQ065)."""
+    from sqlalchemy.orm import selectinload
+    query = select(Message).where(
+        Message.sender_id == sender_id
+    ).options(
+        selectinload(Message.receiver),
+        selectinload(Message.job_application)
+    ).order_by(desc(Message.timestamp))
+    result = await db.execute(query)
+    return result.scalars().all()
+
+
+async def mark_single_message_read(db: AsyncSession, message_id: int, user_id: int) -> Optional[Message]:
+    """Mark a single message as read when opened by the recipient (REQ063)."""
+    from datetime import datetime, timezone
+    query = select(Message).where(Message.id == message_id, Message.receiver_id == user_id)
+    result = await db.execute(query)
+    msg = result.scalar_one_or_none()
+    if msg and not msg.is_read:
+        msg.is_read = True
+        msg.read_at = datetime.now(timezone.utc)
+        await db.commit()
+        await db.refresh(msg)
+        await clear_cache_pattern(f"chat:unread_cnt:*_{user_id}")
+    return msg
 
 
 import sys

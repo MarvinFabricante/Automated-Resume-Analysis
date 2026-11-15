@@ -167,7 +167,7 @@ const HRDashboard: React.FC = () => {
   return (
     <div className="bg-[#F8FAFC] text-slate-800 antialiased min-h-screen font-sans flex flex-col selection:bg-rose-100 selection:text-[#D60041]">
       <Helmet>
-        <title>HR Dashboard | Mariwasa ARAS</title>
+        <title>Dashboard | Mariwasa Recruitment HR Portal</title>
       </Helmet>
 
       <Header />
@@ -246,14 +246,14 @@ const HRDashboard: React.FC = () => {
                       <span className="truncate">Schedule</span>
                     </button>
 
-                    {/* Physical Resume Vault */}
+                    {/* Import Resumes Module */}
                     <button
                       onClick={() => navigate('/hr/physical-resumes')}
                       className="flex-1 sm:flex-none px-3 sm:px-4 py-2.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-2xl text-xs font-black uppercase tracking-wider transition-all shadow-2xs flex items-center justify-center gap-1.5 active:scale-95 min-h-[42px] truncate cursor-pointer"
-                      title="Physical Walk-In Resumes & Storage"
+                      title="Import external, walk-in, and emailed resumes"
                     >
                       <FolderArchive size={15} className="shrink-0 text-emerald-600" />
-                      <span className="truncate">Physical Resumes</span>
+                      <span className="truncate">Import Resumes</span>
                     </button>
 
                     {/* Export CSV Report */}
@@ -325,9 +325,9 @@ const HRDashboard: React.FC = () => {
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 sm:gap-5">
-                {/* 1. Pending Reviews */}
+                {/* 1. Submitted Reviews */}
                 <div
-                  onClick={() => navigate('/hr/screeningportal?status=PENDING')}
+                  onClick={() => navigate('/hr/screeningportal?status=SUBMITTED')}
                   className="bg-white border border-slate-200/80 rounded-2xl sm:rounded-3xl p-4.5 sm:p-5 lg:p-6 shadow-xs hover:-translate-y-1 hover:shadow-xl hover:border-amber-200 transition-all duration-300 cursor-pointer flex flex-col justify-between group"
                 >
                   <div className="flex justify-between items-start mb-3 sm:mb-4">
@@ -341,7 +341,7 @@ const HRDashboard: React.FC = () => {
 
                   <div>
                     <h4 className="text-sm sm:text-base lg:text-lg font-extrabold tracking-tight text-slate-900 group-hover:text-amber-600 transition-colors flex items-center justify-between">
-                      <span>Pending Reviews</span>
+                      <span>Submitted Reviews</span>
                       <ChevronRight size={16} className="text-slate-400 group-hover:translate-x-1 group-hover:text-amber-600 transition-all" />
                     </h4>
                     <p className="text-[11px] sm:text-xs text-slate-500 font-medium mt-1 leading-relaxed">

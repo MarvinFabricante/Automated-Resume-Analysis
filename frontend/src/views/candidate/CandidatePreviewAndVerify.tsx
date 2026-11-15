@@ -6,7 +6,7 @@ import {
   User, Mail, Phone, MapPin,
   Cpu, Briefcase, GraduationCap,
   CheckCircle, ArrowLeft, Edit3, Target,
-  Award, Sparkles, Eye, FileUp, FileText
+  Award, Sparkles, Eye, FileUp, FileText, Code
 } from 'lucide-react';
 import Header from '../../components/layout/Header';
 import Sidebar from '../../components/layout/Sidebar';
@@ -29,14 +29,44 @@ const CandidatePreviewAndVerify: React.FC = () => {
   const [showSuccessModal, setShowSuccessModal] = useState<boolean>(false);
 
   useEffect(() => {
+    // Step Gating: Verify Step 2 (Details) and Step 3 (Questions) are confirmed before allowing Step 4 Submit
+    let savedDraft: any = null;
     if (effectiveJobId) {
-      localStorage.setItem('draft_application_step', '3');
+      try {
+        const raw = localStorage.getItem(`draft_application_${effectiveJobId}`);
+        if (raw) savedDraft = JSON.parse(raw);
+      } catch {}
+    }
+
+    const hasResume = Boolean(
+      state?.file || state?.fileName || state?.resumeUrl || state?.rawText ||
+      savedDraft?.fileName || savedDraft?.extractedData
+    );
+    const hasDetails = Boolean(
+      state?.formData || state?.personal?.name ||
+      savedDraft?.detailsConfirmed || savedDraft?.formData
+    );
+
+    // If no resume uploaded, redirect back to Step 1 Upload
+    if (!hasResume) {
+      navigate(effectiveJobId ? `/candidate/upload-resume/${effectiveJobId}` : '/candidate/upload-resume', { replace: true });
+      return;
+    }
+
+    // If details not reviewed/confirmed, redirect back to Step 2
+    if (!hasDetails) {
+      navigate(effectiveJobId ? `/candidate/update-profile/${effectiveJobId}` : '/candidate/upload-resume', { replace: true });
+      return;
+    }
+
+    if (effectiveJobId) {
+      localStorage.setItem('draft_application_step', '4');
       if (state?.job?.title) {
         localStorage.setItem('draft_application_job_title', state.job.title);
       }
       localStorage.setItem('draft_application_job_id', String(effectiveJobId));
     }
-  }, [effectiveJobId, state]);
+  }, [effectiveJobId, state, navigate]);
 
   const data = state?.extractedData;
   const matchData = state?.matchData;
@@ -123,8 +153,8 @@ const CandidatePreviewAndVerify: React.FC = () => {
       phone: activeData?.phone || state?.personal?.phone || "Not specified",
       location: activeData?.location || state?.personal?.location || "Not specified"
     },
-    skills: activeData?.skills 
-      ? (Array.isArray(activeData.skills) ? activeData.skills : activeData.skills.split(' | ').filter(Boolean)) 
+    skills: activeData?.skills
+      ? (Array.isArray(activeData.skills) ? activeData.skills : activeData.skills.split(' | ').filter(Boolean))
       : (state?.skills || ["Process Optimization", "Team Leadership"]),
     experience: {
       title: activeData?.job_title || (activeData?.experience ? activeData.experience.split('|')[0]?.trim() : (state?.experience?.title || "Specialist")),
@@ -157,7 +187,7 @@ const CandidatePreviewAndVerify: React.FC = () => {
   };
 
   const handleBackToEdit = () => {
-    navigate(effectiveJobId ? `/candidate/update-profile/${effectiveJobId}` : '/candidate/update-profile', {
+    navigate(effectiveJobId ? `/candidate/update-profile/${effectiveJobId}?step=3` : '/candidate/update-profile?step=3', {
       state: {
         ...extractedData,
         extractedData: {
@@ -251,7 +281,16 @@ const CandidatePreviewAndVerify: React.FC = () => {
       localStorage.removeItem('draft_application_job_title');
       localStorage.removeItem('draft_application_job_id');
       localStorage.removeItem('draft_application_step');
-      setShowSuccessModal(true);
+      if (effectiveJobId) {
+        localStorage.removeItem(`draft_application_${effectiveJobId}`);
+      }
+      navigate(`/submissionsuccess/${effectiveJobId}`, {
+        state: {
+          jobTitle: state?.job?.title || 'Applied Position',
+          fileName: currentFileName,
+          updatedData: extractedData
+        }
+      });
     } catch (err: any) {
       console.error("Failed to submit application:", err);
       const detail = err?.data?.detail || err?.response?.data?.detail || "Failed to submit application. Please try again.";
@@ -266,7 +305,7 @@ const CandidatePreviewAndVerify: React.FC = () => {
   return (
     <div className="min-h-screen bg-[#F8FAFC] text-slate-900 antialiased font-['Inter',_sans-serif]">
       <Helmet>
-        <title>Verify Application | {state?.job?.title || 'Candidate Portal'}</title>
+        <title>Review Application | {state?.job?.title || 'Mariwasa Recruitment'}</title>
       </Helmet>
 
       <Header />
@@ -274,26 +313,32 @@ const CandidatePreviewAndVerify: React.FC = () => {
       <div className="flex flex-1">
         <Sidebar />
         <main className="max-w-7xl mx-auto px-6 py-12 flex-grow">
-          {/* Reversal of action / Back to Edit */}
+          {/* Back button */}
           <button
             onClick={handleBackToEdit}
-            className="flex items-center text-slate-500 hover:text-[#D10043] transition-all mb-4 font-semibold text-sm group"
+            className="flex items-center text-slate-500 hover:text-[#D10043] transition-all mb-4 font-semibold text-sm group cursor-pointer"
           >
             <ArrowLeft size={18} className="mr-2 group-hover:-translate-x-1 transition-transform" />
-            Back to Edit Details
+            Back to Questions
           </button>
 
-          {jobId && <ApplicationProgressBar currentStep={3} />}
+          {jobId && <ApplicationProgressBar currentStep={4} />}
 
           <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-8 gap-4">
             <div>
+              <div className="flex items-center gap-2 mb-2">
+                <span className="px-3 py-1 bg-[#D10043]/10 text-[#D10043] rounded-full text-[10px] font-black uppercase tracking-widest">
+                  Step 4 of 4
+                </span>
+                <span className="text-xs font-bold text-slate-400">Final Step: Submit</span>
+              </div>
               <h1 className="text-3xl font-black text-slate-900 tracking-tight mb-2">
-                {jobId ? "Review Application" : "AI Profile Analysis"}
+                {jobId ? "Review & Submit Your Application" : "AI Profile Analysis"}
               </h1>
               <p className="text-slate-500 font-medium">
-                {jobId 
-                  ? `Verify your information before finalizing submission for ${state?.job?.title || 'this position'}.`
-                  : "Verify the information our AI extracted from your resume before we find your matches."
+                {jobId
+                  ? `Please do a quick final check of your application for ${state?.job?.title || 'this position'} before submitting.`
+                  : "Verify the information extracted from your resume before we find your matches."
                 }
               </p>
             </div>
@@ -397,10 +442,10 @@ const CandidatePreviewAndVerify: React.FC = () => {
                         {item.label === 'Experience' && activeMatch.experience_below_minimum
                           ? 'Below Min'
                           : item.score >= 70
-                          ? 'High'
-                          : item.score >= 40
-                          ? 'Medium'
-                          : 'Basic'}
+                            ? 'High'
+                            : item.score >= 40
+                              ? 'Medium'
+                              : 'Basic'}
                       </p>
                       <span className="text-[9px] font-black uppercase tracking-widest text-slate-400">{item.label}</span>
                     </div>
@@ -458,13 +503,13 @@ const CandidatePreviewAndVerify: React.FC = () => {
                 </div>
               )}
 
-              {/* Skills & Competencies */}
+              {/* Skills */}
               <div className="mt-8 pt-8 border-t border-slate-50">
                 <div className="flex items-center gap-3 mb-4 text-[#D60041]">
                   <div className="p-2.5 bg-pink-50 rounded-xl">
-                    <Cpu size={20} />
+                    <Code size={20} />
                   </div>
-                  <h2 className="font-bold uppercase tracking-widest text-xs">Skills & Competencies</h2>
+                  <h2 className="font-bold uppercase tracking-widest text-xs">Key Skills</h2>
                 </div>
                 <div className="flex flex-wrap gap-2">
                   {extractedData.skills.map((skill: string, i: number) => (
@@ -478,52 +523,52 @@ const CandidatePreviewAndVerify: React.FC = () => {
               {/* Certifications & Licenses */}
               {((extractedData.certifications_details?.certifications && extractedData.certifications_details.certifications.length > 0) ||
                 (extractedData.certifications && extractedData.certifications.length > 0)) && (
-                <div className="mt-8 pt-8 border-t border-slate-50">
-                  <div className="flex items-center gap-3 mb-4 text-[#D60041]">
-                    <div className="p-2.5 bg-pink-50 rounded-xl">
-                      <Award size={20} />
+                  <div className="mt-8 pt-8 border-t border-slate-50">
+                    <div className="flex items-center gap-3 mb-4 text-[#D60041]">
+                      <div className="p-2.5 bg-pink-50 rounded-xl">
+                        <Award size={20} />
+                      </div>
+                      <h2 className="font-bold uppercase tracking-widest text-xs">Licenses, Eligibility & Certifications</h2>
                     </div>
-                    <h2 className="font-bold uppercase tracking-widest text-xs">Licenses, Eligibility & Certifications</h2>
-                  </div>
-                  {extractedData.certifications_details?.certifications?.length > 0 ? (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      {extractedData.certifications_details.certifications.map((cert: any, cIdx: number) => (
-                        <div key={cIdx} className="p-3.5 bg-rose-50/40 rounded-2xl border border-rose-100/70 text-xs">
-                          <div className="flex items-start justify-between gap-1 mb-1">
-                            <span className="font-bold text-slate-900 leading-snug">
-                              {cert.canonical_name}
-                            </span>
-                            {cert.category && (
-                              <span className="shrink-0 px-2 py-0.5 rounded-md bg-white text-rose-700 border border-rose-200 text-[10px] font-bold">
-                                {cert.category}
+                    {extractedData.certifications_details?.certifications?.length > 0 ? (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        {extractedData.certifications_details.certifications.map((cert: any, cIdx: number) => (
+                          <div key={cIdx} className="p-3.5 bg-rose-50/40 rounded-2xl border border-rose-100/70 text-xs">
+                            <div className="flex items-start justify-between gap-1 mb-1">
+                              <span className="font-bold text-slate-900 leading-snug">
+                                {cert.canonical_name}
                               </span>
-                            )}
+                              {cert.category && (
+                                <span className="shrink-0 px-2 py-0.5 rounded-md bg-white text-rose-700 border border-rose-200 text-[10px] font-bold">
+                                  {cert.category}
+                                </span>
+                              )}
+                            </div>
+                            <div className="text-[11px] text-slate-600 flex flex-wrap gap-x-2 gap-y-0.5">
+                              {cert.issuing_organization && (
+                                <span>Issuer: <strong className="text-slate-800">{cert.issuing_organization}</strong></span>
+                              )}
+                              {cert.expiration_or_status && (
+                                <span className="text-emerald-700 font-semibold">• {cert.expiration_or_status}</span>
+                              )}
+                              {cert.credential_id_or_details && (
+                                <span className="text-slate-500">• {cert.credential_id_or_details}</span>
+                              )}
+                            </div>
                           </div>
-                          <div className="text-[11px] text-slate-600 flex flex-wrap gap-x-2 gap-y-0.5">
-                            {cert.issuing_organization && (
-                              <span>Issuer: <strong className="text-slate-800">{cert.issuing_organization}</strong></span>
-                            )}
-                            {cert.expiration_or_status && (
-                              <span className="text-emerald-700 font-semibold">• {cert.expiration_or_status}</span>
-                            )}
-                            {cert.credential_id_or_details && (
-                              <span className="text-slate-500">• {cert.credential_id_or_details}</span>
-                            )}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="flex flex-wrap gap-2">
-                      {extractedData.certifications.map((cert: string, cIdx: number) => (
-                        <span key={cIdx} className="px-3.5 py-1.5 bg-rose-50 text-rose-800 rounded-xl text-xs font-bold border border-rose-100">
-                          {cert}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="flex flex-wrap gap-2">
+                        {extractedData.certifications.map((cert: string, cIdx: number) => (
+                          <span key={cIdx} className="px-3.5 py-1.5 bg-rose-50 text-rose-800 rounded-xl text-xs font-bold border border-rose-100">
+                            {cert}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
             </section>
 
             {/* Experience + Education */}
@@ -637,7 +682,7 @@ const CandidatePreviewAndVerify: React.FC = () => {
                   ) : (
                     <>
                       <CheckCircle size={22} />
-                      <span>Confirm & Submit Final Application</span>
+                      <span>Submit Application</span>
                     </>
                   )}
                 </button>
@@ -664,10 +709,10 @@ const CandidatePreviewAndVerify: React.FC = () => {
             className="hidden"
           />
 
-          <ApplicationSuccessModal 
+          <ApplicationSuccessModal
 
-            isOpen={showSuccessModal} 
-            onConfirm={handleFinalRedirect} 
+            isOpen={showSuccessModal}
+            onConfirm={handleFinalRedirect}
           />
         </main>
       </div>

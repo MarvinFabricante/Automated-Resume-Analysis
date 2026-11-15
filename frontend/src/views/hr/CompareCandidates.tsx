@@ -4,18 +4,23 @@ import { Helmet } from 'react-helmet-async';
 import {
   Search, CheckCircle2, XCircle, Users, ArrowLeft, Award, TrendingUp, AlertTriangle,
   Mail, Phone, MapPin, Briefcase, Star, Zap, BarChart3, Trophy, Sparkles,
-  Check, Plus, Trash2, User, Table, LayoutGrid, SlidersHorizontal
+  Check, Plus, Trash2, User, Table, LayoutGrid, SlidersHorizontal,
+  Download, Printer, Save, FileText
 } from 'lucide-react';
 import Header from '../../components/layout/Header';
 import Sidebar from '../../components/layout/Sidebar';
-import { useGetApplicationsQuery, useGetJobsQuery } from '../../redux/api/apiSlice';
-import { getAssetUrl } from '../../services/api';
+import { useGetApplicationsQuery, useGetJobsQuery, useCompareCandidatesMutation } from '../../redux/api/apiSlice';
+import HelpTooltip from '../../components/common/HelpTooltip';
+import api, { getAssetUrl } from '../../services/api';
 import { Job, Application } from '../../types';
 
 interface CandidateComparisonData extends Partial<Application> {
   id: number;
   name: string;
   preferredJob?: string;
+  applied_job_title?: string;
+  applied_job_id?: number;
+  applicant_id?: number;
   email?: string;
   phone?: string;
   location?: string;
@@ -26,16 +31,24 @@ interface CandidateComparisonData extends Partial<Application> {
   skills?: string[];
   matched_skills?: string[];
   missing_skills?: string[];
+  transferable_skills?: string[];
   strengths?: string[];
   weaknesses?: string[];
   recommendations?: string[];
   skillsScore?: number;
   experienceScore?: number;
+  education_score?: number;
+  highest_educational_attainment?: string;
+  degree?: string;
   certificationsScore?: number;
   certifications_score?: number;
   candidate_certifications?: string;
   certifications?: string;
   certifications_reason?: string;
+  completeness_score?: number;
+  completeness_status?: string;
+  missing_sections?: string[];
+  hr_shortlist_notes?: string;
   matchScore?: number;
   ai_summary?: string;
   profileImage?: string;
@@ -262,11 +275,15 @@ const CompareCandidates: React.FC = () => {
   const [activeCandidateId, setActiveCandidateId] = useState<number | null>(null);
   const [isComparing, setIsComparing] = useState<boolean>(false);
   const [selectedJobId, setSelectedJobId] = useState<string>("");
+  const [selectedRefJobId, setSelectedRefJobId] = useState<string>("");
+  const [personSelectedAppMap, setPersonSelectedAppMap] = useState<Record<string, number>>({});
   const [evaluationFilters, setEvaluationFilters] = useState<EvaluationFilters>({
     skills: true,
     experience: true,
     certifications: true
   });
+
+  const [compareCandidatesMutation, { data: serverComparison, isLoading: isComparingServer, error: serverCompareError }] = useCompareCandidatesMutation();
 
   // Mobile responsiveness helpers
   const [mobileTab, setMobileTab] = useState<'list' | 'profile'>('list'); // 'list' | 'profile' for mobile selection view
@@ -286,6 +303,23 @@ const CompareCandidates: React.FC = () => {
     }
   }, [searchParams]);
 
+  // Synchronize reference position from server comparison
+  useEffect(() => {
+    if (serverComparison?.reference_job?.id && !selectedRefJobId) {
+      setSelectedRefJobId(String(serverComparison.reference_job.id));
+    }
+  }, [serverComparison]);
+
+  // Trigger server-side cross-job re-scoring when comparing
+  useEffect(() => {
+    if (isComparing && selectedCandidateIds.length >= 2) {
+      compareCandidatesMutation({
+        application_ids: selectedCandidateIds,
+        reference_job_id: selectedRefJobId ? parseInt(selectedRefJobId) : undefined,
+      });
+    }
+  }, [isComparing, selectedCandidateIds, selectedRefJobId, compareCandidatesMutation]);
+
   // Filter candidates based on search
   const filteredCandidates = useMemo(() => {
     return (candidates as CandidateComparisonData[]).filter(c => {
@@ -299,6 +333,41 @@ const CompareCandidates: React.FC = () => {
     });
   }, [candidates, searchQuery]);
 
+  // Group candidates into unique persons (enforce comparing different people only)
+  interface PersonGroup {
+    personKey: string;
+    primaryApplicantId?: number;
+    name: string;
+    email: string;
+    phone: string;
+    applications: CandidateComparisonData[];
+  }
+
+  const personGroups = useMemo<PersonGroup[]>(() => {
+    const groups: { [key: string]: PersonGroup } = {};
+    filteredCandidates.forEach(cand => {
+      const rawEmail = (cand.email || (cand as any).candidate_email || '').trim().toLowerCase();
+      const rawPhone = (cand.phone || '').replace(/[^0-9]/g, '');
+      const key = cand.applicant_id
+        ? `uid_${cand.applicant_id}`
+        : (rawEmail ? `email_${rawEmail}` : (rawPhone.length >= 7 ? `phone_${rawPhone}` : `id_${cand.id}`));
+
+      if (!groups[key]) {
+        groups[key] = {
+          personKey: key,
+          primaryApplicantId: cand.applicant_id,
+          name: cand.name,
+          email: cand.email || (cand as any).candidate_email || '',
+          phone: cand.phone || '',
+          applications: [cand]
+        };
+      } else {
+        groups[key].applications.push(cand);
+      }
+    });
+    return Object.values(groups);
+  }, [filteredCandidates]);
+
   // Set the first candidate as active by default if not set
   useEffect(() => {
     if (filteredCandidates.length > 0 && !activeCandidateId) {
@@ -310,11 +379,49 @@ const CompareCandidates: React.FC = () => {
     return (candidates as CandidateComparisonData[]).find(c => c.id === activeCandidateId) || filteredCandidates[0] || null;
   }, [candidates, activeCandidateId, filteredCandidates]);
 
+  const isSamePerson = (c1: CandidateComparisonData, c2: CandidateComparisonData): boolean => {
+    if (c1.id === c2.id) return true;
+    if (c1.applicant_id && c2.applicant_id && c1.applicant_id === c2.applicant_id) return true;
+    const email1 = (c1.email || (c1 as any).candidate_email || '').trim().toLowerCase();
+    const email2 = (c2.email || (c2 as any).candidate_email || '').trim().toLowerCase();
+    if (email1 && email2 && email1 === email2) return true;
+    const phone1 = (c1.phone || '').replace(/[^0-9]/g, '');
+    const phone2 = (c2.phone || '').replace(/[^0-9]/g, '');
+    if (phone1 && phone2 && phone1.length >= 7 && phone1 === phone2) return true;
+    return false;
+  };
+
   const toggleSelection = (id: number) => {
+    const candidateToToggle = (candidates as CandidateComparisonData[]).find(c => c.id === id);
+    if (!candidateToToggle) return;
+
     if (selectedCandidateIds.includes(id)) {
       setSelectedCandidateIds(prev => prev.filter(cId => cId !== id));
+      return;
+    }
+
+    // Check if another application belonging to the same person is already in the comparison
+    const existingConflict = (candidates as CandidateComparisonData[]).find(c =>
+      selectedCandidateIds.includes(c.id) && c.id !== id && isSamePerson(candidateToToggle, c)
+    );
+
+    if (existingConflict) {
+      alert("This applicant is already in the comparison. Comparison is for choosing between different people.");
+      return;
+    }
+
+    setSelectedCandidateIds(prev => [...prev, id]);
+  };
+
+  const togglePersonSelection = (person: PersonGroup) => {
+    const isSel = person.applications.some(a => selectedCandidateIds.includes(a.id));
+    if (isSel) {
+      const personAppIds = new Set(person.applications.map(a => a.id));
+      setSelectedCandidateIds(prev => prev.filter(id => !personAppIds.has(id)));
     } else {
-      setSelectedCandidateIds(prev => [...prev, id]);
+      const chosenId = personSelectedAppMap[person.personKey] || person.applications[0].id;
+      const personAppIds = new Set(person.applications.map(a => a.id));
+      setSelectedCandidateIds(prev => [...prev.filter(id => !personAppIds.has(id)), chosenId]);
     }
   };
 
@@ -323,15 +430,50 @@ const CompareCandidates: React.FC = () => {
   };
 
   const selectedCandidatesData = useMemo(() => {
+    // If server comparison returned candidates scored against reference job, baseline against that
+    if (serverComparison?.candidates && serverComparison.candidates.length > 0) {
+      const mapped = serverComparison.candidates.map((sc: any) => {
+        const localApp = (candidates as CandidateComparisonData[]).find(c => c.id === sc.application_id);
+        return {
+          ...(localApp || {}),
+          id: sc.application_id,
+          name: sc.name,
+          email: sc.email,
+          phone: sc.phone,
+          location: sc.location,
+          preferredJob: sc.applied_job_title,
+          applied_job_title: sc.applied_job_title,
+          applied_job_id: sc.applied_job_id,
+          matchScore: sc.match_score,
+          skillsScore: sc.skills_score,
+          experienceScore: sc.experience_score,
+          education_score: sc.education_score,
+          certificationsScore: sc.certifications_score,
+          completeness_score: sc.completeness_score,
+          matched_skills: sc.matched_skills || [],
+          missing_skills: sc.missing_skills || [],
+          transferable_skills: sc.transferable_skills || [],
+          ai_summary: sc.ai_summary,
+          strengths: sc.strengths,
+          weaknesses: sc.weaknesses,
+          status: sc.status,
+          highest_educational_attainment: sc.degree || localApp?.highest_educational_attainment,
+          candidate_certifications: sc.certifications || localApp?.candidate_certifications,
+          relevance: sc.relevance || localApp?.relevance,
+        };
+      });
+      return [...mapped].sort((a: any, b: any) => (b.matchScore || 0) - (a.matchScore || 0));
+    }
+
     const selected = (candidates as CandidateComparisonData[]).filter(c => selectedCandidateIds.includes(c.id));
-    const selectedJob = (jobs as Job[]).find(j => j.id === parseInt(selectedJobId) || String(j.id) === selectedJobId);
+    const selectedJob = (jobs as Job[]).find(j => j.id === parseInt(selectedRefJobId || selectedJobId) || String(j.id) === (selectedRefJobId || selectedJobId));
 
     // Calculate score to reflect filter preferences even if job isn't selected
     const scoredCandidates = selected.map(c => calculateRuleBasedScore(c, selectedJob, evaluationFilters));
 
     // Sort by match score descending to automatically rank them
     return [...scoredCandidates].sort((a, b) => (b.matchScore || 0) - (a.matchScore || 0));
-  }, [candidates, selectedCandidateIds, jobs, selectedJobId, evaluationFilters]);
+  }, [serverComparison, candidates, selectedCandidateIds, jobs, selectedRefJobId, selectedJobId, evaluationFilters]);
 
   const isAllZero = useMemo(() => {
     return selectedCandidatesData.length > 0 && selectedCandidatesData.every(c => (c.matchScore || 0) === 0);
@@ -340,30 +482,98 @@ const CompareCandidates: React.FC = () => {
   const hasTiedWinner = useMemo(() => {
     if (selectedCandidatesData.length < 2 || isAllZero) return false;
     return (selectedCandidatesData[0].matchScore || 0) > 0 &&
-           selectedCandidatesData[0].matchScore === selectedCandidatesData[1].matchScore;
+      selectedCandidatesData[0].matchScore === selectedCandidatesData[1].matchScore;
   }, [selectedCandidatesData, isAllZero]);
 
   const categoryWinners = useMemo(() => {
     if (selectedCandidatesData.length === 0 || isAllZero) return {};
 
-    const getWinner = (key: 'skillsScore' | 'experienceScore' | 'certificationsScore') => {
+    const getWinner = (key: keyof CandidateComparisonData) => {
       let maxScore = 0;
-      let winner: CandidateComparisonData | null = null;
+      let winnerCandidate: CandidateComparisonData | null = null;
       selectedCandidatesData.forEach(c => {
-        if ((c[key] || 0) > maxScore) {
-          maxScore = c[key] || 0;
-          winner = c;
+        const val = Number(c[key]) || 0;
+        if (val > maxScore) {
+          maxScore = val;
+          winnerCandidate = c;
         }
       });
-      return maxScore > 0 ? winner : null;
+      return maxScore > 0 ? winnerCandidate : null;
     };
 
     return {
+      match: getWinner('matchScore'),
       skills: getWinner('skillsScore'),
       experience: getWinner('experienceScore'),
-      certifications: getWinner('certificationsScore')
+      education: getWinner('education_score'),
+      certifications: getWinner('certificationsScore'),
+      completeness: getWinner('completeness_score'),
     };
   }, [selectedCandidatesData, isAllZero]);
+
+  const [candidateNotes, setCandidateNotes] = useState<{ [id: number]: string }>({});
+  const [savingNotes, setSavingNotes] = useState<{ [id: number]: boolean }>({});
+  const [savedSuccess, setSavedSuccess] = useState<{ [id: number]: boolean }>({});
+
+  useEffect(() => {
+    selectedCandidatesData.forEach(c => {
+      if (c.hr_shortlist_notes && candidateNotes[c.id] === undefined) {
+        setCandidateNotes(prev => ({ ...prev, [c.id]: c.hr_shortlist_notes || '' }));
+      }
+    });
+  }, [selectedCandidatesData]);
+
+  const handleSaveNote = async (candidateId: number) => {
+    const note = candidateNotes[candidateId] || '';
+    try {
+      setSavingNotes(prev => ({ ...prev, [candidateId]: true }));
+      await api.patch(`/applications/${candidateId}/notes`, { hr_shortlist_notes: note });
+      setSavedSuccess(prev => ({ ...prev, [candidateId]: true }));
+      setTimeout(() => {
+        setSavedSuccess(prev => ({ ...prev, [candidateId]: false }));
+      }, 2500);
+    } catch (err) {
+      console.error("Failed to save shortlist note:", err);
+    } finally {
+      setSavingNotes(prev => ({ ...prev, [candidateId]: false }));
+    }
+  };
+
+  const exportToCSV = () => {
+    if (selectedCandidatesData.length === 0) return;
+    const refTitle = serverComparison?.reference_job?.job_title || 'Reference Position';
+    const headers = ['Criteria', ...selectedCandidatesData.map((c, i) => `"${c.name} (Rank #${i + 1})"`)];
+    const rows = [
+      ['Reference Evaluation Position', `"${refTitle}"`],
+      ...(serverComparison?.note ? [['Cross-Position Comparison Notice', `"${serverComparison.note}"`]] : []),
+      ['Role / Position Applied For', ...selectedCandidatesData.map(c => `"${c.applied_job_title || c.preferredJob || c.job_title || ''}"`)],
+      ['Overall Match Score', ...selectedCandidatesData.map(c => `${c.matchScore || 0}%`)],
+      ['Skills Match Score', ...selectedCandidatesData.map(c => `${c.skillsScore || 0}%`)],
+      ['Work Experience Score', ...selectedCandidatesData.map(c => `${c.experienceScore || 0}%`)],
+      ['Educational Attainment', ...selectedCandidatesData.map(c => `"${c.highest_educational_attainment || c.degree || 'Not specified'}"`)],
+      ['Education Score', ...selectedCandidatesData.map(c => `${c.education_score || 0}%`)],
+      ['Certifications Score', ...selectedCandidatesData.map(c => `${c.certificationsScore || 0}%`)],
+      ['Resume Completeness', ...selectedCandidatesData.map(c => `${c.completeness_score || 100}% (${c.completeness_status || 'Complete'})`)],
+      ['Matched Skills', ...selectedCandidatesData.map(c => `"${(c.matched_skills || []).join('; ')}"`)],
+      ['Transferable Skills', ...selectedCandidatesData.map(c => `"${(c.transferable_skills || []).join('; ')}"`)],
+      ['Candidate Email', ...selectedCandidatesData.map(c => `"${c.email || ''}"`)],
+      ['Candidate Phone', ...selectedCandidatesData.map(c => `"${c.phone || ''}"`)],
+      ['HR Shortlisting Notes', ...selectedCandidatesData.map(c => `"${(candidateNotes[c.id] ?? c.hr_shortlist_notes ?? '').replace(/"/g, '""')}"`)],
+    ];
+
+    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement('a');
+    link.setAttribute('href', encodedUri);
+    link.setAttribute('download', `Candidate_Comparison_Matrix_${new Date().toISOString().slice(0, 10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const exportToPDF = () => {
+    window.print();
+  };
 
   const winner = useMemo(() => {
     if (selectedCandidatesData.length === 0) return null;
@@ -408,6 +618,62 @@ const CompareCandidates: React.FC = () => {
               </div>
             </div>
           </div>
+
+          {/* Reference Position Selector */}
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 bg-white p-3.5 sm:p-4 rounded-2xl border border-slate-200/90 shadow-2xs">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-lg bg-rose-50 text-[#D60041] flex items-center justify-center shrink-0">
+                <Briefcase size={16} />
+              </div>
+              <div>
+                <label htmlFor="compare-for-select" className="text-xs font-black text-slate-800 flex items-center gap-1.5">
+                  Compare for Reference Position:
+                  <HelpTooltip text="All candidates are evaluated and scored against this reference role, including transferable skills." />
+                </label>
+                <p className="text-[11px] text-slate-400 font-medium">Scores and category rankings adapt to this position</p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <select
+                id="compare-for-select"
+                value={selectedRefJobId || serverComparison?.reference_job?.id || ''}
+                onChange={(e) => setSelectedRefJobId(e.target.value)}
+                className="px-3 py-2 bg-slate-50 hover:bg-slate-100 border border-slate-300 rounded-xl text-xs sm:text-sm font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-rose-500/20 focus:border-[#D60041] cursor-pointer min-w-[200px]"
+              >
+                {(jobs as Job[]).map((job) => (
+                  <option key={job.id} value={job.id}>
+                    {job.title || (job as any).job_title}
+                  </option>
+                ))}
+              </select>
+              {isComparingServer && (
+                <div className="w-4 h-4 border-2 border-rose-200 border-t-[#D60041] rounded-full animate-spin shrink-0" />
+              )}
+            </div>
+          </div>
+
+          {/* Cross-Job Comparison Note */}
+          {(serverComparison?.is_cross_job || serverComparison?.note) && (
+            <div className="mt-4 bg-amber-50/90 border border-amber-200 rounded-2xl p-4 flex items-start gap-3 shadow-2xs">
+              <div className="w-7 h-7 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center shrink-0 mt-0.5">
+                <Zap size={15} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-bold text-amber-900">Cross-Position Comparison Notice</p>
+                <p className="text-xs text-amber-800 mt-0.5">
+                  {serverComparison?.note || `Candidates applied for different positions. Scores are based on ${serverComparison?.reference_job?.job_title || 'the reference position'} and include transferable skills.`}
+                </p>
+              </div>
+            </div>
+          )}
+
+          {serverCompareError && (
+            <div className="mt-4 bg-rose-50 border border-rose-200 rounded-2xl p-4 flex items-center gap-3 text-rose-800 text-xs font-bold">
+              <AlertTriangle size={16} className="text-[#D60041] shrink-0" />
+              <span>{(serverCompareError as any)?.data?.detail || 'Comparison error: Candidates must be different people.'}</span>
+            </div>
+          )}
         </div>
 
         {/* AI Recommendation / Winner Banner */}
@@ -625,36 +891,57 @@ const CompareCandidates: React.FC = () => {
         )}
 
         {/* View Mode Switcher for Mobile & Tablet */}
-        <div className="flex items-center justify-between gap-2 mb-3 sm:mb-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 mb-3 sm:mb-4">
           <div className="flex items-center gap-2 min-w-0">
             <h3 className="text-xs sm:text-base font-black text-slate-900 tracking-tight truncate">Comparison Results</h3>
             <span className="text-[10px] sm:text-[11px] font-bold text-slate-400 shrink-0">({selectedCandidatesData.length})</span>
           </div>
 
-          {/* Toggle between Sticky Matrix Table and Card Scorecards with intact labels */}
-          <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200/80 shrink-0 shadow-2xs">
+          <div className="flex items-center gap-2 flex-wrap justify-end">
             <button
               type="button"
-              onClick={() => setCompareViewMode('table')}
-              className={`px-2.5 sm:px-3 py-1.5 rounded-lg text-[11px] sm:text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-                compareViewMode === 'table' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-500 hover:text-slate-800'
-              }`}
-              title="Side-by-side Table Matrix"
+              onClick={exportToCSV}
+              className="px-2.5 sm:px-3 py-1.5 rounded-xl bg-white border border-slate-200 text-slate-700 hover:text-[#D60041] hover:border-rose-200 text-[11px] sm:text-xs font-bold transition-all flex items-center gap-1.5 shadow-2xs cursor-pointer"
+              title="Export Comparison Matrix to CSV (REQ057)"
             >
-              <Table size={13} className={compareViewMode === 'table' ? 'text-[#D60041]' : ''} />
-              <span>Table Matrix</span>
+              <Download size={13} className="text-[#D60041]" />
+              <span className="hidden sm:inline">Export CSV</span>
+              <span className="sm:hidden">CSV</span>
             </button>
             <button
               type="button"
-              onClick={() => setCompareViewMode('cards')}
-              className={`px-2.5 sm:px-3 py-1.5 rounded-lg text-[11px] sm:text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-                compareViewMode === 'cards' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-500 hover:text-slate-800'
-              }`}
-              title="Card Scorecards"
+              onClick={exportToPDF}
+              className="px-2.5 sm:px-3 py-1.5 rounded-xl bg-white border border-slate-200 text-slate-700 hover:text-[#D60041] hover:border-rose-200 text-[11px] sm:text-xs font-bold transition-all flex items-center gap-1.5 shadow-2xs cursor-pointer"
+              title="Export / Print Comparison to PDF (REQ078)"
             >
-              <LayoutGrid size={13} className={compareViewMode === 'cards' ? 'text-[#D60041]' : ''} />
-              <span>Scorecards</span>
+              <Printer size={13} className="text-[#D60041]" />
+              <span className="hidden sm:inline">Print / PDF</span>
+              <span className="sm:hidden">PDF</span>
             </button>
+
+            {/* Toggle between Sticky Matrix Table and Card Scorecards with intact labels */}
+            <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200/80 shrink-0 shadow-2xs">
+              <button
+                type="button"
+                onClick={() => setCompareViewMode('table')}
+                className={`px-2.5 sm:px-3 py-1.5 rounded-lg text-[11px] sm:text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${compareViewMode === 'table' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-500 hover:text-slate-800'
+                  }`}
+                title="Side-by-side Table Matrix"
+              >
+                <Table size={13} className={compareViewMode === 'table' ? 'text-[#D60041]' : ''} />
+                <span>Table Matrix</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setCompareViewMode('cards')}
+                className={`px-2.5 sm:px-3 py-1.5 rounded-lg text-[11px] sm:text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${compareViewMode === 'cards' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-500 hover:text-slate-800'
+                  }`}
+                title="Card Scorecards"
+              >
+                <LayoutGrid size={13} className={compareViewMode === 'cards' ? 'text-[#D60041]' : ''} />
+                <span>Scorecards</span>
+              </button>
+            </div>
           </div>
         </div>
 
@@ -689,9 +976,8 @@ const CompareCandidates: React.FC = () => {
                         return (
                           <th
                             key={candidate.id}
-                            className={`p-3 sm:p-5 text-left min-w-[210px] max-w-[250px] sm:min-w-[270px] relative snap-start ${
-                              isTop ? 'bg-rose-50/25' : ''
-                            }`}
+                            className={`p-3 sm:p-5 text-left min-w-[210px] max-w-[250px] sm:min-w-[270px] relative snap-start ${isTop ? 'bg-rose-50/25' : ''
+                              }`}
                           >
                             {isTop && (
                               <div className="absolute top-0 left-0 right-0 h-1 bg-[#D60041]" />
@@ -708,16 +994,21 @@ const CompareCandidates: React.FC = () => {
                                 />
                               </div>
                               <div className="min-w-0">
-                                <div className="flex items-center gap-1.5">
-                                  <span className={`px-1.5 py-0.5 rounded text-[9px] font-black uppercase shrink-0 ${
-                                    isTop ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-600'
-                                  }`}>
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <span className={`px-1.5 py-0.5 rounded text-[9px] font-black uppercase shrink-0 ${isTop ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-600'
+                                    }`}>
                                     {isAllZero ? 'Unranked' : `Rank #${idx + 1}`}
                                   </span>
                                   {isTop && <Trophy className="w-3 h-3 text-amber-500 shrink-0" />}
+                                  {(candidate.completeness_status === 'Incomplete' || (candidate.completeness_score !== undefined && candidate.completeness_score < 70)) && (
+                                    <span className="px-1.5 py-0.5 rounded text-[9px] font-black uppercase bg-amber-100 text-amber-800 border border-amber-300 flex items-center gap-0.5" title="Incomplete Profile (REQ058)">
+                                      <AlertTriangle className="w-2.5 h-2.5 shrink-0" />
+                                      <span>Incomplete</span>
+                                    </span>
+                                  )}
                                 </div>
                                 <h4 className="text-xs sm:text-sm font-bold text-slate-900 tracking-tight truncate mt-0.5">{candidate.name}</h4>
-                                <p className="text-[10px] sm:text-[11px] text-slate-500 font-semibold truncate">{candidate.preferredJob}</p>
+                                <p className="text-[10px] sm:text-[11px] text-slate-500 font-semibold truncate">Applied for: {candidate.applied_job_title || candidate.preferredJob}</p>
                               </div>
                             </div>
                           </th>
@@ -772,58 +1063,79 @@ const CompareCandidates: React.FC = () => {
                         const isTop = !isAllZero && (candidate.matchScore || 0) > 0 && candidate.matchScore === selectedCandidatesData[0].matchScore;
                         return (
                           <td key={candidate.id} className={`p-3 sm:p-5 space-y-2 sm:space-y-2.5 ${isTop ? 'bg-rose-50/15' : ''}`}>
-                          <div>
-                            <div className="flex justify-between text-[10px] sm:text-[11px] font-bold mb-0.5">
-                              <span className={evaluationFilters.skills ? 'text-slate-600' : 'text-slate-300 line-through'}>Skills</span>
-                              <span className="text-blue-600">{candidate.skillsScore}%</span>
+                            <div>
+                              <div className="flex justify-between text-[10px] sm:text-[11px] font-bold mb-0.5">
+                                <span className={evaluationFilters.skills ? 'text-slate-600' : 'text-slate-300 line-through'}>Skills</span>
+                                <span className="text-blue-600">{candidate.skillsScore}%</span>
+                              </div>
+                              <div className="w-full bg-slate-100 rounded-full h-1.5">
+                                <div className="h-1.5 rounded-full bg-blue-500" style={{ width: `${candidate.skillsScore}%` }} />
+                              </div>
                             </div>
-                            <div className="w-full bg-slate-100 rounded-full h-1.5">
-                              <div className="h-1.5 rounded-full bg-blue-500" style={{ width: `${candidate.skillsScore}%` }} />
+                            <div>
+                              <div className="flex justify-between text-[10px] sm:text-[11px] font-bold mb-0.5">
+                                <span className={evaluationFilters.experience ? 'text-slate-600' : 'text-slate-300 line-through'}>Experience</span>
+                                <span className="text-purple-600">{candidate.experienceScore}%</span>
+                              </div>
+                              <div className="w-full bg-slate-100 rounded-full h-1.5">
+                                <div className="h-1.5 rounded-full bg-purple-500" style={{ width: `${candidate.experienceScore}%` }} />
+                              </div>
                             </div>
-                          </div>
-                          <div>
-                            <div className="flex justify-between text-[10px] sm:text-[11px] font-bold mb-0.5">
-                              <span className={evaluationFilters.experience ? 'text-slate-600' : 'text-slate-300 line-through'}>Experience</span>
-                              <span className="text-purple-600">{candidate.experienceScore}%</span>
+                            <div>
+                              <div className="flex justify-between text-[10px] sm:text-[11px] font-bold mb-0.5">
+                                <span className={evaluationFilters.certifications ? 'text-slate-600' : 'text-slate-300 line-through'}>Certifications</span>
+                                <span className="text-amber-600">{candidate.certificationsScore || 0}%</span>
+                              </div>
+                              <div className="w-full bg-slate-100 rounded-full h-1.5">
+                                <div className="h-1.5 rounded-full bg-amber-500" style={{ width: `${candidate.certificationsScore || 0}%` }} />
+                              </div>
                             </div>
-                            <div className="w-full bg-slate-100 rounded-full h-1.5">
-                              <div className="h-1.5 rounded-full bg-purple-500" style={{ width: `${candidate.experienceScore}%` }} />
-                            </div>
-                          </div>
-                          <div>
-                            <div className="flex justify-between text-[10px] sm:text-[11px] font-bold mb-0.5">
-                              <span className={evaluationFilters.certifications ? 'text-slate-600' : 'text-slate-300 line-through'}>Certifications</span>
-                              <span className="text-amber-600">{candidate.certificationsScore || 0}%</span>
-                            </div>
-                            <div className="w-full bg-slate-100 rounded-full h-1.5">
-                              <div className="h-1.5 rounded-full bg-amber-500" style={{ width: `${candidate.certificationsScore || 0}%` }} />
-                            </div>
-                          </div>
-                        </td>
-                      );
-                    })}
+                          </td>
+                        );
+                      })}
                     </tr>
 
-                    {/* Row 3: Matched Skills */}
+                    {/* Row 3: Skills Alignment (Direct & Transferable) */}
                     <tr className="hover:bg-slate-50/40 transition-colors">
                       <td className="sticky left-0 z-20 bg-slate-50/95 backdrop-blur-md p-3 sm:p-5 text-[11px] sm:text-xs font-black text-slate-700 uppercase tracking-wider w-[125px] min-w-[125px] max-w-[125px] sm:w-56 sm:min-w-[220px] sm:max-w-[220px] shrink-0 border-r-2 border-slate-200 shadow-[3px_0_8px_rgba(0,0,0,0.05)]">
                         <div className="flex items-center gap-1.5 sm:gap-2">
                           <CheckCircle2 size={13} className="text-emerald-500 shrink-0" />
-                          <span>Matched Skills</span>
+                          <span>Skills Alignment</span>
                         </div>
                       </td>
                       {selectedCandidatesData.map((candidate, idx) => (
                         <td key={candidate.id} className={`p-3 sm:p-5 ${idx === 0 ? 'bg-rose-50/15' : ''}`}>
-                          <div className="flex flex-wrap gap-1 sm:gap-1.5">
-                            {candidate.matched_skills && candidate.matched_skills.length > 0 ? (
-                              candidate.matched_skills.map((skill, i) => (
-                                <span key={i} className="inline-flex items-center gap-1 px-1.5 py-0.5 sm:px-2.5 sm:py-1 bg-emerald-50 text-emerald-700 border border-emerald-200/80 rounded-md text-[9px] sm:text-[10px] font-bold">
-                                  <Check className="w-2.5 h-2.5" />
-                                  <span>{skill}</span>
+                          <div className="space-y-2">
+                            <div>
+                              <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400 block mb-1">Direct Matches</span>
+                              <div className="flex flex-wrap gap-1 sm:gap-1.5">
+                                {candidate.matched_skills && candidate.matched_skills.length > 0 ? (
+                                  candidate.matched_skills.map((skill, i) => (
+                                    <span key={i} className="inline-flex items-center gap-1 px-1.5 py-0.5 sm:px-2.5 sm:py-1 bg-emerald-50 text-emerald-700 border border-emerald-200/80 rounded-md text-[9px] sm:text-[10px] font-bold">
+                                      <Check className="w-2.5 h-2.5" />
+                                      <span>{skill}</span>
+                                    </span>
+                                  ))
+                                ) : (
+                                  <span className="text-[11px] text-slate-400 italic">None matched</span>
+                                )}
+                              </div>
+                            </div>
+
+                            {candidate.transferable_skills && candidate.transferable_skills.length > 0 && (
+                              <div className="pt-2 border-t border-slate-100">
+                                <span className="text-[9px] font-bold uppercase tracking-wider text-purple-700 mb-1 flex items-center gap-1">
+                                  <Zap size={10} /> Transferable Skills
                                 </span>
-                              ))
-                            ) : (
-                              <span className="text-[11px] text-slate-400 italic">None matched</span>
+                                <div className="flex flex-wrap gap-1 sm:gap-1.5">
+                                  {candidate.transferable_skills.map((skill, i) => (
+                                    <span key={i} className="inline-flex items-center gap-1 px-1.5 py-0.5 sm:px-2 sm:py-0.5 bg-purple-50 text-purple-700 border border-purple-200 rounded-md text-[9px] sm:text-[10px] font-bold">
+                                      <span>{skill}</span>
+                                      <span className="text-[8px] bg-purple-100 text-purple-800 px-1 rounded uppercase font-black">Transferable</span>
+                                    </span>
+                                  ))}
+                                </div>
+                              </div>
                             )}
                           </div>
                         </td>
@@ -958,6 +1270,82 @@ const CompareCandidates: React.FC = () => {
                         </td>
                       ))}
                     </tr>
+
+                    {/* Row 10: Profile Completeness (REQ058) */}
+                    <tr className="hover:bg-slate-50/40 transition-colors">
+                      <td className="sticky left-0 z-20 bg-slate-50/95 backdrop-blur-md p-3 sm:p-5 text-[11px] sm:text-xs font-black text-slate-700 uppercase tracking-wider w-[125px] min-w-[125px] max-w-[125px] sm:w-56 sm:min-w-[220px] sm:max-w-[220px] shrink-0 border-r-2 border-slate-200 shadow-[3px_0_8px_rgba(0,0,0,0.05)]">
+                        <div className="flex items-center gap-1.5 sm:gap-2">
+                          <CheckCircle2 size={13} className="text-emerald-600 shrink-0" />
+                          <span>Completeness</span>
+                        </div>
+                      </td>
+                      {selectedCandidatesData.map((candidate, idx) => {
+                        const isIncomplete = candidate.completeness_status === 'Incomplete' || (candidate.completeness_score !== undefined && candidate.completeness_score < 70);
+                        return (
+                          <td key={candidate.id} className={`p-3 sm:p-5 text-[11px] sm:text-xs ${idx === 0 ? 'bg-rose-50/15' : ''}`}>
+                            {isIncomplete ? (
+                              <div className="space-y-1">
+                                <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-amber-50 text-amber-800 border border-amber-200 font-bold text-[10px] sm:text-[11px]">
+                                  <AlertTriangle className="w-3 h-3 text-amber-600 shrink-0" />
+                                  <span>Incomplete Profile ({candidate.completeness_score || 0}%)</span>
+                                </div>
+                                {candidate.missing_sections && candidate.missing_sections.length > 0 && (
+                                  <p className="text-[10px] text-amber-700 font-medium">
+                                    Missing: {candidate.missing_sections.join(', ')}
+                                  </p>
+                                )}
+                              </div>
+                            ) : (
+                              <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-200 font-bold text-[10px] sm:text-[11px]">
+                                <CheckCircle2 className="w-3 h-3 text-emerald-600 shrink-0" />
+                                <span>Complete Profile ({candidate.completeness_score || 100}%)</span>
+                              </div>
+                            )}
+                          </td>
+                        );
+                      })}
+                    </tr>
+
+                    {/* Row 11: HR Shortlisting Notes (REQ056) */}
+                    <tr className="hover:bg-slate-50/40 transition-colors bg-slate-50/20">
+                      <td className="sticky left-0 z-20 bg-slate-50/95 backdrop-blur-md p-3 sm:p-5 text-[11px] sm:text-xs font-black text-slate-700 uppercase tracking-wider w-[125px] min-w-[125px] max-w-[125px] sm:w-56 sm:min-w-[220px] sm:max-w-[220px] shrink-0 border-r-2 border-slate-200 shadow-[3px_0_8px_rgba(0,0,0,0.05)]">
+                        <div className="flex items-center gap-1.5 sm:gap-2">
+                          <FileText size={13} className="text-[#D60041] shrink-0" />
+                          <span>HR Notes</span>
+                        </div>
+                      </td>
+                      {selectedCandidatesData.map((candidate, idx) => (
+                        <td key={candidate.id} className={`p-3 sm:p-5 text-[11px] sm:text-xs ${idx === 0 ? 'bg-rose-50/15' : ''}`}>
+                          <div className="space-y-1.5">
+                            <textarea
+                              rows={3}
+                              value={candidateNotes[candidate.id] ?? candidate.hr_shortlist_notes ?? ''}
+                              onChange={(e) => setCandidateNotes(prev => ({ ...prev, [candidate.id]: e.target.value }))}
+                              placeholder="Add evaluation note or comment..."
+                              className="w-full text-xs p-2 rounded-lg border border-slate-200 focus:outline-none focus:ring-1 focus:ring-[#D60041] bg-white text-slate-800 resize-none"
+                            />
+                            <div className="flex items-center justify-between">
+                              {savedSuccess[candidate.id] ? (
+                                <span className="text-[10px] font-bold text-emerald-600 flex items-center gap-1">
+                                  <Check className="w-3 h-3" /> Saved to profile
+                                </span>
+                              ) : (
+                                <span className="text-[10px] text-slate-400">Inline shortlisting note</span>
+                              )}
+                              <button
+                                type="button"
+                                disabled={savingNotes[candidate.id]}
+                                onClick={() => handleSaveNote(candidate.id)}
+                                className="px-2.5 py-1 bg-slate-900 hover:bg-[#D60041] text-white rounded-md text-[10px] font-bold transition-colors flex items-center gap-1 shadow-2xs cursor-pointer disabled:opacity-50"
+                              >
+                                <Save size={10} />
+                                <span>{savingNotes[candidate.id] ? 'Saving...' : 'Save Note'}</span>
+                              </button>
+                            </div>
+                          </div>
+                        </td>
+                      ))}
+                    </tr>
                   </tbody>
                 </table>
               </div>
@@ -972,11 +1360,10 @@ const CompareCandidates: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setScorecardFilter('all')}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
-                    scorecardFilter === 'all'
-                      ? 'bg-slate-900 text-white shadow-2xs'
-                      : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
-                  }`}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${scorecardFilter === 'all'
+                    ? 'bg-slate-900 text-white shadow-2xs'
+                    : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
+                    }`}
                 >
                   All Candidates ({selectedCandidatesData.length})
                 </button>
@@ -987,11 +1374,10 @@ const CompareCandidates: React.FC = () => {
                       key={cand.id}
                       type="button"
                       onClick={() => setScorecardFilter(cand.id)}
-                      className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all flex items-center gap-1.5 cursor-pointer ${
-                        scorecardFilter === cand.id
-                          ? 'bg-[#D60041] text-white shadow-2xs'
-                          : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
-                      }`}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all flex items-center gap-1.5 cursor-pointer ${scorecardFilter === cand.id
+                        ? 'bg-[#D60041] text-white shadow-2xs'
+                        : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
+                        }`}
                     >
                       {isTop && <Trophy size={11} className={scorecardFilter === cand.id ? 'text-amber-300' : 'text-amber-500'} />}
                       <span>{cand.name.split(' ')[0]}</span>
@@ -1011,9 +1397,8 @@ const CompareCandidates: React.FC = () => {
                 return (
                   <div
                     key={candidate.id}
-                    className={`bg-white border rounded-2xl sm:rounded-3xl p-4 sm:p-6 shadow-xs flex flex-col justify-between transition-all ${
-                      isTopMatch ? 'border-rose-200 ring-2 ring-rose-100 shadow-md' : 'border-slate-200/90'
-                    }`}
+                    className={`bg-white border rounded-2xl sm:rounded-3xl p-4 sm:p-6 shadow-xs flex flex-col justify-between transition-all ${isTopMatch ? 'border-rose-200 ring-2 ring-rose-100 shadow-md' : 'border-slate-200/90'
+                      }`}
                   >
                     <div className="space-y-4">
                       {/* Card Header & Rank */}
@@ -1031,18 +1416,17 @@ const CompareCandidates: React.FC = () => {
                           </div>
                           <div className="min-w-0">
                             <h4 className="text-sm sm:text-base font-bold text-slate-900 truncate">{candidate.name}</h4>
-                            <p className="text-xs text-slate-500 font-semibold truncate mt-0.5">{candidate.preferredJob}</p>
+                            <p className="text-xs text-slate-500 font-semibold truncate mt-0.5">Applied for: {candidate.applied_job_title || candidate.preferredJob}</p>
                           </div>
                         </div>
 
                         <div className="text-right shrink-0">
-                          <span className={`inline-flex items-center gap-1 text-[10px] font-black uppercase px-2 py-0.5 rounded-full ${
-                            isTopMatch
-                              ? 'bg-amber-100 text-amber-800'
-                              : isZeroScore
-                                ? 'bg-slate-100 text-slate-500'
-                                : 'bg-slate-100 text-slate-600'
-                          }`}>
+                          <span className={`inline-flex items-center gap-1 text-[10px] font-black uppercase px-2 py-0.5 rounded-full ${isTopMatch
+                            ? 'bg-amber-100 text-amber-800'
+                            : isZeroScore
+                              ? 'bg-slate-100 text-slate-500'
+                              : 'bg-slate-100 text-slate-600'
+                            }`}>
                             {isTopMatch && <Trophy size={11} className="text-amber-600" />}
                             {isZeroScore ? 'No Match' : `Rank #${actualRank}`}
                           </span>
@@ -1138,6 +1522,22 @@ const CompareCandidates: React.FC = () => {
                             )}
                           </div>
                         </div>
+
+                        {candidate.transferable_skills && candidate.transferable_skills.length > 0 && (
+                          <div>
+                            <p className="text-[10px] font-black uppercase tracking-wider text-purple-700 mb-1 flex items-center gap-1">
+                              <Zap size={10} /> Transferable Skills
+                            </p>
+                            <div className="flex flex-wrap gap-1">
+                              {candidate.transferable_skills.map((skill, i) => (
+                                <span key={i} className="px-2 py-0.5 bg-purple-50 text-purple-700 border border-purple-200 rounded text-[10px] font-bold">
+                                  {skill}
+                                  <span className="text-[8px] bg-purple-100 text-purple-800 ml-1 px-1 rounded uppercase font-black">Transferable</span>
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
 
                         <div>
                           <p className="text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1">Missing Skills</p>
@@ -1261,11 +1661,10 @@ const CompareCandidates: React.FC = () => {
             type="button"
             disabled={selectedCandidateIds.length < 2}
             onClick={() => setIsComparing(true)}
-            className={`flex items-center justify-center gap-2 px-4 sm:px-6 py-2.5 sm:py-3.5 rounded-xl sm:rounded-2xl font-bold text-xs sm:text-sm transition-all shadow-xs flex-1 sm:flex-initial text-center cursor-pointer ${
-              selectedCandidateIds.length >= 2
-                ? 'bg-slate-900 hover:bg-black text-white hover:scale-[1.02] active:scale-[0.98]'
-                : 'bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200/60'
-            }`}
+            className={`flex items-center justify-center gap-2 px-4 sm:px-6 py-2.5 sm:py-3.5 rounded-xl sm:rounded-2xl font-bold text-xs sm:text-sm transition-all shadow-xs flex-1 sm:flex-initial text-center cursor-pointer ${selectedCandidateIds.length >= 2
+              ? 'bg-slate-900 hover:bg-black text-white hover:scale-[1.02] active:scale-[0.98]'
+              : 'bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200/60'
+              }`}
           >
             <TrendingUp className="w-4 h-4 text-[#D60041] shrink-0" />
             <span className="whitespace-nowrap">Compare ({selectedCandidateIds.length})</span>
@@ -1278,11 +1677,10 @@ const CompareCandidates: React.FC = () => {
         <button
           type="button"
           onClick={() => setMobileTab('list')}
-          className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-            mobileTab === 'list'
-              ? 'bg-white text-slate-900 shadow-xs'
-              : 'text-slate-500 hover:text-slate-800'
-          }`}
+          className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${mobileTab === 'list'
+            ? 'bg-white text-slate-900 shadow-xs'
+            : 'text-slate-500 hover:text-slate-800'
+            }`}
         >
           <Users size={14} className={mobileTab === 'list' ? 'text-[#D60041]' : ''} />
           <span>Candidate List ({filteredCandidates.length})</span>
@@ -1290,11 +1688,10 @@ const CompareCandidates: React.FC = () => {
         <button
           type="button"
           onClick={() => setMobileTab('profile')}
-          className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-            mobileTab === 'profile'
-              ? 'bg-white text-slate-900 shadow-xs'
-              : 'text-slate-500 hover:text-slate-800'
-          }`}
+          className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${mobileTab === 'profile'
+            ? 'bg-white text-slate-900 shadow-xs'
+            : 'text-slate-500 hover:text-slate-800'
+            }`}
         >
           <User size={14} className={mobileTab === 'profile' ? 'text-[#D60041]' : ''} />
           <span className="truncate">{activeCandidate ? activeCandidate.name.split(' ')[0] + "'s Details" : 'Preview Profile'}</span>
@@ -1306,9 +1703,8 @@ const CompareCandidates: React.FC = () => {
 
         {/* LEFT COLUMN: Candidate Search and List */}
         <div
-          className={`w-full lg:w-[380px] bg-white border border-slate-200/90 rounded-2xl sm:rounded-3xl shadow-xs flex flex-col shrink-0 overflow-hidden ${
-            mobileTab === 'list' ? 'flex' : 'hidden lg:flex'
-          } max-h-[560px] lg:max-h-none`}
+          className={`w-full lg:w-[380px] bg-white border border-slate-200/90 rounded-2xl sm:rounded-3xl shadow-xs flex flex-col shrink-0 overflow-hidden ${mobileTab === 'list' ? 'flex' : 'hidden lg:flex'
+            } max-h-[560px] lg:max-h-none`}
         >
           <div className="p-3.5 sm:p-4 border-b border-slate-100 bg-slate-50/50 shrink-0 space-y-3">
             {/* Job Profile Filter */}
@@ -1337,15 +1733,13 @@ const CompareCandidates: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setEvaluationFilters(prev => ({ ...prev, skills: !prev.skills }))}
-                  className={`flex items-center justify-center gap-1.5 px-2 py-1.5 sm:py-2 rounded-xl border text-[10px] sm:text-xs font-bold transition-all cursor-pointer ${
-                    evaluationFilters.skills
-                      ? 'bg-blue-50 text-blue-700 border-blue-200 shadow-2xs'
-                      : 'bg-white text-slate-400 border-slate-200 hover:text-slate-600'
-                  }`}
+                  className={`flex items-center justify-center gap-1.5 px-2 py-1.5 sm:py-2 rounded-xl border text-[10px] sm:text-xs font-bold transition-all cursor-pointer ${evaluationFilters.skills
+                    ? 'bg-blue-50 text-blue-700 border-blue-200 shadow-2xs'
+                    : 'bg-white text-slate-400 border-slate-200 hover:text-slate-600'
+                    }`}
                 >
-                  <div className={`w-3.5 h-3.5 rounded flex items-center justify-center transition-all ${
-                    evaluationFilters.skills ? 'bg-blue-600 text-white' : 'border border-slate-300'
-                  }`}>
+                  <div className={`w-3.5 h-3.5 rounded flex items-center justify-center transition-all ${evaluationFilters.skills ? 'bg-blue-600 text-white' : 'border border-slate-300'
+                    }`}>
                     {evaluationFilters.skills && <Check className="w-2.5 h-2.5 stroke-[3px]" />}
                   </div>
                   <span>Skills</span>
@@ -1354,15 +1748,13 @@ const CompareCandidates: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setEvaluationFilters(prev => ({ ...prev, experience: !prev.experience }))}
-                  className={`flex items-center justify-center gap-1.5 px-2 py-1.5 sm:py-2 rounded-xl border text-[10px] sm:text-xs font-bold transition-all cursor-pointer ${
-                    evaluationFilters.experience
-                      ? 'bg-purple-50 text-purple-700 border-purple-200 shadow-2xs'
-                      : 'bg-white text-slate-400 border-slate-200 hover:text-slate-600'
-                  }`}
+                  className={`flex items-center justify-center gap-1.5 px-2 py-1.5 sm:py-2 rounded-xl border text-[10px] sm:text-xs font-bold transition-all cursor-pointer ${evaluationFilters.experience
+                    ? 'bg-purple-50 text-purple-700 border-purple-200 shadow-2xs'
+                    : 'bg-white text-slate-400 border-slate-200 hover:text-slate-600'
+                    }`}
                 >
-                  <div className={`w-3.5 h-3.5 rounded flex items-center justify-center transition-all ${
-                    evaluationFilters.experience ? 'bg-purple-600 text-white' : 'border border-slate-300'
-                  }`}>
+                  <div className={`w-3.5 h-3.5 rounded flex items-center justify-center transition-all ${evaluationFilters.experience ? 'bg-purple-600 text-white' : 'border border-slate-300'
+                    }`}>
                     {evaluationFilters.experience && <Check className="w-2.5 h-2.5 stroke-[3px]" />}
                   </div>
                   <span>Experience</span>
@@ -1371,15 +1763,13 @@ const CompareCandidates: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setEvaluationFilters(prev => ({ ...prev, certifications: !prev.certifications }))}
-                  className={`flex items-center justify-center gap-1.5 px-2 py-1.5 sm:py-2 rounded-xl border text-[10px] sm:text-xs font-bold transition-all cursor-pointer ${
-                    evaluationFilters.certifications
-                      ? 'bg-amber-50 text-amber-700 border-amber-200 shadow-2xs'
-                      : 'bg-white text-slate-400 border-slate-200 hover:text-slate-600'
-                  }`}
+                  className={`flex items-center justify-center gap-1.5 px-2 py-1.5 sm:py-2 rounded-xl border text-[10px] sm:text-xs font-bold transition-all cursor-pointer ${evaluationFilters.certifications
+                    ? 'bg-amber-50 text-amber-700 border-amber-200 shadow-2xs'
+                    : 'bg-white text-slate-400 border-slate-200 hover:text-slate-600'
+                    }`}
                 >
-                  <div className={`w-3.5 h-3.5 rounded flex items-center justify-center transition-all ${
-                    evaluationFilters.certifications ? 'bg-amber-600 text-white' : 'border border-slate-300'
-                  }`}>
+                  <div className={`w-3.5 h-3.5 rounded flex items-center justify-center transition-all ${evaluationFilters.certifications ? 'bg-amber-600 text-white' : 'border border-slate-300'
+                    }`}>
                     {evaluationFilters.certifications && <Check className="w-2.5 h-2.5 stroke-[3px]" />}
                   </div>
                   <span>Certs</span>
@@ -1407,7 +1797,7 @@ const CompareCandidates: React.FC = () => {
                 <div className="w-8 h-8 border-3 border-rose-100 border-t-[#D60041] rounded-full animate-spin mb-2"></div>
                 <p className="text-slate-400 text-xs font-bold">Loading applicants...</p>
               </div>
-            ) : filteredCandidates.length === 0 ? (
+            ) : personGroups.length === 0 ? (
               <div className="text-center py-12 px-4">
                 <div className="w-12 h-12 bg-slate-50 rounded-2xl flex items-center justify-center mx-auto mb-2.5 border border-slate-100">
                   <Users className="w-5 h-5 text-slate-300" />
@@ -1416,77 +1806,115 @@ const CompareCandidates: React.FC = () => {
                 <p className="text-[11px] text-slate-400 mt-0.5">Try searching another name or skill.</p>
               </div>
             ) : (
-              filteredCandidates.map(candidate => {
-                const isSelected = selectedCandidateIds.includes(candidate.id);
-                const isActive = activeCandidateId === candidate.id;
+              personGroups.map(person => {
+                const chosenAppId = personSelectedAppMap[person.personKey] || person.applications[0].id;
+                const chosenCandidate = person.applications.find(a => a.id === chosenAppId) || person.applications[0];
+                const isSelected = person.applications.some(a => selectedCandidateIds.includes(a.id));
+                const isActive = person.applications.some(a => activeCandidateId === a.id);
+                const hasMultiple = person.applications.length > 1;
 
                 return (
                   <div
-                    key={candidate.id}
+                    key={person.personKey}
                     onClick={() => {
-                      setActiveCandidateId(candidate.id);
+                      setActiveCandidateId(chosenAppId);
                       if (window.innerWidth < 1024) setMobileTab('profile');
                     }}
-                    className={`p-3 rounded-xl border transition-all duration-200 cursor-pointer flex items-center gap-2.5 sm:gap-3 relative group ${
-                      isActive
-                        ? 'bg-rose-50/30 border-[#D60041]/30 shadow-2xs'
-                        : 'bg-white border-transparent hover:bg-slate-50'
-                    }`}
+                    className={`p-3 rounded-xl border transition-all duration-200 cursor-pointer flex flex-col gap-2 relative group ${isActive
+                      ? 'bg-rose-50/30 border-[#D60041]/30 shadow-2xs'
+                      : 'bg-white border-transparent hover:bg-slate-50'
+                      }`}
                   >
-                    {/* Checkbox for Selection */}
-                    <div
-                      className="shrink-0 cursor-pointer"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        toggleSelection(candidate.id);
-                      }}
-                    >
-                      <div className={`w-5 h-5 sm:w-6 sm:h-6 rounded-lg border-2 flex items-center justify-center transition-all ${
-                        isSelected
+                    <div className="flex items-center gap-2.5 sm:gap-3">
+                      {/* Checkbox for Selection */}
+                      <div
+                        className="shrink-0 cursor-pointer"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          togglePersonSelection(person);
+                        }}
+                      >
+                        <div className={`w-5 h-5 sm:w-6 sm:h-6 rounded-lg border-2 flex items-center justify-center transition-all ${isSelected
                           ? 'bg-[#D60041] border-[#D60041] shadow-xs'
                           : 'border-slate-300 bg-white group-hover:border-[#D60041]'
-                      }`}>
-                        {isSelected && <Check className="w-3 h-3 text-white stroke-[3.5px]" />}
-                      </div>
-                    </div>
-
-                    <div className="flex-1 min-w-0">
-                      <h4 className="text-xs sm:text-sm font-bold text-slate-900 truncate tracking-tight">{candidate.name}</h4>
-                      <p className="text-[11px] text-slate-500 font-semibold truncate mt-0.5">{candidate.preferredJob}</p>
-
-                      {candidate.skills && candidate.skills.length > 0 && (
-                        <div className="flex gap-1 overflow-hidden mt-1">
-                          {candidate.skills.slice(0, 3).map((skill, idx) => (
-                            <span key={idx} className="px-1.5 py-0.2 bg-slate-50 text-slate-500 border border-slate-100 rounded text-[9px] font-bold truncate">
-                              {skill}
-                            </span>
-                          ))}
+                          }`}>
+                          {isSelected && <Check className="w-3 h-3 text-white stroke-[3.5px]" />}
                         </div>
-                      )}
-                    </div>
+                      </div>
 
-                    {(() => {
-                      const candJob = (jobs as Job[]).find(j => j.id === parseInt(selectedJobId) || String(j.id) === selectedJobId);
-                      const computedScore = calculateRuleBasedScore(candidate, candJob, evaluationFilters).matchScore || 0;
-                      return (
-                        <div className="text-right shrink-0">
-                          <span className={`text-xs font-black px-2 py-0.5 rounded-lg ${
-                            computedScore >= 85
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <h4 className="text-xs sm:text-sm font-bold text-slate-900 truncate tracking-tight">{person.name}</h4>
+                          {hasMultiple && (
+                            <span className="text-[9px] font-bold px-1.5 py-0.2 rounded-md bg-blue-50 text-blue-700 border border-blue-200">
+                              {person.applications.length} applications
+                            </span>
+                          )}
+                        </div>
+
+                        {!hasMultiple ? (
+                          <p className="text-[11px] text-slate-500 font-semibold truncate mt-0.5">{chosenCandidate.preferredJob}</p>
+                        ) : null}
+
+                        {chosenCandidate.skills && chosenCandidate.skills.length > 0 && (
+                          <div className="flex gap-1 overflow-hidden mt-1">
+                            {chosenCandidate.skills.slice(0, 3).map((skill, idx) => (
+                              <span key={idx} className="px-1.5 py-0.2 bg-slate-50 text-slate-500 border border-slate-100 rounded text-[9px] font-bold truncate">
+                                {skill}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      {(() => {
+                        const candJob = (jobs as Job[]).find(j => j.id === parseInt(selectedRefJobId || selectedJobId) || String(j.id) === (selectedRefJobId || selectedJobId));
+                        const computedScore = calculateRuleBasedScore(chosenCandidate, candJob, evaluationFilters).matchScore || 0;
+                        return (
+                          <div className="text-right shrink-0">
+                            <span className={`text-xs font-black px-2 py-0.5 rounded-lg ${computedScore >= 85
                               ? 'bg-emerald-50 text-emerald-700 border border-emerald-100'
                               : computedScore >= 70
                                 ? 'bg-amber-50 text-amber-700 border border-amber-100'
                                 : computedScore > 0
                                   ? 'bg-slate-50 text-slate-600 border border-slate-100'
                                   : 'bg-slate-100 text-slate-400 border border-slate-200'
-                          }`}>
-                            {computedScore}%
-                          </span>
-                        </div>
-                      );
-                    })()}
+                              }`}>
+                              {computedScore}%
+                            </span>
+                          </div>
+                        );
+                      })()}
 
-                    {isActive && (
-                      <div className="absolute right-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-[#D60041] rounded-l-full" />
+                      {isActive && (
+                        <div className="absolute right-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-[#D60041] rounded-l-full" />
+                      )}
+                    </div>
+
+                    {/* Position selector when person applied for multiple roles */}
+                    {hasMultiple && (
+                      <div className="pl-8 pt-1 flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+                        <span className="text-[10px] font-bold text-slate-400 whitespace-nowrap">Compare for:</span>
+                        <select
+                          value={chosenAppId}
+                          onChange={(e) => {
+                            const newId = parseInt(e.target.value);
+                            setPersonSelectedAppMap(prev => ({ ...prev, [person.personKey]: newId }));
+                            if (isSelected) {
+                              const personAppIds = new Set(person.applications.map(a => a.id));
+                              setSelectedCandidateIds(prev => [...prev.filter(id => !personAppIds.has(id)), newId]);
+                            }
+                            setActiveCandidateId(newId);
+                          }}
+                          className="w-full text-[11px] font-semibold bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg px-2 py-0.5 text-slate-800 cursor-pointer focus:outline-none focus:ring-1 focus:ring-rose-500/30 truncate"
+                        >
+                          {person.applications.map((app) => (
+                            <option key={app.id} value={app.id}>
+                              {app.preferredJob || app.job_title || 'Position'} (Application #{app.id})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
                     )}
                   </div>
                 );
@@ -1497,9 +1925,8 @@ const CompareCandidates: React.FC = () => {
 
         {/* RIGHT COLUMN: Full Resume Details (Detailed Profile View) */}
         <div
-          className={`flex-1 bg-white border border-slate-200/90 rounded-2xl sm:rounded-3xl shadow-xs flex flex-col min-h-0 ${
-            mobileTab === 'profile' ? 'flex' : 'hidden lg:flex'
-          } overflow-hidden`}
+          className={`flex-1 bg-white border border-slate-200/90 rounded-2xl sm:rounded-3xl shadow-xs flex flex-col min-h-0 ${mobileTab === 'profile' ? 'flex' : 'hidden lg:flex'
+            } overflow-hidden`}
         >
           {/* Mobile Back to List Button (< 1024px) */}
           <div className="lg:hidden p-3 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between shrink-0">
@@ -1563,27 +1990,43 @@ const CompareCandidates: React.FC = () => {
                     })()}
                   </div>
 
-                  <button
-                    type="button"
-                    onClick={() => toggleSelection(activeCandidate.id)}
-                    className={`flex items-center gap-1.5 sm:gap-2 px-3.5 sm:px-5 py-2 sm:py-2.5 rounded-xl text-xs font-bold transition-all border cursor-pointer ${
-                      selectedCandidateIds.includes(activeCandidate.id)
-                        ? 'bg-rose-50 text-rose-600 border-rose-200 hover:bg-rose-100/70'
-                        : 'bg-[#D60041] text-white border-[#D60041] hover:bg-rose-700 shadow-2xs hover:shadow-rose-100'
-                    }`}
-                  >
-                    {selectedCandidateIds.includes(activeCandidate.id) ? (
-                      <>
-                        <XCircle className="w-3.5 h-3.5" />
-                        <span>Remove from Compare</span>
-                      </>
-                    ) : (
-                      <>
-                        <Plus className="w-3.5 h-3.5" />
-                        <span>Add to Compare</span>
-                      </>
-                    )}
-                  </button>
+                  {(() => {
+                    const isSelected = selectedCandidateIds.includes(activeCandidate.id);
+                    const isConflict = !isSelected && (candidates as CandidateComparisonData[]).some(c =>
+                      selectedCandidateIds.includes(c.id) && c.id !== activeCandidate.id && isSamePerson(activeCandidate, c)
+                    );
+
+                    return (
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          disabled={isConflict}
+                          onClick={() => toggleSelection(activeCandidate.id)}
+                          className={`flex items-center gap-1.5 sm:gap-2 px-3.5 sm:px-5 py-2 sm:py-2.5 rounded-xl text-xs font-bold transition-all border ${isSelected
+                              ? 'bg-rose-50 text-rose-600 border-rose-200 hover:bg-rose-100/70 cursor-pointer'
+                              : isConflict
+                                ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed'
+                                : 'bg-[#D60041] text-white border-[#D60041] hover:bg-rose-700 shadow-2xs hover:shadow-rose-100 cursor-pointer'
+                            }`}
+                        >
+                          {isSelected ? (
+                            <>
+                              <XCircle className="w-3.5 h-3.5" />
+                              <span>Remove from Compare</span>
+                            </>
+                          ) : (
+                            <>
+                              <Plus className="w-3.5 h-3.5" />
+                              <span>Add to Compare</span>
+                            </>
+                          )}
+                        </button>
+                        {isConflict && (
+                          <HelpTooltip text="This applicant is already in the comparison." />
+                        )}
+                      </div>
+                    );
+                  })()}
                 </div>
               </div>
 
@@ -1593,9 +2036,8 @@ const CompareCandidates: React.FC = () => {
                 <div>
                   <h4 className="text-[10px] sm:text-xs font-black uppercase tracking-wider text-slate-400 mb-2 sm:mb-3">Score Breakdown</h4>
                   <div className="grid grid-cols-3 gap-2 sm:gap-4">
-                    <div className={`p-2.5 sm:p-4 border rounded-xl sm:rounded-2xl text-center transition-all ${
-                      evaluationFilters.skills ? 'bg-blue-50/50 border-blue-100' : 'bg-slate-50/50 border-slate-100 opacity-60'
-                    }`}>
+                    <div className={`p-2.5 sm:p-4 border rounded-xl sm:rounded-2xl text-center transition-all ${evaluationFilters.skills ? 'bg-blue-50/50 border-blue-100' : 'bg-slate-50/50 border-slate-100 opacity-60'
+                      }`}>
                       <div className="flex justify-center mb-1">
                         <Zap className={`w-3.5 h-3.5 sm:w-4 sm:h-4 ${evaluationFilters.skills ? 'text-blue-500' : 'text-slate-400'}`} />
                       </div>
@@ -1605,9 +2047,8 @@ const CompareCandidates: React.FC = () => {
                       <p className="text-[9px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-wider mt-0.5">Skills</p>
                     </div>
 
-                    <div className={`p-2.5 sm:p-4 border rounded-xl sm:rounded-2xl text-center transition-all ${
-                      evaluationFilters.experience ? 'bg-purple-50/50 border-purple-100' : 'bg-slate-50/50 border-slate-100 opacity-60'
-                    }`}>
+                    <div className={`p-2.5 sm:p-4 border rounded-xl sm:rounded-2xl text-center transition-all ${evaluationFilters.experience ? 'bg-purple-50/50 border-purple-100' : 'bg-slate-50/50 border-slate-100 opacity-60'
+                      }`}>
                       <div className="flex justify-center mb-1">
                         <Briefcase className={`w-3.5 h-3.5 sm:w-4 sm:h-4 ${evaluationFilters.experience ? 'text-purple-500' : 'text-slate-400'}`} />
                       </div>
@@ -1617,9 +2058,8 @@ const CompareCandidates: React.FC = () => {
                       <p className="text-[9px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-wider mt-0.5">Experience</p>
                     </div>
 
-                    <div className={`p-2.5 sm:p-4 border rounded-xl sm:rounded-2xl text-center transition-all ${
-                      evaluationFilters.certifications ? 'bg-amber-50/50 border-amber-100' : 'bg-slate-50/50 border-slate-100 opacity-60'
-                    }`}>
+                    <div className={`p-2.5 sm:p-4 border rounded-xl sm:rounded-2xl text-center transition-all ${evaluationFilters.certifications ? 'bg-amber-50/50 border-amber-100' : 'bg-slate-50/50 border-slate-100 opacity-60'
+                      }`}>
                       <div className="flex justify-center mb-1">
                         <Award className={`w-3.5 h-3.5 sm:w-4 sm:h-4 ${evaluationFilters.certifications ? 'text-amber-500' : 'text-slate-400'}`} />
                       </div>
@@ -1826,7 +2266,7 @@ const CompareCandidates: React.FC = () => {
   return (
     <div className="bg-[#FCFCFC] text-slate-800 antialiased min-h-screen font-sans flex flex-col selection:bg-rose-100 selection:text-[#D60041]">
       <Helmet>
-        <title>HR - Compare Candidates</title>
+        <title>Candidate Comparison | Mariwasa Recruitment HR Portal</title>
       </Helmet>
 
       <Header />

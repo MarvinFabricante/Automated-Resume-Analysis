@@ -1,16 +1,38 @@
 import os
 import shutil
-from typing import List
+from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, File, UploadFile
 from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.utils.database import get_db
-from app.schemas.hr_schema import HRCreate, HRResponse, HRUpdate
+from app.schemas.hr_schema import (
+    HRCreate, HRResponse, HRUpdate,
+    ShortlistRosterCreate, ShortlistRosterResponse,
+    ShortlistRosterItemCreate, ShortlistRosterItemStageUpdate,
+    HRCandidateNoteCreate, HRCandidateNoteResponse,
+    UniversalSearchResponse, CandidateCompareRequest
+)
 from app.services import hr_service
+from app.services.candidate_comparison_service import compare_candidates_service
+from app.services.shortlist_roster_service import (
+    create_shortlist_roster,
+    get_shortlist_rosters,
+    get_shortlist_roster_by_id,
+    add_application_to_roster,
+    remove_application_from_roster,
+    update_roster_item_stage,
+    toggle_archive_shortlist_roster,
+    delete_shortlist_roster
+)
+from app.services.applicant_profile_service import (
+    get_applicant_comprehensive_profile,
+    add_candidate_hr_note,
+    universal_search_hr
+)
 from app.services.audit_service import record_activity
 from app.utils.cache import cache_response, clear_cache_pattern
-from app.utils.auth import get_current_user
+from app.utils.auth import get_current_user, get_optional_current_user
 
 
 router = APIRouter(prefix="/hr", tags=["HR Management"])
@@ -196,4 +218,216 @@ async def get_hr_interviewers(db: AsyncSession = Depends(get_db)):
         }
         for r in rows
     ]
+
+
+# ─── SHORTLIST ROSTERS (Item 2c, 2d, 2e) ────────────────────────────────────
+
+@router.post("/shortlists", response_model=ShortlistRosterResponse, status_code=status.HTTP_201_CREATED)
+async def create_new_shortlist_roster(
+    roster_in: ShortlistRosterCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: Optional[dict] = Depends(get_optional_current_user)
+):
+    """Create a new named shortlist roster and add applicants."""
+    hr_email = (current_user.get("email") if current_user else None) or "HR"
+    roster = await create_shortlist_roster(
+        db=db,
+        job_id=roster_in.job_id,
+        name=roster_in.name,
+        created_by=hr_email,
+        notes=roster_in.notes,
+        application_ids=roster_in.application_ids
+    )
+    details = await get_shortlist_roster_by_id(db, roster.id)
+    return details
+
+
+@router.get("/shortlists")
+async def list_shortlist_rosters(
+    job_id: Optional[int] = None,
+    archived: Optional[bool] = None,
+    db: AsyncSession = Depends(get_db)
+):
+    """List all shortlist rosters with counts per stage and progress."""
+    rosters = await get_shortlist_rosters(db=db, job_id=job_id, archived=archived)
+    return rosters
+
+
+@router.get("/shortlists/{roster_id}")
+async def get_single_shortlist_roster(
+    roster_id: int,
+    db: AsyncSession = Depends(get_db)
+):
+    """Get single shortlist roster with applicant items and stages."""
+    roster = await get_shortlist_roster_by_id(db=db, roster_id=roster_id)
+    if not roster:
+        raise HTTPException(status_code=404, detail="Shortlist roster not found")
+    return roster
+
+
+@router.post("/shortlists/{roster_id}/items")
+async def add_candidate_to_roster(
+    roster_id: int,
+    item_in: ShortlistRosterItemCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: Optional[dict] = Depends(get_optional_current_user)
+):
+    """Add an applicant to an existing shortlist roster (moves status to Shortlisted)."""
+    hr_email = (current_user.get("email") if current_user else None) or "HR"
+    item = await add_application_to_roster(
+        db=db,
+        roster_id=roster_id,
+        application_id=item_in.application_id,
+        added_by=hr_email
+    )
+    return {"success": True, "item_id": item.id, "roster_id": roster_id}
+
+
+@router.delete("/shortlists/{roster_id}/items/{application_id}")
+async def remove_candidate_from_roster(
+    roster_id: int,
+    application_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: Optional[dict] = Depends(get_optional_current_user)
+):
+    """
+    Remove an applicant from a roster.
+    Returns status to Under Review unless still in another roster for the same position.
+    """
+    hr_email = (current_user.get("email") if current_user else None) or "HR"
+    success = await remove_application_from_roster(
+        db=db,
+        roster_id=roster_id,
+        application_id=application_id,
+        removed_by=hr_email
+    )
+    if not success:
+        raise HTTPException(status_code=404, detail="Applicant not found in this roster")
+    return {"success": True, "message": "Applicant removed from roster"}
+
+
+@router.patch("/shortlists/{roster_id}/items/{application_id}/stage")
+async def update_roster_stage(
+    roster_id: int,
+    application_id: int,
+    stage_update: ShortlistRosterItemStageUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: Optional[dict] = Depends(get_optional_current_user)
+):
+    """Update applicant stage inside a roster (e.g. Interviewed, Passed initial interview, Not selected)."""
+    hr_email = (current_user.get("email") if current_user else None) or "HR"
+    item = await update_roster_item_stage(
+        db=db,
+        roster_id=roster_id,
+        application_id=application_id,
+        stage=stage_update.stage,
+        updated_by=hr_email
+    )
+    if not item:
+        raise HTTPException(status_code=404, detail="Applicant not found in this roster")
+    return {"success": True, "stage": item.stage}
+
+
+@router.patch("/shortlists/{roster_id}/archive")
+async def archive_or_unarchive_shortlist_roster(
+    roster_id: int,
+    archived: bool = True,
+    db: AsyncSession = Depends(get_db),
+    current_user: Optional[dict] = Depends(get_optional_current_user)
+):
+    """Archive or restore a shortlist roster."""
+    hr_email = (current_user.get("email") if current_user else None) or "HR"
+    result = await toggle_archive_shortlist_roster(db=db, roster_id=roster_id, archived=archived, updated_by=hr_email)
+    if not result:
+        raise HTTPException(status_code=404, detail="Shortlist roster not found")
+    return result
+
+
+@router.delete("/shortlists/{roster_id}")
+async def delete_single_shortlist_roster(
+    roster_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: Optional[dict] = Depends(get_optional_current_user)
+):
+    """Delete a shortlist roster and restore unshared candidates to Under Review."""
+    hr_email = (current_user.get("email") if current_user else None) or "HR"
+    success = await delete_shortlist_roster(db=db, roster_id=roster_id, deleted_by=hr_email)
+    if not success:
+        raise HTTPException(status_code=404, detail="Shortlist roster not found")
+    return {"success": True, "message": "Shortlist roster deleted successfully"}
+
+
+# ─── UNIVERSAL SEARCH FOR HR (Item 4) ───────────────────────────────────────
+
+@router.get("/universal-search", response_model=UniversalSearchResponse)
+async def hr_universal_search(
+    q: str = "",
+    db: AsyncSession = Depends(get_db)
+):
+    """Universal search across Applicants, Jobs, and Shortlists."""
+    results = await universal_search_hr(db=db, query=q)
+    return results
+
+
+# ─── APPLICANT PROFILE FOR INTERVIEWS (Item 5) ───────────────────────────────
+
+@router.get("/applicant-profile/{email}")
+async def get_applicant_profile(
+    email: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: Optional[dict] = Depends(get_optional_current_user)
+):
+    """
+    Complete applicant profile view for interviews:
+    Contact, all applications, interview schedules & history, notes, call logs.
+    Includes Data Privacy Act access logging.
+    """
+    hr_email = (current_user.get("email") if current_user else None) or "HR"
+    profile = await get_applicant_comprehensive_profile(
+        db=db,
+        email=email,
+        accessed_by=hr_email
+    )
+    if not profile:
+        raise HTTPException(status_code=404, detail="Applicant not found")
+    return profile
+
+
+@router.post("/applicant-profile/{email}/notes", response_model=HRCandidateNoteResponse)
+async def add_applicant_note(
+    email: str,
+    note_in: HRCandidateNoteCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: Optional[dict] = Depends(get_optional_current_user)
+):
+    """Add HR notes on an applicant's profile."""
+    hr_email = (current_user.get("email") if current_user else None) or "HR"
+    hr_name = current_user.get("fullname") if current_user else "HR Specialist"
+    note = await add_candidate_hr_note(
+        db=db,
+        candidate_email=email,
+        author_email=hr_email,
+        author_name=hr_name,
+        content=note_in.content
+    )
+    return note
+
+
+@router.post("/compare")
+async def compare_candidates(
+    req: CandidateCompareRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Compare multiple candidates for HR evaluation.
+    Enforces that each candidate is a unique individual (rejects duplicates with 422).
+    Re-scores all candidates against the selected reference position and identifies transferable skills.
+    """
+    return await compare_candidates_service(
+        db=db,
+        application_ids=req.application_ids,
+        reference_job_id=req.reference_job_id
+    )
+
+
 

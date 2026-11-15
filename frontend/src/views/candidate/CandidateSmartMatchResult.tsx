@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useNavigate, useLocation } from '@/utils/navigation';
 import { Helmet } from 'react-helmet-async';
 import {
@@ -7,26 +7,26 @@ import {
   Clock,
   ArrowRight,
   Target,
-  Cpu,
-  GraduationCap,
   Zap,
-  ChevronDown,
-  ChevronUp,
-  CheckCircle2,
-  XCircle
 } from 'lucide-react';
 import Header from '../../components/layout/Header';
 import Sidebar from '../../components/layout/Sidebar';
 import CandidateJobDetailsModal from '../../components/modals/candidate/CandidateJobDetailsModal';
+import DetailedAnalysisDrawer, { formatSecondPersonText } from '../../components/candidate/DetailedAnalysisDrawer';
 import jobService from '../../services/jobService';
+import HelpTooltip from '../../components/common/HelpTooltip';
 
 const CandidateSmartMatchResult: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { matches, extractedData, fileName } = location.state || {};
-  const [expandedJobId, setExpandedJobId] = React.useState<string | number | null>(null);
-  const [isDetailsOpen, setIsDetailsOpen] = React.useState<boolean>(false);
-  const [selectedJobForModal, setSelectedJobForModal] = React.useState<any>(null);
+  const [selectedDrawerMatch, setSelectedDrawerMatch] = useState<any>(null);
+  const [isDrawerOpen, setIsDrawerOpen] = useState<boolean>(false);
+  const drawerTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const [isDetailsOpen, setIsDetailsOpen] = useState<boolean>(false);
+  const [selectedJobForModal, setSelectedJobForModal] = useState<any>(null);
+
+  const candidateFullName = extractedData?.fullname || (typeof localStorage !== 'undefined' ? localStorage.getItem('fullname') : '') || '';
 
   const handleOpenDetails = async (match: any) => {
     try {
@@ -69,28 +69,79 @@ const CandidateSmartMatchResult: React.FC = () => {
     setIsDetailsOpen(true);
   };
 
-  const handleApplyFromModal = (targetJobId: string | number) => {
-    setIsDetailsOpen(false);
-    const matchedJob = matches?.find((m: any) => String(m.job_id || m.id) === String(targetJobId));
-    const effectiveJobId = targetJobId || matchedJob?.job_id || matchedJob?.id;
-    navigate(`/candidate/preview-profile/${effectiveJobId}`, {
+  const handleStartApplication = (match: any) => {
+    const effectiveJobId = match.job_id || match.id;
+    if (typeof window !== 'undefined') {
+      const draftData = {
+        step: 2,
+        jobId: effectiveJobId,
+        jobTitle: match.job_title,
+        fileName: fileName || extractedData?.filename || 'Uploaded_Resume.pdf',
+        extractedData,
+        matchData: match,
+        savedAt: new Date().toISOString()
+      };
+      try {
+        localStorage.setItem(`draft_application_${effectiveJobId}`, JSON.stringify(draftData));
+        localStorage.setItem('draft_application_step', '2');
+        localStorage.setItem('draft_application_job_id', String(effectiveJobId));
+        localStorage.setItem('draft_application_job_title', match.job_title);
+      } catch { }
+    }
+
+    navigate(`/candidate/update-profile/${effectiveJobId}`, {
       state: {
+        fileName: fileName || extractedData?.filename || 'Uploaded_Resume.pdf',
         job: {
           job_id: effectiveJobId,
-          title: matchedJob?.job_title || selectedJobForModal?.title,
-          department: matchedJob?.department || selectedJobForModal?.department,
-          location: matchedJob?.location || selectedJobForModal?.location,
-          job_type: matchedJob?.job_type || selectedJobForModal?.job_type
+          title: match.job_title,
+          department: match.department,
+          location: match.location,
+          job_type: match.job_type
         },
         extractedData,
-        matchData: matchedJob,
+        matchData: match,
         matches,
-        fileName
+        personal: {
+          name: extractedData?.fullname,
+          email: extractedData?.email,
+          phone: extractedData?.phone,
+          location: extractedData?.location,
+          location_details: extractedData?.location_details
+        },
+        experience: {
+          title: extractedData?.job_title || (extractedData?.experience ? extractedData.experience.split('|')[0]?.trim() : ''),
+          company: extractedData?.company || (extractedData?.experience ? extractedData.experience.split('|')[1]?.trim() : ''),
+          relevance: extractedData?.years_experience ? `${extractedData.years_experience} years` : ''
+        },
+        education: {
+          degree: extractedData?.highest_degree || extractedData?.degree,
+          college: extractedData?.institution || extractedData?.college || ''
+        },
+        work_experiences: extractedData?.work_experiences || [],
+        education_entries: extractedData?.education_entries || [],
+        certifications: extractedData?.certifications_list || (extractedData?.certifications ? extractedData.certifications.split(' | ') : []),
+        certifications_details: extractedData?.certifications_details,
+        skills_details: extractedData?.skills_details,
+        summary: extractedData?.summary,
+        skills: Array.isArray(extractedData?.skills_list) && extractedData.skills_list.length > 0
+          ? extractedData.skills_list
+          : extractedData?.skills
+            ? (typeof extractedData.skills === 'string' ? extractedData.skills.split(/[|,\n]+/).map((s: string) => s.trim()).filter(Boolean) : extractedData.skills)
+            : [],
+        resumeUrl: extractedData?.file_url || extractedData?.resume_url,
+        rawText: extractedData?.raw_text || null
       }
     });
   };
 
-  const hasMountedRef = React.useRef(false);
+  const handleApplyFromModal = (targetJobId: string | number) => {
+    setIsDetailsOpen(false);
+    const matchedJob = matches?.find((m: any) => String(m.job_id || m.id) === String(targetJobId));
+    handleStartApplication(matchedJob || { job_id: targetJobId, job_title: selectedJobForModal?.title });
+  };
+
+  const hasMountedRef = useRef(false);
 
   useEffect(() => {
     window.scrollTo(0, 0);
@@ -110,15 +161,16 @@ const CandidateSmartMatchResult: React.FC = () => {
     return '#ef4444';
   };
 
-  const toggleAnalysis = (jobId: string | number, e: React.MouseEvent) => {
-    e.stopPropagation();
-    setExpandedJobId(expandedJobId === jobId ? null : jobId);
+  const openDrawerForMatch = (match: any, buttonEl: HTMLButtonElement | null) => {
+    drawerTriggerRef.current = buttonEl;
+    setSelectedDrawerMatch(match);
+    setIsDrawerOpen(true);
   };
 
   return (
     <div className="bg-[#F8FAFC] text-slate-900 antialiased font-['Inter',_sans-serif] min-h-screen flex flex-col">
       <Helmet>
-        <title>Career Matches | Candidate Portal</title>
+        <title>Career Matches | Mariwasa Recruitment</title>
       </Helmet>
       <Header />
 
@@ -145,220 +197,158 @@ const CandidateSmartMatchResult: React.FC = () => {
               <div className="absolute top-0 right-0 w-64 h-64 bg-red-50 rounded-bl-[200px] opacity-20 group-hover:opacity-40 transition-opacity duration-700 pointer-events-none"></div>
               <h2 className="text-2xl font-black text-slate-900 mb-6 flex items-center gap-3 relative z-10">
                 <Zap className="text-[#D60041] p-2 bg-pink-50 rounded-xl" size={40} />
-                Top Match Analysis
+                Your Top Match
               </h2>
               <div className="text-slate-600 space-y-6 relative z-10">
                 <p className="text-lg leading-relaxed">
                   <strong className="text-slate-900">Why "{sortedMatches[0].job_title}" is your top match ({Math.round(sortedMatches[0].match_percentage)}%):</strong>{' '}
-                  {sortedMatches[0].ai_summary || `Your profile strongly aligns with the core requirements of this role. Your skills score of ${Math.round(sortedMatches[0].skills_score)}% and experience score of ${Math.round(sortedMatches[0].experience_score)}% were the highest among all available positions.`}
+                  {formatSecondPersonText(sortedMatches[0].ai_summary, candidateFullName) || "Your background and skills closely match what this role asks for."}
                 </p>
-                
+
                 {sortedMatches.length > 1 && (
                   <p className="text-base leading-relaxed p-5 bg-slate-50 rounded-2xl border border-slate-100">
-                    <strong className="text-slate-900">Why other roles scored lower:</strong> Other recommended positions, such as <em className="font-semibold text-slate-800">{sortedMatches[1].job_title}</em> ({Math.round(sortedMatches[1].match_percentage)}%), had more gaps in required skills or mismatched experience levels compared to your current resume.
+                    <strong className="text-slate-900">Comparing other roles:</strong> Other roles, such as <em className="font-semibold text-slate-800">{sortedMatches[1].job_title}</em> ({Math.round(sortedMatches[1].match_percentage)}%), ask for different skill sets or experience levels.
                   </p>
-                )}
-
-                {sortedMatches[0].recommendations?.length > 0 && (
-                  <div className="p-6 bg-gradient-to-br from-pink-50 to-white rounded-2xl border border-pink-100 shadow-sm">
-                    <h4 className="text-sm font-black uppercase tracking-widest text-[#D60041] mb-3">Recommendation to Improve Your Fit</h4>
-                    <p className="text-slate-700 font-medium">{sortedMatches[0].recommendations[0]}</p>
-                  </div>
                 )}
               </div>
             </div>
           )}
 
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-8 mb-12 items-stretch animate-in fade-in slide-in-from-bottom-6 duration-700 delay-200">
+          {/* Clean Matching Cards Grid - Uniform Heights */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-stretch">
             {sortedMatches.length > 0 ? (
-              sortedMatches.map((match: any) => {
-                const effectiveJobId = match.job_id || match.id;
+              sortedMatches.map((match: any, index: number) => {
+                const summaryText = formatSecondPersonText(
+                  match.ai_summary || match.experience_reason || "Good fit based on your background and skills.",
+                  candidateFullName
+                );
+
                 return (
-                <div 
-                  key={effectiveJobId}
-                  onClick={() => navigate(`/candidate/preview-profile/${effectiveJobId}`, { state: { job: { job_id: effectiveJobId, title: match.job_title, department: match.department, location: match.location, job_type: match.job_type }, extractedData, matchData: match, matches, fileName } })}
-                  className="bg-white p-8 rounded-[40px] border border-slate-100 shadow-xl shadow-slate-200/40 hover:shadow-2xl hover:shadow-pink-100/50 transition-all duration-500 group flex flex-col relative overflow-hidden cursor-pointer active:scale-[0.99]"
-                >
-                  <div className="absolute top-0 right-0 w-48 h-48 bg-[#D60041]/5 rounded-bl-[100px] opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+                  <div
+                    key={index}
+                    className="bg-white rounded-[32px] sm:rounded-[40px] p-6 sm:p-8 md:p-10 border border-slate-100 shadow-xl shadow-slate-200/50 flex flex-col justify-between h-full relative overflow-hidden group hover:border-pink-100 transition-all duration-300"
+                  >
+                    <div className="absolute top-0 right-0 w-48 h-48 bg-gradient-to-bl from-pink-50/40 via-transparent to-transparent rounded-bl-[100px] pointer-events-none"></div>
 
-                  <div className="flex justify-between items-start mb-8 relative z-10">
-                    <div className="flex-1 pr-4">
-                      <div className="flex items-center gap-2 mb-4">
-                        <span className="inline-block px-3 py-1 rounded-full bg-slate-100 text-[9px] font-black uppercase tracking-widest text-slate-500 group-hover:bg-pink-50 group-hover:text-[#D60041] transition-colors">
-                          {match.department}
-                        </span>
-                        <span className="inline-block px-3 py-1 rounded-full bg-green-50 text-[9px] font-black uppercase tracking-widest text-green-600">
-                          Active Role
-                        </span>
-                      </div>
-                      <h3 className="text-2xl font-black text-slate-900 group-hover:text-[#D60041] transition-colors leading-tight tracking-tight mb-2">
-                        {match.job_title}
-                      </h3>
-                      <p className="text-xs text-slate-400 font-bold uppercase tracking-widest">Mariwasa Siam Ceramics</p>
-                    </div>
-                    
-                    {/* Gauge */}
-                    <div className="flex flex-col items-center shrink-0">
-                      <div className="relative w-20 h-20">
-                        <svg className="w-20 h-20 -rotate-90" viewBox="0 0 100 100">
-                          <circle cx="50" cy="50" r="42" fill="none" stroke="#f1f5f9" strokeWidth="12" />
-                          <circle
-                            cx="50" cy="50" r="42" fill="none"
-                            stroke={getMatchColor(match.match_percentage)}
-                            strokeWidth="12"
-                            strokeDasharray="264 264"
-                            strokeLinecap="round"
-                            className="transition-all duration-1000 ease-out"
-                          />
-                        </svg>
-                        <div className="absolute inset-0 flex flex-col items-center justify-center pt-1">
-                          <span className="text-lg font-black text-slate-900 leading-none tracking-tight text-center">
-                            {Math.round(match.match_percentage)}%
+                    <div className="flex-1 flex flex-col">
+                      {/* Header */}
+                      <div className="flex items-start justify-between gap-4 mb-6 relative z-10">
+                        <div className="min-w-0 pr-2">
+                          <span className="px-3 py-1 bg-red-50 text-[#D60041] rounded-full text-[10px] font-black uppercase tracking-widest inline-block mb-3">
+                            {match.department || "General"}
                           </span>
+                          <h3 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight leading-snug">
+                            {match.job_title}
+                          </h3>
                         </div>
-                      </div>
-                      <span className="text-[8px] font-black uppercase tracking-widest text-[#D60041] mt-2">Job Fit Score</span>
-                    </div>
-                  </div>
 
-                  <div className="grid grid-cols-3 md:grid-cols-5 gap-3 mb-8 relative z-10">
-                    {[
-                      { label: 'Skills', score: match.skills_score, icon: <Cpu size={14} />, reason: match.skills_reason, color: 'text-blue-600', bg: 'bg-blue-50' },
-                      { label: 'Experience', score: match.experience_score, icon: <Briefcase size={14} />, reason: match.experience_reason, color: 'text-purple-600', bg: 'bg-purple-50' },
-                      { label: 'Education', score: match.education_score, icon: <GraduationCap size={14} />, reason: match.education_reason, color: 'text-amber-600', bg: 'bg-amber-50' },
-                      { label: 'Certs', score: match.certifications_score || 0, icon: <CheckCircle2 size={14} />, reason: match.certifications_reason, color: 'text-teal-600', bg: 'bg-teal-50' },
-                      { label: 'Location', score: match.location_score || 0, icon: <MapPin size={14} />, reason: match.location_reason, color: 'text-rose-600', bg: 'bg-rose-50' }
-                    ].map((item, idx) => (
-                      <div key={idx} className={`${item.bg} p-3 rounded-2xl flex flex-col items-center text-center group-hover:shadow-inner transition-all`}>
-                        <div className={`${item.color} mb-1.5`}>{item.icon}</div>
-                        <p className={`text-[10px] font-black uppercase tracking-wider ${item.color}`}>
-                          {item.score >= 70 ? 'High' : item.score >= 40 ? 'Med' : 'Basic'}
-                        </p>
-                        <span className="text-[8px] font-black uppercase tracking-widest text-slate-400 mb-1.5">{item.label}</span>
-                        <p className="text-[7px] font-semibold leading-relaxed text-slate-500 line-clamp-3">{item.reason}</p>
-                      </div>
-                    ))}
-                  </div>
-
-                  <div className="bg-slate-50/50 rounded-3xl p-6 mb-8 mt-auto relative z-10 border border-slate-100">
-                    <div className="flex flex-wrap items-center gap-6">
-                      <div className="flex items-center gap-2.5 text-xs font-bold text-slate-600">
-                        <div className="w-8 h-8 rounded-xl bg-white flex items-center justify-center shadow-sm border border-slate-50">
-                          <MapPin size={14} className="text-slate-400" />
-                        </div>
-                        {match.location || "Sto. Tomas, Batangas"}
-                      </div>
-                      <div className="flex items-center gap-2.5 text-xs font-bold text-slate-600">
-                        <div className="w-8 h-8 rounded-xl bg-white flex items-center justify-center shadow-sm border border-slate-50">
-                          <Clock size={14} className="text-slate-400" />
-                        </div>
-                        {match.job_type || "Full-time"}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Detailed Analysis Toggle */}
-                  <div className="mb-8 relative z-10">
-                    <button 
-                      onClick={(e) => toggleAnalysis(match.job_id, e)}
-                      className="w-full flex items-center justify-between p-4 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-2xl transition-colors font-bold text-sm text-slate-700"
-                    >
-                      <span>View Detailed Analysis</span>
-                      {expandedJobId === match.job_id ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
-                    </button>
-                    
-                    {expandedJobId === match.job_id && (
-                      <div className="mt-4 p-6 bg-white border border-slate-200 rounded-3xl shadow-sm space-y-6 animate-in slide-in-from-top-2 duration-300" onClick={(e) => e.stopPropagation()}>
-                        
-                        {/* Detailed Score Breakdown */}
-                        <div>
-                          <h4 className="text-[10px] font-black uppercase tracking-widest text-[#D60041] mb-4 flex items-center gap-2"><Target size={14}/> Score Breakdown</h4>
-                          <div className="space-y-4">
-                            <div className="bg-slate-50 p-4 rounded-xl">
-                              <p className="text-sm font-bold text-slate-900 flex justify-between">Skills Match <span className="text-[#D60041]">{Math.round(match.skills_score)}%</span></p>
-                              <p className="text-xs text-slate-500 mt-1">{match.skills_reason}</p>
-                            </div>
-                            <div className="bg-slate-50 p-4 rounded-xl">
-                              <p className="text-sm font-bold text-slate-900 flex justify-between">Experience Match <span className="text-[#D60041]">{Math.round(match.experience_score)}%</span></p>
-                              <p className="text-xs text-slate-500 mt-1">{match.experience_reason}</p>
-                            </div>
-                            <div className="bg-slate-50 p-4 rounded-xl">
-                              <p className="text-sm font-bold text-slate-900 flex justify-between">Education Match <span className="text-[#D60041]">{Math.round(match.education_score)}%</span></p>
-                              <p className="text-xs text-slate-500 mt-1">{match.education_reason}</p>
-                            </div>
-                            <div className="bg-slate-50 p-4 rounded-xl">
-                              <p className="text-sm font-bold text-slate-900 flex justify-between">Certifications Match <span className="text-[#D60041]">{Math.round(match.certifications_score || 0)}%</span></p>
-                              <p className="text-xs text-slate-500 mt-1">{match.certifications_reason}</p>
-                            </div>
-                            <div className="bg-slate-50 p-4 rounded-xl">
-                              <p className="text-sm font-bold text-slate-900 flex justify-between">Location Match <span className="text-[#D60041]">{Math.round(match.location_score || 0)}%</span></p>
-                              <p className="text-xs text-slate-500 mt-1">{match.location_reason}</p>
+                        {/* Gauge */}
+                        <div className="flex flex-col items-center shrink-0">
+                          <div className="relative w-20 h-20">
+                            <svg className="w-20 h-20 -rotate-90" viewBox="0 0 100 100">
+                              <circle cx="50" cy="50" r="42" fill="none" stroke="#f1f5f9" strokeWidth="12" />
+                              <circle
+                                cx="50" cy="50" r="42" fill="none"
+                                stroke={getMatchColor(match.match_percentage)}
+                                strokeWidth="12"
+                                strokeDasharray="264 264"
+                                strokeLinecap="round"
+                                className="transition-all duration-1000 ease-out"
+                              />
+                            </svg>
+                            <div className="absolute inset-0 flex flex-col items-center justify-center pt-1">
+                              <span className="text-lg font-black text-slate-900 leading-none tracking-tight text-center">
+                                {Math.round(match.match_percentage)}%
+                              </span>
                             </div>
                           </div>
+                          <div className="flex items-center gap-1 mt-2">
+                            <span className="text-[10px] font-black uppercase tracking-wider text-[#D60041]">Fit Score</span>
+                            <HelpTooltip content="Shows how closely your skills and background match what this job asks for." />
+                          </div>
                         </div>
+                      </div>
 
-                        {/* Missing / Matched Skills */}
-                        <div>
-                          <h4 className="text-[10px] font-black uppercase tracking-widest text-[#D60041] mb-4 flex items-center gap-2"><Cpu size={14}/> Skills Gap Analysis</h4>
-                          {match.matched_skills?.length > 0 && (
-                            <div className="mb-4">
-                              <p className="text-xs font-bold text-green-600 mb-2 flex items-center gap-1"><CheckCircle2 size={12}/> Matched Skills</p>
-                              <div className="flex flex-wrap gap-1.5">
-                                {match.matched_skills.map((s: string, i: number) => (
-                                  <span key={i} className="px-2 py-1 bg-green-50 text-green-700 border border-green-100 rounded-md text-[10px] font-bold">{s}</span>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-                          {match.missing_skills?.length > 0 && (
-                            <div>
-                              <p className="text-xs font-bold text-red-500 mb-2 flex items-center gap-1"><XCircle size={12}/> Missing Skills</p>
-                              <div className="flex flex-wrap gap-1.5">
-                                {match.missing_skills.map((s: string, i: number) => (
-                                  <span key={i} className="px-2 py-1 bg-red-50 text-red-600 border border-red-100 rounded-md text-[10px] font-bold">{s}</span>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-                        </div>
-
-                        {/* Experience Relevance Breakdown */}
-                        {match.experience_explanation && (
-                          <div>
-                            <h4 className="text-[10px] font-black uppercase tracking-widest text-[#D60041] mb-4 flex items-center gap-2"><Briefcase size={14}/> Experience Relevance</h4>
-                            <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 text-xs text-slate-600 whitespace-pre-wrap font-medium font-mono leading-relaxed overflow-x-auto max-h-60 overflow-y-auto">
-                              {match.experience_explanation}
-                            </div>
+                      {/* Summary with 3-line clamp for consistent card heights */}
+                      <div className="mb-6 p-4 bg-slate-50 rounded-2xl border border-slate-100/80 relative z-10">
+                        <p className="text-xs text-slate-700 leading-relaxed font-medium mb-3 line-clamp-3">
+                          {summaryText}
+                        </p>
+                        {match.matched_skills && match.matched_skills.length > 0 && (
+                          <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                            <span className="text-[10px] font-bold text-emerald-700 mr-1">Skills you have:</span>
+                            {match.matched_skills.slice(0, 4).map((sk: string, i: number) => (
+                              <span key={i} className="text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-100 px-2 py-0.5 rounded-md">
+                                {sk}
+                              </span>
+                            ))}
+                            {match.matched_skills.length > 4 && (
+                              <span className="text-[10px] text-slate-400 font-medium">+{match.matched_skills.length - 4} more</span>
+                            )}
                           </div>
                         )}
-
                       </div>
-                    )}
-                  </div>
 
-                  <div className="flex gap-4 relative z-10 mt-auto">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleOpenDetails(match);
-                      }}
-                      className="flex-1 py-4 rounded-2xl border border-slate-200 font-bold text-sm text-slate-700 hover:bg-slate-50 hover:border-slate-300 transition-all active:scale-95"
-                    >
-                      View Full Description
-                    </button>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        navigate(`/candidate/preview-profile/${effectiveJobId}`, { state: { job: { job_id: effectiveJobId, title: match.job_title, department: match.department, location: match.location, job_type: match.job_type }, extractedData, matchData: match, matches, fileName } });
-                      }}
-                      className="flex-[2] py-4 rounded-2xl bg-slate-900 text-white font-bold text-sm flex items-center justify-center gap-2 hover:bg-[#D60041] transition-all shadow-xl shadow-slate-200 hover:shadow-pink-200 active:scale-95 group/btn"
-                    >
-                      Start Application
-                      <ArrowRight size={18} className="group-hover/btn:translate-x-1 transition-transform" />
-                    </button>
+                      {/* Location & Job Type Details */}
+                      <div className="bg-slate-50/50 rounded-2xl sm:rounded-3xl p-5 sm:p-6 mb-6 relative z-10 border border-slate-100">
+                        <div className="flex flex-wrap items-center gap-5 sm:gap-6">
+                          <div className="flex items-center gap-2.5 text-xs font-bold text-slate-600">
+                            <div className="w-8 h-8 rounded-xl bg-white flex items-center justify-center shadow-sm border border-slate-50">
+                              <MapPin size={14} className="text-slate-400" />
+                            </div>
+                            <span>{match.location || "Sto. Tomas, Batangas"}</span>
+                          </div>
+                          <div className="flex items-center gap-2.5 text-xs font-bold text-slate-600">
+                            <div className="w-8 h-8 rounded-xl bg-white flex items-center justify-center shadow-sm border border-slate-50">
+                              <Clock size={14} className="text-slate-400" />
+                            </div>
+                            <span>{match.job_type || "Full-time"}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Detailed Analysis Slide-over Trigger Button */}
+                      <div className="mb-6 relative z-10">
+                        <button
+                          type="button"
+                          onClick={(e) => openDrawerForMatch(match, e.currentTarget)}
+                          className="w-full flex items-center justify-between p-3.5 sm:p-4 bg-slate-50 hover:bg-slate-100 hover:border-slate-300 border border-slate-200 rounded-2xl transition-all font-bold text-xs sm:text-sm text-slate-700 cursor-pointer active:scale-[0.99]"
+                        >
+                          <span className="flex items-center gap-2">
+                            <Target size={16} className="text-[#D60041]" />
+                            <span>View Detailed Analysis</span>
+                          </span>
+                          <ArrowRight size={16} className="text-slate-400" />
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Actions Pinned at Card Bottom */}
+                    <div className="flex gap-3 sm:gap-4 relative z-10 mt-auto pt-2">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleOpenDetails(match);
+                        }}
+                        className="flex-1 py-3.5 sm:py-4 px-3 rounded-2xl border border-slate-200 font-bold text-xs sm:text-sm text-slate-700 hover:bg-slate-50 hover:border-slate-300 transition-all active:scale-95 cursor-pointer text-center"
+                      >
+                        View Full Description
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleStartApplication(match);
+                        }}
+                        className="flex-[1.5] sm:flex-[2] py-3.5 sm:py-4 px-4 rounded-2xl bg-slate-900 text-white font-bold text-xs sm:text-sm flex items-center justify-center gap-2 hover:bg-[#D60041] transition-all shadow-xl shadow-slate-200 hover:shadow-pink-200 active:scale-95 group/btn cursor-pointer"
+                      >
+                        <span>Start Application</span>
+                        <ArrowRight size={16} className="group-hover/btn:translate-x-1 transition-transform" />
+                      </button>
+                    </div>
                   </div>
-                </div>
-              );
+                );
               })
             ) : (
               <div className="col-span-full py-24 text-center bg-white rounded-[40px] border border-slate-100 shadow-xl shadow-slate-200/40">
@@ -371,7 +361,7 @@ const CandidateSmartMatchResult: React.FC = () => {
                 </p>
                 <button
                   onClick={() => navigate('/candidate/findjobs')}
-                  className="px-10 py-4 rounded-2xl bg-slate-900 text-white font-bold text-sm hover:bg-[#D60041] transition-all shadow-xl shadow-slate-200 hover:shadow-pink-200 active:scale-95"
+                  className="px-10 py-4 rounded-2xl bg-slate-900 text-white font-bold text-sm hover:bg-[#D60041] transition-all shadow-xl shadow-slate-200 hover:shadow-pink-200 active:scale-95 cursor-pointer"
                 >
                   Explore All Jobs
                 </button>
@@ -380,6 +370,21 @@ const CandidateSmartMatchResult: React.FC = () => {
           </div>
         </main>
       </div>
+
+      {/* Accessible Slide-over Drawer / Bottom Sheet */}
+      <DetailedAnalysisDrawer
+        isOpen={isDrawerOpen}
+        onClose={() => setIsDrawerOpen(false)}
+        match={selectedDrawerMatch}
+        candidateName={candidateFullName}
+        triggerRef={drawerTriggerRef}
+        onViewDescription={() => {
+          if (selectedDrawerMatch) handleOpenDetails(selectedDrawerMatch);
+        }}
+        onStartApplication={() => {
+          if (selectedDrawerMatch) handleStartApplication(selectedDrawerMatch);
+        }}
+      />
 
       {selectedJobForModal && (
         <CandidateJobDetailsModal

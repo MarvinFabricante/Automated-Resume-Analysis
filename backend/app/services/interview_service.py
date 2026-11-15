@@ -412,31 +412,30 @@ async def schedule_interview(db: AsyncSession, data: InterviewCreateSchema, user
         if not application:
             raise ValueError("Application not found")
 
-        # ── Candidate Exclusivity Check ──────────────────────────────────
-        # Check whether an active interview already exists for application or candidate email
+        # ── Application & Candidate Conflict Checks (REQ084 & REQ085) ──────
+        # Check whether an active interview already exists for this specific application
         existing_for_app = await InterviewRepository.get_interviews_for_application(db, data.job_application_id)
-        active_interviews = [iv for iv in existing_for_app if (iv.status or "").upper() not in INACTIVE_INTERVIEW_STATUSES]
-        if not active_interviews and application.candidate_email:
-            cand_all_ivs = await InterviewRepository.get_interviews_for_candidate(db, application.candidate_email)
-            active_interviews = [iv for iv in cand_all_ivs if (iv.status or "").upper() not in INACTIVE_INTERVIEW_STATUSES]
-
-        if active_interviews:
-            existing_iv = active_interviews[0]
-            interviewer_name = None
-            if getattr(existing_iv, "interviewer", None) and getattr(existing_iv.interviewer, "fullname", None):
-                interviewer_name = existing_iv.interviewer.fullname
-            elif getattr(existing_iv, "interviewer_name", None):
-                interviewer_name = existing_iv.interviewer_name
-            elif getattr(existing_iv, "interviewer_id", None):
-                from app.repositories.auth_repository import AuthRepository
-                iv_user = await AuthRepository.get_user_by_id_fresh(db, existing_iv.interviewer_id)
-                interviewer_name = iv_user.fullname if iv_user else None
-
-            interviewer_display = interviewer_name or "another HR"
-            cand_display_name = application.candidate_name or "Candidate"
+        active_for_app = [iv for iv in existing_for_app if (iv.status or "").upper() not in INACTIVE_INTERVIEW_STATUSES]
+        if active_for_app:
+            existing_iv = active_for_app[0]
             raise ValueError(
-                f"Candidate '{cand_display_name}' is already scheduled for an interview with {interviewer_display}. Another HR cannot schedule an interview for this candidate."
+                f"An active interview is already scheduled for this application (Interview ID: {existing_iv.id})."
             )
+
+        # REQ084: Enforce scheduling conflict detection to prevent overlapping interviews across applications
+        req_start = data.start_time.replace(tzinfo=None) if data.start_time.tzinfo else data.start_time
+        req_end = data.end_time.replace(tzinfo=None) if data.end_time.tzinfo else data.end_time
+
+        if application.candidate_email:
+            cand_all_ivs = await InterviewRepository.get_interviews_for_candidate(db, application.candidate_email)
+            for iv in cand_all_ivs:
+                if (iv.status or "").upper() not in INACTIVE_INTERVIEW_STATUSES:
+                    iv_start = iv.start_time.replace(tzinfo=None) if iv.start_time and iv.start_time.tzinfo else iv.start_time
+                    iv_end = iv.end_time.replace(tzinfo=None) if iv.end_time and iv.end_time.tzinfo else iv.end_time
+                    if iv_start and iv_end and (req_start < iv_end and req_end > iv_start):
+                        raise ValueError(
+                            f"Scheduling conflict (REQ084): Candidate already has an interview scheduled that overlaps with this time slot ({iv_start.strftime('%b %d, %Y %I:%M %p')} - {iv_end.strftime('%I:%M %p')})."
+                        )
 
         # Target interviewer: if specified, use that HR account, else fallback to current user_id
         interviewer_id = data.interviewer_id if data.interviewer_id else user_id
@@ -514,18 +513,39 @@ async def schedule_interview(db: AsyncSession, data: InterviewCreateSchema, user
         interview = await InterviewRepository.create_interview(db, interview_data)
         await InterviewRepository.commit_changes(db)
 
-        # Automatically update candidate application status to REVIEWED upon scheduling
+        # Automatically update candidate application status to Interview Scheduled upon booking (Item 1b)
         current_app_status = (getattr(application, "status", None) or "PENDING").upper()
-        if current_app_status in ["PENDING", "SCHEDULED", ""]:
-            application.status = "REVIEWED"
-            try:
-                await InterviewRepository.add_interview_log(
-                    db, interview.id, "STATUS_UPDATE", f"Candidate application status automatically updated from {current_app_status} to REVIEWED upon scheduling"
+        try:
+            from app.services.status_management_service import apply_application_status_change, normalize_status
+            from app.models.shortlist_roster import ShortlistRosterItem
+            from sqlalchemy import select
+
+            current_norm = normalize_status(application.status)
+            if current_norm != "Interview Scheduled":
+                await apply_application_status_change(
+                    db=db,
+                    application=application,
+                    new_status="Interview Scheduled",
+                    changed_by=getattr(scheduler_user, "email", "HR") if scheduler_user else "HR",
+                    change_type="auto",
+                    reason=f"auto: interview scheduled for {data.title}",
+                    send_email=True
                 )
-                await InterviewRepository.commit_changes(db)
-            except Exception as e_status:
-                await db.rollback()
-                logger.error(f"Error updating application status to REVIEWED: {e_status}")
+
+            # Sync with any shortlist roster items for this application
+            roster_items_stmt = select(ShortlistRosterItem).where(ShortlistRosterItem.application_id == application.id)
+            roster_items_res = await db.execute(roster_items_stmt)
+            for r_item in roster_items_res.scalars().all():
+                r_item.stage = "Interview Scheduled"
+                r_item.updated_at = datetime.utcnow()
+            await db.commit()
+
+            await InterviewRepository.add_interview_log(
+                db, interview.id, "STATUS_UPDATE", f"Candidate application status automatically updated from {current_app_status} to Interview Scheduled upon scheduling"
+            )
+            await InterviewRepository.commit_changes(db)
+        except Exception as e_status:
+            logger.error(f"Error updating application status to Interview Scheduled: {e_status}")
 
         # 3. Create Google Calendar Event via centralized service if credentials exist
         attendees = []

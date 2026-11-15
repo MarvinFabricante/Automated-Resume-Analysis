@@ -22,6 +22,7 @@ import ProfileStrength from '../../components/candidate/dashboard/ProfileStrengt
 import UpcomingInterviews from '../../components/candidate/dashboard/UpcomingInterviews';
 import QuickActions from '../../components/candidate/dashboard/QuickActions';
 import ChatWidget from '../../components/layout/ChatWidget';
+import HelpTooltip from '../../components/common/HelpTooltip';
 
 import {
   useGetCandidateApplicationsQuery,
@@ -101,7 +102,7 @@ const CandidateDashboard: React.FC = () => {
   return (
     <div className="bg-[#F8FAFC] text-slate-900 antialiased min-h-screen font-['Inter',_sans-serif] flex flex-col">
       <Helmet>
-        <title>Candidate Dashboard | Mariwasa Career Hub</title>
+        <title>Dashboard | Mariwasa Recruitment</title>
       </Helmet>
 
       <Header />
@@ -126,9 +127,12 @@ const CandidateDashboard: React.FC = () => {
               className="bg-white border border-slate-200/80 rounded-2xl sm:rounded-3xl p-3.5 sm:p-5 shadow-2xs hover:shadow-md hover:border-[#D10043]/30 transition-all duration-200 cursor-pointer group"
             >
               <div className="flex items-center justify-between mb-2">
-                <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">
-                  Applications
-                </span>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">
+                    Applications
+                  </span>
+                  <HelpTooltip content="Total job applications you have submitted." />
+                </div>
                 <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-slate-50 group-hover:bg-[#D10043]/10 text-slate-400 group-hover:text-[#D10043] flex items-center justify-center transition-colors">
                   <Briefcase size={16} className="sm:w-[18px] sm:h-[18px]" />
                 </div>
@@ -140,7 +144,7 @@ const CandidateDashboard: React.FC = () => {
                 <span className="text-[10px] sm:text-xs font-bold text-slate-400">Total</span>
               </div>
               <p className="text-[11px] text-slate-500 font-medium mt-1 truncate">
-                {applications.length > 0 ? 'Active in pipeline' : 'No submissions yet'}
+                {applications.length > 0 ? 'Submitted applications' : 'No submissions yet'}
               </p>
             </div>
 
@@ -150,9 +154,12 @@ const CandidateDashboard: React.FC = () => {
               className="bg-white border border-slate-200/80 rounded-2xl sm:rounded-3xl p-3.5 sm:p-5 shadow-2xs hover:shadow-md hover:border-purple-200 transition-all duration-200 cursor-pointer group"
             >
               <div className="flex items-center justify-between mb-2">
-                <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">
-                  Interviews
-                </span>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">
+                    Interviews
+                  </span>
+                  <HelpTooltip content="Upcoming phone, video, or in-person interview invitations." />
+                </div>
                 <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-purple-50 group-hover:bg-purple-100 text-purple-600 flex items-center justify-center transition-colors">
                   <Calendar size={16} className="sm:w-[18px] sm:h-[18px]" />
                 </div>
@@ -164,7 +171,7 @@ const CandidateDashboard: React.FC = () => {
                 <span className="text-[10px] sm:text-xs font-bold text-purple-600">Upcoming</span>
               </div>
               <p className="text-[11px] text-slate-500 font-medium mt-1 truncate">
-                {activeInterviews.length > 0 ? 'Sessions pending' : 'No sessions pending'}
+                {activeInterviews.length > 0 ? 'Upcoming interviews' : 'No interviews scheduled'}
               </p>
             </div>
 
@@ -174,9 +181,12 @@ const CandidateDashboard: React.FC = () => {
               className="bg-white border border-slate-200/80 rounded-2xl sm:rounded-3xl p-3.5 sm:p-5 shadow-2xs hover:shadow-md hover:border-amber-200 transition-all duration-200 cursor-pointer group"
             >
               <div className="flex items-center justify-between mb-2">
-                <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">
-                  Saved Jobs
-                </span>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">
+                    Saved Jobs
+                  </span>
+                  <HelpTooltip content="Jobs you bookmarked to look at or apply for later." />
+                </div>
                 <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-amber-50 group-hover:bg-amber-100 text-amber-600 flex items-center justify-center transition-colors">
                   <Bookmark size={16} className={`sm:w-[18px] sm:h-[18px] ${bookmarkedCount > 0 ? 'fill-amber-500' : ''}`} />
                 </div>
@@ -188,7 +198,7 @@ const CandidateDashboard: React.FC = () => {
                 <span className="text-[10px] sm:text-xs font-bold text-slate-400">Bookmarked</span>
               </div>
               <p className="text-[11px] text-slate-500 font-medium mt-1 truncate">
-                Saved for quick apply
+                Saved for later
               </p>
             </div>
 
@@ -198,9 +208,12 @@ const CandidateDashboard: React.FC = () => {
               className="bg-white border border-slate-200/80 rounded-2xl sm:rounded-3xl p-3.5 sm:p-5 shadow-2xs hover:shadow-md hover:border-emerald-200 transition-all duration-200 cursor-pointer group"
             >
               <div className="flex items-center justify-between mb-2">
-                <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">
-                  In Evaluation
-                </span>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">
+                    Being Reviewed
+                  </span>
+                  <HelpTooltip content="Applications currently being reviewed by the hiring team." />
+                </div>
                 <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-emerald-50 group-hover:bg-emerald-100 text-emerald-600 flex items-center justify-center transition-colors">
                   <TrendingUp size={16} className="sm:w-[18px] sm:h-[18px]" />
                 </div>
@@ -212,25 +225,51 @@ const CandidateDashboard: React.FC = () => {
                 <span className="text-[10px] sm:text-xs font-bold text-emerald-600">Active</span>
               </div>
               <p className="text-[11px] text-slate-500 font-medium mt-1 truncate">
-                Under HR evaluation
+                {inReviewCount > 0 ? 'Under review by hiring team' : 'No active reviews'}
               </p>
             </div>
 
           </div>
 
-          {/* DRAFT APPLICATION NOTICE */}
-          {hasDraft && draftJobId && (
+          {/* NEXT ACTION PROMINENT CARD */}
+          {activeInterviews.length > 0 ? (
+            <div className="bg-gradient-to-r from-purple-900 via-slate-900 to-slate-900 text-white rounded-2xl sm:rounded-3xl p-5 sm:p-6 shadow-md mb-6 sm:mb-8 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border border-purple-800/40">
+              <div className="flex items-start gap-4">
+                <div className="w-12 h-12 rounded-2xl bg-purple-500/20 text-purple-300 flex items-center justify-center shrink-0 border border-purple-400/30">
+                  <Calendar size={24} />
+                </div>
+                <div>
+                  <span className="text-[10px] font-black uppercase tracking-wider text-purple-300 bg-purple-500/20 px-2.5 py-0.5 rounded-full border border-purple-400/20">
+                    Next Action
+                  </span>
+                  <h3 className="text-base sm:text-lg font-black tracking-tight mt-1">
+                    Confirm your interview details
+                  </h3>
+                  <p className="text-xs text-slate-300 font-medium mt-0.5">
+                    You have an upcoming interview scheduled. Check the date, time, and session coordinates.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => navigate('/candidate/applicationtracking')}
+                className="px-5 py-2.5 rounded-xl bg-purple-500 hover:bg-purple-400 text-white font-black text-xs uppercase tracking-wider flex items-center gap-1.5 transition-all shadow-sm active:scale-[0.98] cursor-pointer shrink-0 self-end sm:self-auto"
+              >
+                <span>View Interview</span>
+                <ChevronRight size={14} />
+              </button>
+            </div>
+          ) : hasDraft && draftJobId ? (
             <div className="bg-white border border-rose-200/80 rounded-2xl sm:rounded-3xl p-4 sm:p-6 shadow-xs mb-6 sm:mb-8 relative overflow-hidden">
               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-                
                 <div className="flex items-start gap-3.5">
                   <div className="w-10 h-10 rounded-xl bg-rose-50 text-[#D10043] flex items-center justify-center shrink-0 border border-rose-100">
                     <Zap size={18} className="animate-pulse" />
                   </div>
                   <div>
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-[10px] font-black uppercase tracking-wider text-[#D10043]">
-                        Application In Progress
+                      <span className="text-[10px] font-black uppercase tracking-wider text-[#D10043] bg-rose-50 px-2 py-0.5 rounded border border-rose-100">
+                        Next Action: {draftStep === 3 ? 'Answer your questions' : draftStep === 2 ? 'Review your details' : 'Complete your application'}
                       </span>
                       <span className="text-slate-300">•</span>
                       <span className="text-xs font-semibold text-slate-500">
@@ -261,14 +300,40 @@ const CandidateDashboard: React.FC = () => {
                     onClick={() => navigate(getDraftRoute())}
                     className="px-5 py-2.5 rounded-xl bg-[#D10043] hover:bg-slate-900 text-white font-black text-xs uppercase tracking-wider flex items-center gap-1.5 transition-all shadow-sm shadow-[#D10043]/20 active:scale-[0.98] cursor-pointer"
                   >
-                    <span>Continue</span>
+                    <span>{draftStep === 3 ? 'Answer questions' : 'Continue'}</span>
                     <ChevronRight size={14} />
                   </button>
                 </div>
-
               </div>
             </div>
-          )}
+          ) : applications.length === 0 ? (
+            <div className="bg-gradient-to-r from-slate-900 to-slate-800 text-white rounded-2xl sm:rounded-3xl p-5 sm:p-6 shadow-md mb-6 sm:mb-8 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+              <div className="flex items-start gap-4">
+                <div className="w-12 h-12 rounded-2xl bg-[#D10043]/20 text-[#D10043] flex items-center justify-center shrink-0 border border-[#D10043]/30">
+                  <Briefcase size={24} />
+                </div>
+                <div>
+                  <span className="text-[10px] font-black uppercase tracking-wider text-rose-300 bg-rose-500/20 px-2.5 py-0.5 rounded-full border border-rose-400/20">
+                    Next Action
+                  </span>
+                  <h3 className="text-base sm:text-lg font-black tracking-tight mt-1">
+                    Upload your resume to get started
+                  </h3>
+                  <p className="text-xs text-slate-300 font-medium mt-0.5">
+                    We compare your resume with open positions at Mariwasa to show you the jobs that fit you best.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => navigate('/candidate/smart-upload')}
+                className="px-5 py-2.5 rounded-xl bg-[#D10043] hover:bg-white hover:text-slate-900 text-white font-black text-xs uppercase tracking-wider flex items-center gap-1.5 transition-all shadow-sm active:scale-[0.98] cursor-pointer shrink-0 self-end sm:self-auto"
+              >
+                <span>Upload Resume</span>
+                <ChevronRight size={14} />
+              </button>
+            </div>
+          ) : null}
 
           {/* MAIN 2-COLUMN DASHBOARD GRID */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 sm:gap-8">
@@ -320,7 +385,7 @@ const CandidateDashboard: React.FC = () => {
               {/* Upcoming Interviews Schedule */}
               <UpcomingInterviews />
 
-              {/* Profile Strength & ATS Readiness */}
+              {/* Profile Strength */}
               <ProfileStrength />
 
               {/* Quick Actions Hub */}

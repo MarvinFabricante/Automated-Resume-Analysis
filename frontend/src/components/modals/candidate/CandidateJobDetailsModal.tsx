@@ -282,7 +282,7 @@ const CandidateJobDetailsModal: React.FC<CandidateJobDetailsModalProps> = ({
             </div>
           </section>
 
-          {/* Required Skills & Competencies */}
+          {/* Required Skills & Requirements */}
           <section className="space-y-3.5">
             <div className="flex items-center gap-2 text-slate-900">
               <div className="w-8 h-8 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center">

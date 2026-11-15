@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { 
-  Scale, Archive, Download, X, CheckSquare, Square, 
+import {
+  Scale, Archive, Download, X, CheckSquare, Square,
   ChevronDown, CheckCircle2, Clock, Check
 } from 'lucide-react';
 
@@ -46,7 +46,7 @@ const BulkActionBar: React.FC<BulkActionBarProps> = ({
 
   return (
     <div className="sticky top-20 z-30 mb-5 bg-gray-900/95 backdrop-blur-md text-white px-3.5 sm:px-5 py-3 rounded-2xl shadow-xl flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 animate-in slide-in-from-top-3 duration-250 border border-gray-800">
-      
+
       {/* Left: Selected count & Select all toggle */}
       <div className="flex items-center justify-between sm:justify-start gap-3">
         <button
@@ -83,11 +83,10 @@ const BulkActionBar: React.FC<BulkActionBarProps> = ({
           onClick={onCompare}
           disabled={selectedCount < 2}
           title={selectedCount < 2 ? "Select at least 2 candidates to compare" : "Compare selected candidates"}
-          className={`flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3 py-1.5 sm:py-2 rounded-xl text-xs font-bold transition-all h-8.5 sm:h-9 ${
-            selectedCount >= 2
+          className={`flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3 py-1.5 sm:py-2 rounded-xl text-xs font-bold transition-all h-8.5 sm:h-9 ${selectedCount >= 2
               ? 'bg-[#D60041] text-white hover:bg-[#B50037] shadow-sm cursor-pointer'
               : 'bg-gray-800/60 text-gray-500 cursor-not-allowed border border-gray-700/60'
-          }`}
+            }`}
         >
           <Scale size={13} />
           <span>Compare ({selectedCount})</span>
@@ -109,7 +108,7 @@ const BulkActionBar: React.FC<BulkActionBarProps> = ({
               <div className="px-3 py-1 text-[10px] font-bold text-gray-400 uppercase tracking-widest border-b border-gray-100 mb-1">
                 Set status for {selectedCount} candidates:
               </div>
-              {['Pending', 'Reviewed', 'Technical Interview', 'Final Interview', 'Accepted', 'Rejected'].map((st) => (
+              {['Submitted', 'Under Review', 'Shortlisted', 'Interview Scheduled', 'Interviewed', 'Not Selected'].map((st) => (
                 <button
                   key={st}
                   type="button"

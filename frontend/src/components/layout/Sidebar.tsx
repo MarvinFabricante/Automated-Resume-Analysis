@@ -1,15 +1,16 @@
-import React, { ReactNode } from 'react';
+import React, { ReactNode, useMemo } from 'react';
 import { useNavigate, useLocation } from '@/utils/navigation';
 import {
   LayoutDashboard, Users, Building2, User, Settings, Search, Briefcase,
   BookOpen, MessageSquare, Scale, Sliders, Calendar, Sparkles,
-  PanelLeftClose, PanelLeftOpen, X, LogOut, FolderArchive
+  PanelLeftClose, PanelLeftOpen, X, LogOut, FolderArchive, FileText, FileUp
 } from 'lucide-react';
 import { useSelector, useDispatch } from 'react-redux';
 import { toggleSidebar, closeSidebar } from '../../redux/slices/uiSlice';
 import { logout as logoutAction } from '../../redux/slices/authSlice';
 import { RootState } from '../../redux/store';
 import { clearAllAuthSessions, performUserLogout } from '../../utils/token';
+import { useGetJobsQuery } from '../../redux/api/apiSlice';
 
 export interface NavItem {
   label: string;
@@ -31,17 +32,24 @@ const Sidebar: React.FC = () => {
   const { role: userRole } = useSelector((state: RootState) => state.auth);
   const { isSidebarOpen } = useSelector((state: RootState) => state.ui);
 
-  const handleLogout = () => {
-    dispatch(logoutAction());
-    performUserLogout();
-  };
-
   const normRole = (userRole || '').toUpperCase();
   const isAdminRole = normRole === 'ADMIN';
   const isHRRole = normRole === 'HR';
   const isCandidateRole = normRole === 'CANDIDATE';
   const isHRPage = location.pathname.startsWith('/hr');
   const isHR = isHRRole || isHRPage;
+
+  // Active jobs count for candidate sidebar badge
+  const { data: rawJobs = [] } = useGetJobsQuery(undefined, { skip: !isCandidateRole });
+  const activeJobCount = useMemo(
+    () => (Array.isArray(rawJobs) ? rawJobs.filter((j: any) => j.is_active !== false).length : 0),
+    [rawJobs]
+  );
+
+  const handleLogout = () => {
+    dispatch(logoutAction());
+    performUserLogout();
+  };
 
   // Grouped navigation structure for modern SaaS UX
   const getNavSections = (): NavSection[] => {
@@ -76,19 +84,16 @@ const Sidebar: React.FC = () => {
           title: 'TALENT PIPELINE',
           items: [
             { label: 'Dashboard', path: '/hr/dashboard', icon: <LayoutDashboard size={18} /> },
+            { label: 'Applicants', path: '/hr/applicants', icon: <Users size={18} /> },
             {
-              label: 'AI Screening',
+              label: 'Screening',
               path: '/hr/screeningportal',
               icon: <User size={18} />,
-              badge: 'AI',
-              badgeColor: 'bg-[#D60041] text-white',
             },
             {
-              label: 'Physical Resumes',
+              label: 'Import Resumes',
               path: '/hr/physical-resumes',
               icon: <FolderArchive size={18} />,
-              badge: 'Storage',
-              badgeColor: 'bg-emerald-600 text-white',
             },
             { label: 'Interview Scheduling', path: '/hr/scheduling', icon: <Calendar size={18} /> },
             { label: 'Candidate Comparison', path: '/hr/comparecandidates', icon: <Scale size={18} /> },
@@ -109,19 +114,19 @@ const Sidebar: React.FC = () => {
           title: 'CAREER',
           items: [
             { label: 'Dashboard', path: '/candidate/dashboard', icon: <LayoutDashboard size={18} /> },
-            { label: 'Find Jobs', path: '/candidate/findjobs', icon: <Search size={18} /> },
             {
-              label: 'Smart Match',
-              path: '/candidate/smart-upload',
-              icon: <Sparkles size={18} />,
-              badge: 'AI',
+              label: 'Open Positions',
+              path: '/candidate/findjobs',
+              icon: <Briefcase size={18} />,
+              badge: activeJobCount > 0 ? String(activeJobCount) : undefined,
               badgeColor: 'bg-[#D60041] text-white',
             },
-          ],
-        },
-        {
-          title: 'COMMUNICATION',
-          items: [
+            {
+              label: 'Upload Resume',
+              path: '/candidate/smart-upload',
+              icon: <FileUp size={18} />,
+            },
+            { label: 'My Applications', path: '/candidate/applicationtracking', icon: <FileText size={18} /> },
             { label: 'Messages', path: '/candidate/messages', icon: <MessageSquare size={18} /> },
           ],
         },
@@ -144,26 +149,25 @@ const Sidebar: React.FC = () => {
   const getWorkspaceTitle = () => {
     if (isHR) return 'Mariwasa HR';
     if (isAdminRole) return 'Admin Suite';
-    if (isCandidateRole) return 'Career Portal';
-    return 'Mariwasa ARAS';
+    if (isCandidateRole) return 'Mariwasa Recruitment';
+    return 'Mariwasa Recruitment';
   };
 
   const getWorkspaceSubtitle = () => {
     if (isHR) return 'Talent Operations';
     if (isAdminRole) return 'System Control';
-    if (isCandidateRole) return 'Candidate Hub';
-    return 'Resume Analysis';
+    if (isCandidateRole) return 'Careers';
+    return 'Recruitment System';
   };
 
   const settingsPath = isHR ? '/hr/settings' : isAdminRole ? '/admin/settings' : '/candidate/settings';
 
   return (
     <>
-      {/* Mobile Drawer Backdrop (Active on mobile/tablet < 1024px) */}
+      {/* Mobile Drawer Backdrop (Active on mobile < 768px) */}
       <div
-        className={`lg:hidden fixed inset-0 bg-slate-950/60 backdrop-blur-xs z-[55] transition-opacity duration-300 ${
-          isSidebarOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
-        }`}
+        className={`md:hidden fixed inset-0 bg-slate-950/60 backdrop-blur-xs z-[55] transition-opacity duration-300 ${isSidebarOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
+          }`}
         onClick={() => dispatch(closeSidebar())}
         aria-hidden="true"
       />
@@ -176,10 +180,10 @@ const Sidebar: React.FC = () => {
           /* Mobile Drawer */
           fixed top-0 bottom-0 left-0 z-[60]
           w-72 max-w-[85vw] h-full ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}
-          /* Desktop Docked Sticky Sidebar */
-          lg:sticky lg:top-[73px] lg:bottom-auto lg:left-auto lg:self-start lg:h-[calc(100vh-73px)] lg:z-40
-          lg:translate-x-0 lg:shrink-0
-          ${isSidebarOpen ? 'lg:w-64' : 'lg:w-20'}
+          /* Tablet and Desktop Docked Sticky Sidebar */
+          md:sticky md:top-[73px] md:bottom-auto md:left-auto md:self-start md:h-[calc(100vh-73px)] md:z-40
+          md:translate-x-0 md:shrink-0
+          ${isSidebarOpen ? 'md:w-64' : 'md:w-20'}
         `}
       >
         {/* WORKSPACE HEADER */}
@@ -210,18 +214,18 @@ const Sidebar: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => dispatch(closeSidebar())}
-                  className="lg:hidden p-1.5 rounded-lg text-slate-400 hover:text-slate-800 hover:bg-slate-100 active:scale-95 transition-colors cursor-pointer"
+                  className="md:hidden p-1.5 rounded-lg text-slate-400 hover:text-slate-800 hover:bg-slate-100 active:scale-95 transition-colors cursor-pointer"
                   title="Close sidebar"
                   aria-label="Close sidebar"
                 >
                   <X size={18} />
                 </button>
 
-                {/* Desktop: Collapse Sidebar Button */}
+                {/* Tablet and Desktop: Collapse Sidebar Button */}
                 <button
                   type="button"
                   onClick={() => dispatch(toggleSidebar())}
-                  className="hidden lg:flex p-1.5 rounded-lg text-slate-400 hover:text-slate-800 hover:bg-slate-100 active:scale-95 transition-colors cursor-pointer"
+                  className="hidden md:flex p-1.5 rounded-lg text-slate-400 hover:text-slate-800 hover:bg-slate-100 active:scale-95 transition-colors cursor-pointer"
                   title="Collapse sidebar (Ctrl+B)"
                   aria-label="Collapse sidebar"
                 >
@@ -276,24 +280,22 @@ const Sidebar: React.FC = () => {
                         key={index}
                         onClick={() => {
                           navigate(item.path);
-                          if (window.innerWidth < 1024) dispatch(closeSidebar());
+                          if (window.innerWidth < 768) dispatch(closeSidebar());
                         }}
-                        className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl transition-all duration-150 group relative cursor-pointer ${
-                          isActive
-                            ? 'bg-rose-50/90 text-[#D60041] font-bold border border-rose-100 shadow-2xs'
-                            : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50 font-medium'
-                        }`}
+                        className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl transition-all duration-150 group relative cursor-pointer ${isActive
+                          ? 'bg-rose-50/90 text-[#D60041] font-bold border border-rose-100 shadow-2xs'
+                          : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50 font-medium'
+                          }`}
                       >
                         <div className="flex items-center space-x-3 min-w-0">
                           {isActive && (
                             <span className="w-1 h-4 bg-[#D60041] rounded-full shrink-0 -ml-1 mr-0.5" />
                           )}
                           <span
-                            className={`transition-colors shrink-0 ${
-                              isActive
-                                ? 'text-[#D60041]'
-                                : 'text-slate-400 group-hover:text-slate-700'
-                            }`}
+                            className={`transition-colors shrink-0 ${isActive
+                              ? 'text-[#D60041]'
+                              : 'text-slate-400 group-hover:text-slate-700'
+                              }`}
                           >
                             {item.icon}
                           </span>
@@ -303,9 +305,8 @@ const Sidebar: React.FC = () => {
                         </div>
                         {item.badge && (
                           <span
-                            className={`text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-md shrink-0 shadow-2xs ${
-                              item.badgeColor || 'bg-[#D60041] text-white'
-                            }`}
+                            className={`text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-md shrink-0 shadow-2xs ${item.badgeColor || 'bg-[#D60041] text-white'
+                              }`}
                           >
                             {item.badge}
                           </span>
@@ -320,19 +321,17 @@ const Sidebar: React.FC = () => {
                       <button
                         onClick={() => {
                           navigate(item.path);
-                          if (window.innerWidth < 1024) dispatch(closeSidebar());
+                          if (window.innerWidth < 768) dispatch(closeSidebar());
                         }}
-                        className={`w-10 h-10 flex items-center justify-center rounded-xl transition-all duration-150 relative cursor-pointer ${
-                          isActive
-                            ? 'bg-rose-50 text-[#D60041] shadow-2xs border border-rose-200/80 font-bold'
-                            : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100/80'
-                        }`}
+                        className={`w-10 h-10 flex items-center justify-center rounded-xl transition-all duration-150 relative cursor-pointer ${isActive
+                          ? 'bg-rose-50 text-[#D60041] shadow-2xs border border-rose-200/80 font-bold'
+                          : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100/80'
+                          }`}
                         aria-label={item.label}
                       >
                         <span
-                          className={`transition-colors ${
-                            isActive ? 'text-[#D60041]' : 'text-slate-400 group-hover:text-slate-800'
-                          }`}
+                          className={`transition-colors ${isActive ? 'text-[#D60041]' : 'text-slate-400 group-hover:text-slate-800'
+                            }`}
                         >
                           {item.icon}
                         </span>
@@ -366,7 +365,9 @@ const Sidebar: React.FC = () => {
               <div className="flex items-center justify-between px-0.5">
                 <div className="flex items-center space-x-1.5">
                   <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shadow-xs" />
-                  <span className="text-[11px] font-bold text-slate-800">ARAS Engine</span>
+                  <span className="text-[11px] font-bold text-slate-800">
+                    {isCandidateRole ? 'Recruitment Portal' : 'Recruitment System'}
+                  </span>
                 </div>
                 <span className="text-[9px] font-black uppercase tracking-wider text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200/80">
                   Online
@@ -376,7 +377,7 @@ const Sidebar: React.FC = () => {
                 <button
                   onClick={() => {
                     navigate(settingsPath);
-                    if (window.innerWidth < 1024) dispatch(closeSidebar());
+                    if (window.innerWidth < 768) dispatch(closeSidebar());
                   }}
                   className="w-full flex items-center space-x-2 text-xs font-bold text-slate-600 hover:text-[#D60041] hover:bg-slate-50 transition-colors py-1.5 px-2 rounded-xl cursor-pointer"
                   title="Account Settings"

@@ -13,12 +13,19 @@ import BulkActionBar from '../../components/hr/screening/BulkActionBar';
 import CandidateList from '../../components/hr/screening/CandidateList';
 import Pagination from '../../components/hr/screening/Pagination';
 
-import { AlertCircle, CheckCircle2, X, Archive } from 'lucide-react';
-import { 
-  useGetApplicationsQuery, 
-  useUpdateApplicationStatusMutation, 
-  useDeleteApplicationMutation 
+import { AlertCircle, CheckCircle2, X, Archive, Sliders, Layers, List, Play, Sparkles } from 'lucide-react';
+import {
+  useGetApplicationsQuery,
+  useUpdateApplicationStatusMutation,
+  useDeleteApplicationMutation,
+  useGetJobsQuery,
+  useCreateShortlistRosterMutation
 } from '../../redux/api/apiSlice';
+import StartScreeningModal from '../../components/hr/screening/StartScreeningModal';
+import FinalizeShortlistModal from '../../components/hr/screening/FinalizeShortlistModal';
+import ScreeningWorkflowBoard from '../../components/hr/screening/ScreeningWorkflowBoard';
+import ShortlistRostersList from '../../components/hr/screening/ShortlistRostersList';
+import RosterPipelineModal from '../../components/hr/screening/RosterPipelineModal';
 import { exportToCSV } from '../../utils/exportUtils';
 import {
   matchesPositionFilter,
@@ -43,7 +50,62 @@ const ScreeningPortal: React.FC = () => {
   const { data: candidates = [], isLoading, isFetching, refetch } = useGetApplicationsQuery();
   const [updateStatus] = useUpdateApplicationStatusMutation();
   const [deleteApplication] = useDeleteApplicationMutation();
-  
+  const { data: rawJobs = [] } = useGetJobsQuery();
+  const [createShortlistRoster] = useCreateShortlistRosterMutation();
+
+  // Active Main Tab: 'workflow' | 'shortlists' | 'pool'
+  const [activeTab, setActiveTab] = useState<'workflow' | 'shortlists' | 'pool'>('workflow');
+
+  // Screening Configuration
+  const [screeningConfig, setScreeningConfig] = useState<{
+    jobId: number | string;
+    jobTitle: string;
+    minThreshold: number;
+    statusFilters: string[];
+  } | null>(null);
+
+  const [startModalOpen, setStartModalOpen] = useState<boolean>(false);
+  const [finalizeModalOpen, setFinalizeModalOpen] = useState<boolean>(false);
+  const [finalizeCandidateIds, setFinalizeCandidateIds] = useState<(number | string)[]>([]);
+  const [activeRoster, setActiveRoster] = useState<any | null>(null);
+
+  // Auto-initialize screeningConfig with the first active job or from URL param
+  useEffect(() => {
+    if (!screeningConfig && rawJobs.length > 0) {
+      const jobParam = searchParams.get('job');
+      let targetJob = null;
+      if (jobParam) {
+        targetJob = rawJobs.find((j: any) => (j.job_title || j.title || '').toLowerCase() === jobParam.toLowerCase());
+      }
+      if (!targetJob) {
+        targetJob = rawJobs.find((j: any) => j.is_active !== false) || rawJobs[0];
+      }
+      if (targetJob) {
+        setScreeningConfig({
+          jobId: targetJob.id || targetJob.job_id,
+          jobTitle: targetJob.job_title || targetJob.title || 'Position',
+          minThreshold: 80,
+          statusFilters: ['Submitted', 'Under Review'],
+        });
+      }
+    }
+  }, [rawJobs, screeningConfig, searchParams]);
+
+  // Handle finalization of a shortlist roster
+  const handleFinalizeShortlist = async (name: string, notes: string) => {
+    if (!screeningConfig) return;
+    await createShortlistRoster({
+      job_id: Number(screeningConfig.jobId),
+      name,
+      notes,
+      application_ids: finalizeCandidateIds.map(Number),
+    }).unwrap();
+
+    showToastMessage(`Shortlist roster "${name}" created with ${finalizeCandidateIds.length} candidates!`, 'success');
+    refetch();
+    setActiveTab('shortlists');
+  };
+
   // Filter & Search states
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [statusFilter, setStatusFilter] = useState<string>("All Status");
@@ -63,17 +125,20 @@ const ScreeningPortal: React.FC = () => {
 
     if (statusParam) {
       const upper = statusParam.toUpperCase();
-      if (upper === 'PENDING') {
-        setStatusFilter('Pending');
-      } else if (upper === 'REVIEWED' || upper === 'SCREENED') {
-        setStatusFilter('Reviewed');
-      } else if (upper === 'ACCEPTED') {
-        setStatusFilter('Accepted');
-      } else if (upper === 'REJECTED' || upper === 'ARCHIVED') {
-        setStatusFilter('Archived');
-        setIncludeArchived(true);
+      if (upper === 'PENDING' || upper === 'SUBMITTED') {
+        setStatusFilter('Submitted');
+      } else if (upper === 'REVIEWED' || upper === 'SCREENED' || upper === 'UNDER REVIEW') {
+        setStatusFilter('Under Review');
+      } else if (upper === 'SHORTLISTED') {
+        setStatusFilter('Shortlisted');
+      } else if (upper === 'INTERVIEWED') {
+        setStatusFilter('Interviewed');
+      } else if (upper === 'ACCEPTED' || upper === 'PASSED') {
+        setStatusFilter('Passed');
+      } else if (upper === 'REJECTED' || upper === 'ARCHIVED' || upper === 'NOT SELECTED') {
+        setStatusFilter('Not Selected');
       } else if (upper === 'INTERVIEW') {
-        setStatusFilter('Interview');
+        setStatusFilter('Interview Scheduled');
       }
     }
 
@@ -131,14 +196,29 @@ const ScreeningPortal: React.FC = () => {
 
   // Compute overall KPI statistics
   const stats = useMemo(() => {
-    const nonArchived = candidates.filter((c: any) => (c.status || '').toLowerCase() !== 'archived');
+    const nonArchived = candidates.filter((c: any) => {
+      const st = (c.status || '').toLowerCase();
+      return st !== 'archived' && st !== 'not selected';
+    });
     return {
       total: nonArchived.length,
-      pending: candidates.filter((c: any) => (c.status || '').toLowerCase() === 'pending').length,
-      interview: candidates.filter((c: any) => ['technical interview', 'final interview'].includes((c.status || '').toLowerCase())).length,
-      accepted: candidates.filter((c: any) => (c.status || '').toLowerCase() === 'accepted').length,
+      pending: candidates.filter((c: any) => {
+        const st = (c.status || '').toLowerCase();
+        return st === 'submitted' || st === 'pending';
+      }).length,
+      interview: candidates.filter((c: any) => {
+        const st = (c.status || '').toLowerCase();
+        return ['interview scheduled', 'interviewed', 'technical interview', 'final interview'].includes(st);
+      }).length,
+      accepted: candidates.filter((c: any) => {
+        const st = (c.status || '').toLowerCase();
+        return st === 'shortlisted' || st === 'accepted' || st === 'passed';
+      }).length,
       highMatch: nonArchived.filter((c: any) => (c.matchScore || 0) >= 80).length,
-      archived: candidates.filter((c: any) => (c.status || '').toLowerCase() === 'archived').length
+      archived: candidates.filter((c: any) => {
+        const st = (c.status || '').toLowerCase();
+        return st === 'archived' || st === 'not selected';
+      }).length
     };
   }, [candidates]);
 
@@ -180,19 +260,25 @@ const ScreeningPortal: React.FC = () => {
   // Filtering and sorting candidates
   const filteredCandidates = useMemo(() => {
     const filtered = candidates.filter((c: any) => {
-      const candidateStatus = (c.status || 'Pending').toLowerCase();
+      const rawStatus = (c.status || 'Submitted').toLowerCase();
+      const normStatus = (
+        rawStatus === 'pending' ? 'submitted' :
+        rawStatus === 'reviewed' || rawStatus === 'screened' ? 'under review' :
+        rawStatus === 'rejected' || rawStatus === 'archived' ? 'not selected' :
+        rawStatus
+      );
 
       // Status filtering
-      if (statusFilter === "Archived") {
-        if (candidateStatus !== "archived") return false;
+      if (statusFilter === "Archived" || statusFilter === "Not Selected") {
+        if (normStatus !== "not selected" && rawStatus !== "archived") return false;
       } else if (statusFilter === "All With Archived") {
         // Show all including archived
       } else if (statusFilter === "All Status") {
-        if (!includeArchived && candidateStatus === "archived") return false;
-      } else if (statusFilter === "Interview" || statusFilter === "In Interview") {
-        if (!['technical interview', 'final interview', 'interview'].includes(candidateStatus)) return false;
+        if (!includeArchived && (normStatus === "not selected" || rawStatus === "archived")) return false;
+      } else if (statusFilter === "Interview" || statusFilter === "In Interview" || statusFilter === "Interview Scheduled") {
+        if (!['interview scheduled', 'technical interview', 'final interview', 'interview'].includes(rawStatus)) return false;
       } else {
-        if (candidateStatus !== statusFilter.toLowerCase()) return false;
+        if (normStatus !== statusFilter.toLowerCase() && rawStatus !== statusFilter.toLowerCase()) return false;
       }
 
       // Job position filtering (normalized match)
@@ -219,8 +305,9 @@ const ScreeningPortal: React.FC = () => {
 
         const matchesDept = c.jobDepartment && c.jobDepartment.toLowerCase().includes(q);
         const matchesCompany = c.company && c.company.toLowerCase().includes(q);
+        const matchesSource = (c.source || '').toLowerCase().includes(q) || (c.import_origin || '').toLowerCase().includes(q);
 
-        if (!matchesName && !matchesJob && !matchesEmail && !matchesLocation && !matchesDegree && !matchesSkills && !matchesDept && !matchesCompany) {
+        if (!matchesName && !matchesJob && !matchesEmail && !matchesLocation && !matchesDegree && !matchesSkills && !matchesDept && !matchesCompany && !matchesSource) {
           return false;
         }
       }
@@ -277,10 +364,10 @@ const ScreeningPortal: React.FC = () => {
     setCurrentPage(1);
 
     if (type === 'all' ||
-        (type === 'pending' && statusFilter === 'Pending') ||
-        (type === 'interview' && (statusFilter === 'Interview' || statusFilter === 'Technical Interview' || statusFilter === 'Final Interview')) ||
-        (type === 'accepted' && statusFilter === 'Accepted') ||
-        (type === 'archived' && statusFilter === 'Archived')) {
+      (type === 'pending' && (statusFilter === 'Submitted' || statusFilter === 'Pending')) ||
+      (type === 'interview' && (statusFilter === 'Interview Scheduled' || statusFilter === 'Interview')) ||
+      (type === 'accepted' && (statusFilter === 'Shortlisted' || statusFilter === 'Accepted')) ||
+      (type === 'archived' && (statusFilter === 'Not Selected' || statusFilter === 'Archived'))) {
       setStatusFilter("All Status");
       setScoreFilter("All Scores");
       setIncludeArchived(false);
@@ -289,22 +376,22 @@ const ScreeningPortal: React.FC = () => {
 
     switch (type) {
       case 'pending':
-        setStatusFilter("Pending");
+        setStatusFilter("Submitted");
         setScoreFilter("All Scores");
         setIncludeArchived(false);
         break;
       case 'interview':
-        setStatusFilter("Interview");
+        setStatusFilter("Interview Scheduled");
         setScoreFilter("All Scores");
         setIncludeArchived(false);
         break;
       case 'accepted':
-        setStatusFilter("Accepted");
+        setStatusFilter("Shortlisted");
         setScoreFilter("All Scores");
         setIncludeArchived(false);
         break;
       case 'archived':
-        setStatusFilter("Archived");
+        setStatusFilter("Not Selected");
         setScoreFilter("All Scores");
         setIncludeArchived(true);
         break;
@@ -324,7 +411,7 @@ const ScreeningPortal: React.FC = () => {
 
   // Selection toggle
   const handleToggleSelect = (candidateId: string | number) => {
-    setSelectedIds(prev => 
+    setSelectedIds(prev =>
       prev.includes(candidateId) ? prev.filter(id => id !== candidateId) : [...prev, candidateId]
     );
   };
@@ -497,166 +584,309 @@ const ScreeningPortal: React.FC = () => {
   return (
     <div className="bg-[#FCFCFC] text-gray-800 antialiased min-h-screen flex flex-col font-sans">
       <Helmet>
-        <title>HR - Screening Portal</title>
+        <title>Screening | Mariwasa Recruitment HR Portal</title>
       </Helmet>
 
       <Header />
-      
+
       <div className="flex flex-1">
         <Sidebar />
         <main className="flex-1 w-full max-w-full min-w-0 px-3 sm:px-6 md:px-8 lg:px-10 py-4 sm:py-7 md:py-8 animate-in fade-in duration-300 overflow-x-hidden">
-          
-          {/* Header & KPI Summary */}
-          <ScreeningHeader 
-            stats={stats}
-            activeStatusFilter={statusFilter}
-            activeScoreFilter={scoreFilter}
-            onKpiClick={handleKpiClick}
-            onExport={handleExport}
-            onNavigateCompare={handleNavigateCompare}
-            selectedCount={selectedIds.length}
-            viewMode={viewMode}
-            setViewMode={setViewMode}
-            onRefresh={refetch}
-            isRefreshing={isFetching}
-          />
 
-          {/* Search, Position, Status, Score, and Sort Controls */}
-          <SearchAndFilter 
-            searchQuery={searchQuery}
-            setSearchQuery={(q: string) => {
-              setSearchQuery(q);
-              setCurrentPage(1);
-            }}
-            statusFilter={statusFilter}
-            setStatusFilter={(st: string) => {
-              setStatusFilter(st);
-              setCurrentPage(1);
-            }}
-            jobFilter={jobFilter}
-            setJobFilter={(job: string) => {
-              setJobFilter(job);
-              setCurrentPage(1);
-            }}
-            jobOptions={jobOptions}
-            scoreFilter={scoreFilter}
-            setScoreFilter={(sf: string) => {
-              setScoreFilter(sf);
-              setCurrentPage(1);
-            }}
-            sortBy={sortBy}
-            setSortBy={setSortBy}
-            showSuggestions={showSuggestions}
-            setShowSuggestions={setShowSuggestions}
-            suggestions={suggestions}
-            onResetFilters={handleResetFilters}
-            isFiltered={isFiltered}
-            includeArchived={includeArchived}
-            setIncludeArchived={(val: boolean) => {
-              setIncludeArchived(val);
-              setCurrentPage(1);
-            }}
-            archivedCount={stats.archived}
-            hiddenArchivedMatchCount={hiddenArchivedMatchCount}
-          />
-
-          {/* Active Banner when Archived candidates are visible alongside active */}
-          {includeArchived && statusFilter !== 'Archived' && (
-            <div className="mb-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 p-3.5 sm:p-4 bg-amber-50/90 border border-amber-200/90 rounded-2xl text-xs sm:text-sm text-amber-900 shadow-xs animate-in fade-in duration-200">
-              <div className="flex items-center gap-2.5">
-                <div className="p-1.5 bg-amber-100 rounded-xl text-amber-800 shrink-0">
-                  <Archive size={15} />
-                </div>
-                <div>
-                  <span className="font-bold">Archived records visible:</span> Both active and archived candidate applications are included in the screening view.
-                </div>
-              </div>
+          {/* Main Mode Navigation Bar */}
+          <div className="flex items-center justify-between gap-4 mb-6 pb-2 border-b border-gray-200/80 flex-wrap">
+            <div className="flex items-center gap-2 p-1 bg-gray-100 rounded-2xl">
               <button
                 type="button"
-                onClick={() => setIncludeArchived(false)}
-                className="px-3 py-1.5 bg-amber-100 hover:bg-amber-200 text-amber-900 font-bold rounded-xl text-xs transition-all cursor-pointer whitespace-nowrap self-end sm:self-auto shadow-xs"
+                onClick={() => setActiveTab('workflow')}
+                className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-2 transition-all cursor-pointer ${activeTab === 'workflow'
+                  ? 'bg-white text-slate-900 shadow-xs'
+                  : 'text-gray-500 hover:text-gray-900'
+                  }`}
               >
-                Hide Archived
+                <Sliders size={15} className={activeTab === 'workflow' ? 'text-[#D60041]' : ''} />
+                <span>Screening Workflow</span>
               </button>
-            </div>
-          )}
 
-          {/* Job Filter Indicator Banner */}
-          {jobFilter !== "All Jobs" && (
-            <div className="mb-5 bg-pink-50/70 border border-pink-200/70 rounded-2xl p-3.5 sm:p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs animate-in fade-in duration-200">
-              <div>
-                <h3 className="text-sm sm:text-base font-bold text-gray-900">
-                  Showing applicants for: <span className="text-[#D60041]">{jobFilter}</span>
-                </h3>
-                <p className="text-xs text-gray-500 font-medium mt-0.5">
-                  Total matching applicants: <span className="font-bold text-gray-800">{filteredCandidates.length}</span>
-                </p>
-              </div>
               <button
                 type="button"
-                onClick={() => setJobFilter("All Jobs")}
-                className="px-3 py-1.5 bg-white hover:bg-gray-50 rounded-xl text-xs font-bold text-[#D60041] border border-pink-200 shadow-xs transition-all cursor-pointer self-end sm:self-auto"
+                onClick={() => setActiveTab('shortlists')}
+                className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-2 transition-all cursor-pointer ${activeTab === 'shortlists'
+                  ? 'bg-white text-purple-700 shadow-xs'
+                  : 'text-gray-500 hover:text-gray-900'
+                  }`}
               >
-                Clear Position
+                <Layers size={15} />
+                <span>Shortlist Rosters</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setActiveTab('pool')}
+                className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-2 transition-all cursor-pointer ${activeTab === 'pool'
+                  ? 'bg-white text-slate-900 shadow-xs'
+                  : 'text-gray-500 hover:text-gray-900'
+                  }`}
+              >
+                <List size={15} />
+                <span>All Candidates Database</span>
               </button>
             </div>
-          )}
 
-          {/* Bulk Action Bar (Visible when 1+ candidates selected) */}
-          <BulkActionBar
-            selectedCount={selectedIds.length}
-            totalFilteredCount={filteredCandidates.length}
-            allSelected={allFilteredSelected}
-            onToggleSelectAll={handleToggleSelectAll}
-            onClearSelection={() => setSelectedIds([])}
-            onCompare={handleNavigateCompare}
-            onBatchStatusUpdate={handleBatchStatusUpdate}
-            onBatchArchive={handleBatchArchive}
-            onBatchDelete={handleBatchDelete}
-            onBatchExport={handleBatchExport}
-          />
+            {activeTab === 'workflow' && (
+              <button
+                type="button"
+                onClick={() => setStartModalOpen(true)}
+                className="px-4 py-2 bg-[#D60041] hover:bg-[#b50037] text-white text-xs sm:text-sm font-bold rounded-xl shadow-xs transition-all flex items-center gap-2 cursor-pointer"
+              >
+                <Play size={13} fill="currentColor" />
+                <span>Start Screening</span>
+              </button>
+            )}
+          </div>
 
-          {/* Candidates Content Area */}
-          {isLoading ? (
-            <div className="flex flex-col items-center justify-center py-20 sm:py-24 bg-white rounded-2xl sm:rounded-3xl border border-gray-200/80 shadow-xs">
-              <div className="w-10 h-10 sm:w-12 sm:h-12 border-3 sm:border-4 border-pink-100 border-t-[#D60041] rounded-full animate-spin mb-4"></div>
-              <p className="text-gray-600 font-bold text-xs sm:text-sm">Loading candidates...</p>
-              <p className="text-gray-400 text-xs mt-1">Retrieving ATS match scores from database</p>
-            </div>
-          ) : (
-            <>
-              <CandidateList 
-                candidates={paginatedCandidates}
-                viewMode={viewMode}
-                selectedIds={selectedIds}
-                onToggleSelect={handleToggleSelect}
-                onSelectAll={handleToggleSelectAll}
+          {/* ═══════ TAB 1: SCREENING WORKFLOW & BOARD ═══════ */}
+          {activeTab === 'workflow' && (
+            screeningConfig ? (
+              <ScreeningWorkflowBoard
+                jobTitle={screeningConfig.jobTitle}
+                jobId={screeningConfig.jobId}
+                minThreshold={screeningConfig.minThreshold}
+                candidates={candidates}
                 onOpenDetails={handleOpenDetails}
-                onOpenInterview={handleOpenInterview}
-                onUpdateStatus={handleUpdateStatus}
-                onArchiveApplication={handleArchiveApplication}
-                onRestoreApplication={handleRestoreApplication}
-                onDeleteApplication={handleDeleteApplication}
-                onSkillClick={handleSkillClick}
-                onResetFilters={handleResetFilters}
+                onOpenFinalize={(ids) => {
+                  setFinalizeCandidateIds(ids);
+                  setFinalizeModalOpen(true);
+                }}
+                onChangeParams={() => setStartModalOpen(true)}
+              />
+            ) : (
+              <div className="bg-white rounded-3xl border border-slate-200 p-12 text-center space-y-4">
+                <Sliders size={40} className="mx-auto text-slate-300" />
+                <h3 className="text-lg font-black text-slate-800">Ready to Screen Resumes</h3>
+                <p className="text-xs text-slate-500 max-w-md mx-auto">
+                  Select an open position and set your minimum match score to separate qualified applicants into recommended shortlists and the talent pool.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setStartModalOpen(true)}
+                  className="px-5 py-2.5 bg-[#D60041] hover:bg-[#b50037] text-white text-xs sm:text-sm font-bold rounded-xl shadow-md shadow-rose-200 transition-all inline-flex items-center gap-2 cursor-pointer"
+                >
+                  <Play size={14} fill="currentColor" />
+                  <span>Choose Role & Start Screening</span>
+                </button>
+              </div>
+            )
+          )}
+
+          {/* ═══════ TAB 2: SHORTLIST ROSTERS ═══════ */}
+          {activeTab === 'shortlists' && (
+            <ShortlistRostersList
+              onOpenRoster={(roster) => setActiveRoster(roster)}
+              onStartScreening={() => {
+                setStartModalOpen(true);
+                setActiveTab('workflow');
+              }}
+            />
+          )}
+
+          {/* ═══════ TAB 3: ALL CANDIDATES DATABASE ═══════ */}
+          {activeTab === 'pool' && (
+            <>
+              {/* Header & KPI Summary */}
+              <ScreeningHeader
+                stats={stats}
+                activeStatusFilter={statusFilter}
+                activeScoreFilter={scoreFilter}
+                onKpiClick={handleKpiClick}
+                onExport={handleExport}
+                onNavigateCompare={handleNavigateCompare}
+                selectedCount={selectedIds.length}
+                viewMode={viewMode}
+                setViewMode={setViewMode}
+                onRefresh={refetch}
+                isRefreshing={isFetching}
               />
 
-              {/* Pagination Controls */}
-              <Pagination
-                currentPage={currentPage}
-                totalItems={filteredCandidates.length}
-                itemsPerPage={itemsPerPage}
-                onPageChange={setCurrentPage}
-                onItemsPerPageChange={(val: number | 'all') => {
-                  setItemsPerPage(val);
+              {/* Search, Position, Status, Score, and Sort Controls */}
+              <SearchAndFilter
+                searchQuery={searchQuery}
+                setSearchQuery={(q: string) => {
+                  setSearchQuery(q);
                   setCurrentPage(1);
                 }}
+                statusFilter={statusFilter}
+                setStatusFilter={(st: string) => {
+                  setStatusFilter(st);
+                  setCurrentPage(1);
+                }}
+                jobFilter={jobFilter}
+                setJobFilter={(job: string) => {
+                  setJobFilter(job);
+                  setCurrentPage(1);
+                }}
+                jobOptions={jobOptions}
+                scoreFilter={scoreFilter}
+                setScoreFilter={(sf: string) => {
+                  setScoreFilter(sf);
+                  setCurrentPage(1);
+                }}
+                sortBy={sortBy}
+                setSortBy={setSortBy}
+                showSuggestions={showSuggestions}
+                setShowSuggestions={setShowSuggestions}
+                suggestions={suggestions}
+                onResetFilters={handleResetFilters}
+                isFiltered={isFiltered}
+                includeArchived={includeArchived}
+                setIncludeArchived={(val: boolean) => {
+                  setIncludeArchived(val);
+                  setCurrentPage(1);
+                }}
+                archivedCount={stats.archived}
+                hiddenArchivedMatchCount={hiddenArchivedMatchCount}
               />
+
+              {/* Active Banner when Archived candidates are visible alongside active */}
+              {includeArchived && statusFilter !== 'Archived' && (
+                <div className="mb-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 p-3.5 sm:p-4 bg-amber-50/90 border border-amber-200/90 rounded-2xl text-xs sm:text-sm text-amber-900 shadow-xs animate-in fade-in duration-200">
+                  <div className="flex items-center gap-2.5">
+                    <div className="p-1.5 bg-amber-100 rounded-xl text-amber-800 shrink-0">
+                      <Archive size={15} />
+                    </div>
+                    <div>
+                      <span className="font-bold">Archived records visible:</span> Both active and archived candidate applications are included in the screening view.
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setIncludeArchived(false)}
+                    className="px-3 py-1.5 bg-amber-100 hover:bg-amber-200 text-amber-900 font-bold rounded-xl text-xs transition-all cursor-pointer whitespace-nowrap self-end sm:self-auto shadow-xs"
+                  >
+                    Hide Archived
+                  </button>
+                </div>
+              )}
+
+              {/* Job Filter Indicator Banner */}
+              {jobFilter !== "All Jobs" && (
+                <div className="mb-5 bg-pink-50/70 border border-pink-200/70 rounded-2xl p-3.5 sm:p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs animate-in fade-in duration-200">
+                  <div>
+                    <h3 className="text-sm sm:text-base font-bold text-gray-900">
+                      Showing applicants for: <span className="text-[#D60041]">{jobFilter}</span>
+                    </h3>
+                    <p className="text-xs text-gray-500 font-medium mt-0.5">
+                      Total matching applicants: <span className="font-bold text-gray-800">{filteredCandidates.length}</span>
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setJobFilter("All Jobs")}
+                    className="px-3 py-1.5 bg-white hover:bg-gray-50 rounded-xl text-xs font-bold text-[#D60041] border border-pink-200 shadow-xs transition-all cursor-pointer self-end sm:self-auto"
+                  >
+                    Clear Position
+                  </button>
+                </div>
+              )}
+
+              {/* Bulk Action Bar (Visible when 1+ candidates selected) */}
+              <BulkActionBar
+                selectedCount={selectedIds.length}
+                totalFilteredCount={filteredCandidates.length}
+                allSelected={allFilteredSelected}
+                onToggleSelectAll={handleToggleSelectAll}
+                onClearSelection={() => setSelectedIds([])}
+                onCompare={handleNavigateCompare}
+                onBatchStatusUpdate={handleBatchStatusUpdate}
+                onBatchArchive={handleBatchArchive}
+                onBatchDelete={handleBatchDelete}
+                onBatchExport={handleBatchExport}
+              />
+
+              {/* Candidates Content Area */}
+              {isLoading ? (
+                <div className="flex flex-col items-center justify-center py-20 sm:py-24 bg-white rounded-2xl sm:rounded-3xl border border-gray-200/80 shadow-xs">
+                  <div className="w-10 h-10 sm:w-12 sm:h-12 border-3 sm:border-4 border-pink-100 border-t-[#D60041] rounded-full animate-spin mb-4"></div>
+                  <p className="text-gray-600 font-bold text-xs sm:text-sm">Loading candidates...</p>
+                  <p className="text-gray-400 text-xs mt-1">Retrieving ATS match scores from database</p>
+                </div>
+              ) : (
+                <>
+                  <CandidateList
+                    candidates={paginatedCandidates}
+                    viewMode={viewMode}
+                    selectedIds={selectedIds}
+                    onToggleSelect={handleToggleSelect}
+                    onSelectAll={handleToggleSelectAll}
+                    onOpenDetails={handleOpenDetails}
+                    onOpenInterview={handleOpenInterview}
+                    onUpdateStatus={handleUpdateStatus}
+                    onArchiveApplication={handleArchiveApplication}
+                    onRestoreApplication={handleRestoreApplication}
+                    onDeleteApplication={handleDeleteApplication}
+                    onSkillClick={handleSkillClick}
+                    onResetFilters={handleResetFilters}
+                  />
+
+                  {/* Pagination Controls */}
+                  <Pagination
+                    currentPage={currentPage}
+                    totalItems={filteredCandidates.length}
+                    itemsPerPage={itemsPerPage}
+                    onPageChange={setCurrentPage}
+                    onItemsPerPageChange={(val: number | 'all') => {
+                      setItemsPerPage(val);
+                      setCurrentPage(1);
+                    }}
+                  />
+                </>
+              )}
+
+              {/* End of Pool Tab */}
             </>
           )}
 
         </main>
       </div>
+
+      {/* Start Screening Setup Modal */}
+      <StartScreeningModal
+        isOpen={startModalOpen}
+        onClose={() => setStartModalOpen(false)}
+        jobs={rawJobs}
+        onStartScreening={(config) => {
+          setScreeningConfig(config);
+          setActiveTab('workflow');
+        }}
+        initialJobId={screeningConfig?.jobId}
+      />
+
+      {/* Finalize Shortlist Modal */}
+      <FinalizeShortlistModal
+        isOpen={finalizeModalOpen}
+        onClose={() => setFinalizeModalOpen(false)}
+        jobId={screeningConfig?.jobId || 0}
+        jobTitle={screeningConfig?.jobTitle || 'Shortlist'}
+        candidateIds={finalizeCandidateIds}
+        onFinalize={handleFinalizeShortlist}
+      />
+
+      {/* Roster Pipeline Tracking Modal */}
+      {activeRoster && (
+        <RosterPipelineModal
+          rosterId={activeRoster.id}
+          isOpen={!!activeRoster}
+          onClose={() => setActiveRoster(null)}
+          onScheduleInterview={(c) => {
+            setSelectedCandidate(c);
+            setInterviewModalOpen(true);
+          }}
+          onOpenDetails={(c) => {
+            setSelectedCandidate(c);
+            setDetailsModalOpen(true);
+          }}
+        />
+      )}
 
       {/* Schedule Interview Modal */}
       <ScheduleInterviewModal
@@ -664,9 +894,9 @@ const ScreeningPortal: React.FC = () => {
         onClose={() => setInterviewModalOpen(false)}
         candidate={selectedCandidate}
         onScheduled={() => {
-          showToastMessage('Interview scheduled successfully! Candidate marked as Reviewed.', 'success');
+          showToastMessage('Interview scheduled successfully! Candidate marked as Interview Scheduled.', 'success');
           if (selectedCandidate) {
-            setSelectedCandidate((prev: any) => ({ ...prev, status: 'Reviewed' }));
+            setSelectedCandidate((prev: any) => ({ ...prev, status: 'Interview Scheduled' }));
           }
           refetch();
         }}
@@ -688,14 +918,14 @@ const ScreeningPortal: React.FC = () => {
             <div className="flex items-center justify-center w-14 h-14 bg-rose-50 border-2 border-rose-100 rounded-2xl text-rose-600 mb-6 mx-auto">
               <AlertCircle className="w-6 h-6" />
             </div>
-            
+
             <h3 className="text-lg font-bold text-gray-900 text-center uppercase tracking-wider mb-2">
               {confirmModal.title}
             </h3>
             <p className="text-sm text-gray-500 text-center font-medium leading-relaxed mb-8">
               {confirmModal.message}
             </p>
-            
+
             <div className="flex gap-4">
               <button
                 type="button"
@@ -721,11 +951,10 @@ const ScreeningPortal: React.FC = () => {
 
       {/* Toast Notification */}
       {toast && (
-        <div className={`fixed bottom-6 right-6 flex items-center gap-3 px-5 py-4 rounded-2xl shadow-2xl border animate-in slide-in-from-bottom-5 duration-300 z-50 ${
-          toast.type === 'success' 
-            ? 'bg-emerald-50 border-emerald-100 text-emerald-800' 
-            : 'bg-rose-50 border-rose-100 text-rose-800'
-        }`}>
+        <div className={`fixed bottom-6 right-6 flex items-center gap-3 px-5 py-4 rounded-2xl shadow-2xl border animate-in slide-in-from-bottom-5 duration-300 z-50 ${toast.type === 'success'
+          ? 'bg-emerald-50 border-emerald-100 text-emerald-800'
+          : 'bg-rose-50 border-rose-100 text-rose-800'
+          }`}>
           {toast.type === 'success' ? (
             <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
           ) : (

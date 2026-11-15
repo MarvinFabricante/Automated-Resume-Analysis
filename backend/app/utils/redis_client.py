@@ -1,6 +1,9 @@
 import os
 import json
 import uuid
+import socket
+import subprocess
+import time as _time
 import logging
 import asyncio
 from datetime import datetime, date, time
@@ -18,6 +21,55 @@ logger = logging.getLogger(__name__)
 
 # Connection configuration
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+
+
+def ensure_local_redis_running() -> bool:
+    """
+    If REDIS_URL targets localhost:6379 and nothing is listening yet,
+    automatically start the bundled Windows redis-server.exe in backend/.redis.
+    """
+    if not any(host in REDIS_URL for host in ("localhost", "127.0.0.1")):
+        return True
+
+    def _is_port_open(port: int = 6379) -> bool:
+        try:
+            with socket.create_connection(("127.0.0.1", port), timeout=0.3):
+                return True
+        except OSError:
+            return False
+
+    if _is_port_open(6379):
+        return True
+
+    backend_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+    redis_dir = os.path.join(backend_root, ".redis")
+    redis_exe = os.path.join(redis_dir, "redis-server.exe")
+    redis_conf = os.path.join(redis_dir, "redis.windows.conf")
+
+    if os.path.isfile(redis_exe) and not os.environ.get("SKIP_REDIS_SUBPROCESS"):
+        try:
+            cmd = [redis_exe, redis_conf] if os.path.isfile(redis_conf) else [redis_exe]
+            creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
+            proc = subprocess.Popen(
+                cmd,
+                cwd=redis_dir,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                stdin=subprocess.DEVNULL,
+                creationflags=creationflags if os.name == "nt" else 0,
+            )
+            for _ in range(5):
+                if _is_port_open(6379):
+                    logger.info("Started local Redis server on 127.0.0.1:6379")
+                    return True
+                _time.sleep(0.05)
+        except Exception as exc:
+            logger.debug(f"Failed to auto-start local Redis server: {exc}")
+
+    return _is_port_open(6379)
+
+
+ensure_local_redis_running()
 
 _async_pools: Dict[Any, aioredis.ConnectionPool] = {}
 _sync_pool: Optional[syncredis.ConnectionPool] = None

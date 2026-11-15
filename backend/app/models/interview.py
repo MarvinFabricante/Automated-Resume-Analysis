@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, Boolean, Text
+from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, Boolean, Text, JSON
 from sqlalchemy.orm import relationship
 from datetime import datetime
 from app.utils.database import Base
@@ -16,6 +16,10 @@ class Interview(Base):
     google_event_id = Column(String, nullable=True)
     meeting_link = Column(String, nullable=True)
     status = Column(String, default="SCHEDULED") # SCHEDULED, CONFIRMED, RESCHEDULE_REQUESTED, COMPLETED, CANCELED, NO_SHOW
+    
+    # Combined interview support (REQ085)
+    is_combined = Column(Boolean, default=False, nullable=True)
+    combined_application_ids = Column(JSON, nullable=True) # list of application IDs included
     
     # AI Voice Notification tracking (REQ028 - REQ034)
     call_status = Column(String, default="PENDING") # PENDING, IN_PROGRESS, CONFIRMED, RESCHEDULE_REQUESTED, RETRY_SCHEDULED, UNREACHABLE, FAILED, SMS_BACKUP_SENT

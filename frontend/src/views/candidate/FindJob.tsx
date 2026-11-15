@@ -264,7 +264,7 @@ const FindJob: React.FC = () => {
   return (
     <div className="bg-[#F8FAFC] text-slate-900 antialiased font-['Inter',_sans-serif] min-h-screen flex flex-col">
       <Helmet>
-        <title>Careers & Open Positions | Mariwasa Candidate Portal</title>
+        <title>Open Positions | Mariwasa Recruitment</title>
       </Helmet>
 
       <Header />
@@ -281,7 +281,7 @@ const FindJob: React.FC = () => {
 
             <div className="max-w-[1360px] mx-auto relative z-10">
               <div className="flex flex-col items-start max-w-4xl">
-                
+
                 {/* Brand Badge */}
                 <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[#D10043]/5 border border-[#D10043]/15 text-[#D10043] text-xs font-black uppercase tracking-[0.2em] mb-6 animate-in fade-in slide-in-from-left-3 duration-500">
                   <Sparkles size={14} className="text-[#D10043] animate-pulse" />
@@ -301,10 +301,10 @@ const FindJob: React.FC = () => {
 
                 {/* ADVANCED MULTI-FACETED SEARCH CONSOLE */}
                 <div className="w-full bg-white p-3 sm:p-4 rounded-[28px] sm:rounded-[36px] shadow-xl shadow-slate-200/70 border border-slate-200/80 space-y-3 animate-in fade-in slide-in-from-bottom-4 duration-700">
-                  
+
                   {/* Primary Search Row */}
                   <div className="flex flex-col md:flex-row gap-2.5">
-                    
+
                     {/* Keyword Search Input */}
                     <div className="relative flex-grow">
                       <Search className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
@@ -364,7 +364,7 @@ const FindJob: React.FC = () => {
 
                   {/* Secondary Quick Filters Strip */}
                   <div className="flex flex-wrap items-center justify-between gap-3 pt-2 sm:pt-3 border-t border-slate-100">
-                    
+
                     {/* Quick Department Chips */}
                     <div className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto py-1 max-w-full scrollbar-none">
                       <span className="text-[11px] font-black uppercase tracking-wider text-slate-400 mr-1 shrink-0">
@@ -377,17 +377,15 @@ const FindJob: React.FC = () => {
                             key={dept}
                             type="button"
                             onClick={() => setSelectedDept(dept)}
-                            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all shrink-0 ${
-                              isSelected
+                            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all shrink-0 ${isSelected
                                 ? 'bg-[#D10043] text-white shadow-sm shadow-[#D10043]/20'
                                 : 'bg-slate-100/80 hover:bg-slate-200 text-slate-600'
-                            }`}
+                              }`}
                           >
                             {dept}
                             {dept !== 'All' && deptCounts[dept] ? (
-                              <span className={`ml-1.5 text-[10px] px-1.5 py-0.2 rounded-full ${
-                                isSelected ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-700'
-                              }`}>
+                              <span className={`ml-1.5 text-[10px] px-1.5 py-0.2 rounded-full ${isSelected ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-700'
+                                }`}>
                                 {deptCounts[dept]}
                               </span>
                             ) : null}
@@ -396,32 +394,30 @@ const FindJob: React.FC = () => {
                       })}
                     </div>
 
-                    {/* Quick Action Pills: Smart Match Upload & Saved Jobs */}
+                    {/* Quick Action Pills: Upload Resume & Saved Jobs */}
                     <div className="flex items-center gap-2 ml-auto shrink-0">
                       <button
                         type="button"
                         onClick={() => navigate('/candidate/smart-upload')}
-                        className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all bg-[#D10043]/10 hover:bg-[#D10043] text-[#D10043] hover:text-white border border-[#D10043]/20 shadow-2xs group"
+                        className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all bg-[#D10043]/10 hover:bg-[#D10043] text-[#D10043] hover:text-white border border-[#D10043]/20 shadow-2xs group cursor-pointer"
                       >
-                        <Sparkles size={13} className="text-[#D10043] group-hover:text-white animate-pulse" />
-                        Smart Match Upload
+                        <FileUp size={13} className="text-[#D10043] group-hover:text-white" />
+                        <span>Upload Resume</span>
                       </button>
 
                       <button
                         type="button"
                         onClick={() => setShowSavedOnly(!showSavedOnly)}
-                        className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all border ${
-                          showSavedOnly
+                        className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all border ${showSavedOnly
                             ? 'bg-pink-50 text-[#D10043] border-pink-200 shadow-sm'
                             : 'bg-white hover:bg-slate-50 text-slate-600 border-slate-200'
-                        }`}
+                          }`}
                       >
                         <Bookmark size={13} className={showSavedOnly ? 'fill-[#D10043]' : ''} />
                         Saved Jobs
                         {bookmarkedIds.length > 0 && (
-                          <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${
-                            showSavedOnly ? 'bg-[#D10043] text-white' : 'bg-slate-100 text-slate-600'
-                          }`}>
+                          <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${showSavedOnly ? 'bg-[#D10043] text-white' : 'bg-slate-100 text-slate-600'
+                            }`}>
                             {bookmarkedIds.length}
                           </span>
                         )}
@@ -446,22 +442,21 @@ const FindJob: React.FC = () => {
                 {/* DEDICATED SMART MATCH UPLOAD PROMO CARD */}
                 <div className="w-full mt-6 bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 text-white rounded-[28px] sm:rounded-[36px] p-6 sm:p-8 shadow-xl border border-slate-700/60 flex flex-col md:flex-row items-start md:items-center justify-between gap-6 relative overflow-hidden group">
                   <div className="absolute top-0 right-0 w-80 h-80 bg-[#D10043]/15 rounded-full blur-3xl pointer-events-none group-hover:scale-125 transition-transform duration-700" />
-                  
+
                   <div className="relative z-10 space-y-2 max-w-2xl">
                     <div className="flex items-center gap-2">
                       <span className="px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-[0.2em] bg-[#D10043]/20 text-rose-300 border border-[#D10043]/30 flex items-center gap-1.5">
-                        <Sparkles size={12} className="animate-pulse text-[#D10043]" />
-                        AI Smart Match
+                        <FileUp size={12} className="text-[#D10043]" />
+                        Resume Matching
                       </span>
-                      <span className="text-xs text-slate-400 font-semibold hidden sm:inline">• Automated Role Compatibility</span>
                     </div>
 
                     <h3 className="text-xl sm:text-2xl font-black tracking-tight text-white">
                       Unsure which role matches your experience?
                     </h3>
-                    
+
                     <p className="text-xs sm:text-sm text-slate-300 font-normal leading-relaxed">
-                      Upload your resume to our AI engine to evaluate your skillset, experience, and credentials against every active vacancy at Mariwasa and discover your top-scoring positions.
+                      Upload your resume and we'll compare your experience with all open positions to show you where you fit best.
                     </p>
                   </div>
 
@@ -472,7 +467,7 @@ const FindJob: React.FC = () => {
                       className="w-full md:w-auto px-7 py-4 rounded-2xl bg-[#D10043] hover:bg-white hover:text-slate-900 text-white font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2.5 transition-all shadow-xl shadow-[#D10043]/25 active:scale-[0.98]"
                     >
                       <FileUp size={16} />
-                      Smart Match Upload
+                      Upload Resume
                       <ArrowRight size={16} />
                     </button>
                   </div>
@@ -484,10 +479,10 @@ const FindJob: React.FC = () => {
 
           {/* MAIN RESULTS SECTION */}
           <section id="jobs-results-anchor" className="max-w-[1360px] mx-auto px-4 sm:px-6 lg:px-10 py-10 sm:py-16">
-            
+
             {/* TOOLBAR & CONTROLS */}
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8 sm:mb-10 pb-6 border-b border-slate-200/80">
-              
+
               <div>
                 <div className="flex items-center gap-2.5">
                   <h2 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
@@ -501,14 +496,14 @@ const FindJob: React.FC = () => {
                   {showSavedOnly
                     ? 'Review bookmarked positions and complete your applications'
                     : selectedDept !== 'All'
-                    ? `Showing open roles in ${selectedDept}`
-                    : 'Browse open roles across Mariwasa divisions'}
+                      ? `Showing open roles in ${selectedDept}`
+                      : 'Browse open roles across Mariwasa divisions'}
                 </p>
               </div>
 
               {/* View Mode & Sort Controls */}
               <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-end">
-                
+
                 {/* Sort selector */}
                 <div className="relative">
                   <select
@@ -530,11 +525,10 @@ const FindJob: React.FC = () => {
                     type="button"
                     onClick={() => setViewMode('grid')}
                     title="Grid View"
-                    className={`p-2 rounded-lg transition-all ${
-                      viewMode === 'grid'
+                    className={`p-2 rounded-lg transition-all ${viewMode === 'grid'
                         ? 'bg-[#D10043] text-white shadow-xs'
                         : 'text-slate-400 hover:text-slate-700 hover:bg-slate-50'
-                    }`}
+                      }`}
                   >
                     <LayoutGrid size={17} />
                   </button>
@@ -542,11 +536,10 @@ const FindJob: React.FC = () => {
                     type="button"
                     onClick={() => setViewMode('list')}
                     title="List View"
-                    className={`p-2 rounded-lg transition-all ${
-                      viewMode === 'list'
+                    className={`p-2 rounded-lg transition-all ${viewMode === 'list'
                         ? 'bg-[#D10043] text-white shadow-xs'
                         : 'text-slate-400 hover:text-slate-700 hover:bg-slate-50'
-                    }`}
+                      }`}
                   >
                     <List size={17} />
                   </button>
@@ -581,7 +574,7 @@ const FindJob: React.FC = () => {
                 ))}
               </div>
             ) : filteredJobs.length === 0 ? (
-              
+
               /* EMPTY STATE */
               <div className="py-20 sm:py-24 text-center bg-white rounded-[36px] sm:rounded-[48px] border-2 border-dashed border-slate-200/80 px-6 max-w-2xl mx-auto shadow-xs">
                 <div className="w-20 h-20 bg-pink-50 text-[#D10043] rounded-3xl flex items-center justify-center mx-auto mb-6 shadow-sm">
@@ -606,10 +599,10 @@ const FindJob: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => navigate('/candidate/smart-upload')}
-                    className="inline-flex items-center gap-2 px-7 py-3.5 bg-[#D10043] hover:bg-slate-900 text-white rounded-2xl font-black text-xs uppercase tracking-wider transition-all shadow-lg shadow-[#D10043]/20 active:scale-95"
+                    className="inline-flex items-center gap-2 px-7 py-3.5 bg-[#D10043] hover:bg-slate-900 text-white rounded-2xl font-black text-xs uppercase tracking-wider transition-all shadow-lg shadow-[#D10043]/20 active:scale-95 cursor-pointer"
                   >
-                    <Sparkles size={15} />
-                    Try Smart Match Upload
+                    <FileUp size={15} />
+                    <span>Upload Resume</span>
                   </button>
                 </div>
               </div>
@@ -620,7 +613,7 @@ const FindJob: React.FC = () => {
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 gap-6 sm:gap-8">
                 {paginatedJobs.map((job) => {
                   const isBookmarked = bookmarkedIds.includes(job.id);
-                  
+
                   // Parse skill tags
                   const skills = typeof job.skills_requirements === 'string'
                     ? job.skills_requirements.split(/[,;\n•]+/).map((s) => s.trim()).filter(Boolean)
@@ -656,11 +649,10 @@ const FindJob: React.FC = () => {
                             type="button"
                             onClick={() => handleToggleBookmark(job.id)}
                             title={isBookmarked ? 'Remove Bookmark' : 'Save Job'}
-                            className={`p-2.5 rounded-xl border transition-all ${
-                              isBookmarked
+                            className={`p-2.5 rounded-xl border transition-all ${isBookmarked
                                 ? 'bg-pink-50 text-[#D10043] border-pink-200 shadow-xs'
                                 : 'text-slate-300 hover:text-[#D10043] hover:bg-pink-50/50 border-slate-100'
-                            }`}
+                              }`}
                           >
                             <Bookmark size={18} className={isBookmarked ? 'fill-[#D10043]' : ''} />
                           </button>
@@ -716,7 +708,7 @@ const FindJob: React.FC = () => {
 
                       {/* ACTION BUTTONS (Details & Apply Now) */}
                       <div className="pt-5 border-t border-slate-100 flex items-center gap-2.5">
-                        
+
                         {/* DETAILS BUTTON */}
                         <button
                           type="button"
@@ -732,11 +724,10 @@ const FindJob: React.FC = () => {
                           type="button"
                           onClick={() => handleApply(job.id)}
                           disabled={!job.is_active}
-                          className={`flex-1 py-3.5 px-4 rounded-2xl font-black text-xs uppercase tracking-wider flex items-center justify-center gap-1.5 transition-all shadow-md ${
-                            job.is_active
+                          className={`flex-1 py-3.5 px-4 rounded-2xl font-black text-xs uppercase tracking-wider flex items-center justify-center gap-1.5 transition-all shadow-md ${job.is_active
                               ? 'bg-[#D10043] text-white shadow-[#D10043]/20 hover:bg-slate-900 active:scale-[0.98]'
                               : 'bg-slate-100 text-slate-400 cursor-not-allowed shadow-none'
-                          }`}
+                            }`}
                         >
                           {job.is_active ? (
                             <>
@@ -816,17 +807,16 @@ const FindJob: React.FC = () => {
 
                       {/* Right: Actions */}
                       <div className="flex items-center gap-2.5 shrink-0 pt-4 lg:pt-0 border-t lg:border-t-0 border-slate-100">
-                        
+
                         {/* Bookmark Button */}
                         <button
                           type="button"
                           onClick={() => handleToggleBookmark(job.id)}
                           title={isBookmarked ? 'Remove Bookmark' : 'Save Job'}
-                          className={`p-3 rounded-2xl border transition-all ${
-                            isBookmarked
+                          className={`p-3 rounded-2xl border transition-all ${isBookmarked
                               ? 'bg-pink-50 text-[#D10043] border-pink-200'
                               : 'text-slate-400 hover:text-[#D10043] hover:bg-pink-50/50 border-slate-200'
-                          }`}
+                            }`}
                         >
                           <Bookmark size={18} className={isBookmarked ? 'fill-[#D10043]' : ''} />
                         </button>
@@ -846,11 +836,10 @@ const FindJob: React.FC = () => {
                           type="button"
                           onClick={() => handleApply(job.id)}
                           disabled={!job.is_active}
-                          className={`px-6 py-3 rounded-2xl font-black text-xs uppercase tracking-wider flex items-center gap-2 transition-all shadow-md ${
-                            job.is_active
+                          className={`px-6 py-3 rounded-2xl font-black text-xs uppercase tracking-wider flex items-center gap-2 transition-all shadow-md ${job.is_active
                               ? 'bg-[#D10043] text-white shadow-[#D10043]/20 hover:bg-slate-900 active:scale-[0.98]'
                               : 'bg-slate-100 text-slate-400 cursor-not-allowed shadow-none'
-                          }`}
+                            }`}
                         >
                           {job.is_active ? (
                             <>
@@ -916,7 +905,7 @@ const FindJob: React.FC = () => {
             <div className="absolute top-0 right-1/4 w-96 h-96 bg-[#D10043]/10 rounded-full blur-3xl pointer-events-none" />
 
             <div className="max-w-[1360px] mx-auto relative z-10">
-              
+
               <div className="text-center max-w-2xl mx-auto mb-12 sm:mb-16">
                 <span className="text-[10px] font-black uppercase tracking-[0.3em] text-[#D10043] block mb-2">
                   Philippine Ceramic Pioneer

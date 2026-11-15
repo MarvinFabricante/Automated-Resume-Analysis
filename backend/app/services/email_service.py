@@ -815,6 +815,69 @@ async def send_application_status_update_email(
     return await _send_email_redis_first(to_email, subject, body, "application_status_update")
 
 
+async def send_hr_message_notification_email(
+    to_email: str,
+    candidate_name: str,
+    sender_name: str,
+    message_type: str,
+    content: str,
+    job_title: Optional[str] = None
+) -> bool:
+    """Send email alert to applicant when HR sends a direct or broadcast message (REQ064)."""
+    clean_type = (message_type or "General Message").replace("_", " ").title()
+    subject = f"New Communication: {clean_type} from Mariwasa HR"
+    if job_title:
+        subject += f" ({job_title})"
+
+    html_content = content.replace("\n", "<br>")
+    body = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="utf-8">
+        <style>
+            body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f1f5f9; margin: 0; padding: 20px; }}
+            .card {{ max-width: 580px; margin: 0 auto; background: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); border: 1px solid #e2e8f0; }}
+            .header {{ background: linear-gradient(135deg, #D60041 0%, #900028 100%); color: white; padding: 28px 32px; }}
+            .body {{ padding: 32px; color: #334155; }}
+            .msg-box {{ background: #f8fafc; border-left: 4px solid #D60041; padding: 16px 20px; margin: 20px 0; border-radius: 4px; font-size: 15px; line-height: 1.6; color: #1e293b; }}
+            .type-badge {{ display: inline-block; background: rgba(255,255,255,0.2); padding: 4px 10px; border-radius: 12px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }}
+            .footer {{ background: #f8fafc; border-top: 1px solid #e2e8f0; padding: 18px 32px; text-align: center; font-size: 11px; color: #94a3b8; }}
+        </style>
+    </head>
+    <body>
+        <div class="card">
+            <div class="header">
+                <span class="type-badge">{clean_type}</span>
+                <h2 style="margin: 0; font-size: 20px; font-weight: 700;">Message from Mariwasa Siam Ceramics HR</h2>
+            </div>
+            <div class="body">
+                <p style="margin: 0 0 12px 0;">Dear <strong>{candidate_name}</strong>,</p>
+                <p style="margin: 0 0 16px 0; font-size: 14px; color: #475569;">
+                    The HR team at Mariwasa Siam Ceramics has sent you the following communication:
+                </p>
+                <div class="msg-box">
+                    {html_content}
+                </div>
+                <p style="font-size: 13px; color: #64748b; margin-top: 24px;">
+                    <em>Note: This is a one-way notification from the recruitment desk. Please check your candidate portal for any scheduled interview details or status updates.</em>
+                </p>
+                <p style="font-size: 13px; color: #334155; margin-top: 20px;">
+                    Best regards,<br>
+                    <strong>{sender_name}</strong><br>
+                    Talent Acquisition | Mariwasa Siam Ceramics, Inc.
+                </p>
+            </div>
+            <div class="footer">
+                &copy; 2026 Mariwasa Siam Ceramics, Inc. All rights reserved.
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+    return await _send_email_redis_first(to_email, subject, body, "hr_message_notification")
+
+
 email_service = sys.modules[__name__]
 EmailService = sys.modules[__name__]
 

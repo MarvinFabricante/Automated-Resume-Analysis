@@ -9,12 +9,16 @@ class Message(Base):
     id = Column(Integer, primary_key=True, index=True)
     sender_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     receiver_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    application_id = Column(Integer, ForeignKey("job_applications.id", ondelete="SET NULL"), nullable=True, index=True)
+    message_type = Column(String, default="general", nullable=True) # update, instructions, announcement, reminder, general
     content = Column(Text, nullable=False)
     timestamp = Column(DateTime(timezone=True), server_default=func.now())
     is_read = Column(Boolean, default=False)
+    read_at = Column(DateTime(timezone=True), nullable=True)
 
     sender = relationship("User", foreign_keys=[sender_id])
     receiver = relationship("User", foreign_keys=[receiver_id])
+    job_application = relationship("JobApplication", foreign_keys=[application_id], lazy="selectin")
 
 
 class ArchivedConversation(Base):

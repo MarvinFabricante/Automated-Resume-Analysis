@@ -1,5 +1,6 @@
 import asyncio
 import pytest
+import pytest_asyncio
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.pool import StaticPool
 from httpx import ASGITransport, AsyncClient
@@ -9,15 +10,7 @@ from app.utils.database import Base, get_db
 # Use SQLite in-memory for testing
 DATABASE_URL = "sqlite+aiosqlite:///:memory:"
 
-@pytest.fixture(scope="session")
-def event_loop():
-    """Create an instance of the default event loop for each test case."""
-    policy = asyncio.get_event_loop_policy()
-    loop = policy.new_event_loop()
-    yield loop
-    loop.close()
-
-@pytest.fixture(scope="session")
+@pytest_asyncio.fixture(loop_scope="function")
 async def test_engine():
     engine = create_async_engine(
         DATABASE_URL,
@@ -31,7 +24,7 @@ async def test_engine():
     yield engine
     await engine.dispose()
 
-@pytest.fixture
+@pytest_asyncio.fixture(loop_scope="function")
 async def db_session(test_engine):
     async_session = async_sessionmaker(
         test_engine, class_=AsyncSession, expire_on_commit=False
@@ -40,7 +33,7 @@ async def db_session(test_engine):
         yield session
         await session.rollback()
 
-@pytest.fixture
+@pytest_asyncio.fixture(loop_scope="function")
 async def client(db_session):
     async def override_get_db():
         yield db_session

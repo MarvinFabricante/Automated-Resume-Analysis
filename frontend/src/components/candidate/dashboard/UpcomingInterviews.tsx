@@ -50,7 +50,7 @@ const UpcomingInterviews: React.FC = () => {
             <h3 className="text-base sm:text-lg font-black text-slate-900 tracking-tight">
               Interview Schedule
             </h3>
-            <p className="text-xs text-slate-400 font-medium">Upcoming evaluation sessions</p>
+            <p className="text-xs text-slate-400 font-medium">Upcoming interview sessions</p>
           </div>
         </div>
 
@@ -75,7 +75,7 @@ const UpcomingInterviews: React.FC = () => {
           <div>
             <h4 className="text-xs sm:text-sm font-black text-slate-800">No Pending Interviews</h4>
             <p className="text-xs text-slate-400 leading-relaxed max-w-xs mx-auto mt-0.5">
-              Once your application advances past screening, recruitment evaluation coordinates will appear here.
+              When an interview is scheduled, the meeting details will appear here.
             </p>
           </div>
 

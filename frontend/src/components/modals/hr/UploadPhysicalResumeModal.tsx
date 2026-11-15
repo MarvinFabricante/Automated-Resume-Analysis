@@ -9,14 +9,23 @@ import {
   Calendar,
   Mail,
   Phone,
-  Info,
   CheckCircle2,
   AlertCircle,
   Loader2,
   Sparkles,
-  Tag
+  ArrowRight,
+  ArrowLeft,
+  Check,
+  Building2,
+  MapPin,
+  GraduationCap,
+  Award,
+  AlertTriangle,
+  HelpCircle
 } from 'lucide-react';
-import { useUploadPhysicalResumeMutation, useGetJobsQuery } from '../../../redux/api/apiSlice';
+import { useUploadPhysicalResumeMutation, useGetJobsQuery, useLazyCheckImportDuplicateQuery } from '../../../redux/api/apiSlice';
+import { API_BASE_URL } from '../../../services/api';
+import HelpTooltip from '../../common/HelpTooltip';
 
 interface UploadPhysicalResumeModalProps {
   isOpen: boolean;
@@ -30,7 +39,17 @@ const PRESET_LOCATIONS = [
   'Cabinet B • Walk-in Folder',
   'Plant 2 • HR Front Desk',
   'Administration • Box #12',
-  'Ceramics Division • Vault',
+  'Ceramics Division • HR Archive',
+];
+
+const ALLOWED_EXTS = ['.pdf', '.docx', '.doc', '.txt'];
+const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+
+const STEPS = [
+  { step: 1, title: 'Upload', desc: 'Choose file' },
+  { step: 2, title: 'Review Details', desc: 'Verify info' },
+  { step: 3, title: 'Application Info', desc: 'Role & origin' },
+  { step: 4, title: 'Confirm', desc: 'Finish import' },
 ];
 
 const UploadPhysicalResumeModal: React.FC<UploadPhysicalResumeModalProps> = ({
@@ -38,29 +57,145 @@ const UploadPhysicalResumeModal: React.FC<UploadPhysicalResumeModalProps> = ({
   onClose,
   onSuccess,
 }) => {
-  const [uploadResume, { isLoading }] = useUploadPhysicalResumeMutation();
-  const { data: jobs = [] } = useGetJobsQuery();
+  const [currentStep, setCurrentStep] = useState<number>(1);
+  const [uploadResume, { isLoading: isUploading }] = useUploadPhysicalResumeMutation();
+  const [triggerCheckDuplicate] = useLazyCheckImportDuplicateQuery();
+  const { data: rawJobs = [] } = useGetJobsQuery();
+
+  // Active jobs only
+  const activeJobs = React.useMemo(() => {
+    return (rawJobs || []).filter((j: any) => j.is_active !== false);
+  }, [rawJobs]);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [dragActive, setDragActive] = useState<boolean>(false);
+  const [isExtracting, setIsExtracting] = useState<boolean>(false);
 
+  // Form State
   const [formData, setFormData] = useState({
     candidate_name: '',
     candidate_email: '',
     candidate_phone: '',
+    location: '',
+    education: '',
+    experience: '',
+    skills: '',
+    certifications: '',
     target_job_id: '',
     target_job_title: '',
+    import_origin: 'Walk-in',
     physical_location: 'Cabinet A • Shelf 1',
     submission_date: new Date().toISOString().split('T')[0],
-    status_val: 'RECEIVED',
     notes: '',
   });
 
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [duplicateWarning, setDuplicateWarning] = useState<string | null>(null);
 
   if (!isOpen) return null;
+
+  const handleReset = () => {
+    setCurrentStep(1);
+    setSelectedFile(null);
+    setFormData({
+      candidate_name: '',
+      candidate_email: '',
+      candidate_phone: '',
+      location: '',
+      education: '',
+      experience: '',
+      skills: '',
+      certifications: '',
+      target_job_id: '',
+      target_job_title: '',
+      import_origin: 'Walk-in',
+      physical_location: 'Cabinet A • Shelf 1',
+      submission_date: new Date().toISOString().split('T')[0],
+      notes: '',
+    });
+    setErrors({});
+    setErrorMessage(null);
+    setDuplicateWarning(null);
+    setIsExtracting(false);
+  };
+
+  const handleClose = () => {
+    handleReset();
+    onClose();
+  };
+
+  // Step 1: File selection & auto-extraction
+  const handleFileSelected = async (file: File) => {
+    setErrorMessage(null);
+    setErrors({});
+
+    const ext = '.' + (file.name.split('.').pop() || '').toLowerCase();
+    if (!ALLOWED_EXTS.includes(ext)) {
+      setErrorMessage(`Unsupported file format '${ext}'. Please choose a PDF, DOCX, or TXT file.`);
+      return;
+    }
+
+    if (file.size === 0) {
+      setErrorMessage('The selected file is blank (0 bytes). Please choose a valid resume document.');
+      return;
+    }
+
+    if (file.size > MAX_FILE_SIZE) {
+      setErrorMessage(`File is too large (${(file.size / (1024 * 1024)).toFixed(1)} MB). The maximum allowed size is 10 MB.`);
+      return;
+    }
+
+    setSelectedFile(file);
+    setIsExtracting(true);
+
+    try {
+      const parseData = new FormData();
+      parseData.append('file', file);
+
+      const token = typeof localStorage !== 'undefined' ? localStorage.getItem('token') : null;
+      const res = await fetch(`${API_BASE_URL}/candidate/parse-resume`, {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: parseData,
+      });
+
+      if (res.ok) {
+        const parsed = await res.json();
+        const extractedName = parsed.fullname || parsed.name || parsed.candidate_name || '';
+        const extractedEmail = parsed.email || parsed.candidate_email || '';
+        const extractedPhone = parsed.phone || parsed.candidate_phone || '';
+        const extractedLocation = parsed.location || '';
+        const extractedDegree = parsed.degree || parsed.highest_degree || parsed.education || '';
+        const extractedExp = parsed.job_title
+          ? `${parsed.job_title}${parsed.company ? ` at ${parsed.company}` : ''}`
+          : parsed.experience || '';
+        const extractedSkills = Array.isArray(parsed.skills_list)
+          ? parsed.skills_list.join(', ')
+          : Array.isArray(parsed.skills)
+          ? parsed.skills.join(', ')
+          : parsed.skills || '';
+        const extractedCerts = parsed.certifications || parsed.candidate_certifications || '';
+
+        setFormData((prev) => ({
+          ...prev,
+          candidate_name: extractedName,
+          candidate_email: extractedEmail,
+          candidate_phone: extractedPhone,
+          location: extractedLocation,
+          education: extractedDegree,
+          experience: extractedExp,
+          skills: extractedSkills,
+          certifications: extractedCerts,
+        }));
+      }
+    } catch (parseErr) {
+      console.warn('Resume pre-parsing completed with manual verification needed:', parseErr);
+    } finally {
+      setIsExtracting(false);
+    }
+  };
 
   const handleDrag = (e: React.DragEvent) => {
     e.preventDefault();
@@ -81,409 +216,745 @@ const UploadPhysicalResumeModal: React.FC<UploadPhysicalResumeModalProps> = ({
     }
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      handleFileSelected(e.target.files[0]);
-    }
-  };
-
-  const handleFileSelected = async (file: File) => {
-    try {
-      const slice = file.slice(0, 1024);
-      const buffer = await slice.arrayBuffer();
-      const bytes = new Uint8Array(buffer);
-      if (bytes.length >= 2 && bytes[0] === 0x4d && bytes[1] === 0x5a) {
-        setErrorMessage('File rejected by content check: Executable files (.exe) disguised as documents are strictly rejected.');
-        return;
-      }
-      if (bytes.length >= 4 && bytes[0] === 0x7f && bytes[1] === 0x45 && bytes[2] === 0x4c && bytes[3] === 0x46) {
-        setErrorMessage('File rejected by content check: Binary executable files are strictly rejected.');
-        return;
-      }
-    } catch {}
-
-    setErrorMessage(null);
-    setSelectedFile(file);
-    setErrors((prev) => ({ ...prev, file: '' }));
-
-    // Pre-fill candidate name if empty and filename looks like a name
-    if (!formData.candidate_name) {
-      const cleanName = file.name
-        .replace(/\.[^/.]+$/, '')
-        .replace(/[-_]/g, ' ')
-        .replace(/(resume|cv|physical|scan)/gi, '')
-        .trim();
-      if (cleanName.length > 2) {
-        setFormData((prev) => ({ ...prev, candidate_name: cleanName }));
-      }
-    }
-  };
-
-  const handleJobSelect = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const val = e.target.value;
-    if (!val) {
-      setFormData((prev) => ({ ...prev, target_job_id: '', target_job_title: '' }));
+  // Step 1 -> Step 2 validation
+  const handleProceedToStep2 = () => {
+    if (!selectedFile) {
+      setErrors({ file: 'Please select a resume file (PDF, DOCX, or TXT) to continue.' });
       return;
     }
-    const found = jobs.find((j: any) => String(j.id) === String(val));
-    setFormData((prev) => ({
-      ...prev,
-      target_job_id: val,
-      target_job_title: found ? found.title || found.job_title : '',
-    }));
+    setErrors({});
+    setCurrentStep(2);
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setErrorMessage(null);
-
+  // Step 2 -> Step 3 validation
+  const handleProceedToStep3 = () => {
     const newErrors: Record<string, string> = {};
-    if (!selectedFile) {
-      newErrors.file = 'Please upload or select the scanned resume file.';
-    }
     if (!formData.candidate_name.trim()) {
       newErrors.candidate_name = 'Candidate full name is required.';
     }
-
     if (Object.keys(newErrors).length > 0) {
       setErrors(newErrors);
       return;
     }
+    setErrors({});
+    setCurrentStep(3);
+  };
+
+  // Step 3: Check duplicate on job/email change
+  const handleJobSelect = async (jobId: string) => {
+    const selected = activeJobs.find((j: any) => String(j.id) === String(jobId));
+    setFormData((prev) => ({
+      ...prev,
+      target_job_id: jobId,
+      target_job_title: selected?.job_title || selected?.title || '',
+    }));
+
+    if (formData.candidate_email && jobId) {
+      try {
+        const res = await triggerCheckDuplicate({ email: formData.candidate_email, jobId }).unwrap();
+        if (res?.duplicate) {
+          setDuplicateWarning(res.message || 'A candidate with this email has already applied for this position.');
+        } else {
+          setDuplicateWarning(null);
+        }
+      } catch {
+        setDuplicateWarning(null);
+      }
+    }
+  };
+
+  // Step 3 -> Step 4 validation
+  const handleProceedToStep4 = () => {
+    const newErrors: Record<string, string> = {};
+    if (!formData.target_job_id) {
+      newErrors.target_job_id = 'Please choose the position the applicant is applying for.';
+    }
+    if (Object.keys(newErrors).length > 0) {
+      setErrors(newErrors);
+      return;
+    }
+    setErrors({});
+    setCurrentStep(4);
+  };
+
+  // Final submission in Step 4
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErrorMessage(null);
+
+    if (!selectedFile) {
+      setErrorMessage('Resume file is missing. Please restart from Step 1.');
+      return;
+    }
 
     try {
-      const data = new FormData();
-      if (selectedFile) {
-        data.append('file', selectedFile);
-      }
-      data.append('candidate_name', formData.candidate_name.trim());
+      const uploadPayload = new FormData();
+      uploadPayload.append('file', selectedFile);
+      uploadPayload.append('candidate_name', formData.candidate_name.trim());
       if (formData.candidate_email.trim()) {
-        data.append('candidate_email', formData.candidate_email.trim());
+        uploadPayload.append('candidate_email', formData.candidate_email.trim());
       }
       if (formData.candidate_phone.trim()) {
-        data.append('candidate_phone', formData.candidate_phone.trim());
+        uploadPayload.append('candidate_phone', formData.candidate_phone.trim());
       }
       if (formData.target_job_id) {
-        data.append('target_job_id', formData.target_job_id);
+        uploadPayload.append('target_job_id', formData.target_job_id);
       }
       if (formData.target_job_title) {
-        data.append('target_job_title', formData.target_job_title);
+        uploadPayload.append('target_job_title', formData.target_job_title);
       }
-      data.append('physical_location', formData.physical_location.trim() || 'General HR Archive');
+      uploadPayload.append('import_origin', formData.import_origin || 'Walk-in');
+      uploadPayload.append('physical_location', formData.physical_location.trim() || 'General HR Archive');
       if (formData.submission_date) {
-        data.append('submission_date', formData.submission_date);
+        uploadPayload.append('submission_date', formData.submission_date);
       }
-      data.append('status_val', formData.status_val);
-      if (formData.notes.trim()) {
-        data.append('notes', formData.notes.trim());
-      }
+      uploadPayload.append('status_val', 'SUBMITTED');
 
-      const res = await uploadResume(data).unwrap();
+      if (formData.location) uploadPayload.append('location', formData.location.trim());
+      if (formData.education) uploadPayload.append('education', formData.education.trim());
+      if (formData.experience) uploadPayload.append('experience', formData.experience.trim());
+      if (formData.skills) uploadPayload.append('skills', formData.skills.trim());
+      if (formData.certifications) uploadPayload.append('certifications', formData.certifications.trim());
+      if (formData.notes) uploadPayload.append('notes', formData.notes.trim());
+
+      const res = await uploadResume(uploadPayload).unwrap();
       if (onSuccess) {
         onSuccess(res);
       }
-      onClose();
+      handleClose();
     } catch (err: any) {
-      console.error('Failed to upload physical resume:', err);
-      setErrorMessage(err?.data?.detail || err?.message || 'Failed to upload physical resume. Please try again.');
+      console.error('Failed to import resume:', err);
+      setErrorMessage(err?.data?.detail || err?.message || 'Failed to import resume. Please try again.');
     }
   };
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/75 backdrop-blur-xs flex items-center justify-center p-2.5 sm:p-4 animate-in fade-in duration-200">
       <div className="bg-white rounded-2xl sm:rounded-3xl shadow-2xl max-w-2xl w-full max-h-[92vh] flex flex-col overflow-hidden border border-slate-200 animate-in zoom-in-95 duration-200">
-        {/* HEADER */}
-        <div className="px-4 sm:px-6 py-4 sm:py-5 border-b border-slate-100 flex items-center justify-between bg-gradient-to-r from-slate-50 to-white shrink-0">
+        
+        {/* MODAL HEADER */}
+        <div className="px-5 sm:px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-gradient-to-r from-slate-50 to-white shrink-0">
           <div className="flex items-center space-x-3 min-w-0">
-            <div className="w-10 h-10 rounded-xl sm:rounded-2xl bg-gradient-to-br from-[#D60041] to-[#B50037] text-white flex items-center justify-center shadow-xs shrink-0">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#D60041] to-[#B50037] text-white flex items-center justify-center shadow-xs shrink-0">
               <FolderArchive size={20} />
             </div>
             <div className="min-w-0">
-              <h3 className="text-sm sm:text-base font-black text-slate-900 tracking-tight truncate">
-                Store Physical Resume
-              </h3>
+              <div className="flex items-center gap-1.5">
+                <h3 className="text-sm sm:text-base font-black text-slate-900 tracking-tight truncate">
+                  Import Resumes
+                </h3>
+                <HelpTooltip text="Add resumes that did not come through this website, such as resumes from other job sites, emails or walk-ins, so they can be screened with the others." />
+              </div>
               <p className="text-[11px] sm:text-xs text-slate-500 font-medium truncate">
-                Upload paper / walk-in scanned resume and assign storage filing location
+                Screen walk-in, emailed, or job board applicants with the same automated matching.
               </p>
             </div>
           </div>
           <button
             type="button"
-            onClick={onClose}
+            onClick={handleClose}
             className="p-1.5 text-slate-400 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer shrink-0 ml-2"
+            aria-label="Close modal"
           >
             <X size={18} />
           </button>
         </div>
 
-        {/* FORM */}
-        <form onSubmit={handleSubmit} className="p-4 sm:p-6 space-y-4 sm:space-y-5 overflow-y-auto flex-1 custom-scrollbar">
+        {/* STEP PROGRESS INDICATOR */}
+        <div className="bg-slate-50/80 px-6 py-3 border-b border-slate-100 shrink-0">
+          <div className="flex items-center justify-between">
+            {STEPS.map((s, idx) => {
+              const isPassed = currentStep > s.step;
+              const isCurrent = currentStep === s.step;
+              return (
+                <React.Fragment key={s.step}>
+                  <div className="flex items-center gap-2">
+                    <div
+                      className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-black transition-all ${
+                        isPassed
+                          ? 'bg-emerald-500 text-white shadow-xs'
+                          : isCurrent
+                          ? 'bg-[#D60041] text-white ring-4 ring-[#D60041]/20 shadow-xs'
+                          : 'bg-slate-200 text-slate-500'
+                      }`}
+                    >
+                      {isPassed ? <Check size={14} strokeWidth={3} /> : s.step}
+                    </div>
+                    <div className="hidden sm:block text-left">
+                      <p className={`text-[11px] font-bold leading-tight ${isCurrent ? 'text-slate-900' : 'text-slate-400'}`}>
+                        {s.title}
+                      </p>
+                      <p className="text-[9px] text-slate-400 font-medium">{s.desc}</p>
+                    </div>
+                  </div>
+                  {idx < STEPS.length - 1 && (
+                    <div
+                      className={`flex-1 mx-2 sm:mx-3 h-0.5 rounded transition-all ${
+                        currentStep > s.step ? 'bg-emerald-500' : 'bg-slate-200'
+                      }`}
+                    />
+                  )}
+                </React.Fragment>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* MODAL BODY: ONLY CURRENT STEP CONTENT */}
+        <div className="p-5 sm:p-6 overflow-y-auto flex-1 custom-scrollbar">
           {errorMessage && (
-            <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-2xl flex items-center gap-2.5 text-xs text-rose-700 font-semibold animate-in shake duration-300">
+            <div className="mb-4 p-3 bg-rose-50 border border-rose-200 rounded-2xl flex items-center gap-2.5 text-xs text-rose-700 font-semibold animate-in shake duration-300">
               <AlertCircle size={16} className="shrink-0 text-rose-600" />
               <span>{errorMessage}</span>
             </div>
           )}
 
-          {/* FILE UPLOAD DROPZONE */}
-          <div>
-            <label className="block text-xs font-black uppercase tracking-wider text-slate-700 mb-2">
-              Scanned Resume Document <span className="text-[#D60041]">*</span>
-            </label>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".pdf,.docx,.doc,.txt,.png,.jpg,.jpeg,.webp,text/plain"
-              onChange={handleFileChange}
-              className="hidden"
-            />
+          {/* ══════ STEP 1: UPLOAD ══════ */}
+          {currentStep === 1 && (
+            <div className="space-y-5 animate-in fade-in duration-200">
+              <div>
+                <h4 className="text-sm sm:text-base font-black text-slate-900">Step 1: Choose Resume File</h4>
+                <p className="text-xs text-slate-500 font-medium mt-0.5">
+                  Attach a PDF, Word document (.docx), or plain text (.txt) file up to 10 MB.
+                </p>
+              </div>
 
-            {!selectedFile ? (
+              {/* Upload Drop Zone */}
               <div
                 onDragEnter={handleDrag}
                 onDragLeave={handleDrag}
                 onDragOver={handleDrag}
                 onDrop={handleDrop}
                 onClick={() => fileInputRef.current?.click()}
-                className={`border-2 border-dashed rounded-2xl p-6 sm:p-8 text-center transition-all cursor-pointer flex flex-col items-center justify-center ${
+                className={`border-2 border-dashed rounded-3xl p-6 sm:p-8 text-center transition-all cursor-pointer relative ${
                   dragActive
-                    ? 'border-[#D60041] bg-pink-50/50'
-                    : 'border-slate-200 hover:border-[#D60041] hover:bg-slate-50/80 bg-slate-50/40'
+                    ? 'border-[#D60041] bg-pink-50/50 scale-[0.99]'
+                    : selectedFile
+                    ? 'border-emerald-300 bg-emerald-50/30'
+                    : 'border-slate-200 hover:border-slate-300 bg-slate-50/50 hover:bg-slate-50'
                 }`}
               >
-                <div className="w-12 h-12 rounded-2xl bg-white shadow-xs border border-slate-200 text-[#D60041] flex items-center justify-center mb-3 group-hover:scale-105 transition-transform">
-                  <Upload size={22} />
-                </div>
-                <p className="text-xs sm:text-sm font-bold text-slate-900 mb-1">
-                  Click to select scan or drag & drop here
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".pdf,.docx,.doc,.txt"
+                  onChange={(e) => {
+                    if (e.target.files && e.target.files[0]) {
+                      handleFileSelected(e.target.files[0]);
+                    }
+                  }}
+                  className="hidden"
+                />
+
+                {isExtracting ? (
+                  <div className="flex flex-col items-center justify-center py-4 space-y-3">
+                    <Loader2 size={32} className="animate-spin text-[#D60041]" />
+                    <p className="text-xs font-bold text-slate-700">Reading and extracting candidate details...</p>
+                    <p className="text-[11px] text-slate-400">Looking up name, email, phone, education, and skills.</p>
+                  </div>
+                ) : selectedFile ? (
+                  <div className="flex flex-col items-center justify-center space-y-2.5">
+                    <div className="w-12 h-12 rounded-2xl bg-emerald-100 text-emerald-700 flex items-center justify-center shadow-xs">
+                      <CheckCircle2 size={24} />
+                    </div>
+                    <div className="min-w-0 max-w-full">
+                      <p className="text-xs font-black text-slate-900 truncate">{selectedFile.name}</p>
+                      <p className="text-[11px] text-slate-500 font-semibold mt-0.5">
+                        {(selectedFile.size / 1024).toFixed(1)} KB • Ready for review
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        fileInputRef.current?.click();
+                      }}
+                      className="text-[11px] font-bold text-[#D60041] hover:underline pt-1"
+                    >
+                      Choose a different file
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center justify-center space-y-3">
+                    <div className="w-12 h-12 rounded-2xl bg-white border border-slate-200 text-slate-600 flex items-center justify-center shadow-xs">
+                      <Upload size={22} className="text-[#D60041]" />
+                    </div>
+                    <div>
+                      <p className="text-xs font-bold text-slate-700">
+                        Drag and drop your resume here, or <span className="text-[#D60041] underline">browse files</span>
+                      </p>
+                      <p className="text-[11px] text-slate-400 font-medium mt-1">
+                        Supports PDF, DOCX, and TXT files up to 10 MB
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {errors.file && (
+                <p className="text-xs font-bold text-rose-600 flex items-center gap-1.5">
+                  <AlertCircle size={14} />
+                  <span>{errors.file}</span>
                 </p>
-                <p className="text-[11px] text-slate-500 font-medium max-w-sm">
-                  Supports PDF, Word Documents (DOCX), Text files (TXT), and Scanned Photos (PNG, JPG, WEBP) up to 25MB
+              )}
+            </div>
+          )}
+
+          {/* ══════ STEP 2: REVIEW DETAILS ══════ */}
+          {currentStep === 2 && (
+            <div className="space-y-4 sm:space-y-5 animate-in fade-in duration-200">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h4 className="text-sm sm:text-base font-black text-slate-900">Step 2: Review Extracted Details</h4>
+                  <p className="text-xs text-slate-500 font-medium mt-0.5">
+                    We automatically filled in details from the resume. Edit any fields below if needed.
+                  </p>
+                </div>
+                <HelpTooltip text="Please verify the candidate's personal information. Yellow badges mark items that may need a quick double-check." />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 sm:gap-4">
+                {/* Full Name */}
+                <div className="space-y-1 sm:col-span-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                      <User size={13} className="text-[#D60041]" />
+                      Full Name <span className="text-rose-500">*</span>
+                    </label>
+                    {!formData.candidate_name && (
+                      <span className="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">
+                        Please check
+                      </span>
+                    )}
+                  </div>
+                  <input
+                    type="text"
+                    required
+                    value={formData.candidate_name}
+                    onChange={(e) => setFormData({ ...formData, candidate_name: e.target.value })}
+                    placeholder="e.g. John Paul T. Basagre"
+                    className="w-full h-10 px-3 rounded-xl border border-slate-200 text-xs font-semibold text-slate-800 focus:outline-none focus:border-[#D60041] focus:ring-1 focus:ring-[#D60041]"
+                  />
+                  {errors.candidate_name && (
+                    <p className="text-[11px] font-bold text-rose-600">{errors.candidate_name}</p>
+                  )}
+                </div>
+
+                {/* Email */}
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                      <Mail size={13} className="text-slate-400" />
+                      Email Address
+                    </label>
+                    {!formData.candidate_email && (
+                      <span className="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">
+                        Please check
+                      </span>
+                    )}
+                  </div>
+                  <input
+                    type="email"
+                    value={formData.candidate_email}
+                    onChange={(e) => setFormData({ ...formData, candidate_email: e.target.value })}
+                    placeholder="e.g. johnny.basagre@gmail.com"
+                    className="w-full h-10 px-3 rounded-xl border border-slate-200 text-xs font-semibold text-slate-800 focus:outline-none focus:border-[#D60041] focus:ring-1 focus:ring-[#D60041]"
+                  />
+                </div>
+
+                {/* Phone */}
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                      <Phone size={13} className="text-slate-400" />
+                      Contact Number
+                    </label>
+                    {!formData.candidate_phone && (
+                      <span className="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">
+                        Please check
+                      </span>
+                    )}
+                  </div>
+                  <input
+                    type="text"
+                    value={formData.candidate_phone}
+                    onChange={(e) => setFormData({ ...formData, candidate_phone: e.target.value })}
+                    placeholder="e.g. 0917-123-4567"
+                    className="w-full h-10 px-3 rounded-xl border border-slate-200 text-xs font-semibold text-slate-800 focus:outline-none focus:border-[#D60041] focus:ring-1 focus:ring-[#D60041]"
+                  />
+                </div>
+
+                {/* Location / Address */}
+                <div className="space-y-1 sm:col-span-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                      <MapPin size={13} className="text-slate-400" />
+                      Address / City
+                    </label>
+                    {!formData.location && (
+                      <span className="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">
+                        Please check
+                      </span>
+                    )}
+                  </div>
+                  <input
+                    type="text"
+                    value={formData.location}
+                    onChange={(e) => setFormData({ ...formData, location: e.target.value })}
+                    placeholder="e.g. Sto. Tomas, Batangas"
+                    className="w-full h-10 px-3 rounded-xl border border-slate-200 text-xs font-semibold text-slate-800 focus:outline-none focus:border-[#D60041] focus:ring-1 focus:ring-[#D60041]"
+                  />
+                </div>
+
+                {/* Education */}
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                      <GraduationCap size={13} className="text-slate-400" />
+                      Highest Education / Degree
+                    </label>
+                    {!formData.education && (
+                      <span className="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">
+                        Please check
+                      </span>
+                    )}
+                  </div>
+                  <input
+                    type="text"
+                    value={formData.education}
+                    onChange={(e) => setFormData({ ...formData, education: e.target.value })}
+                    placeholder="e.g. BS Information Technology"
+                    className="w-full h-10 px-3 rounded-xl border border-slate-200 text-xs font-semibold text-slate-800 focus:outline-none focus:border-[#D60041] focus:ring-1 focus:ring-[#D60041]"
+                  />
+                </div>
+
+                {/* Experience */}
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                      <Briefcase size={13} className="text-slate-400" />
+                      Recent Work Experience
+                    </label>
+                    {!formData.experience && (
+                      <span className="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">
+                        Please check
+                      </span>
+                    )}
+                  </div>
+                  <input
+                    type="text"
+                    value={formData.experience}
+                    onChange={(e) => setFormData({ ...formData, experience: e.target.value })}
+                    placeholder="e.g. Machine Operator (2 years)"
+                    className="w-full h-10 px-3 rounded-xl border border-slate-200 text-xs font-semibold text-slate-800 focus:outline-none focus:border-[#D60041] focus:ring-1 focus:ring-[#D60041]"
+                  />
+                </div>
+
+                {/* Skills */}
+                <div className="space-y-1 sm:col-span-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                      <Sparkles size={13} className="text-slate-400" />
+                      Key Skills (comma-separated)
+                    </label>
+                    {!formData.skills && (
+                      <span className="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">
+                        Please check
+                      </span>
+                    )}
+                  </div>
+                  <input
+                    type="text"
+                    value={formData.skills}
+                    onChange={(e) => setFormData({ ...formData, skills: e.target.value })}
+                    placeholder="e.g. Machine Operation, Quality Control, Safety Protocols, Packaging"
+                    className="w-full h-10 px-3 rounded-xl border border-slate-200 text-xs font-semibold text-slate-800 focus:outline-none focus:border-[#D60041] focus:ring-1 focus:ring-[#D60041]"
+                  />
+                </div>
+
+                {/* Certifications */}
+                <div className="space-y-1 sm:col-span-2">
+                  <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                    <Award size={13} className="text-slate-400" />
+                    Licenses & Certifications (optional)
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.certifications}
+                    onChange={(e) => setFormData({ ...formData, certifications: e.target.value })}
+                    placeholder="e.g. TESDA NC II, DOLE-BOSH Safety Officer"
+                    className="w-full h-10 px-3 rounded-xl border border-slate-200 text-xs font-semibold text-slate-800 focus:outline-none focus:border-[#D60041] focus:ring-1 focus:ring-[#D60041]"
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ══════ STEP 3: APPLICATION INFO ══════ */}
+          {currentStep === 3 && (
+            <div className="space-y-4 sm:space-y-5 animate-in fade-in duration-200">
+              <div>
+                <h4 className="text-sm sm:text-base font-black text-slate-900">Step 3: Position & Source Info</h4>
+                <p className="text-xs text-slate-500 font-medium mt-0.5">
+                  Select which active job this candidate is applying for and where the resume was received.
                 </p>
               </div>
-            ) : (
-              <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl flex items-center justify-between gap-3">
-                <div className="flex items-center space-x-3 min-w-0">
-                  <div className="w-10 h-10 rounded-xl bg-pink-100 text-[#D60041] flex items-center justify-center shrink-0">
-                    <FileText size={20} />
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-xs font-black text-slate-900 truncate">{selectedFile.name}</p>
-                    <p className="text-[11px] text-slate-500 font-medium">
-                      {(selectedFile.size / (1024 * 1024)).toFixed(2)} MB • Ready to archive
+
+              {/* Duplicate Warning */}
+              {duplicateWarning && (
+                <div className="p-3.5 bg-amber-50 border border-amber-200 rounded-2xl flex items-start gap-2.5 text-xs text-amber-800 font-semibold animate-in shake duration-200">
+                  <AlertTriangle size={18} className="text-amber-600 shrink-0 mt-0.5" />
+                  <div className="flex-1">
+                    <p className="font-bold">Possible duplicate application detected</p>
+                    <p className="text-[11px] font-normal mt-0.5 text-amber-700">{duplicateWarning}</p>
+                    <p className="text-[11px] font-bold text-amber-800 mt-1">
+                      You can continue to import a newer version or choose a different position.
                     </p>
                   </div>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setSelectedFile(null)}
-                  className="px-2.5 py-1 text-xs font-bold text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
-                >
-                  Change
-                </button>
-              </div>
-            )}
-            {errors.file && <p className="text-xs text-rose-600 font-medium mt-1">{errors.file}</p>}
-          </div>
-
-          {/* CANDIDATE NAME & TARGET REQUISITION */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-black uppercase tracking-wider text-slate-700 mb-1.5">
-                Candidate Full Name <span className="text-[#D60041]">*</span>
-              </label>
-              <div className="relative">
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. Juan dela Cruz"
-                  value={formData.candidate_name}
-                  onChange={(e) => {
-                    setFormData({ ...formData, candidate_name: e.target.value });
-                    setErrors({ ...errors, candidate_name: '' });
-                  }}
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#D60041]/20 focus:border-[#D60041] transition-all"
-                />
-                <User size={15} className="absolute right-3.5 top-3 text-slate-400 pointer-events-none" />
-              </div>
-              {errors.candidate_name && (
-                <p className="text-xs text-rose-600 font-medium mt-1">{errors.candidate_name}</p>
               )}
-            </div>
 
-            <div>
-              <label className="block text-xs font-black uppercase tracking-wider text-slate-700 mb-1.5">
-                Target Requisition / Position
-              </label>
-              <div className="relative">
+              {/* Position Applied For */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                    <Briefcase size={14} className="text-[#D60041]" />
+                    Position Applied For <span className="text-rose-500">*</span>
+                  </label>
+                  <HelpTooltip text="Assigns this candidate to an active job opening so the system can compute match scores and add them to screening." />
+                </div>
                 <select
+                  required
                   value={formData.target_job_id}
-                  onChange={handleJobSelect}
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#D60041]/20 focus:border-[#D60041] transition-all appearance-none cursor-pointer"
+                  onChange={(e) => handleJobSelect(e.target.value)}
+                  className="w-full h-11 px-3 rounded-xl border border-slate-200 text-xs font-semibold text-slate-800 focus:outline-none focus:border-[#D60041] bg-white cursor-pointer"
                 >
-                  <option value="">Select active job vacancy (Optional)</option>
-                  {jobs.map((job: any) => (
+                  <option value="">-- Choose an active position --</option>
+                  {activeJobs.map((job: any) => (
                     <option key={job.id} value={job.id}>
-                      {job.title || job.job_title} ({job.department || 'General'})
+                      {job.job_title || job.title} ({job.department || 'General'})
                     </option>
                   ))}
                 </select>
-                <Briefcase size={15} className="absolute right-3.5 top-3 text-slate-400 pointer-events-none" />
+                {errors.target_job_id && (
+                  <p className="text-[11px] font-bold text-rose-600">{errors.target_job_id}</p>
+                )}
               </div>
-            </div>
-          </div>
 
-          {/* PHYSICAL FILING LOCATION (Core Feature) */}
-          <div className="bg-slate-50/80 p-4 rounded-2xl border border-slate-200 space-y-2.5">
-            <div className="flex items-center justify-between">
-              <label className="block text-xs font-black uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
-                <FolderArchive size={14} className="text-[#D60041]" />
-                Physical Filing Location / Reference Code <span className="text-[#D60041]">*</span>
-              </label>
-              <span className="text-[10px] text-slate-500 font-bold uppercase">Paper Vault Ref</span>
-            </div>
-            <input
-              type="text"
-              required
-              placeholder="e.g. Cabinet A • Shelf 2 • Folder 14"
-              value={formData.physical_location}
-              onChange={(e) => setFormData({ ...formData, physical_location: e.target.value })}
-              className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#D60041]/20 focus:border-[#D60041] transition-all"
-            />
-            {/* Quick Preset Tags */}
-            <div className="flex flex-wrap items-center gap-1.5 pt-1">
-              <span className="text-[10px] font-bold text-slate-400 flex items-center gap-1 mr-1">
-                <Tag size={10} /> Quick Select:
-              </span>
-              {PRESET_LOCATIONS.map((preset, idx) => (
-                <button
-                  key={idx}
-                  type="button"
-                  onClick={() => setFormData({ ...formData, physical_location: preset })}
-                  className={`text-[10px] font-semibold px-2 py-0.5 rounded-lg border transition-all cursor-pointer ${
-                    formData.physical_location === preset
-                      ? 'bg-[#D60041] text-white border-[#D60041]'
-                      : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300'
-                  }`}
+              {/* Source Origin */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                    Where did this resume come from? <span className="text-rose-500">*</span>
+                  </label>
+                  <HelpTooltip text="Tracks the hiring channel for analytics and source tags." />
+                </div>
+                <select
+                  value={formData.import_origin}
+                  onChange={(e) => setFormData({ ...formData, import_origin: e.target.value })}
+                  className="w-full h-11 px-3 rounded-xl border border-slate-200 text-xs font-semibold text-slate-800 focus:outline-none focus:border-[#D60041] bg-white cursor-pointer"
                 >
-                  {preset}
-                </button>
-              ))}
-            </div>
-          </div>
+                  <option value="Walk-in">Walk-in (Plant Front Desk / Office)</option>
+                  <option value="Email">Email submission</option>
+                  <option value="Job site">Job site (JobStreet / Indeed / LinkedIn)</option>
+                  <option value="Other">Other referral / agency</option>
+                </select>
+              </div>
 
-          {/* SUBMISSION DATE & STATUS */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-black uppercase tracking-wider text-slate-700 mb-1.5">
-                Physical Hand-in Date
-              </label>
-              <div className="relative">
-                <input
-                  type="date"
-                  value={formData.submission_date}
-                  onChange={(e) => setFormData({ ...formData, submission_date: e.target.value })}
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#D60041]/20 focus:border-[#D60041] transition-all"
+              {/* Physical Storage Reference (optional) */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                  Filing & Archive Reference (optional)
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={formData.physical_location}
+                    onChange={(e) => setFormData({ ...formData, physical_location: e.target.value })}
+                    placeholder="e.g. Cabinet A • Shelf 1"
+                    className="flex-1 h-10 px-3 rounded-xl border border-slate-200 text-xs font-semibold text-slate-800 focus:outline-none focus:border-[#D60041]"
+                  />
+                  <select
+                    onChange={(e) => {
+                      if (e.target.value) setFormData({ ...formData, physical_location: e.target.value });
+                    }}
+                    className="h-10 px-2 rounded-xl border border-slate-200 text-xs font-medium text-slate-600 bg-white cursor-pointer"
+                  >
+                    <option value="">Presets...</option>
+                    {PRESET_LOCATIONS.map((loc) => (
+                      <option key={loc} value={loc}>{loc}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* Notes */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-slate-700">Internal HR Notes (optional)</label>
+                <textarea
+                  rows={2}
+                  value={formData.notes}
+                  onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                  placeholder="e.g. Recommended by Production supervisor; available immediately."
+                  className="w-full p-2.5 rounded-xl border border-slate-200 text-xs font-medium text-slate-800 focus:outline-none focus:border-[#D60041]"
                 />
-                <Calendar size={15} className="absolute right-3.5 top-3 text-slate-400 pointer-events-none" />
               </div>
             </div>
+          )}
 
-            <div>
-              <label className="block text-xs font-black uppercase tracking-wider text-slate-700 mb-1.5">
-                Initial Status
-              </label>
-              <select
-                value={formData.status_val}
-                onChange={(e) => setFormData({ ...formData, status_val: e.target.value })}
-                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#D60041]/20 focus:border-[#D60041] transition-all cursor-pointer"
-              >
-                <option value="RECEIVED">RECEIVED (Archived)</option>
-                <option value="UNDER_REVIEW">UNDER REVIEW</option>
-                <option value="SHORTLISTED">SHORTLISTED</option>
-                <option value="HIRED">HIRED</option>
-                <option value="ARCHIVED">ARCHIVED</option>
-              </select>
-            </div>
-          </div>
+          {/* ══════ STEP 4: CONFIRM ══════ */}
+          {currentStep === 4 && (
+            <div className="space-y-4 sm:space-y-5 animate-in fade-in duration-200">
+              <div>
+                <h4 className="text-sm sm:text-base font-black text-slate-900">Step 4: Confirm & Import</h4>
+                <p className="text-xs text-slate-500 font-medium mt-0.5">
+                  Please review the application summary before adding to the candidate pool.
+                </p>
+              </div>
 
-          {/* OPTIONAL CONTACT DETAILS */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-black uppercase tracking-wider text-slate-700 mb-1.5">
-                Candidate Email (Optional)
-              </label>
-              <div className="relative">
-                <input
-                  type="email"
-                  placeholder="juan@example.com"
-                  value={formData.candidate_email}
-                  onChange={(e) => setFormData({ ...formData, candidate_email: e.target.value })}
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#D60041]/20 focus:border-[#D60041] transition-all"
-                />
-                <Mail size={15} className="absolute right-3.5 top-3 text-slate-400 pointer-events-none" />
+              {/* Summary Card */}
+              <div className="bg-slate-50/80 rounded-2xl p-4 sm:p-5 border border-slate-200/80 space-y-3.5">
+                <div className="flex items-center justify-between pb-3 border-b border-slate-200">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-pink-100 text-[#D60041] flex items-center justify-center font-black text-base">
+                      {formData.candidate_name.charAt(0) || 'C'}
+                    </div>
+                    <div>
+                      <h5 className="text-sm font-black text-slate-900">{formData.candidate_name}</h5>
+                      <p className="text-[11px] text-slate-500 font-medium">{formData.candidate_email || 'No email provided'}</p>
+                    </div>
+                  </div>
+                  <span className="px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-pink-50 text-[#D60041] border border-pink-200">
+                    Imported • {formData.import_origin}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3 text-xs">
+                  <div>
+                    <span className="text-[10px] font-bold text-slate-400 uppercase">Target Job</span>
+                    <p className="font-bold text-slate-800 mt-0.5">{formData.target_job_title || 'Position'}</p>
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-bold text-slate-400 uppercase">Contact Phone</span>
+                    <p className="font-bold text-slate-800 mt-0.5">{formData.candidate_phone || 'None'}</p>
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-bold text-slate-400 uppercase">Education</span>
+                    <p className="font-semibold text-slate-700 mt-0.5 truncate">{formData.education || 'Not listed'}</p>
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-bold text-slate-400 uppercase">Experience</span>
+                    <p className="font-semibold text-slate-700 mt-0.5 truncate">{formData.experience || 'Not listed'}</p>
+                  </div>
+                </div>
+
+                {formData.skills && (
+                  <div className="pt-2 border-t border-slate-200/60">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase">Key Skills</span>
+                    <div className="flex flex-wrap gap-1.5 mt-1">
+                      {formData.skills.split(',').slice(0, 8).map((sk, idx) => (
+                        <span key={idx} className="px-2 py-0.5 rounded-lg bg-white border border-slate-200 text-[11px] font-medium text-slate-700">
+                          {sk.trim()}
+                        </span>
+                      ))}
+                      {formData.skills.split(',').length > 8 && (
+                        <span className="text-[10px] text-slate-400 self-center">
+                          +{formData.skills.split(',').length - 8} more
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                <div className="pt-2 border-t border-slate-200/60 text-[11px] text-slate-500 flex items-center justify-between">
+                  <span className="flex items-center gap-1.5 truncate">
+                    <FileText size={13} className="text-slate-400 shrink-0" />
+                    <span className="truncate">{selectedFile?.name}</span>
+                  </span>
+                  <span className="shrink-0 font-medium">Status: Submitted</span>
+                </div>
               </div>
             </div>
+          )}
+        </div>
 
-            <div>
-              <label className="block text-xs font-black uppercase tracking-wider text-slate-700 mb-1.5">
-                Phone Number (Optional)
-              </label>
-              <div className="relative">
-                <input
-                  type="text"
-                  placeholder="+63 912 345 6789"
-                  value={formData.candidate_phone}
-                  onChange={(e) => setFormData({ ...formData, candidate_phone: e.target.value })}
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#D60041]/20 focus:border-[#D60041] transition-all"
-                />
-                <Phone size={15} className="absolute right-3.5 top-3 text-slate-400 pointer-events-none" />
-              </div>
-            </div>
-          </div>
-
-          {/* HR STAFF NOTES */}
-          <div>
-            <label className="block text-xs font-black uppercase tracking-wider text-slate-700 mb-1.5">
-              Receiving HR Remarks & Submission Context
-            </label>
-            <textarea
-              rows={2}
-              placeholder="e.g. Walk-in applicant handed resume personally at Plant 2 gate. Experienced in tile press operations."
-              value={formData.notes}
-              onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-              className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#D60041]/20 focus:border-[#D60041] transition-all resize-none"
-            />
-          </div>
-
-          {/* ACTION BUTTONS (Sticky footer with backdrop blur) */}
-          <div className="sticky bottom-0 bg-white/95 backdrop-blur-xs pt-3 pb-1 border-t border-slate-100 flex items-center justify-end space-x-3 -mx-4 sm:-mx-6 px-4 sm:px-6 mt-2">
+        {/* MODAL FOOTER: NAVIGATION BUTTONS */}
+        <div className="px-5 sm:px-6 py-3.5 sm:py-4 border-t border-slate-100 bg-slate-50 flex items-center justify-between shrink-0">
+          {currentStep > 1 ? (
             <button
               type="button"
-              onClick={onClose}
-              disabled={isLoading}
-              className="px-4 py-2.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50 transition-colors cursor-pointer"
+              onClick={() => setCurrentStep((prev) => prev - 1)}
+              disabled={isUploading}
+              className="px-4 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-100 text-slate-700 text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer"
+            >
+              <ArrowLeft size={14} />
+              <span>Back</span>
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={handleClose}
+              className="px-4 py-2 rounded-xl text-slate-500 hover:text-slate-800 text-xs font-bold transition-all cursor-pointer"
             >
               Cancel
             </button>
+          )}
+
+          {currentStep === 1 && (
             <button
-              type="submit"
-              disabled={isLoading}
-              className="px-5 py-2.5 bg-[#D60041] hover:bg-[#B50037] text-white rounded-xl text-xs font-bold shadow-xs hover:shadow-md hover:shadow-pink-500/25 active:scale-95 transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50"
+              type="button"
+              onClick={handleProceedToStep2}
+              disabled={!selectedFile || isExtracting}
+              className="px-5 py-2.5 rounded-xl bg-[#D60041] hover:bg-[#B50037] text-white text-xs font-bold transition-all shadow-xs hover:shadow-md flex items-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {isLoading ? (
+              <span>Next: Review Details</span>
+              <ArrowRight size={14} />
+            </button>
+          )}
+
+          {currentStep === 2 && (
+            <button
+              type="button"
+              onClick={handleProceedToStep3}
+              className="px-5 py-2.5 rounded-xl bg-[#D60041] hover:bg-[#B50037] text-white text-xs font-bold transition-all shadow-xs hover:shadow-md flex items-center gap-2 cursor-pointer"
+            >
+              <span>Next: Application Info</span>
+              <ArrowRight size={14} />
+            </button>
+          )}
+
+          {currentStep === 3 && (
+            <button
+              type="button"
+              onClick={handleProceedToStep4}
+              className="px-5 py-2.5 rounded-xl bg-[#D60041] hover:bg-[#B50037] text-white text-xs font-bold transition-all shadow-xs hover:shadow-md flex items-center gap-2 cursor-pointer"
+            >
+              <span>Next: Confirm</span>
+              <ArrowRight size={14} />
+            </button>
+          )}
+
+          {currentStep === 4 && (
+            <button
+              type="button"
+              onClick={handleSubmit}
+              disabled={isUploading}
+              className="px-6 py-2.5 rounded-xl bg-[#D60041] hover:bg-[#B50037] text-white text-xs font-black uppercase tracking-wider transition-all shadow-xs hover:shadow-md flex items-center gap-2 cursor-pointer disabled:opacity-50"
+            >
+              {isUploading ? (
                 <>
                   <Loader2 size={15} className="animate-spin" />
-                  <span>Archiving Resume...</span>
+                  <span>Importing...</span>
                 </>
               ) : (
                 <>
-                  <FolderArchive size={15} />
-                  <span>Store Physical Resume</span>
+                  <CheckCircle2 size={16} />
+                  <span>Import Resume</span>
                 </>
               )}
             </button>
-          </div>
-        </form>
+          )}
+        </div>
       </div>
     </div>
   );

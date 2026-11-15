@@ -3,6 +3,7 @@ import { ShieldCheck, CheckCircle2, ChevronRight, Sparkles, User, FileText, Brie
 import { useNavigate } from '@/utils/navigation';
 import { useSelector } from 'react-redux';
 import { RootState } from '../../../redux/store';
+import HelpTooltip from '../../common/HelpTooltip';
 
 const ProfileStrength: React.FC = () => {
   const navigate = useNavigate();
@@ -65,10 +66,13 @@ const ProfileStrength: React.FC = () => {
             <ShieldCheck size={16} />
           </div>
           <div>
-            <h4 className="text-xs sm:text-sm font-black text-slate-900 tracking-tight">
-              Profile Readiness
-            </h4>
-            <p className="text-[10px] text-slate-400 font-medium">ATS candidate score</p>
+            <div className="flex items-center gap-1.5">
+              <h4 className="text-xs sm:text-sm font-black text-slate-900 tracking-tight">
+                Profile Readiness
+              </h4>
+              <HelpTooltip content="A complete profile helps us match you with the right job openings and speeds up recruiter review." />
+            </div>
+            <p className="text-[10px] text-slate-400 font-medium">Profile completeness</p>
           </div>
         </div>
 
@@ -92,7 +96,7 @@ const ProfileStrength: React.FC = () => {
         </div>
         
         <p className="text-[11px] text-slate-400 font-medium leading-relaxed pt-0.5">
-          A high readiness score improves automated ARAS job matching and HR evaluation priority.
+          Completing all sections helps our hiring team review your application faster.
         </p>
       </div>
 

@@ -55,7 +55,7 @@ const WelcomeHeader: React.FC<WelcomeHeaderProps> = ({ applicationCount = 0, int
             <div className="flex flex-wrap items-center gap-2">
               <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-[#D10043]/10 text-[#D10043] border border-[#D10043]/15">
                 <Sparkles size={11} className="animate-pulse" />
-                Candidate Portal
+                Mariwasa Recruitment
               </span>
 
               <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold text-slate-500 bg-slate-50 border border-slate-200/60">
@@ -72,7 +72,7 @@ const WelcomeHeader: React.FC<WelcomeHeaderProps> = ({ applicationCount = 0, int
 
             {/* Subtitle */}
             <p className="text-slate-500 text-xs sm:text-sm font-medium leading-relaxed max-w-xl">
-              Track recruitment evaluations, review interview updates, and explore opportunities at Mariwasa Siam Ceramics.
+              Track your applications, review interview updates, and explore opportunities at Mariwasa Siam Ceramics.
             </p>
 
             {/* Status Pills */}
@@ -80,7 +80,7 @@ const WelcomeHeader: React.FC<WelcomeHeaderProps> = ({ applicationCount = 0, int
               <span className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-700 bg-slate-100/90 px-3 py-1 rounded-xl">
                 <span className="w-2 h-2 rounded-full bg-emerald-500" />
                 <strong className="text-slate-900 font-black">{applicationCount}</strong>{' '}
-                {applicationCount === 1 ? 'Application' : 'Applications'} in Pipeline
+                {applicationCount === 1 ? 'Application' : 'Applications'} Submitted
               </span>
 
               {interviewCount > 0 ? (
@@ -90,7 +90,7 @@ const WelcomeHeader: React.FC<WelcomeHeaderProps> = ({ applicationCount = 0, int
                 </span>
               ) : (
                 <span className="text-xs font-semibold text-slate-400 hidden sm:inline-block">
-                  • Profile active in ATS matching
+                  • Profile ready for review
                 </span>
               )}
             </div>
@@ -115,7 +115,7 @@ const WelcomeHeader: React.FC<WelcomeHeaderProps> = ({ applicationCount = 0, int
             className="px-4 py-3 rounded-xl bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-700 font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition-all active:scale-[0.98] cursor-pointer"
           >
             <FileText size={14} className="text-slate-400" />
-            <span>Track Pipeline</span>
+            <span>Track Applications</span>
           </button>
         </div>
 

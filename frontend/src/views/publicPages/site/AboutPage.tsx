@@ -430,10 +430,10 @@ const AboutPage: React.FC = () => {
           <section className="process-section mb-10 sm:mb-16 md:mb-20">
             <div className="process-header text-center mb-8 sm:mb-14 will-change-transform">
               <h2 className="text-2xl sm:text-3xl md:text-4xl font-normal tracking-tight text-gray-900 mb-3 sm:mb-4 leading-tight">
-                The Mariwasa <span className="font-semibold text-[#D60041]">Resume Analysis System</span>
+                The Mariwasa <span className="font-semibold text-[#D60041]">Recruitment Process</span>
               </h2>
               <p className="text-gray-600 text-sm sm:text-base max-w-2xl mx-auto px-2">
-                We believe that great companies are built by great people. This portal utilizes advanced AI to ensure a fair, skill-based, and highly efficient hiring process, removing human bias from initial screenings.
+                We believe that great companies are built by great people. This portal ensures a fair, skill-based, and efficient application experience.
               </p>
             </div>
 
@@ -442,22 +442,22 @@ const AboutPage: React.FC = () => {
                 {
                   icon: Users,
                   title: "1. Create Profile",
-                  desc: "Candidates register and upload their resumes to our secure portal."
+                  desc: "Register and upload your resume to our secure recruitment portal."
                 },
                 {
                   icon: Cpu,
-                  title: "2. AI Analysis",
-                  desc: "Our automated system extracts skills, experience, and key metrics without bias."
+                  title: "2. Resume Parsing",
+                  desc: "Our system automatically extracts your skills and experience."
                 },
                 {
                   icon: Search,
-                  title: "3. Smart Matching",
-                  desc: "Candidates are instantly matched with job openings that fit their unique profile."
+                  title: "3. Job Matching",
+                  desc: "We match your qualifications with the open positions that fit you best."
                 },
                 {
                   icon: Award,
-                  title: "4. Get Hired",
-                  desc: "HR seamlessly reviews top matches and schedules interviews efficiently."
+                  title: "4. Initial Interview",
+                  desc: "Shortlisted candidates are contacted directly by HR for initial discussions."
                 }
               ].map((step, idx) => (
                 <div key={idx} className="process-step-card bg-white p-5 sm:p-6 md:p-8 rounded-2xl sm:rounded-[24px] border border-gray-100 shadow-sm hover:shadow-md transition-shadow relative overflow-hidden group will-change-transform">

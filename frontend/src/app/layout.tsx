@@ -3,8 +3,8 @@ import './globals.css';
 import Providers from './providers';
 
 export const metadata: Metadata = {
-  title: 'Mariwasa - Automated Resume Analysis',
-  description: 'AI-Powered Recruitment & Automated Resume Analysis System for Mariwasa Siam Ceramics Inc.',
+  title: 'Mariwasa Recruitment',
+  description: 'Career Opportunities and Applications for Mariwasa Siam Ceramics Inc.',
   icons: {
     icon: '/favicon.svg',
   },

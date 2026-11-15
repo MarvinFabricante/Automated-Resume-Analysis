@@ -3,15 +3,28 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List, Optional
 
 from app.utils.database import get_db
-from app.schemas.job_application_schema import JobApplicationCreate, JobApplicationResponse, JobApplicationStatusUpdate
+from app.schemas.job_application_schema import (
+    JobApplicationCreate, 
+    JobApplicationResponse, 
+    JobApplicationStatusUpdate,
+    JobApplicationNotesUpdate,
+    JobApplicationViewedEvent,
+    StatusHistoryResponse
+)
 from app.services import job_application_service
+from app.services.status_management_service import (
+    handle_application_viewed_event,
+    get_application_history,
+    undo_auto_status_change
+)
 from app.services.audit_service import record_activity
 from app.utils.auth import get_current_user, get_optional_current_user
 from app.utils.cache import cache_response, invalidate_application_dashboard_caches
 
 
-router = APIRouter(prefix="/applications", tags=["Job Applications"])
+router = APIRouter(prefix="/applications", tags=["Job Applications"], redirect_slashes=False)
 
+@router.post("", response_model=JobApplicationResponse, status_code=status.HTTP_201_CREATED)
 @router.post("/", response_model=JobApplicationResponse, status_code=status.HTTP_201_CREATED)
 async def create_job_application(
     application_in: JobApplicationCreate, 
@@ -61,6 +74,7 @@ async def check_duplicate_application(
     }
 
 
+@router.get("", responses={200: {"model": List[JobApplicationResponse]}})
 @router.get("/", responses={200: {"model": List[JobApplicationResponse]}})
 @cache_response("all_apps", ttl=60)
 async def get_all_applications(
@@ -323,5 +337,82 @@ async def delete_application(
     await invalidate_application_dashboard_caches(application_id)
     
     return None
+
+
+@router.patch("/{application_id}/notes", response_model=JobApplicationResponse)
+async def update_application_notes(
+    application_id: int,
+    notes_update: JobApplicationNotesUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: Optional[dict] = Depends(get_optional_current_user)
+):
+    """
+    Update HR shortlisting notes for an application (REQ056).
+    """
+    db_application = await job_application_service.update_application_notes(
+        db, application_id, notes_update.hr_shortlist_notes
+    )
+    if not db_application:
+        raise HTTPException(status_code=404, detail="Application not found")
+    
+    await invalidate_application_dashboard_caches(application_id)
+    return db_application
+
+
+@router.post("/{application_id}/viewed")
+async def record_application_viewed(
+    application_id: int,
+    view_event: JobApplicationViewedEvent,
+    db: AsyncSession = Depends(get_db),
+    current_user: Optional[dict] = Depends(get_optional_current_user)
+):
+    """
+    Automatic Status Update (Item 1a):
+    Triggers Submitted -> Under Review ONLY if HR really opened full view, tab was focused,
+    stayed open >= 8 seconds, and engagement was detected.
+    """
+    user_email = (current_user.get("email") if current_user else None) or "HR"
+    result = await handle_application_viewed_event(
+        db=db,
+        application_id=application_id,
+        view_duration_seconds=view_event.view_duration_seconds,
+        visible_focused=view_event.visible_focused,
+        engaged=view_event.engaged,
+        user_email=user_email
+    )
+    if result.get("changed"):
+        await invalidate_application_dashboard_caches(application_id)
+    return result
+
+
+@router.get("/{application_id}/history", response_model=List[StatusHistoryResponse])
+async def get_status_history(
+    application_id: int,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Returns audit trail history of all automatic and manual status changes for an application.
+    """
+    history = await get_application_history(db, application_id)
+    return history
+
+
+@router.post("/{application_id}/undo-auto-status")
+async def undo_automatic_status(
+    application_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: Optional[dict] = Depends(get_optional_current_user)
+):
+    """
+    Allows HR to undo the last automatic status change.
+    """
+    user_email = (current_user.get("email") if current_user else None) or "HR"
+    result = await undo_auto_status_change(db, application_id, user_email)
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("message", "Cannot undo status change"))
+    await invalidate_application_dashboard_caches(application_id)
+    return result
+
+
 
 

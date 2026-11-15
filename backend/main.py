@@ -88,6 +88,10 @@ async def ensure_application_analysis_columns(conn):
         "strengths": "JSON",
         "weaknesses": "JSON",
         "ai_powered": "BOOLEAN DEFAULT FALSE",
+        "hr_shortlist_notes": "TEXT",
+        "is_flagged_for_review": "BOOLEAN DEFAULT FALSE",
+        "review_flag_reason": "VARCHAR",
+        "source": "VARCHAR DEFAULT 'Online'",
     }
 
     dialect = conn.dialect.name
@@ -172,6 +176,8 @@ async def ensure_interview_voice_columns(conn):
         "call_language": "VARCHAR DEFAULT 'bilingual'",
         "verbal_notes": "TEXT",
         "sms_backup_sent": "BOOLEAN DEFAULT FALSE",
+        "is_combined": "BOOLEAN DEFAULT FALSE",
+        "combined_application_ids": "JSON",
     }
     dialect = conn.dialect.name
     for column_name, column_type in columns.items():
@@ -180,7 +186,7 @@ async def ensure_interview_voice_columns(conn):
                 existing = await conn.execute(text("PRAGMA table_info(interviews)"))
                 existing_names = {row[1] for row in existing.fetchall()}
                 if column_name not in existing_names:
-                    sqlite_type = "TEXT" if "VARCHAR" in column_type or "TIMESTAMP" in column_type else ("INTEGER" if "INTEGER" in column_type else "BOOLEAN")
+                    sqlite_type = "TEXT" if "VARCHAR" in column_type or "TIMESTAMP" in column_type or "JSON" in column_type else ("INTEGER" if "INTEGER" in column_type else "BOOLEAN")
                     await conn.execute(text(f"ALTER TABLE interviews ADD COLUMN {column_name} {sqlite_type}"))
             else:
                 await conn.execute(text(
@@ -188,6 +194,25 @@ async def ensure_interview_voice_columns(conn):
                 ))
         except Exception as e:
             logger.warning(f"Could not ensure interviews.{column_name}: {e}")
+
+    # Ensure message extensions (REQ059-REQ063)
+    msg_columns = {
+        "application_id": "INTEGER",
+        "message_type": "VARCHAR DEFAULT 'general'",
+        "read_at": "TIMESTAMP",
+    }
+    for col_name, col_type in msg_columns.items():
+        try:
+            if dialect == "sqlite":
+                existing = await conn.execute(text("PRAGMA table_info(messages)"))
+                existing_names = {row[1] for row in existing.fetchall()}
+                if col_name not in existing_names:
+                    sqlite_type = "TEXT" if "VARCHAR" in col_type or "TIMESTAMP" in col_type else "INTEGER"
+                    await conn.execute(text(f"ALTER TABLE messages ADD COLUMN {col_name} {sqlite_type}"))
+            else:
+                await conn.execute(text(f"ALTER TABLE messages ADD COLUMN IF NOT EXISTS {col_name} {col_type}"))
+        except Exception as e:
+            logger.warning(f"Could not ensure messages.{col_name}: {e}")
 
 
 async def ensure_physical_resumes_table(conn):
@@ -407,6 +432,7 @@ async def lifespan(app_instance: FastAPI):
 
 app = FastAPI(
     title="Fast API",
+    redirect_slashes=False,
     description="""
     An AI-powered system for analyzing resumes and providing automated job recommendations.
 
@@ -453,6 +479,7 @@ app.include_router(hr_router)
 app.include_router(candidate_router)
 app.include_router(resume_router)
 app.include_router(job_application_router)
+app.include_router(job_application_router, prefix="/job-applications")
 app.include_router(notification_router)
 app.include_router(job_matching_router)
 app.include_router(chat_router)

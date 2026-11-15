@@ -423,7 +423,7 @@ const UsersPage: React.FC = () => {
       <div className="absolute top-0 left-0 w-full h-[320px] bg-gradient-to-b from-[#D10043]/5 via-[#D10043]/2 to-transparent pointer-events-none z-0"></div>
       
       <Helmet>
-        <title>User Directory | Admin Portal</title>
+        <title>User Directory | Mariwasa Recruitment Admin Portal</title>
       </Helmet>
       
       <Header />

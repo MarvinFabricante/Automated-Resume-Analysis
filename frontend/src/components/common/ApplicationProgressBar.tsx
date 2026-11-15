@@ -1,5 +1,5 @@
 import React from 'react';
-import { Check, FileUp, Edit3, Eye, CheckCircle2, LucideIcon } from 'lucide-react';
+import { Check, FileUp, Edit3, Eye, CheckCircle2, HelpCircle, LucideIcon } from 'lucide-react';
 
 export interface StepItem {
   number: number;
@@ -8,29 +8,29 @@ export interface StepItem {
   icon: LucideIcon;
 }
 
-const DEFAULT_STEPS: StepItem[] = [
+export const DEFAULT_STEPS: StepItem[] = [
   {
     number: 1,
-    title: 'Upload Resume',
-    subtitle: 'Upload & Parse CV',
+    title: 'Upload resume',
+    subtitle: 'Attach your CV or resume',
     icon: FileUp,
   },
   {
     number: 2,
-    title: 'Application Details',
-    subtitle: 'Fill & Update Info',
+    title: 'Review your details',
+    subtitle: 'Check your personal & work info',
     icon: Edit3,
   },
   {
     number: 3,
-    title: 'Review Application',
-    subtitle: 'Verify & Match Score',
-    icon: Eye,
+    title: 'Answer a few questions',
+    subtitle: 'Help us know you better',
+    icon: HelpCircle,
   },
   {
     number: 4,
-    title: 'Confirmation',
-    subtitle: 'Application Sent',
+    title: 'Submit',
+    subtitle: 'Review & submit application',
     icon: CheckCircle2,
   },
 ];

@@ -11,6 +11,9 @@ from app.schemas.message_schema import (
     ChatContactResponse,
     ArchiveConversationResponse,
     ArchivedContactsResponse,
+    BroadcastMessageCreate,
+    BroadcastMessageResponse,
+    SentMessageRecord,
 )
 from app.utils.websocket_manager import manager
 from app.services import chat_service
@@ -61,10 +64,70 @@ async def send_message(
     current_user: User = Depends(get_current_user_obj),
     db: AsyncSession = Depends(get_db)
 ):
-    new_msg = await chat_service.send_message(db, current_user, other_user_id, msg_in.content)
+    new_msg = await chat_service.send_message(
+        db, 
+        current_user, 
+        other_user_id, 
+        msg_in.content,
+        message_type=msg_in.message_type or "general",
+        application_id=msg_in.application_id
+    )
     if not new_msg:
         raise HTTPException(status_code=403, detail="You cannot message this user.")
     return new_msg
+
+@router.post("/broadcast-job/{job_id}", response_model=BroadcastMessageResponse)
+async def broadcast_job_message(
+    job_id: int,
+    broadcast_in: BroadcastMessageCreate,
+    current_user: User = Depends(get_current_user_obj),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Broadcast a single message to all or shortlisted applicants for a job posting (REQ062, REQ064).
+    """
+    if current_user.role.upper() == "CANDIDATE":
+        raise HTTPException(status_code=403, detail="Candidates cannot broadcast messages.")
+    
+    count = await chat_service.broadcast_job_message(
+        db=db,
+        current_user=current_user,
+        job_id=job_id,
+        content=broadcast_in.content,
+        message_type=broadcast_in.message_type or "announcement",
+        target_group=broadcast_in.target_group or "all"
+    )
+    return BroadcastMessageResponse(
+        success=True,
+        recipient_count=count,
+        message=f"Broadcast successfully dispatched to {count} applicant(s)."
+    )
+
+@router.get("/sent-messages", response_model=List[SentMessageRecord])
+async def get_sent_messages(
+    current_user: User = Depends(get_current_user_obj),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Get consolidated log of sent HR messages with read receipts (REQ063, REQ065).
+    """
+    if current_user.role.upper() == "CANDIDATE":
+        raise HTTPException(status_code=403, detail="Access forbidden.")
+    return await chat_service.get_sent_messages(db, current_user)
+
+@router.patch("/message/{message_id}/read")
+async def mark_message_read(
+    message_id: int,
+    current_user: User = Depends(get_current_user_obj),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Mark message as read with timestamp receipt (REQ063).
+    """
+    msg = await chat_service.mark_single_message_read(db, message_id, current_user)
+    if not msg:
+        raise HTTPException(status_code=404, detail="Message not found")
+    return {"id": msg.id, "is_read": msg.is_read, "read_at": msg.read_at}
 
 @router.delete("/messages/{other_user_id}")
 async def delete_conversation(

@@ -6,7 +6,7 @@ from typing import Optional, List, Dict, Any, Tuple
 from datetime import datetime, timedelta
 from fastapi import UploadFile, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, or_, desc
+from sqlalchemy import select, func, or_, and_, desc
 
 from app.models.physical_resume import PhysicalResume
 from app.models.job_description import JobDescription
@@ -168,6 +168,105 @@ async def store_physical_resume(
     await db.commit()
     await db.refresh(physical_resume)
 
+    # Automatically create JobApplication so imported resumes enter the screening flow (Item 3)
+    if physical_resume.target_job_id:
+        try:
+            from app.models.job_application import JobApplication
+            from app.services.job_matching_service import calculate_match_score
+
+            cand_email = physical_resume.candidate_email or f"imported_{physical_resume.id}@walkin.mariwasa.local"
+            app_stmt = select(JobApplication).where(
+                and_(
+                    JobApplication.job_id == physical_resume.target_job_id,
+                    JobApplication.candidate_email == cand_email
+                )
+            )
+            app_res = await db.execute(app_stmt)
+            existing_app = app_res.scalar_one_or_none()
+
+            if not existing_app:
+                extracted = parsed_data or {}
+                # Merge user-reviewed and edited fields over raw extraction
+                user_skills = data.get("skills")
+                if isinstance(user_skills, str):
+                    skills_val = [s.strip() for s in user_skills.split(",") if s.strip()]
+                elif isinstance(user_skills, list):
+                    skills_val = user_skills
+                else:
+                    skills_val = extracted.get("skills_list") or extracted.get("skills") or []
+
+                match_profile = dict(extracted)
+                if skills_val:
+                    match_profile["skills_list"] = skills_val
+                    match_profile["skills"] = ", ".join(skills_val) if isinstance(skills_val, list) else str(skills_val)
+                if data.get("degree"):
+                    match_profile["degree"] = data.get("degree")
+                if data.get("experience"):
+                    match_profile["experience"] = data.get("experience")
+
+                match_res = None
+                try:
+                    job_stmt = select(JobDescription).where(JobDescription.id == physical_resume.target_job_id)
+                    job_res = await db.execute(job_stmt)
+                    target_job_obj = job_res.scalar_one_or_none()
+                    if target_job_obj:
+                        match_res = calculate_match_score(match_profile, target_job_obj)
+                except Exception as m_err:
+                    logger.warning(f"Could not calculate match for imported resume: {m_err}")
+
+                match_score = (match_res.get("match_score") if match_res.get("match_score") is not None else match_res.get("match_percentage")) if match_res else None
+
+                job_app = JobApplication(
+                    job_id=physical_resume.target_job_id,
+                    candidate_name=physical_resume.candidate_name,
+                    candidate_email=cand_email,
+                    phone=physical_resume.candidate_phone,
+                    location=data.get("location") or extracted.get("location"),
+                    job_title=extracted.get("job_title") or target_job_title,
+                    company=extracted.get("company"),
+                    degree=data.get("degree") or extracted.get("degree") or extracted.get("highest_degree"),
+                    college=extracted.get("college") or extracted.get("institution"),
+                    skills=skills_val,
+                    match_score=match_score,
+                    skills_score=match_res.get("skills_score") if match_res else None,
+                    experience_score=match_res.get("experience_score") if match_res else None,
+                    education_score=match_res.get("education_score") if match_res else None,
+                    resume_url=physical_resume.file_url,
+                    matched_skills=match_res.get("matched_skills") if match_res else [],
+                    missing_skills=match_res.get("missing_skills") if match_res else [],
+                    strengths=match_res.get("strengths") if match_res else [],
+                    weaknesses=match_res.get("weaknesses") if match_res else [],
+                    ai_summary=match_res.get("ai_summary") if match_res else None,
+                    source="Imported",
+                    import_origin=data.get("import_origin") or "Walk-in",
+                    imported_by=data.get("imported_by") or "HR",
+                    status="SUBMITTED",
+                    created_at=datetime.utcnow(),
+                    updated_at=datetime.utcnow()
+                )
+                db.add(job_app)
+                await db.commit()
+                await db.refresh(job_app)
+                logger.info(f"Auto-created JobApplication #{job_app.id} for imported resume #{physical_resume.id}")
+
+                # Record status history for the newly imported application
+                try:
+                    from app.services.status_management_service import record_status_history
+                    await record_status_history(
+                        db=db,
+                        application_id=job_app.id,
+                        old_status="None",
+                        new_status="Submitted",
+                        changed_by=data.get("imported_by") or "HR",
+                        change_type="import",
+                        reason=f"Resume imported via {data.get('import_origin') or 'Walk-in'}",
+                        can_undo=False
+                    )
+                except Exception as hist_err:
+                    logger.warning(f"Could not record status history for imported application: {hist_err}")
+        except Exception as app_create_err:
+            logger.warning(f"Could not auto-create JobApplication for imported resume: {app_create_err}")
+
     # 5. Record activity and send notification
     try:
         await record_activity(
@@ -175,12 +274,12 @@ async def store_physical_resume(
             user_id=hr_id,
             action="STORE_PHYSICAL_RESUME",
             target=f"PhysicalResume #{physical_resume.id}",
-            details=f"Stored hard-copy resume for {physical_resume.candidate_name}. Filing reference: {physical_resume.physical_location}"
+            details=f"Imported resume for {physical_resume.candidate_name}. Filing reference: {physical_resume.physical_location}"
         )
         await create_notification(
             db=db,
-            title="Physical Resume Stored",
-            message=f"Hard-copy resume for {physical_resume.candidate_name} archived in {physical_resume.physical_location}.",
+            title="Resume Imported",
+            message=f"Resume for {physical_resume.candidate_name} ({data.get('import_origin') or 'Walk-in'}) imported and added to applicants.",
             type="physical_resume",
             target_role="HR",
             sender_role="HR"
@@ -189,6 +288,9 @@ async def store_physical_resume(
         logger.warning(f"Failed to record activity or notification for physical resume: {log_err}")
 
     await clear_cache_pattern("physical_resumes*")
+    await clear_cache_pattern("job_applications*")
+    await clear_cache_pattern("applications*")
+    await clear_cache_pattern("hr_*")
     return physical_resume
 
 
@@ -264,6 +366,7 @@ async def get_physical_resumes(
             "status": item.status,
             "notes": item.notes,
             "parsed_data": item.parsed_data,
+            "scan_unreadable": not bool(item.parsed_data and (item.parsed_data.get("raw_text") or item.parsed_data.get("skills") or item.parsed_data.get("skills_list"))),
             "created_at": item.created_at,
             "updated_at": item.updated_at,
         })
@@ -308,6 +411,7 @@ async def get_physical_resume_by_id(db: AsyncSession, resume_id: int) -> Optiona
         "status": item.status,
         "notes": item.notes,
         "parsed_data": item.parsed_data,
+        "scan_unreadable": not bool(item.parsed_data and (item.parsed_data.get("raw_text") or item.parsed_data.get("skills") or item.parsed_data.get("skills_list"))),
         "created_at": item.created_at,
         "updated_at": item.updated_at,
     }

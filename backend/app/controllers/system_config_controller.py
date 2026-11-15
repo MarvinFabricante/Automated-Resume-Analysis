@@ -7,6 +7,7 @@ from app.utils.auth import get_current_user, require_role
 from app.schemas.system_config_schema import (
     SystemConfigResponse, SystemConfigCreate, SystemConfigUpdate,
     MatchingConfigResponse, MatchingWeightsUpdate, MatchingThresholdsUpdate,
+    RecruitmentConfigResponse, RecruitmentConfigUpdate,
     UserRoleResponse, RoleUpdate,
     FormTemplateResponse, FormTemplateCreate, FormTemplateUpdate,
     SystemPerformanceResponse
@@ -71,6 +72,32 @@ async def update_matching_thresholds(
     await clear_cache_pattern("app_stats:*")
     await clear_cache_pattern("screening:*")
     return result
+
+
+@router.get("/recruitment", response_model=RecruitmentConfigResponse)
+async def get_recruitment_config(
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(require_role("ADMIN"))
+):
+    limit = await system_config_service.get_max_active_applications(db)
+    return RecruitmentConfigResponse(max_active_applications=limit)
+
+
+@router.put("/recruitment", response_model=RecruitmentConfigResponse)
+async def update_recruitment_config(
+    payload: RecruitmentConfigUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(require_role("ADMIN"))
+):
+    await system_config_service.update_max_active_applications(db, payload.max_active_applications, user_id=current_user.get("id"))
+    await audit_service.record_activity(
+        db=db,
+        user_id=current_user.get("id"),
+        action="UPDATE_CONFIG",
+        target="Recruitment Config",
+        details=f"Admin updated maximum active applications limit to {payload.max_active_applications} (REQ082)"
+    )
+    return RecruitmentConfigResponse(max_active_applications=payload.max_active_applications)
 
 
 @router.post("/matching/recalculate")

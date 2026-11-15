@@ -1,5 +1,5 @@
 import React from 'react';
-import { Search, Sparkles, TrendingUp, MessageSquare, ChevronRight } from 'lucide-react';
+import { Briefcase, FileUp, TrendingUp, MessageSquare, ChevronRight } from 'lucide-react';
 import { useNavigate } from '@/utils/navigation';
 
 const QuickActions: React.FC = () => {
@@ -7,27 +7,27 @@ const QuickActions: React.FC = () => {
 
   const ACTIONS = [
     {
-      icon: Search,
-      label: 'Browse Jobs',
-      desc: 'Active Mariwasa openings',
+      icon: Briefcase,
+      label: 'Open Positions',
+      desc: 'Active job openings',
       path: '/candidate/findjobs',
       iconColor: 'text-blue-600',
       iconBg: 'bg-blue-50 border-blue-100',
       hoverBorder: 'hover:border-blue-200'
     },
     {
-      icon: Sparkles,
-      label: 'AI Smart Match',
-      desc: 'Instant resume fit scoring',
-      path: '/candidate/smart-matches',
+      icon: FileUp,
+      label: 'Upload Resume',
+      desc: 'Find jobs that fit you best',
+      path: '/candidate/smart-upload',
       iconColor: 'text-[#D10043]',
       iconBg: 'bg-rose-50 border-rose-100',
       hoverBorder: 'hover:border-rose-200'
     },
     {
       icon: TrendingUp,
-      label: 'Track Pipeline',
-      desc: 'Application status stages',
+      label: 'My Applications',
+      desc: 'Track your application status',
       path: '/candidate/applicationtracking',
       iconColor: 'text-emerald-600',
       iconBg: 'bg-emerald-50 border-emerald-100',
@@ -35,8 +35,8 @@ const QuickActions: React.FC = () => {
     },
     {
       icon: MessageSquare,
-      label: 'HR Messages',
-      desc: 'Inquiries & coordinator chat',
+      label: 'Messages',
+      desc: 'Chat with our hiring team',
       path: '/candidate/messages',
       iconColor: 'text-purple-600',
       iconBg: 'bg-purple-50 border-purple-100',

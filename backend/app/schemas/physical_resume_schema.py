@@ -47,6 +47,7 @@ class PhysicalResumeResponse(BaseModel):
     status: str
     notes: Optional[str] = None
     parsed_data: Optional[Dict[str, Any]] = None
+    scan_unreadable: Optional[bool] = False
     created_at: datetime
     updated_at: datetime
 

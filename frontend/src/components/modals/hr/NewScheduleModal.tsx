@@ -809,7 +809,7 @@ const NewScheduleModal: React.FC<NewScheduleModalProps> = ({
             <div className="text-xs text-gray-700">
               <p className="font-bold text-gray-900">Seamless Automatic Synchronization</p>
               <p className="text-[11px] text-gray-500 font-medium mt-0.5">
-                Creating this schedule records the interview in ARAS, adds the event to your Google Calendar, and sends an email notice to the candidate's Gmail account.
+                Creating this schedule records the interview in the recruitment system, adds the event to your Google Calendar, and sends an email notice to the candidate's Gmail account.
               </p>
             </div>
           </div>

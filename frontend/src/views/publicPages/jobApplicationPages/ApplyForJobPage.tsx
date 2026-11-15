@@ -72,12 +72,55 @@ const ApplyForJobPage: React.FC = () => {
   const [matchData, setMatchData] = useState<any>(null);
   const [, setIsMatching] = useState(false);
   const [cooldown, setCooldown] = useState(0);
+  const [savedDraft, setSavedDraft] = useState<any>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
 
   const location = useLocation();
   const [isLoadingJob, setIsLoadingJob] = useState(!location.state?.job);
+
+  useEffect(() => {
+    if (!jobId) return;
+    try {
+      const raw = localStorage.getItem(`draft_application_${jobId}`);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        setSavedDraft(parsed);
+      }
+    } catch {}
+  }, [jobId]);
+
+  const handleResumeSavedDraft = () => {
+    if (!savedDraft || !jobId) return;
+    const targetStep = savedDraft.step || 2;
+    if (targetStep >= 2) {
+      navigate(`/applicationform/${jobId}?step=${targetStep}`, {
+        state: {
+          job,
+          fileName: savedDraft.fileName || "Uploaded Resume",
+          resumeUrl: savedDraft.resumeUrl || null,
+          personal: savedDraft.formData ? {
+            name: savedDraft.formData.fullName,
+            email: savedDraft.formData.email,
+            phone: savedDraft.formData.phone,
+            location: savedDraft.formData.location
+          } : undefined,
+          experience: savedDraft.formData ? {
+            title: savedDraft.formData.jobTitle,
+            company: savedDraft.formData.company,
+            relevance: savedDraft.formData.relevance
+          } : undefined,
+          education: savedDraft.formData ? {
+            degree: savedDraft.formData.degree,
+            college: savedDraft.formData.college
+          } : undefined,
+          skills: savedDraft.formData?.skills || [],
+          clarificationAnswers: savedDraft.clarificationAnswers || {}
+        }
+      });
+    }
+  };
 
   useEffect(() => {
     const loadJobData = async () => {
@@ -208,7 +251,7 @@ const ApplyForJobPage: React.FC = () => {
       if (bytes.length >= 2 && bytes[0] === 0x4d && bytes[1] === 0x5a) {
         return {
           valid: false,
-          error: 'File rejected by content check: The file content is a Windows executable binary (.exe), not a valid document.'
+          error: 'This file is a computer program (.exe). Please upload your resume as a PDF or Word document.'
         };
       }
 
@@ -216,7 +259,7 @@ const ApplyForJobPage: React.FC = () => {
       if (bytes.length >= 4 && bytes[0] === 0x7f && bytes[1] === 0x45 && bytes[2] === 0x4c && bytes[3] === 0x46) {
         return {
           valid: false,
-          error: 'File rejected by content check: The file content is an ELF binary executable, not a valid document.'
+          error: 'This file is not a supported document format. Please upload your resume as a PDF or Word document.'
         };
       }
 
@@ -232,7 +275,7 @@ const ApplyForJobPage: React.FC = () => {
         if (!hasPdfHeader) {
           return {
             valid: false,
-            error: 'File rejected by content check: The file has a .pdf extension but does not contain valid PDF content (disguised or corrupt file).'
+            error: 'We could not read this PDF. Please make sure the file is not damaged or corrupted.'
           };
         }
       }
@@ -253,7 +296,7 @@ const ApplyForJobPage: React.FC = () => {
         if (!isZip && !isCfbf && !isRtf && !isXml) {
           return {
             valid: false,
-            error: 'File rejected by content check: The file has a Word extension (.docx/.doc) but does not contain valid Microsoft Word document content.'
+            error: 'We could not read this Word file. Please make sure the document is not corrupted.'
           };
         }
       }
@@ -283,7 +326,12 @@ const ApplyForJobPage: React.FC = () => {
         (!selectedFile.type && !/\.[a-zA-Z0-9]+$/i.test(selectedFile.name)))
     ) {
       if (selectedFile.size > 10 * 1024 * 1024) {
-        alert("File size exceeds 10MB limit. Please upload a smaller document.");
+        alert("This file is too large. Resumes must be smaller than 10 MB.");
+        return;
+      }
+
+      if (selectedFile.size === 0) {
+        alert("This file looks empty. Please upload a resume with your details.");
         return;
       }
 
@@ -298,7 +346,7 @@ const ApplyForJobPage: React.FC = () => {
       setIsComplete(false);
       setUploadProgress(0);
     } else {
-      alert("Invalid file type. Please upload a PDF, Word document, or text file (.pdf, .docx, .doc, .txt).");
+      alert("Please upload your resume as a PDF or Word document (.pdf, .docx, .doc).");
     }
   };
 
@@ -333,6 +381,35 @@ const ApplyForJobPage: React.FC = () => {
       
       setExtractedData(response.data);
       setIsComplete(true);
+
+      // Save draft progress
+      const targetId = job?.job_id || job?.id || jobId;
+      if (targetId) {
+        try {
+          localStorage.setItem(`draft_application_${targetId}`, JSON.stringify({
+            jobId: targetId,
+            step: 2,
+            savedAt: new Date().toISOString(),
+            fileName: file?.name || "Uploaded Resume",
+            resumeUrl: response.data?.file_url || null,
+            extractedData: response.data,
+            formData: {
+              fullName: response.data?.fullname || "",
+              email: response.data?.email || "",
+              phone: response.data?.phone || "",
+              location: response.data?.location || "",
+              jobTitle: response.data?.job_title || "",
+              company: response.data?.company || "",
+              relevance: response.data?.relevance || "",
+              degree: response.data?.degree || response.data?.highest_degree || "",
+              college: response.data?.institution || response.data?.college || "",
+              skills: Array.isArray(response.data?.skills_list) ? response.data.skills_list : []
+            }
+          }));
+          localStorage.setItem('draft_application_step', '2');
+          localStorage.setItem('draft_application_job_id', String(targetId));
+        } catch {}
+      }
 
       // Fetch match score for this specific job
       if (job?.job_id) {
@@ -384,6 +461,46 @@ const ApplyForJobPage: React.FC = () => {
           <ArrowLeft size={18} className="mr-2 group-hover:-translate-x-1 transition-transform" />
           Back to Job Details
         </button>
+
+        {/* Saved Draft Resume Notification */}
+        {savedDraft && !isComplete && (
+          <div className="mb-6 p-4 sm:p-5 bg-amber-50/90 border border-amber-200/80 rounded-2xl sm:rounded-3xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-sm animate-in fade-in">
+            <div className="flex items-start sm:items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center shrink-0 border border-amber-200">
+                <FileText size={20} />
+              </div>
+              <div>
+                <h4 className="text-xs sm:text-sm font-black text-amber-950">
+                  You have an unfinished application for this job
+                </h4>
+                <p className="text-[11px] sm:text-xs text-amber-800 font-medium mt-0.5">
+                  We saved your progress from {savedDraft.savedAt ? new Date(savedDraft.savedAt).toLocaleDateString() : 'a previous visit'}. You can continue or start over.
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 self-end sm:self-auto shrink-0">
+              <button
+                type="button"
+                onClick={() => {
+                  const targetId = job?.job_id || job?.id || jobId;
+                  if (targetId) localStorage.removeItem(`draft_application_${targetId}`);
+                  setSavedDraft(null);
+                }}
+                className="px-3.5 py-2 rounded-xl text-xs font-bold text-amber-900 hover:bg-amber-100/70 transition-colors"
+              >
+                Start Over
+              </button>
+              <button
+                type="button"
+                onClick={handleResumeSavedDraft}
+                className="px-4 py-2 rounded-xl text-xs font-black bg-[#D10043] hover:bg-slate-900 text-white transition-colors flex items-center gap-1.5 shadow-sm"
+              >
+                <span>Continue Application</span>
+                <ArrowRight size={14} />
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Multi-step Application Progress Bar */}
         <ApplicationProgressBar currentStep={1} />
@@ -534,178 +651,22 @@ const ApplyForJobPage: React.FC = () => {
                   </div>
                 )}
                 {isComplete && (
-                  <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                    {/* Clean AI Match Overview (Single, non-duplicated card) */}
-                    {matchData && (
-                      <div className="bg-white border border-slate-100 rounded-2xl sm:rounded-[32px] p-5 sm:p-8 shadow-sm space-y-6">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-3 text-[#D60041]">
-                            <div className="p-2.5 bg-pink-50 rounded-xl">
-                              <Target size={20} />
-                            </div>
-                            <h2 className="font-bold uppercase tracking-widest text-xs">AI Match Analysis</h2>
-                          </div>
-                          <div className="bg-[#D60041] text-white px-4 py-1.5 rounded-xl text-xs font-black shadow-sm">
-                            {getMatchTier(matchData.match_percentage)} ({matchData.match_percentage}%)
-                          </div>
-                        </div>
-
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                          {[
-                            { label: 'Skills', score: matchData.skills_score, color: 'text-blue-600', bgColor: 'bg-blue-50', icon: <Cpu size={14} /> },
-                            { label: 'Experience', score: matchData.experience_score, color: 'text-purple-600', bgColor: 'bg-purple-50', icon: <Briefcase size={14} /> },
-                            { label: 'Education', score: matchData.education_score, color: 'text-amber-600', bgColor: 'bg-amber-50', icon: <GraduationCap size={14} /> }
-                          ].map((item, idx) => (
-                            <div key={idx} className={`${item.bgColor} ${item.color} p-4 rounded-2xl border border-transparent text-center`}>
-                              <div className="flex items-center justify-center mb-1 gap-1">
-                                {item.icon}
-                                <span className="text-[9px] font-black uppercase tracking-widest opacity-80">{item.label}</span>
-                              </div>
-                              <p className="text-base font-black uppercase tracking-wider">
-                                {item.label === 'Experience' && matchData.experience_below_minimum
-                                  ? 'Below Min'
-                                  : item.score >= 70
-                                  ? 'High'
-                                  : item.score >= 40
-                                  ? 'Medium'
-                                  : 'Basic'}
-                              </p>
-                            </div>
-                          ))}
-                        </div>
-
-                        <ExperienceGapAlert
-                          matchData={matchData}
-                          job={job}
-                          yearsExperience={extractedData?.years_experience}
-                        />
-
-                        {/* Matched Skills Preview */}
-                        {matchData.matched_skills && matchData.matched_skills.length > 0 && (
-                          <div className="pt-4 border-t border-slate-100 flex flex-wrap items-center gap-2">
-                            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mr-1">Matched Skills:</span>
-                            {matchData.matched_skills.slice(0, 6).map((skill: string, i: number) => (
-                              <span key={i} className="px-2.5 py-1 bg-green-50 text-green-700 rounded-lg text-xs font-bold border border-green-100">
-                                {skill}
-                              </span>
-                            ))}
-                            {matchData.matched_skills.length > 6 && (
-                              <span className="text-xs text-slate-400 font-semibold">
-                                +{matchData.matched_skills.length - 6} more
-                              </span>
-                            )}
-                          </div>
-                        )}
+                  <div className="space-y-6 animate-in fade-in zoom-in-95 duration-300">
+                    <div className="bg-emerald-50/80 border border-emerald-200 p-6 sm:p-8 rounded-[28px] flex items-center gap-5">
+                      <div className="bg-white text-emerald-600 p-3.5 rounded-2xl shadow-xs shrink-0 border border-emerald-100">
+                        <CheckCircle2 size={32} />
                       </div>
-                    )}
-
-                    {/* Clarification Needed Notice for Vague / Incomplete Resumes */}
-                    {extractedData?.needs_clarification && (
-                      <div className="bg-amber-50 border border-amber-200 rounded-2xl p-5 flex items-start gap-4">
-                        <div className="p-2.5 bg-white rounded-xl border border-amber-200 text-amber-600 shrink-0">
-                          <ShieldCheck size={20} />
-                        </div>
-                        <div>
-                          <h5 className="text-xs font-black uppercase tracking-wider text-amber-900 mb-1">
-                            Follow-Up Clarification Required on Next Step
-                          </h5>
-                          <p className="text-xs sm:text-sm text-amber-800 font-medium">
-                            {extractedData?.clarification_questions?.[0]?.question ||
-                              'Please specify your years of manufacturing experience and role details on the applicant form.'}
-                          </p>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Extracted Data Display (Clean without literal 'null') */}
-                    <div className="bg-slate-50 border border-slate-100 rounded-2xl sm:rounded-[32px] p-6 sm:p-8 space-y-6">
-                      <div className="flex flex-col md:flex-row gap-6 items-start">
-                        {extractedData?.profile_image_url && (
-                          <div className="shrink-0">
-                            <img 
-                              src={extractedData.profile_image_url} 
-                              alt="Profile" 
-                              className="w-24 h-24 sm:w-28 sm:h-28 rounded-2xl object-cover border-4 border-white shadow-md"
-                            />
-                          </div>
-                        )}
-                        <div className="flex-1 w-full">
-                          <div className="flex items-center justify-between mb-4">
-                            <h5 className="text-[10px] font-black uppercase tracking-[0.2em] text-[#D60041]">
-                              Extracted Profile Details
-                            </h5>
-                            <span className="text-xs text-emerald-600 font-bold flex items-center gap-1">
-                              <CheckCircle2 size={14} /> Parsed from resume
-                            </span>
-                          </div>
-
-                          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
-                            {[
-                              { label: "Full Name", value: extractedData?.fullname },
-                              { label: "Email Address", value: extractedData?.email },
-                              { label: "Phone Number", value: extractedData?.phone },
-                              { label: "Location", value: extractedData?.location },
-                              { label: "Job Title", value: extractedData?.job_title || extractedData?.experience?.split('|')[0] },
-                              { label: "Experience", value: extractedData?.years_experience ? `${extractedData.years_experience} yrs` : (extractedData?.experience ? extractedData.experience : null) },
-                              { label: "Degree", value: extractedData?.degree || extractedData?.highest_degree },
-                              { label: "Institution", value: extractedData?.institution || extractedData?.college }
-                            ].map((item, idx) => (
-                              <div key={idx} className="bg-white p-3.5 rounded-xl border border-slate-100 shadow-2xs">
-                                <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">{item.label}</span>
-                                <p className="text-xs sm:text-sm font-bold text-slate-900 truncate">
-                                  {item.value && item.value !== "null" ? item.value : <span className="text-slate-400 font-normal italic">Not detected</span>}
-                                </p>
-                              </div>
-                            ))}
-                          </div>
-
-                          {/* Extracted Skills & Certifications Summary */}
-                          {(() => {
-                            const certItems: string[] = Array.isArray(extractedData?.certifications_list) && extractedData.certifications_list.length > 0
-                              ? extractedData.certifications_list
-                              : (extractedData?.certifications ? String(extractedData.certifications).split(' | ').map((s: string) => s.trim()).filter(Boolean) : []);
-                            const skillItems: string[] = Array.isArray(extractedData?.skills_list) && extractedData.skills_list.length > 0
-                              ? extractedData.skills_list
-                              : (extractedData?.skills ? String(extractedData.skills).split(' | ').map((s: string) => s.trim()).filter(Boolean) : []);
-                            return (
-                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-                                <div className="bg-white p-3.5 rounded-xl border border-slate-100 shadow-2xs">
-                                  <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">Skills ({skillItems.length})</span>
-                                  {skillItems.length > 0 ? (
-                                    <div className="flex flex-wrap gap-1.5">
-                                      {skillItems.slice(0, 12).map((sk, idx) => (
-                                        <span key={idx} className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 text-[11px] font-semibold">
-                                          {sk}
-                                        </span>
-                                      ))}
-                                    </div>
-                                  ) : (
-                                    <p className="text-xs text-slate-400 italic">Not detected</p>
-                                  )}
-                                </div>
-                                <div className="bg-white p-3.5 rounded-xl border border-slate-100 shadow-2xs">
-                                  <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">Certifications & Achievements ({certItems.length})</span>
-                                  {certItems.length > 0 ? (
-                                    <div className="flex flex-wrap gap-1.5">
-                                      {certItems.map((cert, idx) => (
-                                        <span key={idx} className="px-2 py-0.5 rounded-md bg-rose-50 text-rose-800 border border-rose-200/70 text-[11px] font-semibold">
-                                          {cert}
-                                        </span>
-                                      ))}
-                                    </div>
-                                  ) : (
-                                    <p className="text-xs text-slate-400 italic">Not detected</p>
-                                  )}
-                                </div>
-                              </div>
-                            );
-                          })()}
-                        </div>
+                      <div>
+                        <h4 className="text-lg font-black text-slate-900">
+                          Resume Attached Successfully
+                        </h4>
+                        <p className="text-sm text-slate-600 font-medium mt-0.5">
+                          We've read your resume for <span className="font-bold text-slate-900">{job ? (job.title || job.job_title) : 'this position'}</span>. Click the button below to review your details.
+                        </p>
                       </div>
                     </div>
 
-                    {/* Step Navigation Action Buttons */}
-                    <div className="flex flex-col sm:flex-row gap-3 pt-4 border-t border-slate-100">
+                    <div className="flex flex-col sm:flex-row gap-3 pt-2">
                       <button
                         id="btn-preview-resume-complete"
                         data-testid="preview-resume-complete-btn"
@@ -736,7 +697,7 @@ const ApplyForJobPage: React.FC = () => {
                         onClick={handleProceedToForm}
                         className="flex-[2] bg-[#D60041] hover:bg-slate-900 text-white py-4 rounded-2xl font-bold flex items-center justify-center gap-3 transition-all shadow-xl shadow-pink-100 active:scale-95 text-sm cursor-pointer"
                       >
-                        <span>Proceed to Application Details</span>
+                        <span>Next: Review your details</span>
                         <ArrowRight size={18} />
                       </button>
                     </div>

@@ -27,14 +27,33 @@ const TableStatusDropdown: React.FC<TableStatusDropdownProps> = ({ status, candi
 
   const getStatusInfo = (st?: string) => {
     switch ((st || '').toLowerCase()) {
-      case 'accepted': return { color: 'text-teal-700 bg-teal-50 border-teal-200', label: 'Accepted' };
-      case 'rejected': return { color: 'text-rose-700 bg-rose-50 border-rose-200', label: 'Rejected' };
+      case 'submitted':
+      case 'pending':
+        return { color: 'text-sky-700 bg-sky-50 border-sky-200', label: 'Submitted' };
+      case 'under review':
       case 'reviewed':
-      case 'scheduled': return { color: 'text-blue-700 bg-blue-50 border-blue-200', label: 'Reviewed' };
-      case 'technical interview': return { color: 'text-purple-700 bg-purple-50 border-purple-200', label: 'Tech Interview' };
-      case 'final interview': return { color: 'text-indigo-700 bg-indigo-50 border-indigo-200', label: 'Final Interview' };
-      case 'archived': return { color: 'text-gray-700 bg-gray-100 border-gray-200', label: 'Archived' };
-      default: return { color: 'text-amber-700 bg-amber-50 border-amber-200', label: 'Pending' };
+      case 'screened':
+        return { color: 'text-amber-700 bg-amber-50 border-amber-200', label: 'Under Review' };
+      case 'shortlisted':
+      case 'shortlist':
+        return { color: 'text-purple-700 bg-purple-50 border-purple-200', label: 'Shortlisted' };
+      case 'interview scheduled':
+      case 'scheduled':
+      case 'technical interview':
+      case 'final interview':
+        return { color: 'text-blue-700 bg-blue-50 border-blue-200', label: 'Interview Scheduled' };
+      case 'interviewed':
+        return { color: 'text-teal-700 bg-teal-50 border-teal-200', label: 'Interviewed' };
+      case 'not selected':
+      case 'rejected':
+      case 'archived':
+        return { color: 'text-rose-700 bg-rose-50 border-rose-200', label: 'Not Selected' };
+      case 'accepted':
+      case 'passed initial interview':
+      case 'passed':
+        return { color: 'text-emerald-700 bg-emerald-50 border-emerald-200', label: 'Passed initial interview' };
+      default:
+        return { color: 'text-sky-700 bg-sky-50 border-sky-200', label: 'Submitted' };
     }
   };
 
@@ -57,7 +76,7 @@ const TableStatusDropdown: React.FC<TableStatusDropdownProps> = ({ status, candi
 
       {isOpen && (
         <div className="absolute top-full left-0 mt-1 w-44 bg-white border border-gray-100 rounded-xl shadow-xl z-50 py-1 animate-in fade-in zoom-in-95 duration-150">
-          {['Pending', 'Reviewed', 'Technical Interview', 'Final Interview', 'Accepted', 'Rejected'].map((s) => (
+          {['Submitted', 'Under Review', 'Shortlisted', 'Interview Scheduled', 'Interviewed', 'Not Selected'].map((s) => (
             <button
               key={s}
               type="button"
@@ -69,8 +88,8 @@ const TableStatusDropdown: React.FC<TableStatusDropdownProps> = ({ status, candi
                 setTimeout(() => setIsUpdating(false), 500);
               }}
               className={`w-full flex items-center justify-between px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider transition-colors cursor-pointer ${(status || '').toLowerCase() === s.toLowerCase()
-                  ? 'bg-pink-50 text-[#D60041]'
-                  : 'text-gray-600 hover:bg-gray-50'
+                ? 'bg-pink-50 text-[#D60041]'
+                : 'text-gray-600 hover:bg-gray-50'
                 }`}
             >
               <span>{s}</span>
@@ -200,7 +219,7 @@ const CandidateTableView: React.FC<CandidateTableViewProps> = ({
                         />
                       </div>
                       <div className="min-w-0">
-                        <div className="flex items-center gap-1.5">
+                        <div className="flex items-center gap-1.5 flex-wrap">
                           <button
                             type="button"
                             onClick={() => onOpenDetails(c)}
@@ -208,6 +227,22 @@ const CandidateTableView: React.FC<CandidateTableViewProps> = ({
                           >
                             {c.name}
                           </button>
+                          {(() => {
+                            const src = c.source || 'Online';
+                            const isImp = !src.toLowerCase().includes('online');
+                            const origin = c.import_origin;
+                            return (
+                              <span
+                                className={`inline-flex items-center gap-0.5 px-1.5 py-0.2 text-[9px] font-bold rounded-full border ${isImp
+                                    ? 'bg-amber-50 text-amber-800 border-amber-200'
+                                    : 'bg-slate-100 text-slate-700 border-slate-200'
+                                  }`}
+                                title={isImp ? `Imported: ${origin || 'Walk-in'}` : 'Online application'}
+                              >
+                                {isImp ? 'Imported' : 'Online'}
+                              </span>
+                            );
+                          })()}
                         </div>
                         <div className="flex items-center gap-1.5 text-[11px] text-gray-400 font-medium">
                           <span className="truncate max-w-[130px]">{c.email || 'N/A'}</span>

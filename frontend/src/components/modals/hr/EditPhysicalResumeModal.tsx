@@ -26,7 +26,7 @@ const PRESET_LOCATIONS = [
   'Cabinet B • Walk-in Folder',
   'Plant 2 • HR Front Desk',
   'Administration • Box #12',
-  'Ceramics Division • Vault',
+  'Ceramics Division • HR Archive',
 ];
 
 const EditPhysicalResumeModal: React.FC<EditPhysicalResumeModalProps> = ({

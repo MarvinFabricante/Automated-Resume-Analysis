@@ -190,85 +190,85 @@ const JobManagementPage: React.FC = () => {
 
   return (
     <div className="bg-[#FCFCFC] text-gray-800 antialiased min-h-screen font-['Inter'] flex flex-col">
-      <Helmet><title>Admin - Job Management</title></Helmet>
+      <Helmet><title>Job Management | Mariwasa Recruitment Admin Portal</title></Helmet>
       <Header />
-      
+
       <div className="flex flex-1">
         <Sidebar />
         <main className="flex-1 w-full max-w-full px-3 sm:px-6 md:px-10 py-4 sm:py-6 md:py-8 min-w-0 overflow-x-hidden animate-in fade-in duration-500">
-        <JobManagementHeader onCreateJob={() => setModalState({ type: 'create', selectedJob: null })} />
+          <JobManagementHeader onCreateJob={() => setModalState({ type: 'create', selectedJob: null })} />
 
-        <JobSearchAndFilter
-          searchQuery={searchQuery}
-          setSearchQuery={setSearchQuery}
-          statusFilter={statusFilter}
-          setStatusFilter={setStatusFilter}
-          deptFilter={deptFilter}
-          setDeptFilter={setDeptFilter}
-          departments={departments}
-          showSuggestions={showSuggestions}
-          setShowSuggestions={setShowSuggestions}
-          suggestions={[]}
-        />
+          <JobSearchAndFilter
+            searchQuery={searchQuery}
+            setSearchQuery={setSearchQuery}
+            statusFilter={statusFilter}
+            setStatusFilter={setStatusFilter}
+            deptFilter={deptFilter}
+            setDeptFilter={setDeptFilter}
+            departments={departments}
+            showSuggestions={showSuggestions}
+            setShowSuggestions={setShowSuggestions}
+            suggestions={[]}
+          />
 
-        {isLoading ? (
-          <div className="flex flex-col items-center justify-center py-20 text-gray-500">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
-            <p>Fetching latest job openings...</p>
-          </div>
-        ) : error ? (
-          <div className="bg-red-50 border border-red-200 text-red-600 p-4 rounded-lg text-center">
-            {error}
-          </div>
-        ) : (
-          <>
-            <JobList
-              jobs={paginatedJobs}
-              onEdit={(job) => setModalState({ type: 'edit', selectedJob: job })}
-              onView={(job) => setModalState({ type: 'view', selectedJob: job })}
-              onArchive={handleArchiveJob}
-              onUnarchive={handleUnarchiveJob}
-              onDelete={handleDeleteJob}
-            />
-            
-            {/* Pagination Controls */}
-            {totalPages > 1 && (
-              <div className="mt-8 sm:mt-12 flex flex-col md:flex-row items-center justify-between gap-4 sm:gap-6 bg-white px-5 sm:px-8 py-4 sm:py-5 rounded-2xl sm:rounded-3xl md:rounded-[32px] shadow-sm border border-gray-100">
-                <div className="text-xs sm:text-sm text-slate-600 font-medium text-center md:text-left">
-                  Showing <span className="font-bold text-slate-900">{((currentPage - 1) * itemsPerPage) + 1}</span> to <span className="font-bold text-slate-900">{Math.min(currentPage * itemsPerPage, filteredJobs.length)}</span> of <span className="font-bold text-slate-900">{filteredJobs.length}</span> positions
-                </div>
-                
-                <div className="flex flex-wrap items-center justify-center gap-2.5 sm:gap-4 w-full md:w-auto">
-                  <button
-                    onClick={handlePrevPage}
-                    disabled={currentPage === 1}
-                    className="group flex items-center gap-1.5 sm:gap-2 px-4 sm:px-5 py-2.5 rounded-xl bg-white border border-slate-200 shadow-2xs text-xs sm:text-sm font-bold text-slate-700 hover:bg-slate-50 hover:border-slate-300 disabled:opacity-40 disabled:cursor-not-allowed transition-all active:scale-95 cursor-pointer min-h-[40px]"
-                  >
-                    <ArrowRight size={16} className="rotate-180 group-hover:-translate-x-1 transition-transform" />
-                    <span>Previous</span>
-                  </button>
-                  
-                  <div className="flex items-center gap-1.5 sm:gap-2 px-2">
-                    <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Page</span>
-                    <div className="px-3.5 py-1.5 rounded-lg bg-slate-100 border border-slate-200 font-black text-[#D60041] text-xs sm:text-sm shadow-inner">
-                      {currentPage}
-                    </div>
-                    <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">of {totalPages}</span>
+          {isLoading ? (
+            <div className="flex flex-col items-center justify-center py-20 text-gray-500">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
+              <p>Fetching latest job openings...</p>
+            </div>
+          ) : error ? (
+            <div className="bg-red-50 border border-red-200 text-red-600 p-4 rounded-lg text-center">
+              {error}
+            </div>
+          ) : (
+            <>
+              <JobList
+                jobs={paginatedJobs}
+                onEdit={(job) => setModalState({ type: 'edit', selectedJob: job })}
+                onView={(job) => setModalState({ type: 'view', selectedJob: job })}
+                onArchive={handleArchiveJob}
+                onUnarchive={handleUnarchiveJob}
+                onDelete={handleDeleteJob}
+              />
+
+              {/* Pagination Controls */}
+              {totalPages > 1 && (
+                <div className="mt-8 sm:mt-12 flex flex-col md:flex-row items-center justify-between gap-4 sm:gap-6 bg-white px-5 sm:px-8 py-4 sm:py-5 rounded-2xl sm:rounded-3xl md:rounded-[32px] shadow-sm border border-gray-100">
+                  <div className="text-xs sm:text-sm text-slate-600 font-medium text-center md:text-left">
+                    Showing <span className="font-bold text-slate-900">{((currentPage - 1) * itemsPerPage) + 1}</span> to <span className="font-bold text-slate-900">{Math.min(currentPage * itemsPerPage, filteredJobs.length)}</span> of <span className="font-bold text-slate-900">{filteredJobs.length}</span> positions
                   </div>
 
-                  <button
-                    onClick={handleNextPage}
-                    disabled={currentPage === totalPages}
-                    className="group flex items-center gap-1.5 sm:gap-2 px-4 sm:px-5 py-2.5 rounded-xl bg-[#1A1A1A] text-white shadow-xs text-xs sm:text-sm font-bold hover:bg-[#D60041] disabled:opacity-40 disabled:cursor-not-allowed transition-all active:scale-95 cursor-pointer min-h-[40px]"
-                  >
-                    <span>Next</span>
-                    <ArrowRight size={16} className="group-hover:translate-x-1 transition-transform" />
-                  </button>
+                  <div className="flex flex-wrap items-center justify-center gap-2.5 sm:gap-4 w-full md:w-auto">
+                    <button
+                      onClick={handlePrevPage}
+                      disabled={currentPage === 1}
+                      className="group flex items-center gap-1.5 sm:gap-2 px-4 sm:px-5 py-2.5 rounded-xl bg-white border border-slate-200 shadow-2xs text-xs sm:text-sm font-bold text-slate-700 hover:bg-slate-50 hover:border-slate-300 disabled:opacity-40 disabled:cursor-not-allowed transition-all active:scale-95 cursor-pointer min-h-[40px]"
+                    >
+                      <ArrowRight size={16} className="rotate-180 group-hover:-translate-x-1 transition-transform" />
+                      <span>Previous</span>
+                    </button>
+
+                    <div className="flex items-center gap-1.5 sm:gap-2 px-2">
+                      <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Page</span>
+                      <div className="px-3.5 py-1.5 rounded-lg bg-slate-100 border border-slate-200 font-black text-[#D60041] text-xs sm:text-sm shadow-inner">
+                        {currentPage}
+                      </div>
+                      <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">of {totalPages}</span>
+                    </div>
+
+                    <button
+                      onClick={handleNextPage}
+                      disabled={currentPage === totalPages}
+                      className="group flex items-center gap-1.5 sm:gap-2 px-4 sm:px-5 py-2.5 rounded-xl bg-[#1A1A1A] text-white shadow-xs text-xs sm:text-sm font-bold hover:bg-[#D60041] disabled:opacity-40 disabled:cursor-not-allowed transition-all active:scale-95 cursor-pointer min-h-[40px]"
+                    >
+                      <span>Next</span>
+                      <ArrowRight size={16} className="group-hover:translate-x-1 transition-transform" />
+                    </button>
+                  </div>
                 </div>
-              </div>
-            )}
-          </>
-        )}
+              )}
+            </>
+          )}
         </main>
       </div>
 
@@ -298,14 +298,14 @@ const JobManagementPage: React.FC = () => {
             <div className="flex items-center justify-center w-12 h-12 sm:w-14 sm:h-14 bg-rose-50 border-2 border-rose-100 rounded-2xl text-rose-600 mb-4 sm:mb-6 mx-auto">
               <AlertCircle className="w-5 h-5 sm:w-6 sm:h-6" />
             </div>
-            
+
             <h3 className="text-base sm:text-lg font-bold text-gray-900 text-center uppercase tracking-wider mb-2">
               {confirmModal.title}
             </h3>
             <p className="text-xs sm:text-sm text-gray-500 text-center font-medium leading-relaxed mb-6 sm:mb-8">
               {confirmModal.message}
             </p>
-            
+
             <div className="flex gap-3 sm:gap-4">
               <button
                 onClick={() => setConfirmModal({ ...confirmModal, isOpen: false })}
@@ -331,11 +331,10 @@ const JobManagementPage: React.FC = () => {
 
       {/* Toast Notification */}
       {toast && (
-        <div className={`fixed bottom-4 sm:bottom-6 right-4 sm:right-6 left-4 sm:left-auto max-w-md flex items-center gap-3 px-4 sm:px-5 py-3 sm:py-4 rounded-xl sm:rounded-2xl shadow-2xl border animate-in slide-in-from-bottom-5 duration-300 z-50 ${
-          toast.type === 'success' 
-            ? 'bg-emerald-50 border-emerald-100 text-emerald-800' 
+        <div className={`fixed bottom-4 sm:bottom-6 right-4 sm:right-6 left-4 sm:left-auto max-w-md flex items-center gap-3 px-4 sm:px-5 py-3 sm:py-4 rounded-xl sm:rounded-2xl shadow-2xl border animate-in slide-in-from-bottom-5 duration-300 z-50 ${toast.type === 'success'
+            ? 'bg-emerald-50 border-emerald-100 text-emerald-800'
             : 'bg-rose-50 border-rose-100 text-rose-800'
-        }`}>
+          }`}>
           {toast.type === 'success' ? (
             <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
           ) : (

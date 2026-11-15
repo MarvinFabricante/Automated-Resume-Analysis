@@ -79,51 +79,73 @@ const SubmissionSuccessPage: React.FC = () => {
           </p>
         </div>
 
-        <div className="w-full bg-white rounded-[40px] shadow-xl shadow-slate-200/50 border border-slate-100 overflow-hidden mb-12">
+        <div className="w-full bg-white rounded-[40px] shadow-xl shadow-slate-200/50 border border-slate-100 overflow-hidden mb-8">
           <div className="p-8 md:p-10">
             <h2 className="text-sm font-black uppercase tracking-widest text-[#D60041] mb-6 flex items-center gap-2">
               <BellRing size={16} />
-              What's Next?
+              What Happens Next?
             </h2>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
               <StepItem
                 number="01"
-                title="Review"
-                desc="Our team will evaluate your skills and experience."
+                title="Hiring Team Review"
+                desc="Our recruitment team will review your resume and qualifications within 2-3 business days."
               />
               <StepItem
                 number="02"
-                title="Notification"
-                desc="You'll receive an email update within 3-5 business days."
+                title="Status Updates"
+                desc="You can monitor your application's progress anytime from your tracking page."
               />
               <StepItem
                 number="03"
-                title="Interview"
-                desc="If it's a match, we'll schedule a virtual call."
+                title="Interview Invitation"
+                desc="If your qualifications match the position, a recruiter will reach out with interview details."
               />
+            </div>
+
+            {/* Feedback Report Status Section */}
+            <div className="mt-8 pt-8 border-t border-slate-100 bg-slate-50/60 -mx-8 -mb-10 p-8 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+              <div className="space-y-1">
+                <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 block">
+                  Feedback & Match Report
+                </span>
+                <p className="text-sm font-black text-slate-800">
+                  Report is being prepared by our hiring team
+                </p>
+                <p className="text-xs text-slate-500 font-medium leading-relaxed">
+                  Your feedback report will appear on your tracking page once the initial evaluation is complete.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => navigate('/candidate/applicationtracking')}
+                className="px-5 py-2.5 rounded-xl bg-slate-900 hover:bg-[#D60041] text-white text-xs font-bold uppercase tracking-wider transition-colors shrink-0 cursor-pointer"
+              >
+                Track Application
+              </button>
             </div>
           </div>
 
-          <div className="bg-slate-50 p-6 border-t border-slate-100 flex items-center justify-center gap-2 text-slate-400 font-bold text-xs">
-            <p>Application ID: #APP-{appId}</p>
+          <div className="bg-slate-50 p-6 border-t border-slate-100 flex items-center justify-center gap-2 text-slate-400 font-bold text-xs mt-4">
+            <p>Application Tracking ID: #ARA-88{appId}</p>
           </div>
         </div>
 
         <div className="flex flex-col sm:flex-row gap-4 w-full max-w-md">
           <button
-            onClick={() => navigate('/careerspage')}
-            className="flex-1 bg-slate-900 hover:bg-black text-white py-5 rounded-[24px] font-bold flex items-center justify-center gap-3 transition-all shadow-xl active:scale-[0.98]"
+            onClick={() => navigate('/candidate/applicationtracking')}
+            className="flex-1 bg-[#D60041] hover:bg-slate-900 text-white py-4 rounded-2xl font-bold flex items-center justify-center gap-2 transition-all shadow-lg shadow-pink-100 active:scale-[0.98] text-sm cursor-pointer"
           >
-            <Search size={20} />
-            Explore More Jobs
+            <Search size={18} />
+            Track Status
           </button>
           <button
-            onClick={() => navigate('/')}
-            className="flex-1 bg-white border border-slate-200 hover:border-[#D60041] hover:text-[#D60041] text-slate-700 py-5 rounded-[24px] font-bold flex items-center justify-center gap-3 transition-all shadow-sm active:scale-[0.98]"
+            onClick={() => navigate('/candidate/dashboard')}
+            className="flex-1 bg-white border border-slate-200 hover:border-slate-300 text-slate-700 py-4 rounded-2xl font-bold flex items-center justify-center gap-2 transition-all shadow-xs active:scale-[0.98] text-sm cursor-pointer"
           >
-            <Home size={20} />
-            Back to Home
+            <Home size={18} />
+            Go to Dashboard
           </button>
         </div>
       </main>
