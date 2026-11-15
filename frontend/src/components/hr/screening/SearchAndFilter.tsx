@@ -265,14 +265,13 @@ const SearchAndFilter: React.FC<SearchAndFilterProps> = ({
             >
               <option value="All Status">All Active Statuses</option>
               <option value="All With Archived">All Applications (Include Archived)</option>
+              <option value="Submitted">Submitted</option>
+              <option value="Under Review">Under Review</option>
+              <option value="Shortlisted">Shortlisted</option>
+              <option value="Interview Scheduled">Interview Scheduled</option>
+              <option value="Interviewed">Interviewed</option>
+              <option value="Not Selected">Not Selected</option>
               <option value="Archived">Archived Only {archivedCount > 0 ? `(${archivedCount})` : ''}</option>
-              <option value="Pending">Pending Review</option>
-              <option value="Reviewed">Reviewed</option>
-              <option value="Interview">All Interviews</option>
-              <option value="Technical Interview">Technical Interview</option>
-              <option value="Final Interview">Final Interview</option>
-              <option value="Accepted">Accepted / Hired</option>
-              <option value="Rejected">Rejected</option>
             </select>
             <div className="absolute inset-y-0 right-0 pr-2 sm:pr-3 flex items-center pointer-events-none text-gray-400">
               <svg className="h-3 w-3 sm:h-3.5 sm:w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>

@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Helmet } from 'react-helmet-async';
 import {
   X, MapPin, Briefcase, GraduationCap, Mail, Phone, PhoneForwarded, Video, User,
   Target, TrendingUp, Lightbulb, CheckCircle2, XCircle, AlertTriangle,
   Zap, BarChart3, BookOpen, Award, Copy, Check, Calendar, Download,
-  Building2, Clock, Sparkles, ShieldCheck, Printer, CheckCircle
+  Building2, Clock, Sparkles, ShieldCheck, Printer, CheckCircle,
+  History, RotateCcw, ChevronDown
 } from 'lucide-react';
 import { getAssetUrl } from '../../../services/api';
 import {
@@ -13,6 +14,9 @@ import {
   useGetCandidateInterviewsQuery,
   useGetApplicationCallLogsQuery,
   useGetCandidateCallLogsQuery,
+  useRecordApplicationViewedMutation,
+  useGetApplicationHistoryQuery,
+  useUndoAutoStatusMutation,
 } from '../../../redux/api/apiSlice';
 import {
   filterAndSortUpcomingInterviews,
@@ -229,13 +233,83 @@ const ViewCandidateDetailsModal: React.FC<ViewCandidateDetailsModalProps> = ({
 }) => {
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<TabType>('overview');
+  const [hasEngaged, setHasEngaged] = useState<boolean>(false);
+  const [showStatusHistory, setShowStatusHistory] = useState<boolean>(false);
+  const hasTriggeredViewedRef = React.useRef<boolean>(false);
+  const secondsElapsedRef = React.useRef<number>(0);
+  const hasEngagedRef = React.useRef<boolean>(false);
 
   const candidateAppId = initialCandidate?.id;
   const queryOpts = { refetchOnMountOrArgChange: true, refetchOnFocus: true };
-  const { data: fullApplication } = useGetApplicationByIdQuery(candidateAppId, {
+  const { data: fullApplication, refetch: refetchApplication } = useGetApplicationByIdQuery(candidateAppId, {
     skip: !isOpen || !candidateAppId,
     ...queryOpts,
   });
+
+  const [recordViewed] = useRecordApplicationViewedMutation();
+  const { data: statusHistory = [], refetch: refetchHistory } = useGetApplicationHistoryQuery(
+    candidateAppId,
+    { skip: !isOpen || !candidateAppId, refetchOnMountOrArgChange: true }
+  );
+  const [undoAutoStatus, { isLoading: isUndoing }] = useUndoAutoStatusMutation();
+
+  const handleUserEngagement = React.useCallback(() => {
+    hasEngagedRef.current = true;
+    setHasEngaged(true);
+  }, []);
+
+  const statusRef = React.useRef<string>('');
+  useEffect(() => {
+    statusRef.current = (fullApplication?.status || initialCandidate?.status || '').toUpperCase();
+  }, [fullApplication?.status, initialCandidate?.status]);
+
+  // Reset engagement & auto-view trigger whenever modal opens for a new application
+  useEffect(() => {
+    if (isOpen) {
+      secondsElapsedRef.current = 0;
+      hasEngagedRef.current = false;
+      hasTriggeredViewedRef.current = false;
+      setHasEngaged(false);
+    }
+  }, [isOpen, candidateAppId]);
+
+  // Automatic status update: Submitted -> Under Review after >= 8 seconds of visible, focused view with engagement
+  useEffect(() => {
+    if (!isOpen || !candidateAppId) return;
+
+    const interval = setInterval(() => {
+      const isVisible = typeof document !== 'undefined' && document.visibilityState === 'visible';
+      const isFocused = typeof document !== 'undefined' && (document.hasFocus ? document.hasFocus() : true);
+
+      if (isVisible && isFocused) {
+        secondsElapsedRef.current += 1;
+        const norm = (statusRef.current || '').trim().toUpperCase();
+        const isSubmitted = !norm || norm === 'SUBMITTED' || norm === 'PENDING';
+
+        if (secondsElapsedRef.current >= 8 && hasEngagedRef.current && isSubmitted && !hasTriggeredViewedRef.current) {
+          hasTriggeredViewedRef.current = true;
+          recordViewed({
+            id: candidateAppId,
+            view_duration_seconds: secondsElapsedRef.current,
+            visible_focused: true,
+            engaged: true,
+          }).unwrap().then((res) => {
+            if (process.env.NODE_ENV !== 'production') {
+              console.log('[AutoStatus] viewed event response:', res);
+            }
+            refetchHistory();
+            refetchApplication();
+          }).catch((err) => {
+            if (process.env.NODE_ENV !== 'production') {
+              console.warn('[AutoStatus] viewed event error:', err);
+            }
+          });
+        }
+      }
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [isOpen, candidateAppId, recordViewed, refetchHistory, refetchApplication]);
 
   const resolvedEmailSource = fullApplication || initialCandidate;
   const rawCandidateEmail = String(
@@ -712,19 +786,24 @@ const ViewCandidateDetailsModal: React.FC<ViewCandidateDetailsModalProps> = ({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-[#0c0d12]/70 backdrop-blur-md transition-all duration-200">
       <Helmet>
-        <title>{candidateName} | ATS Match Analysis</title>
+        <title>{candidateName} | Candidate Details - Mariwasa Recruitment</title>
       </Helmet>
 
-      <div className="bg-white w-full max-w-6xl max-h-[96vh] sm:max-h-[92vh] rounded-2xl sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-250 border border-gray-100">
+      <div
+        onClick={handleUserEngagement}
+        onMouseMove={handleUserEngagement}
+        onKeyDown={handleUserEngagement}
+        className="bg-white w-full max-w-6xl max-h-[96vh] sm:max-h-[92vh] rounded-2xl sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-250 border border-gray-100"
+      >
 
         {/* ═══════ TOP HEADER ═══════ */}
         <header className="px-4 sm:px-6 py-3.5 border-b border-gray-100 flex flex-wrap justify-between items-center bg-white sticky top-0 z-20 shrink-0 gap-3">
           <div className="flex items-center gap-3 min-w-0">
-            {/* ATS Badge */}
-            <div className="flex items-center gap-1.5 px-3 py-1 bg-emerald-50 border border-emerald-200/80 rounded-xl shrink-0">
+            {/* Header Badge */}
+            <div className="flex items-center gap-1.5 px-3 py-1 bg-slate-100 border border-slate-200/80 rounded-xl shrink-0">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-              <BarChart3 size={14} className="text-emerald-700" />
-              <span className="text-[11px] font-bold text-emerald-800 uppercase tracking-wider">ATS Analysis Report</span>
+              <User size={14} className="text-slate-700" />
+              <span className="text-[11px] font-bold text-slate-800 uppercase tracking-wider">Application Details</span>
             </div>
 
             {/* Fit Tier Badge */}
@@ -733,19 +812,72 @@ const ViewCandidateDetailsModal: React.FC<ViewCandidateDetailsModalProps> = ({
               {fitTier.label} • {matchScore}%
             </span>
 
-            {/* Status Selector */}
+            {/* Source Tag */}
+            {(() => {
+              const src = candidate.source || fullApplication?.source || 'Online';
+              const isImp = !src.toLowerCase().includes('online');
+              const origin = candidate.import_origin || fullApplication?.import_origin;
+              return (
+                <span
+                  className={`hidden sm:inline-flex items-center gap-1 px-2.5 py-1 rounded-xl text-xs font-bold border ${isImp
+                    ? 'bg-amber-50 text-amber-800 border-amber-200'
+                    : 'bg-slate-100 text-slate-700 border-slate-200'
+                    }`}
+                  title={isImp ? `Imported resume: ${origin || 'Walk-in'}` : 'Online application'}
+                >
+                  <span>{isImp ? 'Imported' : 'Online'}</span>
+                  {isImp && origin && <span className="text-[10px] opacity-75">• {origin}</span>}
+                </span>
+              );
+            })()}
+
+            {/* Status Selector & Controls */}
             {onUpdateStatus && (
-              <div className="flex items-center gap-1.5 pl-2 border-l border-gray-200">
+              <div className="flex items-center gap-2 pl-2 border-l border-gray-200 flex-wrap">
                 <span className="hidden md:inline text-[10px] font-bold text-gray-400 uppercase tracking-wider">Status:</span>
                 <select
                   value={currentStatus}
                   onChange={(e) => onUpdateStatus(candidate.id, e.target.value)}
                   className="px-2.5 py-1 bg-gray-50 hover:bg-gray-100 border border-gray-200 rounded-xl text-xs font-bold text-gray-800 focus:outline-none focus:ring-2 focus:ring-[#D60041]/20 cursor-pointer transition-colors"
                 >
-                  {['Pending', 'Reviewed', 'Technical Interview', 'Final Interview', 'Accepted', 'Rejected', 'Archived'].map((st) => (
+                  {['Submitted', 'Under Review', 'Shortlisted', 'Interview Scheduled', 'Interviewed', 'Not Selected'].map((st) => (
                     <option key={st} value={st}>{st}</option>
                   ))}
                 </select>
+
+                {/* Undo Auto Change Button */}
+                {statusHistory.length > 0 && statusHistory[0]?.change_type === 'auto' && statusHistory[0]?.can_undo && (
+                  <button
+                    onClick={async () => {
+                      try {
+                        await undoAutoStatus(candidateAppId).unwrap();
+                        refetchHistory();
+                      } catch (err) {
+                        console.error('Failed to undo auto status:', err);
+                      }
+                    }}
+                    disabled={isUndoing}
+                    title={`Undo automatic status change (revert to ${statusHistory[0]?.old_status})`}
+                    className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-bold text-amber-800 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-xl transition-colors cursor-pointer"
+                  >
+                    <RotateCcw size={12} className={isUndoing ? "animate-spin" : ""} />
+                    <span>Undo auto ({statusHistory[0]?.old_status})</span>
+                  </button>
+                )}
+
+                {/* Status History Trigger */}
+                <button
+                  type="button"
+                  onClick={() => setShowStatusHistory(!showStatusHistory)}
+                  title="View Status Change History"
+                  className={`inline-flex items-center gap-1 px-2.5 py-1 text-xs font-bold rounded-xl border transition-colors cursor-pointer ${showStatusHistory
+                    ? 'bg-rose-50 text-rose-700 border-rose-200'
+                    : 'bg-gray-50 text-gray-600 hover:bg-gray-100 border-gray-200'
+                    }`}
+                >
+                  <History size={12} />
+                  <span>History ({statusHistory.length})</span>
+                </button>
               </div>
             )}
           </div>
@@ -771,14 +903,77 @@ const ViewCandidateDetailsModal: React.FC<ViewCandidateDetailsModalProps> = ({
           </div>
         </header>
 
+        {/* Status History Slide-down Drawer */}
+        {showStatusHistory && (
+          <div className="bg-slate-50 border-b border-gray-200 px-6 py-4 animate-in slide-in-from-top duration-200">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <History size={16} className="text-gray-700" />
+                <h4 className="text-sm font-bold text-gray-900">Application Status Audit History</h4>
+                <span className="text-xs text-gray-500">Every manual and automatic status update is logged below.</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowStatusHistory(false)}
+                className="text-gray-400 hover:text-gray-600 p-1 rounded-lg cursor-pointer"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            {statusHistory.length === 0 ? (
+              <p className="text-xs text-gray-500 italic py-2">No status history recorded yet.</p>
+            ) : (
+              <div className="space-y-2 max-h-48 overflow-y-auto pr-2">
+                {statusHistory.map((item: any, idx: number) => (
+                  <div key={item.id || idx} className="bg-white border border-gray-200 rounded-xl p-3 flex items-center justify-between gap-4 text-xs">
+                    <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-2 font-semibold">
+                        <span className="px-2 py-0.5 rounded bg-gray-100 text-gray-700">{item.old_status}</span>
+                        <span className="text-gray-400">→</span>
+                        <span className="px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200">{item.new_status}</span>
+                      </div>
+                      <span className="text-gray-400">•</span>
+                      <span className="text-gray-600 font-medium">{item.reason || item.change_type}</span>
+                      <span className="text-gray-400">•</span>
+                      <span className="text-gray-400">{item.changed_by}</span>
+                    </div>
+
+                    <div className="flex items-center gap-3 shrink-0">
+                      <span className="text-gray-400">{new Date(item.created_at).toLocaleString()}</span>
+                      {item.can_undo && (
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            try {
+                              await undoAutoStatus(candidateAppId).unwrap();
+                              refetchHistory();
+                            } catch (e) {
+                              console.error(e);
+                            }
+                          }}
+                          disabled={isUndoing}
+                          className="px-2 py-1 text-xs font-bold text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-lg transition-colors cursor-pointer"
+                        >
+                          Undo
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* ═══════ MOBILE TAB SWITCHER ═══════ */}
         <div className="flex md:hidden border-b border-gray-200 bg-gray-50/90 p-1.5 gap-1 shrink-0 overflow-x-auto scrollbar-none">
           <button
             type="button"
-            onClick={() => setActiveTab('dossier')}
+            onClick={() => { setActiveTab('dossier'); handleUserEngagement(); }}
             className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all whitespace-nowrap cursor-pointer ${activeTab === 'dossier'
-                ? 'bg-white text-[#D60041] shadow-xs'
-                : 'text-gray-600 hover:text-gray-900'
+              ? 'bg-white text-[#D60041] shadow-xs'
+              : 'text-gray-600 hover:text-gray-900'
               }`}
           >
             Profile
@@ -787,10 +982,10 @@ const ViewCandidateDetailsModal: React.FC<ViewCandidateDetailsModalProps> = ({
             <button
               key={tab.id}
               type="button"
-              onClick={() => setActiveTab(tab.id)}
+              onClick={() => { setActiveTab(tab.id); handleUserEngagement(); }}
               className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all whitespace-nowrap flex items-center gap-1.5 cursor-pointer ${activeTab === tab.id
-                  ? 'bg-white text-[#D60041] shadow-xs'
-                  : 'text-gray-600 hover:text-gray-900'
+                ? 'bg-white text-[#D60041] shadow-xs'
+                : 'text-gray-600 hover:text-gray-900'
                 }`}
             >
               <span>{tab.label}</span>
@@ -805,11 +1000,17 @@ const ViewCandidateDetailsModal: React.FC<ViewCandidateDetailsModalProps> = ({
         </div>
 
         {/* ═══════ MAIN CONTENT BODY ═══════ */}
-        <div className="flex flex-col md:flex-row flex-1 overflow-y-auto md:overflow-hidden min-h-0 bg-white">
+        <div
+          onScroll={handleUserEngagement}
+          className="flex flex-col md:flex-row flex-1 overflow-y-auto md:overflow-hidden min-h-0 bg-white"
+        >
 
           {/* ─── LEFT DOSSIER SIDEBAR ─── */}
-          <aside className={`w-full md:w-[320px] bg-gradient-to-b from-slate-50/80 via-white to-slate-50/50 border-b md:border-b-0 md:border-r border-gray-200/80 p-5 sm:p-6 md:overflow-y-auto shrink-0 ${activeTab === 'dossier' ? 'block' : 'hidden md:block'
-            }`}>
+          <aside
+            onScroll={handleUserEngagement}
+            className={`w-full md:w-[320px] bg-gradient-to-b from-slate-50/80 via-white to-slate-50/50 border-b md:border-b-0 md:border-r border-gray-200/80 p-5 sm:p-6 md:overflow-y-auto shrink-0 ${activeTab === 'dossier' ? 'block' : 'hidden md:block'
+              }`}
+          >
             {/* Candidate Identity */}
             <div className="text-center mb-6">
               <div className="relative w-20 h-20 rounded-2xl overflow-hidden border-4 border-white shadow-md mx-auto mb-3 bg-pink-50">
@@ -830,6 +1031,49 @@ const ViewCandidateDetailsModal: React.FC<ViewCandidateDetailsModalProps> = ({
                 <p className="text-[11px] text-gray-500 font-medium">{candidateDept}</p>
               )}
             </div>
+
+            {/* Multi-Application Status Indicator & Other Applications (REQ083 & REQ086) */}
+            {fullApplication?.is_flagged_for_review && (
+              <div className="mb-4 p-3 bg-rose-50 border border-rose-200 rounded-xl text-left">
+                <div className="flex items-center gap-1.5 text-xs font-black text-rose-800">
+                  <AlertTriangle size={14} className="text-[#D60041] shrink-0" />
+                  <span>Flagged for Review (REQ086)</span>
+                </div>
+                <p className="text-[11px] text-rose-700 mt-1 font-medium leading-relaxed">
+                  {fullApplication.review_flag_reason || "Candidate was accepted/hired for another role."}
+                </p>
+              </div>
+            )}
+
+            {fullApplication?.other_applications && fullApplication.other_applications.length > 0 && (
+              <div className="mb-6 p-3 bg-white rounded-2xl border border-gray-100 shadow-2xs text-left">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-gray-500 flex items-center gap-1">
+                    <Building2 size={11} className="text-[#D60041]" />
+                    <span>Other Applications ({fullApplication.other_applications.length})</span>
+                  </span>
+                  {fullApplication.has_other_active_applications && (
+                    <span className="px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[9px] font-extrabold uppercase">
+                      Active Multi-App
+                    </span>
+                  )}
+                </div>
+                <div className="space-y-1.5 max-h-36 overflow-y-auto">
+                  {fullApplication.other_applications.map((oa: any) => (
+                    <div key={oa.id} className="p-2 rounded-lg bg-slate-50 border border-slate-100 flex items-center justify-between text-xs">
+                      <div className="min-w-0 pr-2">
+                        <p className="font-bold text-gray-800 truncate text-[11px]">{oa.job_title}</p>
+                        <span className="text-[10px] text-gray-400">Match: {oa.match_score ?? 'N/A'}%</span>
+                      </div>
+                      <span className={`px-1.5 py-0.5 rounded text-[9px] font-black uppercase shrink-0 ${oa.is_active ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'bg-gray-100 text-gray-500'
+                        }`}>
+                        {oa.status}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Score Ring Section */}
             <div className="flex flex-col items-center mb-6 p-4 bg-white rounded-2xl border border-gray-100 shadow-2xs">
@@ -1004,8 +1248,8 @@ const ViewCandidateDetailsModal: React.FC<ViewCandidateDetailsModalProps> = ({
                     type="button"
                     onClick={() => setActiveTab(tab.id)}
                     className={`pb-3 px-3 text-xs font-bold flex items-center gap-2 transition-all relative cursor-pointer border-b-2 ${isActive
-                        ? 'border-[#D60041] text-[#D60041]'
-                        : 'border-transparent text-gray-500 hover:text-gray-800 hover:border-gray-300'
+                      ? 'border-[#D60041] text-[#D60041]'
+                      : 'border-transparent text-gray-500 hover:text-gray-800 hover:border-gray-300'
                       }`}
                   >
                     <Icon size={14} />
@@ -1022,7 +1266,10 @@ const ViewCandidateDetailsModal: React.FC<ViewCandidateDetailsModalProps> = ({
             </div>
 
             {/* Scrollable Tab Content Container */}
-            <div className="flex-1 p-4 sm:p-6 md:p-8 overflow-y-auto">
+            <div
+              onScroll={handleUserEngagement}
+              className="flex-1 p-4 sm:p-6 md:p-8 overflow-y-auto"
+            >
 
               {/* ══════════ TAB 1: EXECUTIVE OVERVIEW ══════════ */}
               {(activeTab === 'overview' || activeTab === 'all') && (
@@ -1312,8 +1559,8 @@ const ViewCandidateDetailsModal: React.FC<ViewCandidateDetailsModalProps> = ({
                           <span
                             key={idx}
                             className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition-colors ${isMatched
-                                ? 'bg-emerald-50 text-emerald-800 border-emerald-200 font-bold'
-                                : 'bg-white text-gray-700 border-gray-200'
+                              ? 'bg-emerald-50 text-emerald-800 border-emerald-200 font-bold'
+                              : 'bg-white text-gray-700 border-gray-200'
                               }`}
                           >
                             {skill}

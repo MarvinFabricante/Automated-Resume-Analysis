@@ -52,6 +52,15 @@ class JobApplicationBase(BaseModel):
     strengths: Optional[List[str]] = None
     weaknesses: Optional[List[str]] = None
     ai_powered: Optional[bool] = False
+    completeness_score: Optional[float] = None
+    completeness_status: Optional[str] = None
+    missing_sections: Optional[List[str]] = None
+    hr_shortlist_notes: Optional[str] = None
+    is_flagged_for_review: Optional[bool] = False
+    review_flag_reason: Optional[str] = None
+    source: Optional[str] = "Online"
+    import_origin: Optional[str] = None
+    imported_by: Optional[str] = None
 
 class JobApplicationCreate(JobApplicationBase):
     job_id: str
@@ -59,6 +68,41 @@ class JobApplicationCreate(JobApplicationBase):
 class JobApplicationStatusUpdate(BaseModel):
     status: str
     notes: Optional[str] = None
+    hr_shortlist_notes: Optional[str] = None
+
+class JobApplicationNotesUpdate(BaseModel):
+    hr_shortlist_notes: str
+
+class JobApplicationViewedEvent(BaseModel):
+    view_duration_seconds: float
+    visible_focused: bool = True
+    engaged: bool = True # scroll, expanded section, or opened resume
+
+class StatusHistoryResponse(BaseModel):
+    id: int
+    application_id: int
+    old_status: Optional[str] = None
+    new_status: str
+    changed_by: str
+    change_type: str # 'auto', 'manual', 'undo'
+    reason: Optional[str] = None
+    can_undo: bool = False
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+class OtherApplicationSummary(BaseModel):
+    id: int
+    job_id: int
+    job_title: str
+    status: str
+    match_score: Optional[float] = None
+    created_at: Optional[datetime] = None
+    is_active: Optional[bool] = True
+
+    class Config:
+        from_attributes = True
 
 class JobApplicationResponse(JobApplicationBase):
     id: int
@@ -67,6 +111,9 @@ class JobApplicationResponse(JobApplicationBase):
     created_at: datetime
     updated_at: datetime
     job: Optional[JobInfo] = None
+    active_applications_count: Optional[int] = 0
+    has_other_active_applications: Optional[bool] = False
+    other_applications: Optional[List[OtherApplicationSummary]] = None
 
     class Config:
         from_attributes = True

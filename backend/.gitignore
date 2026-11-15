@@ -28,3 +28,6 @@ test_db.py
 test_education.py
 test_supabase.py
 token.pickle
+.redis/
+.venv/
+automated_resume.db

@@ -191,46 +191,39 @@ async def schedule_interview(
             detail="The selected time slot conflicts with an existing interview for this HR panelist. Please choose another slot."
         )
 
-    # Check candidate conflict
-    cand_interviews = await InterviewRepository.get_interviews_for_application(db, data.job_application_id)
+    # ── Check candidate conflict across all applications (REQ084) ────────────
+    application = await InterviewRepository.get_job_application(db, data.job_application_id)
+    if not application:
+        raise HTTPException(status_code=404, detail="Job application not found")
+
+    # Check if this application already has an active interview
+    app_interviews = await InterviewRepository.get_interviews_for_application(db, data.job_application_id)
+    active_app_ivs = [iv for iv in app_interviews if (iv.status or "").upper() not in INACTIVE_INTERVIEW_STATUSES]
+    if active_app_ivs:
+        raise HTTPException(
+            status_code=409,
+            detail="An active interview is already scheduled for this application."
+        )
+
+    # Check if candidate has an overlapping interview across ANY of their applications (REQ084)
+    if application.candidate_email:
+        cand_all_ivs = await InterviewRepository.get_interviews_for_candidate(db, application.candidate_email)
+    else:
+        cand_all_ivs = app_interviews
+
     cand_conflict = [
-        iv for iv in cand_interviews
+        iv for iv in cand_all_ivs
         if (iv.status or "").upper() not in INACTIVE_INTERVIEW_STATUSES
         and iv.start_time < end.replace(tzinfo=None)
         and iv.end_time > start.replace(tzinfo=None)
     ]
     if cand_conflict:
+        conflicting_iv = cand_conflict[0]
+        start_str = conflicting_iv.start_time.strftime('%b %d, %Y %I:%M %p') if conflicting_iv.start_time else "the same time"
         raise HTTPException(
             status_code=409,
-            detail="This candidate already has an interview scheduled at the selected time."
+            detail=f"Scheduling conflict (REQ084): Candidate already has an interview scheduled that overlaps with this time slot ({start_str})."
         )
-
-    # Pre-check against existing active interviews for candidate/application (exclusivity)
-    application = await InterviewRepository.get_job_application(db, data.job_application_id)
-    if application:
-        active_interviews = [iv for iv in cand_interviews if (iv.status or "").upper() not in INACTIVE_INTERVIEW_STATUSES]
-        if not active_interviews and application.candidate_email:
-            cand_all_ivs = await InterviewRepository.get_interviews_for_candidate(db, application.candidate_email)
-            active_interviews = [iv for iv in cand_all_ivs if (iv.status or "").upper() not in INACTIVE_INTERVIEW_STATUSES]
-
-        if active_interviews:
-            existing_iv = active_interviews[0]
-            interviewer_name = None
-            if getattr(existing_iv, "interviewer", None) and getattr(existing_iv.interviewer, "fullname", None):
-                interviewer_name = existing_iv.interviewer.fullname
-            elif getattr(existing_iv, "interviewer_name", None):
-                interviewer_name = existing_iv.interviewer_name
-            elif getattr(existing_iv, "interviewer_id", None):
-                from app.repositories.auth_repository import AuthRepository
-                iv_user = await AuthRepository.get_user_by_id(db, existing_iv.interviewer_id)
-                interviewer_name = iv_user.fullname if iv_user else None
-
-            interviewer_display = interviewer_name or "another HR"
-            cand_name = application.candidate_name or "Candidate"
-            raise HTTPException(
-                status_code=409,
-                detail=f"Candidate '{cand_name}' is already scheduled for an interview with {interviewer_display}. Another HR cannot schedule an interview for this candidate."
-            )
 
     try:
         result = await interview_service.schedule_interview(db, data, current_user.get("id"))

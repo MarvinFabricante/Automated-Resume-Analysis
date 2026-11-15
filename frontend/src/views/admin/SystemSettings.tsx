@@ -15,11 +15,13 @@ import {
   Percent,
   SlidersHorizontal,
   Cpu,
-  Zap
+  Zap,
+  Users
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Header from '../../components/layout/Header';
 import Sidebar from '../../components/layout/Sidebar';
+import api from '../../services/api';
 import { 
   useGetMatchingConfigQuery,
   useUpdateMatchingWeightsMutation,
@@ -33,7 +35,8 @@ interface MatchingWeights {
   experience_weight: number;
   education_weight: number;
   certifications_weight: number;
-  location_weight: number;
+  completeness_weight: number;
+  location_weight?: number;
 }
 
 interface MatchingThresholds {
@@ -50,10 +53,11 @@ interface MatchingConfig {
 }
 
 const DEFAULT_WEIGHTS: MatchingWeights = {
-  skills_weight: 0.45,
-  experience_weight: 0.25,
+  skills_weight: 0.40,
+  experience_weight: 0.30,
   education_weight: 0.15,
   certifications_weight: 0.10,
+  completeness_weight: 0.05,
   location_weight: 0.05
 };
 
@@ -77,8 +81,23 @@ const SystemSettings: React.FC = () => {
 
   const [weights, setWeights] = useState<MatchingWeights>(DEFAULT_WEIGHTS);
   const [thresholds, setThresholds] = useState<MatchingThresholds>(DEFAULT_THRESHOLDS);
+  const [maxActiveApps, setMaxActiveApps] = useState<number>(3);
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [showRecalcConfirm, setShowRecalcConfirm] = useState<boolean>(false);
+
+  useEffect(() => {
+    const fetchRecruitmentConfig = async () => {
+      try {
+        const res = await api.get('/system-config/recruitment');
+        if (res.data && res.data.max_active_applications !== undefined) {
+          setMaxActiveApps(res.data.max_active_applications);
+        }
+      } catch (err) {
+        console.error("Failed to load recruitment config:", err);
+      }
+    };
+    fetchRecruitmentConfig();
+  }, []);
 
   useEffect(() => {
     if (config) {
@@ -88,6 +107,7 @@ const SystemSettings: React.FC = () => {
           experience_weight: config.weights.experience_weight ?? DEFAULT_WEIGHTS.experience_weight,
           education_weight: config.weights.education_weight ?? DEFAULT_WEIGHTS.education_weight,
           certifications_weight: config.weights.certifications_weight ?? DEFAULT_WEIGHTS.certifications_weight,
+          completeness_weight: (config.weights as any).completeness_weight ?? config.weights.location_weight ?? DEFAULT_WEIGHTS.completeness_weight,
           location_weight: config.weights.location_weight ?? DEFAULT_WEIGHTS.location_weight,
         });
       }
@@ -113,7 +133,7 @@ const SystemSettings: React.FC = () => {
 
   // Auto-normalize weights so they sum to exactly 1.0 (100%)
   const handleAutoBalance = () => {
-    const total = Object.values(weights).reduce((a, b) => a + b, 0);
+    const total = (weights.skills_weight + weights.experience_weight + weights.education_weight + weights.certifications_weight + (weights.completeness_weight || 0.05));
     if (total <= 0) {
       setWeights(DEFAULT_WEIGHTS);
       toast.success("Reset weights to standard default distribution.");
@@ -125,7 +145,8 @@ const SystemSettings: React.FC = () => {
       experience_weight: Math.round(weights.experience_weight * factor * 100) / 100,
       education_weight: Math.round(weights.education_weight * factor * 100) / 100,
       certifications_weight: Math.round(weights.certifications_weight * factor * 100) / 100,
-      location_weight: Math.round(weights.location_weight * factor * 100) / 100,
+      completeness_weight: Math.round((weights.completeness_weight || 0.05) * factor * 100) / 100,
+      location_weight: Math.round((weights.location_weight || 0.05) * factor * 100) / 100,
     });
     toast.success("Weights automatically balanced to sum to 100%.");
   };
@@ -133,6 +154,7 @@ const SystemSettings: React.FC = () => {
   const handleResetDefaults = () => {
     setWeights(DEFAULT_WEIGHTS);
     setThresholds(DEFAULT_THRESHOLDS);
+    setMaxActiveApps(3);
     toast.success("Restored system settings to recommended defaults.");
   };
 
@@ -152,7 +174,8 @@ const SystemSettings: React.FC = () => {
     try {
       await updateWeights(weights).unwrap();
       await updateThresholds(thresholds).unwrap();
-      toast.success("System configuration saved successfully!");
+      await api.put('/system-config/recruitment', { max_active_applications: maxActiveApps });
+      toast.success("System configuration and application limits saved successfully!");
       refetch();
     } catch (err: any) {
       console.error("Failed to save matching parameters:", err);
@@ -187,7 +210,7 @@ const SystemSettings: React.FC = () => {
     }
   };
 
-  const totalWeight = Object.values(weights).reduce((a, b) => a + b, 0);
+  const totalWeight = weights.skills_weight + weights.experience_weight + weights.education_weight + weights.certifications_weight + (weights.completeness_weight || 0.05);
   const totalWeightPct = Math.round(totalWeight * 100);
   const isBalanced = Math.abs(totalWeight - 1.0) <= 0.01;
 
@@ -199,32 +222,32 @@ const SystemSettings: React.FC = () => {
   }> = [
     { 
       key: 'skills_weight', 
-      label: 'Skills & Keywords', 
-      description: 'Direct and semantic alignment of candidate technical skills against required competencies.',
+      label: 'Skills Match (40%)', 
+      description: 'Direct and semantic alignment of candidate technical and transferable skills against required competencies.',
       color: 'bg-rose-500' 
     },
     { 
       key: 'experience_weight', 
-      label: 'Experience Relevance', 
+      label: 'Work Experience Relevance (30%)', 
       description: 'Domain alignment, responsibilities matching via NLP verb-object analysis, and career years.',
       color: 'bg-blue-500' 
     },
     { 
       key: 'education_weight', 
-      label: 'Education & Degree', 
-      description: 'Degree level comparison according to the educational hierarchy and relevant majors.',
+      label: 'Educational Background (15%)', 
+      description: 'Degree level comparison according to educational hierarchy and relevant majors.',
       color: 'bg-emerald-500' 
     },
     { 
       key: 'certifications_weight', 
-      label: 'Certifications', 
-      description: 'Presence of mandatory and preferred industry certifications and accreditations.',
+      label: 'Certifications & Trainings (10%)', 
+      description: 'Presence of mandatory and preferred industry certifications, licenses, and accreditations.',
       color: 'bg-purple-500' 
     },
     { 
-      key: 'location_weight', 
-      label: 'Location Match', 
-      description: 'Geographic proximity or willingness to relocate to the specified job facility/plant.',
+      key: 'completeness_weight', 
+      label: 'Resume Completeness (5%)', 
+      description: 'Evaluation of document completeness across personal info, work history, education, skills, and summary sections.',
       color: 'bg-amber-500' 
     },
   ];
@@ -556,6 +579,46 @@ const SystemSettings: React.FC = () => {
                     </div>
                   </div>
 
+                </div>
+
+                {/* Recruitment Policy & Application Limit (REQ081 & REQ082) */}
+                <div className="bg-white border border-gray-100 rounded-3xl p-6 sm:p-7 shadow-xs">
+                  <div className="flex items-center justify-between pb-5 border-b border-gray-100">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-2xl bg-amber-50 text-amber-700 flex items-center justify-center shadow-xs">
+                        <Users size={20} />
+                      </div>
+                      <div>
+                        <h2 className="text-base font-extrabold text-gray-900 tracking-tight">Recruitment & Multi-Application Limits</h2>
+                        <p className="text-xs text-gray-500 mt-0.5">Configure applicant multi-application quotas and submission policies (REQ081 & REQ082).</p>
+                      </div>
+                    </div>
+                    <span className="px-3 py-1 bg-amber-50 text-amber-700 rounded-xl text-xs font-bold border border-amber-200">
+                      Multi-App Policy
+                    </span>
+                  </div>
+
+                  <div className="pt-6">
+                    <div className="max-w-md">
+                      <label className="block text-xs font-bold text-gray-700 mb-1">
+                        Maximum Active Applications per Applicant
+                      </label>
+                      <p className="text-[11px] text-gray-500 mb-3 leading-relaxed">
+                        Enforces an active application ceiling across different job openings for a single applicant account (Default: 3). Prevents candidate overloading while allowing cross-department applications.
+                      </p>
+                      <div className="flex items-center gap-3">
+                        <input
+                          type="number"
+                          min={1}
+                          max={20}
+                          value={maxActiveApps}
+                          onChange={(e) => setMaxActiveApps(Math.max(1, parseInt(e.target.value) || 1))}
+                          className="w-24 px-3 py-2 rounded-xl border border-gray-200 text-sm font-bold text-gray-800 focus:outline-none focus:ring-2 focus:ring-[#D10043]/20 focus:border-[#D10043]"
+                        />
+                        <span className="text-xs text-gray-500 font-medium">concurrent active applications allowed</span>
+                      </div>
+                    </div>
+                  </div>
                 </div>
 
               </div>

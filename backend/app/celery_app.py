@@ -1,5 +1,10 @@
 import os
+from dotenv import load_dotenv
 from celery import Celery
+from app.utils.redis_client import ensure_local_redis_running
+
+load_dotenv()
+ensure_local_redis_running()
 
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 

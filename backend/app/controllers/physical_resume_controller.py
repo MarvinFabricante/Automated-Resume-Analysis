@@ -18,6 +18,45 @@ from app.utils.cache import cache_response, clear_cache_pattern
 router = APIRouter(prefix="/hr/physical-resumes", tags=["Physical Resume Storage"])
 
 
+@router.get("/check-duplicate")
+async def check_duplicate_application(
+    email: str = Query(..., description="Candidate email address to check"),
+    job_id: int = Query(..., description="Target job ID"),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Check if a candidate application already exists for the given email and job_id.
+    Returns { duplicate: bool, candidate_name: str | None, status: str | None, created_at: str | None }
+    """
+    from sqlalchemy import select, and_
+    from app.models.job_application import JobApplication
+
+    clean_email = email.strip().lower()
+    stmt = (
+        select(JobApplication)
+        .where(
+            and_(
+                JobApplication.job_id == job_id,
+                JobApplication.candidate_email.ilike(clean_email)
+            )
+        )
+        .order_by(JobApplication.created_at.desc())
+    )
+    res = await db.execute(stmt)
+    existing = res.scalar_one_or_none()
+
+    if existing:
+        return {
+            "duplicate": True,
+            "candidate_name": existing.candidate_name,
+            "status": existing.status,
+            "created_at": existing.created_at.isoformat() if existing.created_at else None,
+            "message": f"Candidate {existing.candidate_name or clean_email} already has an application for this position (Status: {existing.status})."
+        }
+
+    return {"duplicate": False, "message": "No existing application found for this position."}
+
+
 @router.post("/upload", response_model=PhysicalResumeResponse, status_code=status.HTTP_201_CREATED)
 async def upload_physical_resume(
     file: UploadFile = File(...),
@@ -27,16 +66,23 @@ async def upload_physical_resume(
     target_job_id: Optional[int] = Form(None),
     target_job_title: Optional[str] = Form(None),
     physical_location: Optional[str] = Form(None),
+    import_origin: Optional[str] = Form("Walk-in"),
     submission_date: Optional[str] = Form(None),
     status_val: Optional[str] = Form("RECEIVED"),
     notes: Optional[str] = Form(None),
+    location: Optional[str] = Form(None),
+    education: Optional[str] = Form(None),
+    experience: Optional[str] = Form(None),
+    skills: Optional[str] = Form(None),
+    certifications: Optional[str] = Form(None),
     db: AsyncSession = Depends(get_db),
     current_user: Optional[dict] = Depends(get_optional_current_user),
 ):
     """
-    Upload and store a physically submitted resume scan with filing location reference.
+    Upload and store an imported resume scan/file with origin reference.
     """
     hr_id = current_user.get("id") if current_user else None
+    hr_email = current_user.get("email") if current_user else "HR"
     form_data = {
         "candidate_name": candidate_name,
         "candidate_email": candidate_email,
@@ -44,9 +90,17 @@ async def upload_physical_resume(
         "target_job_id": target_job_id,
         "target_job_title": target_job_title,
         "physical_location": physical_location or "General HR Archive",
+        "import_origin": import_origin or "Walk-in",
+        "imported_by": hr_email,
         "submission_date": submission_date,
         "status": status_val,
         "notes": notes,
+        "location": location,
+        "education": education,
+        "degree": education,
+        "experience": experience,
+        "skills": skills,
+        "certifications": certifications,
     }
 
     result = await physical_resume_service.store_physical_resume(
@@ -60,6 +114,7 @@ async def upload_physical_resume(
     return formatted
 
 
+@router.get("", response_model=PhysicalResumeListResponse)
 @router.get("/", response_model=PhysicalResumeListResponse)
 @cache_response("physical_resumes_list", ttl=60)
 async def list_physical_resumes(

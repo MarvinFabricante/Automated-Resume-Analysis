@@ -114,8 +114,8 @@ const ViewProfile: React.FC = () => {
     bio: profile?.bio || (isCandidate
       ? "Welcome to your Mariwasa candidate profile. Add your professional summary and core skills in settings to maximize your job match score."
       : isHR
-      ? "HR Recruitment Specialist managing talent pipelines, automated resume screening, and candidate interview schedules at Mariwasa."
-      : "Enterprise System Administrator supervising platform access control, AI resume screening algorithm calibration, and recruitment pipeline compliance across Mariwasa Siam Ceramics."),
+        ? "HR Recruitment Specialist managing talent pipelines, automated resume screening, and candidate interview schedules at Mariwasa."
+        : "Enterprise System Administrator supervising platform access control, AI resume screening algorithm calibration, and recruitment pipeline compliance across Mariwasa Siam Ceramics."),
     since: isCandidate ? "Joined Career Portal" : isAdmin ? "System Governance" : "Active Member",
     stats: isCandidate ? [
       { label: "Applications", value: profile?.applications_count ?? 0, icon: <FileText size={18} /> },
@@ -228,9 +228,9 @@ const ViewProfile: React.FC = () => {
                   <div className="relative inline-block mb-3.5 sm:mb-6">
                     <div className="w-24 h-24 sm:w-32 sm:h-32 md:w-36 md:h-36 rounded-2xl sm:rounded-3xl md:rounded-[32px] bg-slate-50 border-4 border-white shadow-xl overflow-hidden flex items-center justify-center text-slate-300 mx-auto">
                       {profileImageUrl ? (
-                        <img 
-                          src={profileImageUrl} 
-                          alt="Profile" 
+                        <img
+                          src={profileImageUrl}
+                          alt="Profile"
                           className="w-full h-full object-cover"
                           onError={(e) => {
                             (e.target as HTMLImageElement).style.display = 'none';
@@ -465,7 +465,7 @@ const ViewProfile: React.FC = () => {
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-4 sm:mb-6 gap-2">
                       <div>
                         <h3 className="text-base sm:text-lg font-black tracking-tight">
-                          {isCandidate ? "Candidate Portal Features" : isHR ? "Talent Operations Hub" : "Platform Governance & Security"}
+                          {isCandidate ? "Mariwasa Recruitment Features" : isHR ? "Talent Operations Hub" : "Platform Governance & Security"}
                         </h3>
                         <p className="text-[10px] sm:text-xs text-slate-400 font-bold uppercase tracking-wider mt-0.5">
                           Quick access to system workflows and modules
@@ -479,7 +479,7 @@ const ViewProfile: React.FC = () => {
                       {/* Candidate Feature 1: AI Resume Matching */}
                       {isCandidate && (
                         <>
-                          <div 
+                          <div
                             onClick={() => navigate('/candidate/smart-matches')}
                             className="p-4 sm:p-5 bg-white/5 border border-white/10 rounded-xl sm:rounded-2xl hover:bg-white/10 transition-all cursor-pointer group/item flex flex-col justify-between"
                           >
@@ -491,20 +491,20 @@ const ViewProfile: React.FC = () => {
                                 <ChevronRight size={15} className="text-white/30 group-hover/item:text-white transition-colors group-hover/item:translate-x-0.5" />
                               </div>
                               <h4 className="font-black text-xs sm:text-sm uppercase tracking-wider mb-1 text-white">
-                                AI Resume Matching
+                                Resume Matching
                               </h4>
                               <p className="text-[11px] sm:text-xs text-white/60 font-medium leading-relaxed">
-                                {profile?.resume_url 
-                                  ? "Resume file indexed. View match compatibility across all open requisitions."
-                                  : "Upload your resume PDF to automatically extract qualifications and match jobs."}
+                                {profile?.resume_url
+                                  ? "Resume uploaded. View positions that match your experience."
+                                  : "Upload your resume to see which open positions fit you best."}
                               </p>
                             </div>
                             <span className="text-[10px] font-black uppercase tracking-wider text-[#D10043] mt-3 inline-flex items-center gap-1">
-                              Explore Smart Matches <ChevronRight size={11} />
+                              View Matching Jobs <ChevronRight size={11} />
                             </span>
                           </div>
 
-                          <div 
+                          <div
                             onClick={() => navigate('/candidate/applications')}
                             className="p-4 sm:p-5 bg-white/5 border border-white/10 rounded-xl sm:rounded-2xl hover:bg-white/10 transition-all cursor-pointer group/item flex flex-col justify-between"
                           >
@@ -532,7 +532,7 @@ const ViewProfile: React.FC = () => {
                       {/* HR Features */}
                       {isHR && (
                         <>
-                          <div 
+                          <div
                             onClick={() => navigate('/hr/dashboard')}
                             className="p-4 sm:p-5 bg-white/5 border border-white/10 rounded-xl sm:rounded-2xl hover:bg-white/10 transition-all cursor-pointer group/item flex flex-col justify-between"
                           >
@@ -555,7 +555,7 @@ const ViewProfile: React.FC = () => {
                             </span>
                           </div>
 
-                          <div 
+                          <div
                             onClick={() => navigate('/hr/scheduling')}
                             className="p-4 sm:p-5 bg-white/5 border border-white/10 rounded-xl sm:rounded-2xl hover:bg-white/10 transition-all cursor-pointer group/item flex flex-col justify-between"
                           >
@@ -583,7 +583,7 @@ const ViewProfile: React.FC = () => {
                       {/* Admin Features */}
                       {isAdmin && (
                         <>
-                          <div 
+                          <div
                             onClick={() => navigate('/admin/users')}
                             className="p-4 sm:p-5 bg-white/5 border border-white/10 rounded-xl sm:rounded-2xl hover:bg-white/10 transition-all cursor-pointer group/item flex flex-col justify-between"
                           >
@@ -606,7 +606,7 @@ const ViewProfile: React.FC = () => {
                             </span>
                           </div>
 
-                          <div 
+                          <div
                             onClick={() => navigate('/admin/system-config')}
                             className="p-4 sm:p-5 bg-white/5 border border-white/10 rounded-xl sm:rounded-2xl hover:bg-white/10 transition-all cursor-pointer group/item flex flex-col justify-between"
                           >
@@ -629,7 +629,7 @@ const ViewProfile: React.FC = () => {
                             </span>
                           </div>
 
-                          <div 
+                          <div
                             onClick={() => navigate('/admin/jobmanagement')}
                             className="p-4 sm:p-5 bg-white/5 border border-white/10 rounded-xl sm:rounded-2xl hover:bg-white/10 transition-all cursor-pointer group/item flex flex-col justify-between"
                           >
@@ -652,7 +652,7 @@ const ViewProfile: React.FC = () => {
                             </span>
                           </div>
 
-                          <div 
+                          <div
                             onClick={() => navigate('/admin/dashboard')}
                             className="p-4 sm:p-5 bg-white/5 border border-white/10 rounded-xl sm:rounded-2xl hover:bg-white/10 transition-all cursor-pointer group/item flex flex-col justify-between"
                           >

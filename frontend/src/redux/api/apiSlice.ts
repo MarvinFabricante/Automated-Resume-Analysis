@@ -72,7 +72,7 @@ export const apiSlice = createApi({
       return headers;
     },
   }),
-  tagTypes: ['Dashboard', 'Jobs', 'Candidates', 'Applications', 'AuditLogs', 'Users', 'SystemConfig', 'Templates', 'Interviews', 'CalendarEvents', 'HRInterviewers', 'PhysicalResumes'],
+  tagTypes: ['Dashboard', 'Jobs', 'Candidates', 'Applications', 'AuditLogs', 'Users', 'SystemConfig', 'Templates', 'Interviews', 'CalendarEvents', 'HRInterviewers', 'PhysicalResumes', 'Shortlists', 'StatusHistory', 'ApplicantProfile'],
   endpoints: (builder) => ({
     // --- DASHBOARD STATS ---
     getDashboardStats: builder.query<any, void>({
@@ -225,26 +225,42 @@ export const apiSlice = createApi({
         if (!Array.isArray(response)) return [];
         return response.map((app: any) => {
           const uStatus = app.status ? app.status.toUpperCase() : 'PENDING';
-          const formattedStatus = uStatus.split(' ').map((word: string) => word.charAt(0) + word.slice(1).toLowerCase()).join(' ');
+          const isRejected = uStatus === 'REJECTED';
+          const isInterview = uStatus.includes('INTERVIEW') || uStatus === 'SCHEDULED' || uStatus === 'ACCEPTED';
+          const isShortlisted = uStatus === 'SHORTLISTED';
+          const isReviewed = uStatus === 'REVIEWED';
+
+          const formattedStatus = isRejected
+            ? 'Not Selected'
+            : isInterview
+              ? 'Initial Interview'
+              : isShortlisted
+                ? 'Shortlisted'
+                : isReviewed
+                  ? 'Under Review'
+                  : 'Submitted';
+
+          const statusColor = isRejected
+            ? "text-rose-600 bg-rose-50 border-rose-100"
+            : isInterview
+              ? "text-purple-600 bg-purple-50 border-purple-100"
+              : isShortlisted
+                ? "text-emerald-600 bg-emerald-50 border-emerald-100"
+                : isReviewed
+                  ? "text-blue-600 bg-blue-50 border-blue-100"
+                  : "text-amber-600 bg-amber-50 border-amber-100";
+
+          const step = isRejected ? 0 : isInterview ? 4 : isShortlisted ? 3 : isReviewed ? 2 : 1;
+
           return {
             id: app.id,
             role: app.job?.job_title || "Unknown Position",
             company: app.company || "Mariwasa Siam Ceramics",
             appliedDate: new Date(app.created_at).toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }),
             status: formattedStatus,
-            statusColor: uStatus === 'PENDING' ? "text-amber-600 bg-amber-50 border-amber-100" :
-              (uStatus === 'REVIEWED' || uStatus === 'SCHEDULED') ? "text-blue-600 bg-blue-50 border-blue-100" :
-                uStatus === 'TECHNICAL INTERVIEW' ? "text-purple-600 bg-purple-50 border-purple-100" :
-                  uStatus === 'FINAL INTERVIEW' ? "text-indigo-600 bg-indigo-50 border-indigo-100" :
-                    uStatus === 'ACCEPTED' ? "text-emerald-600 bg-emerald-50 border-emerald-100" :
-                      uStatus === 'REJECTED' ? "text-rose-600 bg-rose-50 border-rose-100" :
-                        "text-slate-600 bg-slate-50 border-slate-100",
-            step: uStatus === 'PENDING' ? 1 :
-              (uStatus === 'REVIEWED' || uStatus === 'SCHEDULED') ? 2 :
-                uStatus === 'TECHNICAL INTERVIEW' ? 3 :
-                  uStatus === 'FINAL INTERVIEW' ? 4 :
-                    (uStatus === 'ACCEPTED' || uStatus === 'REJECTED') ? 5 : 1,
-            totalSteps: 5,
+            statusColor,
+            step,
+            totalSteps: 4,
             originalData: app
           };
         });
@@ -265,7 +281,13 @@ export const apiSlice = createApi({
           // submission failed
         }
       },
-      invalidatesTags: ['Applications', 'Dashboard', 'Candidates'],
+      invalidatesTags: (_result, _error, arg) => [
+        'Applications',
+        'Dashboard',
+        'Candidates',
+        'Shortlists',
+        { type: 'StatusHistory', id: typeof arg === 'object' && arg !== null && 'id' in arg ? (arg as any).id : arg },
+      ],
     }),
 
     updateApplicationStatus: builder.mutation<any, { id: number | string; status: string }>({
@@ -290,7 +312,13 @@ export const apiSlice = createApi({
           patchResult.undo();
         }
       },
-      invalidatesTags: ['Applications', 'Dashboard', 'Candidates'],
+      invalidatesTags: (_result, _error, arg) => [
+        'Applications',
+        'Dashboard',
+        'Candidates',
+        'Shortlists',
+        { type: 'StatusHistory', id: arg.id },
+      ],
     }),
 
     deleteApplication: builder.mutation<any, number | string>({
@@ -314,7 +342,13 @@ export const apiSlice = createApi({
           patchResult.undo();
         }
       },
-      invalidatesTags: ['Applications', 'Dashboard', 'Candidates'],
+      invalidatesTags: (_result, _error, id) => [
+        'Applications',
+        'Dashboard',
+        'Candidates',
+        'Shortlists',
+        { type: 'StatusHistory', id },
+      ],
     }),
 
     getActiveUsersCount: builder.query<any, void>({
@@ -581,7 +615,7 @@ export const apiSlice = createApi({
         url: '/system-config/matching/recalculate',
         method: 'POST',
       }),
-      invalidatesTags: ['Applications', 'Dashboard', 'Candidates'],
+      invalidatesTags: ['Applications', 'Dashboard', 'Candidates', 'Shortlists'],
     }),
 
     changeUserRole: builder.mutation<any, { userId: number | string; role: string }>({
@@ -707,7 +741,11 @@ export const apiSlice = createApi({
         method: 'POST',
         body: formData,
       }),
-      invalidatesTags: ['PhysicalResumes', 'Dashboard'],
+      invalidatesTags: ['PhysicalResumes', 'Applications', 'Candidates', 'Dashboard', 'Jobs', 'Shortlists'],
+    }),
+
+    checkImportDuplicate: builder.query<any, { email: string; jobId: number | string }>({
+      query: ({ email, jobId }) => `/hr/physical-resumes/check-duplicate?email=${encodeURIComponent(email)}&job_id=${jobId}`,
     }),
 
     updatePhysicalResume: builder.mutation<any, { id: number | string; body: any }>({
@@ -716,7 +754,7 @@ export const apiSlice = createApi({
         method: 'PUT',
         body,
       }),
-      invalidatesTags: ['PhysicalResumes'],
+      invalidatesTags: ['PhysicalResumes', 'Applications', 'Candidates'],
     }),
 
     deletePhysicalResume: builder.mutation<any, number | string>({
@@ -724,9 +762,159 @@ export const apiSlice = createApi({
         url: `/hr/physical-resumes/${id}`,
         method: 'DELETE',
       }),
-      invalidatesTags: ['PhysicalResumes', 'Dashboard'],
+      invalidatesTags: ['PhysicalResumes', 'Dashboard', 'Applications', 'Candidates'],
     }),
 
+    // --- STATUS HISTORY & AUTO STATUS ---
+    recordApplicationViewed: builder.mutation<any, { id: number | string; view_duration_seconds: number; visible_focused: boolean; engaged: boolean }>({
+      query: ({ id, ...body }) => ({
+        url: `/applications/${id}/viewed`,
+        method: 'POST',
+        body,
+      }),
+      invalidatesTags: (_result, _error, arg) => [
+        'Applications',
+        'Dashboard',
+        'Candidates',
+        'Shortlists',
+        { type: 'StatusHistory', id: arg.id },
+      ],
+    }),
+
+    getApplicationHistory: builder.query<any[], number | string>({
+      query: (id) => `/applications/${id}/history`,
+      providesTags: (_result, _error, id) => [{ type: 'StatusHistory', id }],
+    }),
+
+    undoAutoStatus: builder.mutation<any, number | string>({
+      query: (id) => ({
+        url: `/applications/${id}/undo-auto-status`,
+        method: 'POST',
+      }),
+      invalidatesTags: (_result, _error, id) => [
+        'Applications',
+        'Dashboard',
+        'Candidates',
+        'Shortlists',
+        { type: 'StatusHistory', id },
+      ],
+    }),
+
+    // --- SHORTLIST ROSTERS ---
+    getShortlistRosters: builder.query<any[], { jobId?: number; archived?: boolean } | void>({
+      query: (params) => {
+        const p = params as { jobId?: number; archived?: boolean } | undefined;
+        const searchParams = new URLSearchParams();
+        if (p?.jobId) searchParams.append('job_id', String(p.jobId));
+        if (typeof p?.archived === 'boolean') searchParams.append('archived', String(p.archived));
+        const qs = searchParams.toString();
+        return qs ? `/hr/shortlists?${qs}` : '/hr/shortlists';
+      },
+      providesTags: ['Shortlists'],
+    }),
+
+    getShortlistRosterById: builder.query<any, number | string>({
+      query: (id) => `/hr/shortlists/${id}`,
+      providesTags: (_result, _error, id) => [{ type: 'Shortlists', id }],
+    }),
+
+    createShortlistRoster: builder.mutation<any, { job_id: number; name: string; notes?: string; application_ids?: number[] }>({
+      query: (body) => ({
+        url: '/hr/shortlists',
+        method: 'POST',
+        body,
+      }),
+      invalidatesTags: ['Shortlists', 'Applications', 'Dashboard', 'Candidates'],
+    }),
+
+    addCandidateToRoster: builder.mutation<any, { rosterId: number | string; applicationId: number | string }>({
+      query: ({ rosterId, applicationId }) => ({
+        url: `/hr/shortlists/${rosterId}/items`,
+        method: 'POST',
+        body: { application_id: Number(applicationId) },
+      }),
+      invalidatesTags: (_result, _error, { applicationId }) => [
+        'Shortlists',
+        'Applications',
+        'Dashboard',
+        'Candidates',
+        { type: 'StatusHistory', id: applicationId },
+      ],
+    }),
+
+    removeCandidateFromRoster: builder.mutation<any, { rosterId: number | string; applicationId: number | string }>({
+      query: ({ rosterId, applicationId }) => ({
+        url: `/hr/shortlists/${rosterId}/items/${applicationId}`,
+        method: 'DELETE',
+      }),
+      invalidatesTags: (_result, _error, { applicationId }) => [
+        'Shortlists',
+        'Applications',
+        'Dashboard',
+        'Candidates',
+        { type: 'StatusHistory', id: applicationId },
+      ],
+    }),
+
+    updateRosterStage: builder.mutation<any, { rosterId: number | string; applicationId: number | string; stage: string; notes?: string }>({
+      query: ({ rosterId, applicationId, stage, notes }) => ({
+        url: `/hr/shortlists/${rosterId}/items/${applicationId}/stage`,
+        method: 'PATCH',
+        body: { stage, notes },
+      }),
+      invalidatesTags: (_result, _error, { applicationId }) => [
+        'Shortlists',
+        'Applications',
+        'Dashboard',
+        'Candidates',
+        { type: 'StatusHistory', id: applicationId },
+      ],
+    }),
+
+    archiveShortlistRoster: builder.mutation<any, { rosterId: number | string; archived: boolean }>({
+      query: ({ rosterId, archived }) => ({
+        url: `/hr/shortlists/${rosterId}/archive?archived=${archived}`,
+        method: 'PATCH',
+      }),
+      invalidatesTags: ['Shortlists', 'Dashboard'],
+    }),
+
+    deleteShortlistRoster: builder.mutation<any, number | string>({
+      query: (rosterId) => ({
+        url: `/hr/shortlists/${rosterId}`,
+        method: 'DELETE',
+      }),
+      invalidatesTags: ['Shortlists', 'Applications', 'Dashboard', 'Candidates'],
+    }),
+
+    // --- UNIVERSAL SEARCH (HR) ---
+    universalSearchHR: builder.query<any, string>({
+      query: (q) => `/hr/universal-search?q=${encodeURIComponent(q)}`,
+    }),
+
+    // --- APPLICANT COMPREHENSIVE PROFILE (HR) ---
+    getApplicantProfile: builder.query<any, string>({
+      query: (email) => `/hr/applicant-profile/${encodeURIComponent(email)}`,
+      providesTags: (_result, _error, email) => [{ type: 'ApplicantProfile', id: email }],
+    }),
+
+    addApplicantNote: builder.mutation<any, { email: string; content: string }>({
+      query: ({ email, content }) => ({
+        url: `/hr/applicant-profile/${encodeURIComponent(email)}/notes`,
+        method: 'POST',
+        body: { content },
+      }),
+      invalidatesTags: (_result, _error, { email }) => [{ type: 'ApplicantProfile', id: email }],
+    }),
+
+    // --- CANDIDATE COMPARISON (HR) ---
+    compareCandidates: builder.mutation<any, { application_ids: number[]; reference_job_id?: number | null }>({
+      query: (body) => ({
+        url: '/hr/compare',
+        method: 'POST',
+        body,
+      }),
+    }),
   }),
 });
 
@@ -796,6 +984,24 @@ export const {
   useGetPhysicalResumeStatsQuery,
   useGetPhysicalResumeByIdQuery,
   useUploadPhysicalResumeMutation,
+  useCheckImportDuplicateQuery,
+  useLazyCheckImportDuplicateQuery,
   useUpdatePhysicalResumeMutation,
   useDeletePhysicalResumeMutation,
+  useRecordApplicationViewedMutation,
+  useGetApplicationHistoryQuery,
+  useUndoAutoStatusMutation,
+  useGetShortlistRostersQuery,
+  useGetShortlistRosterByIdQuery,
+  useCreateShortlistRosterMutation,
+  useAddCandidateToRosterMutation,
+  useRemoveCandidateFromRosterMutation,
+  useUpdateRosterStageMutation,
+  useArchiveShortlistRosterMutation,
+  useDeleteShortlistRosterMutation,
+  useUniversalSearchHRQuery,
+  useLazyUniversalSearchHRQuery,
+  useGetApplicantProfileQuery,
+  useAddApplicantNoteMutation,
+  useCompareCandidatesMutation,
 } = apiSlice;

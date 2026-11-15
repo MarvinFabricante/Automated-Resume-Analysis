@@ -7,7 +7,7 @@ import {
   Cpu, Briefcase, GraduationCap,
   CheckCircle, ArrowLeft, Target,
   Award, Sparkles, Layers, Clock,
-  Eye, FileUp, FileText
+  Eye, FileUp, FileText, Code
 } from 'lucide-react';
 import Header from '../../../components/layout/Header';
 import Footer from '../../../components/layout/Footer';
@@ -65,6 +65,35 @@ const PreviewAndVerifyPage: React.FC = () => {
   const [dynamicMatchData, setDynamicMatchData] = useState<any>(matchData || null);
   const [isReplacingResume, setIsReplacingResume] = useState<boolean>(false);
   const replaceInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (jobId === 'smart') return;
+    let savedDraft: any = null;
+    if (effectiveJobId) {
+      try {
+        const raw = localStorage.getItem(`draft_application_${effectiveJobId}`);
+        if (raw) savedDraft = JSON.parse(raw);
+      } catch {}
+    }
+
+    const hasResume = Boolean(
+      state?.file || state?.fileName || state?.resumeUrl || state?.rawText ||
+      savedDraft?.fileName || savedDraft?.extractedData
+    );
+    const hasDetails = Boolean(
+      state?.formData || state?.personal?.name ||
+      savedDraft?.detailsConfirmed || savedDraft?.formData
+    );
+
+    if (!hasResume) {
+      navigate(effectiveJobId ? `/apply/${effectiveJobId}` : '/find-jobs', { replace: true });
+      return;
+    }
+    if (!hasDetails) {
+      navigate(effectiveJobId ? `/applicationform/${effectiveJobId}` : '/find-jobs', { replace: true });
+      return;
+    }
+  }, [effectiveJobId, jobId, state, navigate]);
 
   const checkFileContent = async (file: File): Promise<{ valid: boolean; error?: string }> => {
     try {
@@ -194,7 +223,7 @@ const PreviewAndVerifyPage: React.FC = () => {
   };
 
   const handleBackToEdit = () => {
-    navigate(effectiveJobId ? `/applicationform/${effectiveJobId}` : `/applicationform/smart`, {
+    navigate(effectiveJobId ? `/applicationform/${effectiveJobId}?step=3` : `/applicationform/smart?step=3`, {
       state: {
         ...extractedData,
         extractedData: {
@@ -322,24 +351,30 @@ const PreviewAndVerifyPage: React.FC = () => {
       <Header />
 
       <main className="max-w-7xl mx-auto px-6 py-12">
-        {/* Reversal of action: Back to Application Details */}
+        {/* Back navigation */}
         <button
           id="btn-back-to-edit"
           type="button"
           onClick={handleBackToEdit}
-          className="flex items-center text-slate-500 hover:text-[#D10043] transition-all mb-6 font-semibold text-sm group"
+          className="flex items-center text-slate-500 hover:text-[#D10043] transition-all mb-6 font-semibold text-sm group cursor-pointer"
         >
           <ArrowLeft size={18} className="mr-2 group-hover:-translate-x-1 transition-transform" />
-          Back to Application Details
+          Back to Questions
         </button>
 
-        {/* Multi-step Application Progress Bar */}
-        <ApplicationProgressBar currentStep={3} />
+        {/* Multi-step Application Progress Bar (Step 4 of 4) */}
+        <ApplicationProgressBar currentStep={4} />
 
         <div className="mb-8">
-          <h1 className="text-3xl font-black text-slate-900 tracking-tight mb-2">Review Application</h1>
+          <div className="flex items-center gap-2 mb-2">
+            <span className="px-3 py-1 bg-[#D10043]/10 text-[#D10043] rounded-full text-[10px] font-black uppercase tracking-widest">
+              Step 4 of 4
+            </span>
+            <span className="text-xs font-bold text-slate-400">Final Step: Submit</span>
+          </div>
+          <h1 className="text-3xl font-black text-slate-900 tracking-tight mb-2">Review & Submit Your Application</h1>
           <p className="text-slate-500 font-medium">
-            Verify your information before finalizing submission for <span className="text-slate-900 font-bold">{state?.job?.title || "this position"}</span>.
+            Please do a quick final check of your information before submitting for <span className="text-slate-900 font-bold">{state?.job?.title || "this position"}</span>.
           </p>
         </div>
 
@@ -503,13 +538,13 @@ const PreviewAndVerifyPage: React.FC = () => {
               </div>
             )}
 
-            {/* Skills & Competencies */}
+            {/* Skills */}
             <div className="mt-8 pt-8 border-t border-slate-50">
               <div className="flex items-center gap-3 mb-4 text-[#D60041]">
                 <div className="p-2.5 bg-pink-50 rounded-xl">
-                  <Cpu size={20} />
+                  <Code size={20} />
                 </div>
-                <h2 className="font-bold uppercase tracking-widest text-xs">Skills & Competencies</h2>
+                <h2 className="font-bold uppercase tracking-widest text-xs">Key Skills</h2>
               </div>
               <div className="flex flex-wrap gap-2">
                 {extractedData.skills.map((skill: string, i: number) => (

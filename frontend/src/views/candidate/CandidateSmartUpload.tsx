@@ -61,6 +61,51 @@ const CandidateSmartUpload: React.FC = () => {
   const [matchData, setMatchData] = useState<any>(null);
   const [isMatching, setIsMatching] = useState<boolean>(false);
   const [cooldown, setCooldown] = useState<number>(0);
+  const [savedDraft, setSavedDraft] = useState<any>(null);
+
+  // Check for saved draft progress
+  useEffect(() => {
+    if (jobId) {
+      try {
+        const raw = localStorage.getItem(`draft_application_${jobId}`);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (parsed?.extractedData || parsed?.step >= 2) {
+            setSavedDraft(parsed);
+          }
+        }
+      } catch {
+        // ignore parse error
+      }
+    }
+  }, [jobId]);
+
+  const handleResumeSavedDraft = () => {
+    if (!savedDraft) return;
+    const targetStep = savedDraft.step || 2;
+    if (targetStep === 3) {
+      navigate(`/candidate/update-profile/${jobId}?step=3`, {
+        state: {
+          ...savedDraft,
+          job: { title: jobTitle, job_id: jobId, ...job }
+        }
+      });
+    } else if (targetStep >= 4) {
+      navigate(`/candidate/preview-profile/${jobId}`, {
+        state: {
+          ...savedDraft,
+          job: { title: jobTitle, job_id: jobId, ...job }
+        }
+      });
+    } else {
+      navigate(`/candidate/update-profile/${jobId}`, {
+        state: {
+          ...savedDraft,
+          job: { title: jobTitle, job_id: jobId, ...job }
+        }
+      });
+    }
+  };
 
 
   // Fetch job details for this specific application
@@ -125,7 +170,7 @@ const CandidateSmartUpload: React.FC = () => {
       if (bytes.length >= 2 && bytes[0] === 0x4d && bytes[1] === 0x5a) {
         return {
           valid: false,
-          error: 'File rejected by content check: The file content is a Windows executable binary (.exe), not a valid document.'
+          error: 'This file is a computer program (.exe). Please upload your resume as a PDF or Word document.'
         };
       }
 
@@ -133,7 +178,7 @@ const CandidateSmartUpload: React.FC = () => {
       if (bytes.length >= 4 && bytes[0] === 0x7f && bytes[1] === 0x45 && bytes[2] === 0x4c && bytes[3] === 0x46) {
         return {
           valid: false,
-          error: 'File rejected by content check: The file content is an ELF binary executable, not a valid document.'
+          error: 'This file is not a supported document. Please upload a PDF or Word document.'
         };
       }
 
@@ -149,7 +194,7 @@ const CandidateSmartUpload: React.FC = () => {
         if (!hasPdfHeader) {
           return {
             valid: false,
-            error: 'File rejected by content check: The file has a .pdf extension but does not contain valid PDF content (disguised or corrupt file).'
+            error: 'We could not read this PDF. Please make sure the file is not damaged or empty.'
           };
         }
       }
@@ -170,7 +215,7 @@ const CandidateSmartUpload: React.FC = () => {
         if (!isZip && !isCfbf && !isRtf && !isXml) {
           return {
             valid: false,
-            error: 'File rejected by content check: The file has a Word extension (.docx/.doc) but does not contain valid Word document content.'
+            error: 'We could not read this Word file. Please check that it is a valid .docx or .doc document.'
           };
         }
       }
@@ -200,7 +245,7 @@ const CandidateSmartUpload: React.FC = () => {
         (!selectedFile.type && !/\.[a-zA-Z0-9]+$/i.test(selectedFile.name)))
     ) {
       if (selectedFile.size > 10 * 1024 * 1024) {
-        alert('File size exceeds 10MB limit. Please upload a smaller document.');
+        alert('This file is too large. Please upload a file smaller than 10MB.');
         return;
       }
 
@@ -217,7 +262,7 @@ const CandidateSmartUpload: React.FC = () => {
       setExtractedData(null);
       setMatchData(null);
     } else {
-      alert('Please upload a valid PDF, Word document, or text file (.pdf, .docx, .doc, .txt).');
+      alert('Please upload a PDF or Word document (.pdf, .docx, .doc).');
     }
   };
 
@@ -274,6 +319,23 @@ const CandidateSmartUpload: React.FC = () => {
       setUploadProgress(100);
       setProgressStage('Analysis complete!');
       setIsComplete(true);
+
+      if (jobId) {
+        try {
+          localStorage.setItem(`draft_application_${jobId}`, JSON.stringify({
+            step: 2,
+            jobId,
+            jobTitle,
+            fileName: file.name,
+            extractedData: extracted,
+            matchData: calculatedMatch,
+            savedAt: new Date().toISOString()
+          }));
+          localStorage.setItem('draft_application_step', '2');
+        } catch {
+          // ignore storage error
+        }
+      }
     } catch (error: any) {
       console.error('Error analyzing resume:', error);
       if (error.response?.status === 429) {
@@ -349,7 +411,7 @@ const CandidateSmartUpload: React.FC = () => {
   return (
     <div className="min-h-screen bg-[#F8FAFC] text-slate-900 antialiased font-['Inter',_sans-serif] flex flex-col">
       <Helmet>
-        <title>Apply for {jobTitle} | Candidate Portal</title>
+        <title>Apply for {jobTitle} | Mariwasa Recruitment</title>
       </Helmet>
 
       <Header />
@@ -369,7 +431,46 @@ const CandidateSmartUpload: React.FC = () => {
             Back to Available Positions
           </button>
 
-          {/* Exclusive Application Progress Bar (Step 1 of 3) */}
+          {/* Saved Draft Resume Notification */}
+          {savedDraft && !isComplete && (
+            <div className="mb-6 p-4 sm:p-5 bg-amber-50/90 border border-amber-200/80 rounded-2xl sm:rounded-3xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-sm animate-in fade-in">
+              <div className="flex items-start sm:items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center shrink-0 border border-amber-200">
+                  <FileText size={20} />
+                </div>
+                <div>
+                  <h4 className="text-xs sm:text-sm font-black text-amber-950">
+                    You have an unfinished application for this job
+                  </h4>
+                  <p className="text-[11px] sm:text-xs text-amber-800 font-medium mt-0.5">
+                    We saved your progress from {savedDraft.savedAt ? new Date(savedDraft.savedAt).toLocaleDateString() : 'a previous visit'}. You can continue or start over.
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 self-end sm:self-auto shrink-0">
+                <button
+                  type="button"
+                  onClick={() => {
+                    localStorage.removeItem(`draft_application_${jobId}`);
+                    setSavedDraft(null);
+                  }}
+                  className="px-3.5 py-2 rounded-xl text-xs font-bold text-amber-900 hover:bg-amber-100/70 transition-colors"
+                >
+                  Start Over
+                </button>
+                <button
+                  type="button"
+                  onClick={handleResumeSavedDraft}
+                  className="px-4 py-2 rounded-xl text-xs font-black bg-[#D10043] hover:bg-slate-900 text-white transition-colors flex items-center gap-1.5 shadow-sm"
+                >
+                  <span>Continue Application</span>
+                  <ArrowRight size={14} />
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Application Progress Bar (Step 1 of 4) */}
           <ApplicationProgressBar currentStep={1} />
 
           {/* MAIN UPLOAD CARD */}
@@ -383,14 +484,14 @@ const CandidateSmartUpload: React.FC = () => {
               <div className="flex flex-col md:flex-row md:items-center gap-6 sm:gap-8">
                 
                 <div className="w-16 h-16 sm:w-20 sm:h-20 bg-slate-900 rounded-3xl flex items-center justify-center text-white shadow-xl shadow-slate-200 shrink-0">
-                  <Cpu size={36} className="text-[#D10043]" />
+                  <Briefcase size={36} className="text-[#D10043]" />
                 </div>
 
                 <div className="space-y-2">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="px-3 py-1 bg-[#D10043]/10 text-[#D10043] rounded-full text-[10px] font-black uppercase tracking-widest flex items-center gap-1.5 border border-[#D10043]/15">
                       <Zap size={10} fill="currentColor" />
-                      Candidate Portal Job Application
+                      Apply for a Job
                     </span>
                     {job?.department && (
                       <span className="px-3 py-1 bg-slate-100 text-slate-600 rounded-full text-[10px] font-bold uppercase tracking-wider">
@@ -405,12 +506,11 @@ const CandidateSmartUpload: React.FC = () => {
                   </div>
 
                   <h1 className="text-2xl sm:text-3xl md:text-5xl font-black text-slate-900 tracking-tight">
-                    Applying for <span className="text-[#D10043]">{jobTitle}</span>
+                    Apply for <span className="text-[#D10043]">{jobTitle}</span>
                   </h1>
 
                   <p className="text-sm sm:text-base text-slate-500 font-medium max-w-3xl leading-relaxed">
-                    Upload your resume to process your application exclusively through the candidate portal. 
-                    Our AI parser will analyze your technical competencies and calculate your suitability for this role.
+                    Upload your resume to begin. We'll automatically fill in your experience, education, and skills in the next step so you can review them.
                   </p>
                 </div>
               </div>
@@ -586,498 +686,35 @@ const CandidateSmartUpload: React.FC = () => {
                     </div>
                   )}
 
-                  {/* COMPLETED STATE: AI MATCH ANALYSIS & RESUME SUMMARY */}
+                  {/* COMPLETED STATE: RESUME READY TO PROCEED */}
                   {isComplete && (
-                    <div className="space-y-8 animate-in fade-in zoom-in-95 duration-500">
+                    <div className="space-y-6 animate-in fade-in zoom-in-95 duration-300">
                       
                       {/* Success Banner */}
-                      <div className="bg-emerald-50 border border-emerald-100 p-6 sm:p-8 rounded-[28px] flex items-center gap-5">
-                        <div className="bg-white text-emerald-600 p-3.5 rounded-2xl shadow-sm shrink-0 border border-emerald-100">
-                          <CheckCircle2 size={30} />
+                      <div className="bg-emerald-50/80 border border-emerald-200 p-6 sm:p-8 rounded-[28px] flex items-center gap-5">
+                        <div className="bg-white text-emerald-600 p-3.5 rounded-2xl shadow-xs shrink-0 border border-emerald-100">
+                          <CheckCircle2 size={32} />
                         </div>
                         <div>
                           <h4 className="text-lg font-black text-slate-900">
-                            Resume Parsed & Evaluated
+                            Resume Attached Successfully
                           </h4>
-                          <p className="text-sm text-slate-600 font-medium">
-                            Your credentials have been matched against <span className="font-bold text-slate-900">{jobTitle}</span>. Review your analysis below and proceed to complete your application.
+                          <p className="text-sm text-slate-600 font-medium mt-0.5">
+                            We've processed your resume for <span className="font-bold text-slate-900">{jobTitle}</span>. Click the button below to review your auto-filled details.
                           </p>
                         </div>
                       </div>
 
-                      {/* AI Match Breakdown Card */}
-                      {matchData && (
-                        <div className="bg-white border border-slate-100 rounded-[32px] p-6 sm:p-8 shadow-sm space-y-6">
-                          <div className="flex items-center justify-between pb-4 border-b border-slate-100">
-                            <div className="flex items-center gap-2.5 text-[#D10043]">
-                              <Target size={20} />
-                              <span className="text-xs font-black uppercase tracking-widest">
-                                Role Fit Analysis
-                              </span>
-                            </div>
-                            <span className="px-3 py-1 bg-slate-100 rounded-full text-xs font-bold text-slate-700">
-                              {getMatchTier(matchData.match_percentage || 0)}
-                            </span>
-                          </div>
 
-                          <div className="flex flex-col md:flex-row items-center gap-8">
-                            
-                            {/* Match Gauge */}
-                            <div className="flex flex-col items-center shrink-0">
-                              <div className="relative w-32 h-32">
-                                <svg className="w-32 h-32 -rotate-90" viewBox="0 0 100 100">
-                                  <circle cx="50" cy="50" r="42" fill="none" stroke="#f1f5f9" strokeWidth="10" />
-                                  <circle
-                                    cx="50"
-                                    cy="50"
-                                    r="42"
-                                    fill="none"
-                                    stroke={getMatchColor(matchData.match_percentage || 0)}
-                                    strokeWidth="10"
-                                    strokeDasharray="264 264"
-                                    strokeDashoffset={264 - (264 * (matchData.match_percentage || 0)) / 100}
-                                    strokeLinecap="round"
-                                    className="transition-all duration-1000 ease-out"
-                                  />
-                                </svg>
-                                <div className="absolute inset-0 flex flex-col items-center justify-center pt-1">
-                                  <span className="text-3xl font-black text-slate-900 leading-none tracking-tight">
-                                    {Math.round(matchData.match_percentage || 0)}%
-                                  </span>
-                                  <span className="text-[9px] font-black uppercase tracking-widest text-slate-400 mt-1">
-                                    Match
-                                  </span>
-                                </div>
-                              </div>
-                            </div>
 
-                            {/* Sub Scores */}
-                            <div className="flex-1 grid grid-cols-1 sm:grid-cols-3 gap-3 w-full">
-                              <div className="p-4 rounded-2xl bg-blue-50/70 border border-blue-100 flex flex-col text-center">
-                                <Cpu size={18} className="mx-auto text-blue-600 mb-1" />
-                                <span className="text-xl font-black text-slate-900">
-                                  {Math.round(matchData.skills_score || 0)}%
-                                </span>
-                                <span className="text-[10px] font-black uppercase tracking-widest text-slate-500 mt-0.5">
-                                  Skills Fit
-                                </span>
-                              </div>
 
-                              <div className="p-4 rounded-2xl bg-purple-50/70 border border-purple-100 flex flex-col text-center">
-                                <Briefcase size={18} className="mx-auto text-purple-600 mb-1" />
-                                <span className="text-xl font-black text-slate-900">
-                                  {Math.round(matchData.experience_score || 0)}%
-                                </span>
-                                <span className="text-[10px] font-black uppercase tracking-widest text-slate-500 mt-0.5">
-                                  {matchData.experience_below_minimum ? 'Experience (Below Min)' : 'Experience Fit'}
-                                </span>
-                              </div>
 
-                              <div className="p-4 rounded-2xl bg-amber-50/70 border border-amber-100 flex flex-col text-center">
-                                <GraduationCap size={18} className="mx-auto text-amber-600 mb-1" />
-                                <span className="text-xl font-black text-slate-900">
-                                  {Math.round(matchData.education_score || 0)}%
-                                </span>
-                                <span className="text-[10px] font-black uppercase tracking-widest text-slate-500 mt-0.5">
-                                  Education Fit
-                                </span>
-                              </div>
-                            </div>
-                          </div>
 
-                          <ExperienceGapAlert
-                            matchData={matchData}
-                            job={job}
-                            yearsExperience={extractedData?.years_experience}
-                          />
 
-                          {/* AI Summary */}
-                          {matchData.ai_summary && (
-                            <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100 text-xs text-slate-600 font-medium leading-relaxed">
-                              {matchData.ai_summary}
-                            </div>
-                          )}
 
-                          {/* Matched & Missing Skills Badges */}
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
-                            {matchData.matched_skills?.length > 0 && (
-                              <div className="p-4 rounded-2xl bg-emerald-50/50 border border-emerald-100">
-                                <span className="block text-[10px] font-black uppercase tracking-widest text-emerald-700 mb-2.5 flex items-center gap-1.5">
-                                  <Check size={12} />
-                                  Matched Competencies ({matchData.matched_skills.length})
-                                </span>
-                                <div className="flex flex-wrap gap-1.5">
-                                  {matchData.matched_skills.map((skill: string, idx: number) => (
-                                    <span
-                                      key={idx}
-                                      className="px-2.5 py-1 bg-white text-emerald-800 text-[11px] font-bold rounded-lg border border-emerald-200"
-                                    >
-                                      {skill}
-                                    </span>
-                                  ))}
-                                </div>
-                              </div>
-                            )}
 
-                            {matchData.missing_skills?.length > 0 && (
-                              <div className="p-4 rounded-2xl bg-rose-50/50 border border-rose-100">
-                                <span className="block text-[10px] font-black uppercase tracking-widest text-rose-700 mb-2.5 flex items-center gap-1.5">
-                                  <XCircle size={12} />
-                                  Additional Skills to Highlight ({matchData.missing_skills.length})
-                                </span>
-                                <div className="flex flex-wrap gap-1.5">
-                                  {matchData.missing_skills.map((skill: string, idx: number) => (
-                                    <span
-                                      key={idx}
-                                      className="px-2.5 py-1 bg-white text-rose-700 text-[11px] font-bold rounded-lg border border-rose-200"
-                                    >
-                                      {skill}
-                                    </span>
-                                  ))}
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Extracted Profile Credentials Preview */}
-                      {extractedData && (
-                        <div className="bg-white border border-slate-200/80 rounded-[32px] p-6 sm:p-8 space-y-6 shadow-sm">
-                          <div className="flex items-center justify-between border-b border-slate-100 pb-4">
-                            <h4 className="text-xs font-black uppercase tracking-widest text-[#D10043] flex items-center gap-2">
-                              <Layers size={16} />
-                              Comprehensive Resume Content Extraction
-                            </h4>
-                            <span className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full bg-pink-50 text-[#D10043] border border-pink-100">
-                              Deterministic Local NLP
-                            </span>
-                          </div>
-
-                          {/* 1. Identity & Contact Header */}
-                          <div className="bg-slate-50/70 rounded-2xl p-4 sm:p-5 border border-slate-100 space-y-3">
-                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                              <div>
-                                <h3 className="text-lg font-black text-slate-900 flex items-center gap-2">
-                                  <User size={18} className="text-[#D10043]" />
-                                  {extractedData.fullname || 'Candidate Name'}
-                                </h3>
-                                <p className="text-xs font-bold text-slate-500 mt-0.5 flex items-center gap-1.5">
-                                  <Briefcase size={13} className="text-slate-400" />
-                                  <span>{extractedData.job_title || 'Role'}</span>
-                                  {extractedData.company && (
-                                    <>
-                                      <span className="text-slate-300">•</span>
-                                      <span className="text-slate-600">{extractedData.company}</span>
-                                    </>
-                                  )}
-                                </p>
-                              </div>
-
-                              <div className="flex items-center gap-2 self-start sm:self-auto">
-                                <span className="px-3 py-1 bg-slate-900 text-white text-[11px] font-bold rounded-xl flex items-center gap-1">
-                                  <Clock size={12} />
-                                  {extractedData.years_experience
-                                    ? `${extractedData.years_experience} Years Exp`
-                                    : extractedData.needs_clarification
-                                    ? 'Clarification Needed'
-                                    : 'Experience Recorded'}
-                                </span>
-                              </div>
-                            </div>
-
-                            {/* Contact Badges */}
-                            <div className="flex flex-wrap gap-2 pt-1 text-xs">
-                              {extractedData.email && (
-                                <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-white rounded-lg border border-slate-200/70 text-slate-700 font-medium">
-                                  <Mail size={12} className="text-slate-400" />
-                                  {extractedData.email}
-                                </span>
-                              )}
-                              {extractedData.phone && (
-                                <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-white rounded-lg border border-slate-200/70 text-slate-700 font-medium">
-                                  <Phone size={12} className="text-slate-400" />
-                                  {extractedData.phone}
-                                </span>
-                              )}
-                              {extractedData.location && (
-                                <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-white rounded-lg border border-slate-200/70 text-slate-700 font-medium">
-                                  <MapPin size={12} className="text-slate-400" />
-                                  {extractedData.location}
-                                </span>
-                              )}
-                            </div>
-                          </div>
-
-                          {/* 2. Synthesized Executive Summary */}
-                          {extractedData.summary && (
-                            <div className="p-4 bg-gradient-to-r from-pink-50/50 via-slate-50 to-white rounded-2xl border border-pink-100/70">
-                              <span className="block text-[10px] font-black uppercase tracking-widest text-[#D10043] mb-1.5 flex items-center gap-1.5">
-                                <Sparkles size={13} />
-                                Executive Profile Summary
-                              </span>
-                              <p className="text-xs text-slate-700 leading-relaxed font-medium">
-                                {extractedData.summary}
-                              </p>
-                            </div>
-                          )}
-
-                          {/* 3. Granular Work Experience */}
-                          {extractedData.work_experiences && extractedData.work_experiences.length > 0 && (
-                            <div className="space-y-2.5">
-                              <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 block flex items-center gap-1.5">
-                                <Briefcase size={13} className="text-slate-400" />
-                                Extracted Work Experience ({extractedData.work_experiences.length})
-                              </span>
-                              <div className="grid grid-cols-1 gap-2.5">
-                                {extractedData.work_experiences.map((exp: any, expIdx: number) => {
-                                  const roleTitle = exp.job_title || exp.role || 'Role';
-                                  const compName = exp.company_name || exp.company || 'Company';
-                                  const dates = [exp.start_date, exp.end_date].filter(Boolean).join(' - ');
-                                  const durationStr = exp.duration_months ? `(${exp.duration_months} mos)` : '';
-                                  const duties = exp.responsibilities || exp.highlights || [];
-
-                                  return (
-                                    <div key={expIdx} className="bg-slate-50/80 rounded-xl p-3.5 border border-slate-100 text-xs">
-                                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
-                                        <div className="font-black text-slate-900 text-sm">
-                                          {roleTitle}
-                                          <span className="font-semibold text-slate-500 text-xs ml-1.5">
-                                            at {compName}
-                                          </span>
-                                          {exp.location && (
-                                            <span className="text-[11px] text-slate-400 font-normal ml-1">
-                                              ({exp.location})
-                                            </span>
-                                          )}
-                                        </div>
-                                        <div className="flex items-center gap-1.5">
-                                          {exp.employment_type && (
-                                            <span className="px-2 py-0.5 rounded-md bg-white border border-slate-200 text-[10px] font-bold text-slate-600">
-                                              {exp.employment_type}
-                                            </span>
-                                          )}
-                                          {dates && (
-                                            <span className="text-[11px] font-medium text-slate-500">
-                                              {dates} {durationStr}
-                                            </span>
-                                          )}
-                                        </div>
-                                      </div>
-                                      {duties.length > 0 && (
-                                        <ul className="mt-2 space-y-1 text-slate-600 pl-3 border-l-2 border-slate-200 text-[11px]">
-                                          {duties.slice(0, 2).map((duty: string, dIdx: number) => (
-                                            <li key={dIdx}>• {duty}</li>
-                                          ))}
-                                        </ul>
-                                      )}
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            </div>
-                          )}
-
-                          {/* 4. Granular Education History */}
-                          {extractedData.education_entries && extractedData.education_entries.length > 0 && (
-                            <div className="space-y-2.5">
-                              <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 block flex items-center gap-1.5">
-                                <GraduationCap size={13} className="text-slate-400" />
-                                Educational Attainment
-                              </span>
-                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                                {extractedData.education_entries.map((edu: any, eduIdx: number) => {
-                                  const deg = edu.degree_or_course || edu.degree || 'Degree Program';
-                                  const inst = edu.institution_name || edu.institution || edu.college || 'Institution';
-                                  const level = edu.education_level || extractedData.highest_educational_attainment;
-                                  const year = edu.year || [edu.start_year, edu.end_year].filter(Boolean).join(' - ');
-                                  const honors = edu.honors || (Array.isArray(edu.honors_and_awards) ? edu.honors_and_awards.join(', ') : '');
-
-                                  return (
-                                    <div key={eduIdx} className="bg-slate-50/80 rounded-xl p-3.5 border border-slate-100 text-xs">
-                                      <div className="flex items-center justify-between gap-1 mb-1">
-                                        <span className="font-bold text-slate-900 text-xs truncate">
-                                          {deg}
-                                        </span>
-                                        {level && (
-                                          <span className="shrink-0 px-2 py-0.5 rounded-md bg-purple-50 text-purple-700 border border-purple-100 text-[9px] font-black uppercase">
-                                            {level}
-                                          </span>
-                                        )}
-                                      </div>
-                                      <p className="text-[11px] font-medium text-slate-600 truncate">
-                                        {inst}
-                                      </p>
-                                      <div className="flex items-center gap-2 mt-1 text-[10px] text-slate-400">
-                                        {year && <span>{year}</span>}
-                                        {honors && (
-                                          <span className="text-emerald-700 font-bold bg-emerald-50 px-1.5 py-0.2 rounded">
-                                            Honors: {honors}
-                                          </span>
-                                        )}
-                                      </div>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            </div>
-                          )}
-
-                          {/* 5. Categorized Skills Inventory */}
-                          {(extractedData.skills_details?.categorized_view || extractedData.skills_list?.length > 0 || extractedData.skills) && (
-                            <div className="space-y-3 pt-1">
-                              <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 block flex items-center gap-1.5">
-                                <Cpu size={13} className="text-slate-400" />
-                                Verified Skills & Competencies Inventory
-                              </span>
-
-                              {extractedData.skills_details?.categorized_view ? (
-                                <div className="space-y-2">
-                                  {/* Hard Skills */}
-                                  {extractedData.skills_details.categorized_view.hard_skills?.length > 0 && (
-                                    <div>
-                                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
-                                        Hard Skills ({extractedData.skills_details.categorized_view.hard_skills.length})
-                                      </span>
-                                      <div className="flex flex-wrap gap-1.5">
-                                        {extractedData.skills_details.categorized_view.hard_skills.map((skill: string, sIdx: number) => (
-                                          <span key={sIdx} className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200/70">
-                                            {skill}
-                                          </span>
-                                        ))}
-                                      </div>
-                                    </div>
-                                  )}
-
-                                  {/* Tools & Technologies */}
-                                  {extractedData.skills_details.categorized_view.tools_and_technologies?.length > 0 && (
-                                    <div>
-                                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
-                                        Tools, Machinery & Systems ({extractedData.skills_details.categorized_view.tools_and_technologies.length})
-                                      </span>
-                                      <div className="flex flex-wrap gap-1.5">
-                                        {extractedData.skills_details.categorized_view.tools_and_technologies.map((tool: string, tIdx: number) => (
-                                          <span key={tIdx} className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-blue-50 text-blue-800 border border-blue-200/70">
-                                            {tool}
-                                          </span>
-                                        ))}
-                                      </div>
-                                    </div>
-                                  )}
-
-                                  {/* Soft Skills */}
-                                  {extractedData.skills_details.categorized_view.soft_skills?.length > 0 && (
-                                    <div>
-                                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
-                                        Workplace & Soft Skills ({extractedData.skills_details.categorized_view.soft_skills.length})
-                                      </span>
-                                      <div className="flex flex-wrap gap-1.5">
-                                        {extractedData.skills_details.categorized_view.soft_skills.map((soft: string, sfIdx: number) => (
-                                          <span key={sfIdx} className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-purple-50 text-purple-800 border border-purple-200/70">
-                                            {soft}
-                                          </span>
-                                        ))}
-                                      </div>
-                                    </div>
-                                  )}
-
-                                  {/* Languages */}
-                                  {extractedData.skills_details.categorized_view.languages?.length > 0 && (
-                                    <div>
-                                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
-                                        Languages ({extractedData.skills_details.categorized_view.languages.length})
-                                      </span>
-                                      <div className="flex flex-wrap gap-1.5">
-                                        {extractedData.skills_details.categorized_view.languages.map((lang: string, lIdx: number) => (
-                                          <span key={lIdx} className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-amber-50 text-amber-800 border border-amber-200/70">
-                                            {lang}
-                                          </span>
-                                        ))}
-                                      </div>
-                                    </div>
-                                  )}
-                                </div>
-                              ) : (
-                                <div className="flex flex-wrap gap-1.5">
-                                  {(extractedData.skills_list || (typeof extractedData.skills === 'string' ? extractedData.skills.split(' | ') : []))
-                                    .slice(0, 15)
-                                    .map((s: string, sIdx: number) => (
-                                      <span key={sIdx} className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-slate-100 text-slate-700 border border-slate-200">
-                                        {s}
-                                      </span>
-                                    ))}
-                                </div>
-                              )}
-                            </div>
-                          )}
-
-                          {/* 6. Certifications, Licenses & Eligibility */}
-                          {((extractedData.certifications_details?.certifications && extractedData.certifications_details.certifications.length > 0) ||
-                            (extractedData.certifications_list && extractedData.certifications_list.length > 0) ||
-                            extractedData.certifications) && (
-                            <div className="space-y-2.5 pt-1">
-                              <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 block flex items-center gap-1.5">
-                                <Award size={13} className="text-[#D10043]" />
-                                Government Licenses, Eligibility & Certifications
-                              </span>
-
-                              {extractedData.certifications_details?.certifications?.length > 0 ? (
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                                  {extractedData.certifications_details.certifications.map((cert: any, cIdx: number) => (
-                                    <div key={cIdx} className="bg-rose-50/50 rounded-xl p-3 border border-rose-100 text-xs">
-                                      <div className="flex items-start justify-between gap-1 mb-1">
-                                        <span className="font-bold text-slate-900 leading-snug">
-                                          {cert.canonical_name}
-                                        </span>
-                                        {cert.category && (
-                                          <span className="shrink-0 px-1.5 py-0.5 rounded bg-white text-rose-700 border border-rose-200 text-[9px] font-bold">
-                                            {cert.category}
-                                          </span>
-                                        )}
-                                      </div>
-                                      <div className="text-[11px] text-slate-600 flex flex-wrap gap-x-2 gap-y-0.5">
-                                        {cert.issuing_organization && (
-                                          <span>Issuer: <strong className="text-slate-800">{cert.issuing_organization}</strong></span>
-                                        )}
-                                        {cert.expiration_or_status && (
-                                          <span className="text-emerald-700 font-semibold">• {cert.expiration_or_status}</span>
-                                        )}
-                                        {cert.credential_id_or_details && (
-                                          <span className="text-slate-500">• {cert.credential_id_or_details}</span>
-                                        )}
-                                      </div>
-                                    </div>
-                                  ))}
-                                </div>
-                              ) : (
-                                <div className="flex flex-wrap gap-1.5">
-                                  {(extractedData.certifications_list || (typeof extractedData.certifications === 'string' ? extractedData.certifications.split(' | ') : []))
-                                    .map((c: string, cIdx: number) => (
-                                      <span key={cIdx} className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-rose-50 text-rose-800 border border-rose-200">
-                                        {c}
-                                      </span>
-                                    ))}
-                                </div>
-                              )}
-                            </div>
-                          )}
-
-                        </div>
-                      )}
-
-                      {/* Action Buttons */}
+                      {/* Action Buttons: 1 clear primary button */}
                       <div className="flex flex-col sm:flex-row gap-3 pt-2">
-                        <button
-                          id="btn-candidate-preview-complete"
-                          data-testid="preview-resume-complete-btn"
-                          type="button"
-                          onClick={() => setShowPreviewModal(true)}
-                          className="flex-1 bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-700 py-4 rounded-2xl font-bold transition-all active:scale-95 flex items-center justify-center gap-2 text-sm cursor-pointer shadow-2xs"
-                        >
-                          <Eye size={18} className="text-[#D10043]" />
-                          <span>Preview Resume</span>
-                        </button>
-
                         <button
                           type="button"
                           onClick={() => {
@@ -1089,16 +726,16 @@ const CandidateSmartUpload: React.FC = () => {
                           className="flex-1 bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-700 py-4 rounded-2xl font-bold transition-all active:scale-95 flex items-center justify-center gap-2 text-sm cursor-pointer shadow-2xs"
                         >
                           <FileUp size={18} />
-                          <span>Change Resume</span>
+                          <span>Choose a Different File</span>
                         </button>
 
                         <button
                           type="button"
                           onClick={handleProceedToDetails}
-                          className="flex-[2] bg-slate-900 hover:bg-[#D10043] text-white py-4 rounded-2xl font-black text-sm flex items-center justify-center gap-3 transition-all shadow-xl shadow-slate-200 hover:shadow-[#D10043]/20 active:scale-[0.99] cursor-pointer group"
+                          className="flex-[2] bg-[#D10043] hover:bg-slate-900 text-white py-4 px-6 rounded-2xl font-black text-sm flex items-center justify-center gap-2.5 transition-all shadow-xl shadow-[#D10043]/20 active:scale-[0.99] cursor-pointer group"
                         >
-                          <span>Proceed to Step 2: Details</span>
-                          <ArrowRight size={18} className="group-hover:translate-x-1.5 transition-transform" />
+                          <span>Next: Review your details</span>
+                          <ArrowRight size={18} className="group-hover:translate-x-1 transition-transform" />
                         </button>
                       </div>
 
@@ -1143,7 +780,7 @@ const CandidateSmartUpload: React.FC = () => {
                         <span>
                           {cooldown > 0
                             ? `Please wait ${cooldown}s`
-                            : 'Analyze & Process Application Resume'}
+                            : 'Upload Resume and Continue'}
                         </span>
                       </button>
                     </div>

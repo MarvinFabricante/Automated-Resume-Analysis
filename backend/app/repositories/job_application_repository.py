@@ -24,7 +24,9 @@ async def create(db: AsyncSession, application_data: dict) -> JobApplication:
         payload=application_data,
     )
     try:
-        new_application = JobApplication(**application_data)
+        valid_cols = set(JobApplication.__table__.columns.keys())
+        clean_data = {k: v for k, v in application_data.items() if k in valid_cols}
+        new_application = JobApplication(**clean_data)
         db.add(new_application)
         await db.commit()
             
@@ -148,6 +150,9 @@ async def get_all_summaries(db: AsyncSession) -> List[Dict[str, Any]]:
             JobApplication.highest_educational_attainment,
             JobApplication.experience_gaps,
             JobApplication.ai_powered,
+            JobApplication.source,
+            JobApplication.import_origin,
+            JobApplication.imported_by,
             JobApplication.status,
             JobApplication.created_at,
             JobApplication.updated_at,
@@ -185,6 +190,9 @@ async def get_all_summaries(db: AsyncSession) -> List[Dict[str, Any]]:
             "highest_educational_attainment": row.highest_educational_attainment,
             "experience_gaps": row.experience_gaps,
             "ai_powered": bool(row.ai_powered),
+            "source": row.source or "Online",
+            "import_origin": row.import_origin,
+            "imported_by": row.imported_by,
             "status": row.status,
             "created_at": row.created_at.isoformat() if row.created_at else None,
             "updated_at": row.updated_at.isoformat() if row.updated_at else None,

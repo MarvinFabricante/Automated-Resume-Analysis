@@ -11,13 +11,13 @@ import {
   AlertCircle
 } from 'lucide-react';
 import { useNavigate } from '@/utils/navigation';
+import HelpTooltip from '@/components/common/HelpTooltip';
 
 const STAGE_LABELS = [
-  'Submission',
-  'Screening',
-  'Technical Review',
-  'Final Interview',
-  'Decision'
+  'Submitted',
+  'Under Review',
+  'Shortlisted',
+  'Initial Interview'
 ];
 
 interface ApplicationListProps {
@@ -32,20 +32,20 @@ const ApplicationList: React.FC<ApplicationListProps> = ({ applications = [] }) 
   const counts = useMemo(() => {
     let review = 0;
     let interviews = 0;
-    let decision = 0;
+    let notSelected = 0;
 
     applications.forEach((app) => {
       const s = (app.status || '').toUpperCase();
-      if (s === 'PENDING' || s === 'REVIEWED') review++;
-      else if (s.includes('INTERVIEW')) interviews++;
-      else if (s === 'ACCEPTED' || s === 'REJECTED') decision++;
+      if (s === 'NOT SELECTED' || s === 'REJECTED') notSelected++;
+      else if (s.includes('INTERVIEW') || app.step === 4) interviews++;
+      else review++;
     });
 
     return {
       all: applications.length,
       review,
       interviews,
-      decision
+      notSelected
     };
   }, [applications]);
 
@@ -55,13 +55,13 @@ const ApplicationList: React.FC<ApplicationListProps> = ({ applications = [] }) 
       if (filterTab === 'ALL') return true;
       const statusUpper = (app.status || '').toUpperCase();
       if (filterTab === 'REVIEW') {
-        return statusUpper === 'PENDING' || statusUpper === 'REVIEWED';
+        return statusUpper !== 'NOT SELECTED' && statusUpper !== 'REJECTED' && !statusUpper.includes('INTERVIEW') && app.step !== 4;
       }
       if (filterTab === 'INTERVIEWS') {
-        return statusUpper.includes('INTERVIEW');
+        return statusUpper.includes('INTERVIEW') || app.step === 4;
       }
-      if (filterTab === 'DECISION') {
-        return statusUpper === 'ACCEPTED' || statusUpper === 'REJECTED';
+      if (filterTab === 'NOT_SELECTED') {
+        return statusUpper === 'NOT SELECTED' || statusUpper === 'REJECTED' || app.step === 0;
       }
       return true;
     });
@@ -79,6 +79,7 @@ const ApplicationList: React.FC<ApplicationListProps> = ({ applications = [] }) 
           <div>
             <div className="flex items-center gap-2">
               <h3 className="text-lg sm:text-xl font-black text-slate-900 tracking-tight">Active Applications</h3>
+              <HelpTooltip text="Jobs you have applied for and their current stage in the hiring process." />
               <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-800 font-mono text-xs font-black">
                 {applications.length}
               </span>
@@ -101,9 +102,9 @@ const ApplicationList: React.FC<ApplicationListProps> = ({ applications = [] }) 
       <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
         {[
           { key: 'ALL', label: 'All', count: counts.all },
-          { key: 'REVIEW', label: 'Screening', count: counts.review },
-          { key: 'INTERVIEWS', label: 'Interviewing', count: counts.interviews },
-          { key: 'DECISION', label: 'Decisions', count: counts.decision }
+          { key: 'REVIEW', label: 'In Review', count: counts.review },
+          { key: 'INTERVIEWS', label: 'Interview', count: counts.interviews },
+          { key: 'NOT_SELECTED', label: 'Not Selected', count: counts.notSelected }
         ].map((tab) => (
           <button
             key={tab.key}
@@ -140,7 +141,8 @@ const ApplicationList: React.FC<ApplicationListProps> = ({ applications = [] }) 
         ) : (
           filteredApps.map((app) => {
             const currentStep = app.step || 1;
-            const totalSteps = app.totalSteps || 5;
+            const totalSteps = app.totalSteps || 4;
+            const isNotSelected = app.status === 'Not Selected' || app.status === 'Rejected' || app.step === 0;
 
             return (
               <div
@@ -179,30 +181,38 @@ const ApplicationList: React.FC<ApplicationListProps> = ({ applications = [] }) 
                   </div>
                 </div>
 
-                {/* 5-Stage Stepper Progress Tracker */}
+                {/* 4-Stage Stepper Progress Tracker */}
                 <div className="pt-2 border-t border-slate-100/80 space-y-2">
                   <div className="flex items-center justify-between text-xs font-bold gap-2 flex-wrap">
                     <span className="text-slate-500 font-medium">Recruitment Progress</span>
                     <span className="text-slate-900 font-black flex items-center gap-1">
-                      <span>Stage {currentStep} of {totalSteps}:</span>
-                      <span className="text-[#D10043] font-bold">
-                        {STAGE_LABELS[currentStep - 1] || 'In Review'}
-                      </span>
+                      {isNotSelected ? (
+                        <span className="text-rose-600 font-bold">Status: Not Selected</span>
+                      ) : (
+                        <>
+                          <span>Stage {currentStep} of {totalSteps}:</span>
+                          <span className="text-[#D10043] font-bold">
+                            {STAGE_LABELS[currentStep - 1] || 'In Review'}
+                          </span>
+                        </>
+                      )}
                     </span>
                   </div>
 
                   {/* Visual Stepper Nodes */}
-                  <div className="grid grid-cols-5 gap-1.5">
+                  <div className="grid grid-cols-4 gap-1.5">
                     {STAGE_LABELS.map((stageName, idx) => {
                       const stepNumber = idx + 1;
-                      const isCompleted = stepNumber < currentStep;
-                      const isCurrent = stepNumber === currentStep;
+                      const isCompleted = !isNotSelected && stepNumber < currentStep;
+                      const isCurrent = !isNotSelected && stepNumber === currentStep;
 
                       return (
                         <div key={idx} className="flex flex-col gap-1">
                           <div
                             className={`h-2 rounded-full transition-all duration-300 ${
-                              isCompleted
+                              isNotSelected
+                                ? 'bg-slate-200'
+                                : isCompleted
                                 ? 'bg-emerald-500'
                                 : isCurrent
                                 ? 'bg-[#D10043]'
@@ -211,7 +221,9 @@ const ApplicationList: React.FC<ApplicationListProps> = ({ applications = [] }) 
                           />
                           <span
                             className={`hidden sm:block text-[9px] font-bold uppercase tracking-wider truncate text-center ${
-                              isCurrent
+                              isNotSelected
+                                ? 'text-slate-300'
+                                : isCurrent
                                 ? 'text-[#D10043]'
                                 : isCompleted
                                 ? 'text-slate-700'
@@ -225,19 +237,36 @@ const ApplicationList: React.FC<ApplicationListProps> = ({ applications = [] }) 
                     })}
                   </div>
 
+                  {/* Post-Interview Note or Not Selected Note */}
+                  {currentStep === 4 && !isNotSelected && (
+                    <div className="p-2.5 rounded-xl bg-purple-50 border border-purple-100 text-xs text-purple-900 font-medium flex items-center gap-2">
+                      <CheckCircle2 size={14} className="text-purple-600 shrink-0" />
+                      <span>Thank you! HR will contact you directly about the next steps.</span>
+                    </div>
+                  )}
+
+                  {isNotSelected && (
+                    <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-600 font-medium flex items-center gap-2">
+                      <AlertCircle size={14} className="text-slate-400 shrink-0" />
+                      <span>Thank you for your interest. We are proceeding with other applicants for this role.</span>
+                    </div>
+                  )}
+
                   {/* Mobile-Friendly Active Stage Pill (Visible on small screens) */}
-                  <div className="sm:hidden flex items-center gap-2 pt-1">
-                    <span className="text-[10px] font-bold text-slate-500 bg-slate-50 border border-slate-200/60 px-2 py-0.5 rounded-md flex items-center gap-1">
-                      <Clock size={11} className="text-[#D10043]" />
-                      <span>Current: <strong>{STAGE_LABELS[currentStep - 1] || 'In Review'}</strong></span>
-                    </span>
-                  </div>
+                  {!isNotSelected && (
+                    <div className="sm:hidden flex items-center gap-2 pt-1">
+                      <span className="text-[10px] font-bold text-slate-500 bg-slate-50 border border-slate-200/60 px-2 py-0.5 rounded-md flex items-center gap-1">
+                        <Clock size={11} className="text-[#D10043]" />
+                        <span>Current: <strong>{STAGE_LABELS[currentStep - 1] || 'In Review'}</strong></span>
+                      </span>
+                    </div>
+                  )}
                 </div>
 
                 {/* Bottom Action Row */}
                 <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs">
                   <span className="text-slate-400 font-medium text-[11px] hidden sm:inline">
-                    Click to review evaluation timeline & recruiter notes
+                    Click to view application details & updates
                   </span>
                   <div className="flex items-center gap-1 text-[#D10043] font-black uppercase tracking-wider text-[11px] ml-auto group-hover:translate-x-0.5 transition-transform">
                     <span>View Tracking Details</span>

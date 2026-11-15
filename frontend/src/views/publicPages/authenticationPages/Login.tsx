@@ -17,6 +17,7 @@ import logo from '../../../assets/logo.png';
 import { Role } from '../../../types';
 import { isTokenExpired, clearAllAuthSessions, broadcastAuthLogin } from '../../../utils/token';
 import { apiSlice } from '../../../redux/api/apiSlice';
+import HelpTooltip from '../../../components/common/HelpTooltip';
 
 interface DetectedRoleInfo {
   role: string;
@@ -125,7 +126,7 @@ const Login: React.FC = () => {
         setExistingSession(null);
       }
     };
-    
+
     syncExistingSession();
     window.addEventListener('storage', syncExistingSession);
     return () => window.removeEventListener('storage', syncExistingSession);
@@ -255,7 +256,7 @@ const Login: React.FC = () => {
   return (
     <div className="min-h-screen flex flex-col items-center justify-center px-4 pt-16 pb-8 sm:py-8 bg-[#F0F4F9] font-sans antialiased text-gray-800">
       <Helmet>
-        <title>Sign in - Mariwasa Portal</title>
+        <title>Sign in - Mariwasa Recruitment</title>
       </Helmet>
 
       <button
@@ -312,30 +313,21 @@ const Login: React.FC = () => {
               <img src={(logo as any)?.src || logo} alt="Mariwasa Logo" className="h-9 w-9 sm:h-10 sm:w-10 object-contain" />
               <span className="text-xs font-bold tracking-wider uppercase text-gray-400">Mariwasa Portal</span>
             </div>
-            
+
             <h1 className="text-2xl sm:text-[34px] sm:leading-[42px] font-normal tracking-tight text-gray-900 mb-3 sm:mb-4">
               Sign in
             </h1>
-            
-            <p className="text-sm sm:text-base font-normal text-gray-600 leading-relaxed mb-6">
-              Sign in to access your Mariwasa portal account. You will be automatically routed to your Candidate, HR, or Administrator dashboard based on your registered account.
-            </p>
-          </div>
 
-          <div className="mt-4 pt-4 border-t border-gray-100">
-            <div className="flex items-center gap-2 text-xs font-medium text-gray-500">
-              <Sparkles size={14} className="text-[#D60041]" />
-              <span>
-                Automatic portal detection for Candidate, HR, and Admin accounts.
-              </span>
-            </div>
+            <p className="text-sm sm:text-base font-normal text-gray-600 leading-relaxed mb-6">
+              Sign in to your Mariwasa account to view jobs, track applications, or manage recruitment.
+            </p>
           </div>
         </div>
 
         {/* Right Form Container */}
         <div className="w-full md:w-[58%] p-6 sm:p-10 md:p-12 flex flex-col justify-center">
           <div className="w-full max-w-[420px] mx-auto md:mx-0 md:ml-auto">
-            
+
             {/* Active Session Indicator & Quick Switch */}
             {existingSession && (
               <div className="mb-5 p-3.5 bg-amber-50/90 border border-amber-200/90 rounded-2xl flex items-center justify-between text-xs text-amber-900 shadow-sm animate-in fade-in duration-200">
@@ -441,10 +433,16 @@ const Login: React.FC = () => {
                 <button
                   type="submit"
                   disabled={loading}
-                  className="w-full sm:w-auto bg-[#D60041] hover:bg-[#b50037] text-white text-sm font-medium px-6 py-2.5 rounded-full transition-colors disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center min-w-[100px] shadow-sm"
+                  className="w-full sm:w-auto bg-[#D60041] hover:bg-[#b50037] text-white text-sm font-medium px-6 py-2.5 rounded-full transition-colors disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center min-w-[100px] shadow-sm cursor-pointer"
                 >
                   {loading ? <Loader2 className="animate-spin h-5 w-5" /> : "Sign in"}
                 </button>
+              </div>
+
+              {/* Subtle Account Routing Note */}
+              <div className="mt-6 pt-4 border-t border-gray-100 flex items-center justify-center gap-1.5 text-xs text-gray-500 text-center">
+                <span>You'll be taken to the right page based on your account.</span>
+                <HelpTooltip text="You'll be taken to the right page based on your account (candidate portal or staff dashboard)." />
               </div>
             </form>
           </div>

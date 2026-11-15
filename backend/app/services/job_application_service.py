@@ -373,8 +373,9 @@ async def create_job_application(
             if 'job_id' in data:
                 del data['job_id']
             _apply_experience_gap_evaluation(data, job_desc)
+            valid_cols = set(JobApplication.__table__.columns.keys())
             for k, v in data.items():
-                if v is not None:
+                if v is not None and k in valid_cols:
                     setattr(existing_app, k, v)
             existing_app.updated_at = datetime.utcnow()
             existing_app.status = "PENDING"
@@ -391,6 +392,30 @@ async def create_job_application(
                 status_code=status.HTTP_409_CONFLICT,
                 detail=f"Duplicate application: An application for this role has already been submitted by {application_in.candidate_email}."
             )
+
+    # ── Active Applications Limit Check (REQ081 & REQ082) ───────────────────
+    try:
+        from app.services.system_config_service import system_config_service
+        max_active = await system_config_service.get_max_active_applications(db)
+        candidate_apps = await JobApplicationRepository.get_by_email(db, application_in.candidate_email)
+        inactive_statuses = {
+            "NOT SELECTED", "NOT_SELECTED", "REJECTED", "WITHDRAWN",
+            "HIRED", "ACCEPTED", "OFFER_ACCEPTED", "CLOSED"
+        }
+        active_apps = [
+            a for a in candidate_apps 
+            if (getattr(a, 'status', '') or '').upper() not in inactive_statuses
+        ]
+        if len(active_apps) >= max_active:
+            from fastapi import HTTPException, status
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Active application limit reached: You currently have {len(active_apps)} active applications (maximum allowed: {max_active}). You cannot submit a new application until one of your active applications is closed or withdrawn."
+            )
+    except HTTPException:
+        raise
+    except Exception as limit_err:
+        logger.warning(f"Error checking active applications limit: {limit_err}")
 
     data = application_in.model_dump()
 
@@ -512,6 +537,42 @@ async def get_application_by_id(db: AsyncSession, application_id: int) -> Option
     if not app:
         return None
     _enrich_applications([app], bulk_mode=False)
+
+    # REQ083: Enrich with other active applications summary for this candidate
+    try:
+        if app.candidate_email:
+            cand_apps = await JobApplicationRepository.get_by_email(db, app.candidate_email)
+            inactive_statuses = {
+                "NOT SELECTED", "NOT_SELECTED", "REJECTED", "WITHDRAWN",
+                "HIRED", "ACCEPTED", "OFFER_ACCEPTED", "CLOSED"
+            }
+            other_apps = []
+            active_count = 0
+            for ca in cand_apps:
+                is_act = (getattr(ca, "status", "") or "").upper() not in inactive_statuses
+                if is_act:
+                    active_count += 1
+                if ca.id != app.id:
+                    j_title = None
+                    if getattr(ca, "job", None) and getattr(ca.job, "job_title", None):
+                        j_title = ca.job.job_title
+                    else:
+                        j_title = getattr(ca, "job_title", None) or "Unknown Role"
+                    other_apps.append({
+                        "id": ca.id,
+                        "job_id": ca.job_id,
+                        "job_title": j_title,
+                        "status": ca.status or "PENDING",
+                        "match_score": ca.match_score,
+                        "created_at": ca.created_at,
+                        "is_active": is_act
+                    })
+            setattr(app, "active_applications_count", active_count)
+            setattr(app, "has_other_active_applications", any(o["is_active"] for o in other_apps))
+            setattr(app, "other_applications", other_apps)
+    except Exception as multi_err:
+        logger.warning(f"Error enriching multi-application summary: {multi_err}")
+
     return app
 
 
@@ -638,6 +699,8 @@ async def update_application_status(
     status_upper = new_status.upper()
     previous_status = db_application.status
     db_application.status = status_upper
+    if notes:
+        db_application.hr_shortlist_notes = notes
     db_application = await JobApplicationRepository.update(db, db_application)
 
     # Send notifications about status change
@@ -731,10 +794,70 @@ async def update_application_status(
             except Exception as email_err:
                 logger.error(f"Error dispatching status update email to candidate {db_application.candidate_email}: {email_err}")
 
+        # ── REQ086: Flag other active applications when candidate is hired/accepted ──
+        if status_upper in ("ACCEPTED", "HIRED", "OFFER", "OFFER_ACCEPTED") and db_application.candidate_email:
+            try:
+                candidate_all_apps = await JobApplicationRepository.get_by_email(db, db_application.candidate_email)
+                inactive_statuses = {
+                    "NOT SELECTED", "NOT_SELECTED", "REJECTED", "WITHDRAWN",
+                    "HIRED", "ACCEPTED", "OFFER_ACCEPTED", "CLOSED"
+                }
+                flagged_count = 0
+                for other_app in candidate_all_apps:
+                    if other_app.id != db_application.id and (getattr(other_app, "status", "") or "").upper() not in inactive_statuses:
+                        other_app.is_flagged_for_review = True
+                        other_app.review_flag_reason = f"Candidate was marked as {status_upper} for {job_title}."
+                        await JobApplicationRepository.update(db, other_app)
+                        flagged_count += 1
+                if flagged_count > 0:
+                    await create_notification(
+                        db=db,
+                        title="Candidate Active Applications Flagged for Review",
+                        message=f"{db_application.candidate_name} was marked as {status_upper} for {job_title}. {flagged_count} other active application(s) have been flagged for HR review.",
+                        type="application_flagged",
+                        target_role="HR",
+                        sender_role="SYSTEM"
+                    )
+            except Exception as flag_err:
+                logger.warning(f"Error flagging other applications for hired candidate: {flag_err}")
+
+        # ── REQ085: Combined Initial Interview Suggestion when candidate is shortlisted for 2+ positions ──
+        if status_upper in ("SHORTLISTED", "SHORTLIST") and db_application.candidate_email:
+            try:
+                candidate_all_apps = await JobApplicationRepository.get_by_email(db, db_application.candidate_email)
+                shortlisted_apps = [
+                    a for a in candidate_all_apps 
+                    if (getattr(a, "status", "") or "").upper() in ("SHORTLISTED", "SHORTLIST")
+                ]
+                if len(shortlisted_apps) >= 2:
+                    await create_notification(
+                        db=db,
+                        title="Combined Initial Interview Suggestion",
+                        message=f"Candidate {db_application.candidate_name} is currently shortlisted for {len(shortlisted_apps)} positions. You may consider scheduling a combined initial interview.",
+                        type="combined_interview_suggestion",
+                        target_role="HR",
+                        sender_role="SYSTEM"
+                    )
+            except Exception as comb_err:
+                logger.warning(f"Error checking combined interview suggestion: {comb_err}")
+
     except Exception as e:
         logger.error(f"Error creating status update notifications: {e}")
 
     return db_application
+
+
+async def update_application_notes(
+    db: AsyncSession,
+    application_id: int,
+    notes: str
+) -> Optional[JobApplication]:
+    """Update HR shortlisting notes for a job application (REQ056)."""
+    db_application = await JobApplicationRepository.get_by_id(db, application_id)
+    if not db_application:
+        return None
+    db_application.hr_shortlist_notes = notes
+    return await JobApplicationRepository.update(db, db_application)
 
 
 async def delete_application(db: AsyncSession, application_id: int) -> Optional[JobApplication]:

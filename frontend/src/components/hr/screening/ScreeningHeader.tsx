@@ -207,11 +207,11 @@ const ScreeningHeader: React.FC<ScreeningHeaderProps> = ({
           </div>
         </button>
 
-        {/* Pending Review */}
+        {/* Submitted Applications */}
         <button
           type="button"
           onClick={() => onKpiClick('pending')}
-          aria-label="Filter by pending applications"
+          aria-label="Filter by submitted applications"
           aria-pressed={isPendingActive}
           className={`relative text-left w-full p-3.5 sm:p-4 rounded-2xl transition-all duration-200 cursor-pointer overflow-hidden group active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-amber-500 ${
             isPendingActive
@@ -223,7 +223,7 @@ const ScreeningHeader: React.FC<ScreeningHeaderProps> = ({
             <span className={`text-[10px] sm:text-[11px] font-bold uppercase tracking-wider transition-colors ${
               isPendingActive ? 'text-amber-900 font-black' : 'text-amber-700 group-hover:text-amber-800'
             }`}>
-              Pending
+              Submitted
             </span>
             <div className={`p-1.5 rounded-lg transition-colors ${
               isPendingActive 

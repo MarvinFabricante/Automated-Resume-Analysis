@@ -141,11 +141,14 @@ backend/test_supabase.py
 backend/token.pickle
 render.yaml
 
-# --- Scripts Directory ---
-scripts/
-**/scripts/
-backend/scripts/
-
 # --- SQLite temporary files ---
 *.db-shm
 *.db-wal
+
+# --- Database Backups ---
+backups/
+**/backups/
+
+# --- Logs & Runtime Dumps ---
+*.log
+*.rdb

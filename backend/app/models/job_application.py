@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, Boolean
+from sqlalchemy import Column, Integer, String, Text, ForeignKey, DateTime, Boolean
 from sqlalchemy.dialects.postgresql import JSON, DOUBLE_PRECISION
 from sqlalchemy.orm import relationship
 from datetime import datetime
@@ -61,6 +61,19 @@ class JobApplication(Base):
     weaknesses = Column(JSON, nullable=True)
     ai_powered = Column(Boolean, default=False)
     
+    # Thesis Documentation Extensions (REQ056 & REQ086)
+    hr_shortlist_notes = Column(Text, nullable=True)
+    is_flagged_for_review = Column(Boolean, default=False, nullable=True)
+    review_flag_reason = Column(String, nullable=True)
+    
+    # Completeness Evaluation
+    completeness_score = Column(DOUBLE_PRECISION, nullable=True)
+    completeness_status = Column(String, nullable=True)
+    missing_sections = Column(JSON, nullable=True)
+    
+    source = Column(String, default="Online", nullable=True) # "Online" or "Imported"
+    import_origin = Column(String, nullable=True) # "Job site", "Email", "Walk-in", "Other"
+    imported_by = Column(String, nullable=True) # HR email
     status = Column(String, default="PENDING", index=True) # PENDING, REVIEWED, REJECTED, ACCEPTED
     
     created_at = Column(DateTime, default=datetime.utcnow, index=True)

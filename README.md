@@ -137,6 +137,11 @@ To start the complete application ecosystem (PostgreSQL, Redis, FastAPI Backend,
 | `./start.sh --logs [service]` | Stream service logs (e.g. `./start.sh --logs backend` or all) |
 | `./start.sh --seed` | Seed default Mariwasa job openings and HR staff accounts |
 
+### Development Data Reset & Job Seeding
+- **Reset test data**: `python scripts/reset_dev_data.py` (backs up database, purges test applicants/applications/activity, flushes Redis, keeps staff accounts).
+- **Seed test jobs**: `python scripts/seed_test_jobs.py` (creates 5 standardized test positions J1-J4 Active, J5 Archived, and per-job question templates).
+- **Restart services**: run `powershell .\start_services.ps1` to cleanly reload backend, redis, and frontend behind your active Cloudflare tunnel.
+
 ---
 
 ## Environment Variables

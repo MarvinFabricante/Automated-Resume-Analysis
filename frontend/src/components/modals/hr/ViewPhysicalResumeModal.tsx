@@ -143,7 +143,7 @@ const ViewPhysicalResumeModal: React.FC<ViewPhysicalResumeModalProps> = ({
             <div className="min-w-0">
               <div className="flex items-center space-x-1.5 sm:space-x-2">
                 <h2 className="text-xs sm:text-base font-black text-slate-900 truncate">
-                  {resume.candidate_name || 'Physical Resume'}
+                  {resume.candidate_name || 'Imported Resume'}
                 </h2>
                 <span
                   className={`text-[9px] sm:text-[10px] font-black uppercase tracking-wider px-1.5 sm:px-2 py-0.5 rounded-full border shrink-0 ${statusBadgeColor(
@@ -369,7 +369,7 @@ const ViewPhysicalResumeModal: React.FC<ViewPhysicalResumeModalProps> = ({
                     <div>
                       <h4 className="text-sm font-black text-slate-900">Extracted Resume Intelligence</h4>
                       <p className="text-xs text-slate-600 mt-0.5 leading-relaxed">
-                        Data automatically scanned and indexed from the hard-copy physical document.
+                        Data automatically scanned and indexed from the resume document.
                       </p>
                     </div>
                   </div>
@@ -414,7 +414,7 @@ const ViewPhysicalResumeModal: React.FC<ViewPhysicalResumeModalProps> = ({
                 <iframe
                   src={`${inlineViewUrl}#toolbar=1&navpanes=0&scrollbar=1&view=FitH`}
                   className="w-full h-full rounded-xl border border-slate-200 bg-white shadow-xs"
-                  title={`Physical Resume - ${resume.candidate_name}`}
+                  title={`Imported Resume - ${resume.candidate_name}`}
                 />
               </div>
             ) : isImage ? (
@@ -430,7 +430,7 @@ const ViewPhysicalResumeModal: React.FC<ViewPhysicalResumeModalProps> = ({
                 >
                   <img
                     src={inlineViewUrl}
-                    alt={`Physical Resume of ${resume.candidate_name}`}
+                    alt={`Imported Resume of ${resume.candidate_name}`}
                     className="max-w-none rounded-lg shadow-xl border border-slate-200 bg-white"
                     style={{ maxHeight: isFullscreen ? '90vh' : '80vh' }}
                   />
@@ -444,7 +444,7 @@ const ViewPhysicalResumeModal: React.FC<ViewPhysicalResumeModalProps> = ({
                 </div>
                 <h3 className="text-base sm:text-lg font-black text-slate-900 mb-1">{resume.filename}</h3>
                 <p className="text-xs text-slate-500 max-w-md mb-6 leading-relaxed">
-                  This document format ({ext.toUpperCase()}) is stored in the physical resume vault. You can download the file to inspect full formatting, or read the AI extracted contents below.
+                  This document format ({ext.toUpperCase()}) is stored in the resume repository. You can download the file to inspect full formatting, or read the extracted contents below.
                 </p>
                 <div className="flex flex-wrap items-center justify-center gap-2.5 sm:gap-3">
                   <button
@@ -600,7 +600,7 @@ const ViewPhysicalResumeModal: React.FC<ViewPhysicalResumeModalProps> = ({
                   className="w-full py-2.5 px-4 bg-[#D60041] hover:bg-[#B50037] text-white rounded-xl text-xs font-bold transition-all shadow-xs hover:shadow-md flex items-center justify-center gap-2 cursor-pointer"
                 >
                   <Download size={14} />
-                  <span>Download Physical Resume File</span>
+                  <span>Download Resume File</span>
                 </button>
 
                 {onEdit && (

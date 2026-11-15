@@ -1,7 +1,7 @@
 import re
 import json
 import logging
-from typing import Optional
+from typing import Optional, Any, List, Dict
 from difflib import SequenceMatcher
 from app.models.job_description import JobDescription
 
@@ -9,10 +9,11 @@ logger = logging.getLogger(__name__)
 
 _DEFAULT_MATCHING_CONFIG = {
     "weights": {
-        "skills_weight": 0.45,
-        "experience_weight": 0.25,
+        "skills_weight": 0.40,
+        "experience_weight": 0.30,
         "education_weight": 0.15,
         "certifications_weight": 0.10,
+        "completeness_weight": 0.05,
         "location_weight": 0.05
     },
     "thresholds": {
@@ -82,13 +83,23 @@ def _normalize_skill(s: str) -> str:
     return _SKILL_SYNONYMS.get(s, s)
 
 
-def _tokenize_skills(skills_str: str) -> list[str]:
-    """Split a skills string into individual normalized tokens."""
-    if not skills_str:
+def _tokenize_skills(skills_input: Any) -> list[str]:
+    """Split a skills string or list into individual normalized tokens."""
+    if not skills_input:
         return []
     
-    # Split by pipe, comma, semicolon, or bullet
-    raw = re.split(r'[|,;•\-]', skills_str)
+    if isinstance(skills_input, (list, tuple, set)):
+        raw = []
+        for item in skills_input:
+            if isinstance(item, str):
+                raw.extend(re.split(r'[|,;•\-]', item))
+            elif isinstance(item, dict) and "name" in item:
+                raw.extend(re.split(r'[|,;•\-]', str(item["name"])))
+            elif item:
+                raw.append(str(item))
+    else:
+        # Split by pipe, comma, semicolon, or bullet
+        raw = re.split(r'[|,;•\-]', str(skills_input))
     skills = []
     for s in raw:
         cleaned = _normalize_skill(s)
@@ -698,12 +709,17 @@ def calculate_skills_match(resume_skills: str, job_skills: str, fuzzy_threshold:
     return {"score": score, "matched": matched, "missing": missing}
 
 
-def _extract_years_from_text(text: str, explicit_req: bool = False) -> int:
+def _extract_years_from_text(text: Any, explicit_req: bool = False) -> int:
     """Extract minimum required years of experience from a job requirement or description."""
-    if not text:
+    if text is None:
         return 0
+    if isinstance(text, (int, float)):
+        val = int(text)
+        return val if 0 < val <= 50 else 0
 
-    raw = text.strip()
+    raw = str(text).strip()
+    if not raw:
+        return 0
     if explicit_req and re.fullmatch(r'\d+', raw):
         val = int(raw)
         return val if 0 < val <= 50 else 0
@@ -1227,10 +1243,11 @@ def calculate_match_score(resume_data: dict, job, use_ai: bool = False, matching
     weights = matching_config.get("weights") or {}
     thresholds = matching_config.get("thresholds") or {}
 
-    w_skills = float(weights.get("skills_weight", 0.45))
-    w_exp = float(weights.get("experience_weight", 0.25))
+    w_skills = float(weights.get("skills_weight", 0.40))
+    w_exp = float(weights.get("experience_weight", 0.30))
     w_edu = float(weights.get("education_weight", 0.15))
     w_certs = float(weights.get("certifications_weight", 0.10))
+    w_completeness = float(weights.get("completeness_weight", weights.get("location_weight", 0.05)))
     w_loc = float(weights.get("location_weight", 0.05))
 
     fuzzy_th = float(thresholds.get("fuzzy_match_threshold", 0.75))
@@ -1301,8 +1318,20 @@ def calculate_match_score(resume_data: dict, job, use_ai: bool = False, matching
     resume_location = resume_data.get("location", "")
     location_result = calculate_location_match(resume_location, getattr(job, 'location', None))
 
+    # Resume Completeness matching (Thesis Criterion: 5%)
+    raw_completeness = resume_data.get("completeness_score")
+    if raw_completeness is None:
+        raw_completeness = 100.0
+    try:
+        completeness_num = float(raw_completeness)
+        completeness_score_val = (completeness_num / 100.0) if completeness_num > 1.0 else completeness_num
+    except (ValueError, TypeError):
+        completeness_score_val = 1.0
+    completeness_score_val = max(0.0, min(1.0, completeness_score_val))
+
     # ── Weighted NLP composite (normalized by sum of active weights) ──────────
-    total_w = w_skills + w_exp + w_edu + w_certs + w_loc
+    # Thesis model: Skills (40%), Experience (30%), Education (15%), Certifications (10%), Completeness (5%)
+    total_w = w_skills + w_exp + w_edu + w_certs + w_completeness
     if total_w <= 0:
         total_w = 1.0
 
@@ -1311,7 +1340,7 @@ def calculate_match_score(resume_data: dict, job, use_ai: bool = False, matching
         (combined_exp_score * w_exp) +
         (education_result["score"] * w_edu) +
         (certs_result["score"] * w_certs) +
-        (location_result["score"] * w_loc)
+        (completeness_score_val * w_completeness)
     ) / total_w * 100
 
     # ── NLP-powered scoring (no external AI) ──────────────────────────────────
@@ -1320,6 +1349,7 @@ def calculate_match_score(resume_data: dict, job, use_ai: bool = False, matching
     blended_edu_score = round(education_result["score"] * 100, 1)
     blended_certs_score = round(certs_result["score"] * 100, 1)
     blended_location_score = round(location_result["score"] * 100, 1)
+    blended_completeness_score = round(completeness_score_val * 100, 1)
     final_match_pct = min(100.0, round(rule_match_pct, 1))
 
     all_matched = [s.title() for s in skills_result["matched"]]
@@ -1330,6 +1360,7 @@ def calculate_match_score(resume_data: dict, job, use_ai: bool = False, matching
     pct_exp = round((w_exp / total_w) * 100)
     pct_edu = round((w_edu / total_w) * 100)
     pct_certs = round((w_certs / total_w) * 100)
+    pct_completeness = round((w_completeness / total_w) * 100)
     pct_loc = round((w_loc / total_w) * 100)
 
     # ── Generate NLP-based insights ──────────────────────────────────────────
@@ -1352,13 +1383,14 @@ def calculate_match_score(resume_data: dict, job, use_ai: bool = False, matching
     education_explanation = education_result.get("reason", "")
     certification_explanation = certs_result.get("reason", "")
     location_explanation = location_result.get("reason", "")
+    completeness_explanation = f"Candidate resume completeness assessed at {blended_completeness_score}%."
 
     score_explanation = (
         f"NLP Analysis: Skills {blended_skills_score}% (weight {pct_skills}%) + "
         f"Experience {blended_exp_score}% (weight {pct_exp}%) + "
         f"Education {blended_edu_score}% (weight {pct_edu}%) + "
         f"Certifications {blended_certs_score}% (weight {pct_certs}%) + "
-        f"Location {blended_location_score}% (weight {pct_loc}%) = {final_match_pct}%"
+        f"Resume Completeness {blended_completeness_score}% (weight {pct_completeness}%) = {final_match_pct}%"
     )
 
     # ── Build reason strings ──────────────────────────────────────────────────
@@ -1498,6 +1530,8 @@ def calculate_match_score(resume_data: dict, job, use_ai: bool = False, matching
         "education_explanation": education_explanation,
         "certifications_score": round(blended_certs_score, 1),
         "certification_explanation": certification_explanation,
+        "completeness_score": round(blended_completeness_score, 1),
+        "completeness_explanation": completeness_explanation,
         "location_score": round(blended_location_score, 1),
         "location_explanation": location_explanation,
         # ── Skills ──
@@ -1539,6 +1573,7 @@ def calculate_match_score(resume_data: dict, job, use_ai: bool = False, matching
             "experience": pct_exp,
             "education": pct_edu,
             "certifications": pct_certs,
+            "completeness": pct_completeness,
             "location": pct_loc
         },
     }

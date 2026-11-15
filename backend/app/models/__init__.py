@@ -11,6 +11,10 @@ from app.models.audit_log import AuditLog
 from app.models.interview import Interview, InterviewLog, VoiceCallRecord
 from app.models.system_config import SystemConfig, FormTemplate
 from app.models.physical_resume import PhysicalResume
+from app.models.status_history import ApplicationStatusHistory
+from app.models.shortlist_roster import ShortlistRoster, ShortlistRosterItem
+from app.models.candidate_note import HRCandidateNote
+from app.models.profile_access_log import ApplicantProfileAccessLog
 
 __all__ = [
     "User",
@@ -29,6 +33,11 @@ __all__ = [
     "InterviewLog",
     "VoiceCallRecord",
     "SystemConfig",
-    "FormTemplate"
+    "FormTemplate",
+    "ApplicationStatusHistory",
+    "ShortlistRoster",
+    "ShortlistRosterItem",
+    "HRCandidateNote",
+    "ApplicantProfileAccessLog"
 ]
 

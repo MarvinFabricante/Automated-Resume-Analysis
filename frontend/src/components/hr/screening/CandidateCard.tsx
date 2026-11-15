@@ -89,14 +89,33 @@ const CandidateCard: React.FC<CandidateCardProps> = ({
 
   const getStatusInfo = (st?: string) => {
     switch ((st || '').toLowerCase()) {
-      case 'accepted': return { icon: <CheckCircle2 className="w-3.5 h-3.5" />, color: 'text-teal-700', bg: 'bg-teal-50', border: 'border-teal-200', label: 'Accepted' };
-      case 'rejected': return { icon: <XCircle className="w-3.5 h-3.5" />, color: 'text-rose-700', bg: 'bg-rose-50', border: 'border-rose-200', label: 'Rejected' };
+      case 'submitted':
+      case 'pending':
+        return { icon: <FileText className="w-3.5 h-3.5" />, color: 'text-sky-700', bg: 'bg-sky-50', border: 'border-sky-200', label: 'Submitted' };
+      case 'under review':
       case 'reviewed':
-      case 'scheduled': return { icon: <Search className="w-3.5 h-3.5" />, color: 'text-blue-700', bg: 'bg-blue-50', border: 'border-blue-200', label: 'Reviewed' };
-      case 'technical interview': return { icon: <Clock className="w-3.5 h-3.5" />, color: 'text-purple-700', bg: 'bg-purple-50', border: 'border-purple-200', label: 'Tech Interview' };
-      case 'final interview': return { icon: <Clock className="w-3.5 h-3.5" />, color: 'text-indigo-700', bg: 'bg-indigo-50', border: 'border-indigo-200', label: 'Final Interview' };
-      case 'archived': return { icon: <Archive className="w-3.5 h-3.5" />, color: 'text-gray-700', bg: 'bg-gray-100', border: 'border-gray-200', label: 'Archived' };
-      default: return { icon: <Clock className="w-3.5 h-3.5" />, color: 'text-amber-700', bg: 'bg-amber-50', border: 'border-amber-200', label: 'Pending' };
+      case 'screened':
+        return { icon: <Search className="w-3.5 h-3.5" />, color: 'text-amber-700', bg: 'bg-amber-50', border: 'border-amber-200', label: 'Under Review' };
+      case 'shortlisted':
+      case 'shortlist':
+        return { icon: <Sparkles className="w-3.5 h-3.5" />, color: 'text-purple-700', bg: 'bg-purple-50', border: 'border-purple-200', label: 'Shortlisted' };
+      case 'interview scheduled':
+      case 'scheduled':
+      case 'technical interview':
+      case 'final interview':
+        return { icon: <Calendar className="w-3.5 h-3.5" />, color: 'text-blue-700', bg: 'bg-blue-50', border: 'border-blue-200', label: 'Interview Scheduled' };
+      case 'interviewed':
+        return { icon: <CheckCircle2 className="w-3.5 h-3.5" />, color: 'text-teal-700', bg: 'bg-teal-50', border: 'border-teal-200', label: 'Interviewed' };
+      case 'not selected':
+      case 'rejected':
+      case 'archived':
+        return { icon: <XCircle className="w-3.5 h-3.5" />, color: 'text-rose-700', bg: 'bg-rose-50', border: 'border-rose-200', label: 'Not Selected' };
+      case 'accepted':
+      case 'passed initial interview':
+      case 'passed':
+        return { icon: <CheckCircle2 className="w-3.5 h-3.5" />, color: 'text-emerald-700', bg: 'bg-emerald-50', border: 'border-emerald-200', label: 'Passed initial interview' };
+      default:
+        return { icon: <FileText className="w-3.5 h-3.5" />, color: 'text-sky-700', bg: 'bg-sky-50', border: 'border-sky-200', label: 'Submitted' };
     }
   };
 
@@ -177,6 +196,26 @@ const CandidateCard: React.FC<CandidateCardProps> = ({
                   <span className={`w-1.5 h-1.5 rounded-full ${matchTheme.dot}`}></span>
                   {match}% Match
                 </span>
+
+                {/* Source Badge */}
+                {(() => {
+                  const src = candidate.source || 'Online';
+                  const isImp = !src.toLowerCase().includes('online');
+                  const origin = candidate.import_origin;
+                  return (
+                    <span
+                      className={`inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold rounded-full border ${
+                        isImp
+                          ? 'bg-amber-50 text-amber-800 border-amber-200'
+                          : 'bg-slate-100 text-slate-700 border-slate-200'
+                      }`}
+                      title={isImp ? `Imported: ${origin || 'Walk-in'}` : 'Online website application'}
+                    >
+                      <span>{isImp ? 'Imported' : 'Online'}</span>
+                      {isImp && origin && <span className="opacity-75">• {origin}</span>}
+                    </span>
+                  );
+                })()}
 
                 {candidate.ai_powered && (
                   <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-gradient-to-r from-purple-50 to-pink-50 text-purple-700 border border-purple-100 text-[10px] font-bold uppercase tracking-wider rounded-md">
@@ -311,7 +350,7 @@ const CandidateCard: React.FC<CandidateCardProps> = ({
             {isArchived ? (
               <button
                 type="button"
-                onClick={() => onRestoreApplication ? onRestoreApplication(candidate.id) : onUpdateStatus(candidate.id, 'Pending')}
+                onClick={() => onRestoreApplication ? onRestoreApplication(candidate.id) : onUpdateStatus(candidate.id, 'Submitted')}
                 title="Restore Application"
                 className="w-9 h-9 sm:w-10 sm:h-10 flex items-center justify-center bg-emerald-50 border border-emerald-200 text-emerald-700 hover:bg-emerald-100 hover:border-emerald-300 rounded-xl transition-all cursor-pointer shadow-xs hover:shadow-sm shrink-0"
               >
@@ -345,7 +384,7 @@ const CandidateCard: React.FC<CandidateCardProps> = ({
 
               {isDropdownOpen && (
                 <div className="absolute top-full right-0 mt-1.5 w-48 bg-white border border-gray-100 rounded-2xl shadow-xl z-50 py-1.5 animate-in fade-in slide-in-from-top-1 duration-150">
-                  {['Pending', 'Reviewed', 'Technical Interview', 'Final Interview', 'Accepted', 'Rejected'].map((s) => {
+                  {['Submitted', 'Under Review', 'Shortlisted', 'Interview Scheduled', 'Interviewed', 'Not Selected'].map((s) => {
                     const info = getStatusInfo(s);
                     const isCurrent = status === s.toLowerCase();
                     return (

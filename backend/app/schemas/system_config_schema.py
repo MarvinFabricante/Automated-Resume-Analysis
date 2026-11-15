@@ -38,7 +38,16 @@ class MatchingWeightsUpdate(BaseModel):
     experience_weight: Optional[float] = None
     education_weight: Optional[float] = None
     certifications_weight: Optional[float] = None
+    completeness_weight: Optional[float] = None
     location_weight: Optional[float] = None
+
+
+class RecruitmentConfigResponse(BaseModel):
+    max_active_applications: int = 3
+
+
+class RecruitmentConfigUpdate(BaseModel):
+    max_active_applications: int = 3
 
 
 class MatchingThresholdsUpdate(BaseModel):

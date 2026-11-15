@@ -129,12 +129,20 @@ async def get_messages(db: AsyncSession, current_user: User, other_user_id: int)
     return await ChatRepository.get_chat_history(db, current_user.id, other_user_id)
 
 
-async def send_message(db: AsyncSession, current_user: User, other_user_id: int, content: str, client_id: Optional[str] = None) -> Optional[Message]:
+async def send_message(
+    db: AsyncSession, 
+    current_user: User, 
+    other_user_id: int, 
+    content: str, 
+    client_id: Optional[str] = None,
+    message_type: Optional[str] = "general",
+    application_id: Optional[int] = None
+) -> Optional[Message]:
     """
     Sends a message to another user if the roles are compatible,
     and broadcasts it via WebSocket.
     """
-    # Candidates are restricted from sending messages
+    # Candidates are restricted from sending messages (REQ060: One-way HR-to-Applicant)
     if current_user.role.upper() == "CANDIDATE":
         return None
 
@@ -145,13 +153,22 @@ async def send_message(db: AsyncSession, current_user: User, other_user_id: int,
     if not receiver or receiver.role not in allowed_roles:
         return None
 
-    new_msg = await ChatRepository.create_message(db, current_user.id, other_user_id, content)
+    new_msg = await ChatRepository.create_message(
+        db, 
+        current_user.id, 
+        other_user_id, 
+        content,
+        message_type=message_type or "general",
+        application_id=application_id
+    )
 
     msg_data = {
         "type": "new_message",
         "id": new_msg.id,
         "sender_id": new_msg.sender_id,
         "receiver_id": new_msg.receiver_id,
+        "application_id": new_msg.application_id,
+        "message_type": new_msg.message_type,
         "content": new_msg.content,
         "timestamp": new_msg.timestamp.isoformat(),
         "is_read": new_msg.is_read,
@@ -167,7 +184,7 @@ async def send_message(db: AsyncSession, current_user: User, other_user_id: int,
     await invalidate_contacts_cache(current_user.id)
     await invalidate_contacts_cache(other_user_id)
 
-    # Create notification for receiver
+    # Create in-app notification & email for receiver (REQ064)
     try:
         from app.services.notification_service import create_notification
         sender_name = (getattr(current_user, "fullname", None) or "").strip() or getattr(current_user, "email", "HR")
@@ -175,13 +192,26 @@ async def send_message(db: AsyncSession, current_user: User, other_user_id: int,
         preview = (content_preview[:100] + "...") if len(content_preview) > 100 else content_preview
         await create_notification(
             db=db,
-            title="New Message Alert",
+            title=f"New Message: {(message_type or 'General').title()}",
             message=f"{sender_name}: {preview}",
             type="message",
             target_role=receiver.role.upper() if receiver.role else None,
             target_email=receiver.email.lower() if receiver.email else None,
             sender_role=current_user.role.upper() if current_user.role else None,
         )
+
+        if receiver.email:
+            try:
+                from app.services.email_service import send_hr_message_notification_email
+                await send_hr_message_notification_email(
+                    to_email=receiver.email,
+                    candidate_name=receiver.fullname or "Applicant",
+                    sender_name=sender_name,
+                    message_type=message_type or "general",
+                    content=content
+                )
+            except Exception as email_err:
+                logging.warning(f"Failed to dispatch message notification email: {email_err}")
     except Exception as e_notif:
         logging.warning(f"Failed to create chat notification: {e_notif}")
 
@@ -242,6 +272,117 @@ async def unarchive_conversation(db: AsyncSession, user_id: int, contact_id: int
     success = await ChatRepository.unarchive_conversation(db, user_id, contact_id)
     await invalidate_contacts_cache(user_id)
     return success
+
+
+async def broadcast_job_message(
+    db: AsyncSession,
+    current_user: User,
+    job_id: int,
+    content: str,
+    message_type: str = "announcement",
+    target_group: str = "all"
+) -> int:
+    """
+    Broadcast a single message to all or shortlisted applicants for a specific job posting (REQ062, REQ064).
+    """
+    if current_user.role.upper() == "CANDIDATE":
+        return 0
+
+    from app.repositories.job_application_repository import JobApplicationRepository
+    from app.repositories.job_description_repository import JobDescriptionRepository
+    from app.services.email_service import send_hr_message_notification_email
+
+    job = await JobDescriptionRepository.get_by_id(db, job_id)
+    job_title = job.job_title if job else "Mariwasa Position"
+
+    applications = await JobApplicationRepository.get_by_job_id(db, job_id)
+    if not applications:
+        return 0
+
+    if target_group.lower() == "shortlisted":
+        applications = [a for a in applications if (getattr(a, "status", "") or "").upper() in ("SHORTLISTED", "SHORTLIST")]
+
+    sent_count = 0
+    sender_name = (getattr(current_user, "fullname", None) or "").strip() or getattr(current_user, "email", "HR Panel")
+
+    seen_emails = set()
+    for app in applications:
+        email = (app.candidate_email or "").strip().lower()
+        if not email or email in seen_emails:
+            continue
+        seen_emails.add(email)
+
+        candidate_user = await ChatRepository.get_user_by_email(db, email)
+        if candidate_user:
+            await send_message(
+                db=db,
+                current_user=current_user,
+                other_user_id=candidate_user.id,
+                content=content,
+                message_type=message_type,
+                application_id=app.id
+            )
+            sent_count += 1
+        else:
+            try:
+                from app.services.notification_service import create_notification
+                await create_notification(
+                    db=db,
+                    title=f"New Announcement: {job_title}",
+                    message=f"{sender_name}: {content[:100]}...",
+                    type="message",
+                    target_role="CANDIDATE",
+                    target_email=email,
+                    sender_role=current_user.role.upper()
+                )
+                await send_hr_message_notification_email(
+                    to_email=email,
+                    candidate_name=app.candidate_name or "Applicant",
+                    sender_name=sender_name,
+                    message_type=message_type,
+                    content=content,
+                    job_title=job_title
+                )
+                sent_count += 1
+            except Exception as direct_err:
+                logging.warning(f"Failed to dispatch broadcast to {email}: {direct_err}")
+
+    return sent_count
+
+
+async def get_sent_messages(db: AsyncSession, current_user: User) -> list:
+    """Retrieve all messages sent by HR with receiver details and read receipts (REQ063, REQ065)."""
+    messages = await ChatRepository.get_sent_messages(db, current_user.id)
+    records = []
+    for msg in messages:
+        rec_name = getattr(msg.receiver, "fullname", "Candidate") if msg.receiver else "Candidate"
+        rec_email = getattr(msg.receiver, "email", "") if msg.receiver else ""
+        job_title = None
+        if msg.job_application and getattr(msg.job_application, "job", None):
+            job_title = getattr(msg.job_application.job, "job_title", None)
+        elif msg.job_application:
+            job_title = getattr(msg.job_application, "job_title", None)
+
+        records.append({
+            "id": msg.id,
+            "sender_id": msg.sender_id,
+            "receiver_id": msg.receiver_id,
+            "receiver_name": rec_name,
+            "receiver_email": rec_email,
+            "application_id": msg.application_id,
+            "job_title": job_title,
+            "message_type": msg.message_type or "general",
+            "content": msg.content,
+            "timestamp": msg.timestamp,
+            "is_read": msg.is_read,
+            "read_at": msg.read_at
+        })
+    return records
+
+
+async def mark_single_message_read(db: AsyncSession, message_id: int, current_user: User):
+    """Mark a message as read when opened (REQ063)."""
+    return await ChatRepository.mark_single_message_read(db, message_id, current_user.id)
 
 
 chat_service = sys.modules[__name__]

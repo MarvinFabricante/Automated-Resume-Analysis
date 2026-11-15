@@ -160,7 +160,7 @@ const AdminDashboard: React.FC = () => {
       <div className="absolute top-0 left-0 w-full h-[320px] bg-gradient-to-b from-[#D10043]/5 via-[#D10043]/2 to-transparent pointer-events-none z-0"></div>
 
       <Helmet>
-        <title>System Dashboard | Admin Portal</title>
+        <title>System Dashboard | Mariwasa Recruitment Admin Portal</title>
       </Helmet>
       
       <Header />

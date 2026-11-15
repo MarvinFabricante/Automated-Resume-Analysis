@@ -26,10 +26,11 @@ async def update_config(db: AsyncSession, key: str, value: str, category: str, d
 logger = logging.getLogger(__name__)
 
 DEFAULT_WEIGHTS = {
-    "skills_weight": 0.45,
-    "experience_weight": 0.25,
+    "skills_weight": 0.40,
+    "experience_weight": 0.30,
     "education_weight": 0.15,
     "certifications_weight": 0.10,
+    "completeness_weight": 0.05,
     "location_weight": 0.05
 }
 
@@ -41,8 +42,39 @@ DEFAULT_THRESHOLDS = {
     "transferable_skills_cap": 2
 }
 
+DEFAULT_RECRUITMENT_CONFIG = {
+    "max_active_applications": 3
+}
 
-# ─── Matching Parameters ────────────────────────────────────────────────
+
+# ─── Matching Parameters & Recruitment Rules ────────────────────────────
+
+async def get_max_active_applications(db: AsyncSession) -> int:
+    """Retrieve maximum number of active applications allowed per candidate (REQ081, REQ082)."""
+    config = await SystemConfigRepository.get_config_by_key(db, "max_active_applications")
+    if config and config.value:
+        try:
+            raw_val = config.value
+            if isinstance(raw_val, str) and (raw_val.startswith('"') or raw_val.startswith('{')):
+                parsed = json.loads(raw_val)
+                return max(1, int(parsed))
+            return max(1, int(raw_val))
+        except Exception:
+            pass
+    return 3
+
+
+async def update_max_active_applications(db: AsyncSession, limit: int, user_id: int = None):
+    """Adjust maximum number of active applications allowed per candidate (REQ082)."""
+    safe_limit = max(1, min(20, int(limit)))
+    return await update_config(
+        db=db,
+        key="max_active_applications",
+        value=str(safe_limit),
+        category="recruitment",
+        description="Maximum active applications allowed per candidate",
+        user_id=user_id
+    )
 
 async def get_matching_parameters(db: AsyncSession) -> dict:
     weights_config = await SystemConfigRepository.get_config_by_key(db, "matching_weights")

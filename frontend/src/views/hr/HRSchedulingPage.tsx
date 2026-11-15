@@ -598,7 +598,7 @@ const HRSchedulingPage: React.FC = () => {
   return (
     <div className="bg-[#FCFCFC] text-gray-800 antialiased min-h-screen font-['Inter'] flex flex-col">
       <Helmet>
-        <title>Scheduling Module | Mariwasa ARAS</title>
+        <title>Interview Scheduling | Mariwasa Recruitment HR Portal</title>
       </Helmet>
       <Header />
 
@@ -859,7 +859,7 @@ const HRSchedulingPage: React.FC = () => {
                       }`}
                   >
                     <option value="ALL">All Sources</option>
-                    <option value="INTERVIEWS">ARAS Interviews Only</option>
+                    <option value="INTERVIEWS">Mariwasa Interviews Only</option>
                     <option value="GOOGLE">Google Calendar Only</option>
                   </select>
 
@@ -911,7 +911,7 @@ const HRSchedulingPage: React.FC = () => {
 
                   {sourceFilter !== 'ALL' && (
                     <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-blue-50 text-blue-700 border border-blue-200">
-                      Source: {sourceFilter === 'INTERVIEWS' ? 'ARAS Interviews' : 'Google Calendar'}
+                      Source: {sourceFilter === 'INTERVIEWS' ? 'Mariwasa Interviews' : 'Google Calendar'}
                       <button onClick={() => setSourceFilter('ALL')} className="hover:text-blue-900">
                         <X size={12} />
                       </button>
@@ -978,10 +978,10 @@ const HRSchedulingPage: React.FC = () => {
                             key={index}
                             onClick={isPast ? undefined : () => handleOpenNewSchedule(dayObj.date)}
                             className={`min-h-[125px] p-2 flex flex-col justify-between transition-colors ${isPast
-                                ? 'bg-gray-100/50 text-gray-400 cursor-not-allowed select-none'
-                                : dayObj.isCurrentMonth
-                                  ? 'bg-white hover:bg-gray-50/50 cursor-pointer group'
-                                  : 'bg-gray-50/30 text-gray-300 cursor-pointer group'
+                              ? 'bg-gray-100/50 text-gray-400 cursor-not-allowed select-none'
+                              : dayObj.isCurrentMonth
+                                ? 'bg-white hover:bg-gray-50/50 cursor-pointer group'
+                                : 'bg-gray-50/30 text-gray-300 cursor-pointer group'
                               }`}
                             title={isPast ? 'Unavailable: Date has passed' : 'Click to schedule an interview'}
                           >
@@ -1003,10 +1003,10 @@ const HRSchedulingPage: React.FC = () => {
                                     setViewMode('day');
                                   }}
                                   className={`text-xs font-black w-6 h-6 rounded-full flex items-center justify-center transition-all hover:scale-110 ${dayIsToday
-                                      ? 'bg-[#D60041] text-white shadow-sm shadow-[#D60041]/30'
-                                      : dayObj.isCurrentMonth
-                                        ? 'text-gray-800 hover:bg-pink-50 hover:text-[#D60041]'
-                                        : 'text-gray-300'
+                                    ? 'bg-[#D60041] text-white shadow-sm shadow-[#D60041]/30'
+                                    : dayObj.isCurrentMonth
+                                      ? 'text-gray-800 hover:bg-pink-50 hover:text-[#D60041]'
+                                      : 'text-gray-300'
                                     }`}
                                   title="Open Day View"
                                 >
@@ -1202,14 +1202,14 @@ const HRSchedulingPage: React.FC = () => {
                                       key={ev.id}
                                       onClick={() => handleEventClick(ev)}
                                       className={`p-2.5 rounded-2xl border text-xs cursor-pointer shadow-sm hover:shadow-md transition-all group ${isGoogle
-                                          ? 'bg-blue-50/60 border-blue-200 text-blue-900'
-                                          : isCompleted
-                                            ? 'bg-emerald-50/60 border-emerald-200 text-emerald-900'
-                                            : isCanceled
-                                              ? 'bg-gray-100 border-gray-200 text-gray-400 line-through'
-                                              : readOnly
-                                                ? 'bg-gray-50/70 border-gray-200 text-gray-800 hover:border-gray-300'
-                                                : 'bg-white border-pink-200/90 text-gray-900 hover:border-[#D60041]'
+                                        ? 'bg-blue-50/60 border-blue-200 text-blue-900'
+                                        : isCompleted
+                                          ? 'bg-emerald-50/60 border-emerald-200 text-emerald-900'
+                                          : isCanceled
+                                            ? 'bg-gray-100 border-gray-200 text-gray-400 line-through'
+                                            : readOnly
+                                              ? 'bg-gray-50/70 border-gray-200 text-gray-800 hover:border-gray-300'
+                                              : 'bg-white border-pink-200/90 text-gray-900 hover:border-[#D60041]'
                                         }`}
                                     >
                                       <div className="flex items-center justify-between text-[10px] font-bold text-gray-500 mb-1">
@@ -1409,10 +1409,10 @@ const HRSchedulingPage: React.FC = () => {
                                             ) : (
                                               <>
                                                 <span className={`text-[9px] font-black px-2 py-0.5 rounded-full uppercase ${ev.status === 'COMPLETED'
-                                                    ? 'bg-emerald-100 text-emerald-700'
-                                                    : ev.status === 'CANCELED' || ev.status === 'CANCELLED'
-                                                      ? 'bg-rose-100 text-rose-700 line-through'
-                                                      : 'bg-pink-100 text-[#D60041]'
+                                                  ? 'bg-emerald-100 text-emerald-700'
+                                                  : ev.status === 'CANCELED' || ev.status === 'CANCELLED'
+                                                    ? 'bg-rose-100 text-rose-700 line-through'
+                                                    : 'bg-pink-100 text-[#D60041]'
                                                   }`}>
                                                   {ev.status}
                                                 </span>
@@ -1535,10 +1535,10 @@ const HRSchedulingPage: React.FC = () => {
                           {/* Date Section Header */}
                           <div className="flex items-center gap-3">
                             <div className={`px-3 py-1 rounded-xl text-xs font-black uppercase tracking-wider ${isGroupToday
-                                ? 'bg-[#D60041] text-white shadow-sm'
-                                : isGroupPast
-                                  ? 'bg-gray-100 text-gray-500 border border-gray-200'
-                                  : 'bg-gray-100 text-gray-700 border border-gray-200'
+                              ? 'bg-[#D60041] text-white shadow-sm'
+                              : isGroupPast
+                                ? 'bg-gray-100 text-gray-500 border border-gray-200'
+                                : 'bg-gray-100 text-gray-700 border border-gray-200'
                               }`}>
                               {isGroupToday ? 'Today — ' : ''}
                               {group.date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
@@ -1586,10 +1586,10 @@ const HRSchedulingPage: React.FC = () => {
                                         ) : (
                                           <>
                                             <span className={`text-[9px] font-black px-2 py-0.5 rounded-full uppercase ${ev.status === 'COMPLETED'
-                                                ? 'bg-emerald-100 text-emerald-700'
-                                                : ev.status === 'CANCELED' || ev.status === 'CANCELLED'
-                                                  ? 'bg-rose-100 text-rose-700'
-                                                  : 'bg-pink-100 text-[#D60041]'
+                                              ? 'bg-emerald-100 text-emerald-700'
+                                              : ev.status === 'CANCELED' || ev.status === 'CANCELLED'
+                                                ? 'bg-rose-100 text-rose-700'
+                                                : 'bg-pink-100 text-[#D60041]'
                                               }`}>
                                               {ev.status}
                                             </span>
