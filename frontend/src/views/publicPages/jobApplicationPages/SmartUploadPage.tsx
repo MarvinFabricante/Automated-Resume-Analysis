@@ -30,6 +30,7 @@ const SmartUploadPage: React.FC = () => {
   const [showTermsModal, setShowTermsModal] = useState(false);
   const [showPreviewModal, setShowPreviewModal] = useState(false);
   const [extractedData, setExtractedData] = useState<any>(null);
+  const [uploadError, setUploadError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
 
@@ -108,6 +109,7 @@ const SmartUploadPage: React.FC = () => {
   };
 
   const validateAndSetFile = async (selectedFile: File) => {
+    setUploadError(null);
     const validTypes = [
       "application/pdf",
       "application/msword",
@@ -125,23 +127,37 @@ const SmartUploadPage: React.FC = () => {
         /\.(pdf|docx|doc|txt|text)$/i.test(selectedFile.name) ||
         (!selectedFile.type && !/\.[a-zA-Z0-9]+$/i.test(selectedFile.name)))
     ) {
+      if (selectedFile.size === 0) {
+        const msg = "This file is empty (0 bytes). Please upload a valid resume document.";
+        setUploadError(msg);
+        alert(msg);
+        return;
+      }
+
       if (selectedFile.size > 10 * 1024 * 1024) {
-        alert("File size exceeds 10MB limit. Please upload a smaller document.");
+        const msg = "File size exceeds 10MB limit. Please upload a smaller document.";
+        setUploadError(msg);
+        alert(msg);
         return;
       }
 
       // Deep content check: reject disguised executables (.exe renamed to .pdf, etc.)
       const contentCheck = await checkFileContent(selectedFile);
       if (!contentCheck.valid) {
-        alert(contentCheck.error);
+        const msg = contentCheck.error || "Invalid or corrupted file content.";
+        setUploadError(msg);
+        alert(msg);
         return;
       }
 
       setFile(selectedFile);
       setIsComplete(false);
       setUploadProgress(0);
+      setExtractedData(null);
     } else {
-      alert("Invalid file type. Please upload a PDF, Word document, or text file (.pdf, .docx, .doc, .txt).");
+      const msg = "Invalid file type. Please upload a PDF, Word document, or text file (.pdf, .docx, .doc, .txt).";
+      setUploadError(msg);
+      alert(msg);
     }
   };
 
@@ -163,6 +179,7 @@ const SmartUploadPage: React.FC = () => {
 
   const handleUpload = async () => {
     if (!file || !isTermsAccepted || cooldown > 0) return;
+    setUploadError(null);
     setIsUploading(true);
     setUploadProgress(20);
 
@@ -182,10 +199,13 @@ const SmartUploadPage: React.FC = () => {
     } catch (error: any) {
       console.error("Error parsing resume:", error);
       if (error.response?.status === 429) {
-        alert("Too many requests! Please wait a moment before trying again.");
+        const msg = "Too many requests! Please wait a moment before trying again.";
+        setUploadError(msg);
+        alert(msg);
         setCooldown(30);
       } else {
         const detail = error.response?.data?.detail || "Failed to parse resume. Please ensure you uploaded a valid PDF, Word document, or text file.";
+        setUploadError(detail);
         alert(detail);
       }
       setIsUploading(false);
@@ -228,6 +248,44 @@ const SmartUploadPage: React.FC = () => {
           </div>
 
           <div className="p-8 md:p-16">
+            <input
+              type="file"
+              ref={fileInputRef}
+              onChange={(e) => {
+                const selected = e.target.files?.[0];
+                if (selected) {
+                  validateAndSetFile(selected);
+                }
+                e.target.value = '';
+              }}
+              className="hidden"
+              accept=".pdf,.doc,.docx,.txt,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain"
+            />
+
+            {uploadError && (
+              <div
+                role="alert"
+                data-testid="upload-error-banner"
+                className="max-w-3xl mx-auto mb-6 p-4 sm:p-5 bg-rose-50 border border-rose-200 rounded-2xl flex items-start justify-between gap-3 text-rose-800 shadow-xs animate-in fade-in duration-200"
+              >
+                <div className="flex items-start gap-3">
+                  <AlertTriangle size={20} className="text-rose-600 shrink-0 mt-0.5" />
+                  <div>
+                    <h4 className="text-xs sm:text-sm font-black text-rose-900">Resume Upload Error</h4>
+                    <p className="text-xs sm:text-sm font-medium text-rose-700 mt-0.5">{uploadError}</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setUploadError(null)}
+                  className="p-1 text-rose-400 hover:text-rose-700 rounded-lg transition-colors cursor-pointer"
+                  aria-label="Dismiss error"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+            )}
+
             {!file ? (
               <div
                 onDragOver={handleDrag}
@@ -240,13 +298,6 @@ const SmartUploadPage: React.FC = () => {
                     : "border-slate-200 hover:border-[#D60041]/30 hover:bg-slate-50/50 hover:shadow-lg hover:shadow-slate-100"
                 }`}
               >
-                <input
-                  type="file"
-                  ref={fileInputRef}
-                  onChange={(e) => e.target.files?.[0] && validateAndSetFile(e.target.files[0])}
-                  className="hidden"
-                  accept=".pdf,.doc,.docx,.txt,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain"
-                />
                 <div className="w-24 h-24 bg-slate-100 text-slate-400 group-hover:text-[#D60041] group-hover:bg-white group-hover:shadow-xl group-hover:shadow-pink-100/50 rounded-[32px] mb-8 flex items-center justify-center mx-auto transition-all duration-500 transform group-hover:rotate-6">
                   <FileUp size={48} />
                 </div>
@@ -490,13 +541,13 @@ const SmartUploadPage: React.FC = () => {
                               location: extractedData?.location
                             },
                             experience: {
-                              title: extractedData?.job_title || (extractedData?.experience ? extractedData.experience.split('|')[0]?.trim() : ""),
-                              company: extractedData?.company || (extractedData?.experience ? extractedData.experience.split('|')[1]?.trim() : ""),
+                              title: extractedData?.job_title || extractedData?.work_experiences?.[0]?.job_title || "",
+                              company: extractedData?.company || extractedData?.work_experiences?.[0]?.company_name || "",
                               relevance: extractedData?.relevance || (extractedData?.years_experience ? `${extractedData.years_experience} years` : "")
                             },
                             education: {
-                              degree: extractedData?.degree || extractedData?.highest_degree || "",
-                              college: extractedData?.institution || extractedData?.college || ""
+                              degree: extractedData?.degree || extractedData?.education_entries?.[0]?.degree_or_course || extractedData?.highest_degree || "",
+                              college: extractedData?.institution || extractedData?.college || extractedData?.education_entries?.[0]?.institution_name || ""
                             },
                             skills: Array.isArray(extractedData?.skills_list) && extractedData.skills_list.length > 0
                               ? extractedData.skills_list
@@ -579,6 +630,10 @@ const SmartUploadPage: React.FC = () => {
         resumeUrl={extractedData?.file_url}
         rawText={extractedData?.raw_text}
         extractedData={extractedData}
+        onReplaceFile={(newFile) => {
+          setShowPreviewModal(false);
+          validateAndSetFile(newFile);
+        }}
         onReplace={() => {
           setShowPreviewModal(false);
           fileInputRef.current?.click();

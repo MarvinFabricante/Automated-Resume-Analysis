@@ -83,17 +83,25 @@ const ApplicationForm: React.FC = () => {
     }
   }, [jobId, currentStep]);
 
+  const ext = location.state?.extractedData;
+  const cleanField = (val: any) => (val && val !== "null" && val !== "undefined" && val !== "Not specified" ? String(val).trim() : "");
   const initialFormData = {
-    fullName: location.state?.personal?.name && location.state.personal.name !== "null" ? location.state.personal.name : "",
-    email: location.state?.personal?.email && location.state.personal.email !== "null" ? location.state.personal.email : "",
-    phone: location.state?.personal?.phone && location.state.personal.phone !== "null" ? location.state.personal.phone : "",
-    location: location.state?.personal?.location && location.state.personal.location !== "null" ? location.state.personal.location : "",
-    jobTitle: location.state?.experience?.title && location.state.experience.title !== "null" ? location.state.experience.title : "",
-    company: location.state?.experience?.company && location.state.experience.company !== "null" ? location.state.experience.company : "",
-    relevance: location.state?.experience?.relevance && location.state.experience.relevance !== "Experience not extracted" ? location.state.experience.relevance : "",
-    degree: location.state?.education?.degree && location.state.education.degree !== "null" ? location.state.education.degree : "",
-    college: location.state?.education?.college && location.state.education.college !== "null" ? location.state.education.college : "",
-    skills: location.state?.skills && location.state.skills[0] !== "Extraction in progress" ? location.state.skills : [] as string[]
+    fullName: cleanField(location.state?.personal?.name) || cleanField(ext?.fullname),
+    email: cleanField(location.state?.personal?.email) || cleanField(ext?.email),
+    phone: cleanField(location.state?.personal?.phone) || cleanField(ext?.phone),
+    location: cleanField(location.state?.personal?.location) || cleanField(ext?.location),
+    jobTitle: cleanField(location.state?.experience?.title) || cleanField(ext?.job_title) || cleanField(ext?.work_experiences?.[0]?.job_title),
+    company: cleanField(location.state?.experience?.company) || cleanField(ext?.company) || cleanField(ext?.work_experiences?.[0]?.company_name),
+    relevance: location.state?.experience?.relevance && location.state.experience.relevance !== "Experience not extracted"
+      ? location.state.experience.relevance
+      : cleanField(ext?.relevance),
+    degree: cleanField(location.state?.education?.degree) || cleanField(ext?.degree) || cleanField(ext?.education_entries?.[0]?.degree_or_course) || cleanField(ext?.highest_degree),
+    college: cleanField(location.state?.education?.college) || cleanField(ext?.institution) || cleanField(ext?.college) || cleanField(ext?.education_entries?.[0]?.institution_name),
+    skills: Array.isArray(location.state?.skills) && location.state.skills.length > 0 && location.state.skills[0] !== "Extraction in progress"
+      ? location.state.skills
+      : Array.isArray(ext?.skills_list)
+      ? ext.skills_list
+      : [] as string[]
   };
 
   const displayFileName = location.state?.fileName || location.state?.extractedData?.filename || 'Uploaded_Resume.pdf';

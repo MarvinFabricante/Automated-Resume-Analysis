@@ -6,7 +6,8 @@ import {
   User, Mail, Phone, MapPin,
   Cpu, Briefcase, GraduationCap,
   CheckCircle, ArrowLeft, Edit3, Target,
-  Award, Sparkles, Eye, FileUp, FileText, Code
+  Award, Sparkles, Eye, FileUp, FileText, Code,
+  AlertTriangle, X
 } from 'lucide-react';
 import Header from '../../components/layout/Header';
 import Sidebar from '../../components/layout/Sidebar';
@@ -86,6 +87,8 @@ const CandidatePreviewAndVerify: React.FC = () => {
   const [dynamicExtractedData, setDynamicExtractedData] = useState<any>(data || null);
   const [dynamicMatchData, setDynamicMatchData] = useState<any>(matchData || null);
   const [isReplacingResume, setIsReplacingResume] = useState<boolean>(false);
+  const [hasReplacedResume, setHasReplacedResume] = useState<boolean>(false);
+  const [replaceError, setReplaceError] = useState<string | null>(null);
   const replaceInputRef = useRef<HTMLInputElement>(null);
 
   const checkFileContent = async (file: File): Promise<{ valid: boolean; error?: string }> => {
@@ -99,6 +102,31 @@ const CandidatePreviewAndVerify: React.FC = () => {
       if (bytes.length >= 4 && bytes[0] === 0x7f && bytes[1] === 0x45 && bytes[2] === 0x4c && bytes[3] === 0x46) {
         return { valid: false, error: 'File rejected by content check: ELF binary executable is not accepted.' };
       }
+      if (/\.pdf$/i.test(file.name)) {
+        let hasPdfHeader = false;
+        for (let i = 0; i < Math.min(bytes.length - 4, 1020); i++) {
+          if (bytes[i] === 0x25 && bytes[i + 1] === 0x50 && bytes[i + 2] === 0x44 && bytes[i + 3] === 0x46) {
+            hasPdfHeader = true;
+            break;
+          }
+        }
+        if (!hasPdfHeader) {
+          return { valid: false, error: 'File rejected by content check: The file has a .pdf extension but does not contain valid PDF content.' };
+        }
+      }
+      if (/\.(docx|doc)$/i.test(file.name)) {
+        const isZip = bytes.length >= 2 && bytes[0] === 0x50 && bytes[1] === 0x4b;
+        const isCfbf = bytes.length >= 4 && bytes[0] === 0xd0 && bytes[1] === 0xcf && bytes[2] === 0x11 && bytes[3] === 0xe0;
+        const isRtf = bytes.length >= 5 && bytes[0] === 0x7b && bytes[1] === 0x5c && bytes[2] === 0x72 && bytes[3] === 0x74 && bytes[4] === 0x66;
+        let isXml = false;
+        try {
+          const sliceText = new TextDecoder().decode(bytes.slice(0, 80));
+          isXml = sliceText.includes('<?xml') || sliceText.includes('<w:document');
+        } catch {}
+        if (!isZip && !isCfbf && !isRtf && !isXml) {
+          return { valid: false, error: 'File rejected by content check: The file has a Word extension (.docx/.doc) but does not contain valid Word document content.' };
+        }
+      }
       return { valid: true };
     } catch {
       return { valid: true };
@@ -106,23 +134,64 @@ const CandidatePreviewAndVerify: React.FC = () => {
   };
 
   const handleReplaceResume = async (newFile: File) => {
+    setReplaceError(null);
+    const validTypes = [
+      'application/pdf',
+      'application/msword',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'text/plain'
+    ];
+    const isValidType =
+      newFile &&
+      (validTypes.includes(newFile.type) ||
+        newFile.type.startsWith('text/') ||
+        newFile.type.includes('pdf') ||
+        newFile.type.includes('word') ||
+        newFile.type.includes('officedocument') ||
+        /\.(pdf|docx|doc|txt|text)$/i.test(newFile.name) ||
+        (!newFile.type && !/\.[a-zA-Z0-9]+$/i.test(newFile.name)));
+
+    if (!isValidType) {
+      const msg = 'Invalid file type. Please upload a PDF, Word document, or text file (.pdf, .docx, .doc, .txt).';
+      setReplaceError(msg);
+      alert(msg);
+      return;
+    }
+
+    if (newFile.size === 0) {
+      const msg = 'This file is empty (0 bytes). Please upload a valid resume document.';
+      setReplaceError(msg);
+      alert(msg);
+      return;
+    }
+
+    if (newFile.size > 10 * 1024 * 1024) {
+      const msg = 'File size exceeds 10MB limit. Please upload a smaller document.';
+      setReplaceError(msg);
+      alert(msg);
+      return;
+    }
+
     const contentCheck = await checkFileContent(newFile);
     if (!contentCheck.valid) {
-      alert(contentCheck.error);
+      const msg = contentCheck.error || 'Invalid or corrupted file content.';
+      setReplaceError(msg);
+      alert(msg);
       return;
     }
 
     try {
       setIsReplacingResume(true);
-      setCurrentFile(newFile);
-      setCurrentFileName(newFile.name);
-
       const response = await candidateService.parseResume(newFile);
       if (response.data) {
         const parsed = response.data;
+        setCurrentFile(newFile);
+        setCurrentFileName(newFile.name);
         setCurrentResumeUrl(parsed.file_url || null);
         setCurrentRawText(parsed.raw_text || null);
         setDynamicExtractedData(parsed);
+        setHasReplacedResume(true);
+        setShowResumePreview(false);
 
         if (jobId && jobId !== 'smart') {
           try {
@@ -137,7 +206,9 @@ const CandidatePreviewAndVerify: React.FC = () => {
       }
     } catch (err: any) {
       console.error("Failed to replace resume:", err);
-      alert(err.response?.data?.detail || "Failed to parse new resume. Please ensure the file is valid.");
+      const msg = err.response?.data?.detail || "Failed to parse new resume. Please ensure the file is valid.";
+      setReplaceError(msg);
+      alert(msg);
     } finally {
       setIsReplacingResume(false);
     }
@@ -148,22 +219,38 @@ const CandidatePreviewAndVerify: React.FC = () => {
 
   const extractedData = {
     personal: {
-      name: activeData?.fullname || state?.personal?.name || "Candidate Name",
-      email: activeData?.email || state?.personal?.email || "candidate@example.com",
-      phone: activeData?.phone || state?.personal?.phone || "Not specified",
-      location: activeData?.location || state?.personal?.location || "Not specified"
+      name: (hasReplacedResume ? activeData?.fullname : (state?.formData?.fullName || state?.personal?.name || activeData?.fullname)) || "Candidate Name",
+      email: (hasReplacedResume ? activeData?.email : (state?.formData?.email || state?.personal?.email || activeData?.email)) || "candidate@example.com",
+      phone: (hasReplacedResume ? activeData?.phone : (state?.formData?.phone || state?.personal?.phone || activeData?.phone)) || "Not specified",
+      location: (hasReplacedResume ? activeData?.location : (state?.formData?.location || state?.personal?.location || activeData?.location)) || "Not specified"
     },
-    skills: activeData?.skills
-      ? (Array.isArray(activeData.skills) ? activeData.skills : activeData.skills.split(' | ').filter(Boolean))
-      : (state?.skills || ["Process Optimization", "Team Leadership"]),
+    skills: (!hasReplacedResume && Array.isArray(state?.formData?.skills) && state.formData.skills.length > 0)
+      ? state.formData.skills
+      : (!hasReplacedResume && Array.isArray(state?.skills) && state.skills.length > 0)
+      ? state.skills
+      : (Array.isArray(activeData?.skills_list) && activeData.skills_list.length > 0)
+      ? activeData.skills_list
+      : activeData?.skills
+      ? (Array.isArray(activeData.skills) ? activeData.skills : String(activeData.skills).split(' | ').filter(Boolean))
+      : [],
     experience: {
-      title: activeData?.job_title || (activeData?.experience ? activeData.experience.split('|')[0]?.trim() : (state?.experience?.title || "Specialist")),
-      company: state?.job?.title || state?.experience?.company || "Mariwasa Siam Ceramics",
-      relevance: activeData?.years_experience ? `${activeData.years_experience}+ years of experience` : (state?.experience?.relevance || "Professional experience")
+      title: (hasReplacedResume
+        ? (activeData?.job_title || activeData?.work_experiences?.[0]?.job_title)
+        : (state?.formData?.jobTitle || state?.experience?.title || activeData?.job_title || activeData?.work_experiences?.[0]?.job_title)) || "Not specified",
+      company: (hasReplacedResume
+        ? (activeData?.company || activeData?.work_experiences?.[0]?.company_name)
+        : (state?.formData?.company || state?.experience?.company || activeData?.company || activeData?.work_experiences?.[0]?.company_name)) || "Not specified",
+      relevance: (hasReplacedResume
+        ? (activeData?.relevance || (activeData?.years_experience ? `${activeData.years_experience}+ years of experience` : "Professional experience"))
+        : (state?.formData?.relevance || state?.experience?.relevance || activeData?.relevance || (activeData?.years_experience ? `${activeData.years_experience}+ years of experience` : "Professional experience")))
     },
     education: {
-      degree: activeData?.highest_degree || activeData?.degree || state?.education?.degree || "Degree in Field",
-      college: activeData?.institution || activeData?.college || state?.education?.college || ""
+      degree: (hasReplacedResume
+        ? (activeData?.degree || activeData?.education_entries?.[0]?.degree_or_course || activeData?.highest_degree)
+        : (state?.formData?.degree || state?.education?.degree || activeData?.degree || activeData?.highest_degree)) || "Not specified",
+      college: (hasReplacedResume
+        ? (activeData?.institution || activeData?.college || activeData?.education_entries?.[0]?.institution_name)
+        : (state?.formData?.college || state?.education?.college || activeData?.institution || activeData?.college)) || "Not specified"
     },
     years_experience: activeData?.years_experience || state?.years_experience || 0,
     summary: activeData?.summary || state?.summary || "",
@@ -413,6 +500,30 @@ const CandidatePreviewAndVerify: React.FC = () => {
                   </button>
                 </div>
               </div>
+
+              {replaceError && (
+                <div
+                  role="alert"
+                  data-testid="upload-error-banner"
+                  className="mt-4 p-4 bg-rose-50 border border-rose-200 rounded-2xl flex items-start justify-between gap-3 text-rose-800 animate-in fade-in duration-200"
+                >
+                  <div className="flex items-start gap-2.5">
+                    <AlertTriangle size={18} className="text-rose-600 shrink-0 mt-0.5" />
+                    <div>
+                      <h4 className="text-xs font-black text-rose-900">Failed to Replace Resume</h4>
+                      <p className="text-xs font-medium text-rose-700 mt-0.5">{replaceError}</p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setReplaceError(null)}
+                    className="p-1 text-rose-400 hover:text-rose-700 rounded-lg transition-colors cursor-pointer"
+                    aria-label="Dismiss error"
+                  >
+                    <X size={15} />
+                  </button>
+                </div>
+              )}
             </section>
 
             {/* Match Analysis section */}
@@ -705,7 +816,13 @@ const CandidatePreviewAndVerify: React.FC = () => {
             ref={replaceInputRef}
             type="file"
             accept=".pdf,.doc,.docx,.txt,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain"
-            onChange={(e) => e.target.files?.[0] && handleReplaceResume(e.target.files[0])}
+            onChange={(e) => {
+              const selected = e.target.files?.[0];
+              if (selected) {
+                handleReplaceResume(selected);
+              }
+              e.target.value = '';
+            }}
             className="hidden"
           />
 

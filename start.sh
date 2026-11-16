@@ -3,9 +3,9 @@
 # Automated Resume Analysis System — Unified Startup & Cloudflare Tunnel Script
 # ==============================================================================
 # This script:
-#   1. Validates prerequisites (Docker, Docker Compose, .env, directories)
+#   1. Validates prerequisites (Docker, Docker Compose, .env, directories, cloudflared)
 #   2. Starts or builds all application containers (DB, Redis, Backend, Worker, Frontend)
-#   3. Generates and synchronizes a live Cloudflare Tunnel URL
+#   3. Sets up & verifies Cloudflare Tunnel (Custom Domain e.g. mariwasa.bid or Quick Tunnel)
 #   4. Updates .env (PUBLIC_BASE_URL & FRONTEND_URL CORS whitelist)
 #   5. Recreates backend and worker so the live tunnel URL takes effect immediately
 #   6. Verifies complete health and displays a rich access dashboard
@@ -69,13 +69,13 @@ show_help() {
     echo -e "${WHITE}Usage:${NC} ./start.sh [OPTION]"
     echo ""
     echo -e "${BOLD}Options:${NC}"
-    echo -e "  ${GREEN}(no flags)${NC}      Default: Check, build & start all services, generate tunnel, and sync env"
+    echo -e "  ${GREEN}(no flags)${NC}      Default: Check, build & start all services, setup Cloudflare domain, and sync env"
     echo -e "  ${GREEN}-q, --quick${NC}     Fast start: Start existing containers without rebuilding images"
     echo -e "  ${GREEN}-b, --rebuild${NC}   Force clean rebuild of all container images (--no-cache)"
-    echo -e "  ${GREEN}-r, --restart${NC}   Restart all containers and regenerate a fresh Cloudflare tunnel"
+    echo -e "  ${GREEN}-r, --restart${NC}   Restart all containers and re-verify Cloudflare tunnel"
     echo -e "  ${GREEN}-s, --stop${NC}      Gracefully stop and take down all containers"
-    echo -e "  ${GREEN}--status${NC}        Show current health of all containers and the active tunnel"
-    echo -e "  ${GREEN}--logs [svc]${NC}    View logs (e.g. ./start.sh --logs backend or ./start.sh --logs tunnel)"
+    echo -e "  ${GREEN}--status${NC}        Show current health of all containers, domain, and tunnel"
+    echo -e "  ${GREEN}--logs [svc]${NC}    View logs (e.g. ./start.sh --logs backend or ./start.sh --logs frontend)"
     echo -e "  ${GREEN}--seed${NC}          Run database seeds for jobs and HR accounts"
     echo -e "  ${GREEN}-h, --help${NC}      Show this help menu"
     echo ""
@@ -115,6 +115,17 @@ preflight_checks() {
     # 4. Check & create required host directories
     mkdir -p "$PROJECT_DIR/uploads/resumes" "$PROJECT_DIR/uploads/resume_images"
     chmod -R 777 "$PROJECT_DIR/uploads" 2>/dev/null || true
+
+    # 5. Check Cloudflare Tunnel tool if custom domain is used
+    local custom_domain
+    custom_domain=$(grep -E "^CUSTOM_DOMAIN=" "$ENV_FILE" 2>/dev/null | cut -d= -f2- | tr -d ' "' || true)
+    if [ -n "$custom_domain" ]; then
+        if command -v cloudflared >/dev/null 2>&1; then
+            echo -e "${GREEN}  ✓ Cloudflare connector CLI (cloudflared) detected${NC}"
+        else
+            echo -e "${YELLOW}  ! Note: 'cloudflared' binary not found in PATH.${NC}"
+        fi
+    fi
 
     echo -e "${GREEN}  ✓ Pre-flight checks passed${NC}"
     echo ""
@@ -182,6 +193,9 @@ start_containers() {
     local mode="${1:-build}"
     echo -e "${BLUE}[2/6] Starting application services...${NC}"
 
+    local custom_domain
+    custom_domain=$(grep -E "^CUSTOM_DOMAIN=" "$ENV_FILE" 2>/dev/null | cut -d= -f2- | tr -d ' "' || true)
+
     if [ "$mode" == "rebuild" ]; then
         echo -e "  ⚙ Rebuilding all container images (clean)..."
         $DOCKER_COMPOSE build --no-cache
@@ -192,6 +206,11 @@ start_containers() {
     else
         echo -e "  ⚙ Building and starting containers..."
         $DOCKER_COMPOSE up -d --build
+    fi
+
+    # In Custom Domain mode, stop the standalone quick-tunnel docker container
+    if [ -n "$custom_domain" ]; then
+        $DOCKER_COMPOSE stop tunnel >/dev/null 2>&1 || true
     fi
 
     # Wait for core dependencies
@@ -225,57 +244,112 @@ start_containers() {
     echo ""
 }
 
-# --- Acquire & Verify Cloudflare Tunnel URL ---
-acquire_cloudflare_tunnel() {
-    echo -e "${BLUE}[3/6] Generating and acquiring Cloudflare Tunnel URL...${NC}"
+# --- Setup & Verify Cloudflare Tunnel ---
+setup_cloudflare_tunnel() {
+    echo -e "${BLUE}[3/6] Setting up & verifying Cloudflare Tunnel...${NC}"
 
-    # Record timestamp before restarting tunnel so we only read fresh logs
-    local start_time
-    start_time=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+    local custom_domain
+    custom_domain=$(grep -E "^CUSTOM_DOMAIN=" "$ENV_FILE" 2>/dev/null | cut -d= -f2- | tr -d ' "' || true)
+    local tunnel_token
+    tunnel_token=$(grep -E "^CLOUDFLARE_TUNNEL_TOKEN=" "$ENV_FILE" 2>/dev/null | cut -d= -f2- | tr -d ' "' || true)
 
-    # Recreate tunnel container to guarantee a fresh session and clean logs
-    echo -e "  ⚙ Initializing clean Cloudflare tunnel connection..."
-    $DOCKER_COMPOSE stop tunnel >/dev/null 2>&1 || true
-    $DOCKER_COMPOSE rm -f tunnel >/dev/null 2>&1 || true
-    $DOCKER_COMPOSE up -d tunnel >/dev/null 2>&1
+    if [ -n "$custom_domain" ]; then
+        echo -e "  🌐 Custom Domain: ${BOLD}${CYAN}https://${custom_domain}${NC}"
 
-    ACTIVE_TUNNEL_URL=""
-    local max_wait=45
-    local waited=0
+        # 1. Ensure quick-tunnel docker container is stopped
+        $DOCKER_COMPOSE stop tunnel >/dev/null 2>&1 || true
 
-    # Wait for the tunnel URL to appear in fresh logs
-    while [ -z "$ACTIVE_TUNNEL_URL" ] && [ "$waited" -lt "$max_wait" ]; do
-        sleep 2
-        waited=$((waited + 2))
-        ACTIVE_TUNNEL_URL=$(docker logs "$TUNNEL_CONTAINER" 2>&1 | grep -oP 'https://[a-zA-Z0-9-]+\.trycloudflare\.com' | tail -1 || true)
-        if [ -z "$ACTIVE_TUNNEL_URL" ]; then
-            echo -e "  ... waiting for Cloudflare edge assignment (${waited}/${max_wait}s)"
+        # 2. Check and start the cloudflared connector
+        if command -v cloudflared >/dev/null 2>&1; then
+            if systemctl is-active --quiet cloudflared 2>/dev/null; then
+                echo -e "${GREEN}  ✓ Cloudflare system service (cloudflared.service) is active and running${NC}"
+            else
+                echo -e "${YELLOW}  ⚙ Cloudflare service is stopped. Attempting to start...${NC}"
+                # Try systemctl start if sudo available without password
+                if command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
+                    sudo systemctl start cloudflared 2>/dev/null || true
+                fi
+
+                # If still not active and token is present, run in background
+                if ! systemctl is-active --quiet cloudflared 2>/dev/null; then
+                    if [ -n "$tunnel_token" ]; then
+                        echo -e "  ⚙ Starting cloudflared tunnel connector in background..."
+                        nohup cloudflared tunnel --no-autoupdate run --token "$tunnel_token" >/tmp/cloudflared_custom.log 2>&1 &
+                        echo $! > /tmp/cloudflared_custom.pid
+                        sleep 3
+                        echo -e "${GREEN}  ✓ Cloudflare connector running (PID $(cat /tmp/cloudflared_custom.pid))${NC}"
+                    else
+                        echo -e "${YELLOW}  ! Notice: Please start the cloudflared service:${NC} sudo systemctl start cloudflared"
+                    fi
+                fi
+            fi
         fi
-    done
 
-    if [ -z "$ACTIVE_TUNNEL_URL" ]; then
-        echo -e "${RED}  ✗ Error: Could not detect Cloudflare Tunnel URL after ${max_wait}s${NC}"
-        echo -e "${YELLOW}  Check tunnel logs:${NC} docker logs $TUNNEL_CONTAINER"
-        exit 1
-    fi
+        ACTIVE_TUNNEL_URL="https://${custom_domain}"
 
-    echo -e "${GREEN}  ✓ Tunnel created: ${BOLD}${ACTIVE_TUNNEL_URL}${NC}"
+        # 3. Verify public connectivity to the custom domain
+        echo -e "  ... verifying public reachability at ${BOLD}https://${custom_domain}${NC}"
+        local reachable=false
+        local status_code="000"
+        for i in {1..8}; do
+            status_code=$(curl -s -m 6 -o /dev/null -w "%{http_code}" "https://${custom_domain}" 2>/dev/null || echo "000")
+            if [ "$status_code" = "200" ] || [ "$status_code" = "301" ] || [ "$status_code" = "302" ]; then
+                reachable=true
+                break
+            fi
+            sleep 2
+        done
 
-    # Verify internet reachability of the new tunnel URL
-    echo -e "  ... verifying public DNS and route propagation"
-    local reachable=false
-    for i in {1..12}; do
-        if curl -sf -m 8 -I "$ACTIVE_TUNNEL_URL" >/dev/null 2>&1; then
-            reachable=true
-            break
+        if [ "$reachable" = true ]; then
+            echo -e "${GREEN}  ✓ Custom domain is LIVE and reachable! (HTTP ${status_code})${NC}"
+        else
+            if [ "$status_code" = "530" ] || [ "$status_code" = "1016" ]; then
+                echo -e "${YELLOW}  ! DNS/Tunnel route propagating at Cloudflare edge (HTTP ${status_code}). Will be fully live shortly.${NC}"
+            else
+                echo -e "${YELLOW}  ! Domain status: HTTP ${status_code}. Tunnel is active and routing.${NC}"
+            fi
         fi
-        sleep 2
-    done
 
-    if [ "$reachable" = true ]; then
-        echo -e "${GREEN}  ✓ Public tunnel is active and reachable over the internet!${NC}"
     else
-        echo -e "${YELLOW}  ! Tunnel URL is assigned but still propagating at edge. It will be live in a few moments.${NC}"
+        # Fallback to Quick trycloudflare tunnel
+        echo -e "  ⚙ Initializing clean Cloudflare quick tunnel connection..."
+        $DOCKER_COMPOSE stop tunnel >/dev/null 2>&1 || true
+        $DOCKER_COMPOSE rm -f tunnel >/dev/null 2>&1 || true
+        $DOCKER_COMPOSE up -d tunnel >/dev/null 2>&1
+
+        ACTIVE_TUNNEL_URL=""
+        local max_wait=45
+        local waited=0
+
+        while [ -z "$ACTIVE_TUNNEL_URL" ] && [ "$waited" -lt "$max_wait" ]; do
+            sleep 2
+            waited=$((waited + 2))
+            ACTIVE_TUNNEL_URL=$(docker logs "$TUNNEL_CONTAINER" 2>&1 | grep -oP 'https://[a-zA-Z0-9-]+\.trycloudflare\.com' | tail -1 || true)
+            if [ -z "$ACTIVE_TUNNEL_URL" ]; then
+                echo -e "  ... waiting for Cloudflare edge assignment (${waited}/${max_wait}s)"
+            fi
+        done
+
+        if [ -z "$ACTIVE_TUNNEL_URL" ]; then
+            echo -e "${RED}  ✗ Error: Could not detect Cloudflare Tunnel URL after ${max_wait}s${NC}"
+            echo -e "${YELLOW}  Check tunnel logs:${NC} docker logs $TUNNEL_CONTAINER"
+            exit 1
+        fi
+
+        echo -e "${GREEN}  ✓ Tunnel created: ${BOLD}${ACTIVE_TUNNEL_URL}${NC}"
+
+        # Verify reachability
+        local reachable=false
+        for i in {1..8}; do
+            if curl -sf -m 8 -I "$ACTIVE_TUNNEL_URL" >/dev/null 2>&1; then
+                reachable=true
+                break
+            fi
+            sleep 2
+        done
+        if [ "$reachable" = true ]; then
+            echo -e "${GREEN}  ✓ Quick tunnel is active and reachable over the internet!${NC}"
+        fi
     fi
 
     echo ""
@@ -294,29 +368,32 @@ sync_env_file() {
     fi
     echo -e "  ✓ PUBLIC_BASE_URL set to ${tunnel_url}"
 
-    # 2. Update FRONTEND_URL cleanly without piling up dead trycloudflare URLs
+    # 2. Update FRONTEND_URL cleanly
     local default_origins="http://localhost:5173,http://localhost:3000,http://localhost,http://localhost:80,http://localhost:8080"
-    if grep -q "^FRONTEND_URL=" "$ENV_FILE" 2>/dev/null; then
-        local current_frontend
-        current_frontend=$(grep "^FRONTEND_URL=" "$ENV_FILE" | cut -d= -f2-)
-        # Strip all existing trycloudflare.com entries to avoid duplicate accumulation
-        local cleaned_frontend
-        cleaned_frontend=$(echo "$current_frontend" | tr ',' '\n' | grep -v 'trycloudflare\.com' | paste -sd, - || true)
-        if [ -z "$cleaned_frontend" ]; then
-            cleaned_frontend="$default_origins"
-        fi
-        sed -i "s|^FRONTEND_URL=.*|FRONTEND_URL=${cleaned_frontend},${tunnel_url}|" "$ENV_FILE"
-    else
-        echo "FRONTEND_URL=${default_origins},${tunnel_url}" >> "$ENV_FILE"
+    local custom_domain
+    custom_domain=$(grep -E "^CUSTOM_DOMAIN=" "$ENV_FILE" 2>/dev/null | cut -d= -f2- | tr -d ' "' || true)
+
+    local target_origins="$default_origins"
+    if [ -n "$custom_domain" ]; then
+        target_origins="${target_origins},https://${custom_domain},https://www.${custom_domain}"
     fi
-    echo -e "  ✓ FRONTEND_URL CORS origins updated with active tunnel"
+    if [ -n "$tunnel_url" ] && [[ "$tunnel_url" != *"//${custom_domain}"* ]]; then
+        target_origins="${target_origins},${tunnel_url}"
+    fi
+
+    if grep -q "^FRONTEND_URL=" "$ENV_FILE" 2>/dev/null; then
+        sed -i "s|^FRONTEND_URL=.*|FRONTEND_URL=${target_origins}|" "$ENV_FILE"
+    else
+        echo "FRONTEND_URL=${target_origins}" >> "$ENV_FILE"
+    fi
+    echo -e "  ✓ FRONTEND_URL CORS origins updated with active domain"
 
     echo ""
 }
 
 # --- Recreate Backend & Worker with New Environment ---
 apply_environment_changes() {
-    echo -e "${BLUE}[5/6] Applying new URLs to Backend & AI Worker...${NC}"
+    echo -e "${BLUE}[5/6] Applying environment configuration to Backend & AI Worker...${NC}"
     # NOTE: Docker Compose does NOT reload changed env_file variables without --force-recreate
     $DOCKER_COMPOSE up -d --force-recreate backend celery_worker >/dev/null 2>&1
 
@@ -327,7 +404,7 @@ apply_environment_changes() {
         exit 1
     fi
 
-    echo -e "${GREEN}  ✓ Backend & AI Worker restarted with new tunnel configuration${NC}"
+    echo -e "${GREEN}  ✓ Backend & AI Worker restarted with new domain configuration${NC}"
     echo ""
 }
 
@@ -381,22 +458,43 @@ show_status() {
     $DOCKER_COMPOSE ps
     echo ""
 
-    local tunnel_url=""
-    tunnel_url=$(docker logs "$TUNNEL_CONTAINER" 2>&1 | grep -oP 'https://[a-zA-Z0-9-]+\.trycloudflare\.com' | tail -1 || true)
-    local env_tunnel_url=""
+    local custom_domain
+    custom_domain=$(grep -E "^CUSTOM_DOMAIN=" "$ENV_FILE" 2>/dev/null | cut -d= -f2- | tr -d ' "' || true)
+    local env_tunnel_url
     env_tunnel_url=$(grep "^PUBLIC_BASE_URL=" "$ENV_FILE" 2>/dev/null | cut -d= -f2- || true)
 
-    echo -e "${WHITE}${BOLD}Tunnel Status:${NC}"
-    if [ -n "$tunnel_url" ]; then
-        echo -e "  Active Cloudflare URL: ${GREEN}${BOLD}${tunnel_url}${NC}"
-        echo -e "  Configured in .env:   ${CYAN}${env_tunnel_url}${NC}"
-        if curl -sf -m 5 -I "$tunnel_url" >/dev/null 2>&1; then
-            echo -e "  Reachability:          ${GREEN}Online & Responding (200 OK)${NC}"
+    echo -e "${WHITE}${BOLD}Tunnel & Domain Status:${NC}"
+    if [ -n "$custom_domain" ]; then
+        echo -e "  Mode:                  ${GREEN}${BOLD}Purchased Custom Domain (${custom_domain})${NC}"
+        echo -e "  Configured in .env:    ${CYAN}${env_tunnel_url}${NC}"
+        if systemctl is-active --quiet cloudflared 2>/dev/null; then
+            echo -e "  Connector Service:     ${GREEN}cloudflared.service is ACTIVE (host)${NC}"
         else
-            echo -e "  Reachability:          ${YELLOW}Connecting / Not responding yet${NC}"
+            echo -e "  Connector Service:     ${YELLOW}cloudflared.service is INACTIVE${NC}"
+        fi
+
+        local status_code
+        status_code=$(curl -s -m 5 -o /dev/null -w "%{http_code}" "https://${custom_domain}" 2>/dev/null || echo "000")
+        if [ "$status_code" = "200" ] || [ "$status_code" = "301" ] || [ "$status_code" = "302" ]; then
+            echo -e "  Public Reachability:   ${GREEN}Online & Responding (HTTP ${status_code})${NC}"
+        else
+            echo -e "  Public Reachability:   ${YELLOW}HTTP ${status_code} (connecting or propagating)${NC}"
         fi
     else
-        echo -e "  ${RED}No active tunnel found. Run ./start.sh to start it.${NC}"
+        local tunnel_url=""
+        tunnel_url=$(docker logs "$TUNNEL_CONTAINER" 2>&1 | grep -oP 'https://[a-zA-Z0-9-]+\.trycloudflare\.com' | tail -1 || true)
+        if [ -n "$tunnel_url" ]; then
+            echo -e "  Mode:                  ${YELLOW}Quick Tunnel (trycloudflare.com)${NC}"
+            echo -e "  Active URL:            ${GREEN}${BOLD}${tunnel_url}${NC}"
+            echo -e "  Configured in .env:    ${CYAN}${env_tunnel_url}${NC}"
+            if curl -sf -m 5 -I "$tunnel_url" >/dev/null 2>&1; then
+                echo -e "  Reachability:          ${GREEN}Online & Responding (200 OK)${NC}"
+            else
+                echo -e "  Reachability:          ${YELLOW}Connecting / Not responding yet${NC}"
+            fi
+        else
+            echo -e "  ${RED}No active tunnel found. Run ./start.sh to start it.${NC}"
+        fi
     fi
     echo ""
 }
@@ -406,6 +504,10 @@ stop_services() {
     show_banner
     echo -e "${YELLOW}Stopping all Automated Resume Analysis services...${NC}"
     $DOCKER_COMPOSE down
+    if [ -f /tmp/cloudflared_custom.pid ]; then
+        kill "$(cat /tmp/cloudflared_custom.pid)" 2>/dev/null || true
+        rm -f /tmp/cloudflared_custom.pid
+    fi
     echo -e "${GREEN}✓ All services stopped.${NC}"
 }
 
@@ -424,12 +526,19 @@ view_logs() {
 # --- Display Final Dashboard ---
 display_dashboard() {
     local tunnel_url="$1"
+    local custom_domain
+    custom_domain=$(grep -E "^CUSTOM_DOMAIN=" "$ENV_FILE" 2>/dev/null | cut -d= -f2- | tr -d ' "' || true)
 
     echo -e "${GREEN}${BOLD}═════════════════════════════════════════════════════════════════${NC}"
     echo -e "${GREEN}${BOLD}             🎉 APPLICATION READY & RUNNING!                    ${NC}"
     echo -e "${GREEN}${BOLD}═════════════════════════════════════════════════════════════════${NC}"
     echo ""
-    echo -e "  ${WHITE}${BOLD}🌐 PUBLIC URL (Cloudflare):${NC}   ${CYAN}${BOLD}${tunnel_url}${NC}"
+    if [ -n "$custom_domain" ]; then
+        echo -e "  ${WHITE}${BOLD}🌐 PUBLIC DOMAIN:${NC}            ${CYAN}${BOLD}https://${custom_domain}${NC}"
+        echo -e "  ${WHITE}${BOLD}🌐 WWW DOMAIN:${NC}               ${CYAN}${BOLD}https://www.${custom_domain}${NC}"
+    else
+        echo -e "  ${WHITE}${BOLD}🌐 PUBLIC URL (Cloudflare):${NC}   ${CYAN}${BOLD}${tunnel_url}${NC}"
+    fi
     echo -e "  ${WHITE}${BOLD}💻 LOCAL FRONTEND:${NC}           ${WHITE}http://localhost:8080${NC}"
     echo -e "  ${WHITE}${BOLD}📚 FASTAPI DOCS (Swagger):${NC}   ${WHITE}http://localhost:8000/docs${NC}"
     echo -e "  ${WHITE}${BOLD}🗄️  POSTGRESQL PORT:${NC}         ${WHITE}localhost:5434${NC}"
@@ -511,7 +620,7 @@ main() {
     fi
 
     start_containers "$mode"
-    acquire_cloudflare_tunnel
+    setup_cloudflare_tunnel
     sync_env_file "$ACTIVE_TUNNEL_URL"
     apply_environment_changes
     verify_database

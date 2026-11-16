@@ -84,14 +84,19 @@ _ROLE_WORDS = {
     "specialist", "engineer", "developer", "programmer", "architect", "designer",
     "manager", "lead", "director", "consultant", "analyst", "officer",
     "administrator", "coordinator", "supervisor", "intern", "trainee", "associate",
-    "assistant", "technician", "scientist", "fullstack", "frontend", "backend",
+    "assistant", "technician", "scientist", "fullstack", "full-stack", "frontend", "backend",
     "devops", "cloud", "data", "qa", "tester", "product", "project", "marketing",
     "sales", "executive", "accountant", "representative", "clerk", "cashier",
     "encoder", "operator", "crew", "nurse", "teacher", "instructor", "professor",
     "auditor", "teller", "generalist", "receptionist", "staff", "agent", "writer",
     "editor", "student", "undergraduate", "graduate", "e-commerce", "ecommerce",
     "e-commerse", "virtual", "support", "service", "customer", "operations",
-    "specialists", "engineers", "developers", "technicians", "senior", "junior"
+    "specialists", "engineers", "developers", "technicians", "senior", "junior",
+    "it", "hr", "full", "stack", "web", "software", "mobile", "digital",
+    "human", "resources", "accounting", "electrical", "engineering", "mechanical",
+    "civil", "machine", "industrial", "quality", "assurance", "control",
+    "technical", "business", "systems", "network", "database", "security",
+    "email", "phone", "mobile", "contact", "address", "location", "tel"
 }
 
 
@@ -107,14 +112,18 @@ def _strip_roles_and_titles(text: str) -> str:
         return ""
     cleaned = text.strip()
 
-    # If segmented by pipe, bullet, dash, slash, or colon, check each segment
-    for sep in ['|', '•', '–', '—', ' - ', ' / ', ':']:
+    # If segmented by pipe, bullet, dash, or slash, check each segment
+    for sep in ['|', '•', '–', '—', ' - ', ' / ']:
         if sep in cleaned:
             parts = [p.strip() for p in cleaned.split(sep) if p.strip()]
             for p in parts:
                 p_words = p.lower().split()
                 # If segment contains no role words and looks like a name (2-5 words), return it
-                if not any(w.rstrip('.,') in _ROLE_WORDS for w in p_words) and 1 <= len(p_words) <= 5:
+                if (
+                    2 <= len(p_words) <= 5
+                    and not any(w.rstrip('.,') in _ROLE_WORDS for w in p_words)
+                    and _is_plausible_name(p)
+                ):
                     return p
 
     # Remove trailing role words
@@ -391,6 +400,7 @@ def extract_all_name_candidates(text: str, email: str = "") -> List[str]:
 
     # Strategy 1: spaCy NER PERSON entities in header area (top 10 lines / 1000 chars)
     header_chunk = "\n".join(lines[:12])
+    ner_spans: List[str] = []
     try:
         from app.extractors.nlp.nlp_engine import get_doc
         doc = get_doc(header_chunk)
@@ -398,7 +408,8 @@ def extract_all_name_candidates(text: str, email: str = "") -> List[str]:
             if ent.label_ == "PERSON" and "\n" not in ent.text:
                 ent_clean = _strip_roles_and_titles(ent.text.strip())
                 if ent_clean:
-                    add_cand(ent_clean, 0, bonus=80.0)
+                    ner_spans.append(_normalize_name(ent_clean))
+                    add_cand(ent_clean, 0, bonus=15.0)
     except Exception:
         pass
 
@@ -449,27 +460,50 @@ def extract_all_name_candidates(text: str, email: str = "") -> List[str]:
             add_cand(after.strip(), idx)
 
         # Whole line with role stripped
-        add_cand(line, idx)
+        add_cand(line, idx, bonus=25.0)
 
-        # Strategy 4: Check if adjacent lines are a split name
+        # Strategy 4: Check if adjacent lines at top of header are a split name
         # E.g., Line 0: "Basagre" and Line 1: "John Paul T." OR Line 0: "John Paul T." and Line 1: "Basagre"
-        if idx + 1 < header_lines_count:
+        if idx <= 2 and idx + 1 < header_lines_count:
             next_line = lines[idx + 1]
-            next_clean = _strip_roles_and_titles(next_line)
-            curr_clean = _strip_roles_and_titles(line)
-            if curr_clean and next_clean and not any(c in (curr_clean + next_clean) for c in ['@', 'http', '+63', '09']):
-                curr_words = curr_clean.split()
-                next_words = next_clean.split()
-                # If current line is 1 word (likely Surname) and next line has 2+ words (Given + Middle Initial)
-                if len(curr_words) == 1 and len(next_words) >= 2:
-                    add_cand(f"{next_clean} {curr_clean}", idx, bonus=50.0)
-                    add_cand(f"{curr_clean} {next_clean}", idx, bonus=20.0)
-                elif len(next_words) == 1 and len(curr_words) >= 2:
-                    add_cand(f"{curr_clean} {next_clean}", idx, bonus=50.0)
-                    add_cand(f"{next_clean} {curr_clean}", idx, bonus=20.0)
-                else:
-                    add_cand(f"{curr_clean} {next_clean}", idx, bonus=35.0)
-                    add_cand(f"{next_clean} {curr_clean}", idx, bonus=35.0)
+            # Only join when neither raw line contains colons, pipes, emails, numbers, or role/noise words
+            raw_pair = f"{line} {next_line}"
+            raw_tokens = {w.lower().rstrip('.,:') for w in raw_pair.split()}
+            has_role_or_noise = bool(
+                raw_tokens.intersection(_ROLE_WORDS)
+                or raw_tokens.intersection(_ROLE_DISQUALIFIERS)
+                or raw_tokens.intersection(_NOISE_WORDS)
+            )
+            if (
+                not has_role_or_noise
+                and not any(c in raw_pair for c in ['@', ':', '|', 'http', '+63', '09'])
+                and not re.search(r'\d', raw_pair)
+                and _is_plausible_name(line)
+                and _is_plausible_name(next_line)
+            ):
+                curr_words = line.split()
+                next_words = next_line.split()
+                # Join only when one line is a 1-word surname and the other is 2-3 given/middle words
+                if len(curr_words) == 1 and 2 <= len(next_words) <= 3:
+                    add_cand(f"{next_line} {line}", idx, bonus=50.0)
+                    add_cand(f"{line} {next_line}", idx, bonus=20.0)
+                elif len(next_words) == 1 and 2 <= len(curr_words) <= 3:
+                    add_cand(f"{line} {next_line}", idx, bonus=50.0)
+                    add_cand(f"{next_line} {line}", idx, bonus=20.0)
+
+    # Promote full candidates that contain a partial spaCy NER span (e.g. preserving 'Ma.', inverted surname, or ', CPA')
+    if ner_spans and len(candidate_scores) > 1:
+        for cand_norm in list(candidate_scores.keys()):
+            cand_tokens = {w.lower().rstrip('.,') for w in cand_norm.split()}
+            for ner_norm in ner_spans:
+                if not ner_norm or cand_norm == ner_norm:
+                    continue
+                ner_tokens = {w.lower().rstrip('.,') for w in ner_norm.split()}
+                if ner_tokens and ner_tokens.issubset(cand_tokens) and len(cand_tokens) > len(ner_tokens):
+                    candidate_scores[cand_norm] = max(
+                        candidate_scores[cand_norm],
+                        candidate_scores.get(ner_norm, 0.0) + 25.0,
+                    )
 
     sorted_names = sorted(candidate_scores.items(), key=lambda x: x[1], reverse=True)
     return [name for name, score in sorted_names]

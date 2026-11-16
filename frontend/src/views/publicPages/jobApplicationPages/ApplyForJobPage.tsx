@@ -15,7 +15,8 @@ import {
   Target,
   GraduationCap,
   Cpu,
-  Eye
+  Eye,
+  AlertTriangle
 } from 'lucide-react';
 import Header from '../../../components/layout/Header';
 import Footer from '../../../components/layout/Footer';
@@ -73,6 +74,7 @@ const ApplyForJobPage: React.FC = () => {
   const [, setIsMatching] = useState(false);
   const [cooldown, setCooldown] = useState(0);
   const [savedDraft, setSavedDraft] = useState<any>(null);
+  const [uploadError, setUploadError] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
@@ -214,13 +216,13 @@ const ApplyForJobPage: React.FC = () => {
           location: extractedData?.location
         },
         experience: {
-          title: extractedData?.job_title || (extractedData?.experience ? extractedData.experience.split('|')[0]?.trim() : ""),
-          company: extractedData?.company || (extractedData?.experience ? extractedData.experience.split('|')[1]?.trim() : "") || job?.department || "",
+          title: extractedData?.job_title || extractedData?.work_experiences?.[0]?.job_title || "",
+          company: extractedData?.company || extractedData?.work_experiences?.[0]?.company_name || "",
           relevance: extractedData?.relevance || (extractedData?.years_experience ? `${extractedData.years_experience} years of experience` : "")
         },
         education: {
-          degree: extractedData?.degree || extractedData?.highest_degree || "",
-          college: extractedData?.institution || extractedData?.college || ""
+          degree: extractedData?.degree || extractedData?.education_entries?.[0]?.degree_or_course || extractedData?.highest_degree || "",
+          college: extractedData?.institution || extractedData?.college || extractedData?.education_entries?.[0]?.institution_name || ""
         },
         skills: (Array.isArray(extractedData?.skills_list) && extractedData.skills_list.length > 0)
           ? extractedData.skills_list
@@ -308,6 +310,7 @@ const ApplyForJobPage: React.FC = () => {
   };
 
   const validateAndSetFile = async (selectedFile: File) => {
+    setUploadError(null);
     const validTypes = [
       "application/pdf",
       "application/msword",
@@ -326,27 +329,37 @@ const ApplyForJobPage: React.FC = () => {
         (!selectedFile.type && !/\.[a-zA-Z0-9]+$/i.test(selectedFile.name)))
     ) {
       if (selectedFile.size > 10 * 1024 * 1024) {
-        alert("This file is too large. Resumes must be smaller than 10 MB.");
+        const msg = "This file is too large. Resumes must be smaller than 10 MB.";
+        setUploadError(msg);
+        alert(msg);
         return;
       }
 
       if (selectedFile.size === 0) {
-        alert("This file looks empty. Please upload a resume with your details.");
+        const msg = "This file looks empty. Please upload a resume with your details.";
+        setUploadError(msg);
+        alert(msg);
         return;
       }
 
       // Deep content check: reject disguised executables (.exe renamed to .pdf, etc.)
       const contentCheck = await checkFileContent(selectedFile);
       if (!contentCheck.valid) {
-        alert(contentCheck.error);
+        const msg = contentCheck.error || "Invalid or corrupted file content.";
+        setUploadError(msg);
+        alert(msg);
         return;
       }
 
       setFile(selectedFile);
       setIsComplete(false);
       setUploadProgress(0);
+      setExtractedData(null);
+      setMatchData(null);
     } else {
-      alert("Please upload your resume as a PDF or Word document (.pdf, .docx, .doc).");
+      const msg = "Please upload your resume as a PDF, Word document, or text file (.pdf, .docx, .doc, .txt).";
+      setUploadError(msg);
+      alert(msg);
     }
   };
 
@@ -368,6 +381,7 @@ const ApplyForJobPage: React.FC = () => {
 
   const handleUpload = async () => {
     if (!file || !isTermsAccepted || cooldown > 0) return;
+    setUploadError(null);
     setIsUploading(true);
     setUploadProgress(20); // Initial progress
 
@@ -426,10 +440,13 @@ const ApplyForJobPage: React.FC = () => {
     } catch (error: any) {
       console.error("Error parsing resume:", error);
       if (error.response?.status === 429) {
-        alert("Too many requests! Please wait a moment before trying again.");
+        const msg = "Too many requests! Please wait a moment before trying again.";
+        setUploadError(msg);
+        alert(msg);
         setCooldown(30); // Force a longer cooldown if backend rejected them
       } else {
         const detail = error.response?.data?.detail || "Failed to parse resume. Please ensure you uploaded a valid PDF, Word document, or text file.";
+        setUploadError(detail);
         alert(detail);
       }
     } finally {
@@ -536,6 +553,44 @@ const ApplyForJobPage: React.FC = () => {
           </div>
 
           <div className="p-5 sm:p-8 md:p-12">
+            <input
+              type="file"
+              ref={fileInputRef}
+              onChange={(e) => {
+                const selected = e.target.files?.[0];
+                if (selected) {
+                  validateAndSetFile(selected);
+                }
+                e.target.value = '';
+              }}
+              className="hidden"
+              accept=".pdf,.doc,.docx,.txt,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain"
+            />
+
+            {uploadError && (
+              <div
+                role="alert"
+                data-testid="upload-error-banner"
+                className="mb-6 p-4 sm:p-5 bg-rose-50 border border-rose-200 rounded-2xl flex items-start justify-between gap-3 text-rose-800 shadow-xs animate-in fade-in duration-200"
+              >
+                <div className="flex items-start gap-3">
+                  <AlertTriangle size={20} className="text-rose-600 shrink-0 mt-0.5" />
+                  <div>
+                    <h4 className="text-xs sm:text-sm font-black text-rose-900">Resume Upload Error</h4>
+                    <p className="text-xs sm:text-sm font-medium text-rose-700 mt-0.5">{uploadError}</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setUploadError(null)}
+                  className="p-1 text-rose-400 hover:text-rose-700 rounded-lg transition-colors cursor-pointer"
+                  aria-label="Dismiss error"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+            )}
+
             {!isLoadingJob && job && job.is_active === false ? (
               <div className="text-center py-12 px-4 max-w-lg mx-auto">
                 <div className="w-16 h-16 bg-slate-100 text-slate-500 rounded-2xl flex items-center justify-center mx-auto mb-5">
@@ -565,13 +620,6 @@ const ApplyForJobPage: React.FC = () => {
                   : "border-slate-200 hover:border-[#D60041]/30 hover:bg-slate-50"
                   }`}
               >
-                <input
-                  type="file"
-                  ref={fileInputRef}
-                  onChange={(e) => e.target.files?.[0] && validateAndSetFile(e.target.files[0])}
-                  className="hidden"
-                  accept=".pdf,.doc,.docx,.txt,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain"
-                />
                 <div className="w-16 h-16 sm:w-20 sm:h-20 bg-slate-100 text-slate-400 group-hover:text-[#D60041] group-hover:bg-pink-50 rounded-2xl sm:rounded-3xl mb-4 sm:mb-6 flex items-center justify-center mx-auto transition-all duration-300">
                   <FileUp size={32} />
                 </div>
@@ -750,6 +798,7 @@ const ApplyForJobPage: React.FC = () => {
         rawText={extractedData?.raw_text}
         extractedData={extractedData}
         onReplaceFile={(newFile) => {
+          setShowPreviewModal(false);
           validateAndSetFile(newFile);
         }}
       />

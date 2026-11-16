@@ -128,22 +128,22 @@ def _fuzzy_match(a: str, b: str, threshold: Optional[float] = None) -> bool:
 
 # ── Experience Relevance Analysis ─────────────────────────────────────────
 ROLE_FAMILY_KEYWORDS = {
-    "software": ["developer", "engineer", "programmer", "coding", "software", "backend", "frontend", "fullstack", "devops", "sre", "qa", "testing", "automation", "api", "microservices", "ci/cd", "git", "agile", "scrum", "it support", "technical support", "systems", "deployment", "infrastructure", "it"],
-    "data": ["data", "analyst", "scientist", "machine learning", "ai", "analytics", "business intelligence", "statistics", "etl", "big data", "data pipeline", "deep learning"],
+    "software": ["developer", "software engineer", "programmer", "coding", "software", "backend", "frontend", "fullstack", "full-stack", "devops", "sre", "automation", "api", "microservices", "ci/cd", "git", "agile", "scrum", "it support", "technical support", "systems", "deployment", "infrastructure", "web developer"],
+    "data": ["data", "data analyst", "scientist", "machine learning", "ai", "analytics", "business intelligence", "statistics", "etl", "big data", "data pipeline", "deep learning"],
     "design": ["designer", "ui", "ux", "graphic", "creative", "visual", "figma", "adobe", "illustration", "wireframe", "prototype"],
-    "marketing": ["marketing", "seo", "content", "social media", "digital marketing", "advertising", "brand", "copywriter", "campaign"],
-    "finance": ["accountant", "finance", "auditor", "bookkeeper", "financial", "cpa", "banking", "investment", "tax", "budget"],
-    "hr": ["human resources", "hr", "recruiter", "talent", "hiring", "payroll", "compensation", "onboarding"],
-    "sales": ["sales", "account executive", "business development", "relationship manager", "account manager", "revenue"],
-    "operations": ["operations", "logistics", "supply chain", "warehouse", "inventory", "procurement", "shipping"],
-    "healthcare": ["nurse", "doctor", "medical", "healthcare", "clinical", "pharmacy", "patient", "diagnosis"],
-    "education": ["teacher", "instructor", "professor", "tutor", "education", "training", "curriculum", "academic"],
-    "service": ["cashier", "service crew", "barista", "waiter", "waitress", "food", "retail", "customer service", "fast food", "restaurant", "counter", "crew member", "food service"],
-    "admin": ["administrative", "secretary", "clerk", "receptionist", "office", "assistant", "filing", "clerical"],
-    "engineering": ["civil engineer", "mechanical engineer", "electrical engineer", "structural", "construction", "cad", "blueprint"],
+    "marketing": ["marketing", "seo", "content", "social media", "digital marketing", "advertising", "brand", "copywriter", "campaign", "e-commerce", "shopify"],
+    "finance": ["accountant", "accounting", "finance", "auditor", "bookkeeper", "bookkeeping", "financial", "cpa", "banking", "investment", "tax", "budget", "accounts payable", "accounts receivable", "reconciliation", "sap", "quickbooks", "payroll", "billing", "invoicing"],
+    "hr": ["human resources", "hr", "recruiter", "recruitment", "talent", "hiring", "payroll", "compensation", "onboarding", "employee relations", "hris"],
+    "sales": ["sales", "account executive", "business development", "relationship manager", "account manager", "revenue", "promodiser", "merchandiser", "sales officer", "customer handling", "negotiation", "product knowledge"],
+    "operations": ["operations", "logistics", "supply chain", "warehouse", "warehouseman", "inventory", "procurement", "shipping", "3pl", "forklift", "stockman", "delivery", "dispatch"],
+    "healthcare": ["nurse", "doctor", "medical", "healthcare", "clinical", "pharmacy", "patient", "diagnosis", "first aid", "bls"],
+    "education": ["teacher", "instructor", "professor", "tutor", "education", "training", "curriculum", "academic", "lpt"],
+    "service": ["cashier", "service crew", "barista", "waiter", "waitress", "food", "retail", "customer service", "csr", "tsr", "call center", "chat support", "email support", "fast food", "restaurant", "counter", "crew member", "food service", "virtual assistant", "order processing"],
+    "admin": ["administrative", "secretary", "clerk", "receptionist", "office", "assistant", "filing", "clerical", "data encoder", "data entry", "documentation"],
+    "engineering": ["civil engineer", "mechanical engineer", "electrical engineer", "structural", "construction", "cad", "autocad", "blueprint", "maintenance technician", "plc", "preventive maintenance", "hvac", "troubleshooting", "welder", "electrician"],
     "legal": ["lawyer", "attorney", "paralegal", "legal", "compliance", "litigation"],
-    "management": ["manager", "director", "supervisor", "team lead", "head of", "vp", "chief"],
-    "manufacturing": ["factory", "assembly", "production", "manufacturing", "quality control", "machine operator", "factory worker", "laborer"],
+    "management": ["manager", "director", "supervisor", "team lead", "head of", "vp", "chief", "line leader"],
+    "manufacturing": ["factory", "assembly", "production", "manufacturing", "quality control", "quality assurance", "qa inspector", "qc inspector", "product inspection", "defect reporting", "measuring tools", "machine operator", "machine handling", "kiln", "ceramic", "glaze", "tile", "plant", "factory worker", "laborer", "iso 9001", "5s", "kaizen", "gmp", "safety compliance"],
 }
 
 TRANSFERABLE_SKILLS = {
@@ -524,13 +524,26 @@ def _find_education_context(text: str) -> str:
 
 
 def _extract_core_subject(text: str) -> str:
-    """Extract the core field of study by removing generic degree terms."""
+    """Extract the core field of study by removing generic degree terms, school names, and qualifiers."""
     if not text:
         return ""
-    level_pattern = r'\b(bachelor\'?s?|master\'?s?|doctorate|ph\.?d|associate\'?s?|diploma|degree|of|in|the|at|bs|ba|ms|ma|bsc|msc|b\.s\.?|m\.s\.?|b\.a\.?|m\.a\.?|undergraduate|graduate|postgraduate|majoring|major)\b'
-    text = re.sub(level_pattern, ' ', text, flags=re.IGNORECASE)
-    text = re.sub(r'[^\w\s]', ' ', text)
-    words = [w for w in text.lower().split() if len(w) > 2]
+    cleaned = re.sub(r'\b(?:19|20)\d{2}\b', ' ', text)
+    # Strip institution suffixes if present after a dash or comma
+    cleaned = re.split(r'\s+[-–—|]\s+(?=[A-Za-z\s]*(?:University|College|Colleges|Institute|School|Academy|Polytechnic|TESDA|Campus))', cleaned, maxsplit=1)[0]
+    level_pattern = (
+        r'\b(bachelor\'?s?|master\'?s?|doctorate|doctor|ph\.?d|associate\'?s?|diploma|'
+        r'vocational|technical|tesda|senior|junior|high|school|shs|jhs|secondary|elementary|primary|'
+        r'college|university|colleges|institute|academy|polytechnic|campus|'
+        r'degree|course|program|curriculum|strand|track|certificate|certification|nc|ii|iii|iv|'
+        r'of|in|the|at|or|and|with|from|for|to|by|on|as|a|an|'
+        r'any|all|related|relevant|field|fields|discipline|equivalent|similar|'
+        r'minimum|least|preferred|required|must|have|holder|level|year|years|four|two|'
+        r'completer|undergraduate|graduate|graduated|postgraduate|majoring|major|'
+        r'bs|ba|ab|ms|ma|bsc|msc|b\.s\.?|m\.s\.?|b\.a\.?|m\.a\.?)\b'
+    )
+    cleaned = re.sub(level_pattern, ' ', cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r'[^\w\s]', ' ', cleaned)
+    words = [w for w in cleaned.lower().split() if len(w) > 2 and not w.isdigit()]
     return " ".join(words)
 
 
@@ -623,10 +636,16 @@ def calculate_education_match(resume_education: str, job_description: str, educa
     semantic_sim = _compute_semantic_similarity(req_subject, cand_subject)
     
     RELATED_MAJORS = {
-        "computer science": ["information technology", "software engineering", "computer engineering", "information systems", "computing"],
+        "computer science": ["information technology", "software engineering", "computer engineering", "information systems", "computing", "data science"],
         "information technology": ["computer science", "software engineering", "computer engineering", "information systems", "computing"],
-        "business": ["management", "administration", "commerce", "finance", "accounting", "marketing"],
-        "engineering": ["mechanical", "electrical", "civil", "chemical", "industrial", "software"],
+        "business": ["management", "administration", "commerce", "finance", "accounting", "accountancy", "marketing", "entrepreneurship", "economics"],
+        "accountancy": ["accounting", "management accounting", "accounting technology", "finance", "financial management", "business administration", "commerce", "banking"],
+        "accounting": ["accountancy", "management accounting", "accounting technology", "finance", "financial management", "business administration", "commerce", "banking"],
+        "engineering": ["mechanical", "electrical", "electronics", "civil", "chemical", "industrial", "ceramic", "materials", "metallurgical", "computer engineering", "software", "industrial technology", "mechatronics"],
+        "chemistry": ["chemical engineering", "chemical", "biochemistry", "materials", "ceramic", "industrial technology"],
+        "human resource": ["psychology", "business administration", "management", "human resource", "behavioral science", "organizational"],
+        "psychology": ["human resource", "business administration", "behavioral science", "guidance"],
+        "marketing": ["business administration", "commerce", "management", "communication", "advertising", "entrepreneurship"],
     }
     
     is_related = False

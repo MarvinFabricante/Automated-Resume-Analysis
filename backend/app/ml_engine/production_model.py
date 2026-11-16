@@ -6,10 +6,15 @@ and metadata into a single atomic artifact with hot-swap support.
 """
 import os
 import time
+import pickle
 import logging
 from typing import Dict, Any, Optional, Union, Sequence
 import numpy as np
-import joblib
+
+try:
+    import joblib
+except ImportError:
+    joblib = None
 
 from app.ml_engine.embeddings import FastTextEmbeddingEngine
 from app.ml_engine.classifier import FitClassifier, build_feature_vector, FEATURE_NAMES
@@ -105,7 +110,11 @@ class ProductionModel:
                 "classifier": self.classifier,
                 "metadata": self.metadata,
             }
-            joblib.dump(state, staging_path, compress=0)
+            if joblib is not None:
+                joblib.dump(state, staging_path, compress=0)
+            else:
+                with open(staging_path, "wb") as f_out:
+                    pickle.dump(state, f_out)
             # Atomic swap on POSIX filesystems
             os.replace(staging_path, target_path)
             logger.info(f"Atomically saved production model to {target_path}")
@@ -124,7 +133,11 @@ class ProductionModel:
         if not os.path.exists(target_path):
             raise FileNotFoundError(f"Model file not found at: {target_path}")
 
-        state = joblib.load(target_path)
+        if joblib is not None:
+            state = joblib.load(target_path)
+        else:
+            with open(target_path, "rb") as f_in:
+                state = pickle.load(f_in)
         return cls(
             embedding_engine=state["embedding_engine"],
             classifier=state["classifier"],
@@ -154,7 +167,13 @@ def get_production_model(model_path: Optional[str] = None) -> ProductionModel:
     current_mtime = os.path.getmtime(target_path)
     if _cached_production_model is None or current_mtime > _cached_model_mtime:
         logger.info(f"Loading/Reloading production model from {target_path} (mtime={current_mtime})...")
-        _cached_production_model = ProductionModel.load(target_path)
-        _cached_model_mtime = current_mtime
+        try:
+            _cached_production_model = ProductionModel.load(target_path)
+        except Exception as load_err:
+            logger.warning(f"Saved model incompatible with current environment ({load_err}); retraining...")
+            from app.ml_engine.retrain_pipeline import retrain_production_model
+            retrain_production_model(model_output_path=target_path, force=True)
+            _cached_production_model = ProductionModel.load(target_path)
+        _cached_model_mtime = os.path.getmtime(target_path)
 
     return _cached_production_model

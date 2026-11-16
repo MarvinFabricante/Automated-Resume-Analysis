@@ -8,9 +8,17 @@ import re
 import logging
 from typing import Sequence, Union, Dict, Any, Optional, Tuple
 import numpy as np
-from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
-from sklearn.calibration import CalibratedClassifierCV
-from sklearn.base import BaseEstimator, ClassifierMixin
+
+try:
+    from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
+    from sklearn.calibration import CalibratedClassifierCV
+    from sklearn.base import BaseEstimator, ClassifierMixin
+except ImportError:
+    RandomForestClassifier = None
+    GradientBoostingClassifier = None
+    CalibratedClassifierCV = None
+    BaseEstimator = object
+    ClassifierMixin = object
 
 logger = logging.getLogger(__name__)
 
@@ -156,6 +164,79 @@ def build_feature_vector(
     return np.array([skill_sim, title_sim, exp_delta, edu_match], dtype=np.float32)
 
 
+class _NumpyFallbackClassifier:
+    """Lightweight calibrated logistic + prototype classifier when scikit-learn is unavailable."""
+
+    def __init__(self):
+        self.weights = np.array([4.5, 3.0, 0.30, 0.80], dtype=np.float32)
+        self.bias = -3.8
+        self.feature_importances_ = np.array([0.48, 0.27, 0.12, 0.13], dtype=np.float32)
+        self._X_train: Optional[np.ndarray] = None
+        self._y_train: Optional[np.ndarray] = None
+        self._w_train: Optional[np.ndarray] = None
+
+    @staticmethod
+    def _scale(X_arr: np.ndarray) -> np.ndarray:
+        scaled = X_arr.copy()
+        if scaled.ndim == 1:
+            scaled = scaled.reshape(1, -1)
+        # Clip experience_delta to [-3, 3] and scale to [0, 1]-like range
+        scaled[:, 2] = np.clip(scaled[:, 2], -3.0, 3.0) * 0.25
+        scaled[:, 3] = scaled[:, 3] * 0.5
+        return scaled
+
+    def fit(self, X: np.ndarray, y: np.ndarray, sample_weight: Optional[np.ndarray] = None):
+        X_arr = np.asarray(X, dtype=np.float32)
+        if X_arr.ndim == 1:
+            X_arr = X_arr.reshape(1, -1)
+        y_arr = np.asarray(y, dtype=np.float32)
+        w = np.asarray(sample_weight, dtype=np.float32) if sample_weight is not None else np.ones(len(y_arr), dtype=np.float32)
+
+        self._X_train = self._scale(X_arr)
+        self._y_train = y_arr
+        self._w_train = w
+
+        pos_mask = y_arr >= 0.5
+        neg_mask = ~pos_mask
+        if np.any(pos_mask) and np.any(neg_mask):
+            pos_mean = np.average(self._X_train[pos_mask], axis=0, weights=w[pos_mask])
+            neg_mean = np.average(self._X_train[neg_mask], axis=0, weights=w[neg_mask])
+            prior_w = np.array([4.5, 3.0, 0.8, 1.2], dtype=np.float32)
+            emp_diff = np.maximum(0.1, pos_mean - neg_mean) * 4.0
+            self.weights = (0.6 * prior_w + 0.4 * emp_diff).astype(np.float32)
+            midpoint = 0.5 * (pos_mean + neg_mean)
+            self.bias = float(-np.dot(self.weights, midpoint))
+            abs_w = np.abs(self.weights)
+            self.feature_importances_ = (abs_w / np.sum(abs_w)).astype(np.float32)
+        return self
+
+    def predict_proba(self, X: np.ndarray) -> np.ndarray:
+        X_arr = np.asarray(X, dtype=np.float32)
+        if X_arr.ndim == 1:
+            X_arr = X_arr.reshape(1, -1)
+        X_s = self._scale(X_arr)
+        logits = X_s @ self.weights + self.bias
+        logits = np.clip(logits, -20.0, 20.0)
+        logistic_probs = 1.0 / (1.0 + np.exp(-logits))
+
+        if self._X_train is not None and len(self._X_train) > 0:
+            # Blend with sample-weighted RBF kernel similarity for local adaptation to human feedback
+            dists = np.sum((X_s[:, None, :] - self._X_train[None, :, :]) ** 2, axis=2)
+            rbf = np.exp(-dists * 6.0) * self._w_train[None, :]
+            rbf_sum = np.sum(rbf, axis=1)
+            knn_probs = np.where(
+                rbf_sum > 1e-6,
+                np.sum(rbf * self._y_train[None, :], axis=1) / np.maximum(1e-6, rbf_sum),
+                logistic_probs,
+            )
+            probs = 0.55 * logistic_probs + 0.45 * knn_probs
+        else:
+            probs = logistic_probs
+
+        probs = np.clip(probs, 0.01, 0.99)
+        return np.column_stack([1.0 - probs, probs]).astype(np.float32)
+
+
 class FitClassifier:
     """
     Production-grade Binary Classifier predicting recruiter acceptance probability.
@@ -165,10 +246,10 @@ class FitClassifier:
     def __init__(self, model_type: str = "random_forest", random_state: int = 42):
         self.model_type = model_type.lower()
         self.random_state = random_state
-        self.model: Optional[BaseEstimator] = None
+        self.model: Optional[Any] = None
         self._is_trained = False
 
-        if "gradient" in self.model_type or "gbm" in self.model_type:
+        if ("gradient" in self.model_type or "gbm" in self.model_type) and GradientBoostingClassifier is not None:
             self.model = GradientBoostingClassifier(
                 n_estimators=100,
                 learning_rate=0.08,
@@ -176,7 +257,7 @@ class FitClassifier:
                 subsample=0.85,
                 random_state=self.random_state,
             )
-        else:
+        elif RandomForestClassifier is not None:
             self.model = RandomForestClassifier(
                 n_estimators=100,
                 max_depth=6,
@@ -184,6 +265,8 @@ class FitClassifier:
                 class_weight="balanced",
                 random_state=self.random_state,
             )
+        else:
+            self.model = _NumpyFallbackClassifier()
 
     def fit(
         self,

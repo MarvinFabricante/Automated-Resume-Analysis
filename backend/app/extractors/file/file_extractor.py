@@ -68,6 +68,18 @@ def clean_raw_text(text: str) -> str:
         text = text.replace(zw, '')
     text = text.replace('\u202f', ' ')
 
+    # Normalize typographic ligatures common in PDF fonts (e.g. Jeﬀrey -> Jeffrey, Oﬃce -> Office)
+    for lig, repl in [
+        ('\ufb00', 'ff'),
+        ('\ufb01', 'fi'),
+        ('\ufb02', 'fl'),
+        ('\ufb03', 'ffi'),
+        ('\ufb04', 'ffl'),
+        ('\ufb05', 'ft'),
+        ('\ufb06', 'st'),
+    ]:
+        text = text.replace(lig, repl)
+
     # Normalize unicode hyphens/dashes to standard hyphen or dash
     text = re.sub(r'[\u2010\u2011\u2012\u2013\u2014\u2015]', '-', text)
     # Normalize unicode quotes

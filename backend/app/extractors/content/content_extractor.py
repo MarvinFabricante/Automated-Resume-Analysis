@@ -380,19 +380,51 @@ def _supplement_skills_from_section(skills_section_text: str, skills_details: di
         "soft skills", "hard skills", "tools", "technologies", "languages",
         "frameworks", "frameworks & libraries", "databases", "databases & cloud",
         "tools & testing", "software", "none", "n/a", "na", "not applicable",
+        "order", "creation", "cancellation", "tracking", "resolution", "detail",
+        "attention", "attention to", "remote", "dashboard", "internal", "issue",
+        "other", "others", "basic", "good", "strong", "excellent", "proficient",
     }
     category_prefix_re = re.compile(
-        r'^(?:languages|frameworks(?:\s*(?:&|and)\s*libraries)?|'
-        r'databases(?:\s*(?:&|and)\s*cloud)?|tools(?:\s*(?:&|and)\s*testing)?|'
-        r'technologies|software|platforms|cloud|testing|other|others|'
-        r'hard\s+skills|soft\s+skills|technical\s+skills|core\s+skills)\s*:\s*(.+)$',
+        r'^[A-Za-z0-9][A-Za-z0-9\s/&\-]{1,35}:\s*(.+)$'
+    )
+
+    # Pre-join soft-wrapped lines in PDF/DOCX skills sections (e.g. unclosed parens or wrapped phrases)
+    raw_lines = [l.strip() for l in skills_section_text.split('\n') if l.strip()]
+    merged_lines: list[str] = []
+    _CONTINUATION_END_RE = re.compile(
+        r'(?:,\s*|\b(?:and|or|to|of|in|for|with|on|by|from|&|issue|admin|remote|device|order|data|customer|product|stock|multi-chat|handling)\s*)$',
         re.I,
     )
+    for rl in raw_lines:
+        if not merged_lines:
+            merged_lines.append(rl)
+            continue
+        prev = merged_lines[-1]
+        starts_bullet = rl.startswith(('•', '-', '*', '▪', '►', '✓'))
+        has_cat_colon = bool(category_prefix_re.match(rl)) and not prev.endswith(',')
+        unclosed_paren = prev.count('(') > prev.count(')')
+        is_continuation = (
+            unclosed_paren
+            or (
+                not starts_bullet
+                and not has_cat_colon
+                and (
+                    prev.endswith(',')
+                    or _CONTINUATION_END_RE.search(prev) is not None
+                    or rl[0].islower()
+                    or rl.startswith(')')
+                )
+            )
+        )
+        if is_continuation:
+            merged_lines[-1] = f"{prev} {rl}"
+        else:
+            merged_lines.append(rl)
 
     added_items: list[str] = []
     existing_lower = {s.lower() for s in skills_list}
 
-    for raw_line in skills_section_text.split('\n'):
+    for raw_line in merged_lines:
         line = raw_line.strip()
         if not line:
             continue
@@ -404,8 +436,15 @@ def _supplement_skills_from_section(skills_section_text: str, skills_details: di
         parts = re.split(r'(?:[,|•*▪►✓\t;]+(?![^()]*\))|\s+/\s+)', line)
         for part in parts:
             item_clean = part.strip(' -•*▪►✓.:')
+            item_clean = re.sub(r'^(?:and|or)\s+', '', item_clean, flags=re.I).strip(' -•*▪►✓.:')
             if not item_clean or len(item_clean) < 2 or len(item_clean) > 55:
                 continue
+            if item_clean.count('(') != item_clean.count(')'):
+                continue
+            if ':' in item_clean:
+                item_clean = item_clean.split(':', 1)[1].strip(' -•*▪►✓.:')
+                if not item_clean or len(item_clean) < 2:
+                    continue
             if len(item_clean.split()) > 5:
                 continue
             item_lower = item_clean.lower()

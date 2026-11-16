@@ -263,5 +263,183 @@
     "candidate_edu": "BS Psychology",
     "required_edu": "Bachelor's Degree",
     "recruiter_action": 0
+  },
+  {
+    "resume_skills": [
+      "quality_control",
+      "product_inspection",
+      "defect_reporting",
+      "iso_9001",
+      "measuring_tools",
+      "six_sigma"
+    ],
+    "job_skills": [
+      "quality_control",
+      "product_inspection",
+      "defect_reporting",
+      "documentation",
+      "measuring_tools"
+    ],
+    "resume_title": "quality assurance inspector",
+    "job_title": "qa inspector",
+    "candidate_years": 3.0,
+    "required_years": 2.0,
+    "candidate_edu": "Bachelor of Science in Industrial Technology",
+    "required_edu": "Bachelor's in Engineering, Chemistry or a related field",
+    "recruiter_action": 1
+  },
+  {
+    "resume_skills": [
+      "customer_service",
+      "chat_support",
+      "shopify",
+      "order_processing"
+    ],
+    "job_skills": [
+      "quality_control",
+      "product_inspection",
+      "defect_reporting",
+      "measuring_tools"
+    ],
+    "resume_title": "customer service representative",
+    "job_title": "qa inspector",
+    "candidate_years": 1.0,
+    "required_years": 2.0,
+    "candidate_edu": "BS Computer Science",
+    "required_edu": "Bachelor's in Engineering, Chemistry or a related field",
+    "recruiter_action": 0
+  },
+  {
+    "resume_skills": [
+      "sap",
+      "bookkeeping",
+      "excel",
+      "reconciliation",
+      "accounts_payable",
+      "quickbooks"
+    ],
+    "job_skills": [
+      "sap",
+      "bookkeeping",
+      "excel",
+      "reconciliation",
+      "accounts_payable"
+    ],
+    "resume_title": "accounting clerk",
+    "job_title": "accounting assistant",
+    "candidate_years": 2.0,
+    "required_years": 1.0,
+    "candidate_edu": "Bachelor of Science in Accountancy",
+    "required_edu": "BS Accountancy",
+    "recruiter_action": 1
+  },
+  {
+    "resume_skills": [
+      "customer_service",
+      "delivery",
+      "time_management"
+    ],
+    "job_skills": [
+      "sap",
+      "bookkeeping",
+      "excel",
+      "reconciliation",
+      "accounts_payable"
+    ],
+    "resume_title": "delivery rider",
+    "job_title": "accounting assistant",
+    "candidate_years": 1.0,
+    "required_years": 1.0,
+    "candidate_edu": "BS Computer Science",
+    "required_edu": "BS Accountancy",
+    "recruiter_action": 0
+  },
+  {
+    "resume_skills": [
+      "sales_experience",
+      "communication",
+      "customer_handling",
+      "product_knowledge",
+      "negotiation"
+    ],
+    "job_skills": [
+      "sales_experience",
+      "communication",
+      "customer_handling",
+      "product_knowledge",
+      "negotiation"
+    ],
+    "resume_title": "sales associate",
+    "job_title": "sales officer",
+    "candidate_years": 3.0,
+    "required_years": 2.0,
+    "candidate_edu": "BS Business Administration Major in Marketing Management",
+    "required_edu": "Any bachelor's degree",
+    "recruiter_action": 1
+  },
+  {
+    "resume_skills": [
+      "kiln_operation",
+      "machine_handling",
+      "quality_checking",
+      "safety_compliance",
+      "5s",
+      "kaizen"
+    ],
+    "job_skills": [
+      "kiln_operation",
+      "machine_handling",
+      "quality_checking",
+      "safety_compliance"
+    ],
+    "resume_title": "production operator",
+    "job_title": "production operator",
+    "candidate_years": 4.0,
+    "required_years": 3.0,
+    "candidate_edu": "Diploma in Industrial Technology - TESDA",
+    "required_edu": "Senior high school graduate or vocational course",
+    "recruiter_action": 1
+  },
+  {
+    "resume_skills": [
+      "preventive_maintenance",
+      "troubleshooting",
+      "plc",
+      "electrical_systems",
+      "hydraulics"
+    ],
+    "job_skills": [
+      "preventive_maintenance",
+      "troubleshooting",
+      "plc",
+      "electrical_systems"
+    ],
+    "resume_title": "electrical maintenance technician",
+    "job_title": "maintenance technician",
+    "candidate_years": 3.0,
+    "required_years": 2.0,
+    "candidate_edu": "BS Electrical Engineering",
+    "required_edu": "Bachelor's or Vocational Diploma in Electrical/Mechanical",
+    "recruiter_action": 1
+  },
+  {
+    "resume_skills": [
+      "data_encoding",
+      "customer_service",
+      "chat_support"
+    ],
+    "job_skills": [
+      "preventive_maintenance",
+      "troubleshooting",
+      "plc",
+      "electrical_systems"
+    ],
+    "resume_title": "data encoder",
+    "job_title": "maintenance technician",
+    "candidate_years": 1.0,
+    "required_years": 2.0,
+    "candidate_edu": "Senior High School",
+    "required_edu": "Vocational Diploma in Electrical/Mechanical",
+    "recruiter_action": 0
   }
 ]
