@@ -329,15 +329,7 @@ const KeyMetrics: React.FC<KeyMetricsProps> = ({
           onClick={() => navigate('/admin/jobmanagement')}
         />
 
-        {/* 3. Application Flow / Multi-Segment Progress (Spans 2 cols on mobile) */}
-        <ApplicationFlowCard
-          appStats={appStats}
-          totalApps={totalApps}
-          applications={applications}
-          onFilterClick={handleFilterNavigation}
-        />
-
-        {/* 4. Average Match Score & Top Talent Quality Index */}
+        {/* 3. Average Match Score & Top Talent Quality Index */}
         <StatCard
           icon={Sparkles}
           label="Top Talent (≥80%)"
@@ -349,6 +341,14 @@ const KeyMetrics: React.FC<KeyMetricsProps> = ({
           iconColor="text-emerald-600"
           onClick={() => navigate('/hr/screeningportal')}
           className="col-span-2 sm:col-span-1 lg:col-span-1 xl:col-span-1"
+        />
+
+        {/* 4. Application Flow / Multi-Segment Progress (Spans full row on tablet, 2 cols on desktop) */}
+        <ApplicationFlowCard
+          appStats={appStats}
+          totalApps={totalApps}
+          applications={applications}
+          onFilterClick={handleFilterNavigation}
         />
       </div>
     </div>

@@ -191,8 +191,8 @@ const HRDashboard: React.FC = () => {
               {/* Subtle ambient brand mesh background */}
               <div className="absolute top-0 right-0 w-96 h-96 bg-gradient-to-bl from-rose-50/70 via-pink-50/30 to-transparent rounded-full blur-3xl pointer-events-none" />
 
-              <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-5 sm:gap-6 relative z-10">
-                <div>
+              <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-5 sm:gap-6 relative z-10">
+                <div className="min-w-0 max-w-2xl">
                   <div className="flex items-center gap-2 sm:gap-3 mb-1.5 sm:mb-2 flex-wrap">
                     <span className="px-2.5 sm:px-3 py-1 rounded-full text-[10px] sm:text-[11px] font-black uppercase tracking-wider bg-rose-50 text-[#D60041] border border-rose-100/90 flex items-center gap-1.5 shadow-2xs shrink-0">
                       <Radio size={12} className="text-[#D60041] animate-pulse" />
@@ -208,79 +208,76 @@ const HRDashboard: React.FC = () => {
                   <h1 className="text-xl sm:text-2xl md:text-3xl lg:text-4xl font-extrabold tracking-tight text-slate-900 leading-tight">
                     Welcome back, <span className="text-[#D60041]">{userName}</span>
                   </h1>
-                  <p className="text-[11px] sm:text-xs md:text-sm text-slate-500 font-medium mt-1 max-w-2xl leading-relaxed">
+                  <p className="text-[11px] sm:text-xs md:text-sm text-slate-500 font-medium mt-1 leading-relaxed">
                     Live recruitment analytics, automated resume parsing, and candidate evaluation pipeline.
                   </p>
                 </div>
 
-                {/* Command Actions Bar */}
-                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 sm:gap-2 w-full lg:w-auto">
+                {/* Command Actions Bar - Fully responsive flex-wrap layout */}
+                <div className="flex flex-wrap items-center gap-2 sm:gap-2.5 w-full xl:w-auto xl:justify-end">
                   {/* Primary Screening Action */}
                   <button
                     onClick={() => navigate('/hr/screeningportal')}
-                    className="w-full sm:w-auto px-4 py-2.5 sm:py-2.5 bg-gradient-to-r from-rose-600 to-[#D60041] hover:from-rose-700 hover:to-[#b50037] text-white rounded-2xl text-xs font-black uppercase tracking-wider transition-all shadow-md shadow-pink-900/20 flex items-center justify-center gap-2 active:scale-95 sm:order-last min-h-[42px]"
+                    className="w-full sm:w-auto px-4 py-2.5 bg-gradient-to-r from-rose-600 to-[#D60041] hover:from-rose-700 hover:to-[#b50037] text-white rounded-2xl text-xs font-black uppercase tracking-wider transition-all shadow-md shadow-pink-900/20 flex items-center justify-center gap-2 active:scale-95 min-h-[42px] cursor-pointer"
                   >
                     <Sparkles size={15} />
                     <span>Screen Applicants</span>
                   </button>
 
-                  {/* Secondary Action Row for Mobile / Inline on Desktop */}
-                  <div className="flex items-center gap-2 w-full sm:w-auto">
-                    {/* Track Talent Pipeline Action */}
-                    <button
-                      onClick={() => navigate('/hr/screeningportal')}
-                      className="flex-1 sm:flex-none px-3 sm:px-4 py-2.5 bg-rose-50 hover:bg-rose-100/80 text-[#D60041] border border-rose-200/80 rounded-2xl text-xs font-black uppercase tracking-wider transition-all shadow-2xs flex items-center justify-center gap-1.5 sm:gap-2 active:scale-95 min-h-[42px] truncate cursor-pointer"
-                      title="Track Talent Recruitment Pipeline"
-                    >
-                      <Zap size={15} className="shrink-0" />
-                      <span className="truncate">Track Pipeline</span>
-                    </button>
+                  {/* Track Talent Pipeline Action */}
+                  <button
+                    onClick={() => navigate('/hr/screeningportal')}
+                    className="flex-1 sm:flex-none px-3.5 sm:px-4 py-2.5 bg-rose-50 hover:bg-rose-100/80 text-[#D60041] border border-rose-200/80 rounded-2xl text-xs font-black uppercase tracking-wider transition-all shadow-2xs flex items-center justify-center gap-1.5 sm:gap-2 active:scale-95 min-h-[42px] truncate cursor-pointer"
+                    title="Track Talent Recruitment Pipeline"
+                  >
+                    <Zap size={15} className="shrink-0" />
+                    <span className="truncate">Track Pipeline</span>
+                  </button>
 
-                    {/* Quick Schedule Interview */}
-                    <button
-                      onClick={() => setIsScheduleModalOpen(true)}
-                      className="flex-1 sm:flex-none px-3.5 sm:px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-2xl text-xs font-bold transition-all shadow-xs flex items-center justify-center gap-1.5 sm:gap-2 active:scale-95 min-h-[42px] truncate cursor-pointer"
-                      title="Schedule New Interview Session"
-                    >
-                      <Calendar size={15} className="shrink-0 text-rose-300" />
-                      <span className="truncate">Schedule</span>
-                    </button>
+                  {/* Quick Schedule Interview */}
+                  <button
+                    onClick={() => setIsScheduleModalOpen(true)}
+                    className="flex-1 sm:flex-none px-3.5 sm:px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-2xl text-xs font-bold transition-all shadow-xs flex items-center justify-center gap-1.5 sm:gap-2 active:scale-95 min-h-[42px] truncate cursor-pointer"
+                    title="Schedule New Interview Session"
+                  >
+                    <Calendar size={15} className="shrink-0 text-rose-300" />
+                    <span className="truncate">Schedule</span>
+                  </button>
 
-                    {/* Import Resumes Module */}
-                    <button
-                      onClick={() => navigate('/hr/physical-resumes')}
-                      className="flex-1 sm:flex-none px-3 sm:px-4 py-2.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-2xl text-xs font-black uppercase tracking-wider transition-all shadow-2xs flex items-center justify-center gap-1.5 active:scale-95 min-h-[42px] truncate cursor-pointer"
-                      title="Import external, walk-in, and emailed resumes"
-                    >
-                      <FolderArchive size={15} className="shrink-0 text-emerald-600" />
-                      <span className="truncate">Import Resumes</span>
-                    </button>
+                  {/* Import Resumes Module */}
+                  <button
+                    onClick={() => navigate('/hr/physical-resumes')}
+                    className="flex-1 sm:flex-none px-3.5 sm:px-4 py-2.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-2xl text-xs font-black uppercase tracking-wider transition-all shadow-2xs flex items-center justify-center gap-1.5 active:scale-95 min-h-[42px] truncate cursor-pointer"
+                    title="Import external, walk-in, and emailed resumes"
+                  >
+                    <FolderArchive size={15} className="shrink-0 text-emerald-600" />
+                    <span className="truncate">Import Resumes</span>
+                  </button>
 
-                    {/* Export CSV Report */}
-                    <button
-                      type="button"
-                      data-testid="btn-export-csv"
-                      onClick={handleExportFullReport}
-                      className="flex-1 sm:flex-none px-3 sm:px-4 py-2.5 bg-white hover:bg-slate-50 text-slate-700 hover:text-slate-900 border border-slate-200/90 rounded-2xl text-xs font-bold transition-all shadow-2xs flex items-center justify-center gap-1.5 sm:gap-2 group active:scale-95 min-h-[42px] truncate cursor-pointer"
-                      title="Export applicant data and analytics to CSV"
-                    >
-                      <Download size={15} className="text-slate-400 group-hover:text-[#D60041] transition-colors shrink-0" />
-                      <span className="truncate">Export CSV</span>
-                    </button>
+                  {/* Export CSV Report */}
+                  <button
+                    type="button"
+                    data-testid="btn-export-csv"
+                    onClick={handleExportFullReport}
+                    className="flex-1 sm:flex-none px-3.5 sm:px-4 py-2.5 bg-white hover:bg-slate-50 text-slate-700 hover:text-slate-900 border border-slate-200/90 rounded-2xl text-xs font-bold transition-all shadow-2xs flex items-center justify-center gap-1.5 sm:gap-2 group active:scale-95 min-h-[42px] truncate cursor-pointer"
+                    title="Export applicant data and analytics to CSV"
+                  >
+                    <Download size={15} className="text-slate-400 group-hover:text-[#D60041] transition-colors shrink-0" />
+                    <span className="truncate">Export CSV</span>
+                  </button>
 
-                    {/* Export PDF Report */}
-                    <button
-                      type="button"
-                      data-testid="btn-export-pdf"
-                      onClick={handleExportPdfReport}
-                      disabled={isExportingPdf}
-                      className="flex-1 sm:flex-none px-3 sm:px-4 py-2.5 bg-white hover:bg-slate-50 disabled:opacity-60 text-slate-700 hover:text-slate-900 border border-slate-200/90 rounded-2xl text-xs font-bold transition-all shadow-2xs flex items-center justify-center gap-1.5 sm:gap-2 group active:scale-95 min-h-[42px] truncate cursor-pointer disabled:cursor-wait"
-                      title="Export applicant data and analytics to PDF"
-                    >
-                      <FileText size={15} className="text-slate-400 group-hover:text-[#D60041] transition-colors shrink-0" />
-                      <span className="truncate">{isExportingPdf ? 'Exporting PDF...' : 'Export PDF'}</span>
-                    </button>
-                  </div>
+                  {/* Export PDF Report */}
+                  <button
+                    type="button"
+                    data-testid="btn-export-pdf"
+                    onClick={handleExportPdfReport}
+                    disabled={isExportingPdf}
+                    className="flex-1 sm:flex-none px-3.5 sm:px-4 py-2.5 bg-white hover:bg-slate-50 disabled:opacity-60 text-slate-700 hover:text-slate-900 border border-slate-200/90 rounded-2xl text-xs font-bold transition-all shadow-2xs flex items-center justify-center gap-1.5 sm:gap-2 group active:scale-95 min-h-[42px] truncate cursor-pointer disabled:cursor-wait"
+                    title="Export applicant data and analytics to PDF"
+                  >
+                    <FileText size={15} className="text-slate-400 group-hover:text-[#D60041] transition-colors shrink-0" />
+                    <span className="truncate">{isExportingPdf ? 'Exporting PDF...' : 'Export PDF'}</span>
+                  </button>
                 </div>
               </div>
             </div>

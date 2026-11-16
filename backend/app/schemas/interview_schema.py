@@ -32,6 +32,16 @@ class InterviewUpdateSchema(BaseModel):
     call_language: Optional[str] = None
     panelist_ids: Optional[List[int]] = None
 
+class InterviewLogResponseSchema(BaseModel):
+    id: int
+    interview_id: int
+    log_type: str
+    details: Optional[str] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
 class VoiceCallRecordResponseSchema(BaseModel):
     id: int
     interview_id: int
@@ -80,6 +90,7 @@ class InterviewResponseSchema(BaseModel):
     verbal_notes: Optional[str] = None
     sms_backup_sent: Optional[bool] = False
     call_records: Optional[List[VoiceCallRecordResponseSchema]] = []
+    logs: Optional[List[InterviewLogResponseSchema]] = []
     
     class Config:
         from_attributes = True

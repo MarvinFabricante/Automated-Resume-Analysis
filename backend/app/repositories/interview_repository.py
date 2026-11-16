@@ -89,6 +89,8 @@ async def add_interview_log(db: AsyncSession, interview_id: int, log_type: str, 
     try:
         db.add(InterviewLog(interview_id=interview_id, log_type=log_type, details=details))
         await redis_tx_manager.commit_transaction(tx_id, {"interview_id": interview_id})
+        await delete_cache(f"interview:id:{interview_id}")
+        await clear_cache_pattern("interviews:")
     except Exception as e:
         await redis_tx_manager.fail_transaction(tx_id, str(e))
         raise
@@ -120,6 +122,7 @@ async def get_interview_by_id(db: AsyncSession, interview_id: int) -> Optional[I
         select(Interview)
         .options(*_interview_load_options())
         .filter(Interview.id == interview_id)
+        .execution_options(populate_existing=True)
     )
     interview = result.scalars().first()
     if interview:
@@ -139,6 +142,7 @@ async def get_interviews_for_application(db: AsyncSession, application_id: int) 
         .options(*_interview_load_options())
         .filter(Interview.job_application_id == application_id)
         .order_by(Interview.start_time.asc())
+        .execution_options(populate_existing=True)
     )
     interviews = result.scalars().all()
     await set_cache(cache_key, interviews, ttl=300)
@@ -180,6 +184,7 @@ async def get_interviews_for_candidate(db: AsyncSession, email: str) -> List[Int
         .join(JobApplication)
         .filter(func.lower(JobApplication.candidate_email) == normalized_email)
         .order_by(Interview.start_time.asc())
+        .execution_options(populate_existing=True)
     )
     interviews = result.scalars().all()
     await set_cache(cache_key, interviews, ttl=300)
@@ -197,6 +202,7 @@ async def get_all_interviews(db: AsyncSession) -> List[Interview]:
         select(Interview)
         .options(*_interview_load_options())
         .order_by(Interview.start_time.asc())
+        .execution_options(populate_existing=True)
     )
     interviews = result.scalars().all()
     await set_cache(cache_key, interviews, ttl=300)

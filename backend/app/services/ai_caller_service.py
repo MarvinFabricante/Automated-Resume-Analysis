@@ -1015,11 +1015,19 @@ async def send_backup_sms_notification(interview_id: int, db: AsyncSession) -> b
     interview.sms_backup_sent = True
     interview.call_status = "SMS_BACKUP_SENT"
 
+    # Mark the latest voice call record with sms_backup_sent = True if loaded
+    try:
+        call_recs = getattr(interview, "call_records", None)
+        if call_recs and isinstance(call_recs, list) and len(call_recs) > 0:
+            call_recs[0].sms_backup_sent = True
+    except Exception:
+        pass
+
     # REQ032: Log SMS backup notification
     db.add(InterviewLog(
         interview_id=interview.id,
         log_type="SMS_BACKUP_SENT",
-        details=f"Backup SMS notification dispatched to {phone} following unsuccessful voice call attempts."
+        details=f"Backup SMS notification delivered to {phone} following unsuccessful voice call attempts: {message}"
     ))
 
     # Notify HR that backup SMS was triggered

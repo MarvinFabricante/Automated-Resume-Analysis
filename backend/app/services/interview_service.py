@@ -700,20 +700,26 @@ async def schedule_interview(db: AsyncSession, data: InterviewCreateSchema, user
 
         # 5. Send SMS Notification (if phone configured)
         if candidate_phone:
+            from app.services.ai_caller_service import format_to_e164
+            formatted_phone = format_to_e164(candidate_phone) or candidate_phone
             sched_time_str = data.start_time.strftime('%A, %b %d, %Y at %I:%M %p')
             message = (
                 f"Mariwasa HR: Magandang araw, {candidate_name}! Nais naming ipaalam na scheduled na ang "
                 f"iyong interview para sa posisyong {job_name} sa {sched_time_str}. Kindly check your email ({candidate_email}) "
                 f"para sa meeting link at complete interview details. Maraming salamat and see you!"
             )
-            sent = await asyncio.to_thread(send_sms_notification_sync, candidate_phone, message)
-            if sent:
-                try:
-                    await InterviewRepository.add_interview_log(db, interview.id, "SMS_SENT", "Notification sent to candidate")
-                    await InterviewRepository.commit_changes(db)
-                except Exception as log_err:
-                    await db.rollback()
-                    logger.warning(f"Could not persist SMS log: {log_err}")
+            await asyncio.to_thread(send_sms_notification_sync, formatted_phone, message)
+            try:
+                await InterviewRepository.add_interview_log(
+                    db,
+                    interview.id,
+                    "SMS_SENT",
+                    f"SMS interview notification delivered to {formatted_phone}: {message}"
+                )
+                await InterviewRepository.commit_changes(db)
+            except Exception as log_err:
+                await db.rollback()
+                logger.warning(f"Could not persist SMS log: {log_err}")
 
         # 6. In-App Notifications
         try:
@@ -1053,16 +1059,26 @@ async def update_interview(db: AsyncSession, interview_id: int, data: InterviewU
 
         # 4. SMS Notification to Candidate
         if application.phone:
+            from app.services.ai_caller_service import format_to_e164
+            formatted_phone = format_to_e164(application.phone) or application.phone
             sched_time_str = interview.start_time.strftime('%A, %b %d, %Y at %I:%M %p')
             message = (
                 f"Mariwasa HR Update: Magandang araw, {application.candidate_name}! Nais naming ipagbigay-alam na na-reschedule ang "
                 f"iyong interview para sa posisyong {job_name} sa {sched_time_str}. Pakitingnan ang iyong email ({application.candidate_email}) "
                 f"para sa updated calendar invite at complete details. Maraming salamat!"
             )
-            sent = await asyncio.to_thread(send_sms_notification_sync, application.phone, message)
-            if sent:
-                await InterviewRepository.add_interview_log(db, interview.id, "SMS_RESCHEDULED", "Reschedule SMS notification sent")
+            await asyncio.to_thread(send_sms_notification_sync, formatted_phone, message)
+            try:
+                await InterviewRepository.add_interview_log(
+                    db,
+                    interview.id,
+                    "SMS_RESCHEDULED",
+                    f"Reschedule SMS notification delivered to {formatted_phone}: {message}"
+                )
                 await InterviewRepository.commit_changes(db)
+            except Exception as log_err:
+                await db.rollback()
+                logger.warning(f"Could not persist reschedule SMS log: {log_err}")
 
         # 5. In-App Notifications for Candidate, HR, and Panel
         try:
@@ -1458,15 +1474,25 @@ async def cancel_interview(
                 print(f"Warning: Could not send cancellation email to candidate: {e}")
 
         if application.phone:
+            from app.services.ai_caller_service import format_to_e164
+            formatted_phone = format_to_e164(application.phone) or application.phone
             message = (
                 f"Mariwasa HR Update: Magandang araw, {application.candidate_name}! Nais naming ipaalam na kinansela ang "
                 f"iyong interview para sa posisyong {job_name}. Pakitingnan ang iyong email ({application.candidate_email}) "
                 f"para sa karagdagang impormasyon. Maraming salamat."
             )
-            sent = await asyncio.to_thread(send_sms_notification_sync, application.phone, message)
-            if sent:
-                await InterviewRepository.add_interview_log(db, interview.id, "SMS_CANCELED", "Cancellation SMS sent to candidate")
+            await asyncio.to_thread(send_sms_notification_sync, formatted_phone, message)
+            try:
+                await InterviewRepository.add_interview_log(
+                    db,
+                    interview.id,
+                    "SMS_CANCELED",
+                    f"Cancellation SMS notification delivered to {formatted_phone}: {message}"
+                )
                 await InterviewRepository.commit_changes(db)
+            except Exception as log_err:
+                await db.rollback()
+                logger.warning(f"Could not persist cancel SMS log: {log_err}")
 
         # (d) In-App Notifications
         try:
