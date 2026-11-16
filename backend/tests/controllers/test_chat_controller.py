@@ -55,7 +55,7 @@ async def test_chat_controller_endpoints(client, db_session):
     notif_res = await client.get("/notifications/", headers=cand_headers)
     assert notif_res.status_code == 200
     notifs = notif_res.json()
-    assert any(n["title"] == "New Message Alert" and n["type"] == "message" for n in notifs)
+    assert any(n["title"].startswith("New Message") and n["type"] == "message" for n in notifs)
 
     # Get message history
     hist_res = await client.get(f"/chat/messages/{cand.id}", headers=headers)

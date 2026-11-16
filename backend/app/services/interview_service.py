@@ -149,7 +149,21 @@ def _get_valid_credentials(user) -> Optional[str]:
         if not isinstance(creds_data, dict):
             return None
 
-        creds = Credentials.from_authorized_user_info(creds_data, CALENDAR_SCOPES)
+        try:
+            creds = Credentials.from_authorized_user_info(creds_data, CALENDAR_SCOPES)
+        except Exception:
+            token = creds_data.get("token") or creds_data.get("access_token")
+            if token:
+                creds = Credentials(
+                    token=token,
+                    refresh_token=creds_data.get("refresh_token"),
+                    token_uri=creds_data.get("token_uri"),
+                    client_id=creds_data.get("client_id"),
+                    client_secret=creds_data.get("client_secret"),
+                    scopes=CALENDAR_SCOPES
+                )
+            else:
+                return None
         if not creds:
             return None
 

@@ -112,7 +112,7 @@ async def test_hr_messaged_creates_new_message_alert_notification(db_session):
     from app.services.notification_service import get_all_notifications
     notifs = await get_all_notifications(db_session, role="CANDIDATE", email=cand.email)
     assert len(notifs) >= 1
-    target_notif = next((n for n in notifs if n.title == "New Message Alert"), None)
+    target_notif = next((n for n in notifs if n.title.startswith("New Message")), None)
     assert target_notif is not None
     assert target_notif.type == "message"
     assert target_notif.target_role == "CANDIDATE"

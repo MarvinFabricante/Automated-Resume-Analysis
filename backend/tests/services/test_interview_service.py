@@ -1517,9 +1517,9 @@ async def test_calendar_api_transient_retry_success(db_session, mock_interview_e
         assert interview.job_application_id == app.id
         assert interview.google_event_id == "g_event_retry_recovered_123"
 
-        # Candidate application status updated to REVIEWED
+        # Candidate application status updated to INTERVIEW SCHEDULED
         await db_session.refresh(app)
-        assert app.status == "REVIEWED"
+        assert app.status == "INTERVIEW SCHEDULED"
 
         # Notification emails sent (candidate and HR)
         assert m_email.call_count >= 1

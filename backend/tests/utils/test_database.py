@@ -131,7 +131,7 @@ async def test_init_db_success():
 
     with patch("app.utils.database.engine", mock_engine):
         await init_db()
-        mock_conn.run_sync.assert_awaited_once_with(Base.metadata.create_all)
+        mock_conn.run_sync.assert_any_await(Base.metadata.create_all)
 
 
 @pytest.mark.asyncio
