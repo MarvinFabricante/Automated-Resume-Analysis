@@ -5,7 +5,7 @@ import {
   Target, TrendingUp, Lightbulb, CheckCircle2, XCircle, AlertTriangle,
   Zap, BarChart3, BookOpen, Award, Copy, Check, Calendar, Download,
   Building2, Clock, Sparkles, ShieldCheck, Printer, CheckCircle,
-  History, RotateCcw, ChevronDown
+  History, RotateCcw, ChevronDown, MessageSquare
 } from 'lucide-react';
 import { getAssetUrl } from '../../../services/api';
 import {
@@ -22,6 +22,7 @@ import {
   filterAndSortUpcomingInterviews,
   mergeInterviewsById,
   mergeCallLogs,
+  extractMessageLogs,
   formatUtcLogTimestamp,
   getCallOutcomeBadgeClass,
   isUpcomingInterview,
@@ -348,6 +349,13 @@ const ViewCandidateDetailsModal: React.FC<ViewCandidateDetailsModalProps> = ({
   const upcomingInterviews = filterAndSortUpcomingInterviews(allCandidateInterviews);
   const pastOrCompletedInterviews = allCandidateInterviews.filter((iv) => !isUpcomingInterview(iv));
   const callLogs = mergeCallLogs(appCallLogs, emailCallLogs, allCandidateInterviews);
+  const messageLogs = extractMessageLogs(
+    allCandidateInterviews,
+    callLogs,
+    candidate.phone,
+    candidate.email || candidate.candidate_email
+  );
+  const smsLogsCount = messageLogs.filter((m) => m.channel === 'SMS').length;
   const isLoadingHistory =
     isLoadingAppInterviews || isLoadingEmailInterviews || isLoadingAppLogs || isLoadingEmailLogs;
 
@@ -527,7 +535,7 @@ const ViewCandidateDetailsModal: React.FC<ViewCandidateDetailsModalProps> = ({
     {
       id: 'schedule_calls',
       label: 'Interviews & Calls',
-      count: upcomingInterviews.length + callLogs.length || undefined,
+      count: upcomingInterviews.length + callLogs.length + messageLogs.length || undefined,
       icon: Calendar,
     },
     { id: 'skills', label: 'Skills Gap', count: missingSkills.length ? missingSkills.length : undefined, icon: Zap },
@@ -560,6 +568,7 @@ const ViewCandidateDetailsModal: React.FC<ViewCandidateDetailsModalProps> = ({
     const displayedUpcoming = compact ? upcomingInterviews.slice(0, 3) : upcomingInterviews;
     const displayedPast = compact ? [] : pastOrCompletedInterviews;
     const displayedLogs = compact ? callLogs.slice(0, 4) : callLogs;
+    const displayedMessages = compact ? messageLogs.slice(0, 4) : messageLogs;
 
     return (
       <div className="space-y-4">
@@ -583,7 +592,7 @@ const ViewCandidateDetailsModal: React.FC<ViewCandidateDetailsModalProps> = ({
               </div>
             </div>
 
-            {compact && (upcomingInterviews.length > 0 || callLogs.length > 0) && (
+            {compact && (upcomingInterviews.length > 0 || callLogs.length > 0 || messageLogs.length > 0) && (
               <button
                 type="button"
                 onClick={() => setActiveTab('schedule_calls')}
@@ -635,6 +644,13 @@ const ViewCandidateDetailsModal: React.FC<ViewCandidateDetailsModalProps> = ({
                           className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase border ${getCallOutcomeBadgeClass(iv.call_status)}`}
                         >
                           Call: {String(iv.call_status).replace(/_/g, ' ')}
+                        </span>
+                      )}
+                      {(iv.candidate_phone || (candidatePhone && candidatePhone !== 'Not provided')) && (
+                        <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase bg-emerald-100 text-emerald-800 border border-emerald-200">
+                          {iv.sms_backup_sent || String(iv.call_status || '').toUpperCase() === 'SMS_BACKUP_SENT'
+                            ? 'SMS: BACKUP SENT'
+                            : 'SMS: DELIVERED'}
                         </span>
                       )}
                     </div>
@@ -772,6 +788,84 @@ const ViewCandidateDetailsModal: React.FC<ViewCandidateDetailsModalProps> = ({
                   </div>
                 );
               })}
+            </div>
+          )}
+        </div>
+
+        {/* Message Logs Section (SMS & Notification Delivery Logs) */}
+        <div
+          data-testid={compact ? 'overview-message-logs' : 'candidate-profile-message-logs'}
+          className="bg-white border border-gray-200/80 rounded-2xl p-4 sm:p-5 space-y-3"
+        >
+          <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-gray-100">
+            <div className="flex items-center gap-2">
+              <div className="w-7 h-7 rounded-xl bg-emerald-50 border border-emerald-100 flex items-center justify-center text-emerald-600">
+                <MessageSquare size={14} />
+              </div>
+              <div>
+                <h4 className="text-xs font-black text-gray-900 uppercase tracking-wider">
+                  Message Logs ({messageLogs.length})
+                </h4>
+                <p className="text-[11px] text-gray-500 font-medium">
+                  SMS interview notifications, backup text alerts, and delivery status
+                </p>
+              </div>
+            </div>
+
+            {smsLogsCount > 0 && (
+              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black uppercase bg-emerald-50 text-emerald-700 border border-emerald-200">
+                <CheckCircle2 size={12} className="text-emerald-600" />
+                <span>SMS Delivered ({smsLogsCount})</span>
+              </span>
+            )}
+          </div>
+
+          {isLoadingHistory ? (
+            <div className="h-14 rounded-xl bg-slate-50 animate-pulse" />
+          ) : displayedMessages.length === 0 ? (
+            <div className="py-4 px-3 rounded-xl bg-slate-50/80 border border-slate-100 text-xs text-gray-500 font-medium">
+              No SMS or notification messages recorded for this candidate yet.
+            </div>
+          ) : (
+            <div className="space-y-2.5 max-h-72 overflow-y-auto pr-1">
+              {displayedMessages.map((msg, idx) => (
+                <div
+                  key={msg.id || `msg-${idx}`}
+                  data-testid="candidate-message-log-item"
+                  className="p-3 rounded-xl bg-slate-50/70 border border-slate-200/70 flex flex-col sm:flex-row sm:items-start justify-between gap-2 text-xs"
+                >
+                  <div className="space-y-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-black text-gray-900">
+                        {msg.label}
+                      </span>
+                      <span
+                        className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase border ${
+                          msg.channel === 'SMS'
+                            ? 'bg-indigo-100 text-indigo-800 border-indigo-200'
+                            : 'bg-sky-100 text-sky-800 border-sky-200'
+                        }`}
+                      >
+                        {msg.channel}
+                      </span>
+                      <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase bg-emerald-100 text-emerald-800 border border-emerald-200 inline-flex items-center gap-1">
+                        <Check size={10} />
+                        <span>{msg.status || 'DELIVERED'}</span>
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-gray-500 font-medium">
+                      To {msg.recipient}
+                      {msg.interview_title ? ` • ${msg.interview_title}` : ''}
+                    </p>
+                    {msg.details && (
+                      <p className="text-[11px] text-gray-600 leading-relaxed">{msg.details}</p>
+                    )}
+                  </div>
+                  <span className="text-[10px] text-gray-400 font-mono shrink-0">
+                    {formatUtcLogTimestamp(msg.created_at)}
+                  </span>
+                </div>
+              ))}
             </div>
           )}
         </div>
@@ -1452,14 +1546,14 @@ const ViewCandidateDetailsModal: React.FC<ViewCandidateDetailsModalProps> = ({
 
               {/* ══════════ TAB 1B: INTERVIEWS & CALL LOGS ══════════ */}
               {(activeTab === 'schedule_calls' || activeTab === 'all') && (
-                <div className="space-y-6 animate-in fade-in duration-150 pt-2">
+                <div className="space-y-6 animate-in fade-in duration-150 pt-3">
                   <div className="flex flex-wrap items-center justify-between gap-3 pb-2 border-b border-gray-100">
                     <div>
                       <h3 className="text-sm font-black text-gray-900 uppercase tracking-tight">
-                        Interview Schedule & Voice Call History
+                        Interview Schedule, Voice Call & Message History
                       </h3>
                       <p className="text-xs text-gray-500 font-medium">
-                        Upcoming interviews, historical sessions, and automated AI call logs
+                        Upcoming interviews, historical sessions, automated AI call logs, and SMS message logs
                       </p>
                     </div>
                   </div>

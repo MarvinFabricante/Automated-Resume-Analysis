@@ -1261,5 +1261,94 @@ async def test_calendar_feed_and_candidate_call_logs_endpoints(client, db_sessio
     assert cand_logs[0]["id"] == app_logs[0]["id"]
 
 
+@pytest.mark.asyncio
+async def test_application_details_message_logs_and_sms_delivery_logs_endpoints(client, db_session):
+    """
+    Verifies that SMS notification logs (SMS_SENT and SMS_BACKUP_SENT) are recorded and returned
+    on interview responses for Application Details alongside AI Voice Call Logs.
+    """
+    from app.utils.auth import create_access_token
+    from unittest.mock import patch
+
+    hr = User(email="hr_msg_logs@example.com", password="pwd", role="HR", fullname="HR Message Logs")
+    db_session.add(hr)
+    await db_session.flush()
+
+    job = JobDescription(
+        job_id="JOB-MSG-LOGS-01",
+        job_title="Industrial Engineer",
+        department="Continuous Improvement",
+        job_type=JobType.FULL_TIME,
+        location="Batangas",
+        description="Industrial engineering role",
+    )
+    db_session.add(job)
+    await db_session.flush()
+
+    app = JobApplication(
+        job_id=job.id,
+        candidate_name="Jerome K. Bautista",
+        candidate_email="jerome.msg.logs@example.com",
+        phone="09260488030",
+        job_title="Industrial Engineer",
+        status="PENDING",
+    )
+    db_session.add(app)
+    await db_session.commit()
+    await db_session.refresh(app)
+
+    headers = {"Authorization": f"Bearer {create_access_token({'sub': hr.email, 'id': hr.id, 'role': 'HR'})}"}
+
+    # Pick a valid weekday working-hour slot (Tuesday 9:00 AM - 10:00 AM)
+    base_dt = datetime(2026, 11, 17, 9, 0, 0)  # Tuesday
+    end_dt = datetime(2026, 11, 17, 10, 0, 0)
+
+    with patch("app.services.interview_service.send_sms_notification_sync", return_value=False):
+        sched_res = await client.post(
+            "/interviews/schedule",
+            json={
+                "job_application_id": app.id,
+                "title": "Interview with Jerome K. Bautista",
+                "description": "Initial evaluation",
+                "start_time": base_dt.isoformat(),
+                "end_time": end_dt.isoformat(),
+                "interviewer_id": hr.id,
+                "call_language": "fil",
+            },
+            headers=headers,
+        )
+    assert sched_res.status_code == 200
+    sched_data = sched_res.json()
+    interview_id = sched_data["id"]
+
+    # Verify SMS_SENT log is included in interview response logs even when running in simulation/container mode
+    log_types = [l["log_type"] for l in sched_data.get("logs", [])]
+    assert "SMS_SENT" in log_types
+    sms_sent_log = next(l for l in sched_data["logs"] if l["log_type"] == "SMS_SENT")
+    assert "+639260488030" in sms_sent_log["details"]
+    assert "Jerome K. Bautista" in sms_sent_log["details"]
+
+    # Place a voice call and trigger backup SMS
+    call_res = await client.post(f"/ai-caller/interview/{interview_id}/call?language=fil", headers=headers)
+    assert call_res.status_code == 200
+
+    backup_res = await client.post(f"/ai-caller/interview/{interview_id}/send-backup-sms", headers=headers)
+    assert backup_res.status_code == 200
+    assert backup_res.json()["status"] == "success"
+
+    # Fetch Application Interviews (used by Application Details modal)
+    app_iv_res = await client.get(f"/interviews/application/{app.id}", headers=headers)
+    assert app_iv_res.status_code == 200
+    app_ivs = app_iv_res.json()
+    assert len(app_ivs) == 1
+    iv_item = app_ivs[0]
+    assert iv_item["sms_backup_sent"] is True
+    assert len(iv_item.get("call_records", [])) >= 1
+    iv_log_types = [l["log_type"] for l in iv_item.get("logs", [])]
+    assert "SMS_SENT" in iv_log_types
+    assert "SMS_BACKUP_SENT" in iv_log_types
+
+
+
 
 
