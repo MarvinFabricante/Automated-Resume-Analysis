@@ -16,6 +16,7 @@ import ResumePreviewModal from '../../../components/modals/shared/ResumePreviewM
 import ApplicationProgressBar from '../../../components/common/ApplicationProgressBar';
 import ExperienceGapAlert from '../../../components/common/ExperienceGapAlert';
 import { broadcastAtsUpdate } from '../../../utils/realtimeSync';
+import { formatApiErrorDetail, toPositiveIntOrUndefined, toStringArray } from '../../../utils/errorUtils';
 
 
 interface InfoItemProps {
@@ -213,7 +214,7 @@ const PreviewAndVerifyPage: React.FC = () => {
       }
     } catch (err: any) {
       console.error("Failed to replace resume:", err);
-      const msg = err.response?.data?.detail || "Failed to parse new resume. Please ensure the file is valid.";
+      const msg = formatApiErrorDetail(err.response?.data?.detail, "Failed to parse new resume. Please ensure the file is valid.");
       setReplaceError(msg);
       alert(msg);
     } finally {
@@ -362,12 +363,23 @@ const PreviewAndVerifyPage: React.FC = () => {
       return;
     }
 
+    const candidateName = String(extractedData.personal.name || "").trim();
+    const candidateEmail = String(extractedData.personal.email || "").trim();
+    if (!candidateName || !candidateEmail) {
+      alert("Please provide your full name and a valid email address before submitting.");
+      return;
+    }
+
+    const certString = Array.isArray(extractedData.certifications)
+      ? extractedData.certifications.join(' | ')
+      : String(extractedData.certifications || data?.certifications || "").trim();
+
     setIsSubmitting(true);
     try {
       const payload = {
-        job_id: effectiveJobId,
-        candidate_name: extractedData.personal.name,
-        candidate_email: extractedData.personal.email,
+        job_id: String(effectiveJobId),
+        candidate_name: candidateName,
+        candidate_email: candidateEmail,
         phone: extractedData.personal.phone,
         location: extractedData.personal.location,
         job_title: state?.job?.title || state?.jobTitle || extractedData.experience.title || "Applicant",
@@ -375,14 +387,14 @@ const PreviewAndVerifyPage: React.FC = () => {
         relevance: extractedData.experience.relevance || "",
         degree: extractedData.education.degree || "",
         college: extractedData.education.college || "",
-        skills: extractedData.skills,
+        skills: toStringArray(extractedData.skills),
         work_experiences: extractedData.work_experiences || data?.work_experiences || undefined,
-        total_experience_months: activeData?.total_experience_months || data?.total_experience_months || undefined,
-        years_experience: Number(extractedData.years_experience || 0) || undefined,
+        total_experience_months: toPositiveIntOrUndefined(activeData?.total_experience_months ?? data?.total_experience_months),
+        years_experience: toPositiveIntOrUndefined(extractedData.years_experience),
         education_entries: extractedData.education_entries || data?.education_entries || undefined,
         highest_educational_attainment: data?.highest_educational_attainment || undefined,
-        certifications: Array.isArray(extractedData.certifications) ? extractedData.certifications.join(' | ') : (extractedData.certifications || data?.certifications || undefined),
-        candidate_certifications: Array.isArray(extractedData.certifications) ? extractedData.certifications.join(' | ') : (extractedData.certifications || data?.candidate_certifications || undefined),
+        certifications: certString || undefined,
+        candidate_certifications: certString || String(data?.candidate_certifications || "").trim() || undefined,
         match_score: activeMatch?.match_percentage || state?.matchScore || 0,
         skills_score: activeMatch?.skills_score || 0,
         experience_score: activeMatch?.experience_score || 0,
@@ -394,16 +406,16 @@ const PreviewAndVerifyPage: React.FC = () => {
         experience_reason: activeMatch?.experience_reason || "",
         education_reason: activeMatch?.education_reason || "",
         certifications_reason: activeMatch?.certifications_reason || "",
-        matched_skills: activeMatch?.matched_skills || [],
-        missing_skills: activeMatch?.missing_skills || [],
+        matched_skills: toStringArray(activeMatch?.matched_skills),
+        missing_skills: toStringArray(activeMatch?.missing_skills),
         relevant_experience: activeMatch?.relevant_experience || "",
         experience_gaps: activeMatch?.experience_gaps || "",
         required_degree: activeMatch?.required_degree || "",
         candidate_degree: activeMatch?.candidate_degree || "",
-        recommendations: activeMatch?.recommendations || [],
+        recommendations: toStringArray(activeMatch?.recommendations),
         ai_summary: activeMatch?.ai_summary || extractedData.summary || "",
-        strengths: activeMatch?.strengths || [],
-        weaknesses: activeMatch?.weaknesses || [],
+        strengths: toStringArray(activeMatch?.strengths),
+        weaknesses: toStringArray(activeMatch?.weaknesses),
         ai_powered: Boolean(activeMatch?.ai_powered)
       };
 
@@ -418,7 +430,10 @@ const PreviewAndVerifyPage: React.FC = () => {
       });
     } catch (error: any) {
       console.error("Failed to submit application:", error);
-      const detail = error.response?.data?.detail || "Failed to submit application. Please check your network and try again.";
+      const detail = formatApiErrorDetail(
+        error.response?.data?.detail,
+        "Failed to submit application. Please check your network and try again."
+      );
       alert(detail);
     } finally {
       setIsSubmitting(false);
