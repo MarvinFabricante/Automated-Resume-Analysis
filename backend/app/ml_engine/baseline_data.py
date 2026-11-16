@@ -29,7 +29,39 @@ SKILL_CLUSTERS: Dict[str, List[str]] = {
     "ceramics_manufacturing": [
         "kiln", "firing", "glaze", "slip_casting", "clay", "ceramic_tiles",
         "press_operator", "ball_mill", "thermal_processing", "quality_inspection",
-        "manufacturing", "production_planning", "industrial_engineering", "safety"
+        "manufacturing", "production_planning", "industrial_engineering", "safety",
+        "kiln_operation", "machine_handling", "quality_checking", "safety_compliance",
+        "lean_manufacturing", "5s", "kaizen", "gmp", "assembly_line"
+    ],
+    "quality_assurance_qc": [
+        "quality_control", "quality_assurance", "product_inspection", "defect_reporting",
+        "measuring_tools", "iso_9001", "statistical_process_control", "spc", "calibration",
+        "laboratory_inspection", "six_sigma", "defect_inspection", "documentation"
+    ],
+    "accounting_finance": [
+        "sap", "bookkeeping", "excel", "reconciliation", "accounts_payable",
+        "accounts_receivable", "financial_reporting", "auditing", "quickbooks",
+        "xero", "tax_compliance", "payroll", "billing", "invoicing", "vlookup"
+    ],
+    "sales_marketing_ecommerce": [
+        "sales_experience", "communication", "customer_handling", "product_knowledge",
+        "negotiation", "lead_generation", "quotation_preparation", "shopify",
+        "ecommerce", "digital_marketing", "seo", "merchandising", "brand_management"
+    ],
+    "customer_service_bpo": [
+        "customer_service", "chat_support", "email_support", "order_processing",
+        "kustomer", "zendesk", "freshdesk", "stripe", "virtual_assistance",
+        "data_encoding", "multitasking", "problem_solving", "time_management"
+    ],
+    "logistics_warehouse_delivery": [
+        "warehouse", "inventory_management", "forklift_operation", "3pl_coordination",
+        "shipping", "delivery", "dispatch", "stock_control", "material_handling",
+        "logistics", "supply_chain"
+    ],
+    "maintenance_engineering": [
+        "preventive_maintenance", "troubleshooting", "plc", "electrical_systems",
+        "hydraulics", "pneumatics", "mechatronics", "hvac", "welding", "smaw",
+        "autocad", "blueprint_reading", "equipment_repair"
     ],
     "mobile_development": [
         "react_native", "flutter", "ios", "android", "swift", "kotlin",
@@ -37,7 +69,8 @@ SKILL_CLUSTERS: Dict[str, List[str]] = {
     ],
     "management_hr": [
         "recruitment", "talent_acquisition", "hr_analytics", "sourcing",
-        "interviewing", "payroll", "employee_relations", "onboarding", "hr_management"
+        "interviewing", "payroll", "employee_relations", "onboarding", "hr_management",
+        "hris"
     ],
 }
 
@@ -60,11 +93,32 @@ JOB_TITLE_EQUIVALENCES: Dict[str, List[str]] = {
     ],
     "ceramics_technician": [
         "ceramics technician", "kiln operator", "tile production specialist",
-        "manufacturing operator", "ceramics process engineer"
+        "manufacturing operator", "ceramics process engineer", "production operator",
+        "machine operator", "production supervisor"
+    ],
+    "qa_inspector": [
+        "qa inspector", "qc inspector", "quality control analyst",
+        "quality assurance inspector", "quality control inspector"
+    ],
+    "accounting_staff": [
+        "accounting assistant", "accounting clerk", "bookkeeper",
+        "accounts payable clerk", "finance assistant", "certified public accountant"
+    ],
+    "sales_officer": [
+        "sales officer", "sales associate", "account executive",
+        "promodiser", "merchandiser", "e-commerce specialist"
+    ],
+    "customer_service": [
+        "customer service representative", "csr", "call center agent",
+        "virtual assistant", "technical support representative", "data encoder"
+    ],
+    "maintenance_tech": [
+        "maintenance technician", "electrical technician", "mechanical technician",
+        "plant engineer", "plc technician"
     ],
     "hr_specialist": [
         "hr specialist", "recruiter", "talent acquisition specialist",
-        "hr officer", "human resources associate"
+        "hr officer", "human resources associate", "hr generalist"
     ],
 }
 
@@ -278,6 +332,102 @@ def get_baseline_records() -> List[Dict[str, Any]]:
             "required_years": 2.0,
             "candidate_edu": "BS Psychology",
             "required_edu": "Bachelor's Degree",
+            "recruiter_action": 0,
+        },
+        # Positive: QA / QC Inspector for Quality Assurance role
+        {
+            "resume_skills": ["quality_control", "product_inspection", "defect_reporting", "iso_9001", "measuring_tools", "six_sigma"],
+            "job_skills": ["quality_control", "product_inspection", "defect_reporting", "documentation", "measuring_tools"],
+            "resume_title": "quality assurance inspector",
+            "job_title": "qa inspector",
+            "candidate_years": 3.0,
+            "required_years": 2.0,
+            "candidate_edu": "Bachelor of Science in Industrial Technology",
+            "required_edu": "Bachelor's in Engineering, Chemistry or a related field",
+            "recruiter_action": 1,
+        },
+        # Negative: Delivery Rider / CSR applying for QA Inspector
+        {
+            "resume_skills": ["customer_service", "chat_support", "shopify", "order_processing"],
+            "job_skills": ["quality_control", "product_inspection", "defect_reporting", "measuring_tools"],
+            "resume_title": "customer service representative",
+            "job_title": "qa inspector",
+            "candidate_years": 1.0,
+            "required_years": 2.0,
+            "candidate_edu": "BS Computer Science",
+            "required_edu": "Bachelor's in Engineering, Chemistry or a related field",
+            "recruiter_action": 0,
+        },
+        # Positive: Accounting Assistant with SAP, Bookkeeping, Excel
+        {
+            "resume_skills": ["sap", "bookkeeping", "excel", "reconciliation", "accounts_payable", "quickbooks"],
+            "job_skills": ["sap", "bookkeeping", "excel", "reconciliation", "accounts_payable"],
+            "resume_title": "accounting clerk",
+            "job_title": "accounting assistant",
+            "candidate_years": 2.0,
+            "required_years": 1.0,
+            "candidate_edu": "Bachelor of Science in Accountancy",
+            "required_edu": "BS Accountancy",
+            "recruiter_action": 1,
+        },
+        # Negative: Customer Service / Delivery Rider applying for Accounting Assistant
+        {
+            "resume_skills": ["customer_service", "delivery", "time_management"],
+            "job_skills": ["sap", "bookkeeping", "excel", "reconciliation", "accounts_payable"],
+            "resume_title": "delivery rider",
+            "job_title": "accounting assistant",
+            "candidate_years": 1.0,
+            "required_years": 1.0,
+            "candidate_edu": "BS Computer Science",
+            "required_edu": "BS Accountancy",
+            "recruiter_action": 0,
+        },
+        # Positive: Sales Officer with Customer Handling, Negotiation, E-commerce
+        {
+            "resume_skills": ["sales_experience", "communication", "customer_handling", "product_knowledge", "negotiation"],
+            "job_skills": ["sales_experience", "communication", "customer_handling", "product_knowledge", "negotiation"],
+            "resume_title": "sales associate",
+            "job_title": "sales officer",
+            "candidate_years": 3.0,
+            "required_years": 2.0,
+            "candidate_edu": "BS Business Administration Major in Marketing Management",
+            "required_edu": "Any bachelor's degree",
+            "recruiter_action": 1,
+        },
+        # Positive: Production Operator with Machine Handling, Kiln Operation, 5S
+        {
+            "resume_skills": ["kiln_operation", "machine_handling", "quality_checking", "safety_compliance", "5s", "kaizen"],
+            "job_skills": ["kiln_operation", "machine_handling", "quality_checking", "safety_compliance"],
+            "resume_title": "production operator",
+            "job_title": "production operator",
+            "candidate_years": 4.0,
+            "required_years": 3.0,
+            "candidate_edu": "Diploma in Industrial Technology - TESDA",
+            "required_edu": "Senior high school graduate or vocational course",
+            "recruiter_action": 1,
+        },
+        # Positive: Maintenance Technician with PLC, Electrical Systems, Preventive Maintenance
+        {
+            "resume_skills": ["preventive_maintenance", "troubleshooting", "plc", "electrical_systems", "hydraulics"],
+            "job_skills": ["preventive_maintenance", "troubleshooting", "plc", "electrical_systems"],
+            "resume_title": "electrical maintenance technician",
+            "job_title": "maintenance technician",
+            "candidate_years": 3.0,
+            "required_years": 2.0,
+            "candidate_edu": "BS Electrical Engineering",
+            "required_edu": "Bachelor's or Vocational Diploma in Electrical/Mechanical",
+            "recruiter_action": 1,
+        },
+        # Negative: Office Encoder applying for Industrial Maintenance Technician
+        {
+            "resume_skills": ["data_encoding", "customer_service", "chat_support"],
+            "job_skills": ["preventive_maintenance", "troubleshooting", "plc", "electrical_systems"],
+            "resume_title": "data encoder",
+            "job_title": "maintenance technician",
+            "candidate_years": 1.0,
+            "required_years": 2.0,
+            "candidate_edu": "Senior High School",
+            "required_edu": "Vocational Diploma in Electrical/Mechanical",
             "recruiter_action": 0,
         },
     ]

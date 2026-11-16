@@ -51,7 +51,26 @@ class FeedbackDatabase:
         return conn
 
     def init_db(self):
-        """Create the application_evaluations table and required indexes."""
+        """Create the application_evaluations table and required indexes, repairing malformed pages/indexes if needed."""
+        needs_rebuild = False
+        try:
+            with self._get_connection() as conn:
+                chk = conn.execute("PRAGMA integrity_check;").fetchone()
+                if not chk or chk[0] != "ok":
+                    try:
+                        conn.execute("REINDEX;")
+                        conn.commit()
+                    except sqlite3.DatabaseError:
+                        needs_rebuild = True
+                    chk2 = conn.execute("PRAGMA integrity_check;").fetchone()
+                    if not chk2 or chk2[0] != "ok":
+                        needs_rebuild = True
+        except sqlite3.DatabaseError:
+            needs_rebuild = True
+
+        if needs_rebuild:
+            self._rebuild_corrupted_db()
+
         with self._get_connection() as conn:
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS application_evaluations (
@@ -91,13 +110,83 @@ class FeedbackDatabase:
                 except sqlite3.OperationalError:
                     pass
 
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_eval_resume_job ON application_evaluations(resume_id, job_id);")
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_eval_candidate_email ON application_evaluations(candidate_email);")
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_eval_candidate_name ON application_evaluations(candidate_name);")
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_eval_job_code ON application_evaluations(job_code);")
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_eval_recruiter_action ON application_evaluations(recruiter_action);")
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_eval_used_training ON application_evaluations(used_in_training);")
-            conn.commit()
+            try:
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_eval_resume_job ON application_evaluations(resume_id, job_id);")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_eval_candidate_email ON application_evaluations(candidate_email);")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_eval_candidate_name ON application_evaluations(candidate_name);")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_eval_job_code ON application_evaluations(job_code);")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_eval_recruiter_action ON application_evaluations(recruiter_action);")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_eval_used_training ON application_evaluations(used_in_training);")
+                conn.commit()
+            except sqlite3.DatabaseError:
+                self._rebuild_corrupted_db()
+
+    def _rebuild_corrupted_db(self):
+        """Recover rows from a malformed SQLite file and recreate a clean database."""
+        if self.db_path == ":memory:" or not os.path.exists(self.db_path):
+            return
+        rows = []
+        try:
+            raw_conn = sqlite3.connect(self.db_path)
+            try:
+                rows = raw_conn.execute("SELECT * FROM application_evaluations").fetchall()
+            except Exception:
+                for eid in range(1, 500):
+                    try:
+                        r = raw_conn.execute(
+                            "SELECT * FROM application_evaluations WHERE evaluation_id = ?",
+                            (eid,),
+                        ).fetchone()
+                        if r:
+                            rows.append(r)
+                    except Exception:
+                        continue
+            raw_conn.close()
+        except Exception:
+            pass
+        for suffix in ("", "-wal", "-shm"):
+            p = f"{self.db_path}{suffix}"
+            if os.path.exists(p):
+                try:
+                    os.remove(p)
+                except OSError:
+                    pass
+        conn = sqlite3.connect(self.db_path)
+        conn.execute("""
+            CREATE TABLE application_evaluations (
+                evaluation_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                resume_id TEXT,
+                job_id TEXT,
+                candidate_email TEXT,
+                candidate_name TEXT,
+                job_code TEXT,
+                resume_skills_json TEXT,
+                job_skills_json TEXT,
+                resume_titles_json TEXT,
+                job_titles_json TEXT,
+                candidate_years REAL,
+                required_years REAL,
+                candidate_edu TEXT,
+                required_edu TEXT,
+                skill_similarity_score REAL,
+                title_similarity_score REAL,
+                experience_delta REAL,
+                education_match INTEGER,
+                predicted_fit_score REAL,
+                recruiter_action INTEGER,
+                used_in_training INTEGER DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        """)
+        for r in rows:
+            if len(r) == 23:
+                conn.execute(
+                    "INSERT INTO application_evaluations VALUES (" + ",".join("?" for _ in range(23)) + ")",
+                    r,
+                )
+        conn.commit()
+        conn.close()
 
     def log_live_prediction(
         self,

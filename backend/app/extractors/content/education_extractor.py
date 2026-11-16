@@ -519,6 +519,9 @@ def _is_invalid_institution(name: str) -> bool:
     if not name or len(name.strip()) < 3:
         return True
     clean = name.strip()
+    alpha_count = sum(1 for c in clean if c.isalpha())
+    if alpha_count < 3 or (alpha_count / max(1, len(clean))) < 0.35:
+        return True
     lower = clean.lower()
     if lower in {"not specified", "none", "n/a", "na", "not applicable"}:
         return True
@@ -541,6 +544,8 @@ def _is_invalid_institution(name: str) -> bool:
     has_school_word = _has_school_keyword(clean)
     if not has_school_word:
         if '|' in clean or ';' in clean or ',' in clean:
+            return True
+        if any(loc == lower or f" {loc}" in f" {lower}" for loc in _PHIL_LOCATIONS_SET):
             return True
         if any(pat.search(clean) for pat, _ in _HONORS_PATTERNS):
             return True
@@ -731,7 +736,14 @@ def _normalize_degree_or_course(text: str, level: str) -> Tuple[Optional[str], O
     if level in ["Secondary / High School", "Primary / Elementary"]:
         return None, None, None
 
-    if detect_section_label(clean) is not None or '@' in clean or clean.startswith(('•', '-', '*', '▪', '►', '✓')) or _is_skills_text(clean):
+    if (
+        detect_section_label(clean) is not None
+        or '@' in clean
+        or clean.startswith(('•', '-', '*', '▪', '►', '✓'))
+        or _is_skills_text(clean)
+        or _has_school_keyword(clean)
+        or re.fullmatch(r'[\s\d\-–—()/.,A-Za-z]{0,4}(?:19|20)\d{2}[\s\d\-–—()/.,A-Za-z]*', clean)
+    ):
         return None, None, None
 
     return None, clean if clean else None, None
@@ -1111,14 +1123,18 @@ def extract_structured_education(text: str) -> Dict[str, Any]:
             l_sy, l_ey = _extract_years(clean_l)
             has_line_y = bool(l_sy or l_ey)
 
+            has_d = any(_is_degree_text(p) for p in curr_lines)
+            has_s = any(_is_school_text(p) for p in curr_lines)
+
             if has_y:
+                if has_s and not has_d and _is_degree_text(clean_l) and not _is_school_text(clean_l) and not has_line_y:
+                    return False
+                if has_d and not has_s and _is_school_text(clean_l) and not _is_degree_text(clean_l) and not has_line_y:
+                    return False
                 return True
 
             if has_line_y:
                 return False
-
-            has_d = any(_is_degree_text(p) for p in curr_lines)
-            has_s = any(_is_school_text(p) for p in curr_lines)
 
             if _is_degree_text(clean_l) and has_d:
                 return True

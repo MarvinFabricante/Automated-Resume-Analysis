@@ -1,5 +1,5 @@
 import pytest
-from app.services.job_matching_service import calculate_match_score
+from app.services.job_matching_service import calculate_match_score, _DEFAULT_MATCHING_CONFIG
 
 def test_thesis_weighted_scoring_criteria():
     """
@@ -28,7 +28,7 @@ def test_thesis_weighted_scoring_criteria():
         "certifications_requirements": "AWS Certified"
     }
 
-    result = calculate_match_score(resume_data, job)
+    result = calculate_match_score(resume_data, job, matching_config=_DEFAULT_MATCHING_CONFIG)
 
     assert result["match_percentage"] > 70.0
     assert "completeness_score" in result

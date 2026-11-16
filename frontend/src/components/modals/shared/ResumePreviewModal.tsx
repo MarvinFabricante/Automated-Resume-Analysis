@@ -102,7 +102,9 @@ const ResumePreviewModal: React.FC<ResumePreviewModalProps> = ({
   const hasReplace = Boolean(onReplaceFile || onReplace);
 
   const handleTriggerReplace = () => {
-    if (onReplace) {
+    if (fileInputRef.current && onReplaceFile) {
+      fileInputRef.current.click();
+    } else if (onReplace) {
       onReplace();
     } else if (fileInputRef.current) {
       fileInputRef.current.click();
@@ -354,7 +356,7 @@ const ResumePreviewModal: React.FC<ResumePreviewModalProps> = ({
                           </div>
                           <div className="p-3 bg-slate-50 rounded-xl">
                             <span className="text-[10px] text-slate-400 font-bold uppercase block mb-0.5">Education</span>
-                            <span className="text-xs font-bold text-slate-900">{extractedData.highest_degree || extractedData.degree || 'Not detected'}</span>
+                            <span className="text-xs font-bold text-slate-900">{extractedData.degree || extractedData.highest_degree || 'Not detected'}</span>
                           </div>
                         </div>
                         {((Array.isArray(extractedData.certifications_list) && extractedData.certifications_list.length > 0) || extractedData.certifications) && (

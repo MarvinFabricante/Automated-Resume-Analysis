@@ -92,6 +92,20 @@ async def ensure_application_analysis_columns(conn):
         "is_flagged_for_review": "BOOLEAN DEFAULT FALSE",
         "review_flag_reason": "VARCHAR",
         "source": "VARCHAR DEFAULT 'Online'",
+        "certifications": "VARCHAR",
+        "certifications_score": "DOUBLE PRECISION",
+        "certifications_reason": "VARCHAR",
+        "required_certifications": "VARCHAR",
+        "candidate_certifications": "VARCHAR",
+        "work_experiences": "JSON",
+        "total_experience_months": "INTEGER",
+        "education_entries": "JSON",
+        "highest_educational_attainment": "VARCHAR",
+        "completeness_score": "DOUBLE PRECISION",
+        "completeness_status": "VARCHAR",
+        "missing_sections": "JSON",
+        "import_origin": "VARCHAR",
+        "imported_by": "VARCHAR",
     }
 
     dialect = conn.dialect.name

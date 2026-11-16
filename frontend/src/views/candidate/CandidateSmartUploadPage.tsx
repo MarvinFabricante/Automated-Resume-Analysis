@@ -24,7 +24,8 @@ import {
   Compass,
   Building2,
   ChevronRight,
-  Eye
+  Eye,
+  AlertTriangle
 } from 'lucide-react';
 import Header from '../../components/layout/Header';
 import Sidebar from '../../components/layout/Sidebar';
@@ -60,6 +61,7 @@ const CandidateSmartUploadPage: React.FC = () => {
   const [isTermsAccepted, setIsTermsAccepted] = useState<boolean>(true); // Pre-accepted for authenticated candidates
   const [extractedData, setExtractedData] = useState<any>(null);
   const [matchResults, setMatchResults] = useState<any[]>([]);
+  const [uploadError, setUploadError] = useState<string | null>(null);
 
   // Cooldown countdown
   useEffect(() => {
@@ -136,6 +138,7 @@ const CandidateSmartUploadPage: React.FC = () => {
   };
 
   const validateAndSetFile = async (selectedFile: File) => {
+    setUploadError(null);
     const validTypes = [
       'application/pdf',
       'application/msword',
@@ -153,15 +156,26 @@ const CandidateSmartUploadPage: React.FC = () => {
         /\.(pdf|docx|doc|txt|text)$/i.test(selectedFile.name) ||
         (!selectedFile.type && !/\.[a-zA-Z0-9]+$/i.test(selectedFile.name)))
     ) {
+      if (selectedFile.size === 0) {
+        const msg = 'This file is empty (0 bytes). Please upload a valid resume document.';
+        setUploadError(msg);
+        alert(msg);
+        return;
+      }
+
       if (selectedFile.size > 10 * 1024 * 1024) {
-        alert('File size exceeds 10MB limit. Please upload a smaller document.');
+        const msg = 'File size exceeds 10MB limit. Please upload a smaller document.';
+        setUploadError(msg);
+        alert(msg);
         return;
       }
 
       // Deep content check: reject disguised executables (.exe renamed to .pdf, etc.)
       const contentCheck = await checkFileContent(selectedFile);
       if (!contentCheck.valid) {
-        alert(contentCheck.error);
+        const msg = contentCheck.error || 'Invalid or corrupted file content.';
+        setUploadError(msg);
+        alert(msg);
         return;
       }
 
@@ -171,7 +185,9 @@ const CandidateSmartUploadPage: React.FC = () => {
       setExtractedData(null);
       setMatchResults([]);
     } else {
-      alert('Please upload a valid PDF, Word document, or text file (.pdf, .docx, .doc, .txt).');
+      const msg = 'Please upload a valid PDF, Word document, or text file (.pdf, .docx, .doc, .txt).';
+      setUploadError(msg);
+      alert(msg);
     }
   };
 
@@ -194,6 +210,7 @@ const CandidateSmartUploadPage: React.FC = () => {
   const handleUploadAndMatch = async () => {
     if (!file || !isTermsAccepted || cooldown > 0) return;
 
+    setUploadError(null);
     setIsUploading(true);
     setUploadProgress(15);
     setProgressStage('Processing resume document...');
@@ -226,9 +243,18 @@ const CandidateSmartUploadPage: React.FC = () => {
           skills: Array.isArray(extracted?.skills_list)
             ? extracted.skills_list.join(', ')
             : extracted?.skills || '',
-          experience: extracted?.relevance || extracted?.experience || '',
-          education: extracted?.degree || extracted?.highest_degree || '',
+          skills_list: extracted?.skills_list || [],
+          job_title: extracted?.job_title || '',
+          company: extracted?.company || '',
+          experience: extracted?.experience || extracted?.relevance || '',
+          relevance: extracted?.relevance || '',
+          years_experience: extracted?.years_experience || 0,
+          work_experiences: extracted?.work_experiences || [],
+          education: [extracted?.degree || extracted?.highest_degree, extracted?.institution || extracted?.college].filter(Boolean).join(' - '),
           highest_degree: extracted?.highest_degree || extracted?.degree || '',
+          education_entries: extracted?.education_entries || [],
+          certifications: extracted?.certifications || undefined,
+          completeness_score: extracted?.completeness_score,
           fullname: extracted?.fullname || fullname || '',
           location: extracted?.location || '',
           preferred_department: selectedDivision !== 'ALL' ? selectedDivision : undefined
@@ -255,12 +281,15 @@ const CandidateSmartUploadPage: React.FC = () => {
     } catch (error: any) {
       console.error('Candidate Smart Upload error:', error);
       if (error.response?.status === 429) {
-        alert('Server processing limit reached. Please wait 30 seconds before another scan.');
+        const msg = 'Server processing limit reached. Please wait 30 seconds before another scan.';
+        setUploadError(msg);
+        alert(msg);
         setCooldown(30);
       } else {
         const detail =
           error.response?.data?.detail ||
           'Failed to analyze resume. Please ensure your document contains readable text.';
+        setUploadError(detail);
         alert(detail);
       }
       setCooldown(10);
@@ -370,6 +399,44 @@ const CandidateSmartUploadPage: React.FC = () => {
 
             {/* UPLOAD WORKSPACE */}
             <div>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".pdf,.doc,.docx,.txt,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain"
+                className="hidden"
+                onChange={(e) => {
+                  const selected = e.target.files?.[0];
+                  if (selected) {
+                    validateAndSetFile(selected);
+                  }
+                  e.target.value = '';
+                }}
+              />
+
+              {uploadError && (
+                <div
+                  role="alert"
+                  data-testid="upload-error-banner"
+                  className="mb-5 p-4 bg-rose-50 border border-rose-200 rounded-2xl flex items-start justify-between gap-3 text-rose-800 shadow-2xs animate-in fade-in duration-200"
+                >
+                  <div className="flex items-start gap-3">
+                    <AlertTriangle size={18} className="text-rose-600 shrink-0 mt-0.5" />
+                    <div>
+                      <h4 className="text-xs sm:text-sm font-black text-rose-900">Resume Upload Error</h4>
+                      <p className="text-xs font-medium text-rose-700 mt-0.5">{uploadError}</p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setUploadError(null)}
+                    className="p-1 text-rose-400 hover:text-rose-700 rounded-lg transition-colors cursor-pointer"
+                    aria-label="Dismiss error"
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+              )}
+
               {!file ? (
                 /* DRAG AND DROP ZONE */
                 <div>
@@ -383,18 +450,6 @@ const CandidateSmartUploadPage: React.FC = () => {
                         : 'border-slate-200 hover:border-[#D10043]/50 hover:bg-slate-50/50'
                       }`}
                   >
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      accept=".pdf,.doc,.docx,.txt,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain"
-                      className="hidden"
-                      onChange={(e) => {
-                        if (e.target.files && e.target.files[0]) {
-                          validateAndSetFile(e.target.files[0]);
-                        }
-                      }}
-                    />
-
                     <div className="w-16 h-16 rounded-2xl bg-rose-50 text-[#D10043] flex items-center justify-center mb-4 shadow-2xs border border-rose-100">
                       <FileUp size={30} />
                     </div>
@@ -626,7 +681,7 @@ const CandidateSmartUploadPage: React.FC = () => {
                                 Degree
                               </span>
                               <p className="text-xs sm:text-sm font-bold text-slate-900 truncate">
-                                {extractedData.highest_degree || extractedData.degree || 'Degree Recorded'}
+                                {extractedData.degree || extractedData.highest_degree || 'Degree Recorded'}
                               </p>
                             </div>
                           </div>
@@ -759,6 +814,10 @@ const CandidateSmartUploadPage: React.FC = () => {
         resumeUrl={extractedData?.file_url}
         rawText={extractedData?.raw_text}
         extractedData={extractedData}
+        onReplaceFile={(newFile) => {
+          setShowPreviewModal(false);
+          validateAndSetFile(newFile);
+        }}
         onReplace={() => {
           setShowPreviewModal(false);
           fileInputRef.current?.click();

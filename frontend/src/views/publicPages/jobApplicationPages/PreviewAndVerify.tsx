@@ -7,7 +7,8 @@ import {
   Cpu, Briefcase, GraduationCap,
   CheckCircle, ArrowLeft, Target,
   Award, Sparkles, Layers, Clock,
-  Eye, FileUp, FileText, Code
+  Eye, FileUp, FileText, Code,
+  AlertTriangle, X
 } from 'lucide-react';
 import Header from '../../../components/layout/Header';
 import Footer from '../../../components/layout/Footer';
@@ -15,6 +16,7 @@ import ResumePreviewModal from '../../../components/modals/shared/ResumePreviewM
 import ApplicationProgressBar from '../../../components/common/ApplicationProgressBar';
 import ExperienceGapAlert from '../../../components/common/ExperienceGapAlert';
 import { broadcastAtsUpdate } from '../../../utils/realtimeSync';
+import { formatApiErrorDetail, toPositiveIntOrUndefined, toStringArray } from '../../../utils/errorUtils';
 
 
 interface InfoItemProps {
@@ -64,6 +66,8 @@ const PreviewAndVerifyPage: React.FC = () => {
   const [dynamicExtractedData, setDynamicExtractedData] = useState<any>(data || null);
   const [dynamicMatchData, setDynamicMatchData] = useState<any>(matchData || null);
   const [isReplacingResume, setIsReplacingResume] = useState<boolean>(false);
+  const [hasReplacedResume, setHasReplacedResume] = useState<boolean>(false);
+  const [replaceError, setReplaceError] = useState<string | null>(null);
   const replaceInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -106,6 +110,31 @@ const PreviewAndVerifyPage: React.FC = () => {
       if (bytes.length >= 4 && bytes[0] === 0x7f && bytes[1] === 0x45 && bytes[2] === 0x4c && bytes[3] === 0x46) {
         return { valid: false, error: 'File rejected by content check: ELF binary executable is not accepted.' };
       }
+      if (/\.pdf$/i.test(file.name)) {
+        let hasPdfHeader = false;
+        for (let i = 0; i < Math.min(bytes.length - 4, 1020); i++) {
+          if (bytes[i] === 0x25 && bytes[i + 1] === 0x50 && bytes[i + 2] === 0x44 && bytes[i + 3] === 0x46) {
+            hasPdfHeader = true;
+            break;
+          }
+        }
+        if (!hasPdfHeader) {
+          return { valid: false, error: 'File rejected by content check: The file has a .pdf extension but does not contain valid PDF content.' };
+        }
+      }
+      if (/\.(docx|doc)$/i.test(file.name)) {
+        const isZip = bytes.length >= 2 && bytes[0] === 0x50 && bytes[1] === 0x4b;
+        const isCfbf = bytes.length >= 4 && bytes[0] === 0xd0 && bytes[1] === 0xcf && bytes[2] === 0x11 && bytes[3] === 0xe0;
+        const isRtf = bytes.length >= 5 && bytes[0] === 0x7b && bytes[1] === 0x5c && bytes[2] === 0x72 && bytes[3] === 0x74 && bytes[4] === 0x66;
+        let isXml = false;
+        try {
+          const sliceText = new TextDecoder().decode(bytes.slice(0, 80));
+          isXml = sliceText.includes('<?xml') || sliceText.includes('<w:document');
+        } catch {}
+        if (!isZip && !isCfbf && !isRtf && !isXml) {
+          return { valid: false, error: 'File rejected by content check: The file has a Word extension (.docx/.doc) but does not contain valid Word document content.' };
+        }
+      }
       return { valid: true };
     } catch {
       return { valid: true };
@@ -113,23 +142,64 @@ const PreviewAndVerifyPage: React.FC = () => {
   };
 
   const handleReplaceResume = async (newFile: File) => {
+    setReplaceError(null);
+    const validTypes = [
+      'application/pdf',
+      'application/msword',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'text/plain'
+    ];
+    const isValidType =
+      newFile &&
+      (validTypes.includes(newFile.type) ||
+        newFile.type.startsWith('text/') ||
+        newFile.type.includes('pdf') ||
+        newFile.type.includes('word') ||
+        newFile.type.includes('officedocument') ||
+        /\.(pdf|docx|doc|txt|text)$/i.test(newFile.name) ||
+        (!newFile.type && !/\.[a-zA-Z0-9]+$/i.test(newFile.name)));
+
+    if (!isValidType) {
+      const msg = 'Invalid file type. Please upload a PDF, Word document, or text file (.pdf, .docx, .doc, .txt).';
+      setReplaceError(msg);
+      alert(msg);
+      return;
+    }
+
+    if (newFile.size === 0) {
+      const msg = 'This file is empty (0 bytes). Please upload a valid resume document.';
+      setReplaceError(msg);
+      alert(msg);
+      return;
+    }
+
+    if (newFile.size > 10 * 1024 * 1024) {
+      const msg = 'File size exceeds 10MB limit. Please upload a smaller document.';
+      setReplaceError(msg);
+      alert(msg);
+      return;
+    }
+
     const contentCheck = await checkFileContent(newFile);
     if (!contentCheck.valid) {
-      alert(contentCheck.error);
+      const msg = contentCheck.error || 'Invalid or corrupted file content.';
+      setReplaceError(msg);
+      alert(msg);
       return;
     }
 
     try {
       setIsReplacingResume(true);
-      setCurrentFile(newFile);
-      setCurrentFileName(newFile.name);
-
       const response = await candidateService.parseResume(newFile);
       if (response.data) {
         const parsed = response.data;
+        setCurrentFile(newFile);
+        setCurrentFileName(newFile.name);
         setCurrentResumeUrl(parsed.file_url || null);
         setCurrentRawText(parsed.raw_text || null);
         setDynamicExtractedData(parsed);
+        setHasReplacedResume(true);
+        setShowResumePreview(false);
 
         if (jobId && jobId !== 'smart') {
           try {
@@ -144,7 +214,9 @@ const PreviewAndVerifyPage: React.FC = () => {
       }
     } catch (err: any) {
       console.error("Failed to replace resume:", err);
-      alert(err.response?.data?.detail || "Failed to parse new resume. Please ensure the file is valid.");
+      const msg = formatApiErrorDetail(err.response?.data?.detail, "Failed to parse new resume. Please ensure the file is valid.");
+      setReplaceError(msg);
+      alert(msg);
     } finally {
       setIsReplacingResume(false);
     }
@@ -184,22 +256,34 @@ const PreviewAndVerifyPage: React.FC = () => {
 
   const extractedData = {
     personal: {
-      name: activeData?.fullname || state?.formData?.fullName || "",
-      email: activeData?.email || state?.formData?.email || "",
-      phone: activeData?.phone || state?.formData?.phone || "",
-      location: activeData?.location || state?.formData?.location || ""
+      name: (hasReplacedResume ? activeData?.fullname : (state?.formData?.fullName || state?.personal?.name || activeData?.fullname)) || "",
+      email: (hasReplacedResume ? activeData?.email : (state?.formData?.email || state?.personal?.email || activeData?.email)) || "",
+      phone: (hasReplacedResume ? activeData?.phone : (state?.formData?.phone || state?.personal?.phone || activeData?.phone)) || "",
+      location: (hasReplacedResume ? activeData?.location : (state?.formData?.location || state?.personal?.location || activeData?.location)) || ""
     },
-    skills: (Array.isArray(activeData?.skills_list) && activeData.skills_list.length > 0)
+    skills: (!hasReplacedResume && Array.isArray(state?.formData?.skills) && state.formData.skills.length > 0)
+      ? state.formData.skills
+      : (Array.isArray(activeData?.skills_list) && activeData.skills_list.length > 0)
       ? activeData.skills_list
-      : (activeData?.skills ? activeData.skills.split(' | ').filter(Boolean) : (state?.formData?.skills || ["Skills in review"])),
+      : (activeData?.skills ? String(activeData.skills).split(' | ').filter(Boolean) : (state?.formData?.skills || [])),
     experience: {
-      title: activeData?.job_title || state?.formData?.jobTitle || (activeData?.experience ? activeData.experience.split('|')[0]?.trim() : ""),
-      company: activeData?.company || state?.formData?.company || state?.job?.department || "Mariwasa Siam Ceramics",
-      relevance: activeData?.relevance || state?.formData?.relevance || (activeData?.years_experience ? `${activeData.years_experience}+ years of experience` : "Experience provided")
+      title: (hasReplacedResume
+        ? (activeData?.job_title || activeData?.work_experiences?.[0]?.job_title)
+        : (state?.formData?.jobTitle || state?.experience?.title || activeData?.job_title || activeData?.work_experiences?.[0]?.job_title)) || "",
+      company: (hasReplacedResume
+        ? (activeData?.company || activeData?.work_experiences?.[0]?.company_name)
+        : (state?.formData?.company || state?.experience?.company || activeData?.company || activeData?.work_experiences?.[0]?.company_name)) || "",
+      relevance: (hasReplacedResume
+        ? (activeData?.relevance || (activeData?.years_experience ? `${activeData.years_experience}+ years of experience` : ""))
+        : (state?.formData?.relevance || state?.experience?.relevance || activeData?.relevance || (activeData?.years_experience ? `${activeData.years_experience}+ years of experience` : ""))) || ""
     },
     education: {
-      degree: activeData?.degree || activeData?.highest_degree || state?.formData?.degree || "",
-      college: activeData?.institution || activeData?.college || state?.formData?.college || ""
+      degree: (hasReplacedResume
+        ? (activeData?.degree || activeData?.education_entries?.[0]?.degree_or_course || activeData?.highest_degree)
+        : (state?.formData?.degree || state?.education?.degree || activeData?.degree || activeData?.highest_degree)) || "",
+      college: (hasReplacedResume
+        ? (activeData?.institution || activeData?.college || activeData?.education_entries?.[0]?.institution_name)
+        : (state?.formData?.college || state?.education?.college || activeData?.institution || activeData?.college)) || ""
     },
     years_experience: activeData?.years_experience || 0,
     summary: activeData?.summary || state?.summary || "",
@@ -279,12 +363,23 @@ const PreviewAndVerifyPage: React.FC = () => {
       return;
     }
 
+    const candidateName = String(extractedData.personal.name || "").trim();
+    const candidateEmail = String(extractedData.personal.email || "").trim();
+    if (!candidateName || !candidateEmail) {
+      alert("Please provide your full name and a valid email address before submitting.");
+      return;
+    }
+
+    const certString = Array.isArray(extractedData.certifications)
+      ? extractedData.certifications.join(' | ')
+      : String(extractedData.certifications || data?.certifications || "").trim();
+
     setIsSubmitting(true);
     try {
       const payload = {
-        job_id: effectiveJobId,
-        candidate_name: extractedData.personal.name,
-        candidate_email: extractedData.personal.email,
+        job_id: String(effectiveJobId),
+        candidate_name: candidateName,
+        candidate_email: candidateEmail,
         phone: extractedData.personal.phone,
         location: extractedData.personal.location,
         job_title: state?.job?.title || state?.jobTitle || extractedData.experience.title || "Applicant",
@@ -292,14 +387,14 @@ const PreviewAndVerifyPage: React.FC = () => {
         relevance: extractedData.experience.relevance || "",
         degree: extractedData.education.degree || "",
         college: extractedData.education.college || "",
-        skills: extractedData.skills,
+        skills: toStringArray(extractedData.skills),
         work_experiences: extractedData.work_experiences || data?.work_experiences || undefined,
-        total_experience_months: activeData?.total_experience_months || data?.total_experience_months || undefined,
-        years_experience: Number(extractedData.years_experience || 0) || undefined,
+        total_experience_months: toPositiveIntOrUndefined(activeData?.total_experience_months ?? data?.total_experience_months),
+        years_experience: toPositiveIntOrUndefined(extractedData.years_experience),
         education_entries: extractedData.education_entries || data?.education_entries || undefined,
         highest_educational_attainment: data?.highest_educational_attainment || undefined,
-        certifications: Array.isArray(extractedData.certifications) ? extractedData.certifications.join(' | ') : (extractedData.certifications || data?.certifications || undefined),
-        candidate_certifications: Array.isArray(extractedData.certifications) ? extractedData.certifications.join(' | ') : (extractedData.certifications || data?.candidate_certifications || undefined),
+        certifications: certString || undefined,
+        candidate_certifications: certString || String(data?.candidate_certifications || "").trim() || undefined,
         match_score: activeMatch?.match_percentage || state?.matchScore || 0,
         skills_score: activeMatch?.skills_score || 0,
         experience_score: activeMatch?.experience_score || 0,
@@ -311,16 +406,16 @@ const PreviewAndVerifyPage: React.FC = () => {
         experience_reason: activeMatch?.experience_reason || "",
         education_reason: activeMatch?.education_reason || "",
         certifications_reason: activeMatch?.certifications_reason || "",
-        matched_skills: activeMatch?.matched_skills || [],
-        missing_skills: activeMatch?.missing_skills || [],
+        matched_skills: toStringArray(activeMatch?.matched_skills),
+        missing_skills: toStringArray(activeMatch?.missing_skills),
         relevant_experience: activeMatch?.relevant_experience || "",
         experience_gaps: activeMatch?.experience_gaps || "",
         required_degree: activeMatch?.required_degree || "",
         candidate_degree: activeMatch?.candidate_degree || "",
-        recommendations: activeMatch?.recommendations || [],
+        recommendations: toStringArray(activeMatch?.recommendations),
         ai_summary: activeMatch?.ai_summary || extractedData.summary || "",
-        strengths: activeMatch?.strengths || [],
-        weaknesses: activeMatch?.weaknesses || [],
+        strengths: toStringArray(activeMatch?.strengths),
+        weaknesses: toStringArray(activeMatch?.weaknesses),
         ai_powered: Boolean(activeMatch?.ai_powered)
       };
 
@@ -335,7 +430,10 @@ const PreviewAndVerifyPage: React.FC = () => {
       });
     } catch (error: any) {
       console.error("Failed to submit application:", error);
-      const detail = error.response?.data?.detail || "Failed to submit application. Please check your network and try again.";
+      const detail = formatApiErrorDetail(
+        error.response?.data?.detail,
+        "Failed to submit application. Please check your network and try again."
+      );
       alert(detail);
     } finally {
       setIsSubmitting(false);
@@ -438,6 +536,30 @@ const PreviewAndVerifyPage: React.FC = () => {
                 </button>
               </div>
             </div>
+
+            {replaceError && (
+              <div
+                role="alert"
+                data-testid="upload-error-banner"
+                className="mt-4 p-4 bg-rose-50 border border-rose-200 rounded-2xl flex items-start justify-between gap-3 text-rose-800 animate-in fade-in duration-200"
+              >
+                <div className="flex items-start gap-2.5">
+                  <AlertTriangle size={18} className="text-rose-600 shrink-0 mt-0.5" />
+                  <div>
+                    <h4 className="text-xs font-black text-rose-900">Failed to Replace Resume</h4>
+                    <p className="text-xs font-medium text-rose-700 mt-0.5">{replaceError}</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setReplaceError(null)}
+                  className="p-1 text-rose-400 hover:text-rose-700 rounded-lg transition-colors cursor-pointer"
+                  aria-label="Dismiss error"
+                >
+                  <X size={15} />
+                </button>
+              </div>
+            )}
           </section>
 
           {/* AI Match Analysis Card if activeMatch available */}
@@ -749,7 +871,13 @@ const PreviewAndVerifyPage: React.FC = () => {
         ref={replaceInputRef}
         type="file"
         accept=".pdf,.doc,.docx,.txt,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain"
-        onChange={(e) => e.target.files?.[0] && handleReplaceResume(e.target.files[0])}
+        onChange={(e) => {
+          const selected = e.target.files?.[0];
+          if (selected) {
+            handleReplaceResume(selected);
+          }
+          e.target.value = '';
+        }}
         className="hidden"
       />
 

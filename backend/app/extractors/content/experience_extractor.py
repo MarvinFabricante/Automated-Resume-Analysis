@@ -270,9 +270,43 @@ _JOB_TITLE_KEYWORDS_RE = re.compile(
     r'\b(?:Engineer|Engineering|Developer|Programmer|Specialist|Manager|Director|Officer|Analyst|Lead|Supervisor|'
     r'Technician|Assistant|Associate|Operator|Representative|Consultant|Architect|Designer|Coordinator|'
     r'Administrator|Crew|Cashier|Rider|Driver|Clerk|Intern|Trainee|Nurse|Teacher|Instructor|Professor|'
-    r'Accountant|Auditor|Chemist|Pharmacist|Janitor|Cook|Chef|Staff|Executive|Practitioner|Worker|Scientist)\b',
+    r'Accountant|Auditor|Chemist|Pharmacist|Janitor|Cook|Chef|Staff|Executive|Practitioner|Worker|Scientist|'
+    r'Carpenter|Welder|Mason|Electrician|Plumber|Mechanic|Helper|Apprentice|Inspector|Bagger|Promodiser|'
+    r'Merchandiser|Warehouseman|Stockman|Guard|Watchman|Barista|Dishwasher|Busboy|Bookkeeper|Encoder|Typist|Receptionist)\b',
     re.IGNORECASE
 )
+
+_RESPONSIBILITY_VERB_START_RE = re.compile(
+    r'^(?:[•\-*▪►✓]\s*)?(?:duties|responsibilities|key\s+tasks|tasks|achievements|'
+    r'reviewed|developed|built|managed|supervised|performed|assisted|handled|'
+    r'conducted|prepared|designed|created|led|worked|maintained|operated|'
+    r'implemented|executed|engineered|monitored|verified|discovered|resolved|'
+    r'processed|supported|collaborated|ensured|organized|coordinated|trained|'
+    r'taught|delivered|administered|analyzed|investigated|troubleshot|inspected|'
+    r'installed|configured|repaired|tested|documented|answered|responded|provided|'
+    r'achieved|increased|reduced|improved|streamlined|generated|facilitated|assigned|responsible)\b',
+    re.IGNORECASE,
+)
+
+
+def _is_likely_responsibility_or_sentence(text: str) -> bool:
+    """Detect whether a line is a job duty/responsibility sentence rather than a title or company name."""
+    if not text:
+        return False
+    clean = text.strip()
+    if not clean:
+        return False
+    if clean[0].islower():
+        return True
+    if _RESPONSIBILITY_VERB_START_RE.match(clean):
+        return True
+    if len(clean) > 70 and not _COMPANY_LEGAL_SUFFIXES_RE.search(clean):
+        return True
+    if clean.endswith('.') and len(clean.split()) >= 6 and not _COMPANY_LEGAL_SUFFIXES_RE.search(clean):
+        return True
+    if (';' in clean or clean.count(',') >= 3) and not _COMPANY_LEGAL_SUFFIXES_RE.search(clean):
+        return True
+    return False
 
 # Philippine Locations
 _PHIL_LOCATIONS_SET = {
@@ -604,6 +638,14 @@ def _split_company_and_location(raw_text: str) -> Tuple[str, Optional[str]]:
     # Strip parenthetical agency remarks from company name
     clean = re.sub(r'\(via\s+[^)]+\)', '', clean, flags=re.IGNORECASE).strip()
 
+    # Case 0: Trailing parenthetical location e.g. 'Rizal Packaging & Industrial Solutions Inc. (Taytay, Rizal)'
+    paren_loc_m = re.search(r'^(.+?)\s*\(([^()]+)\)\s*$', clean)
+    if paren_loc_m:
+        base_comp = paren_loc_m.group(1).strip(' ,-–—|')
+        inside_paren = paren_loc_m.group(2).strip()
+        if any(loc in inside_paren.lower() for loc in _PHIL_LOCATIONS_SET) or _is_address_or_location(inside_paren):
+            return base_comp, inside_paren
+
     # Case 1: Pipe separator 'Accenture Philippines | BGC, Taguig City'
     if '|' in clean:
         parts = [p.strip() for p in clean.split('|', 1)]
@@ -616,11 +658,11 @@ def _split_company_and_location(raw_text: str) -> Tuple[str, Optional[str]]:
         loc = parts[1].strip() if len(parts) > 1 else None
         return comp, loc
 
-    # Case 3: Comma separator 'XYZ Tech Solutions Inc., Makati City'
-    if ',' in clean:
-        parts = [p.strip() for p in clean.split(',', 1)]
-        first = parts[0]
-        rest = parts[1]
+    # Case 3: Comma separator outside parentheses 'XYZ Tech Solutions Inc., Makati City'
+    comma_parts = re.split(r',(?![^()]*\))', clean, maxsplit=1)
+    if len(comma_parts) == 2:
+        first = comma_parts[0].strip()
+        rest = comma_parts[1].strip()
         if _COMPANY_LEGAL_SUFFIXES_RE.search(first) or any(c.lower() in first.lower() for c in _PHIL_COMPANY_NAMES):
             return first, rest
         if any(loc in rest.lower() for loc in _PHIL_LOCATIONS_SET):
@@ -647,11 +689,26 @@ def _extract_title_company_location(title_cand: str, comp_cand: str = "") -> Tup
     title_cand = title_cand.strip() if title_cand else ""
     comp_cand = comp_cand.strip() if comp_cand else ""
 
-    # Check if comp_cand is actually an address
+    if _is_likely_responsibility_or_sentence(title_cand):
+        return "", "", None
+
+    if comp_cand and (_is_likely_responsibility_or_sentence(comp_cand) or _DATE_RANGE_REGEX.search(comp_cand)):
+        comp_cand = ""
+
+    # Check if comp_cand is actually an address or country/location
     loc_override = None
-    if comp_cand and _is_address_or_location(comp_cand):
+    if comp_cand and (_is_address_or_location(comp_cand) or comp_cand.lower() in ("philippines", "metro manila", "ncr", "remote")):
         loc_override = comp_cand
         comp_cand = ""
+
+    # If title_cand itself contains ' at ' or ' @ ', split inline company first so it never duplicates
+    inline_at_match = re.search(r'\s+(?:at|@)\s+', title_cand, re.IGNORECASE)
+    if inline_at_match:
+        t_part = title_cand[:inline_at_match.start()].strip()
+        c_part = title_cand[inline_at_match.end():].strip()
+        if not comp_cand:
+            comp_cand = c_part
+        title_cand = t_part
 
     # Check if lines were swapped: title_cand is company and comp_cand is job title
     if comp_cand:
@@ -672,6 +729,8 @@ def _extract_title_company_location(title_cand: str, comp_cand: str = "") -> Tup
 
     if comp_cand:
         company, location = _split_company_and_location(comp_cand)
+        if _is_likely_responsibility_or_sentence(company) or _DATE_RANGE_REGEX.search(company):
+            company = ""
         norm_title = _normalize_job_title(title_cand)
         return norm_title, company, location or loc_override
 
@@ -718,19 +777,26 @@ def _extract_title_company_location(title_cand: str, comp_cand: str = "") -> Tup
                     return _normalize_job_title(rem), c, loc_override
 
     # 4. Check known job taxonomy suffixes (e.g. 'Food Panda Delivery Rider')
-    all_taxonomy_titles = []
-    for vars_list in _PHILIPPINE_JOB_TAXONOMY.values():
-        all_taxonomy_titles.extend(vars_list)
-    for tax_title in sorted(all_taxonomy_titles, key=len, reverse=True):
-        tax_low = tax_title.lower()
-        t_low = title_cand.lower()
-        if t_low.endswith(tax_low) and len(title_cand) > len(tax_title):
-            boundary_char = title_cand[-len(tax_title)-1:-len(tax_title)]
-            if boundary_char in " \t-–—|,/":
-                prefix = title_cand[:-len(tax_title)].strip(" \t-–—|,/")
-                if len(prefix) >= 3 and not _is_address_or_location(prefix):
-                    comp, loc = _split_company_and_location(prefix)
-                    return _normalize_job_title(tax_title), comp, loc or loc_override
+    # Do NOT split compound role titles separated by '/' (e.g. 'Apprentice Carpenter / Woodworking Assistant')
+    if '/' not in title_cand:
+        all_taxonomy_titles = []
+        for vars_list in _PHILIPPINE_JOB_TAXONOMY.values():
+            all_taxonomy_titles.extend(vars_list)
+        for tax_title in sorted(all_taxonomy_titles, key=len, reverse=True):
+            tax_low = tax_title.lower()
+            t_low = title_cand.lower()
+            if t_low.endswith(tax_low) and len(title_cand) > len(tax_title):
+                boundary_char = title_cand[-len(tax_title)-1:-len(tax_title)]
+                if boundary_char in " \t-–—|,":
+                    prefix = title_cand[:-len(tax_title)].strip(" \t-–—|,")
+                    if (
+                        len(prefix) >= 3
+                        and not _is_address_or_location(prefix)
+                        and not _JOB_TITLE_KEYWORDS_RE.search(prefix)
+                        and prefix.lower() not in {"junior", "senior", "lead", "chief", "head", "assistant", "associate", "apprentice", "trainee", "general", "executive"}
+                    ):
+                        comp, loc = _split_company_and_location(prefix)
+                        return _normalize_job_title(tax_title), comp, loc or loc_override
 
     norm_title = _normalize_job_title(title_cand)
     return norm_title, "", loc_override
@@ -1030,8 +1096,24 @@ def extract_structured_experience(text: str) -> Dict[str, Any]:
                 comp_loc_str = lines[i + 1]
                 consumed_header = 3
             elif date_offset == 1:
-                comp_loc_str = lines[i + 2] if i + 2 < len(lines) and not lines[i + 2].startswith(('-', '•', '*')) else ""
-                consumed_header = 3 if comp_loc_str else 2
+                next_after_date = lines[i + 2] if i + 2 < len(lines) else ""
+                if (
+                    next_after_date
+                    and not next_after_date.startswith(('-', '•', '*', '▪', '►', '✓'))
+                    and not _is_section_header(next_after_date)
+                    and not _DATE_RANGE_REGEX.search(next_after_date)
+                    and not _is_likely_responsibility_or_sentence(next_after_date)
+                    and (
+                        _COMPANY_LEGAL_SUFFIXES_RE.search(next_after_date)
+                        or any(c.lower() in next_after_date.lower() for c in _PHIL_COMPANY_NAMES)
+                        or (len(next_after_date) <= 50 and not _JOB_TITLE_KEYWORDS_RE.search(next_after_date))
+                    )
+                ):
+                    comp_loc_str = next_after_date
+                    consumed_header = 3
+                else:
+                    comp_loc_str = ""
+                    consumed_header = 2
 
             if '|' in raw_title:
                 parts = [p.strip() for p in raw_title.split('|', 1)]
@@ -1236,8 +1318,16 @@ def extract_job_title(text: str, entries: Optional[list[dict]] = None) -> str:
             continue
         if re.search(r'@|\d{3,}|http', line):
             continue
+        if _is_address_or_location(line) or _is_likely_responsibility_or_sentence(line):
+            continue
         # Avoid matching educational degrees or school institutions as a job title
         if re.search(r'\b(?:bachelor|master|doctor|phd|diploma|associate|elementary|high\s+school|university|college|institute|polytechnic|campus)\b', line, re.I):
+            continue
+        has_role_signal = bool(
+            _JOB_TITLE_KEYWORDS_RE.search(line)
+            or (_KEYWORD_PROCESSOR and _KEYWORD_PROCESSOR.extract_keywords(line))
+        )
+        if not has_role_signal:
             continue
         norm = _normalize_job_title(line)
         if norm and len(norm) > 3 and norm.lower() not in _RESUME_SECTION_HEADERS:
@@ -1256,7 +1346,13 @@ def extract_company(text: str, entries: Optional[list[dict]] = None) -> str:
     if entries:
         for e in entries:
             comp = e.get("company_name") or e.get("company", "")
-            if comp and len(comp) > 2 and not _is_address_or_location(comp):
+            if (
+                comp
+                and len(comp) > 2
+                and not _is_address_or_location(comp)
+                and not _is_likely_responsibility_or_sentence(comp)
+                and not _DATE_RANGE_REGEX.search(comp)
+            ):
                 return comp
 
     # Fallback: scan text / experience blocks for known company names
@@ -1270,7 +1366,13 @@ def extract_company(text: str, entries: Optional[list[dict]] = None) -> str:
     for block in blocks:
         for line in block.split('\n'):
             line_str = line.strip()
-            if len(line_str) > 3 and not _is_address_or_location(line_str) and not _JOB_TITLE_KEYWORDS_RE.search(line_str):
+            if (
+                len(line_str) > 3
+                and not _is_address_or_location(line_str)
+                and not _is_likely_responsibility_or_sentence(line_str)
+                and not _DATE_RANGE_REGEX.search(line_str)
+                and not _JOB_TITLE_KEYWORDS_RE.search(line_str)
+            ):
                 if _COMPANY_LEGAL_SUFFIXES_RE.search(line_str):
                     c_clean, _ = _split_company_and_location(line_str)
                     if c_clean:
@@ -1280,7 +1382,13 @@ def extract_company(text: str, entries: Optional[list[dict]] = None) -> str:
     at_m = re.search(r'\b(?:at|@)\s+([A-Za-z0-9\s&.,\'-]+?)(?:\s*\(|\s*[-–—|,]|\s*[\r\n]|$)', comb, re.I)
     if at_m:
         cand = at_m.group(1).strip()
-        if len(cand) > 2 and not _is_address_or_location(cand):
+        if (
+            len(cand) > 2
+            and not _is_address_or_location(cand)
+            and not _is_likely_responsibility_or_sentence(cand)
+            and not _DATE_RANGE_REGEX.search(cand)
+            and not _JOB_TITLE_KEYWORDS_RE.search(cand)
+        ):
             return cand
 
     # Fallback: scan candidate company lines in experience blocks
@@ -1289,10 +1397,20 @@ def extract_company(text: str, entries: Optional[list[dict]] = None) -> str:
         for line_str in block_lines:
             if 2 < len(line_str) < 60:
                 if not _is_section_header(line_str) and not line_str.startswith(('•', '-', '*', '▪', '►', '✓')):
-                    if not _DATE_RANGE_REGEX.search(line_str) and not _is_address_or_location(line_str):
+                    if (
+                        not _DATE_RANGE_REGEX.search(line_str)
+                        and not _is_address_or_location(line_str)
+                        and not _is_likely_responsibility_or_sentence(line_str)
+                    ):
                         if not _JOB_TITLE_KEYWORDS_RE.search(line_str):
                             c_cand, _ = _split_company_and_location(line_str)
-                            if c_cand and len(c_cand) > 2 and not _is_address_or_location(c_cand) and not _JOB_TITLE_KEYWORDS_RE.search(c_cand):
+                            if (
+                                c_cand
+                                and len(c_cand) > 2
+                                and not _is_address_or_location(c_cand)
+                                and not _is_likely_responsibility_or_sentence(c_cand)
+                                and not _JOB_TITLE_KEYWORDS_RE.search(c_cand)
+                            ):
                                 return c_cand
 
     return ""

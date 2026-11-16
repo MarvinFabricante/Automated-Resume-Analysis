@@ -8,10 +8,20 @@ token normalization, spaCy extraction, and bounded [0.0, 1.0] cosine similarity.
 import os
 import re
 import logging
-from typing import List, Sequence, Optional, Tuple, Set
+from typing import List, Sequence, Optional, Tuple, Set, Any
 import numpy as np
-from gensim.models import FastText
-from sklearn.feature_extraction.text import TfidfVectorizer
+
+try:
+    from sklearn.feature_extraction.text import TfidfVectorizer
+    from sklearn.decomposition import TruncatedSVD
+except ImportError:
+    TfidfVectorizer = None
+    TruncatedSVD = None
+
+try:
+    from gensim.models import FastText
+except ImportError:
+    FastText = None
 
 logger = logging.getLogger(__name__)
 
@@ -101,10 +111,14 @@ class FastTextEmbeddingEngine:
         self.epochs = epochs
         self.seed = seed
 
-        self.model: Optional[FastText] = None
+        self.model: Optional[Any] = None
         self.tfidf_vectorizer: Optional[TfidfVectorizer] = None
         self.idf_dict_: dict[str, float] = {}
         self.default_idf_: float = 1.0
+        self.token_vectors_: dict[str, np.ndarray] = {}
+        self.subword_vectorizer_: Optional[TfidfVectorizer] = None
+        self.subword_svd_: Optional[TruncatedSVD] = None
+        self._corpus_history: List[List[str]] = []
 
         # Lazy spaCy pipeline holder
         self._nlp = None
@@ -173,9 +187,80 @@ class FastTextEmbeddingEngine:
         cleaned = [re.sub(r"^(job title|title|role)[:\s]+", "", p, flags=re.IGNORECASE).strip() for p in parts]
         return normalize_token_list(cleaned)
 
+    def _fit_contextual_svd(self, clean_corpus: List[List[str]]) -> None:
+        """
+        Build contextual co-occurrence + sub-word character n-gram embeddings using
+        scikit-learn TF-IDF + TruncatedSVD. Ensures strong intra-domain similarity
+        and low cross-domain similarity even when gensim is unavailable.
+        """
+        vocab_list: List[str] = []
+        vocab_idx: dict[str, int] = {}
+        for sent in clean_corpus:
+            for tok in sent:
+                if tok not in vocab_idx:
+                    vocab_idx[tok] = len(vocab_list)
+                    vocab_list.append(tok)
+
+        n_vocab = len(vocab_list)
+        if n_vocab == 0:
+            return
+
+        # 1. Contextual co-occurrence matrix with PMI-like log weighting
+        cooc = np.zeros((n_vocab, n_vocab), dtype=np.float32)
+        for sent in clean_corpus:
+            indices = [vocab_idx[t] for t in sent if t in vocab_idx]
+            for i_pos, idx_a in enumerate(indices):
+                cooc[idx_a, idx_a] += 2.0
+                win_start = max(0, i_pos - self.window)
+                win_end = min(len(indices), i_pos + self.window + 1)
+                for j_pos in range(win_start, win_end):
+                    if i_pos != j_pos:
+                        idx_b = indices[j_pos]
+                        cooc[idx_a, idx_b] += 1.0
+
+        cooc_log = np.log1p(cooc)
+        n_comp = max(2, min(self.vector_size, n_vocab - 1))
+        if TruncatedSVD is not None:
+            svd = TruncatedSVD(n_components=n_comp, random_state=self.seed)
+            dense_vecs = svd.fit_transform(cooc_log)
+        else:
+            u, s, _ = np.linalg.svd(cooc_log, full_matrices=False)
+            dense_vecs = u[:, :n_comp] * s[:n_comp]
+
+        # Pad to self.vector_size if vocabulary is smaller than vector_size
+        if dense_vecs.shape[1] < self.vector_size:
+            pad = np.zeros((n_vocab, self.vector_size - dense_vecs.shape[1]), dtype=np.float32)
+            dense_vecs = np.hstack([dense_vecs, pad])
+
+        self.token_vectors_ = {}
+        for tok, idx in vocab_idx.items():
+            vec = np.maximum(0.0, dense_vecs[idx]).astype(np.float32)
+            norm = np.linalg.norm(vec)
+            if norm > 1e-9:
+                vec = (vec / norm).astype(np.float32)
+            self.token_vectors_[tok] = vec
+
+        # 2. Sub-word character n-gram model for out-of-vocabulary resilience
+        if TfidfVectorizer is not None and TruncatedSVD is not None:
+            try:
+                sub_vec = TfidfVectorizer(analyzer="char_wb", ngram_range=(self.min_n, min(4, self.max_n)))
+                X_sub = sub_vec.fit_transform(vocab_list)
+                sub_comp = max(2, min(self.vector_size, X_sub.shape[0] - 1, X_sub.shape[1] - 1))
+                sub_svd = TruncatedSVD(n_components=sub_comp, random_state=self.seed)
+                sub_svd.fit(X_sub)
+                self.subword_vectorizer_ = sub_vec
+                self.subword_svd_ = sub_svd
+            except Exception:
+                self.subword_vectorizer_ = None
+                self.subword_svd_ = None
+        else:
+            self.subword_vectorizer_ = None
+            self.subword_svd_ = None
+
     def train(self, corpus: List[List[str]]) -> "FastTextEmbeddingEngine":
         """
-        Train FastText model and fit TF-IDF vectorizer over the domain corpus.
+        Train FastText model (or contextual SVD + sub-word embeddings fallback)
+        and fit TF-IDF vectorizer over the domain corpus.
         Corpus is a list of token lists (sentences).
         """
         clean_corpus = []
@@ -189,59 +274,82 @@ class FastTextEmbeddingEngine:
         if not clean_corpus:
             raise ValueError("Corpus cannot be empty for FastText training.")
 
-        logger.info(f"Training FastText with {len(clean_corpus)} sentences...")
-        self.model = FastText(
-            sentences=clean_corpus,
-            vector_size=self.vector_size,
-            window=self.window,
-            min_count=self.min_count,
-            min_n=self.min_n,
-            max_n=self.max_n,
-            bucket=self.bucket,
-            epochs=self.epochs,
-            seed=self.seed,
-        )
+        self._corpus_history = list(clean_corpus)
+        self._fit_contextual_svd(clean_corpus)
+
+        if FastText is not None:
+            logger.info(f"Training FastText with {len(clean_corpus)} sentences...")
+            self.model = FastText(
+                sentences=clean_corpus,
+                vector_size=self.vector_size,
+                window=self.window,
+                min_count=self.min_count,
+                min_n=self.min_n,
+                max_n=self.max_n,
+                bucket=self.bucket,
+                epochs=self.epochs,
+                seed=self.seed,
+            )
+        else:
+            logger.info(f"Trained contextual sub-word embedding engine with {len(clean_corpus)} sentences.")
+            self.model = self.token_vectors_
 
         # Fit TF-IDF on token document strings to compute inverse document frequencies
-        self.tfidf_vectorizer = TfidfVectorizer(
-            lowercase=False,
-            token_pattern=r"(?u)\b\w+\b",
-            norm="l2",
-            min_df=1,
-        )
-        self.tfidf_vectorizer.fit(doc_strings)
-        vocab = self.tfidf_vectorizer.vocabulary_
-        idf = self.tfidf_vectorizer.idf_
-        self.idf_dict_ = {term: float(idf[idx]) for term, idx in vocab.items()}
-        self.default_idf_ = float(np.median(idf)) if len(idf) > 0 else 1.0
+        if TfidfVectorizer is not None:
+            self.tfidf_vectorizer = TfidfVectorizer(
+                lowercase=False,
+                token_pattern=r"(?u)\b\w+\b",
+                norm="l2",
+                min_df=1,
+            )
+            self.tfidf_vectorizer.fit(doc_strings)
+            vocab = self.tfidf_vectorizer.vocabulary_
+            idf = self.tfidf_vectorizer.idf_
+            self.idf_dict_ = {term: float(idf[idx]) for term, idx in vocab.items()}
+            self.default_idf_ = float(np.median(idf)) if len(idf) > 0 else 1.0
+        else:
+            n_docs = len(clean_corpus)
+            df_counts: dict[str, int] = {}
+            for sent in clean_corpus:
+                for tok in set(sent):
+                    df_counts[tok] = df_counts.get(tok, 0) + 1
+            self.idf_dict_ = {
+                tok: float(np.log((1.0 + n_docs) / (1.0 + df)) + 1.0)
+                for tok, df in df_counts.items()
+            }
+            self.default_idf_ = float(np.median(list(self.idf_dict_.values()))) if self.idf_dict_ else 1.0
 
         return self
 
     def update(self, new_corpus: List[List[str]]) -> "FastTextEmbeddingEngine":
         """
-        Incrementally update FastText vocabulary and fine-tune on newly observed tokens.
+        Incrementally update vocabulary and fine-tune on newly observed tokens.
         """
-        if self.model is None:
+        if self.model is None and not getattr(self, "token_vectors_", None):
             return self.train(new_corpus)
 
         clean_new = []
-        new_doc_strings = []
         for sent in new_corpus:
             norm_sent = [normalize_token(t) for t in sent if normalize_token(t)]
             if norm_sent:
                 clean_new.append(norm_sent)
-                new_doc_strings.append(" ".join(norm_sent))
 
         if not clean_new:
             return self
 
-        # Build vocabulary for new tokens and fine-tune
-        self.model.build_vocab(clean_new, update=True)
-        self.model.train(
-            clean_new,
-            total_examples=len(clean_new),
-            epochs=max(15, self.epochs // 2),
-        )
+        history = list(getattr(self, "_corpus_history", [])) + clean_new
+        self._corpus_history = history
+        self._fit_contextual_svd(history)
+
+        if FastText is not None and hasattr(self.model, "build_vocab"):
+            self.model.build_vocab(clean_new, update=True)
+            self.model.train(
+                clean_new,
+                total_examples=len(clean_new),
+                epochs=max(15, self.epochs // 2),
+            )
+        else:
+            self.model = self.token_vectors_
 
         # Update IDF dictionary
         for sent in clean_new:
@@ -254,16 +362,47 @@ class FastTextEmbeddingEngine:
     def get_token_vector(self, token: str) -> np.ndarray:
         """
         Get vector for single token. Returns L2-normalized 1D vector.
-        FastText generates representations even for subwords/OOV.
+        Generates representations even for subwords/OOV.
         """
         norm_t = normalize_token(token)
-        if not norm_t or self.model is None:
+        token_vecs = getattr(self, "token_vectors_", None) or {}
+        if not norm_t or (self.model is None and not token_vecs):
             return np.zeros(self.vector_size, dtype=np.float32)
 
-        raw_vec = self.model.wv[norm_t]
-        norm = np.linalg.norm(raw_vec)
-        if norm > 1e-9:
-            return (raw_vec / norm).astype(np.float32)
+        # 1. Contextual co-occurrence vector if token is in known vocabulary
+        if norm_t in token_vecs:
+            return token_vecs[norm_t].copy()
+
+        # Check constituent words of multi-word token (e.g. "frontend_engineer" -> "frontend", "engineer")
+        sub_parts = [p for p in norm_t.split("_") if p in token_vecs]
+        if sub_parts:
+            agg = np.sum([token_vecs[p] for p in sub_parts], axis=0)
+            norm = np.linalg.norm(agg)
+            if norm > 1e-9:
+                return (agg / norm).astype(np.float32)
+
+        # 2. Gensim FastText subword lookup if available
+        if FastText is not None and hasattr(self.model, "wv"):
+            raw_vec = self.model.wv[norm_t]
+            norm = np.linalg.norm(raw_vec)
+            if norm > 1e-9:
+                return (raw_vec / norm).astype(np.float32)
+
+        # 3. Sub-word character n-gram fallback
+        sub_vec = getattr(self, "subword_vectorizer_", None)
+        sub_svd = getattr(self, "subword_svd_", None)
+        if sub_vec is not None and sub_svd is not None:
+            try:
+                x_s = sub_vec.transform([norm_t])
+                proj = np.maximum(0.0, sub_svd.transform(x_s)[0]).astype(np.float32)
+                if len(proj) < self.vector_size:
+                    proj = np.pad(proj, (0, self.vector_size - len(proj)))
+                norm = np.linalg.norm(proj)
+                if norm > 1e-9:
+                    return (proj / norm).astype(np.float32)
+            except Exception:
+                pass
+
         return np.zeros(self.vector_size, dtype=np.float32)
 
     def vectorize_tokens(self, tokens: Sequence[str]) -> np.ndarray:
@@ -272,7 +411,8 @@ class FastTextEmbeddingEngine:
         Weights each token by its TF-IDF IDF score.
         If tokens is empty or all vectors are zero, returns zero vector array of shape (vector_size,).
         """
-        if not tokens or self.model is None:
+        token_vecs = getattr(self, "token_vectors_", None) or {}
+        if not tokens or (self.model is None and not token_vecs):
             return np.zeros(self.vector_size, dtype=np.float32)
 
         norm_tokens = [normalize_token(t) for t in tokens if normalize_token(t)]
@@ -281,10 +421,10 @@ class FastTextEmbeddingEngine:
 
         weighted_vecs = []
         for t in norm_tokens:
-            # Sub-word aware vector from FastText
-            v = self.model.wv[t]
-            weight = self.idf_dict_.get(t, self.default_idf_)
-            weighted_vecs.append(v * weight)
+            v = self.get_token_vector(t)
+            if np.linalg.norm(v) > 1e-9:
+                weight = self.idf_dict_.get(t, self.default_idf_)
+                weighted_vecs.append(v * weight)
 
         if not weighted_vecs:
             return np.zeros(self.vector_size, dtype=np.float32)

@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, field_validator
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 
@@ -61,6 +61,22 @@ class JobApplicationBase(BaseModel):
     source: Optional[str] = "Online"
     import_origin: Optional[str] = None
     imported_by: Optional[str] = None
+
+    @field_validator("years_experience", "total_experience_months", mode="before")
+    @classmethod
+    def coerce_optional_int(cls, v: Any) -> Optional[int]:
+        if v is None or v == "":
+            return None
+        if isinstance(v, bool):
+            return int(v)
+        if isinstance(v, (int, float)):
+            return round(v)
+        if isinstance(v, str):
+            try:
+                return round(float(v.strip()))
+            except ValueError:
+                return v
+        return v
 
 class JobApplicationCreate(JobApplicationBase):
     job_id: str

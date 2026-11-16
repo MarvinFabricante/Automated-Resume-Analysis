@@ -29,7 +29,8 @@ import {
   Sparkles,
   Building2,
   BadgeCheck,
-  Eye
+  Eye,
+  AlertTriangle
 } from 'lucide-react';
 import Header from '../../components/layout/Header';
 import Sidebar from '../../components/layout/Sidebar';
@@ -62,6 +63,7 @@ const CandidateSmartUpload: React.FC = () => {
   const [isMatching, setIsMatching] = useState<boolean>(false);
   const [cooldown, setCooldown] = useState<number>(0);
   const [savedDraft, setSavedDraft] = useState<any>(null);
+  const [uploadError, setUploadError] = useState<string | null>(null);
 
   // Check for saved draft progress
   useEffect(() => {
@@ -227,6 +229,7 @@ const CandidateSmartUpload: React.FC = () => {
   };
 
   const validateAndSetFile = async (selectedFile: File) => {
+    setUploadError(null);
     const validTypes = [
       'application/pdf',
       'application/msword',
@@ -244,15 +247,26 @@ const CandidateSmartUpload: React.FC = () => {
         /\.(pdf|docx|doc|txt|text)$/i.test(selectedFile.name) ||
         (!selectedFile.type && !/\.[a-zA-Z0-9]+$/i.test(selectedFile.name)))
     ) {
+      if (selectedFile.size === 0) {
+        const msg = 'This file is empty (0 bytes). Please upload a valid resume document.';
+        setUploadError(msg);
+        alert(msg);
+        return;
+      }
+
       if (selectedFile.size > 10 * 1024 * 1024) {
-        alert('This file is too large. Please upload a file smaller than 10MB.');
+        const msg = 'This file is too large. Please upload a file smaller than 10MB.';
+        setUploadError(msg);
+        alert(msg);
         return;
       }
 
       // Deep content check: reject disguised executables (.exe renamed to .pdf, etc.)
       const contentCheck = await checkFileContent(selectedFile);
       if (!contentCheck.valid) {
-        alert(contentCheck.error);
+        const msg = contentCheck.error || 'Invalid or corrupted file content.';
+        setUploadError(msg);
+        alert(msg);
         return;
       }
 
@@ -262,7 +276,9 @@ const CandidateSmartUpload: React.FC = () => {
       setExtractedData(null);
       setMatchData(null);
     } else {
-      alert('Please upload a PDF or Word document (.pdf, .docx, .doc).');
+      const msg = 'Please upload a PDF, Word document, or text file (.pdf, .docx, .doc, .txt).';
+      setUploadError(msg);
+      alert(msg);
     }
   };
 
@@ -284,6 +300,7 @@ const CandidateSmartUpload: React.FC = () => {
 
   const handleUpload = async () => {
     if (!file || !isTermsAccepted || cooldown > 0) return;
+    setUploadError(null);
     setIsUploading(true);
     setUploadProgress(15);
     setProgressStage('Uploading and parsing resume document...');
@@ -339,12 +356,15 @@ const CandidateSmartUpload: React.FC = () => {
     } catch (error: any) {
       console.error('Error analyzing resume:', error);
       if (error.response?.status === 429) {
-        alert('Server is experiencing high volume. Please wait 30 seconds before retrying.');
+        const msg = 'Server is experiencing high volume. Please wait 30 seconds before retrying.';
+        setUploadError(msg);
+        alert(msg);
         setCooldown(30);
       } else {
         const detail =
           error.response?.data?.detail ||
           'Failed to analyze resume. Please ensure your document contains readable text.';
+        setUploadError(detail);
         alert(detail);
       }
       setCooldown(10);
@@ -382,13 +402,13 @@ const CandidateSmartUpload: React.FC = () => {
           location_details: extractedData?.location_details
         },
         experience: {
-          title: extractedData?.job_title || (extractedData?.experience ? extractedData.experience.split('|')[0]?.trim() : ''),
-          company: extractedData?.company || (extractedData?.experience ? extractedData.experience.split('|')[1]?.trim() : ''),
-          relevance: extractedData?.years_experience ? `${extractedData.years_experience} years` : ''
+          title: extractedData?.job_title || extractedData?.work_experiences?.[0]?.job_title || '',
+          company: extractedData?.company || extractedData?.work_experiences?.[0]?.company_name || '',
+          relevance: extractedData?.relevance || (extractedData?.years_experience ? `${extractedData.years_experience} years` : '')
         },
         education: {
-          degree: extractedData?.highest_degree || extractedData?.degree,
-          college: extractedData?.institution || extractedData?.college || ''
+          degree: extractedData?.degree || extractedData?.education_entries?.[0]?.degree_or_course || extractedData?.highest_degree || '',
+          college: extractedData?.institution || extractedData?.college || extractedData?.education_entries?.[0]?.institution_name || ''
         },
         work_experiences: extractedData?.work_experiences || [],
         education_entries: extractedData?.education_entries || [],
@@ -538,7 +558,44 @@ const CandidateSmartUpload: React.FC = () => {
 
             {/* BODY SECTION */}
             <div className="p-6 sm:p-10 md:p-14">
-              
+              <input
+                type="file"
+                ref={fileInputRef}
+                onChange={(e) => {
+                  const selected = e.target.files?.[0];
+                  if (selected) {
+                    validateAndSetFile(selected);
+                  }
+                  e.target.value = '';
+                }}
+                className="hidden"
+                accept=".pdf,.doc,.docx,.txt,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain"
+              />
+
+              {uploadError && (
+                <div
+                  role="alert"
+                  data-testid="upload-error-banner"
+                  className="max-w-4xl mx-auto mb-6 p-4 sm:p-5 bg-rose-50 border border-rose-200 rounded-2xl flex items-start justify-between gap-3 text-rose-800 shadow-2xs animate-in fade-in duration-200"
+                >
+                  <div className="flex items-start gap-3">
+                    <AlertTriangle size={20} className="text-rose-600 shrink-0 mt-0.5" />
+                    <div>
+                      <h4 className="text-xs sm:text-sm font-black text-rose-900">Resume Upload Error</h4>
+                      <p className="text-xs sm:text-sm font-medium text-rose-700 mt-0.5">{uploadError}</p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setUploadError(null)}
+                    className="p-1 text-rose-400 hover:text-rose-700 rounded-lg transition-colors cursor-pointer"
+                    aria-label="Dismiss error"
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+              )}
+
               {!file ? (
                 /* DROPZONE */
                 <div
@@ -552,18 +609,6 @@ const CandidateSmartUpload: React.FC = () => {
                       : 'border-slate-200 hover:border-[#D10043]/40 hover:bg-slate-50/70 hover:shadow-lg hover:shadow-slate-100'
                   }`}
                 >
-                  <input
-                    type="file"
-                    ref={fileInputRef}
-                    onChange={(e) => {
-                      if (e.target.files && e.target.files[0]) {
-                        validateAndSetFile(e.target.files[0]);
-                      }
-                    }}
-                    className="hidden"
-                    accept=".pdf,.doc,.docx,.txt,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain"
-                  />
-
                   <div className="w-20 h-20 sm:w-24 sm:h-24 bg-slate-100 text-slate-400 group-hover:text-[#D10043] group-hover:bg-white group-hover:shadow-xl group-hover:shadow-[#D10043]/10 rounded-[28px] mb-6 flex items-center justify-center mx-auto transition-all duration-300 transform group-hover:scale-110">
                     <FileUp size={44} />
                   </div>
@@ -804,6 +849,7 @@ const CandidateSmartUpload: React.FC = () => {
         rawText={extractedData?.raw_text}
         extractedData={extractedData}
         onReplaceFile={(newFile) => {
+          setShowPreviewModal(false);
           validateAndSetFile(newFile);
         }}
       />

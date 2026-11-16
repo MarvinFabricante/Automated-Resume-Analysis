@@ -27,6 +27,7 @@ KNOWN_HR_EMAILS = {
     "coachmarvsphenomenal@gmail.com",
     "crparayaoan@gmail.com",
     "hr.mariwasa@gmail.com",
+    "sheenahpolicapioh@gmail.com",
     "sam@gmail.com",
 }
 
