@@ -298,7 +298,11 @@ def is_google_credentials_expired(credentials_json: str) -> bool:
             exp_dt = datetime.fromisoformat(clean_exp)
             now_dt = datetime.now(timezone.utc) if exp_dt.tzinfo else datetime.utcnow()
             return exp_dt <= now_dt
-        creds = Credentials.from_authorized_user_info(creds_data, SCOPES)
+        try:
+            creds = Credentials.from_authorized_user_info(creds_data, SCOPES)
+        except Exception:
+            token = creds_data.get("token") or creds_data.get("access_token")
+            creds = Credentials(token=token, scopes=SCOPES) if token else None
         return bool(creds and creds.expired)
     except Exception:
         return True
@@ -313,7 +317,21 @@ def get_calendar_service(credentials_json: str):
         return None, None
     try:
         creds_data = json.loads(credentials_json) if isinstance(credentials_json, str) else credentials_json
-        creds = Credentials.from_authorized_user_info(creds_data, SCOPES)
+        try:
+            creds = Credentials.from_authorized_user_info(creds_data, SCOPES)
+        except Exception:
+            token = creds_data.get("token") or creds_data.get("access_token")
+            if token:
+                creds = Credentials(
+                    token=token,
+                    refresh_token=creds_data.get("refresh_token"),
+                    token_uri=creds_data.get("token_uri"),
+                    client_id=creds_data.get("client_id"),
+                    client_secret=creds_data.get("client_secret"),
+                    scopes=SCOPES
+                )
+            else:
+                creds = None
 
         if not creds:
             return None, credentials_json
