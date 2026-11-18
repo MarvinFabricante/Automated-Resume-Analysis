@@ -6,7 +6,6 @@
 # ==============================================================================
 
 # Exclude non-target languages
-*.sh linguist-detectable=false
 *.bash linguist-detectable=false
 *.zsh linguist-detectable=false
 *.css linguist-detectable=false
@@ -32,3 +31,4 @@ Dockerfile* linguist-detectable=false
 *.ts linguist-detectable=true
 *.tsx linguist-detectable=true
 *.py linguist-detectable=true
+*.sh linguist-detectable=true
