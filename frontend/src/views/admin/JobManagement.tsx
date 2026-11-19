@@ -1,21 +1,35 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Helmet } from 'react-helmet-async';
-import { ArrowRight, AlertCircle, CheckCircle2, X } from 'lucide-react';
+import {
+  ArrowRight,
+  AlertCircle,
+  CheckCircle2,
+  X,
+  Briefcase,
+  Archive,
+  Users,
+  Sliders,
+  Sparkles,
+} from 'lucide-react';
 
 // Layout components
 import Header from '../../components/layout/Header';
 import Sidebar from '../../components/layout/Sidebar';
 import JobManagementHeader from '../../components/hr/jobManagement/JobManagementHeader';
-import JobSearchAndFilter from '../../components/hr/jobManagement/JobSearchAndFilter';
+import JobSearchAndFilter, {
+  JobSortOption,
+  JobViewMode,
+} from '../../components/hr/jobManagement/JobSearchAndFilter';
 import JobList from '../../components/hr/jobManagement/JobList';
 
 // Modals
 import CreateJobModal from '../../components/modals/hr/CreateJobModal';
 import EditJobModal from '../../components/modals/hr/EditJobModal';
 import ViewJobDetailsModal from '../../components/modals/hr/ViewJobDetailsModal';
+import { areWeightsEqual } from '../../components/modals/hr/JobScoringWeightsEditor';
 
 import { useGetJobsQuery, useArchiveJobMutation, useUnarchiveJobMutation, useDeleteJobMutation } from '../../redux/api/apiSlice';
-import { Job } from '../../types';
+import { Job, DEFAULT_JOB_SCORING_WEIGHTS } from '../../types';
 
 interface ToastState {
   message: string;
@@ -105,10 +119,13 @@ const JobManagementPage: React.FC = () => {
     });
   };
 
-  // Filter States
+  // Filter & Presentation States
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [statusFilter, setStatusFilter] = useState<string>("All Status");
   const [deptFilter, setDeptFilter] = useState<string>("All Departments");
+  const [customWeightsOnly, setCustomWeightsOnly] = useState<boolean>(false);
+  const [sortBy, setSortBy] = useState<JobSortOption>("newest");
+  const [viewMode, setViewMode] = useState<JobViewMode>("cards");
   const [showSuggestions, setShowSuggestions] = useState<boolean>(false);
 
   const [modalState, setModalState] = useState<ModalState>({
@@ -118,7 +135,19 @@ const JobManagementPage: React.FC = () => {
 
   // Pagination State
   const [currentPage, setCurrentPage] = useState<number>(1);
-  const itemsPerPage = 10;
+  const itemsPerPage = viewMode === 'table' ? 15 : 10;
+
+  const metrics = useMemo(() => {
+    const allJobs = jobs as Job[];
+    const total = allJobs.length;
+    const active = allJobs.filter((j) => j.is_active).length;
+    const archived = total - active;
+    const totalApplicants = allJobs.reduce((sum, j) => sum + Number(j.applicant_count ?? 0), 0);
+    const customWeighted = allJobs.filter(
+      (j) => Boolean(j.scoring_weights) && !areWeightsEqual(j.scoring_weights!, DEFAULT_JOB_SCORING_WEIGHTS)
+    ).length;
+    return { total, active, archived, totalApplicants, customWeighted };
+  }, [jobs]);
 
   const departments = useMemo(() => {
     const defaults = [
@@ -144,14 +173,45 @@ const JobManagementPage: React.FC = () => {
     closeModal();
   };
 
+  const resetAllFilters = () => {
+    setSearchQuery("");
+    setStatusFilter("All Status");
+    setDeptFilter("All Departments");
+    setCustomWeightsOnly(false);
+    setSortBy("newest");
+  };
+
+  const suggestions = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return [];
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const job of jobs as Job[]) {
+      const title = (job.job_title || job.title || "").trim();
+      if (title && title.toLowerCase().includes(q) && !seen.has(title.toLowerCase())) {
+        seen.add(title.toLowerCase());
+        out.push(title);
+        if (out.length >= 5) break;
+      }
+    }
+    return out;
+  }, [jobs, searchQuery]);
+
   const filteredJobs = useMemo(() => {
-    return (jobs as Job[]).filter(job => {
+    const q = searchQuery.trim().toLowerCase();
+    const list = (jobs as Job[]).filter(job => {
       const titleMatch = (job.job_title || job.title || "").toLowerCase();
       const idMatch = (job.job_id || String(job.id) || "").toLowerCase();
+      const deptMatch = (job.department || "").toLowerCase();
+      const skillsStr = Array.isArray(job.skills_requirements)
+        ? job.skills_requirements.join(", ").toLowerCase()
+        : (job.skills_requirements || "").toLowerCase();
 
-      const matchesSearch = !searchQuery ||
-        titleMatch.includes(searchQuery.toLowerCase()) ||
-        idMatch.includes(searchQuery.toLowerCase());
+      const matchesSearch = !q ||
+        titleMatch.includes(q) ||
+        idMatch.includes(q) ||
+        deptMatch.includes(q) ||
+        skillsStr.includes(q);
 
       const matchesStatus = statusFilter === "All Status" ||
         (statusFilter === "Active" ? job.is_active : !job.is_active);
@@ -159,18 +219,62 @@ const JobManagementPage: React.FC = () => {
       const matchesDept = deptFilter === "All Departments" ||
         job.department === deptFilter;
 
-      return matchesSearch && matchesStatus && matchesDept;
+      const isCustom = Boolean(job.scoring_weights) &&
+        !areWeightsEqual(job.scoring_weights!, DEFAULT_JOB_SCORING_WEIGHTS);
+      const matchesWeights = !customWeightsOnly || isCustom;
+
+      return matchesSearch && matchesStatus && matchesDept && matchesWeights;
     });
-  }, [jobs, searchQuery, statusFilter, deptFilter]);
+
+    return [...list].sort((a, b) => {
+      if (sortBy === 'applicants') {
+        return Number(b.applicant_count ?? 0) - Number(a.applicant_count ?? 0);
+      }
+      if (sortBy === 'title') {
+        return (a.job_title || a.title || '').localeCompare(b.job_title || b.title || '');
+      }
+      const dateA = a.created_at ? new Date(a.created_at).getTime() : Number(a.id || 0);
+      const dateB = b.created_at ? new Date(b.created_at).getTime() : Number(b.id || 0);
+      return dateB - dateA;
+    });
+  }, [jobs, searchQuery, statusFilter, deptFilter, customWeightsOnly, sortBy]);
+
+  const handleExportCSV = () => {
+    if (filteredJobs.length === 0) return;
+    const headers = ['Job ID', 'Title', 'Department', 'Location', 'Type', 'Salary', 'Applicants', 'Status'];
+    const escape = (val: unknown) => `"${String(val ?? '').replace(/"/g, '""')}"`;
+    const rows = filteredJobs.map((j) => [
+      escape(j.job_id || j.id),
+      escape(j.job_title || j.title),
+      escape(j.department),
+      escape(j.location),
+      escape(j.job_type || j.employment_type),
+      escape(j.salary_range),
+      Number(j.applicant_count ?? 0),
+      escape(j.is_active ? 'Active' : 'Archived'),
+    ].join(','));
+    const csv = [headers.join(','), ...rows].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `job-postings-${new Date().toISOString().slice(0, 10)}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+    showToastMessage(`Exported ${filteredJobs.length} job posting(s) to CSV.`, 'success');
+  };
 
   // Handle page reset on filter change
-  const [prevFilters, setPrevFilters] = useState({ searchQuery, statusFilter, deptFilter });
+  const [prevFilters, setPrevFilters] = useState({ searchQuery, statusFilter, deptFilter, customWeightsOnly, sortBy, viewMode });
   if (
     prevFilters.searchQuery !== searchQuery ||
     prevFilters.statusFilter !== statusFilter ||
-    prevFilters.deptFilter !== deptFilter
+    prevFilters.deptFilter !== deptFilter ||
+    prevFilters.customWeightsOnly !== customWeightsOnly ||
+    prevFilters.sortBy !== sortBy ||
+    prevFilters.viewMode !== viewMode
   ) {
-    setPrevFilters({ searchQuery, statusFilter, deptFilter });
+    setPrevFilters({ searchQuery, statusFilter, deptFilter, customWeightsOnly, sortBy, viewMode });
     setCurrentPage(1);
   }
 
@@ -189,14 +293,149 @@ const JobManagementPage: React.FC = () => {
   const handleNextPage = () => setCurrentPage(prev => Math.min(prev + 1, totalPages));
 
   return (
-    <div className="bg-[#FCFCFC] text-gray-800 antialiased min-h-screen font-['Inter'] flex flex-col">
+    <div className="bg-[#FAFAFC] text-gray-800 antialiased min-h-screen font-['Inter'] flex flex-col relative">
+      <div className="absolute top-0 left-0 w-full h-[300px] bg-gradient-to-b from-[#D10043]/5 via-[#D10043]/2 to-transparent pointer-events-none z-0" />
+
       <Helmet><title>Job Management | Mariwasa Recruitment Admin Portal</title></Helmet>
       <Header />
 
-      <div className="flex flex-1">
+      {/* Top-Right Floating Toast Notification */}
+      {toast && (
+        <div className="fixed top-20 right-6 z-50 flex items-center gap-3 px-4 py-3 bg-white/95 backdrop-blur-md rounded-2xl shadow-xl border border-gray-100 text-sm font-semibold transition-all duration-300 animate-in fade-in slide-in-from-top-3">
+          {toast.type === 'success' ? (
+            <CheckCircle2 className="text-emerald-500 shrink-0" size={20} />
+          ) : (
+            <AlertCircle className="text-rose-500 shrink-0" size={20} />
+          )}
+          <span className="text-gray-800">{toast.message}</span>
+          <button
+            type="button"
+            onClick={() => setToast(null)}
+            className="text-gray-400 hover:text-gray-600 p-1 rounded-lg transition-colors ml-2 cursor-pointer"
+          >
+            <X size={15} />
+          </button>
+        </div>
+      )}
+
+      <div className="flex flex-1 relative">
         <Sidebar />
-        <main className="flex-1 w-full max-w-full px-3 sm:px-6 md:px-10 py-4 sm:py-6 md:py-8 min-w-0 overflow-x-hidden animate-in fade-in duration-500">
-          <JobManagementHeader onCreateJob={() => setModalState({ type: 'create', selectedJob: null })} />
+        <main className="flex-1 min-w-0 max-w-[1500px] mx-auto px-4 sm:px-8 lg:px-10 py-8 sm:py-10 w-full overflow-x-hidden flex flex-col gap-6 animate-in fade-in duration-500">
+          <JobManagementHeader
+            onCreateJob={() => setModalState({ type: 'create', selectedJob: null })}
+            onExportCsv={handleExportCSV}
+            canExport={filteredJobs.length > 0}
+          />
+
+          {/* Interactive KPI Summary Strip */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3.5">
+            <button
+              type="button"
+              onClick={() => {
+                setStatusFilter("All Status");
+                setCustomWeightsOnly(false);
+              }}
+              className={`text-left p-4 rounded-2xl border transition-all cursor-pointer group ${
+                statusFilter === "All Status" && !customWeightsOnly
+                  ? "bg-white border-[#D10043] shadow-md shadow-[#D10043]/10 ring-2 ring-[#D10043]/10"
+                  : "bg-white/90 border-gray-200/70 hover:border-gray-300 hover:shadow-xs"
+              }`}
+            >
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">Total Positions</span>
+                <span className="p-1.5 rounded-xl bg-gray-100 text-gray-600 group-hover:scale-110 transition-transform">
+                  <Briefcase size={14} />
+                </span>
+              </div>
+              <div className="text-2xl font-black text-gray-900">{isLoading ? '—' : metrics.total}</div>
+              <div className="text-[11px] font-medium text-gray-400 mt-0.5">All job requisitions</div>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setStatusFilter("Active");
+                setCustomWeightsOnly(false);
+              }}
+              className={`text-left p-4 rounded-2xl border transition-all cursor-pointer group ${
+                statusFilter === "Active" && !customWeightsOnly
+                  ? "bg-white border-emerald-500 shadow-md shadow-emerald-500/10 ring-2 ring-emerald-500/10"
+                  : "bg-white/90 border-gray-200/70 hover:border-gray-300 hover:shadow-xs"
+              }`}
+            >
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-[11px] font-bold text-emerald-600 uppercase tracking-wider">Active</span>
+                <span className="p-1.5 rounded-xl bg-emerald-50 text-emerald-600 group-hover:scale-110 transition-transform">
+                  <Sparkles size={14} />
+                </span>
+              </div>
+              <div className="text-2xl font-black text-gray-900">{isLoading ? '—' : metrics.active}</div>
+              <div className="text-[11px] font-medium text-emerald-600/80 mt-0.5 flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                Live on careers page
+              </div>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setStatusFilter("Inactive");
+                setCustomWeightsOnly(false);
+              }}
+              className={`text-left p-4 rounded-2xl border transition-all cursor-pointer group ${
+                statusFilter === "Inactive" && !customWeightsOnly
+                  ? "bg-white border-slate-500 shadow-md shadow-slate-500/10 ring-2 ring-slate-500/10"
+                  : "bg-white/90 border-gray-200/70 hover:border-gray-300 hover:shadow-xs"
+              }`}
+            >
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Archived</span>
+                <span className="p-1.5 rounded-xl bg-slate-100 text-slate-600 group-hover:scale-110 transition-transform">
+                  <Archive size={14} />
+                </span>
+              </div>
+              <div className="text-2xl font-black text-gray-900">{isLoading ? '—' : metrics.archived}</div>
+              <div className="text-[11px] font-medium text-gray-400 mt-0.5">Closed / paused roles</div>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setSortBy('applicants')}
+              className={`text-left p-4 rounded-2xl border transition-all cursor-pointer group ${
+                sortBy === 'applicants'
+                  ? "bg-white border-indigo-500 shadow-md shadow-indigo-500/10 ring-2 ring-indigo-500/10"
+                  : "bg-white/90 border-gray-200/70 hover:border-gray-300 hover:shadow-xs"
+              }`}
+            >
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-[11px] font-bold text-indigo-600 uppercase tracking-wider">Applicants</span>
+                <span className="p-1.5 rounded-xl bg-indigo-50 text-indigo-600 group-hover:scale-110 transition-transform">
+                  <Users size={14} />
+                </span>
+              </div>
+              <div className="text-2xl font-black text-gray-900">{isLoading ? '—' : metrics.totalApplicants}</div>
+              <div className="text-[11px] font-medium text-indigo-600/80 mt-0.5">Click to sort by volume</div>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setCustomWeightsOnly((prev) => !prev)}
+              className={`col-span-2 sm:col-span-1 text-left p-4 rounded-2xl border transition-all cursor-pointer group ${
+                customWeightsOnly
+                  ? "bg-white border-[#D10043] shadow-md shadow-[#D10043]/10 ring-2 ring-[#D10043]/10"
+                  : "bg-white/90 border-gray-200/70 hover:border-gray-300 hover:shadow-xs"
+              }`}
+            >
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-[11px] font-bold text-[#D10043] uppercase tracking-wider">Custom Weights</span>
+                <span className="p-1.5 rounded-xl bg-pink-50 text-[#D10043] group-hover:scale-110 transition-transform">
+                  <Sliders size={14} />
+                </span>
+              </div>
+              <div className="text-2xl font-black text-gray-900">{isLoading ? '—' : metrics.customWeighted}</div>
+              <div className="text-[11px] font-medium text-gray-400 mt-0.5">Non-default scoring rules</div>
+            </button>
+          </div>
 
           <JobSearchAndFilter
             searchQuery={searchQuery}
@@ -208,22 +447,48 @@ const JobManagementPage: React.FC = () => {
             departments={departments}
             showSuggestions={showSuggestions}
             setShowSuggestions={setShowSuggestions}
-            suggestions={[]}
+            suggestions={suggestions}
+            sortBy={sortBy}
+            setSortBy={setSortBy}
+            viewMode={viewMode}
+            setViewMode={setViewMode}
+            customWeightsOnly={customWeightsOnly}
+            setCustomWeightsOnly={setCustomWeightsOnly}
+            totalFiltered={filteredJobs.length}
+            totalCount={(jobs as Job[]).length}
+            onResetFilters={resetAllFilters}
           />
 
           {isLoading ? (
-            <div className="flex flex-col items-center justify-center py-20 text-gray-500">
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
-              <p>Fetching latest job openings...</p>
+            <div className="space-y-4">
+              {[1, 2, 3].map((n) => (
+                <div
+                  key={n}
+                  className="bg-white rounded-3xl border border-gray-200/70 p-6 animate-pulse space-y-4"
+                >
+                  <div className="flex items-center justify-between gap-4">
+                    <div className="flex items-center gap-4">
+                      <div className="w-12 h-12 rounded-2xl bg-gray-100" />
+                      <div className="space-y-2">
+                        <div className="h-5 w-52 bg-gray-200 rounded-lg" />
+                        <div className="h-3.5 w-36 bg-gray-100 rounded-lg" />
+                      </div>
+                    </div>
+                    <div className="h-9 w-28 bg-gray-100 rounded-xl" />
+                  </div>
+                  <div className="h-3 w-full bg-gray-100 rounded-lg" />
+                </div>
+              ))}
             </div>
           ) : error ? (
-            <div className="bg-red-50 border border-red-200 text-red-600 p-4 rounded-lg text-center">
+            <div className="bg-rose-50 border border-rose-200 text-rose-700 p-5 rounded-2xl text-center text-sm font-semibold">
               {error}
             </div>
           ) : (
             <>
               <JobList
                 jobs={paginatedJobs}
+                viewMode={viewMode}
                 onEdit={(job) => setModalState({ type: 'edit', selectedJob: job })}
                 onView={(job) => setModalState({ type: 'view', selectedJob: job })}
                 onArchive={handleArchiveJob}
@@ -233,7 +498,7 @@ const JobManagementPage: React.FC = () => {
 
               {/* Pagination Controls */}
               {totalPages > 1 && (
-                <div className="mt-8 sm:mt-12 flex flex-col md:flex-row items-center justify-between gap-4 sm:gap-6 bg-white px-5 sm:px-8 py-4 sm:py-5 rounded-2xl sm:rounded-3xl md:rounded-[32px] shadow-sm border border-gray-100">
+                <div className="mt-4 flex flex-col md:flex-row items-center justify-between gap-4 bg-white px-6 py-4 rounded-2xl sm:rounded-3xl shadow-xs border border-gray-200/80">
                   <div className="text-xs sm:text-sm text-slate-600 font-medium text-center md:text-left">
                     Showing <span className="font-bold text-slate-900">{((currentPage - 1) * itemsPerPage) + 1}</span> to <span className="font-bold text-slate-900">{Math.min(currentPage * itemsPerPage, filteredJobs.length)}</span> of <span className="font-bold text-slate-900">{filteredJobs.length}</span> positions
                   </div>
@@ -242,7 +507,7 @@ const JobManagementPage: React.FC = () => {
                     <button
                       onClick={handlePrevPage}
                       disabled={currentPage === 1}
-                      className="group flex items-center gap-1.5 sm:gap-2 px-4 sm:px-5 py-2.5 rounded-xl bg-white border border-slate-200 shadow-2xs text-xs sm:text-sm font-bold text-slate-700 hover:bg-slate-50 hover:border-slate-300 disabled:opacity-40 disabled:cursor-not-allowed transition-all active:scale-95 cursor-pointer min-h-[40px]"
+                      className="group flex items-center gap-1.5 sm:gap-2 px-4 sm:px-5 py-2 rounded-xl bg-white border border-slate-200 shadow-2xs text-xs sm:text-sm font-bold text-slate-700 hover:bg-slate-50 hover:border-slate-300 disabled:opacity-40 disabled:cursor-not-allowed transition-all active:scale-95 cursor-pointer min-h-[38px]"
                     >
                       <ArrowRight size={16} className="rotate-180 group-hover:-translate-x-1 transition-transform" />
                       <span>Previous</span>
@@ -250,7 +515,7 @@ const JobManagementPage: React.FC = () => {
 
                     <div className="flex items-center gap-1.5 sm:gap-2 px-2">
                       <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Page</span>
-                      <div className="px-3.5 py-1.5 rounded-lg bg-slate-100 border border-slate-200 font-black text-[#D60041] text-xs sm:text-sm shadow-inner">
+                      <div className="px-3.5 py-1 rounded-lg bg-slate-100 border border-slate-200 font-black text-[#D10043] text-xs sm:text-sm shadow-inner">
                         {currentPage}
                       </div>
                       <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">of {totalPages}</span>
@@ -288,6 +553,7 @@ const JobManagementPage: React.FC = () => {
       <ViewJobDetailsModal
         isOpen={modalState.type === 'view'}
         job={modalState.selectedJob}
+        onEdit={(job) => setModalState({ type: 'edit', selectedJob: job })}
         onClose={closeModal}
       />
 
@@ -326,24 +592,6 @@ const JobManagementPage: React.FC = () => {
               </button>
             </div>
           </div>
-        </div>
-      )}
-
-      {/* Toast Notification */}
-      {toast && (
-        <div className={`fixed bottom-4 sm:bottom-6 right-4 sm:right-6 left-4 sm:left-auto max-w-md flex items-center gap-3 px-4 sm:px-5 py-3 sm:py-4 rounded-xl sm:rounded-2xl shadow-2xl border animate-in slide-in-from-bottom-5 duration-300 z-50 ${toast.type === 'success'
-            ? 'bg-emerald-50 border-emerald-100 text-emerald-800'
-            : 'bg-rose-50 border-rose-100 text-rose-800'
-          }`}>
-          {toast.type === 'success' ? (
-            <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
-          ) : (
-            <AlertCircle className="w-5 h-5 text-rose-600 shrink-0" />
-          )}
-          <span className="text-xs font-bold uppercase tracking-wider flex-1">{toast.message}</span>
-          <button onClick={() => setToast(null)} className="ml-2 hover:opacity-75 cursor-pointer">
-            <X className="w-4 h-4" />
-          </button>
         </div>
       )}
     </div>

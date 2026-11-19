@@ -3,7 +3,7 @@ import { Helmet } from 'react-helmet-async';
 import {
   X, Briefcase, MapPin, Building2, DollarSign,
   ListChecks, FileText, Clock, CheckCircle2,
-  AlertCircle, Globe, Wallet, GraduationCap, Trophy, Award, Sliders, LucideIcon
+  AlertCircle, Globe, Wallet, GraduationCap, Trophy, Award, Sliders, Edit3, LucideIcon
 } from 'lucide-react';
 import { Job, DEFAULT_JOB_SCORING_WEIGHTS } from '../../../types';
 import { WEIGHT_FIELDS } from './JobScoringWeightsEditor';
@@ -30,10 +30,11 @@ const DetailCard: React.FC<DetailCardProps> = ({ icon: Icon, label, value, color
 interface ViewJobDetailsModalProps {
   isOpen: boolean;
   onClose: () => void;
+  onEdit?: (job: Job) => void;
   job: (Job & { [key: string]: any }) | null;
 }
 
-const ViewJobDetailsModal: React.FC<ViewJobDetailsModalProps> = ({ isOpen, onClose, job }) => {
+const ViewJobDetailsModal: React.FC<ViewJobDetailsModalProps> = ({ isOpen, onClose, onEdit, job }) => {
   if (!isOpen || !job) return null;
 
   const skillsArray = typeof job.skills_requirements === 'string'
@@ -67,12 +68,26 @@ const ViewJobDetailsModal: React.FC<ViewJobDetailsModalProps> = ({ isOpen, onClo
               </span>
             </div>
           </div>
-          <button
-            onClick={onClose}
-            className="group p-2 sm:p-3 hover:bg-red-50 rounded-xl sm:rounded-2xl transition-all duration-300 text-gray-400 hover:text-red-500 shrink-0 cursor-pointer"
-          >
-            <X size={20} className="sm:w-6 sm:h-6 group-hover:rotate-90 transition-transform duration-300" />
-          </button>
+          <div className="flex items-center gap-2 shrink-0">
+            {onEdit && (
+              <button
+                type="button"
+                onClick={() => onEdit(job)}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-gray-900 hover:bg-black text-white text-xs font-bold transition-all active:scale-95 cursor-pointer"
+              >
+                <Edit3 size={14} />
+                <span className="hidden sm:inline">Edit Position</span>
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close job preview"
+              className="group p-2 sm:p-3 hover:bg-red-50 rounded-xl sm:rounded-2xl transition-all duration-300 text-gray-400 hover:text-red-500 shrink-0 cursor-pointer"
+            >
+              <X size={20} className="sm:w-6 sm:h-6 group-hover:rotate-90 transition-transform duration-300" />
+            </button>
+          </div>
         </div>
 
         <div className="flex-1 overflow-y-auto custom-scrollbar">
@@ -184,6 +199,19 @@ const ViewJobDetailsModal: React.FC<ViewJobDetailsModalProps> = ({ isOpen, onClo
                         <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-white border border-slate-200 text-slate-600">
                           {job.scoring_weights ? 'Job-Specific' : 'Global Default'}
                         </span>
+                      </div>
+                      <div className="bg-slate-200/80 h-2 rounded-full overflow-hidden flex mb-3" aria-hidden="true">
+                        {WEIGHT_FIELDS.map((field) => {
+                          const pct = Math.round((activeWeights[field.key] ?? 0) * 100);
+                          return (
+                            <div
+                              key={field.key}
+                              style={{ width: `${pct}%` }}
+                              className={`${field.color} h-full`}
+                              title={`${field.label}: ${pct}%`}
+                            />
+                          );
+                        })}
                       </div>
                       <div className="space-y-2">
                         {WEIGHT_FIELDS.map((field) => {
