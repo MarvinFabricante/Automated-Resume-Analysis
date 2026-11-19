@@ -152,3 +152,12 @@ backups/
 # --- Logs & Runtime Dumps ---
 *.log
 *.rdb
+
+# --- Manuals, Docs & Local Helper Scripts ---
+Automated_Resume_Analysis_Short_User_Manual.pdf
+Automated_Resume_Analysis_User_Manual.pdf
+user manual.pdf
+/docs
+start_services.ps1
+run_all_with_tunnel.ps1
+restart_backend.ps1
