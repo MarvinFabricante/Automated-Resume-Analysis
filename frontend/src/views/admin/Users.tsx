@@ -456,13 +456,13 @@ const UsersPage: React.FC = () => {
             <div>
               <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white border border-gray-200/80 shadow-xs text-[11px] font-black text-gray-500 mb-2.5 tracking-wider uppercase">
                 <ShieldCheck size={13} className="text-[#D10043]" />
-                Access Control & Directory
+                Account Management
               </div>
               <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-gray-900">
-                User Directory
+                User Accounts
               </h1>
               <p className="text-sm text-gray-500 font-medium mt-1.5 max-w-2xl leading-relaxed">
-                Centralized registry of all platform accounts. Provision credentials, assign operational roles, audit real-time activity, and oversee security policies.
+                View and manage all HR staff and candidate accounts. Add new users, update details, assign roles, or suspend accounts.
               </p>
             </div>
 
@@ -671,10 +671,10 @@ const UsersPage: React.FC = () => {
                   onChange={(e) => setSortBy(e.target.value)}
                   className="bg-gray-50/80 hover:bg-gray-50 border border-gray-200 text-gray-700 text-xs font-bold rounded-2xl pl-3.5 pr-8 py-2.5 outline-none focus:ring-3 focus:ring-[#D10043]/10 focus:border-[#D10043] transition-all cursor-pointer appearance-none"
                 >
-                  <option value="RECENT">Sort: Activity / Newest</option>
+                  <option value="RECENT">Sort: Recent Activity</option>
                   <option value="NAME_ASC">Name (A → Z)</option>
                   <option value="NAME_DESC">Name (Z → A)</option>
-                  <option value="ROLE">Role Priority</option>
+                  <option value="ROLE">Role</option>
                 </select>
                 <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
               </div>
@@ -708,9 +708,9 @@ const UsersPage: React.FC = () => {
               <table className="w-full text-left border-collapse min-w-[760px]">
                 <thead>
                   <tr className="border-b border-gray-100 bg-gray-50/60">
-                    <th className="px-6 py-4 text-[11px] font-black uppercase tracking-wider text-gray-400">User Identity</th>
-                    <th className="px-6 py-4 text-[11px] font-black uppercase tracking-wider text-gray-400">Role & Access</th>
-                    <th className="px-6 py-4 text-[11px] font-black uppercase tracking-wider text-gray-400">Status & Activity</th>
+                    <th className="px-6 py-4 text-[11px] font-black uppercase tracking-wider text-gray-400">Name & Email</th>
+                    <th className="px-6 py-4 text-[11px] font-black uppercase tracking-wider text-gray-400">Account Role</th>
+                    <th className="px-6 py-4 text-[11px] font-black uppercase tracking-wider text-gray-400">Status & Last Seen</th>
                     <th className="px-6 py-4 text-[11px] font-black uppercase tracking-wider text-gray-400 text-right">Actions</th>
                   </tr>
                 </thead>
@@ -723,8 +723,8 @@ const UsersPage: React.FC = () => {
                             <div className="absolute inset-0 border-3 border-[#D10043]/20 rounded-full"></div>
                             <div className="absolute inset-0 border-3 border-[#D10043] rounded-full border-t-transparent animate-spin"></div>
                           </div>
-                          <p className="text-sm font-bold text-gray-800">Synchronizing Directory...</p>
-                          <p className="text-xs text-gray-400 mt-1 font-medium">Loading user profiles and account records.</p>
+                          <p className="text-sm font-bold text-gray-800">Loading User Accounts...</p>
+                          <p className="text-xs text-gray-400 mt-1 font-medium">Fetching account details and status.</p>
                         </div>
                       </td>
                     </tr>
@@ -1212,7 +1212,7 @@ const UsersPage: React.FC = () => {
 
               <div className="p-3.5 bg-gray-50/80 rounded-2xl border border-gray-100 flex items-center justify-between">
                 <div>
-                  <span className="text-[10px] font-black uppercase text-gray-400 tracking-wider block">Last Platform Activity</span>
+                  <span className="text-[10px] font-black uppercase text-gray-400 tracking-wider block">Last Signed In</span>
                   <span className="text-xs font-semibold text-gray-800">
                     {viewingUser.last_active ? new Date(viewingUser.last_active).toLocaleString() : 'Never logged in'}
                   </span>
@@ -1337,8 +1337,8 @@ const UsersPage: React.FC = () => {
               <div className="w-12 h-12 bg-red-50 rounded-2xl flex items-center justify-center mb-3 text-[#D10043]">
                 <UserPlus size={22} />
               </div>
-              <h3 className="text-xl font-extrabold text-gray-900">Provision User Account</h3>
-              <p className="text-xs text-gray-500 font-medium mt-1">Configure credentials and grant operational access.</p>
+              <h3 className="text-xl font-extrabold text-gray-900">Create New Account</h3>
+              <p className="text-xs text-gray-500 font-medium mt-1">Enter the person's details and choose their account role.</p>
             </div>
             
             <form onSubmit={handleCreateSubmit} className="space-y-4">
@@ -1365,7 +1365,7 @@ const UsersPage: React.FC = () => {
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-gray-700 mb-1.5">Initial Password</label>
+                <label className="block text-xs font-bold text-gray-700 mb-1.5">Temporary Password</label>
                 <div className="relative">
                   <input 
                     type={showPassword ? "text" : "password"} required
@@ -1385,7 +1385,7 @@ const UsersPage: React.FC = () => {
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-gray-700 mb-1.5">Access Role</label>
+                <label className="block text-xs font-bold text-gray-700 mb-1.5">Account Role</label>
                 <div className="relative">
                   <select 
                     value={formData.role}
@@ -1477,7 +1477,7 @@ const UsersPage: React.FC = () => {
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-gray-700 mb-1.5">Access Role</label>
+                <label className="block text-xs font-bold text-gray-700 mb-1.5">Account Role</label>
                 <div className="relative">
                   <select 
                     value={formData.role}
