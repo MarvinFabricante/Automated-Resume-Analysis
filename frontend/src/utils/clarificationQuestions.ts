@@ -14,12 +14,42 @@ export interface ClarificationQuestion {
 const MFG_JOB_RE =
   /\b(?:manufactur\w*|production|factory|plant|operator|machin\w*|assembly|assembl\w*|warehouse|kiln|ceramic|welding|quality|qc|maintenance|industrial|technician)\b/i;
 
+function hasExplicitExperienceDuration(
+  extractedData: any,
+  relevanceStr: string,
+  extractedYears = 0
+): boolean {
+  const years = Number(extractedYears || extractedData?.years_experience || 0);
+  const totalMonths = Number(extractedData?.total_experience_months || 0);
+  if (years > 0 || totalMonths > 0) return true;
+
+  const workExps = Array.isArray(extractedData?.work_experiences)
+    ? extractedData.work_experiences
+    : [];
+  const hasDatedWorkExp = workExps.some(
+    (we: any) =>
+      we &&
+      (Number(we.duration_months || 0) > 0 ||
+        (Boolean(String(we.start_date || '').trim()) &&
+          (Boolean(String(we.end_date || '').trim()) || Boolean(we.is_current))) ||
+        /\b(?:19|20)\d{2}\b/.test(String(we.duration || we.dates || '')))
+  );
+  if (hasDatedWorkExp) return true;
+
+  const combinedText = `${relevanceStr || ''} ${String(extractedData?.experience || '')}`;
+  return (
+    /\b\d+(?:\.\d+)?\s*(?:\+?\s*)?(?:years?|yrs?)\b/i.test(combinedText) ||
+    /\b(?:19|20)\d{2}\s*[-–—to]+\s*(?:(?:19|20)\d{2}|present|current)\b/i.test(combinedText)
+  );
+}
+
 function buildFallbackJobQuestions(
   job: any,
   matchData: any,
   candidateSkills: string[],
   extractedYears: number,
-  relevanceStr: string
+  relevanceStr: string,
+  extractedData?: any
 ): ClarificationQuestion[] {
   const jobTitle = String(job?.job_title || job?.title || '').trim();
   if (!jobTitle || jobTitle === 'Position') return [];
@@ -32,9 +62,8 @@ function buildFallbackJobQuestions(
 
   const questions: ClarificationQuestion[] = [];
 
-  const hasYears =
-    extractedYears > 0 || /\b\d+(?:\.\d+)?\s*(?:\+?\s*)?(?:years?|yrs?)\b/i.test(relevanceStr);
-  if (!hasYears || matchData?.experience_score === undefined || Number(matchData.experience_score) < 70) {
+  const hasYears = hasExplicitExperienceDuration(extractedData, relevanceStr, extractedYears);
+  if (!hasYears) {
     questions.push({
       id: `clarify_${slug}_years_experience`,
       field: 'years_experience',
@@ -43,7 +72,7 @@ function buildFallbackJobQuestions(
       domain: department || (isMfgJob ? 'Manufacturing' : 'General'),
       type: 'number',
       placeholder: 'e.g. 2',
-      required: !hasYears,
+      required: true,
       question: isMfgJob
         ? `How many years of manufacturing experience do you have for the ${jobTitle} role?`
         : department
@@ -78,8 +107,8 @@ function buildFallbackJobQuestions(
       question: `For ${jobTitle}, which of these required skills have you used: ${missingSkills.join(', ')}?`,
       reason: `Required skills for ${jobTitle} not explicitly found in resume.`,
     });
-  } else if (rawReqSkills.length > 0 || candidateSkills.length > 0) {
-    const sample = (rawReqSkills.length > 0 ? rawReqSkills : candidateSkills).slice(0, 3);
+  } else if (rawReqSkills.length > 0 && candidateSkills.length === 0) {
+    const sample = rawReqSkills.slice(0, 3);
     questions.push({
       id: `clarify_${slug}_skills`,
       field: 'skills',
@@ -94,7 +123,21 @@ function buildFallbackJobQuestions(
   }
 
   const reqCerts = String(job?.certifications_requirements || '').trim();
-  if (reqCerts && reqCerts.toLowerCase() !== 'none') {
+  const rawCandCerts = Array.isArray(extractedData?.certifications_list)
+    ? extractedData.certifications_list.join(' ')
+    : Array.isArray(extractedData?.certifications)
+    ? extractedData.certifications.join(' ')
+    : String(extractedData?.certifications || '');
+  const candCertLower = `${rawCandCerts} ${candidateSkills.join(' ')}`.toLowerCase();
+  const reqCertTokens = reqCerts
+    .toLowerCase()
+    .split(/[,;\n|/]+/)
+    .map((t) => t.trim())
+    .filter((t) => t.length > 1 && t !== 'none');
+  const hasAllCerts =
+    Number(matchData?.certifications_score) >= 100 ||
+    (reqCertTokens.length > 0 && reqCertTokens.every((tok) => candCertLower.includes(tok)));
+  if (reqCerts && reqCerts.toLowerCase() !== 'none' && !hasAllCerts) {
     questions.push({
       id: `clarify_${slug}_certifications`,
       field: 'certifications',
@@ -124,17 +167,29 @@ function buildFallbackJobQuestions(
     fitQ = `What systems, codebases, or production deployments have you delivered relevant to ${jobTitle}?`;
   }
 
-  questions.push({
-    id: `clarify_${slug}_role_fit`,
-    field: 'relevance',
-    job_id: jobId,
-    job_title: jobTitle,
-    domain: department || 'General',
-    type: 'text',
-    placeholder: `Describe experience relevant to ${jobTitle}`,
-    question: fitQ,
-    reason: `Role-specific clarification for ${jobTitle}.`,
-  });
+  const hasSubstantiveExp =
+    Boolean(String(relevanceStr || '').trim()) ||
+    Boolean(String(extractedData?.experience || '').trim()) ||
+    (Array.isArray(extractedData?.work_experiences) &&
+      extractedData.work_experiences.some(
+        (we: any) =>
+          we &&
+          (Boolean(String(we.job_title || '').trim()) ||
+            Boolean(String(we.responsibilities || we.description || '').trim()))
+      ));
+  if (!hasSubstantiveExp || matchData?.relevant_experience_count === 0) {
+    questions.push({
+      id: `clarify_${slug}_role_fit`,
+      field: 'relevance',
+      job_id: jobId,
+      job_title: jobTitle,
+      domain: department || 'General',
+      type: 'text',
+      placeholder: `Describe experience relevant to ${jobTitle}`,
+      question: fitQ,
+      reason: `Role-specific clarification for ${jobTitle}.`,
+    });
+  }
 
   return questions;
 }
@@ -284,16 +339,31 @@ export function deriveClarificationQuestions(
     ? state.skills
     : [];
 
-  const jobQuestions: ClarificationQuestion[] =
+  const hasExplicitYears = hasExplicitExperienceDuration(
+    state?.extractedData,
+    relevanceStr,
+    extractedYears
+  );
+
+  const rawJobQuestions: ClarificationQuestion[] =
     backendJobQuestionsRaw.length > 0
       ? backendJobQuestionsRaw.map((q, i) => normalizeQ(q, i, 'clarify_job'))
-      : buildFallbackJobQuestions(activeJob, activeMatch, candSkills, extractedYears, relevanceStr);
+      : buildFallbackJobQuestions(
+          activeJob,
+          activeMatch,
+          candSkills,
+          extractedYears,
+          relevanceStr,
+          state?.extractedData
+        );
+
+  const jobQuestions = hasExplicitYears
+    ? rawJobQuestions.filter((q) => q.field !== 'years_experience')
+    : rawJobQuestions;
 
   const hasResumeContext = Boolean(
     state?.extractedData || state?.fileName || state?.rawText || state?.isSmart
   );
-  const hasExplicitYears =
-    extractedYears > 0 || /\b\d+(?:\.\d+)?\s*(?:\+?\s*)?(?:years?|yrs?)\b/i.test(relevanceStr);
 
   if (
     hasResumeContext &&
