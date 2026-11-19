@@ -1,12 +1,15 @@
-import React, { useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Helmet } from 'react-helmet-async';
-import { LogIn, Briefcase, FileUp, CheckCircle, ShieldCheck, ArrowRight, FileText, CheckCircle2, Clock, Sparkles } from 'lucide-react';
+import { LogIn, LayoutDashboard, Briefcase, FileUp, CheckCircle, ShieldCheck, ArrowRight, FileText, CheckCircle2, Clock, Sparkles } from 'lucide-react';
+import { useSelector } from 'react-redux';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { useGSAP } from '@gsap/react';
 import Header from '../../../components/layout/Header';
 import Footer from '../../../components/layout/Footer';
 import logo from '../../../assets/logo.png';
+import { RootState } from '../../../redux/store';
+import { isTokenExpired } from '../../../utils/token';
 
 if (typeof window !== 'undefined') {
   gsap.registerPlugin(ScrollTrigger);
@@ -14,6 +17,43 @@ if (typeof window !== 'undefined') {
 
 const LandingPage: React.FC = () => {
   const containerRef = useRef<HTMLDivElement>(null);
+  const { role: reduxRole, isAuthenticated } = useSelector((state: RootState) => state.auth);
+  const [activeRole, setActiveRole] = useState<string | null>(null);
+
+  useEffect(() => {
+    const token = typeof localStorage !== 'undefined' ? localStorage.getItem('token') : null;
+    const storedRole = typeof localStorage !== 'undefined' ? localStorage.getItem('role') : null;
+    const hasSession = Boolean(token && !isTokenExpired(token)) || isAuthenticated;
+    const resolved = hasSession ? (reduxRole || storedRole || '').toUpperCase() : '';
+    setActiveRole(resolved && resolved !== 'GUEST' ? resolved : null);
+  }, [reduxRole, isAuthenticated]);
+
+  const dashboardHref =
+    activeRole === 'ADMIN'
+      ? '/admin/dashboard'
+      : activeRole === 'HR'
+      ? '/hr/dashboard'
+      : activeRole === 'CANDIDATE'
+      ? '/candidate/dashboard'
+      : '/login';
+
+  const positionsHref =
+    activeRole === 'ADMIN'
+      ? '/admin/jobmanagement'
+      : activeRole === 'HR'
+      ? '/hr/screeningportal'
+      : activeRole === 'CANDIDATE'
+      ? '/candidate/findjobs'
+      : '/careerspage';
+
+  const uploadHref =
+    activeRole === 'CANDIDATE'
+      ? '/candidate/smart-upload'
+      : activeRole === 'HR'
+      ? '/hr/physical-resumes'
+      : activeRole === 'ADMIN'
+      ? '/admin/dashboard'
+      : '/smart-upload';
 
   useGSAP(
     () => {
@@ -250,7 +290,7 @@ const LandingPage: React.FC = () => {
           {/* Primary & Secondary Action Buttons */}
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3.5 sm:gap-4 max-w-md mx-auto mb-10 sm:mb-12">
             <a
-              href="/careerspage"
+              href={positionsHref}
               className="w-full sm:w-auto px-8 py-3.5 rounded-2xl bg-[#D60041] hover:bg-slate-900 text-white font-black text-sm uppercase tracking-wider flex items-center justify-center gap-2.5 transition-all shadow-md shadow-[#D60041]/20 active:scale-[0.98] cursor-pointer"
             >
               <Briefcase size={18} />
@@ -259,11 +299,20 @@ const LandingPage: React.FC = () => {
             </a>
 
             <a
-              href="/login"
+              href={dashboardHref}
               className="w-full sm:w-auto px-7 py-3.5 rounded-2xl bg-white hover:bg-slate-50 text-slate-700 hover:text-slate-900 border border-slate-200 font-bold text-sm uppercase tracking-wider flex items-center justify-center gap-2 transition-all shadow-2xs active:scale-[0.98] cursor-pointer"
             >
-              <LogIn size={18} className="text-slate-400" />
-              <span>Sign in</span>
+              {activeRole ? (
+                <>
+                  <LayoutDashboard size={18} className="text-[#D60041]" />
+                  <span>Go to Dashboard</span>
+                </>
+              ) : (
+                <>
+                  <LogIn size={18} className="text-slate-400" />
+                  <span>Sign in</span>
+                </>
+              )}
             </a>
           </div>
 
@@ -343,7 +392,7 @@ const LandingPage: React.FC = () => {
                 Explore our current job openings across plant operations, maintenance, quality assurance, and supply chain.
               </p>
             </div>
-            <a href="/careerspage" className="w-full bg-white border border-gray-200 hover:border-[#D60041] hover:text-[#D60041] text-gray-800 py-3.5 rounded-full font-medium flex items-center justify-center space-x-2 transition-all relative z-10 cursor-pointer">
+            <a href={positionsHref} className="w-full bg-white border border-gray-200 hover:border-[#D60041] hover:text-[#D60041] text-gray-800 py-3.5 rounded-full font-medium flex items-center justify-center space-x-2 transition-all relative z-10 cursor-pointer">
               <span>View Positions</span>
               <ArrowRight size={18} />
             </a>
@@ -360,7 +409,7 @@ const LandingPage: React.FC = () => {
                 Upload your resume and we'll compare your background with our open positions to show you your best fit.
               </p>
             </div>
-            <a href="/smart-upload" className="w-full bg-[#D60041] hover:bg-[#b50037] text-white py-3.5 rounded-full font-medium flex items-center justify-center space-x-2 transition-all relative z-10 cursor-pointer">
+            <a href={uploadHref} className="w-full bg-[#D60041] hover:bg-[#b50037] text-white py-3.5 rounded-full font-medium flex items-center justify-center space-x-2 transition-all relative z-10 cursor-pointer">
               <span>Upload Resume</span>
               <ArrowRight size={18} />
             </a>

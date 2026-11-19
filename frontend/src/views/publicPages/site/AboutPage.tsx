@@ -16,6 +16,7 @@ import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { useGSAP } from '@gsap/react';
 import Header from '../../../components/layout/Header';
 import Footer from '../../../components/layout/Footer';
+import { isTokenExpired } from '../../../utils/token';
 import banner from '../../../assets/banner.jpg';
 import banner2 from '../../../assets/banner2.jpg';
 import banner3 from '../../../assets/banner3.jpg';
@@ -35,7 +36,16 @@ const BANNERS = [
 
 const AboutPage: React.FC = () => {
   const [currentSlide, setCurrentSlide] = useState(0);
+  const [positionsHref, setPositionsHref] = useState('/careerspage');
   const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const token = typeof localStorage !== 'undefined' ? localStorage.getItem('token') : null;
+    const role = typeof localStorage !== 'undefined' ? (localStorage.getItem('role') || '').toUpperCase() : '';
+    if (token && !isTokenExpired(token) && role === 'CANDIDATE') {
+      setPositionsHref('/candidate/findjobs');
+    }
+  }, []);
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -539,7 +549,7 @@ const AboutPage: React.FC = () => {
                 Take the next step in your career. Upload your resume and let our AI match you with your perfect role at Mariwasa.
               </p>
               <a
-                href="/careerspage"
+                href={positionsHref}
                 className="about-cta-btn inline-flex items-center justify-center space-x-2 bg-[#D60041] text-white px-6 sm:px-8 py-3 rounded-full font-medium hover:bg-[#b50037] transition-all shadow-sm w-full sm:w-auto text-sm sm:text-base will-change-transform"
               >
                 <span>View Openings</span>

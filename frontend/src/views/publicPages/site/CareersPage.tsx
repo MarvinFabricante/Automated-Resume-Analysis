@@ -18,6 +18,7 @@ import {
 import Footer from '../../../components/layout/Footer';
 import Header from '../../../components/layout/Header';
 import { Job } from '../../../types';
+import { isTokenExpired } from '../../../utils/token';
 
 if (typeof window !== 'undefined') {
   gsap.registerPlugin(ScrollTrigger);
@@ -30,6 +31,15 @@ interface DynamicJob extends Job {
 const CareersPage: React.FC = () => {
   const navigate = useNavigate();
   const containerRef = useRef<HTMLDivElement>(null);
+
+  // Authenticated candidates belong in the Candidate Portal's Open Positions view (/candidate/findjobs)
+  useEffect(() => {
+    const token = typeof localStorage !== 'undefined' ? localStorage.getItem('token') : null;
+    const role = typeof localStorage !== 'undefined' ? (localStorage.getItem('role') || '').toUpperCase() : '';
+    if (token && !isTokenExpired(token) && role === 'CANDIDATE') {
+      navigate('/candidate/findjobs', { replace: true });
+    }
+  }, [navigate]);
 
   const [jobs, setJobs] = useState<DynamicJob[]>([]);
   const [isLoading, setIsLoading] = useState(true);

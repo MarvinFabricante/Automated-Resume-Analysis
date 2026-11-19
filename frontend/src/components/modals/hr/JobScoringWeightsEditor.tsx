@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Sliders, RefreshCw, ChevronDown, ChevronUp, AlertTriangle, HelpCircle } from 'lucide-react';
+import { Sliders, RefreshCw, ChevronDown, ChevronUp, AlertTriangle, HelpCircle, Scale } from 'lucide-react';
 import { JobScoringWeights, DEFAULT_JOB_SCORING_WEIGHTS } from '../../../types';
 
 export const MIN_WEIGHT_PCT = 5;
@@ -123,6 +123,60 @@ export function areWeightsEqual(a: JobScoringWeights, b: JobScoringWeights): boo
   );
 }
 
+export function autoBalanceWeights(weights: JobScoringWeights): JobScoringWeights {
+  const totalUnits = 20; // 20 * 5% = 100%
+  const minUnits = MIN_WEIGHT_PCT / WEIGHT_STEP_PCT; // 1 unit = 5%
+  const maxUnits = MAX_WEIGHT_PCT / WEIGHT_STEP_PCT; // 14 units = 70%
+  const keys = WEIGHT_FIELDS.map((f) => f.key);
+  const rawSum = keys.reduce((s, k) => s + Math.max(0, Number(weights[k] ?? 0)), 0);
+
+  if (rawSum <= 0) {
+    return { ...DEFAULT_JOB_SCORING_WEIGHTS };
+  }
+
+  const units: Record<keyof JobScoringWeights, number> = {
+    skills_weight: minUnits,
+    experience_weight: minUnits,
+    education_weight: minUnits,
+    certifications_weight: minUnits,
+    completeness_weight: minUnits,
+  };
+  let remaining = totalUnits - keys.length * minUnits;
+
+  const ideals = keys.map((k) => {
+    const share = (Math.max(0, Number(weights[k] ?? 0)) / rawSum) * totalUnits;
+    const extraIdeal = Math.max(0, share - minUnits);
+    return { key: k, extraIdeal };
+  });
+  const extraSum = ideals.reduce((s, item) => s + item.extraIdeal, 0);
+
+  if (extraSum > 0) {
+    const remainders = ideals.map((item) => {
+      const scaled = (item.extraIdeal / extraSum) * remaining;
+      const floored = Math.min(maxUnits - minUnits, Math.floor(scaled));
+      units[item.key] += floored;
+      return { key: item.key, rem: scaled - floored };
+    });
+    remaining = totalUnits - keys.reduce((s, k) => s + units[k], 0);
+    remainders.sort((a, b) => b.rem - a.rem);
+    for (const item of remainders) {
+      if (remaining <= 0) break;
+      if (units[item.key] < maxUnits) {
+        units[item.key] += 1;
+        remaining -= 1;
+      }
+    }
+  }
+
+  return {
+    skills_weight: (units.skills_weight * WEIGHT_STEP_PCT) / 100,
+    experience_weight: (units.experience_weight * WEIGHT_STEP_PCT) / 100,
+    education_weight: (units.education_weight * WEIGHT_STEP_PCT) / 100,
+    certifications_weight: (units.certifications_weight * WEIGHT_STEP_PCT) / 100,
+    completeness_weight: (units.completeness_weight * WEIGHT_STEP_PCT) / 100,
+  };
+}
+
 export function formatPrioritySummary(weights?: JobScoringWeights | null): string {
   if (!weights || areWeightsEqual(weights, DEFAULT_JOB_SCORING_WEIGHTS)) {
     return 'Default priorities';
@@ -183,7 +237,7 @@ const JobScoringWeightsEditor: React.FC<JobScoringWeightsEditorProps> = ({
   weights,
   defaultWeights = DEFAULT_JOB_SCORING_WEIGHTS,
   onChange,
-  defaultExpanded = false,
+  defaultExpanded = true,
   readOnly = false,
   error = null,
 }) => {
@@ -211,6 +265,10 @@ const JobScoringWeightsEditor: React.FC<JobScoringWeightsEditorProps> = ({
 
   const handleReset = () => {
     onChange({ ...defaultWeights });
+  };
+
+  const handleAutoBalance = () => {
+    onChange(autoBalanceWeights(weights));
   };
 
   return (
@@ -330,7 +388,7 @@ const JobScoringWeightsEditor: React.FC<JobScoringWeightsEditorProps> = ({
           {!balanced && (
             <div
               role="alert"
-              className="flex items-center justify-between gap-2 bg-amber-50 border border-amber-300 rounded-xl px-3 py-2 text-xs text-amber-900"
+              className="flex flex-wrap items-center justify-between gap-2 bg-amber-50 border border-amber-300 rounded-xl px-3 py-2 text-xs text-amber-900"
             >
               <div className="flex items-center gap-2">
                 <AlertTriangle size={14} className="text-amber-600 shrink-0" aria-hidden="true" />
@@ -338,6 +396,15 @@ const JobScoringWeightsEditor: React.FC<JobScoringWeightsEditorProps> = ({
                   <strong>Total must be 100%</strong> (currently {totalPct}%). Adjust sliders to enable saving.
                 </span>
               </div>
+              {!readOnly && (
+                <button
+                  type="button"
+                  onClick={handleAutoBalance}
+                  className="px-2.5 py-1 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-[11px] font-bold transition-all cursor-pointer flex items-center gap-1"
+                >
+                  <Scale size={12} aria-hidden="true" /> Auto-Balance to 100%
+                </button>
+              )}
             </div>
           )}
 
@@ -405,13 +472,24 @@ const JobScoringWeightsEditor: React.FC<JobScoringWeightsEditorProps> = ({
               <span className="text-[11px] text-gray-500">
                 Allowed range: {MIN_WEIGHT_PCT}%–{MAX_WEIGHT_PCT}% per criterion in {WEIGHT_STEP_PCT}% steps.
               </span>
-              <button
-                type="button"
-                onClick={handleReset}
-                className="px-3 py-1.5 rounded-xl border border-gray-200 bg-white text-gray-700 font-semibold text-xs hover:bg-gray-50 transition-all cursor-pointer flex items-center gap-1.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#d81159]"
-              >
-                <RefreshCw size={13} className="text-gray-500" aria-hidden="true" /> Reset to default
-              </button>
+              <div className="flex items-center gap-2">
+                {!balanced && (
+                  <button
+                    type="button"
+                    onClick={handleAutoBalance}
+                    className="px-3 py-1.5 rounded-xl border border-amber-300 bg-amber-50 text-amber-900 font-semibold text-xs hover:bg-amber-100 transition-all cursor-pointer flex items-center gap-1.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#d81159]"
+                  >
+                    <Scale size={13} aria-hidden="true" /> Auto-Balance
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={handleReset}
+                  className="px-3 py-1.5 rounded-xl border border-gray-200 bg-white text-gray-700 font-semibold text-xs hover:bg-gray-50 transition-all cursor-pointer flex items-center gap-1.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#d81159]"
+                >
+                  <RefreshCw size={13} className="text-gray-500" aria-hidden="true" /> Reset to default
+                </button>
+              </div>
             </div>
           )}
         </div>

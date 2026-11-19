@@ -350,3 +350,68 @@ def test_insufficient_experience_1yr_vs_3yr_reports_gap():
     assert res_ok["experience_gaps"] is None
     assert res_ok["requirement_gaps"] == []
 
+
+def test_followup_questions_skip_criteria_already_covered_in_resume():
+    job = {
+        "job_id": "J_PROD",
+        "job_title": "Production Operator (Manufacturing)",
+        "department": "Manufacturing",
+        "description": "Operate CNC and injection molding machinery, conduct in-process quality checks, and perform preventive maintenance.",
+        "skills_requirements": "CNC Operation, Injection Molding, Quality Control, Preventive Maintenance",
+        "experience_requirements": "3+ years",
+        "certifications_requirements": "None",
+    }
+    resume_covered = {
+        "fullname": "Juan Dela Cruz",
+        "skills": "CNC Operation, Injection Molding, Quality Control, Preventive Maintenance, Calipers",
+        "experience": (
+            "Senior Production Operator — Laguna Auto Parts Manufacturing Corp. June 2024 – Present (2 years) "
+            "Operated automated CNC and injection molding machinery to meet daily quota of 1,500+ units. "
+            "Conducted hourly in-process quality checks using calipers and micrometers. "
+            "Performed preventive maintenance, tooling changeovers, and troubleshooting. "
+            "Production Operator — Rizal Packaging & Industrial Solutions Inc. June 2022 – June 2024 (2 years)"
+        ),
+        "years_experience": 4,
+        "education": "Technical Vocational Graduate",
+    }
+    cfg = {"weights": {}, "thresholds": {}}
+    res_covered = job_matching_service.calculate_match_score(resume_covered, job, matching_config=cfg)
+    fields_covered = {q["field"] for q in res_covered.get("clarification_questions", [])}
+
+    assert "years_experience" not in fields_covered
+    assert "skills" not in fields_covered
+    assert "relevance" not in fields_covered
+
+    # Even if structured years_experience=0 is passed when dated experience text/entries exist, do not ask for years
+    resume_dated_text_only = {
+        **resume_covered,
+        "years_experience": 0,
+        "work_experiences": [
+            {
+                "job_title": "Senior Production Operator",
+                "company_name": "Laguna Auto Parts Manufacturing Corp.",
+                "start_date": "June 2024",
+                "is_current": True,
+                "responsibilities": "Operated CNC machinery and conducted quality checks.",
+            }
+        ],
+    }
+    res_dated = job_matching_service.calculate_match_score(resume_dated_text_only, job, matching_config=cfg)
+    fields_dated = {q["field"] for q in res_dated.get("clarification_questions", [])}
+    assert "years_experience" not in fields_dated
+
+    # Resume missing years, missing required skills, and lacking relevant experience should still get follow-ups
+    resume_missing = {
+        "fullname": "New Applicant",
+        "skills": "Customer Service",
+        "experience": "",
+        "years_experience": 0,
+        "education": "High School",
+    }
+    res_missing = job_matching_service.calculate_match_score(resume_missing, job, matching_config=cfg)
+    fields_missing = {q["field"] for q in res_missing.get("clarification_questions", [])}
+    assert "years_experience" in fields_missing
+    assert "skills" in fields_missing
+    assert "relevance" in fields_missing
+
+

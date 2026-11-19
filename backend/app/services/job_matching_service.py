@@ -1236,7 +1236,32 @@ def build_job_specific_questions(
     rel_count = int(relevance_result.get("relevant_count", 0) or 0)
     is_mfg_job = bool(_MFG_JOB_TITLE_RE.search(job_text))
 
-    if cand_years <= 0 or (req_years > 0 and cand_years < req_years) or rel_count == 0 or rel_score < 0.7:
+    exp_text = str(resume_data.get("experience") or "")
+    work_exps = resume_data.get("work_experiences") or []
+    total_exp_months = int(resume_data.get("total_experience_months") or 0)
+    raw_years_exp = float(resume_data.get("years_experience") or 0)
+    has_dated_work_exp = any(
+        isinstance(we, dict)
+        and (
+            int(we.get("duration_months") or 0) > 0
+            or (
+                bool(str(we.get("start_date") or "").strip())
+                and (bool(str(we.get("end_date") or "").strip()) or bool(we.get("is_current")))
+            )
+            or bool(re.search(r"\b(?:19|20)\d{2}\b", str(we.get("duration") or we.get("dates") or "")))
+        )
+        for we in work_exps
+    )
+    has_explicit_years = (
+        cand_years > 0
+        or raw_years_exp > 0
+        or total_exp_months > 0
+        or has_dated_work_exp
+        or bool(re.search(r"\b\d+(?:\.\d+)?\s*(?:\+?\s*)?(?:years?|yrs?)\b", exp_text, re.IGNORECASE))
+        or bool(re.search(r"\b(?:19|20)\d{2}\s*[-–—to]+\s*(?:(?:19|20)\d{2}|present|current)\b", exp_text, re.IGNORECASE))
+    )
+
+    if not has_explicit_years:
         if is_mfg_job:
             q_text = f"How many years of manufacturing experience do you have for the {job_title} role?"
         elif department:
@@ -1253,13 +1278,14 @@ def build_job_specific_questions(
             "question": q_text,
             "type": "number",
             "placeholder": "e.g. 2",
-            "required": cand_years <= 0,
+            "required": True,
             "domain": department or ("Manufacturing" if is_mfg_job else "General"),
             "reason": f"Clarifying direct experience duration for {job_title}.",
         })
 
     missing_skills = [s.title() for s in (skills_result.get("missing") or []) if s][:5]
     matched_skills = [s.title() for s in (skills_result.get("matched") or []) if s][:5]
+    has_resume_skills = bool(str(resume_data.get("skills") or "").strip()) or bool(resume_data.get("skills_list"))
     if missing_skills:
         questions.append({
             "id": f"clarify_{job_slug}_skills",
@@ -1273,20 +1299,7 @@ def build_job_specific_questions(
             "domain": department or "General",
             "reason": f"Required skills for {job_title} not explicitly found in resume.",
         })
-    elif matched_skills:
-        questions.append({
-            "id": f"clarify_{job_slug}_skills",
-            "field": "skills",
-            "job_id": job_id,
-            "job_title": job_title,
-            "question": f"For {job_title}, please highlight your hands-on experience with {', '.join(matched_skills[:3])}.",
-            "type": "text",
-            "placeholder": f"Describe projects or tasks using {', '.join(matched_skills[:2])}",
-            "required": False,
-            "domain": department or "General",
-            "reason": f"Verifying practical proficiency for {job_title}.",
-        })
-    elif skills_req:
+    elif skills_req and not matched_skills and not has_resume_skills:
         questions.append({
             "id": f"clarify_{job_slug}_skills",
             "field": "skills",
@@ -1331,18 +1344,27 @@ def build_job_specific_questions(
     else:
         fit_q = f"What daily responsibilities or accomplishments best qualify you for {job_title} ({department or 'this role'})?"
 
-    questions.append({
-        "id": f"clarify_{job_slug}_role_fit",
-        "field": "relevance",
-        "job_id": job_id,
-        "job_title": job_title,
-        "question": fit_q,
-        "type": "text",
-        "placeholder": f"Describe experience relevant to {job_title}",
-        "required": False,
-        "domain": department or "General",
-        "reason": f"Role-specific clarification for {job_title}.",
-    })
+    has_exp_description = bool(exp_text.strip()) or any(
+        isinstance(we, dict)
+        and (
+            bool(str(we.get("job_title") or "").strip())
+            or bool(str(we.get("responsibilities") or we.get("description") or "").strip())
+        )
+        for we in work_exps
+    )
+    if rel_count == 0 or not has_exp_description:
+        questions.append({
+            "id": f"clarify_{job_slug}_role_fit",
+            "field": "relevance",
+            "job_id": job_id,
+            "job_title": job_title,
+            "question": fit_q,
+            "type": "text",
+            "placeholder": f"Describe experience relevant to {job_title}",
+            "required": False,
+            "domain": department or "General",
+            "reason": f"Role-specific clarification for {job_title}.",
+        })
 
     return questions
 
