@@ -1423,6 +1423,147 @@ async def test_interview_controller_calendar_api_timeout_504_graceful_error(clie
     assert mock_voice.call_count == 0
 
 
+@pytest.mark.asyncio
+async def test_missed_interview_flagged_and_candidate_can_reschedule_with_availability(client, db_session):
+    """
+    When an interview's end_time has passed without completion/cancellation:
+    - GET /interviews/application/{id} and /interviews/candidate/{email} report is_missed=True.
+    - Candidate can reschedule into an open slot on the interviewer's calendar,
+      while conflicting or past slots and non-owner candidates are rejected.
+    """
+    from datetime import timedelta
+    from app.models.interview import Interview
+
+    hr_user = User(
+        email="hr_missed_resched@example.com",
+        password="password123",
+        role="HR",
+        fullname="HR Missed Tester",
+    )
+    other_cand = User(
+        email="other_cand_missed@example.com",
+        password="password123",
+        role="CANDIDATE",
+        fullname="Other Candidate",
+    )
+    cand_user = User(
+        email="cand_missed@example.com",
+        password="password123",
+        role="CANDIDATE",
+        fullname="Missed Candidate",
+    )
+    db_session.add_all([hr_user, other_cand, cand_user])
+    await db_session.flush()
+
+    job = JobDescription(
+        job_id="MISSED-IV-JOB",
+        job_title="QA Engineer",
+        department="Quality Assurance",
+        job_type=JobType.FULL_TIME,
+        location="Manila",
+        description="Automated testing",
+    )
+    db_session.add(job)
+    await db_session.flush()
+
+    app_own = JobApplication(
+        job_id=job.id,
+        candidate_name="Missed Candidate",
+        candidate_email=cand_user.email,
+        phone="+639181112233",
+        job_title="QA Engineer",
+        status="INTERVIEW SCHEDULED",
+    )
+    app_conflict = JobApplication(
+        job_id=job.id,
+        candidate_name="Busy Slot Candidate",
+        candidate_email="busy_slot@example.com",
+        phone="+639181112244",
+        job_title="QA Engineer",
+        status="INTERVIEW SCHEDULED",
+    )
+    db_session.add_all([app_own, app_conflict])
+    await db_session.flush()
+
+    # Create a past interview (missed)
+    past_start = datetime.now() - timedelta(days=2)
+    past_end = past_start + timedelta(hours=1)
+    missed_iv = Interview(
+        job_application_id=app_own.id,
+        interviewer_id=hr_user.id,
+        title="Initial QA Interview",
+        start_time=past_start,
+        end_time=past_end,
+        status="SCHEDULED",
+    )
+
+    # Pick a future weekday for rescheduling
+    next_day = datetime.now() + timedelta(days=1)
+    while next_day.weekday() > 4:
+        next_day += timedelta(days=1)
+    busy_start = next_day.replace(hour=10, minute=0, second=0, microsecond=0)
+    busy_end = next_day.replace(hour=11, minute=0, second=0, microsecond=0)
+    free_start = next_day.replace(hour=14, minute=0, second=0, microsecond=0)
+    free_end = next_day.replace(hour=15, minute=0, second=0, microsecond=0)
+
+    conflict_iv = Interview(
+        job_application_id=app_conflict.id,
+        interviewer_id=hr_user.id,
+        title="Existing HR Booking",
+        start_time=busy_start,
+        end_time=busy_end,
+        status="SCHEDULED",
+    )
+    db_session.add_all([missed_iv, conflict_iv])
+    await db_session.commit()
+
+    cand_headers = {"Authorization": f"Bearer {create_access_token({'sub': cand_user.email, 'id': cand_user.id, 'role': 'CANDIDATE'})}"}
+    other_headers = {"Authorization": f"Bearer {create_access_token({'sub': other_cand.email, 'id': other_cand.id, 'role': 'CANDIDATE'})}"}
+
+    # 1. Verify interview is flagged as missed
+    app_iv_resp = await client.get(f"/interviews/application/{app_own.id}", headers=cand_headers)
+    assert app_iv_resp.status_code == 200
+    items = app_iv_resp.json()
+    assert len(items) == 1
+    assert items[0]["is_missed"] is True
+
+    # 2. Other candidate cannot reschedule someone else's interview
+    forbid_resp = await client.post(
+        f"/interviews/{missed_iv.id}/candidate-reschedule",
+        json={"start_time": free_start.isoformat(), "end_time": free_end.isoformat()},
+        headers=other_headers,
+    )
+    assert forbid_resp.status_code == 403
+
+    # 3. Busy slot on interviewer's schedule is rejected
+    busy_resp = await client.post(
+        f"/interviews/{missed_iv.id}/candidate-reschedule",
+        json={"start_time": busy_start.isoformat(), "end_time": busy_end.isoformat()},
+        headers=cand_headers,
+    )
+    assert busy_resp.status_code == 400
+    assert "conflict" in busy_resp.json()["detail"].lower() or "available" in busy_resp.json()["detail"].lower()
+
+    # 4. Available slot succeeds and clears is_missed
+    with patch("app.services.notification_service.create_notification", new_callable=AsyncMock), \
+         patch("app.services.email_service.send_interview_rescheduled_email", new_callable=AsyncMock):
+        ok_resp = await client.post(
+            f"/interviews/{missed_iv.id}/candidate-reschedule",
+            json={
+                "start_time": free_start.isoformat(),
+                "end_time": free_end.isoformat(),
+                "reason": "Missed previous schedule",
+            },
+            headers=cand_headers,
+        )
+    assert ok_resp.status_code == 200, ok_resp.text
+    res_data = ok_resp.json()
+    assert res_data["status"] == "SCHEDULED"
+    assert res_data["is_missed"] is False
+    assert res_data["candidate_response"] == "CONFIRMED"
+
+
+
 
 
 

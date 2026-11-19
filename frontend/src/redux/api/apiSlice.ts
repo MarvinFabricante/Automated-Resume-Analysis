@@ -422,6 +422,18 @@ export const apiSlice = createApi({
       invalidatesTags: ['Interviews', 'CalendarEvents', 'Applications'],
     }),
 
+    candidateRescheduleInterview: builder.mutation<
+      any,
+      { interviewId: number | string; start_time: string; end_time: string; reason?: string }
+    >({
+      query: ({ interviewId, ...body }) => ({
+        url: `/interviews/${interviewId}/candidate-reschedule`,
+        method: 'POST',
+        body,
+      }),
+      invalidatesTags: ['Interviews', 'CalendarEvents', 'Applications'],
+    }),
+
     deleteInterview: builder.mutation<any, number | string>({
       query: (interviewId) => ({
         url: `/interviews/${interviewId}`,
@@ -953,6 +965,7 @@ export const {
   useSyncGoogleCalendarMutation,
   useGetGoogleCalendarStatusQuery,
   useUpdateInterviewMutation,
+  useCandidateRescheduleInterviewMutation,
   useDeleteInterviewMutation,
   useGetApplicationInterviewsQuery,
   useGetCandidateInterviewsQuery,

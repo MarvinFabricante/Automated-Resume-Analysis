@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate } from '@/utils/navigation';
 import { useSelector } from 'react-redux';
 import { RootState } from '../../redux/store';
+import { filterAndRankJobs } from '../../utils/jobSearch';
 import { 
   useGetJobsQuery, 
   useGetCandidateApplicationsQuery,
@@ -188,34 +189,23 @@ const UniversalSearch: React.FC<UniversalSearchProps> = ({
     }
 
     // ─── CANDIDATE SEARCH RESULTS ───
-    const matchedJobs: SearchResultItem[] = [];
-    for (const job of rawJobs) {
-      if (job.is_active === false) continue;
-      const title = (job.job_title || job.title || '').toLowerCase();
-      const dept = (job.department || '').toLowerCase();
-      const loc = (job.location || '').toLowerCase();
-      const skills = (Array.isArray(job.skills_requirements)
-        ? job.skills_requirements.join(' ')
-        : job.skills_requirements || ''
-      ).toLowerCase();
-
-      if (title.includes(q) || dept.includes(q) || loc.includes(q) || skills.includes(q)) {
-        const jobId = String(job.job_id || job.id || '');
-        matchedJobs.push({
-          id: `job-${jobId}`,
-          type: 'job',
-          category: 'Jobs',
-          title: job.job_title || job.title || 'Untitled Role',
-          subtitle: job.department || 'Mariwasa Siam Ceramics',
-          location: job.location || 'Sto. Tomas, Batangas',
-          tag: job.job_type || 'Full-Time',
-          tagColor: 'bg-slate-100 text-slate-700',
-          url: `/job-details/${jobId}`,
-          data: job
-        });
-      }
-      if (matchedJobs.length >= 6) break;
-    }
+    const activeJobs = rawJobs.filter((job: any) => job.is_active !== false);
+    const rankedJobs = filterAndRankJobs(activeJobs, debouncedQuery);
+    const matchedJobs: SearchResultItem[] = rankedJobs.slice(0, 10).map((job: any) => {
+      const jobId = String(job.job_id || job.id || '');
+      return {
+        id: `job-${jobId}`,
+        type: 'job',
+        category: 'Jobs',
+        title: job.job_title || job.title || 'Untitled Role',
+        subtitle: job.department || 'Mariwasa Siam Ceramics',
+        location: job.location || 'Sto. Tomas, Batangas',
+        tag: job.job_type || 'Full-Time',
+        tagColor: 'bg-slate-100 text-slate-700',
+        url: `/job-details/${jobId}`,
+        data: job,
+      };
+    });
 
     const matchedApps: SearchResultItem[] = [];
     if (isCandidate && Array.isArray(candidateApps)) {
@@ -224,7 +214,12 @@ const UniversalSearch: React.FC<UniversalSearchProps> = ({
         const status = (app.status || '').toLowerCase();
         const comp = (app.company || '').toLowerCase();
 
-        if (role.includes(q) || status.includes(q) || comp.includes(q)) {
+        const matchesApp =
+          q.length === 1
+            ? role.startsWith(q) || role.split(/[\s,;/()\-–—]+/).some((w: string) => w.startsWith(q))
+            : role.includes(q) || status.includes(q) || comp.includes(q);
+
+        if (matchesApp) {
           matchedApps.push({
             id: `app-${app.id}`,
             type: 'application',
@@ -280,6 +275,12 @@ const UniversalSearch: React.FC<UniversalSearchProps> = ({
       }
     }
   };
+
+  const totalCandidateJobMatches = useMemo(() => {
+    if (!debouncedQuery || isHR) return 0;
+    const activeJobs = rawJobs.filter((job: any) => job.is_active !== false);
+    return filterAndRankJobs(activeJobs, debouncedQuery).length;
+  }, [debouncedQuery, isHR, rawJobs]);
 
   // Group results by category
   const groupedResults = useMemo(() => {
@@ -340,7 +341,12 @@ const UniversalSearch: React.FC<UniversalSearchProps> = ({
       {/* Results Dropdown */}
       {isOpen && debouncedQuery && (
         <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-2xl shadow-2xl border border-slate-200/90 overflow-hidden z-50 animate-in fade-in slide-in-from-top-2 duration-150 max-h-[460px] overflow-y-auto">
-          {results.length === 0 ? (
+          {!isHR && isLoadingJobs && results.length === 0 ? (
+            <div className="p-8 text-center flex flex-col items-center gap-2">
+              <Loader2 size={20} className="animate-spin text-[#D60041]" />
+              <p className="text-xs font-semibold text-slate-500">Searching jobs...</p>
+            </div>
+          ) : results.length === 0 ? (
             <div className="p-8 text-center">
               <p className="text-sm font-semibold text-slate-700">No results found</p>
               <p className="text-xs text-slate-400 mt-1">
@@ -403,6 +409,26 @@ const UniversalSearch: React.FC<UniversalSearchProps> = ({
                   </div>
                 </div>
               ))}
+              {!isHR && totalCandidateJobMatches > 0 && (
+                <div className="p-2 bg-slate-50/70">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const targetUrl = `/candidate/findjobs?search=${encodeURIComponent(debouncedQuery)}`;
+                      setIsOpen(false);
+                      setQuery('');
+                      if (onCloseMobile) onCloseMobile();
+                      navigate(targetUrl);
+                    }}
+                    className="w-full py-2 px-3 rounded-xl text-xs font-bold text-[#D60041] hover:bg-rose-50 transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                  >
+                    <span>
+                      View all {totalCandidateJobMatches} matching job{totalCandidateJobMatches === 1 ? '' : 's'}
+                    </span>
+                    <ArrowRight size={13} />
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </div>

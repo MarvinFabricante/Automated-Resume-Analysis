@@ -6,6 +6,7 @@ from app.utils.database import get_db
 from app.schemas.interview_schema import (
     AvailableSlotsRequest,
     AvailableSlotsResponseSchema,
+    CandidateRescheduleSchema,
     InterviewCreateSchema,
     InterviewUpdateSchema,
     InterviewResponseSchema,
@@ -108,7 +109,7 @@ async def get_available_slots(
         if request.manager_id:
             target_ids.append(request.manager_id)
 
-        if not target_ids:
+        if not target_ids and (current_user.get("role") or "").upper() != "CANDIDATE":
             target_ids = [current_user.get("id")]
 
         slots = await interview_service.get_available_slots(
@@ -264,6 +265,33 @@ async def update_interview(
     try:
         result = await interview_service.update_interview(
             db, interview_id, data, current_user.get("id"), user_role=current_user.get("role")
+        )
+        await clear_cache_pattern("app_interviews*")
+        await clear_cache_pattern("cand_interviews*")
+        await clear_cache_pattern("calendar_events*")
+        return result
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/{interview_id}/candidate-reschedule", response_model=InterviewResponseSchema)
+async def candidate_reschedule_interview(
+    interview_id: int,
+    data: CandidateRescheduleSchema,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """
+    Allow a candidate to reschedule a missed or pending interview into an available
+    slot on the assigned interviewer's calendar.
+    """
+    try:
+        result = await interview_service.candidate_reschedule_interview(
+            db, interview_id, data, candidate_email=current_user.get("sub")
         )
         await clear_cache_pattern("app_interviews*")
         await clear_cache_pattern("cand_interviews*")

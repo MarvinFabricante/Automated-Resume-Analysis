@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { useNavigate } from '@/utils/navigation';
+import { useNavigate, useSearchParams } from '@/utils/navigation';
+import { filterAndRankJobs } from '../../utils/jobSearch';
 import { Helmet } from 'react-helmet-async';
 import {
   Briefcase,
@@ -46,13 +47,21 @@ interface DisplayJob {
 
 const FindJob: React.FC = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const urlSearch = searchParams.get('search') || '';
 
   // Data & Loading state
   const [jobs, setJobs] = useState<DisplayJob[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
   // Search & Filter state
-  const [searchTerm, setSearchTerm] = useState<string>('');
+  const [searchTerm, setSearchTerm] = useState<string>(urlSearch);
+
+  useEffect(() => {
+    if (urlSearch) {
+      setSearchTerm(urlSearch);
+    }
+  }, [urlSearch]);
   const [selectedDept, setSelectedDept] = useState<string>('All');
   const [selectedJobType, setSelectedJobType] = useState<string>('All');
   const [selectedLocation, setSelectedLocation] = useState<string>('All');
@@ -174,26 +183,16 @@ const FindJob: React.FC = () => {
 
   // Filtering Logic
   const filteredJobs = useMemo(() => {
-    const query = searchTerm.toLowerCase().trim();
+    const searchMatched = filterAndRankJobs(jobs, searchTerm);
 
-    const result = jobs.filter((job) => {
-      const matchesSearch =
-        !query ||
-        job.title.toLowerCase().includes(query) ||
-        job.department.toLowerCase().includes(query) ||
-        job.location.toLowerCase().includes(query) ||
-        (typeof job.skills_requirements === 'string' &&
-          job.skills_requirements.toLowerCase().includes(query)) ||
-        (typeof job.description === 'string' &&
-          job.description.toLowerCase().includes(query));
-
+    const result = searchMatched.filter((job) => {
       const matchesDept = selectedDept === 'All' || job.department === selectedDept;
       const matchesType = selectedJobType === 'All' || job.job_type === selectedJobType;
       const matchesLocation =
         selectedLocation === 'All' || job.location === selectedLocation;
       const matchesSaved = !showSavedOnly || bookmarkedIds.includes(job.id);
 
-      return matchesSearch && matchesDept && matchesType && matchesLocation && matchesSaved;
+      return matchesDept && matchesType && matchesLocation && matchesSaved;
     });
 
     if (sortBy === 'title-asc') {

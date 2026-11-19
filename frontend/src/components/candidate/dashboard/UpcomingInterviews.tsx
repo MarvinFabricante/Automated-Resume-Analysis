@@ -9,26 +9,36 @@ import {
   Copy,
   Check,
   ExternalLink,
-  MessageSquare
+  MessageSquare,
+  AlertCircle,
+  RotateCcw
 } from 'lucide-react';
 import { useSelector } from 'react-redux';
 import { useNavigate } from '@/utils/navigation';
 import { useGetCandidateInterviewsQuery } from '../../../redux/api/apiSlice';
 import { RootState } from '../../../redux/store';
+import CandidateRescheduleModal, { isInterviewMissed } from '../../modals/candidate/CandidateRescheduleModal';
 
 const UpcomingInterviews: React.FC = () => {
   const navigate = useNavigate();
   const { user: email } = useSelector((state: RootState) => state.auth);
   const [copiedId, setCopiedId] = useState<string | number | null>(null);
+  const [rescheduleTarget, setRescheduleTarget] = useState<any | null>(null);
 
-  const { data: interviews = [], isLoading } = useGetCandidateInterviewsQuery(email || '', {
+  const { data: interviews = [], isLoading, refetch } = useGetCandidateInterviewsQuery(email || '', {
     skip: !email,
     pollingInterval: 10000,
   });
 
   const activeInterviews = (interviews || [])
-    .filter((i: any) => i.status !== 'CANCELED' && i.status !== 'COMPLETED')
+    .filter((i: any) => {
+      const st = String(i.status || '').toUpperCase();
+      return st !== 'CANCELED' && st !== 'CANCELLED' && st !== 'COMPLETED';
+    })
     .sort((a: any, b: any) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime());
+
+  const upcomingCount = activeInterviews.filter((i: any) => !isInterviewMissed(i)).length;
+  const missedCount = activeInterviews.filter((i: any) => isInterviewMissed(i)).length;
 
   const handleCopyDetails = (iv: any) => {
     const text = `Interview: ${iv.title}\nRole: ${iv.job_title || 'Mariwasa Position'}\nDate: ${new Date(iv.start_time).toLocaleString()}\nInterviewer: ${iv.interviewer_name || 'HR Panel'}`;
@@ -55,9 +65,18 @@ const UpcomingInterviews: React.FC = () => {
         </div>
 
         {activeInterviews.length > 0 && (
-          <span className="text-[10px] font-black text-purple-700 bg-purple-50 border border-purple-200/60 px-2.5 py-0.5 rounded-full uppercase tracking-wider">
-            {activeInterviews.length} Scheduled
-          </span>
+          <div className="flex items-center gap-1.5 flex-wrap">
+            {upcomingCount > 0 && (
+              <span className="text-[10px] font-black text-purple-700 bg-purple-50 border border-purple-200/60 px-2.5 py-0.5 rounded-full uppercase tracking-wider">
+                {upcomingCount} Scheduled
+              </span>
+            )}
+            {missedCount > 0 && (
+              <span className="text-[10px] font-black text-amber-800 bg-amber-50 border border-amber-200 px-2.5 py-0.5 rounded-full uppercase tracking-wider">
+                {missedCount} Missed
+              </span>
+            )}
+          </div>
         )}
       </div>
 
@@ -100,19 +119,30 @@ const UpcomingInterviews: React.FC = () => {
             const startDate = new Date(iv.start_time);
             const endDate = new Date(iv.end_time);
             const isCopied = copiedId === iv.id;
+            const missed = isInterviewMissed(iv);
 
             return (
               <div
                 key={iv.id}
-                className="bg-slate-50/60 hover:bg-white rounded-2xl p-4 sm:p-5 border border-slate-200/70 hover:border-purple-200 hover:shadow-md transition-all duration-200 space-y-3.5 group"
+                className={`rounded-2xl p-4 sm:p-5 border transition-all duration-200 space-y-3.5 group ${
+                  missed
+                    ? 'bg-amber-50/60 border-amber-200 hover:border-amber-300'
+                    : 'bg-slate-50/60 hover:bg-white border-slate-200/70 hover:border-purple-200 hover:shadow-md'
+                }`}
               >
                 {/* Status Badges */}
                 <div className="flex items-center justify-between gap-2">
-                  <span className="bg-purple-100/90 text-purple-900 text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider">
-                    {iv.status || 'Scheduled'}
-                  </span>
+                  {missed ? (
+                    <span className="bg-amber-100 text-amber-800 text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider inline-flex items-center gap-1">
+                      <AlertCircle size={10} /> Missed
+                    </span>
+                  ) : (
+                    <span className="bg-purple-100/90 text-purple-900 text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider">
+                      {iv.status || 'Scheduled'}
+                    </span>
+                  )}
                   <span className="bg-emerald-50 text-emerald-700 border border-emerald-200/60 text-[9px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider flex items-center gap-1">
-                    <Mail size={10} /> Email Confirmed
+                    <Mail size={10} /> {missed ? 'Past Schedule' : 'Email Confirmed'}
                   </span>
                 </div>
 
@@ -158,11 +188,22 @@ const UpcomingInterviews: React.FC = () => {
                   </button>
                 </div>
 
-                {/* Coordinates Notice */}
-                <div className="p-2.5 bg-purple-50/50 border border-purple-100 rounded-xl text-[11px] text-purple-900 flex items-center gap-2 font-medium">
-                  <Video size={13} className="text-purple-600 shrink-0" />
-                  <span className="truncate">Video meet coordinates sent to registered email</span>
-                </div>
+                {/* Coordinates Notice or Missed Reschedule Action */}
+                {missed ? (
+                  <button
+                    type="button"
+                    onClick={() => setRescheduleTarget(iv)}
+                    className="w-full py-2.5 px-3 bg-[#D10043] hover:bg-[#b00038] text-white rounded-xl text-xs font-black flex items-center justify-center gap-1.5 transition-colors shadow-xs cursor-pointer"
+                  >
+                    <RotateCcw size={13} />
+                    <span>Reschedule with Availability</span>
+                  </button>
+                ) : (
+                  <div className="p-2.5 bg-purple-50/50 border border-purple-100 rounded-xl text-[11px] text-purple-900 flex items-center gap-2 font-medium">
+                    <Video size={13} className="text-purple-600 shrink-0" />
+                    <span className="truncate">Video meet coordinates sent to registered email</span>
+                  </div>
+                )}
 
               </div>
             );
@@ -181,6 +222,13 @@ const UpcomingInterviews: React.FC = () => {
           Message HR Coordinator
         </button>
       </div>
+
+      <CandidateRescheduleModal
+        isOpen={Boolean(rescheduleTarget)}
+        onClose={() => setRescheduleTarget(null)}
+        interview={rescheduleTarget}
+        onSuccess={() => refetch()}
+      />
 
     </div>
   );
