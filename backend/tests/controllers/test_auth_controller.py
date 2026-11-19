@@ -117,3 +117,78 @@ async def test_change_and_set_password_endpoints(client):
         "password": "directnewpassword123"
     })
     assert verify_login.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_security_status_reports_google_linked_for_candidate_hr_and_admin(client, db_session):
+    from datetime import datetime, timedelta
+    from app.models.admin import Admin
+    from app.models.hr import HR
+    from app.services.auth_service import login_with_google, register_candidate_with_google
+    from app.utils.auth import create_access_token, hash_password
+
+    # 1. Candidate registered via Google (no google_credentials stored)
+    cand_res = await register_candidate_with_google(
+        db_session,
+        email="cand_google_status@gmail.com",
+        fullname="Google Candidate",
+        picture="",
+    )
+    cand_headers = {"Authorization": f"Bearer {cand_res['token']}"}
+    cand_status = await client.get("/auth/security-status", headers=cand_headers)
+    assert cand_status.status_code == 200
+    assert cand_status.json()["is_google_linked"] is True
+    assert cand_status.json()["google_email"] == "cand_google_status@gmail.com"
+    assert cand_status.json()["has_calendar_sync"] is False
+
+    # 2. HR logged in via basic Google Sign-In (no calendar scope, custom password already set)
+    hr_user = HR(
+        fullname="Marvin HR",
+        email="marvin_hr_google@gmail.com",
+        password=hash_password("custompass123"),
+        role="HR",
+        company_name="Mariwasa",
+    )
+    db_session.add(hr_user)
+    await db_session.commit()
+
+    hr_login = await login_with_google(
+        db=db_session,
+        email="marvin_hr_google@gmail.com",
+        fullname="Marvin HR",
+        picture="",
+        google_credentials="",
+        target_role="auto",
+        granted_scopes=["openid", "email", "profile"],
+    )
+    hr_headers = {"Authorization": f"Bearer {hr_login['token']}"}
+    hr_status = await client.get("/auth/security-status", headers=hr_headers)
+    assert hr_status.status_code == 200
+    assert hr_status.json()["is_google_linked"] is True
+    assert hr_status.json()["google_email"] == "marvin_hr_google@gmail.com"
+    assert hr_status.json()["has_calendar_sync"] is False
+
+    # 3. Admin with expired calendar token still shows Google account linked
+    admin_user = Admin(
+        fullname="Google Admin",
+        email="admin_google_status@gmail.com",
+        password=hash_password("custompass123"),
+        role="ADMIN",
+        google_linked=True,
+        google_token_expiry=datetime.utcnow() - timedelta(hours=2),
+    )
+    db_session.add(admin_user)
+    await db_session.commit()
+    admin_token = create_access_token({"sub": admin_user.email, "role": "ADMIN", "id": admin_user.id})
+    admin_status = await client.get("/auth/security-status", headers={"Authorization": f"Bearer {admin_token}"})
+    assert admin_status.status_code == 200
+    assert admin_status.json()["is_google_linked"] is True
+    assert admin_status.json()["google_email"] == "admin_google_status@gmail.com"
+
+    # 4. Disconnecting Google sets is_google_linked back to False
+    disc_res = await client.post("/auth/google/disconnect", headers=hr_headers)
+    assert disc_res.status_code == 200
+    hr_status_after = await client.get("/auth/security-status", headers=hr_headers)
+    assert hr_status_after.status_code == 200
+    assert hr_status_after.json()["is_google_linked"] is False
+    assert hr_status_after.json()["google_email"] is None

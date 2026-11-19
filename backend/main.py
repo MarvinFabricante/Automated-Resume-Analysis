@@ -142,6 +142,7 @@ async def ensure_application_analysis_columns(conn):
         "google_access_token": "VARCHAR",
         "google_refresh_token": "VARCHAR",
         "google_token_expiry": "TIMESTAMP",
+        "google_linked": "BOOLEAN DEFAULT FALSE",
         "is_online": "BOOLEAN DEFAULT FALSE",
         "last_active": "TIMESTAMP",
     }

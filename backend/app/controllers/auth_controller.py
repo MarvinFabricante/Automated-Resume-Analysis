@@ -150,9 +150,6 @@ async def get_security_status(
         if user.google_token_expiry < datetime.utcnow():
             is_google_expired = True
 
-    is_google_linked = bool((user.google_credentials or user.google_access_token) and not is_google_expired)
-    has_calendar = bool(user.google_credentials and "calendar" in user.google_credentials and not is_google_expired)
-    
     # Check if user has non-default password
     has_custom_password = True
     try:
@@ -160,6 +157,33 @@ async def get_security_status(
             has_custom_password = False
     except Exception:
         pass
+
+    is_google_linked = bool(
+        getattr(user, "google_linked", False)
+        or user.google_credentials
+        or user.google_access_token
+        or not has_custom_password
+    )
+    if not is_google_linked:
+        try:
+            from sqlalchemy import select
+            from app.models.audit_log import AuditLog
+            audit_res = await db.execute(
+                select(AuditLog)
+                .where(AuditLog.user_id == user.id)
+                .order_by(AuditLog.id.desc())
+                .limit(20)
+            )
+            for log in audit_res.scalars().all():
+                if log.action == "DISCONNECT_GOOGLE":
+                    break
+                if log.action in {"SIGN_IN", "SIGN_UP"} and "google" in (log.details or "").lower():
+                    is_google_linked = True
+                    break
+        except Exception:
+            pass
+
+    has_calendar = bool(user.google_credentials and "calendar" in user.google_credentials and not is_google_expired)
 
     return {
         "email": user.email,
@@ -211,7 +235,9 @@ async def disconnect_google(
     user.google_access_token = None
     user.google_refresh_token = None
     user.google_token_expiry = None
+    user.google_linked = False
     await db.commit()
+    await AuthRepository.invalidate_user_cache(user)
     
     from app.services.audit_service import record_activity
     await record_activity(
@@ -438,6 +464,7 @@ async def google_callback(request: Request, code: str, state: str = "", db: Asyn
                 user.google_access_token = google_access_tok
                 user.google_refresh_token = google_refresh_tok
                 user.google_token_expiry = google_expiry
+                user.google_linked = True
                 if picture and not user.profile_image_url:
                     user.profile_image_url = picture
                 await db.commit()

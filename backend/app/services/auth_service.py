@@ -366,6 +366,8 @@ async def login_with_google(
         if getattr(user, 'is_archived', False) or (row and getattr(row, 'is_archived', False)):
             raise Exception("Account has been archived. Please contact administration.")
         
+        user.google_linked = True
+
         # Store google_credentials ONLY for HR/ADMIN when calendar scopes were actually granted
         if role in ["HR", "ADMIN"]:
             if has_calendar_scope and google_credentials:
@@ -456,6 +458,7 @@ async def register_candidate_with_google(db: AsyncSession, email: str, fullname:
     if user:
         # Explicitly do NOT set google_credentials - candidate has no calendar console integration
         user.google_credentials = None
+        user.google_linked = True
         if picture and not user.profile_image_url:
             user.profile_image_url = picture
         if fullname and not user.fullname:
