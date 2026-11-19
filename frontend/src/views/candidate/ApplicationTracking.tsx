@@ -38,12 +38,13 @@ import { getAssetUrl } from '../../services/api';
 import Header from '../../components/layout/Header';
 import Sidebar from '../../components/layout/Sidebar';
 import HelpTooltip from '../../components/common/HelpTooltip';
+import CandidateRescheduleModal, { isInterviewMissed } from '../../components/modals/candidate/CandidateRescheduleModal';
 
 interface TimelineStep {
   label: string;
   date: string;
   description: string;
-  status: 'completed' | 'current' | 'upcoming' | 'failed';
+  status: 'completed' | 'current' | 'upcoming' | 'failed' | 'missed';
   interviewInfo?: any;
   matchScore?: number;
   matchedSkills?: string[];
@@ -58,6 +59,7 @@ const ApplicationTracking: React.FC = () => {
   const [selectedId, setSelectedId] = useState<number | string | null>(null);
   const [isEnvModalOpen, setIsEnvModalOpen] = useState(false);
   const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
+  const [isRescheduleModalOpen, setIsRescheduleModalOpen] = useState(false);
 
   const { user } = useSelector((state: RootState) => state.auth);
   const email = typeof user === 'string' ? user : (user as any)?.email;
@@ -108,7 +110,7 @@ const ApplicationTracking: React.FC = () => {
   }, [applications, selectedId, params?.id, searchParams, state?.application]);
 
   // Fetch interviews for active application
-  const { data: interviews = [] } = useGetApplicationInterviewsQuery(
+  const { data: interviews = [], refetch: refetchInterviews } = useGetApplicationInterviewsQuery(
     activeApplication?.id,
     {
       skip: !activeApplication?.id,
@@ -117,6 +119,10 @@ const ApplicationTracking: React.FC = () => {
   );
 
   const latestInterview = interviews.length > 0 ? interviews[interviews.length - 1] : null;
+  const interviewStatusUpper = String(latestInterview?.status || '').toUpperCase();
+  const isInterviewCompleted = interviewStatusUpper === 'COMPLETED';
+  const isInterviewCanceled = interviewStatusUpper === 'CANCELED' || interviewStatusUpper === 'CANCELLED';
+  const interviewMissed = isInterviewMissed(latestInterview);
 
   // Real resume link resolution
   const resumeUrl = activeApplication?.originalData?.resume_url || activeApplication?.resumeUrl;
@@ -292,10 +298,22 @@ const ApplicationTracking: React.FC = () => {
     {
       label: "Initial Interview",
       date: latestInterview ? new Date(latestInterview.start_time).toLocaleString() : (jobDetails.step === 4 ? "Scheduled" : "Pending"),
-      description: latestInterview
+      description: interviewMissed
+        ? `Your scheduled interview (${latestInterview.title}) has passed and was marked as missed. Reschedule using the interviewer's availability.`
+        : isInterviewCanceled
+        ? `The scheduled interview (${latestInterview.title}) was canceled.`
+        : isInterviewCompleted
+        ? `Interview completed: ${latestInterview.title}.`
+        : latestInterview
         ? `Interview session: ${latestInterview.title}. Live discussion covering your skills and background.`
         : "Initial discussion with the hiring team.",
-      status: isNotSelected ? "failed" : (latestInterview || jobDetails.step === 4 ? "current" : "upcoming"),
+      status: isNotSelected || isInterviewCanceled
+        ? "failed"
+        : isInterviewCompleted
+        ? "completed"
+        : interviewMissed
+        ? "missed"
+        : (latestInterview || jobDetails.step === 4 ? "current" : "upcoming"),
       interviewInfo: latestInterview || null
     }
   ];
@@ -428,9 +446,22 @@ const ApplicationTracking: React.FC = () => {
                     <h3 className="text-lg sm:text-xl font-black text-slate-900 tracking-tight">Recruitment Journey</h3>
                     <p className="text-xs text-slate-400 font-medium">Step-by-step progress through Mariwasa hiring pipeline</p>
                   </div>
-                  <div className="flex items-center gap-1.5 bg-slate-50 px-3 py-1.5 rounded-xl text-[10px] font-black text-slate-600 uppercase tracking-widest border border-slate-200/60">
-                    <CheckCircle2 size={13} className="text-emerald-500" />
-                    Application Active
+                  <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest border ${
+                    interviewMissed
+                      ? 'bg-amber-50 text-amber-800 border-amber-200'
+                      : 'bg-slate-50 text-slate-600 border-slate-200/60'
+                  }`}>
+                    {interviewMissed ? (
+                      <>
+                        <AlertCircle size={13} className="text-amber-600" />
+                        Interview Missed
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle2 size={13} className="text-emerald-500" />
+                        Application Active
+                      </>
+                    )}
                   </div>
                 </div>
 
@@ -453,6 +484,10 @@ const ApplicationTracking: React.FC = () => {
                           <div className="bg-rose-50 w-7 h-7 rounded-full flex items-center justify-center border-2 border-rose-500 shadow-xs">
                             <XCircle className="w-4 h-4 text-rose-500" />
                           </div>
+                        ) : step.status === 'missed' ? (
+                          <div className="bg-amber-50 w-7 h-7 rounded-full flex items-center justify-center border-2 border-amber-500 shadow-xs">
+                            <AlertCircle className="w-4 h-4 text-amber-600" />
+                          </div>
                         ) : step.status === 'current' ? (
                           <div className="bg-white border-2 border-[#D10043] w-7 h-7 rounded-full flex items-center justify-center shadow-md shadow-[#D10043]/20">
                             <div className="w-2.5 h-2.5 bg-[#D10043] rounded-full animate-ping" />
@@ -474,6 +509,11 @@ const ApplicationTracking: React.FC = () => {
                             {step.status === 'current' && (
                               <span className="bg-[#D10043] text-white text-[9px] font-black px-2 py-0.5 rounded-md uppercase tracking-wider">
                                 Active Step
+                              </span>
+                            )}
+                            {step.status === 'missed' && (
+                              <span className="bg-amber-500 text-white text-[9px] font-black px-2 py-0.5 rounded-md uppercase tracking-wider">
+                                Missed Interview
                               </span>
                             )}
                           </div>
@@ -502,19 +542,35 @@ const ApplicationTracking: React.FC = () => {
                             </div>
                           )}
 
-                          {/* Scheduled Interview Card */}
+                          {/* Scheduled / Missed Interview Card */}
                           {step.interviewInfo && (
-                            <div className="mt-3 bg-purple-50/50 border border-purple-100 rounded-2xl p-4 sm:p-5 flex flex-col gap-3">
+                            <div className={`mt-3 rounded-2xl p-4 sm:p-5 flex flex-col gap-3 border ${
+                              interviewMissed
+                                ? 'bg-amber-50/60 border-amber-200'
+                                : 'bg-purple-50/50 border-purple-100'
+                            }`}>
                               <div className="flex items-center justify-between flex-wrap gap-2">
-                                <span className="flex items-center text-xs font-black text-purple-900 uppercase tracking-wider">
-                                  <Calendar className="w-4 h-4 mr-1.5 text-purple-600" />
-                                  Live Interview Session
+                                <span className={`flex items-center text-xs font-black uppercase tracking-wider ${
+                                  interviewMissed ? 'text-amber-900' : 'text-purple-900'
+                                }`}>
+                                  <Calendar className={`w-4 h-4 mr-1.5 ${interviewMissed ? 'text-amber-600' : 'text-purple-600'}`} />
+                                  {interviewMissed ? 'Missed Interview Session' : isInterviewCompleted ? 'Completed Interview Session' : 'Live Interview Session'}
                                 </span>
                                 <div className="flex items-center gap-1.5 flex-wrap">
-                                  <span className="bg-purple-100 text-purple-700 text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider">
-                                    Google Calendar Confirmed
-                                  </span>
-                                  {step.interviewInfo.candidate_response === 'CONFIRMED' && (
+                                  {interviewMissed ? (
+                                    <span className="bg-amber-100 text-amber-800 text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider inline-flex items-center gap-1">
+                                      <AlertCircle size={10} className="text-amber-700" /> Missed
+                                    </span>
+                                  ) : isInterviewCompleted ? (
+                                    <span className="bg-emerald-100 text-emerald-800 text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider">
+                                      Completed
+                                    </span>
+                                  ) : (
+                                    <span className="bg-purple-100 text-purple-700 text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider">
+                                      Google Calendar Confirmed
+                                    </span>
+                                  )}
+                                  {!interviewMissed && step.interviewInfo.candidate_response === 'CONFIRMED' && (
                                     <span className="bg-emerald-100 text-emerald-800 text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider inline-flex items-center gap-1">
                                       <PhoneCall size={10} className="text-emerald-600" /> Voice Confirmed
                                     </span>
@@ -539,7 +595,7 @@ const ApplicationTracking: React.FC = () => {
                               <div className="space-y-1">
                                 <span className="text-sm font-black text-slate-900 block">{step.interviewInfo.title}</span>
                                 <span className="text-xs font-medium text-slate-600 flex items-center gap-1.5">
-                                  <Clock size={13} className="text-purple-600 shrink-0" />
+                                  <Clock size={13} className={`${interviewMissed ? 'text-amber-600' : 'text-purple-600'} shrink-0`} />
                                   <span>{new Date(step.interviewInfo.start_time).toLocaleString()} – {new Date(step.interviewInfo.end_time).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true })}</span>
                                 </span>
                                 {step.interviewInfo.interviewer_name && (
@@ -550,32 +606,45 @@ const ApplicationTracking: React.FC = () => {
                               </div>
 
                               <div className="pt-2 flex flex-wrap items-center gap-2">
-                                {step.interviewInfo.meeting_link ? (
-                                  <a
-                                    href={step.interviewInfo.meeting_link}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="px-3.5 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors shadow-2xs"
+                                {interviewMissed ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => setIsRescheduleModalOpen(true)}
+                                    className="px-4 py-2 bg-[#D10043] hover:bg-[#b00038] text-white rounded-xl text-xs font-black flex items-center gap-1.5 transition-colors shadow-sm cursor-pointer"
                                   >
-                                    <Video size={13} />
-                                    <span>Join Google Meet</span>
-                                    <ExternalLink size={12} />
-                                  </a>
+                                    <RotateCcw size={13} />
+                                    <span>Reschedule with Interviewer Availability</span>
+                                  </button>
                                 ) : (
-                                  <div className="flex items-center gap-1.5 text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-3 py-1.5 rounded-lg border border-emerald-200/60">
-                                    <Mail size={13} className="text-emerald-600 shrink-0" />
-                                    <span>Meeting link delivered to your registered email</span>
-                                  </div>
-                                )}
+                                  <>
+                                    {step.interviewInfo.meeting_link ? (
+                                      <a
+                                        href={step.interviewInfo.meeting_link}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="px-3.5 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors shadow-2xs"
+                                      >
+                                        <Video size={13} />
+                                        <span>Join Google Meet</span>
+                                        <ExternalLink size={12} />
+                                      </a>
+                                    ) : (
+                                      <div className="flex items-center gap-1.5 text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-3 py-1.5 rounded-lg border border-emerald-200/60">
+                                        <Mail size={13} className="text-emerald-600 shrink-0" />
+                                        <span>Meeting link delivered to your registered email</span>
+                                      </div>
+                                    )}
 
-                                <button
-                                  type="button"
-                                  onClick={() => setIsEnvModalOpen(true)}
-                                  className="px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
-                                >
-                                  <Laptop size={13} />
-                                  <span>Check Environment</span>
-                                </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => setIsEnvModalOpen(true)}
+                                      className="px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+                                    >
+                                      <Laptop size={13} />
+                                      <span>Check Environment</span>
+                                    </button>
+                                  </>
+                                )}
                               </div>
                             </div>
                           )}
@@ -595,7 +664,7 @@ const ApplicationTracking: React.FC = () => {
                 </div>
 
                 {/* Post-Interview Note or Not Selected Note */}
-                {(jobDetails.step >= 4 || latestInterview) && !isNotSelected && (
+                {(jobDetails.step >= 4 || latestInterview) && !isNotSelected && !interviewMissed && (
                   <div className="mt-6 p-4 sm:p-5 rounded-2xl bg-purple-50/80 border border-purple-100 flex items-start sm:items-center gap-3.5">
                     <div className="w-10 h-10 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center shrink-0">
                       <CheckCircle2 size={20} />
@@ -924,6 +993,14 @@ const ApplicationTracking: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* CANDIDATE RESCHEDULE INTERVIEW MODAL */}
+      <CandidateRescheduleModal
+        isOpen={isRescheduleModalOpen}
+        onClose={() => setIsRescheduleModalOpen(false)}
+        interview={latestInterview}
+        onSuccess={() => refetchInterviews()}
+      />
 
     </div>
   );

@@ -7,7 +7,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from twilio.rest import Client as TwilioClient
 
-from app.schemas.interview_schema import InterviewCreateSchema, InterviewUpdateSchema
+from app.schemas.interview_schema import (
+    CandidateRescheduleSchema,
+    InterviewCreateSchema,
+    InterviewUpdateSchema,
+)
 from app.repositories.interview_repository import InterviewRepository
 from app.services.google_calendar_service import (
     create_real_google_event,
@@ -84,6 +88,18 @@ def _populate_candidate_info(interview, app_override=None, interviewer_override=
         setattr(interview, "sms_backup_sent", False)
     if not hasattr(interview, "call_language") or interview.call_language is None:
         setattr(interview, "call_language", "bilingual")
+
+    end_dt = getattr(interview, "end_time", None) or getattr(interview, "start_time", None)
+    status_upper = (getattr(interview, "status", "") or "").upper()
+    is_missed = bool(
+        status_upper in {"MISSED", "NO_SHOW"}
+        or (
+            end_dt is not None
+            and end_dt.replace(tzinfo=None) < datetime.now()
+            and status_upper not in INACTIVE_INTERVIEW_STATUSES
+        )
+    )
+    setattr(interview, "is_missed", is_missed)
     return interview
 
 def send_sms_notification_sync(to_phone: str, message: str):
@@ -195,7 +211,7 @@ BREAK_START_HOUR = 12 # 12:00 PM
 BREAK_END_HOUR = 13   # 1:00 PM
 # Monday=0 … Friday=4  (Python weekday convention)
 WORK_DAYS = {0, 1, 2, 3, 4}
-INACTIVE_INTERVIEW_STATUSES = {"CANCELED", "CANCELLED", "COMPLETED", "REJECTED", "NO_SHOW"}
+INACTIVE_INTERVIEW_STATUSES = {"CANCELED", "CANCELLED", "COMPLETED", "REJECTED", "NO_SHOW", "MISSED"}
 
 
 class AvailableSlotsList(list):
@@ -808,6 +824,44 @@ async def schedule_interview(db: AsyncSession, data: InterviewCreateSchema, user
         return interview
 
 
+async def _validate_interview_time_slot(
+    db: AsyncSession,
+    interview,
+    start: datetime,
+    end: datetime,
+    interviewer_id: Optional[int],
+):
+    """Validate weekday, working hours, break window, interviewer conflicts, and candidate conflicts."""
+    if start >= end:
+        raise ValueError("End time must be after start time.")
+    if start.weekday() > 4:
+        raise ValueError("Interviews can only be scheduled on weekdays (Monday – Friday).")
+    if start.hour < WORK_START_HOUR or end.hour > WORK_END_HOUR or (end.hour == WORK_END_HOUR and end.minute > 0):
+        raise ValueError("Interviews must be scheduled within working hours (9:00 AM – 5:00 PM).")
+
+    break_start = start.replace(hour=BREAK_START_HOUR, minute=0, second=0, microsecond=0)
+    break_end = start.replace(hour=BREAK_END_HOUR, minute=0, second=0, microsecond=0)
+    if start < break_end and end > break_start:
+        raise ValueError("Interviews cannot be scheduled during break time (12:00 PM – 1:00 PM).")
+
+    conflicts = await InterviewRepository.get_interviews_in_range_excluding(
+        db, start, end, interview.id, interviewer_id=interviewer_id
+    )
+    if conflicts:
+        raise ValueError("The selected time slot conflicts with an existing interview.")
+
+    if interview.job_application_id:
+        cand_interviews = await InterviewRepository.get_interviews_for_application(db, interview.job_application_id)
+        cand_conflict = [
+            iv for iv in cand_interviews
+            if iv.id != interview.id
+            and (iv.status or "").upper() not in INACTIVE_INTERVIEW_STATUSES
+            and iv.start_time < end and iv.end_time > start
+        ]
+        if cand_conflict:
+            raise ValueError("This candidate already has another interview scheduled at the selected time.")
+
+
 async def update_interview(db: AsyncSession, interview_id: int, data: InterviewUpdateSchema, user_id: int, user_role: Optional[str] = None):
     """
     Modify/reschedule an interview and synchronize the update directly with Google Calendar.
@@ -826,40 +880,8 @@ async def update_interview(db: AsyncSession, interview_id: int, data: InterviewU
     if data.start_time is not None or data.end_time is not None:
         start = (data.start_time or interview.start_time).replace(tzinfo=None)
         end = (data.end_time or interview.end_time).replace(tzinfo=None)
-
-        # Weekday check (Monday=0 … Friday=4)
-        if start.weekday() > 4:
-            raise ValueError("Interviews can only be scheduled on weekdays (Monday – Friday).")
-
-        # Working-hours check (9:00 AM – 5:00 PM)
-        if start.hour < WORK_START_HOUR or end.hour > WORK_END_HOUR or (end.hour == WORK_END_HOUR and end.minute > 0):
-            raise ValueError("Interviews must be scheduled within working hours (9:00 AM – 5:00 PM).")
-
-        # Break time check (12:00 PM – 1:00 PM)
-        break_start = start.replace(hour=BREAK_START_HOUR, minute=0, second=0, microsecond=0)
-        break_end = start.replace(hour=BREAK_END_HOUR, minute=0, second=0, microsecond=0)
-        if start < break_end and end > break_start:
-            raise ValueError("Interviews cannot be scheduled during break time (12:00 PM – 1:00 PM).")
-
-        # Conflict check against other interviews (excluding self)
         interviewer_to_check = data.interviewer_id or interview.interviewer_id or user_id
-        conflicts = await InterviewRepository.get_interviews_in_range_excluding(
-            db, start, end, interview.id, interviewer_id=interviewer_to_check
-        )
-        if conflicts:
-            raise ValueError("The selected time slot conflicts with an existing interview.")
-
-        # Candidate conflict check
-        if interview.job_application_id:
-            cand_interviews = await InterviewRepository.get_interviews_for_application(db, interview.job_application_id)
-            cand_conflict = [
-                iv for iv in cand_interviews
-                if iv.id != interview.id
-                and (iv.status or "").upper() not in INACTIVE_INTERVIEW_STATUSES
-                and iv.start_time < end and iv.end_time > start
-            ]
-            if cand_conflict:
-                raise ValueError("This candidate already has another interview scheduled at the selected time.")
+        await _validate_interview_time_slot(db, interview, start, end, interviewer_to_check)
 
         if start != interview.start_time or end != interview.end_time:
             time_changed = True
@@ -1569,6 +1591,121 @@ async def update_interview_status(db: AsyncSession, interview_id: int, status: s
     await InterviewRepository.add_interview_log(db, interview.id, "STATUS_CHANGE", f"Status changed to {status}")
     updated = await InterviewRepository.update_interview(db, interview)
     return _populate_candidate_info(updated)
+
+
+async def candidate_reschedule_interview(
+    db: AsyncSession,
+    interview_id: int,
+    data: CandidateRescheduleSchema,
+    candidate_email: Optional[str],
+):
+    """
+    Allow the candidate who owns the interview's application to reschedule a missed
+    or active interview into an available slot on the interviewer's calendar.
+    """
+    interview = await InterviewRepository.get_interview_by_id(db, interview_id)
+    if not interview:
+        raise ValueError("Interview not found")
+
+    application = await InterviewRepository.get_job_application(db, interview.job_application_id)
+    if not application or not candidate_email or (application.candidate_email or "").strip().lower() != candidate_email.strip().lower():
+        raise PermissionError("You do not have permission to reschedule this interview.")
+
+    status_upper = (interview.status or "").upper()
+    if status_upper in {"COMPLETED", "CANCELED", "CANCELLED"}:
+        raise ValueError("Completed or canceled interviews cannot be rescheduled.")
+
+    start = data.start_time.replace(tzinfo=None)
+    end = data.end_time.replace(tzinfo=None)
+    if start <= datetime.now():
+        raise ValueError("Cannot reschedule an interview to a past date or time.")
+
+    await _validate_interview_time_slot(db, interview, start, end, interview.interviewer_id)
+
+    # Also verify against interviewer's Google Calendar / available slots for that day
+    if interview.interviewer_id:
+        day_start = start.replace(hour=WORK_START_HOUR, minute=0, second=0, microsecond=0)
+        day_end = start.replace(hour=WORK_END_HOUR, minute=0, second=0, microsecond=0)
+        free_slots = await get_available_slots(db, day_start, day_end, user_ids=[interview.interviewer_id])
+        if not any(
+            s["start_time"] <= start and s["end_time"] >= end
+            for s in (free_slots or [])
+        ):
+            raise ValueError("The selected time is not available on the interviewer's schedule.")
+
+    old_time_str = interview.start_time.strftime("%b %d, %Y at %I:%M %p") if interview.start_time else "previous slot"
+    interview.start_time = start
+    interview.end_time = end
+    interview.status = "SCHEDULED"
+    interview.candidate_response = "CONFIRMED"
+
+    reason_note = f" (Reason: {data.reason.strip()})" if data.reason and data.reason.strip() else ""
+    await InterviewRepository.add_interview_log(
+        db,
+        interview.id,
+        "CANDIDATE_RESCHEDULED",
+        f"Candidate rescheduled from {old_time_str} to {start.strftime('%b %d, %Y at %I:%M %p')}{reason_note}",
+    )
+    interview = await InterviewRepository.update_interview(db, interview)
+
+    from app.repositories.auth_repository import AuthRepository
+    interviewer_user = (
+        await AuthRepository.get_user_by_id_fresh(db, interview.interviewer_id)
+        if interview.interviewer_id
+        else None
+    )
+    interviewer_name = interviewer_user.fullname if interviewer_user and getattr(interviewer_user, "fullname", None) else "Mariwasa HR Panel"
+    credentials_json = _get_valid_credentials(interviewer_user) if interviewer_user else None
+
+    if credentials_json and interview.google_event_id:
+        try:
+            await asyncio.to_thread(
+                update_real_google_event,
+                credentials_json=credentials_json,
+                calendar_id="primary",
+                event_id=interview.google_event_id,
+                summary=interview.title,
+                start_dt=interview.start_time.isoformat(),
+                end_dt=interview.end_time.isoformat(),
+                description=interview.description or "",
+                status="confirmed",
+            )
+        except Exception as cal_err:
+            logger.warning(f"Could not sync candidate reschedule to Google Calendar: {cal_err}")
+
+    job_name = getattr(application, "job_title", None) or "Job Position"
+    time_str = interview.start_time.strftime("%b %d, %Y at %I:%M %p")
+    try:
+        from app.services.notification_service import create_notification
+        await create_notification(
+            db=db,
+            title="Interview Rescheduled by Candidate",
+            message=f"{application.candidate_name} rescheduled their interview for {job_name} to {time_str}{reason_note}.",
+            type="schedule",
+            target_role="HR",
+            target_email=interviewer_user.email if interviewer_user else None,
+            sender_role="CANDIDATE",
+        )
+    except Exception as notif_err:
+        logger.warning(f"Could not create candidate reschedule notification: {notif_err}")
+
+    if interviewer_user and getattr(interviewer_user, "email", None):
+        try:
+            await email_service.send_interview_rescheduled_email(
+                to_email=interviewer_user.email,
+                candidate_name=application.candidate_name or "Candidate",
+                job_title=job_name,
+                interview_title=f"[Candidate Rescheduled] {interview.title}",
+                start_time=interview.start_time,
+                end_time=interview.end_time,
+                interviewer_name=interviewer_name,
+                notes=f"Candidate rescheduled from {old_time_str}.{reason_note}",
+            )
+        except Exception as email_err:
+            logger.warning(f"Could not send reschedule email to interviewer: {email_err}")
+
+    _populate_candidate_info(interview, app_override=application, interviewer_override=interviewer_user)
+    return interview
 
 
 async def get_interviews_for_application(db: AsyncSession, application_id: int):

@@ -32,6 +32,12 @@ class InterviewUpdateSchema(BaseModel):
     call_language: Optional[str] = None
     panelist_ids: Optional[List[int]] = None
 
+
+class CandidateRescheduleSchema(BaseModel):
+    start_time: datetime
+    end_time: datetime
+    reason: Optional[str] = None
+
 class InterviewLogResponseSchema(BaseModel):
     id: int
     interview_id: int
@@ -70,6 +76,7 @@ class InterviewResponseSchema(BaseModel):
     google_event_id: Optional[str] = None
     meeting_link: Optional[str] = None
     status: str
+    is_missed: Optional[bool] = False
     created_at: datetime
     candidate_name: Optional[str] = None
     candidate_email: Optional[str] = None
