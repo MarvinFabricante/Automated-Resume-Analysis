@@ -22,6 +22,7 @@ class User(Base):
     google_access_token = Column(String, nullable=True)
     google_refresh_token = Column(String, nullable=True)
     google_token_expiry = Column(DateTime, nullable=True)
+    google_linked = Column(Boolean, default=False)
 
     __mapper_args__ = {
         "polymorphic_on": role,

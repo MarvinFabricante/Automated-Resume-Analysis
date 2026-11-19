@@ -154,7 +154,7 @@ def get_candidate_google_auth_url(flow_type: str = "candidate_login", redirect_u
     return auth_url, state
 
 
-def get_hr_google_auth_url(flow_type: str = "hr_login", redirect_uri: str = None, user_id: int = None, return_to: str = None):
+def get_hr_google_auth_url(flow_type: str = "hr_login", redirect_uri: str = None, user_id: int = None, return_to: str = None, login_hint: str = None):
     """
     Generate Google OAuth URL specifically for HR staff.
     Uses CALENDAR_SCOPES to allow Google Calendar synchronization for interview management.
@@ -165,11 +165,14 @@ def get_hr_google_auth_url(flow_type: str = "hr_login", redirect_uri: str = None
         scopes=CALENDAR_SCOPES,
         redirect_uri=chosen_redirect_uri
     )
-    auth_url, state = flow.authorization_url(
-        access_type='offline',
-        include_granted_scopes='true',
-        prompt='consent'
-    )
+    auth_kwargs = {
+        "access_type": "offline",
+        "include_granted_scopes": "true",
+        "prompt": "consent",
+    }
+    if login_hint:
+        auth_kwargs["login_hint"] = login_hint
+    auth_url, state = flow.authorization_url(**auth_kwargs)
     _save_pending_flow(state, {
         "verifier": flow.code_verifier,
         "flow_type": flow_type,

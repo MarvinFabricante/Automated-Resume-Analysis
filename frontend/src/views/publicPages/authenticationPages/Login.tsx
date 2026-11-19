@@ -174,9 +174,10 @@ const Login: React.FC = () => {
       localStorage.removeItem('saved_email');
     }
 
-    // Universal Google login with automatic role detection upon callback
+    // Universal Google login (requests Calendar scopes immediately if HR role was detected)
     const clientOrigin = typeof window !== 'undefined' ? window.location.origin : '';
-    window.location.href = `${API_BASE_URL}/auth/google/login?origin=${encodeURIComponent(clientOrigin)}`;
+    const roleParam = detectedRoleInfo?.role === 'hr' ? '&role=hr' : '';
+    window.location.href = `${API_BASE_URL}/auth/google/login?origin=${encodeURIComponent(clientOrigin)}${roleParam}`;
   };
 
   const handleEmailChange = (e: React.ChangeEvent<HTMLInputElement>) => {

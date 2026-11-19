@@ -142,6 +142,7 @@ async def ensure_application_analysis_columns(conn):
         "google_access_token": "VARCHAR",
         "google_refresh_token": "VARCHAR",
         "google_token_expiry": "TIMESTAMP",
+        "google_linked": "BOOLEAN DEFAULT FALSE",
         "is_online": "BOOLEAN DEFAULT FALSE",
         "last_active": "TIMESTAMP",
     }
@@ -409,7 +410,7 @@ async def lifespan(app_instance: FastAPI):
                 {"threshold": one_hour_ago}
             )
             await conn.execute(
-                text("UPDATE users SET google_credentials = NULL, google_access_token = NULL, google_refresh_token = NULL WHERE google_token_expiry IS NOT NULL AND google_token_expiry < :now"),
+                text("UPDATE users SET google_credentials = NULL, google_access_token = NULL WHERE google_token_expiry IS NOT NULL AND google_token_expiry < :now AND (google_refresh_token IS NULL OR google_refresh_token = '')"),
                 {"now": datetime.utcnow()}
             )
     except Exception as e:

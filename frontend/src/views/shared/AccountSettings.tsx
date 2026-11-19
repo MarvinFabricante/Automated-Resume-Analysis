@@ -515,7 +515,8 @@ const AccountSettings: React.FC = () => {
   const handleConnectGoogle = () => {
     const clientOrigin = typeof window !== 'undefined' ? window.location.origin : '';
     const flowRole = userRole.toLowerCase();
-    window.location.href = `${API_BASE_URL}/auth/google/login?origin=${encodeURIComponent(clientOrigin)}&flow=link_account&user_id=${userId}&role=${flowRole}`;
+    const userIdParam = userId ? `&user_id=${encodeURIComponent(userId)}` : '';
+    window.location.href = `${API_BASE_URL}/auth/google/login?origin=${encodeURIComponent(clientOrigin)}&flow=link_account${userIdParam}&role=${flowRole}`;
   };
 
   const handleDisconnectGoogle = async () => {
@@ -1239,7 +1240,7 @@ const AccountSettings: React.FC = () => {
                           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
                             <div>
                               <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider">
-                                Linked Google Account
+                                Registered Google Account
                               </p>
                               <p className="text-xs sm:text-sm font-black text-slate-900 mt-0.5 truncate">
                                 {securityStatus.google_email || formData.email || userEmail}
@@ -1247,14 +1248,18 @@ const AccountSettings: React.FC = () => {
                             </div>
                             <div className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-emerald-100/70 text-emerald-800 rounded-lg text-xs font-bold w-fit">
                               <Check size={14} className="text-emerald-600" />
-                              SSO Enabled
+                              Google Account Linked
                             </div>
                           </div>
 
                           <div className="pt-2.5 border-t border-slate-200/60 text-xs text-slate-500 font-medium space-y-1">
-                            <p>• You can sign into your account with 1-click using Google Sign-In.</p>
+                            <p>• This {userRole === 'ADMIN' ? 'Admin' : userRole === 'HR' ? 'HR' : 'Candidate'} account is registered to a Google account for 1-click Google Sign-In.</p>
                             {userRole === 'HR' && (
-                              <p>• Google Calendar scheduling integration active for automated interview bookings.</p>
+                              securityStatus.has_calendar_sync ? (
+                                <p>• Google Calendar scheduling integration active for automated interview bookings.</p>
+                              ) : (
+                                <p className="text-amber-700 font-semibold">• Google Calendar sync is currently inactive or expired. Click &ldquo;Connect Google Calendar&rdquo; below to enable live calendar sync.</p>
+                              )
                             )}
                           </div>
                         </div>
@@ -1280,7 +1285,10 @@ const AccountSettings: React.FC = () => {
                             onClick={handleConnectGoogle}
                             className="w-full sm:w-auto px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center justify-center gap-2 min-h-[44px] cursor-pointer"
                           >
-                            <RefreshCw size={14} /> Reconnect / Switch Account
+                            <RefreshCw size={14} />{' '}
+                            {userRole === 'HR' && !securityStatus.has_calendar_sync
+                              ? 'Connect Google Calendar'
+                              : 'Reconnect / Switch Account'}
                           </button>
                           <button
                             type="button"
