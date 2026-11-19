@@ -84,6 +84,7 @@ const SystemSettings: React.FC = () => {
   const [maxActiveApps, setMaxActiveApps] = useState<number>(3);
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [showRecalcConfirm, setShowRecalcConfirm] = useState<boolean>(false);
+  const [recalcProgress, setRecalcProgress] = useState<{ percent: number; label: string } | null>(null);
 
   useEffect(() => {
     const fetchRecruitmentConfig = async () => {
@@ -190,12 +191,32 @@ const SystemSettings: React.FC = () => {
     try {
       const res = await recalculateScores().unwrap();
       if (res?.task_id) {
-        toast.success(res?.message || "ATS match scores recalculation dispatched to Celery background worker!");
+        setRecalcProgress({ percent: 5, label: 'Queued recalculation for all jobs...' });
+        for (let attempt = 0; attempt < 60; attempt++) {
+          await new Promise((r) => setTimeout(r, 1000));
+          const taskRes = await api.get(`/admins/tasks/${res.task_id}`);
+          const taskData = taskRes.data;
+          if (taskData?.progress?.percent !== undefined) {
+            setRecalcProgress({
+              percent: taskData.progress.percent,
+              label: `Updating ${taskData.progress.current} of ${taskData.progress.total} applications...`,
+            });
+          }
+          if (taskData?.ready) {
+            const count = taskData?.result?.updated_applications ?? 0;
+            setRecalcProgress(null);
+            toast.success(`Recalculated scores for ${count} applications across all jobs.`);
+            return;
+          }
+        }
+        setRecalcProgress(null);
+        toast.success(res?.message || "Recalculation is running in the background.");
       } else {
         const updatedCount = res?.updated_applications ?? 0;
         toast.success(`Successfully re-evaluated ${updatedCount} candidate applications with active parameters!`);
       }
     } catch (err: any) {
+      setRecalcProgress(null);
       console.error("Failed to recalculate scores:", err);
       toast.error(err?.data?.detail || "Failed to recalculate application scores.");
     }
@@ -540,12 +561,24 @@ const SystemSettings: React.FC = () => {
                         <button
                           type="button"
                           onClick={() => setShowRecalcConfirm(true)}
-                          disabled={isRecalculating}
+                          disabled={isRecalculating || Boolean(recalcProgress)}
                           className="mt-3.5 px-4 py-2 bg-white hover:bg-gray-50 text-[#D10043] border border-red-200 rounded-xl font-bold text-xs transition-all shadow-2xs hover:shadow-xs flex items-center gap-2 cursor-pointer disabled:opacity-60"
                         >
-                          <RefreshCw size={13} className={isRecalculating ? "animate-spin" : ""} />
-                          {isRecalculating ? "Re-evaluating..." : "Re-evaluate All Applications"}
+                          <RefreshCw size={13} className={(isRecalculating || recalcProgress) ? "animate-spin" : ""} />
+                          {recalcProgress
+                            ? `${recalcProgress.label} (${recalcProgress.percent}%)`
+                            : isRecalculating
+                            ? "Re-evaluating..."
+                            : "Recalculate scores for all jobs"}
                         </button>
+                        {recalcProgress && (
+                          <div className="mt-2.5 w-full h-1.5 bg-red-100 rounded-full overflow-hidden">
+                            <div
+                              className="h-full bg-[#D10043] transition-all duration-300"
+                              style={{ width: `${recalcProgress.percent}%` }}
+                            />
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>

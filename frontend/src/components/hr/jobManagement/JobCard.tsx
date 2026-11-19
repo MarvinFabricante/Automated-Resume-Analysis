@@ -1,9 +1,10 @@
 import React from 'react';
 import { 
   Briefcase, Building2, MapPin, Tag, 
-  Eye, Edit3, Archive, ArchiveRestore, Trash2, Clock 
+  Eye, Edit3, Archive, ArchiveRestore, Trash2, Clock, Sliders 
 } from 'lucide-react';
 import { Job } from '../../../types';
+import { formatPrioritySummary } from '../../modals/hr/JobScoringWeightsEditor';
 
 interface JobCardProps {
   job: Job;
@@ -82,6 +83,10 @@ const JobCard: React.FC<JobCardProps> = ({ job, onEdit, onView, onArchive, onUna
                 <span>{jobType}</span>
               </span>
             )}
+            <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#D60041] bg-pink-50/70 border border-pink-200/70 px-2.5 py-1 rounded-lg shadow-2xs">
+              <Sliders size={12} className="shrink-0" />
+              <span>{formatPrioritySummary(job.scoring_weights)}</span>
+            </span>
           </div>
 
           {/* Structured Key Details: Salary & Skills */}
