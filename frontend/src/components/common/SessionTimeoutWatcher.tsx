@@ -104,11 +104,20 @@ export const SessionTimeoutWatcher: React.FC = () => {
 
     // Handle when another window signs in
     const handleLoginBroadcast = (payload: AuthBroadcastPayload) => {
-      const { uid: myUserId, email: myEmail, role: myRole } = getCurrentWindowUser();
+      const pathname = typeof window !== 'undefined' ? window.location.pathname : '';
+      // Never treat an unauthenticated login or OAuth callback page as an active session being hijacked
+      if (pathname.startsWith('/login') || pathname.startsWith('/auth/google/callback')) {
+        syncCurrentCredentials();
+        return;
+      }
 
-      // If this window does NOT have an active session, no need to log out
       const token = typeof localStorage !== 'undefined' ? localStorage.getItem('token') : null;
-      if (!myUserId && !myEmail && !token) {
+      if (!token || isTokenExpired(token)) {
+        return;
+      }
+
+      const { uid: myUserId, email: myEmail, role: myRole } = getCurrentWindowUser();
+      if (!myUserId && !myEmail) {
         return;
       }
 

@@ -35,7 +35,8 @@ interface ModalState {
 
 const Login: React.FC = () => {
   const [email, setEmail] = useState<string>(() => {
-    return localStorage.getItem('saved_email') || '';
+    const token = localStorage.getItem('token');
+    return token && !isTokenExpired(token) ? (localStorage.getItem('saved_email') || '') : '';
   });
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -169,6 +170,8 @@ const Login: React.FC = () => {
     const existingToken = localStorage.getItem('token');
     if (existingToken && isTokenExpired(existingToken)) {
       clearAllAuthSessions();
+    } else if (!existingToken) {
+      localStorage.removeItem('saved_email');
     }
 
     // Universal Google login with automatic role detection upon callback
@@ -177,9 +180,7 @@ const Login: React.FC = () => {
   };
 
   const handleEmailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value;
-    setEmail(value);
-    localStorage.setItem('saved_email', value);
+    setEmail(e.target.value);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
