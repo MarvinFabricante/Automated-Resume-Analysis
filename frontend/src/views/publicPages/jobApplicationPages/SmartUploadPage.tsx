@@ -18,6 +18,7 @@ import Header from '../../../components/layout/Header';
 import Footer from '../../../components/layout/Footer';
 import RecruitmentTermsModal from '../../../components/modals/shared/RecruitmentTermsModal';
 import ResumePreviewModal from '../../../components/modals/shared/ResumePreviewModal';
+import { formatUploadOrParseError } from '../../../utils/errorUtils';
 
 const SmartUploadPage: React.FC = () => {
   const [file, setFile] = useState<File | null>(null);
@@ -31,6 +32,8 @@ const SmartUploadPage: React.FC = () => {
   const [showPreviewModal, setShowPreviewModal] = useState(false);
   const [extractedData, setExtractedData] = useState<any>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [replaceNotice, setReplaceNotice] = useState<string | null>(null);
+  const wasReplacingCompletedRef = useRef(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
 
@@ -154,11 +157,37 @@ const SmartUploadPage: React.FC = () => {
       setIsComplete(false);
       setUploadProgress(0);
       setExtractedData(null);
+
+      const shouldAutoAnalyze = wasReplacingCompletedRef.current && isTermsAccepted;
+      if (wasReplacingCompletedRef.current || replaceNotice) {
+        setReplaceNotice(`Resume replaced with "${selectedFile.name}".`);
+      }
+      wasReplacingCompletedRef.current = false;
+
+      if (shouldAutoAnalyze) {
+        await handleUpload(selectedFile);
+      }
     } else {
       const msg = "Invalid file type. Please upload a PDF, Word document, or text file (.pdf, .docx, .doc, .txt).";
       setUploadError(msg);
       alert(msg);
     }
+  };
+
+  const handleReplaceResumeClick = () => {
+    wasReplacingCompletedRef.current = isComplete;
+    setUploadError(null);
+    setShowPreviewModal(false);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+      fileInputRef.current.click();
+    }
+    setFile(null);
+    setIsComplete(false);
+    setIsUploading(false);
+    setUploadProgress(0);
+    setExtractedData(null);
+    setReplaceNotice('Previous resume cleared. Select a new resume file to replace it.');
   };
 
   const handleDrag = (e: React.DragEvent) => {
@@ -177,16 +206,18 @@ const SmartUploadPage: React.FC = () => {
     }
   };
 
-  const handleUpload = async () => {
-    if (!file || !isTermsAccepted || cooldown > 0) return;
+  const handleUpload = async (overrideFile?: File) => {
+    const activeFile = overrideFile instanceof File ? overrideFile : file;
+    if (!activeFile || !isTermsAccepted || cooldown > 0) return;
     setUploadError(null);
     setIsUploading(true);
     setUploadProgress(20);
 
     try {
-      const response = await candidateService.parseResume(file, {
+      const response = await candidateService.parseResume(activeFile, {
         onUploadProgress: (progressEvent: any) => {
-          const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+          const total = progressEvent.total || activeFile.size || 1;
+          const percentCompleted = Math.round((progressEvent.loaded * 100) / total);
           setUploadProgress(Math.max(20, Math.min(80, percentCompleted))); // Save last 20% for matching
         }
       });
@@ -195,21 +226,21 @@ const SmartUploadPage: React.FC = () => {
       setUploadProgress(100);
       setExtractedData(extracted);
       setIsComplete(true);
-      
     } catch (error: any) {
       console.error("Error parsing resume:", error);
-      if (error.response?.status === 429) {
-        const msg = "Too many requests! Please wait a moment before trying again.";
-        setUploadError(msg);
-        alert(msg);
+      const formattedMsg = formatUploadOrParseError(
+        error,
+        "Failed to parse resume. Please ensure you uploaded a valid PDF, Word document, or text file."
+      );
+      setUploadError(formattedMsg);
+      alert(formattedMsg);
+      if (error?.response?.status === 429) {
         setCooldown(30);
       } else {
-        const detail = error.response?.data?.detail || "Failed to parse resume. Please ensure you uploaded a valid PDF, Word document, or text file.";
-        setUploadError(detail);
-        alert(detail);
+        setCooldown(10);
       }
+    } finally {
       setIsUploading(false);
-      setCooldown(10);
     }
   };
 
@@ -258,9 +289,33 @@ const SmartUploadPage: React.FC = () => {
                 }
                 e.target.value = '';
               }}
-              className="hidden"
+              className="sr-only"
               accept=".pdf,.doc,.docx,.txt,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain"
             />
+
+            {replaceNotice && !uploadError && (
+              <div
+                role="status"
+                data-testid="replace-status-banner"
+                className="max-w-3xl mx-auto mb-6 p-4 sm:p-5 bg-emerald-50 border border-emerald-200 rounded-2xl flex items-start justify-between gap-3 text-emerald-800 shadow-xs animate-in fade-in duration-200"
+              >
+                <div className="flex items-start gap-3">
+                  <CheckCircle2 size={20} className="text-emerald-600 shrink-0 mt-0.5" />
+                  <div>
+                    <h4 className="text-xs sm:text-sm font-black text-emerald-900">Resume Management</h4>
+                    <p className="text-xs sm:text-sm font-medium text-emerald-700 mt-0.5">{replaceNotice}</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setReplaceNotice(null)}
+                  className="p-1 text-emerald-400 hover:text-emerald-700 rounded-lg transition-colors cursor-pointer"
+                  aria-label="Dismiss notification"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+            )}
 
             {uploadError && (
               <div
@@ -341,7 +396,7 @@ const SmartUploadPage: React.FC = () => {
                         id="btn-smart-replace-resume"
                         data-testid="replace-resume-btn"
                         type="button"
-                        onClick={() => fileInputRef.current?.click()}
+                        onClick={handleReplaceResumeClick}
                         className="px-4 py-2.5 bg-white hover:bg-slate-100 text-slate-700 hover:text-slate-900 border border-slate-200 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-2xs cursor-pointer"
                         title="Replace Resume"
                       >
@@ -587,7 +642,7 @@ const SmartUploadPage: React.FC = () => {
                     </div>
 
                     <button
-                      onClick={handleUpload}
+                      onClick={() => handleUpload()}
                       disabled={!isTermsAccepted}
                       className={`w-full py-6 rounded-[28px] font-black text-lg flex items-center justify-center gap-4 transition-all transform shadow-2xl active:scale-95 ${
                         isTermsAccepted && cooldown === 0
@@ -631,13 +686,11 @@ const SmartUploadPage: React.FC = () => {
         rawText={extractedData?.raw_text}
         extractedData={extractedData}
         onReplaceFile={(newFile) => {
+          wasReplacingCompletedRef.current = isComplete;
           setShowPreviewModal(false);
           validateAndSetFile(newFile);
         }}
-        onReplace={() => {
-          setShowPreviewModal(false);
-          fileInputRef.current?.click();
-        }}
+        onReplace={handleReplaceResumeClick}
       />
 
       <RecruitmentTermsModal 

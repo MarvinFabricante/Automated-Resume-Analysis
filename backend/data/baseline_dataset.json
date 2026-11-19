@@ -441,5 +441,393 @@
     "candidate_edu": "Senior High School",
     "required_edu": "Vocational Diploma in Electrical/Mechanical",
     "recruiter_action": 0
+  },
+  {
+    "resume_skills": [
+      "manual_testing",
+      "regression_testing",
+      "postman",
+      "cypress",
+      "playwright",
+      "jira",
+      "sql",
+      "agile_scrum"
+    ],
+    "job_skills": [
+      "manual_testing",
+      "api_testing",
+      "postman",
+      "regression_testing",
+      "jira",
+      "agile_scrum"
+    ],
+    "resume_title": "software quality assurance engineer",
+    "job_title": "qa analyst",
+    "candidate_years": 4.0,
+    "required_years": 2.0,
+    "candidate_edu": "Bachelor of Science in Information Technology",
+    "required_edu": "Bachelor's Degree in IT or Computer Science",
+    "recruiter_action": 1
+  },
+  {
+    "resume_skills": [
+      "postman",
+      "cypress",
+      "selenium",
+      "jira",
+      "javascript"
+    ],
+    "job_skills": [
+      "ceramics",
+      "kiln",
+      "caliper",
+      "micrometer",
+      "iso_9001",
+      "defect_reporting"
+    ],
+    "resume_title": "software qa tester",
+    "job_title": "ceramic quality control inspector",
+    "candidate_years": 3.0,
+    "required_years": 2.0,
+    "candidate_edu": "Bachelor of Science in Information Technology",
+    "required_edu": "BS Chemical / Ceramic / Industrial Engineering",
+    "recruiter_action": 0
+  },
+  {
+    "resume_skills": [
+      "production_planning",
+      "lean_manufacturing",
+      "six_sigma",
+      "team_leadership",
+      "iso_9001",
+      "bosh_so2",
+      "5s",
+      "kpi_monitoring"
+    ],
+    "job_skills": [
+      "production_planning",
+      "lean_manufacturing",
+      "quality_control",
+      "team_leadership",
+      "safety_compliance"
+    ],
+    "resume_title": "production supervisor",
+    "job_title": "production supervisor",
+    "candidate_years": 6.0,
+    "required_years": 3.0,
+    "candidate_edu": "Bachelor of Science in Industrial Engineering",
+    "required_edu": "Bachelor's Degree in Engineering",
+    "recruiter_action": 1
+  },
+  {
+    "resume_skills": [
+      "autocad",
+      "microsoft_excel",
+      "time_study",
+      "5s"
+    ],
+    "job_skills": [
+      "production_planning",
+      "lean_manufacturing",
+      "team_leadership",
+      "shift_supervision",
+      "kpi_monitoring"
+    ],
+    "resume_title": "industrial engineering intern",
+    "job_title": "production supervisor",
+    "candidate_years": 0.3,
+    "required_years": 3.0,
+    "candidate_edu": "Bachelor of Science in Industrial Engineering",
+    "required_edu": "Bachelor's Degree in Engineering",
+    "recruiter_action": 0
+  },
+  {
+    "resume_skills": [
+      "python",
+      "django",
+      "react",
+      "aws",
+      "terraform",
+      "mysql",
+      "mongodb",
+      "redis",
+      "ci_cd",
+      "agile_scrum"
+    ],
+    "job_skills": [
+      "python",
+      "django",
+      "aws",
+      "sql",
+      "react",
+      "team_leadership"
+    ],
+    "resume_title": "software development lead",
+    "job_title": "senior software engineer",
+    "candidate_years": 8.0,
+    "required_years": 5.0,
+    "candidate_edu": "Bachelor of Science in Computer Science",
+    "required_edu": "Bachelor's Degree in Computer Science or IT",
+    "recruiter_action": 1
+  },
+  {
+    "resume_skills": [
+      "customer_service",
+      "shopify",
+      "zendesk",
+      "order_processing",
+      "conflict_deescalation",
+      "email_support",
+      "chat_support"
+    ],
+    "job_skills": [
+      "customer_service",
+      "zendesk",
+      "order_processing",
+      "communication",
+      "chat_support"
+    ],
+    "resume_title": "e-commerce customer support specialist",
+    "job_title": "customer service representative",
+    "candidate_years": 2.5,
+    "required_years": 1.0,
+    "candidate_edu": "Bachelor of Science in Business Administration",
+    "required_edu": "At least 2nd Year College or Bachelor's Degree",
+    "recruiter_action": 1
+  },
+  {
+    "resume_skills": [
+      "customer_service",
+      "shopify",
+      "zendesk",
+      "order_processing"
+    ],
+    "job_skills": [
+      "electrical_systems",
+      "plc",
+      "autocad",
+      "power_distribution",
+      "preventive_maintenance"
+    ],
+    "resume_title": "customer service representative",
+    "job_title": "electrical engineer",
+    "candidate_years": 3.0,
+    "required_years": 3.0,
+    "candidate_edu": "BS Business Administration",
+    "required_edu": "Bachelor of Science in Electrical Engineering",
+    "recruiter_action": 0
+  },
+  {
+    "resume_skills": [
+      "smaw_welding",
+      "tig_welding",
+      "metal_fabrication",
+      "blueprint_reading",
+      "preventive_maintenance",
+      "safety_compliance"
+    ],
+    "job_skills": [
+      "smaw_welding",
+      "metal_fabrication",
+      "preventive_maintenance",
+      "safety_compliance"
+    ],
+    "resume_title": "industrial welder and maintenance technician",
+    "job_title": "plant maintenance technician",
+    "candidate_years": 4.0,
+    "required_years": 2.0,
+    "candidate_edu": "Vocational / Technical (TESDA) - SMAW NC II",
+    "required_edu": "Vocational Diploma / TESDA NC II",
+    "recruiter_action": 1
+  },
+  {
+    "resume_skills": [
+      "inventory_management",
+      "warehouse_operations",
+      "sap",
+      "fifo",
+      "forklift_operation",
+      "supply_chain",
+      "logistics"
+    ],
+    "job_skills": [
+      "inventory_management",
+      "warehouse_operations",
+      "sap",
+      "fifo",
+      "logistics"
+    ],
+    "resume_title": "warehouse supervisor",
+    "job_title": "logistics and warehouse officer",
+    "candidate_years": 5.0,
+    "required_years": 3.0,
+    "candidate_edu": "Bachelor of Science in Customs Administration",
+    "required_edu": "Bachelor's Degree in Business, Logistics, or Engineering",
+    "recruiter_action": 1
+  },
+  {
+    "resume_skills": [
+      "photoshop",
+      "illustrator",
+      "figma",
+      "canva",
+      "ui_design"
+    ],
+    "job_skills": [
+      "forklift_operation",
+      "warehouse_operations",
+      "inventory_management",
+      "fifo"
+    ],
+    "resume_title": "graphic designer",
+    "job_title": "warehouse operator",
+    "candidate_years": 2.0,
+    "required_years": 1.0,
+    "candidate_edu": "Bachelor of Fine Arts",
+    "required_edu": "High School or Vocational Graduate",
+    "recruiter_action": 0
+  },
+  {
+    "resume_skills": [
+      "bosh_so2",
+      "cosh_so2",
+      "hirac",
+      "safety_inspection",
+      "iso_45001",
+      "incident_investigation",
+      "first_aid"
+    ],
+    "job_skills": [
+      "bosh_so2",
+      "safety_inspection",
+      "hirac",
+      "safety_compliance",
+      "incident_investigation"
+    ],
+    "resume_title": "safety officer",
+    "job_title": "environment health and safety officer",
+    "candidate_years": 3.0,
+    "required_years": 2.0,
+    "candidate_edu": "Bachelor of Science in Mechanical Engineering",
+    "required_edu": "Bachelor's Degree in Engineering",
+    "recruiter_action": 1
+  },
+  {
+    "resume_skills": [
+      "financial_reporting",
+      "tax_compliance",
+      "bir_filing",
+      "sap",
+      "general_ledger",
+      "auditing",
+      "advanced_excel"
+    ],
+    "job_skills": [
+      "financial_reporting",
+      "tax_compliance",
+      "sap",
+      "auditing",
+      "general_ledger"
+    ],
+    "resume_title": "senior accountant",
+    "job_title": "accounting supervisor",
+    "candidate_years": 5.0,
+    "required_years": 3.0,
+    "candidate_edu": "Bachelor of Science in Accountancy",
+    "required_edu": "BS Accountancy (CPA preferred)",
+    "recruiter_action": 1
+  },
+  {
+    "resume_skills": [
+      "data_encoding",
+      "basic_excel",
+      "invoicing"
+    ],
+    "job_skills": [
+      "financial_reporting",
+      "tax_compliance",
+      "sap",
+      "auditing",
+      "team_leadership",
+      "budget_forecasting"
+    ],
+    "resume_title": "bookkeeping intern",
+    "job_title": "accounting manager",
+    "candidate_years": 0.5,
+    "required_years": 5.0,
+    "candidate_edu": "Associate in Accounting Technology",
+    "required_edu": "BS Accountancy (CPA required)",
+    "recruiter_action": 0
+  },
+  {
+    "resume_skills": [
+      "autocad",
+      "staad_pro",
+      "structural_analysis",
+      "site_supervision",
+      "quantity_surveying",
+      "boq",
+      "cosh_so2"
+    ],
+    "job_skills": [
+      "autocad",
+      "site_supervision",
+      "quantity_surveying",
+      "structural_analysis",
+      "project_management"
+    ],
+    "resume_title": "project civil engineer",
+    "job_title": "facilities site engineer",
+    "candidate_years": 4.0,
+    "required_years": 2.0,
+    "candidate_edu": "Bachelor of Science in Civil Engineering",
+    "required_edu": "BS Civil Engineering",
+    "recruiter_action": 1
+  },
+  {
+    "resume_skills": [
+      "food_preparation",
+      "kitchen_sanitation",
+      "cashiering",
+      "customer_service"
+    ],
+    "job_skills": [
+      "autocad",
+      "staad_pro",
+      "structural_analysis",
+      "site_supervision",
+      "quantity_surveying"
+    ],
+    "resume_title": "service crew",
+    "job_title": "civil engineer",
+    "candidate_years": 2.0,
+    "required_years": 2.0,
+    "candidate_edu": "Senior High School",
+    "required_edu": "BS Civil Engineering",
+    "recruiter_action": 0
+  },
+  {
+    "resume_skills": [
+      "ceramic_glaze_formulation",
+      "chemical_analysis",
+      "quality_control",
+      "iso_9001",
+      "laboratory_testing",
+      "spc"
+    ],
+    "job_skills": [
+      "chemical_analysis",
+      "quality_control",
+      "laboratory_testing",
+      "ceramics",
+      "iso_9001"
+    ],
+    "resume_title": "process and quality control engineer",
+    "job_title": "quality control analyst",
+    "candidate_years": 3.0,
+    "required_years": 2.0,
+    "candidate_edu": "Bachelor of Science in Chemical Engineering",
+    "required_edu": "BS Chemical Engineering, Chemistry, or Materials Engineering",
+    "recruiter_action": 1
   }
 ]

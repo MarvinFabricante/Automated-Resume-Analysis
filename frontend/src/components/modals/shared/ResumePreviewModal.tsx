@@ -102,11 +102,13 @@ const ResumePreviewModal: React.FC<ResumePreviewModalProps> = ({
   const hasReplace = Boolean(onReplaceFile || onReplace);
 
   const handleTriggerReplace = () => {
-    if (fileInputRef.current && onReplaceFile) {
-      fileInputRef.current.click();
-    } else if (onReplace) {
+    if (onReplace) {
       onReplace();
+    } else if (fileInputRef.current && onReplaceFile) {
+      fileInputRef.current.value = '';
+      fileInputRef.current.click();
     } else if (fileInputRef.current) {
+      fileInputRef.current.value = '';
       fileInputRef.current.click();
     }
   };
@@ -473,13 +475,13 @@ const ResumePreviewModal: React.FC<ResumePreviewModalProps> = ({
           </div>
         </div>
 
-        {/* Hidden File Input for Replace functionality */}
+        {/* Accessible File Input for Replace functionality */}
         <input
           ref={fileInputRef}
           type="file"
           accept=".pdf,.doc,.docx,.txt,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain"
           onChange={handleFileChange}
-          className="hidden"
+          className="sr-only"
         />
       </div>
     </div>

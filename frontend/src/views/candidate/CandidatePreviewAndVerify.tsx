@@ -16,7 +16,7 @@ import ApplicationSuccessModal from '../../components/modals/shared/ApplicationS
 import ResumePreviewModal from '../../components/modals/shared/ResumePreviewModal';
 import ExperienceGapAlert from '../../components/common/ExperienceGapAlert';
 import { useSubmitApplicationMutation } from '../../redux/api/apiSlice';
-import { formatApiErrorDetail, toPositiveIntOrUndefined, toStringArray } from '../../utils/errorUtils';
+import { formatApiErrorDetail, formatUploadOrParseError, toPositiveIntOrUndefined, toStringArray } from '../../utils/errorUtils';
 
 
 const CandidatePreviewAndVerify: React.FC = () => {
@@ -90,6 +90,7 @@ const CandidatePreviewAndVerify: React.FC = () => {
   const [isReplacingResume, setIsReplacingResume] = useState<boolean>(false);
   const [hasReplacedResume, setHasReplacedResume] = useState<boolean>(false);
   const [replaceError, setReplaceError] = useState<string | null>(null);
+  const [replaceNotice, setReplaceNotice] = useState<string | null>(null);
   const replaceInputRef = useRef<HTMLInputElement>(null);
 
   const checkFileContent = async (file: File): Promise<{ valid: boolean; error?: string }> => {
@@ -136,6 +137,8 @@ const CandidatePreviewAndVerify: React.FC = () => {
 
   const handleReplaceResume = async (newFile: File) => {
     setReplaceError(null);
+    setReplaceNotice(null);
+    setShowResumePreview(false);
     const validTypes = [
       'application/pdf',
       'application/msword',
@@ -192,7 +195,7 @@ const CandidatePreviewAndVerify: React.FC = () => {
         setCurrentRawText(parsed.raw_text || null);
         setDynamicExtractedData(parsed);
         setHasReplacedResume(true);
-        setShowResumePreview(false);
+        setReplaceNotice(`Resume successfully replaced with "${newFile.name}". Extracted profile fields have been updated.`);
 
         if (jobId && jobId !== 'smart') {
           try {
@@ -207,7 +210,7 @@ const CandidatePreviewAndVerify: React.FC = () => {
       }
     } catch (err: any) {
       console.error("Failed to replace resume:", err);
-      const msg = formatApiErrorDetail(err.response?.data?.detail, "Failed to parse new resume. Please ensure the file is valid.");
+      const msg = formatUploadOrParseError(err, "Failed to parse new resume. Please ensure the file is valid.");
       setReplaceError(msg);
       alert(msg);
     } finally {
@@ -248,10 +251,12 @@ const CandidatePreviewAndVerify: React.FC = () => {
     education: {
       degree: (hasReplacedResume
         ? (activeData?.degree || activeData?.education_entries?.[0]?.degree_or_course || activeData?.highest_degree)
-        : (state?.formData?.degree || state?.education?.degree || activeData?.degree || activeData?.highest_degree)) || "Not specified",
+        : ((state?.formData?.degree && !['BACHELOR', 'MASTER', 'DOCTORATE', 'ASSOCIATE', 'VOCATIONAL'].includes(String(state.formData.degree).toUpperCase()))
+            ? state.formData.degree
+            : (activeData?.degree || activeData?.education_entries?.[0]?.degree_or_course || state?.education?.degree || state?.formData?.degree || activeData?.highest_degree))) || "Not specified",
       college: (hasReplacedResume
         ? (activeData?.institution || activeData?.college || activeData?.education_entries?.[0]?.institution_name)
-        : (state?.formData?.college || state?.education?.college || activeData?.institution || activeData?.college)) || "Not specified"
+        : (state?.formData?.college || state?.education?.college || activeData?.institution || activeData?.college || activeData?.education_entries?.[0]?.institution_name)) || "Not specified"
     },
     years_experience: activeData?.years_experience || state?.years_experience || 0,
     summary: activeData?.summary || state?.summary || "",
@@ -328,14 +333,22 @@ const CandidatePreviewAndVerify: React.FC = () => {
       ? extractedData.certifications.join(' | ')
       : String(extractedData.certifications || data?.certifications || "").trim();
 
+    const rawStateJobTitle = state?.job?.title || state?.jobTitle || localStorage.getItem('draft_application_job_title') || "";
+    const validStateJobTitle = (rawStateJobTitle && !['position', 'target position', 'not specified'].includes(String(rawStateJobTitle).trim().toLowerCase()))
+      ? String(rawStateJobTitle).trim()
+      : "";
+    const validCandidateJobTitle = (extractedData.experience.title && extractedData.experience.title !== "Not specified")
+      ? extractedData.experience.title
+      : "";
+
     const payload = {
       job_id: String(effectiveJobId),
       candidate_name: candidateName,
       candidate_email: candidateEmail,
       phone: extractedData.personal.phone,
       location: extractedData.personal.location,
-      job_title: state?.job?.title || state?.jobTitle || localStorage.getItem('draft_application_job_title') || extractedData.experience.title || "Applicant",
-      company: extractedData.experience.company,
+      job_title: validCandidateJobTitle || validStateJobTitle || "Applicant",
+      company: (extractedData.experience.company && extractedData.experience.company !== "Not specified") ? extractedData.experience.company : "",
       relevance: extractedData.experience.relevance,
       degree: extractedData.education.degree,
       college: extractedData.education.college,
@@ -511,6 +524,30 @@ const CandidatePreviewAndVerify: React.FC = () => {
                   </button>
                 </div>
               </div>
+
+              {replaceNotice && !replaceError && (
+                <div
+                  role="status"
+                  data-testid="replace-status-banner"
+                  className="mt-4 p-4 bg-emerald-50 border border-emerald-200 rounded-2xl flex items-start justify-between gap-3 text-emerald-800 animate-in fade-in duration-200"
+                >
+                  <div className="flex items-start gap-2.5">
+                    <CheckCircle size={18} className="text-emerald-600 shrink-0 mt-0.5" />
+                    <div>
+                      <h4 className="text-xs font-black text-emerald-900">Resume Replaced</h4>
+                      <p className="text-xs font-medium text-emerald-700 mt-0.5">{replaceNotice}</p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setReplaceNotice(null)}
+                    className="p-1 text-emerald-400 hover:text-emerald-700 rounded-lg transition-colors cursor-pointer"
+                    aria-label="Dismiss notification"
+                  >
+                    <X size={15} />
+                  </button>
+                </div>
+              )}
 
               {replaceError && (
                 <div
@@ -821,6 +858,13 @@ const CandidatePreviewAndVerify: React.FC = () => {
             rawText={currentRawText}
             extractedData={activeData}
             onReplaceFile={handleReplaceResume}
+            onReplace={() => {
+              setShowResumePreview(false);
+              if (replaceInputRef.current) {
+                replaceInputRef.current.value = '';
+                replaceInputRef.current.click();
+              }
+            }}
           />
 
           <input
@@ -834,7 +878,7 @@ const CandidatePreviewAndVerify: React.FC = () => {
               }
               e.target.value = '';
             }}
-            className="hidden"
+            className="sr-only"
           />
 
           <ApplicationSuccessModal

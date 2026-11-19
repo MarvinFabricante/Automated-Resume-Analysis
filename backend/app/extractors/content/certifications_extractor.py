@@ -82,8 +82,8 @@ _PURE_DATE_OR_YEAR_RE = re.compile(
 _NON_ITEM_METADATA_RE = re.compile(
     r'^(?:issued\s*(?:by|on|date)?|issuer|provider|organization|valid\s*(?:until|thru|through)|'
     r'expir(?:es?|ation)|date(?:\s+issued)?|rating|score|reg(?:\.|istration)?\s*(?:no\.?|#)?|'
-    r'license\s*(?:no\.?|#|id)|cert(?:ificate)?\s*(?:no\.?|#|id)|validation\s*(?:id|no\.?)?|'
-    r'status|hours?|none|n/?a|not\s+applicable)\s*(?:[:\-–—]|$)',
+    r'license\s*(?:no\.?|#|id)|cert(?:ificate)?\s*(?:no\.?|#|id)|credential\s*(?:id|no\.?|#)?|'
+    r'validation\s*(?:id|no\.?)?|professional\s+certificate|status|hours?|none|n/?a|not\s+applicable)\s*(?:[:\-–—]|$)',
     re.IGNORECASE,
 )
 _NON_SPLIT_COMMA_PART_RE = re.compile(
@@ -460,9 +460,9 @@ class PhilippineCertificationsExtractor:
         # 4. Credential ID or Details
         details_list: List[str] = []
 
-        # License / Reg / Cert / Validation ID
+        # License / Reg / Cert / Validation / Credential ID
         m_id = re.search(
-            r'\b(?:(?:PRC\s+License|License|Reg(?:\.|istration)?|Cert(?:\.|ificate)?)\s*(?:No\.?|ID|#)|(?:Validation|License|Certificate|Cert)\s*(?:ID|#)?\s*[:\-])\s*[:\-]?\s*([A-Za-z0-9\-_/]+)',
+            r'\b(?:(?:PRC\s+License|License|Reg(?:\.|istration)?|Cert(?:\.|ificate)?|Credential)\s*(?:No\.?|ID|#)|(?:Validation|License|Certificate|Cert|Credential)\s*(?:ID|#)?\s*[:\-])\s*[:\-]?\s*([A-Za-z0-9\-_/]+)',
             text_context, re.IGNORECASE
         )
         if m_id:

@@ -1,7 +1,7 @@
 import re
 from typing import List, Tuple, Set, Optional
 
-# Regex for labeled fields (e.g. "Mobile: 0917-123-4567" or "Contact No.: +63 918 234 5678")
+# Regex for labeled fields (e.g. "Mobile: 0917-123-4567" or "Contact No.: (+63) 918 234 5678")
 _LABELED_PREFIX_REGEX = re.compile(
     r'(?:mobile(?:\s*phone|\s*number|\s*no\.?)?|'
     r'cell(?:\s*phone|\s*number|\s*no\.?)?|'
@@ -12,33 +12,33 @@ _LABELED_PREFIX_REGEX = re.compile(
     r'contact(?:\s*number|\s*no\.?)?|'
     r'personal\s*contact|direct\s*line|hotline|call)'
     r'[\s:.\-–—|•/>]*'
-    r'([+]?[\d\s\-().]{7,25}\d)',
+    r'([+(]?[\d\s\-().+]{7,28}\d)',
     re.IGNORECASE
 )
 
 # Regex for unicode / emoji markers (📞, 📱, 📲, ☎️, etc.)
 _ICON_PREFIX_REGEX = re.compile(
     r'[📞📱📲☎️☎✆℡]\s*[:.\-]?\s*'
-    r'([+]?[\d\s\-().]{7,25}\d)',
+    r'([+(]?[\d\s\-().+]{7,28}\d)',
     re.IGNORECASE
 )
 
 # Regex for tel: or callto: URI links
 _TEL_LINK_REGEX = re.compile(
-    r'(?:tel|callto):\s*([+]?[\d\s\-().]{7,25}\d)',
+    r'(?:tel|callto):\s*([+(]?[\d\s\-().+]{7,28}\d)',
     re.IGNORECASE
 )
 
 # Philippine Mobile regex patterns
 _PH_MOBILE_PATTERNS = [
-    # +63 9XX XXX XXXX or +63-9XX-XXX-XXXX or +63.9XX.XXX.XXXX
-    re.compile(r'(?:\+63|0063)\s*(?:\(0\)\s*|\(09\)\s*)?9\d{2}[\s\-./]?\d{3}[\s\-./]?\d{4}\b'),
+    # +63 9XX XXX XXXX or +63-9XX-XXX-XXXX or + 639XXXXXXXXX
+    re.compile(r'(?:\+\s*63|0063)\s*(?:\(0\)\s*|\(09\)\s*)?9\d{2}[\s\-./]?\d{3}[\s\-./]?\d{4}\b'),
     # +63 (9XX) XXX-XXXX or +63 (9XX) XXX XXXX
-    re.compile(r'(?:\+63|0063)\s*\(\s*9\d{2}\s*\)[\s\-./]?\d{3}[\s\-./]?\d{4}\b'),
+    re.compile(r'(?:\+\s*63|0063)\s*\(\s*9\d{2}\s*\)[\s\-./]?\d{3}[\s\-./]?\d{4}\b'),
     # (+63) 9XX XXX XXXX or (63) 9XX XXX XXXX or (+63) 09XX XXX XXXX
-    re.compile(r'\(\s*\+?63\s*\)[\s\-.]*(?:0\s*)?9\d{2}[\s\-./]?\d{3}[\s\-./]?\d{4}\b'),
-    # +639XXXXXXXXX
-    re.compile(r'(?:\+63|0063)9\d{9}\b'),
+    re.compile(r'\(\s*\+?\s*63\s*\)[\s\-.]*(?:0\s*)?9\d{2}[\s\-./]?\d{3}[\s\-./]?\d{4}\b'),
+    # +639XXXXXXXXX or + 639XXXXXXXXX
+    re.compile(r'(?:\+\s*63|0063)\s*9\d{9}\b'),
     # 639XXXXXXXXX or 63 9XX XXX XXXX
     re.compile(r'\b639\d{2}[\s\-./]?\d{3}[\s\-./]?\d{4}\b'),
     re.compile(r'\b639\d{9}\b'),
@@ -152,12 +152,16 @@ def _clean_phone(raw_phone: str) -> str:
         digits = "63" + digits[3:]
 
     # 1. Philippine Mobile (12 digits starting with 639): +63 9XX XXX XXXX
-    if digits.startswith("639") and len(digits) == 12:
-        return f"+63 {digits[2:5]} {digits[5:8]} {digits[8:12]}"
+    if digits.startswith("639"):
+        if len(digits) == 12:
+            return f"+63 {digits[2:5]} {digits[5:8]} {digits[8:12]}"
+        return ""
 
     # 2. Philippine Mobile (11 digits starting with 09): 09XX-XXX-XXXX
-    if digits.startswith("09") and len(digits) == 11:
-        return f"{digits[0:4]}-{digits[4:7]}-{digits[7:11]}"
+    if digits.startswith("09"):
+        if len(digits) == 11:
+            return f"{digits[0:4]}-{digits[4:7]}-{digits[7:11]}"
+        return ""
 
     # 3. Philippine Mobile missing trunk 0 (10 digits starting with 9): 09XX-XXX-XXXX
     if len(digits) == 10 and digits.startswith("9"):
@@ -239,6 +243,17 @@ def extract_all_phones(text: str) -> List[str]:
         return []
 
     text_norm = text.replace('\r\n', '\n').replace('\r', '\n')
+    # Rejoin phone numbers split across a line wrap (e.g. "(+63) 966-880-\n7703")
+    text_norm = re.sub(
+        r'(\(?\+?\s*63\)?[\s\-.]*9\d{2}[\s\-.]*\d{3}[\s\-.]*)\n\s*(\d{4}\b)',
+        r'\1\2',
+        text_norm,
+    )
+    text_norm = re.sub(
+        r'(\b09\d{2}[\s\-.]*\d{3}[\s\-.]*)\n\s*(\d{4}\b)',
+        r'\1\2',
+        text_norm,
+    )
     text_lower = text_norm.lower()
     total_len = len(text_norm)
 

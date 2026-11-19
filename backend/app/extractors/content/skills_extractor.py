@@ -164,11 +164,13 @@ _SHORT_KEYWORDS_REQUIRING_CONTEXT = {
         "DEFECT", "AUDIT", "TESTING", "COMPLIANCE", "CALIBRATION", "SAMPLE",
         "ML", "SKILLS",
     },
-    "NLP": {"NATURAL LANGUAGE", "PYTHON", "ML", "MACHINE LEARNING", "AI", "SPACY", "TEXT", "SKILLS"},
+    "NLP": {"NATURAL LANGUAGE", "PYTHON", "ML", "MACHINE LEARNING", "AI", "SPACY", "TEXT"},
     "QA": {"QUALITY ASSURANCE", "TESTING", "MANUAL TESTING", "AUTOMATION", "TESTER"},
     "UI": {"USER INTERFACE", "UX", "FRONTEND", "DESIGN", "FIGMA"},
     "UX": {"USER EXPERIENCE", "UI", "FRONTEND", "DESIGN", "RESEARCH"},
     "PM": {"PROJECT MANAGER", "MAINTENANCE", "PREVENTIVE MAINTENANCE", "SCRUM"},
+    "REACT": {"JS", "JAVASCRIPT", "TYPESCRIPT", "NODE", "FRONTEND", "FRONT-END", "WEB", "UI", "COMPONENT", "REDUX", "NEXT", "HTML", "CSS", "DEVELOPER", "PROGRAMMING", "SKILLS"},
+    "VA": {"VIRTUAL ASSISTANT", "VIRTUAL ASSISTANCE", "ADMINISTRATIVE", "CALENDAR", "INBOX", "EMAIL MANAGEMENT", "EXECUTIVE ASSISTANT", "SOCIAL MEDIA"},
 }
 
 # Filipino Soft Skills & Workplace Traits Trigger Patterns
@@ -588,13 +590,13 @@ class PhilippineSkillsExtractor:
                         "confidence_score": 0.92,
                         "offset": m.start()
                     })
-                elif fuzz and len(clean_item) >= 4:
+                elif fuzz and len(clean_item) >= 6:
                     best_match = process.extractOne(
                         clean_item,
                         list(self.alias_to_canonical.keys()),
                         scorer=fuzz.token_sort_ratio
                     )
-                    if best_match and best_match[1] >= 85:
+                    if best_match and best_match[1] >= 92:
                         matched_canonical = self.alias_to_canonical[best_match[0]]
                         candidates.append({
                             "canonical_skill": matched_canonical,
@@ -605,7 +607,7 @@ class PhilippineSkillsExtractor:
                             "offset": m.start()
                         })
 
-        # 2g. Action Verb + Object Noun Phrases via Dependency Parsing
+        # 2g. Action Verb + Object Noun Phrases via Dependency Parsing (exact alias/compound match only)
         try:
             doc = get_doc(text)
             action_verbs = {
@@ -628,7 +630,7 @@ class PhilippineSkillsExtractor:
                                     "confidence_score": 0.90,
                                     "offset": text.lower().find(obj_lower) if obj_lower in text.lower() else 0
                                 })
-                        elif obj_lower in self.alias_to_canonical:
+                        elif obj_lower in self.alias_to_canonical and obj_clean.upper() not in _SHORT_KEYWORDS_REQUIRING_CONTEXT:
                             candidates.append({
                                 "canonical_skill": self.alias_to_canonical[obj_lower],
                                 "raw_mention": f"{verb} {obj}",
@@ -637,21 +639,6 @@ class PhilippineSkillsExtractor:
                                 "confidence_score": 0.90,
                                 "offset": text.lower().find(obj_lower) if obj_lower in text.lower() else 0
                             })
-                        elif fuzz and len(obj_clean) >= 5:
-                            match = process.extractOne(
-                                obj_clean,
-                                list(self.alias_to_canonical.keys()),
-                                scorer=fuzz.token_sort_ratio
-                            )
-                            if match and match[1] >= 85:
-                                candidates.append({
-                                    "canonical_skill": self.alias_to_canonical[match[0]],
-                                    "raw_mention": f"{verb} {obj}",
-                                    "source_section": "Work Experience",
-                                    "extraction_method": "Syntactic_Dependency",
-                                    "confidence_score": round(0.75 + (match[1] - 85) / 100 * 0.20, 2),
-                                    "offset": text.lower().find(obj_lower) if obj_lower in text.lower() else 0
-                                })
         except Exception:
             pass
 

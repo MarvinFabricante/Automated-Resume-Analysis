@@ -25,6 +25,7 @@ import ResumePreviewModal from '../../../components/modals/shared/ResumePreviewM
 import ApplicationProgressBar from '../../../components/common/ApplicationProgressBar';
 import ExperienceGapAlert from '../../../components/common/ExperienceGapAlert';
 import { Job } from '../../../types';
+import { formatUploadOrParseError } from '../../../utils/errorUtils';
 
 
 const STATIC_JOBS = [
@@ -75,6 +76,9 @@ const ApplyForJobPage: React.FC = () => {
   const [cooldown, setCooldown] = useState(0);
   const [savedDraft, setSavedDraft] = useState<any>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [replaceNotice, setReplaceNotice] = useState<string | null>(null);
+  const hasRestoredFromLocationRef = useRef(false);
+  const wasReplacingCompletedRef = useRef(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
@@ -184,9 +188,10 @@ const ApplyForJobPage: React.FC = () => {
     }
   }, [cooldown]);
 
-  // Restore previously extracted data if navigated back (reversal of action)
+  // Restore previously extracted data once if navigated back (reversal of action)
   useEffect(() => {
-    if (location.state?.extractedData && !extractedData) {
+    if (location.state?.extractedData && !extractedData && !hasRestoredFromLocationRef.current) {
+      hasRestoredFromLocationRef.current = true;
       setExtractedData(location.state.extractedData);
       setIsComplete(true);
       if (location.state.fileName) {
@@ -356,11 +361,39 @@ const ApplyForJobPage: React.FC = () => {
       setUploadProgress(0);
       setExtractedData(null);
       setMatchData(null);
+
+      const shouldAutoAnalyze = wasReplacingCompletedRef.current && isTermsAccepted;
+      if (wasReplacingCompletedRef.current || replaceNotice) {
+        setReplaceNotice(`Resume replaced with "${selectedFile.name}".`);
+      }
+      wasReplacingCompletedRef.current = false;
+
+      if (shouldAutoAnalyze) {
+        await handleUpload(selectedFile);
+      }
     } else {
       const msg = "Please upload your resume as a PDF, Word document, or text file (.pdf, .docx, .doc, .txt).";
       setUploadError(msg);
       alert(msg);
     }
+  };
+
+  const handleReplaceResumeClick = () => {
+    wasReplacingCompletedRef.current = isComplete;
+    setUploadError(null);
+    setShowPreviewModal(false);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+      fileInputRef.current.click();
+    }
+    setFile(null);
+    setIsComplete(false);
+    setIsUploading(false);
+    setUploadProgress(0);
+    setExtractedData(null);
+    setMatchData(null);
+    setCooldown(0);
+    setReplaceNotice('Previous resume cleared. Select a new resume file to replace it.');
   };
 
   const handleDrag = (e: React.DragEvent) => {
@@ -379,16 +412,18 @@ const ApplyForJobPage: React.FC = () => {
     }
   };
 
-  const handleUpload = async () => {
-    if (!file || !isTermsAccepted || cooldown > 0) return;
+  const handleUpload = async (overrideFile?: File) => {
+    const activeFile = overrideFile instanceof File ? overrideFile : file;
+    if (!activeFile || !(activeFile instanceof File) || !isTermsAccepted || cooldown > 0) return;
     setUploadError(null);
     setIsUploading(true);
     setUploadProgress(20); // Initial progress
 
     try {
-      const response = await candidateService.parseResume(file as File, {
+      const response = await candidateService.parseResume(activeFile, {
         onUploadProgress: (progressEvent: any) => {
-          const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+          const total = progressEvent.total || activeFile.size || 1;
+          const percentCompleted = Math.round((progressEvent.loaded * 100) / total);
           setUploadProgress(Math.max(20, percentCompleted));
         }
       });
@@ -404,7 +439,7 @@ const ApplyForJobPage: React.FC = () => {
             jobId: targetId,
             step: 2,
             savedAt: new Date().toISOString(),
-            fileName: file?.name || "Uploaded Resume",
+            fileName: activeFile?.name || "Uploaded Resume",
             resumeUrl: response.data?.file_url || null,
             extractedData: response.data,
             formData: {
@@ -439,19 +474,19 @@ const ApplyForJobPage: React.FC = () => {
       }
     } catch (error: any) {
       console.error("Error parsing resume:", error);
-      if (error.response?.status === 429) {
-        const msg = "Too many requests! Please wait a moment before trying again.";
-        setUploadError(msg);
-        alert(msg);
+      const formattedMsg = formatUploadOrParseError(
+        error,
+        "Failed to parse resume. Please ensure you uploaded a valid PDF, Word document, or text file."
+      );
+      setUploadError(formattedMsg);
+      alert(formattedMsg);
+      if (error?.response?.status === 429) {
         setCooldown(30); // Force a longer cooldown if backend rejected them
       } else {
-        const detail = error.response?.data?.detail || "Failed to parse resume. Please ensure you uploaded a valid PDF, Word document, or text file.";
-        setUploadError(detail);
-        alert(detail);
+        setCooldown(10); // 10s cooldown for retries
       }
     } finally {
       setIsUploading(false);
-      if (!isComplete) setCooldown(10); // 10s cooldown for retries
     }
   };
 
@@ -563,9 +598,33 @@ const ApplyForJobPage: React.FC = () => {
                 }
                 e.target.value = '';
               }}
-              className="hidden"
+              className="sr-only"
               accept=".pdf,.doc,.docx,.txt,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain"
             />
+
+            {replaceNotice && !uploadError && (
+              <div
+                role="status"
+                data-testid="replace-status-banner"
+                className="mb-6 p-4 sm:p-5 bg-emerald-50 border border-emerald-200 rounded-2xl flex items-start justify-between gap-3 text-emerald-800 shadow-xs animate-in fade-in duration-200"
+              >
+                <div className="flex items-start gap-3">
+                  <CheckCircle2 size={20} className="text-emerald-600 shrink-0 mt-0.5" />
+                  <div>
+                    <h4 className="text-xs sm:text-sm font-black text-emerald-900">Resume Management</h4>
+                    <p className="text-xs sm:text-sm font-medium text-emerald-700 mt-0.5">{replaceNotice}</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setReplaceNotice(null)}
+                  className="p-1 text-emerald-400 hover:text-emerald-700 rounded-lg transition-colors cursor-pointer"
+                  aria-label="Dismiss notification"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+            )}
 
             {uploadError && (
               <div
@@ -659,7 +718,7 @@ const ApplyForJobPage: React.FC = () => {
                         id="btn-replace-resume"
                         data-testid="replace-resume-btn"
                         type="button"
-                        onClick={() => fileInputRef.current?.click()}
+                        onClick={handleReplaceResumeClick}
                         className="px-3.5 py-2 bg-white hover:bg-slate-100 text-slate-700 hover:text-slate-900 border border-slate-200 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-2xs cursor-pointer"
                         title="Replace Resume"
                       >
@@ -729,12 +788,7 @@ const ApplyForJobPage: React.FC = () => {
                         id="btn-upload-different"
                         data-testid="upload-different-resume-btn"
                         type="button"
-                        onClick={() => {
-                          setFile(null);
-                          setExtractedData(null);
-                          setIsComplete(false);
-                          setMatchData(null);
-                        }}
+                        onClick={handleReplaceResumeClick}
                         className="flex-1 bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-700 py-4 rounded-2xl font-bold transition-all active:scale-95 flex items-center justify-center gap-2 text-sm cursor-pointer shadow-2xs"
                       >
                         <FileUp size={18} />
@@ -770,7 +824,7 @@ const ApplyForJobPage: React.FC = () => {
                     </div>
 
                     <button
-                      onClick={handleUpload}
+                      onClick={() => handleUpload()}
                       disabled={!isTermsAccepted || cooldown > 0}
                       className={`w-full py-4 sm:py-5 rounded-2xl font-bold flex items-center justify-center gap-3 transition-all transform active:scale-95 shadow-xl text-sm ${isTermsAccepted && cooldown === 0
                         ? "bg-[#D60041] hover:bg-slate-900 text-white shadow-pink-100 hover:shadow-none"
@@ -798,9 +852,11 @@ const ApplyForJobPage: React.FC = () => {
         rawText={extractedData?.raw_text}
         extractedData={extractedData}
         onReplaceFile={(newFile) => {
+          wasReplacingCompletedRef.current = isComplete;
           setShowPreviewModal(false);
           validateAndSetFile(newFile);
         }}
+        onReplace={handleReplaceResumeClick}
       />
 
       <RecruitmentTermsModal 

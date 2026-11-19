@@ -38,6 +38,7 @@ import RecruitmentTermsModal from '../../components/modals/shared/RecruitmentTer
 import ResumePreviewModal from '../../components/modals/shared/ResumePreviewModal';
 import ApplicationProgressBar from '../../components/common/ApplicationProgressBar';
 import ExperienceGapAlert from '../../components/common/ExperienceGapAlert';
+import { formatUploadOrParseError } from '../../utils/errorUtils';
 
 
 const CandidateSmartUpload: React.FC = () => {
@@ -64,6 +65,8 @@ const CandidateSmartUpload: React.FC = () => {
   const [cooldown, setCooldown] = useState<number>(0);
   const [savedDraft, setSavedDraft] = useState<any>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [replaceNotice, setReplaceNotice] = useState<string | null>(null);
+  const wasReplacingCompletedRef = useRef<boolean>(false);
 
   // Check for saved draft progress
   useEffect(() => {
@@ -275,11 +278,39 @@ const CandidateSmartUpload: React.FC = () => {
       setUploadProgress(0);
       setExtractedData(null);
       setMatchData(null);
+
+      const shouldAutoAnalyze = wasReplacingCompletedRef.current && isTermsAccepted;
+      if (wasReplacingCompletedRef.current || replaceNotice) {
+        setReplaceNotice(`Resume replaced with "${selectedFile.name}".`);
+      }
+      wasReplacingCompletedRef.current = false;
+
+      if (shouldAutoAnalyze) {
+        await handleUpload(selectedFile);
+      }
     } else {
       const msg = 'Please upload a PDF, Word document, or text file (.pdf, .docx, .doc, .txt).';
       setUploadError(msg);
       alert(msg);
     }
+  };
+
+  const handleReplaceResumeClick = () => {
+    wasReplacingCompletedRef.current = isComplete;
+    setUploadError(null);
+    setShowPreviewModal(false);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+      fileInputRef.current.click();
+    }
+    setFile(null);
+    setIsComplete(false);
+    setIsUploading(false);
+    setUploadProgress(0);
+    setExtractedData(null);
+    setMatchData(null);
+    setCooldown(0);
+    setReplaceNotice('Previous resume cleared. Select a new resume file to replace it.');
   };
 
   const handleDrag = (e: React.DragEvent) => {
@@ -298,8 +329,9 @@ const CandidateSmartUpload: React.FC = () => {
     }
   };
 
-  const handleUpload = async () => {
-    if (!file || !isTermsAccepted || cooldown > 0) return;
+  const handleUpload = async (overrideFile?: File) => {
+    const activeFile = overrideFile instanceof File ? overrideFile : file;
+    if (!activeFile || !isTermsAccepted || cooldown > 0) return;
     setUploadError(null);
     setIsUploading(true);
     setUploadProgress(15);
@@ -307,9 +339,9 @@ const CandidateSmartUpload: React.FC = () => {
 
     try {
       // 1. Parse Resume
-      const response = await candidateService.parseResume(file, {
+      const response = await candidateService.parseResume(activeFile, {
         onUploadProgress: (progressEvent: any) => {
-          const total = progressEvent.total || progressEvent.loaded;
+          const total = progressEvent.total || progressEvent.loaded || activeFile.size || 1;
           const percent = Math.round((progressEvent.loaded * 100) / total);
           setUploadProgress(Math.max(15, Math.min(60, Math.round(percent * 0.6))));
         }
@@ -343,7 +375,7 @@ const CandidateSmartUpload: React.FC = () => {
             step: 2,
             jobId,
             jobTitle,
-            fileName: file.name,
+            fileName: activeFile.name,
             extractedData: extracted,
             matchData: calculatedMatch,
             savedAt: new Date().toISOString()
@@ -355,19 +387,17 @@ const CandidateSmartUpload: React.FC = () => {
       }
     } catch (error: any) {
       console.error('Error analyzing resume:', error);
-      if (error.response?.status === 429) {
-        const msg = 'Server is experiencing high volume. Please wait 30 seconds before retrying.';
-        setUploadError(msg);
-        alert(msg);
+      const formattedMsg = formatUploadOrParseError(
+        error,
+        'Failed to analyze resume. Please ensure your document contains readable text.'
+      );
+      setUploadError(formattedMsg);
+      alert(formattedMsg);
+      if (error?.response?.status === 429) {
         setCooldown(30);
       } else {
-        const detail =
-          error.response?.data?.detail ||
-          'Failed to analyze resume. Please ensure your document contains readable text.';
-        setUploadError(detail);
-        alert(detail);
+        setCooldown(10);
       }
-      setCooldown(10);
     } finally {
       setIsUploading(false);
     }
@@ -568,9 +598,33 @@ const CandidateSmartUpload: React.FC = () => {
                   }
                   e.target.value = '';
                 }}
-                className="hidden"
+                className="sr-only"
                 accept=".pdf,.doc,.docx,.txt,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain"
               />
+
+              {replaceNotice && !uploadError && (
+                <div
+                  role="status"
+                  data-testid="replace-status-banner"
+                  className="max-w-4xl mx-auto mb-6 p-4 sm:p-5 bg-emerald-50 border border-emerald-200 rounded-2xl flex items-start justify-between gap-3 text-emerald-800 shadow-2xs animate-in fade-in duration-200"
+                >
+                  <div className="flex items-start gap-3">
+                    <CheckCircle2 size={20} className="text-emerald-600 shrink-0 mt-0.5" />
+                    <div>
+                      <h4 className="text-xs sm:text-sm font-black text-emerald-900">Resume Management</h4>
+                      <p className="text-xs sm:text-sm font-medium text-emerald-700 mt-0.5">{replaceNotice}</p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setReplaceNotice(null)}
+                    className="p-1 text-emerald-400 hover:text-emerald-700 rounded-lg transition-colors cursor-pointer"
+                    aria-label="Dismiss notification"
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+              )}
 
               {uploadError && (
                 <div
@@ -679,7 +733,7 @@ const CandidateSmartUpload: React.FC = () => {
                           id="btn-candidate-replace-resume"
                           data-testid="replace-resume-btn"
                           type="button"
-                          onClick={() => fileInputRef.current?.click()}
+                          onClick={handleReplaceResumeClick}
                           className="px-4 py-2 bg-white hover:bg-slate-100 text-slate-700 hover:text-slate-900 border border-slate-200 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-2xs cursor-pointer"
                           title="Replace Resume"
                         >
@@ -762,12 +816,7 @@ const CandidateSmartUpload: React.FC = () => {
                       <div className="flex flex-col sm:flex-row gap-3 pt-2">
                         <button
                           type="button"
-                          onClick={() => {
-                            setFile(null);
-                            setExtractedData(null);
-                            setMatchData(null);
-                            setIsComplete(false);
-                          }}
+                          onClick={handleReplaceResumeClick}
                           className="flex-1 bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-700 py-4 rounded-2xl font-bold transition-all active:scale-95 flex items-center justify-center gap-2 text-sm cursor-pointer shadow-2xs"
                         >
                           <FileUp size={18} />
@@ -813,7 +862,7 @@ const CandidateSmartUpload: React.FC = () => {
 
                       <button
                         type="button"
-                        onClick={handleUpload}
+                        onClick={() => handleUpload()}
                         disabled={!isTermsAccepted || cooldown > 0}
                         className={`w-full py-5 rounded-[24px] font-black text-base flex items-center justify-center gap-3 transition-all ${
                           isTermsAccepted && cooldown === 0
@@ -849,9 +898,11 @@ const CandidateSmartUpload: React.FC = () => {
         rawText={extractedData?.raw_text}
         extractedData={extractedData}
         onReplaceFile={(newFile) => {
+          wasReplacingCompletedRef.current = isComplete;
           setShowPreviewModal(false);
           validateAndSetFile(newFile);
         }}
+        onReplace={handleReplaceResumeClick}
       />
 
       <RecruitmentTermsModal

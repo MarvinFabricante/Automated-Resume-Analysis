@@ -78,6 +78,8 @@ _SECTION_DEFINITIONS: dict[str, list[str]] = {
         "TECH TOOLS", "LANGUAGES & TECHNOLOGIES", "LANGUAGES & FRAMEWORKS",
         "FRAMEWORKS & LIBRARIES", "DATABASES & CLOUD", "TOOLS & TESTING",
         "SKILLS USED", "CORE SKILLS", "FUNCTIONAL SKILLS", "SPECIAL SKILLS",
+        "SKILLS & CERTIFICATIONS", "SKILLS AND CERTIFICATIONS",
+        "TECHNICAL SKILLS & CERTIFICATIONS", "TECHNICAL SKILLS AND CERTIFICATIONS",
     ],
     "EXPERIENCE": [
         "EXPERIENCE", "WORK HISTORY", "EMPLOYMENT", "PROFESSIONAL BACKGROUND",
@@ -118,6 +120,16 @@ _SECTION_DEFINITIONS: dict[str, list[str]] = {
         "CERTIFICATIONS AND AWARDS", "CERTIFICATIONS & AWARDS",
         "AWARDS AND CERTIFICATIONS", "AWARDS & CERTIFICATIONS",
         "CERTIFICATES AND TRAININGS", "TRAININGS AND CERTIFICATES",
+        "CERTIFICATIONS & TRAININGS", "CERTIFICATIONS & TRAINING",
+        "CERTIFICATION & TRAININGS", "CERTIFICATION & TRAINING",
+        "CERTIFICATION AND TRAININGS", "CERTIFICATION AND TRAINING",
+        "TRAININGS & CERTIFICATIONS", "TRAINING & CERTIFICATIONS",
+        "CERTIFICATES & TRAININGS", "TRAININGS & CERTIFICATES",
+        "CERTIFICATES & TRAINING", "TRAINING & CERTIFICATES",
+        "LICENSES & ELIGIBILITY", "LICENSES AND ELIGIBILITY",
+        "LICENSES, ELIGIBILITY & CERTIFICATIONS", "LICENSES, ELIGIBILITY AND CERTIFICATIONS",
+        "CERTIFICATIONS, LICENSES & TRAININGS", "CERTIFICATIONS, LICENSES AND TRAININGS",
+        "LICENSES & CERTIFICATIONS", "PROFESSIONAL CERTIFICATIONS & TRAININGS",
     ],
     "PROJECTS": [
         "PROJECTS", "PERSONAL PROJECTS", "ACADEMIC PROJECTS",
@@ -211,6 +223,7 @@ def _match_header_text(normalised: str, allow_fuzzy: bool = True) -> Optional[st
         return res
 
     without_paren = _TRAILING_PAREN_RE.sub('', normalised).strip()
+    without_paren = re.sub(r'\s*[-–—]?\s*\b(?:CONTINUED|CONT\.?)\s*$', '', without_paren).strip()
     if without_paren and without_paren != normalised:
         res = _HEADER_MAP.get(without_paren)
         if res:
@@ -221,10 +234,44 @@ def _match_header_text(normalised: str, allow_fuzzy: bool = True) -> Optional[st
 
     # Flexible matching for compound headers
     if re.search(r'\bSKILLS?\b', normalised) and re.search(
-        r'\b(?:COMPETENC|PROFICIENC|ABILIT|TECH|KNOWLEDGE|EXPERTISE|TRAIT|QUALIFICAT|CAPABILIT|STRENGTH|TOOL|INVENTORY|SUMMARY|OVERVIEW|HIGHLIGHT|MATRIX|SET)\w*\b',
+        r'\b(?:COMPETENC|PROFICIENC|ABILIT|TECH|KNOWLEDGE|EXPERTISE|TRAIT|QUALIFICAT|CAPABILIT|STRENGTH|TOOL|INVENTORY|SUMMARY|OVERVIEW|HIGHLIGHT|MATRIX|SET|CERTIFICAT)\w*\b',
         normalised
     ):
         return "SKILLS"
+    if (
+        len(normalised.split()) <= 5
+        and re.search(r'\b(?:CERTIFICAT|LICENS|ELIGIBILIT|CREDENTIAL|ACCREDITAT)\w*\b', normalised)
+        and re.match(
+            r'^(?:PROFESSIONAL\s+|RELEVANT\s+|KEY\s+|TECHNICAL\s+)?'
+            r'(?:CERTIFICAT\w*|LICENS\w*|ELIGIBILIT\w*|CREDENTIAL\w*|ACCREDITAT\w*|TRAINING\w*|SEMINAR\w*|WORKSHOP\w*|ACHIEVEMENT\w*|AWARD\w*)'
+            r'(?:\s*(?:&|AND|/|,)\s*(?:CERTIFICAT\w*|LICENS\w*|ELIGIBILIT\w*|CREDENTIAL\w*|ACCREDITAT\w*|TRAINING\w*|SEMINAR\w*|WORKSHOP\w*|ACHIEVEMENT\w*|AWARD\w*))*$',
+            normalised,
+        )
+    ):
+        return "CERTIFICATIONS"
+    if (
+        len(normalised.split()) <= 5
+        and re.search(r'\b(?:TRAINING|SEMINAR|WORKSHOP)\w*\b', normalised)
+        and re.match(
+            r'^(?:PROFESSIONAL\s+|RELEVANT\s+|SPECIALIZED\s+)?'
+            r'(?:TRAINING\w*|SEMINAR\w*|WORKSHOP\w*|DEVELOPMENT)'
+            r'(?:\s*(?:&|AND|/|,)\s*(?:TRAINING\w*|SEMINAR\w*|WORKSHOP\w*|DEVELOPMENT))*'
+            r'(?:\s+ATTENDED)?$',
+            normalised,
+        )
+    ):
+        return "TRAINING"
+    if (
+        len(normalised.split()) <= 5
+        and re.search(r'\b(?:AWARD|ACHIEVEMENT|HONOR|ACCOMPLISHMENT|RECOGNITION)\w*\b', normalised)
+        and re.match(
+            r'^(?:KEY\s+|ACADEMIC\s+|PROFESSIONAL\s+)?'
+            r'(?:AWARD\w*|ACHIEVEMENT\w*|HONOR\w*|ACCOMPLISHMENT\w*|RECOGNITION\w*)'
+            r'(?:\s*(?:&|AND|/|,)\s*(?:AWARD\w*|ACHIEVEMENT\w*|HONOR\w*|ACCOMPLISHMENT\w*|RECOGNITION\w*))*$',
+            normalised,
+        )
+    ):
+        return "AWARDS"
     if (
         len(normalised.split()) <= 4
         and re.search(r'\b(?:SKILLS|COMPETENCIES|PROFICIENCIES)\s*$', normalised)
@@ -373,6 +420,8 @@ def split_into_sections(text: str) -> dict[str, str]:
         if not cleaned_line:
             sections[current_label].append(line)
             continue
+        if re.match(r'^\(?\s*(?:CONTINUED|CONT\.?)\s*\)?$', cleaned_line, re.I):
+            continue
 
         label = detect_section_label(cleaned_line)
         if not label:
@@ -394,6 +443,15 @@ def split_into_sections(text: str) -> dict[str, str]:
             # Extract inline content after ':' or '|' if full line itself wasn't a bare header
             inline_after = ""
             full_norm = _normalise_header(cleaned_line)
+            # Inside PROJECTS or EXPERIENCE, sub-labels like "Tech Stack:" or "Technologies Used:"
+            # should not hijack subsequent experience/project lines into SKILLS
+            if (
+                label == "SKILLS"
+                and current_label in ("PROJECTS", "EXPERIENCE")
+                and full_norm in {"TECH STACK", "TECHNOLOGIES", "TOOLS USED", "SKILLS USED", "TECHNOLOGIES USED"}
+            ):
+                sections[current_label].append(line)
+                continue
             is_bare_header = bool(_match_header_text(full_norm, allow_fuzzy=False))
             if not is_bare_header:
                 colon_idx = cleaned_line.find(':')

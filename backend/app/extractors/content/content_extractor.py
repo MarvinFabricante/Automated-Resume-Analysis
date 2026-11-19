@@ -450,6 +450,14 @@ def _supplement_skills_from_section(skills_section_text: str, skills_details: di
             item_lower = item_clean.lower()
             if item_lower in ignore_labels or item_lower in existing_lower:
                 continue
+            # Filter out section headers, emails, phones, dates, credential IDs, and template instructions
+            from .section_parser import detect_section_label
+            if detect_section_label(item_clean) is not None:
+                continue
+            if any(tok in item_lower for tok in ("@", "http", "www.", "[optional", "list computer", "certifications", "trainings", "featured project", "other project", "credential id")):
+                continue
+            if re.search(r'\b(?:19|20)\d{2}\b|\d{4,}', item_clean):
+                continue
 
             # Skip if already covered by an extracted canonical skill or raw mention
             is_covered = item_lower in covered_terms
