@@ -51,12 +51,31 @@ const FindJob: React.FC = () => {
   const [jobs, setJobs] = useState<DisplayJob[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
-  // Search & Filter state (searchTerm is driven by the navigation bar search query ?search=...)
+  // Search & Filter state (searchTerm is live-synced with the navigation bar search)
   const [searchTerm, setSearchTerm] = useState<string>(urlSearch);
 
   useEffect(() => {
     setSearchTerm(urlSearch);
   }, [urlSearch]);
+
+  useEffect(() => {
+    const handleNavbarSearch = (e: Event) => {
+      const detail = (e as CustomEvent)?.detail;
+      if (detail && detail.source === 'navbar') {
+        setSearchTerm(String(detail.query ?? ''));
+      }
+    };
+    const handlePopState = () => {
+      const nextQ = new URLSearchParams(window.location.search).get('search') || '';
+      setSearchTerm(nextQ);
+    };
+    window.addEventListener('candidate-job-search', handleNavbarSearch);
+    window.addEventListener('popstate', handlePopState);
+    return () => {
+      window.removeEventListener('candidate-job-search', handleNavbarSearch);
+      window.removeEventListener('popstate', handlePopState);
+    };
+  }, []);
   const [selectedDept, setSelectedDept] = useState<string>('All');
   const [selectedJobType, setSelectedJobType] = useState<string>('All');
   const [selectedLocation, setSelectedLocation] = useState<string>('All');
@@ -239,11 +258,20 @@ const FindJob: React.FC = () => {
     }
   };
 
-  const resetAllFilters = () => {
+  const clearNavbarAndPageSearch = () => {
     setSearchTerm('');
-    if (urlSearch) {
-      navigate('/candidate/findjobs', { replace: true });
+    if (typeof window !== 'undefined') {
+      window.history.replaceState(window.history.state, '', '/candidate/findjobs');
+      window.dispatchEvent(
+        new CustomEvent('candidate-job-search', {
+          detail: { query: '', source: 'page' },
+        })
+      );
     }
+  };
+
+  const resetAllFilters = () => {
+    clearNavbarAndPageSearch();
     setSelectedDept('All');
     setSelectedJobType('All');
     setSelectedLocation('All');
@@ -379,10 +407,7 @@ const FindJob: React.FC = () => {
                       <button
                         type="button"
                         aria-label="Clear active search filter"
-                        onClick={() => {
-                          setSearchTerm('');
-                          if (urlSearch) navigate('/candidate/findjobs', { replace: true });
-                        }}
+                        onClick={clearNavbarAndPageSearch}
                         className="p-0.5 rounded-full hover:bg-rose-100 cursor-pointer"
                       >
                         <X size={13} />
