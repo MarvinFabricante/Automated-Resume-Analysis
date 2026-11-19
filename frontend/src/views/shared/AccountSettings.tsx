@@ -554,8 +554,8 @@ const AccountSettings: React.FC = () => {
   const profileViewPath = userRole === 'ADMIN' ? '/admin/profile' : userRole === 'HR' ? '/hr/profile' : '/candidate/profile';
 
   const TABS: Array<{ id: 'profile' | 'security' | 'notifications'; label: string; icon: React.ReactNode }> = [
-    { id: 'profile', label: 'Identity & Profile', icon: <User size={17} /> },
-    { id: 'security', label: 'Security & Credentials', icon: <Lock size={17} /> },
+    { id: 'profile', label: 'Profile Details', icon: <User size={17} /> },
+    { id: 'security', label: 'Password & Google Sign-In', icon: <Lock size={17} /> },
     { id: 'notifications', label: 'Notifications', icon: <Bell size={17} /> },
   ];
 
@@ -576,20 +576,20 @@ const AccountSettings: React.FC = () => {
             <div className="flex flex-wrap items-center justify-between gap-3 mb-2 sm:mb-3">
               <div className="flex items-center gap-2 bg-[#D10043]/5 text-[#D10043] px-2.5 sm:px-3 py-1 rounded-md text-[10px] font-black uppercase tracking-[0.2em] border border-[#D10043]/10">
                 <Zap size={12} className="animate-pulse" />
-                {userRole} Account Center
+                {userRole === 'ADMIN' ? 'Admin' : userRole === 'HR' ? 'HR Staff' : 'Candidate'} Account
               </div>
               <button
                 onClick={() => navigate(profileViewPath)}
                 className="inline-flex items-center gap-1.5 text-xs font-black uppercase tracking-wider text-slate-500 hover:text-[#D10043] transition-colors cursor-pointer"
               >
-                <ArrowLeft size={14} /> View Public Profile
+                <ArrowLeft size={14} /> View My Profile
               </button>
             </div>
             <h2 className="text-2xl sm:text-3xl md:text-4xl font-black tracking-tight text-slate-900 leading-tight">
               {userRole === 'HR' ? 'HR Staff' : userRole === 'ADMIN' ? 'Admin' : 'Candidate'} <span className="text-[#D10043]">Settings</span>
             </h2>
             <p className="text-slate-400 font-bold text-xs sm:text-sm mt-1 sm:mt-1.5 uppercase tracking-wider">
-              Manage your identity profile, account credentials, and platform preferences.
+              Update your personal details, password, Google sign-in, and notification preferences.
             </p>
           </div>
 
@@ -741,7 +741,7 @@ const AccountSettings: React.FC = () => {
                   <div className="mt-3 flex items-center justify-center gap-1.5">
                     <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
                     <span className="text-[9px] font-black text-slate-400 uppercase tracking-wider">
-                      Verified Session
+                      Signed In
                     </span>
                   </div>
                 </div>
@@ -757,7 +757,7 @@ const AccountSettings: React.FC = () => {
                   <div className="bg-white border border-slate-100 rounded-2xl sm:rounded-3xl p-5 sm:p-7 md:p-8 shadow-xl shadow-slate-200/40">
                     <h3 className="text-base sm:text-lg font-black text-slate-900 tracking-tight mb-5 sm:mb-7 flex items-center gap-2.5">
                       {userRole === 'CANDIDATE' ? <User size={20} className="text-[#D10043]" /> : <Building2 size={20} className="text-[#D10043]" />}
-                      {userRole === 'CANDIDATE' ? 'Candidate Profile & Professional Details' : userRole === 'HR' ? 'HR Staff Identity & Department' : 'Administrator Profile & System Authority'}
+                      {userRole === 'CANDIDATE' ? 'Candidate Profile & Professional Details' : userRole === 'HR' ? 'HR Staff Profile & Department' : 'Admin Profile & Role Details'}
                     </h3>
 
                     <div className="space-y-5 sm:space-y-8">
@@ -788,7 +788,7 @@ const AccountSettings: React.FC = () => {
                         </div>
                         <div className="text-center sm:text-left min-w-0">
                           <h4 className="text-sm sm:text-base font-black text-slate-900 mb-0.5">
-                            {userRole === 'CANDIDATE' ? 'Profile Avatar' : 'Enterprise Picture'}
+                            Profile Photo
                           </h4>
                           <p className="text-[11px] sm:text-xs text-slate-400 font-bold uppercase tracking-wider leading-relaxed mb-2.5">
                             JPG, PNG or GIF (Max file size: 2MB).
@@ -1073,14 +1073,14 @@ const AccountSettings: React.FC = () => {
                             {/* System Role Title / Designation */}
                             <div className="space-y-1.5 sm:space-y-2">
                               <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider ml-1">
-                                System Designation / Administrative Title
+                                Job Title / Position
                               </label>
                               <input
                                 type="text"
                                 name="position"
                                 value={formData.position || formData.current_job_title}
                                 onChange={(e) => setFormData({ ...formData, position: e.target.value, current_job_title: e.target.value })}
-                                placeholder="e.g. Lead Platform Administrator / DevOps Lead"
+                                placeholder="e.g. Company Administrator / Operations Head"
                                 className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl text-xs sm:text-sm font-bold text-slate-900 focus:outline-none focus:ring-4 focus:ring-[#D10043]/10 focus:border-[#D10043] transition-all"
                               />
                             </div>
@@ -1088,14 +1088,14 @@ const AccountSettings: React.FC = () => {
                             {/* Administrative Department */}
                             <div className="space-y-1.5 sm:space-y-2">
                               <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider ml-1">
-                                Administrative Division / Department
+                                Department
                               </label>
                               <input
                                 type="text"
                                 name="department"
                                 value={formData.department}
                                 onChange={handleInputChange}
-                                placeholder="e.g. Information Technology & Platform Security"
+                                placeholder="e.g. Human Resources & Administration"
                                 className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl text-xs sm:text-sm font-bold text-slate-900 focus:outline-none focus:ring-4 focus:ring-[#D10043]/10 focus:border-[#D10043] transition-all"
                               />
                             </div>
@@ -1103,14 +1103,14 @@ const AccountSettings: React.FC = () => {
                             {/* Managed Region / Facility */}
                             <div className="space-y-1.5 sm:space-y-2">
                               <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider ml-1">
-                                Operational Facility / Headquarters
+                                Office / Plant Location
                               </label>
                               <input
                                 type="text"
                                 name="managed_region"
                                 value={formData.managed_region}
                                 onChange={handleInputChange}
-                                placeholder="e.g. Sto. Tomas Plant & Enterprise HQ, Batangas"
+                                placeholder="e.g. Sto. Tomas Plant & Head Office, Batangas"
                                 className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl text-xs sm:text-sm font-bold text-slate-900 focus:outline-none focus:ring-4 focus:ring-[#D10043]/10 focus:border-[#D10043] transition-all"
                               />
                             </div>
@@ -1118,20 +1118,20 @@ const AccountSettings: React.FC = () => {
                             {/* Governance Domain */}
                             <div className="space-y-1.5 sm:space-y-2">
                               <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider ml-1">
-                                Primary Governance Domain
+                                Primary Responsibility
                               </label>
                               <div className="relative">
                                 <select
                                   name="governance_scope"
-                                  value={formData.governance_scope || "Full Platform Governance (All Modules)"}
+                                  value={formData.governance_scope || "All Admin Areas"}
                                   onChange={handleInputChange}
                                   className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl text-xs sm:text-sm font-bold text-slate-900 focus:outline-none focus:ring-4 focus:ring-[#D10043]/10 focus:border-[#D10043] transition-all appearance-none cursor-pointer"
                                 >
-                                  <option value="Full Platform Governance (All Modules)">Full Platform Governance (All Modules)</option>
-                                  <option value="AI Screening Weights & Matching Calibration">AI Screening Weights & Matching Calibration</option>
-                                  <option value="User Directory Governance & RBAC Security">User Directory Governance & RBAC Security</option>
-                                  <option value="Job Requisitions & Vacancy Pipeline">Job Requisitions & Vacancy Pipeline</option>
-                                  <option value="Security Audit Logs & Platform Telemetry">Security Audit Logs & Platform Telemetry</option>
+                                  <option value="All Admin Areas">All Admin Areas</option>
+                                  <option value="Job Scoring & Qualification Settings">Job Scoring & Qualification Settings</option>
+                                  <option value="Staff & Candidate Accounts">Staff & Candidate Accounts</option>
+                                  <option value="Job Postings & Hiring">Job Postings & Hiring</option>
+                                  <option value="Reports & Activity History">Reports & Activity History</option>
                                 </select>
                                 <ChevronRight className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 rotate-90 pointer-events-none" size={16} />
                               </div>
@@ -1142,7 +1142,7 @@ const AccountSettings: React.FC = () => {
                         {/* Bio / Operational Summary */}
                         <div className="col-span-full space-y-1.5 sm:space-y-2">
                           <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider ml-1">
-                            {userRole === 'CANDIDATE' ? 'Professional Bio & Career Objective' : userRole === 'HR' ? 'Operational Focus & Responsibilities' : 'Administrative Scope & System Governance Summary'}
+                            {userRole === 'CANDIDATE' ? 'Professional Bio & Career Objective' : userRole === 'HR' ? 'Role Focus & Responsibilities' : 'Role Summary & Notes'}
                           </label>
                           <textarea
                             rows={3}
@@ -1154,7 +1154,7 @@ const AccountSettings: React.FC = () => {
                                 ? "Describe your background, technical expertise, and career aspirations..."
                                 : userRole === 'HR'
                                 ? "Describe your recruitment focus, department initiatives, and team oversight..."
-                                : "Describe your system governance responsibilities, AI screening calibration oversight, user access policies, and operational objectives..."
+                                : "Describe your main duties, departments you oversee, or brief role notes..."
                             }
                             className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl text-xs sm:text-sm font-medium text-slate-900 focus:outline-none focus:ring-4 focus:ring-[#D10043]/10 focus:border-[#D10043] transition-all resize-none"
                           />
@@ -1215,10 +1215,10 @@ const AccountSettings: React.FC = () => {
                         </div>
                         <div>
                           <h3 className="text-base sm:text-lg font-black text-slate-900 tracking-tight leading-tight">
-                            Google Single Sign-On & Account Linking
+                            Google Account Sign-In
                           </h3>
                           <p className="text-[10px] sm:text-xs text-slate-400 font-bold uppercase tracking-wider mt-0.5">
-                            Connect your Google Account for fast, password-free login
+                            Link your Google account so you can sign in with one click
                           </p>
                         </div>
                       </div>
@@ -1269,8 +1269,8 @@ const AccountSettings: React.FC = () => {
                             Your account is not currently linked to a Google account.
                           </p>
                           <p className="text-xs text-slate-500 font-medium leading-relaxed">
-                            Connecting your Google account allows you to log in instantly with 1-click SSO without entering your password.
-                            {userRole === 'HR' && ' For HR staff, connecting also activates Google Calendar integration for candidate interviews.'}
+                            Connecting your Google account lets you sign in with one click instead of entering your password.
+                            {userRole === 'HR' && ' For HR staff, connecting also enables Google Calendar scheduling for candidate interviews.'}
                           </p>
                         </div>
                       )}
@@ -1338,10 +1338,10 @@ const AccountSettings: React.FC = () => {
                         </div>
                         <div>
                           <h3 className="text-base sm:text-lg font-black text-slate-900 tracking-tight leading-tight">
-                            Password & Authentication
+                            Password
                           </h3>
                           <p className="text-[10px] sm:text-xs text-slate-400 font-bold uppercase tracking-wider mt-0.5">
-                            {passwordMode === 'change' ? 'Change your active account password' : 'Create or set an account password'}
+                            {passwordMode === 'change' ? 'Change your current password' : 'Create a password for your account'}
                           </p>
                         </div>
                       </div>
@@ -1486,10 +1486,10 @@ const AccountSettings: React.FC = () => {
                       </div>
                       <div>
                         <h3 className="text-base sm:text-lg font-black text-slate-900 tracking-tight leading-tight">
-                          Active Session & Security Environment
+                          Current Signed-In Device
                         </h3>
                         <p className="text-[10px] sm:text-xs text-slate-400 font-bold uppercase tracking-wider mt-0.5">
-                          Verified authentication state
+                          Device and browser currently logged into this account
                         </p>
                       </div>
                     </div>
@@ -1509,17 +1509,17 @@ const AccountSettings: React.FC = () => {
                             </span>
                           </div>
                           <p className="text-[11px] sm:text-xs text-slate-500 font-bold mt-0.5 truncate">
-                            {clientSession.browser} • Authenticated as {formData.email || userEmail}
+                            {clientSession.browser} • Signed in as {formData.email || userEmail}
                           </p>
                         </div>
                       </div>
 
                       <div className="text-left sm:text-right shrink-0">
                         <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider">
-                          Authentication Type
+                          Sign-In Method
                         </p>
                         <p className="text-xs font-black text-slate-700 mt-0.5">
-                          Verified JWT Session
+                          Standard Secure Login
                         </p>
                       </div>
                     </div>

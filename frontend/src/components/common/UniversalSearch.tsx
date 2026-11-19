@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { useNavigate } from '@/utils/navigation';
+import { useLocation, useNavigate } from '@/utils/navigation';
 import { useSelector } from 'react-redux';
 import { RootState } from '../../redux/store';
 import { filterAndRankJobs } from '../../utils/jobSearch';
@@ -50,13 +50,56 @@ const UniversalSearch: React.FC<UniversalSearchProps> = ({
   className = ''
 }) => {
   const navigate = useNavigate();
+  const location = useLocation();
+  const isOnCandidateFindJobs = location.pathname === '/candidate/findjobs';
   const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const [query, setQuery] = useState('');
-  const [debouncedQuery, setDebouncedQuery] = useState('');
+  const [query, setQuery] = useState(() => {
+    if (typeof window !== 'undefined' && window.location.pathname === '/candidate/findjobs') {
+      return new URLSearchParams(window.location.search).get('search') || '';
+    }
+    return '';
+  });
+  const [debouncedQuery, setDebouncedQuery] = useState(query.trim());
   const [isOpen, setIsOpen] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState<number>(-1);
+
+  // Sync navbar input with ?search= when landing on /candidate/findjobs, and when page Reset/Clear triggers
+  useEffect(() => {
+    if (isOnCandidateFindJobs && typeof window !== 'undefined') {
+      const urlQ = new URLSearchParams(window.location.search).get('search') || '';
+      setQuery(urlQ);
+      setDebouncedQuery(urlQ.trim());
+    }
+  }, [isOnCandidateFindJobs]);
+
+  useEffect(() => {
+    const handleSync = (e: Event) => {
+      const detail = (e as CustomEvent)?.detail;
+      if (detail && detail.source === 'page') {
+        const nextQ = String(detail.query ?? '');
+        setQuery(nextQ);
+        setDebouncedQuery(nextQ.trim());
+      }
+    };
+    window.addEventListener('candidate-job-search', handleSync);
+    return () => window.removeEventListener('candidate-job-search', handleSync);
+  }, []);
+
+  const syncCandidatePageSearch = (val: string) => {
+    if (!isOnCandidateFindJobs || typeof window === 'undefined') return;
+    const trimmed = val.trim();
+    const nextUrl = trimmed
+      ? `/candidate/findjobs?search=${encodeURIComponent(trimmed)}`
+      : '/candidate/findjobs';
+    window.history.replaceState(window.history.state, '', nextUrl);
+    window.dispatchEvent(
+      new CustomEvent('candidate-job-search', {
+        detail: { query: val, source: 'navbar' },
+      })
+    );
+  };
 
   const { user: userEmail, role: userRole } = useSelector((state: RootState) => state.auth);
   const normRole = (userRole || '').toUpperCase();
@@ -83,7 +126,7 @@ const UniversalSearch: React.FC<UniversalSearchProps> = ({
   useEffect(() => {
     const handler = setTimeout(() => {
       setDebouncedQuery(query.trim());
-    }, 250);
+    }, 120);
     return () => clearTimeout(handler);
   }, [query]);
 
@@ -198,7 +241,7 @@ const UniversalSearch: React.FC<UniversalSearchProps> = ({
         type: 'job',
         category: 'Jobs',
         title: job.job_title || job.title || 'Untitled Role',
-        subtitle: job.department || 'Mariwasa Siam Ceramics',
+        subtitle: `${job.department || 'Mariwasa Siam Ceramics'} • ${job.location || 'Sto. Tomas, Batangas'}`,
         location: job.location || 'Sto. Tomas, Batangas',
         tag: job.job_type || 'Full-Time',
         tagColor: 'bg-slate-100 text-slate-700',
@@ -258,6 +301,38 @@ const UniversalSearch: React.FC<UniversalSearchProps> = ({
       return;
     }
 
+    if (e.key === 'Enter') {
+      const trimmed = query.trim();
+      if (!trimmed) return;
+      e.preventDefault();
+
+      if (isOpen && selectedIndex >= 0 && selectedIndex < results.length) {
+        handleSelectResult(results[selectedIndex]);
+        return;
+      }
+
+      if (!isHR) {
+        if (isOnCandidateFindJobs) {
+          syncCandidatePageSearch(trimmed);
+          setIsOpen(false);
+          return;
+        }
+        const targetUrl = isCandidate
+          ? `/candidate/findjobs?search=${encodeURIComponent(trimmed)}`
+          : `/careerspage`;
+        setIsOpen(false);
+        setQuery('');
+        if (onCloseMobile) onCloseMobile();
+        navigate(targetUrl);
+        return;
+      }
+
+      if (results.length > 0) {
+        handleSelectResult(results[0]);
+      }
+      return;
+    }
+
     if (!isOpen || results.length === 0) return;
 
     if (e.key === 'ArrowDown') {
@@ -266,13 +341,6 @@ const UniversalSearch: React.FC<UniversalSearchProps> = ({
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
       setSelectedIndex(prev => (prev > 0 ? prev - 1 : results.length - 1));
-    } else if (e.key === 'Enter') {
-      e.preventDefault();
-      if (selectedIndex >= 0 && selectedIndex < results.length) {
-        handleSelectResult(results[selectedIndex]);
-      } else if (results.length > 0) {
-        handleSelectResult(results[0]);
-      }
     }
   };
 
@@ -308,8 +376,10 @@ const UniversalSearch: React.FC<UniversalSearchProps> = ({
           type="text"
           value={query}
           onChange={(e) => {
-            setQuery(e.target.value);
+            const nextVal = e.target.value;
+            setQuery(nextVal);
             setIsOpen(true);
+            syncCandidatePageSearch(nextVal);
           }}
           onFocus={() => setIsOpen(true)}
           onKeyDown={handleKeyDown}
@@ -324,6 +394,7 @@ const UniversalSearch: React.FC<UniversalSearchProps> = ({
             onClick={() => {
               setQuery('');
               setDebouncedQuery('');
+              syncCandidatePageSearch('');
               inputRef.current?.focus();
             }}
             className="absolute right-3 p-1 text-slate-400 hover:text-slate-600 rounded-lg cursor-pointer"
@@ -338,8 +409,8 @@ const UniversalSearch: React.FC<UniversalSearchProps> = ({
         )}
       </div>
 
-      {/* Results Dropdown */}
-      {isOpen && debouncedQuery && (
+      {/* Results Dropdown (suppressed on /candidate/findjobs where matching jobs live-render directly on the page) */}
+      {isOpen && debouncedQuery && !isOnCandidateFindJobs && (
         <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-2xl shadow-2xl border border-slate-200/90 overflow-hidden z-50 animate-in fade-in slide-in-from-top-2 duration-150 max-h-[460px] overflow-y-auto">
           {!isHR && isLoadingJobs && results.length === 0 ? (
             <div className="p-8 text-center flex flex-col items-center gap-2">

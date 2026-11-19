@@ -18,10 +18,7 @@ import {
   FileUp,
   ChevronDown,
   Coins,
-  ShieldCheck,
-  RotateCcw,
-  Globe2,
-  Users
+  RotateCcw
 } from 'lucide-react';
 import jobService from '../../services/jobService';
 import Header from '../../components/layout/Header';
@@ -54,14 +51,31 @@ const FindJob: React.FC = () => {
   const [jobs, setJobs] = useState<DisplayJob[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
-  // Search & Filter state
+  // Search & Filter state (searchTerm is live-synced with the navigation bar search)
   const [searchTerm, setSearchTerm] = useState<string>(urlSearch);
 
   useEffect(() => {
-    if (urlSearch) {
-      setSearchTerm(urlSearch);
-    }
+    setSearchTerm(urlSearch);
   }, [urlSearch]);
+
+  useEffect(() => {
+    const handleNavbarSearch = (e: Event) => {
+      const detail = (e as CustomEvent)?.detail;
+      if (detail && detail.source === 'navbar') {
+        setSearchTerm(String(detail.query ?? ''));
+      }
+    };
+    const handlePopState = () => {
+      const nextQ = new URLSearchParams(window.location.search).get('search') || '';
+      setSearchTerm(nextQ);
+    };
+    window.addEventListener('candidate-job-search', handleNavbarSearch);
+    window.addEventListener('popstate', handlePopState);
+    return () => {
+      window.removeEventListener('candidate-job-search', handleNavbarSearch);
+      window.removeEventListener('popstate', handlePopState);
+    };
+  }, []);
   const [selectedDept, setSelectedDept] = useState<string>('All');
   const [selectedJobType, setSelectedJobType] = useState<string>('All');
   const [selectedLocation, setSelectedLocation] = useState<string>('All');
@@ -183,7 +197,8 @@ const FindJob: React.FC = () => {
 
   // Filtering Logic
   const filteredJobs = useMemo(() => {
-    const searchMatched = filterAndRankJobs(jobs, searchTerm);
+    const activeJobs = jobs.filter((j) => j.is_active !== false);
+    const searchMatched = filterAndRankJobs(activeJobs, searchTerm);
 
     const result = searchMatched.filter((job) => {
       const matchesDept = selectedDept === 'All' || job.department === selectedDept;
@@ -243,8 +258,20 @@ const FindJob: React.FC = () => {
     }
   };
 
-  const resetAllFilters = () => {
+  const clearNavbarAndPageSearch = () => {
     setSearchTerm('');
+    if (typeof window !== 'undefined') {
+      window.history.replaceState(window.history.state, '', '/candidate/findjobs');
+      window.dispatchEvent(
+        new CustomEvent('candidate-job-search', {
+          detail: { query: '', source: 'page' },
+        })
+      );
+    }
+  };
+
+  const resetAllFilters = () => {
+    clearNavbarAndPageSearch();
     setSelectedDept('All');
     setSelectedJobType('All');
     setSelectedLocation('All');
@@ -272,220 +299,170 @@ const FindJob: React.FC = () => {
         <Sidebar />
         <main className="flex-grow min-w-0">
 
-          {/* HERO & DISCOVERY SECTION */}
-          <section className="relative pt-12 sm:pt-16 md:pt-24 pb-14 sm:pb-18 px-4 sm:px-6 lg:px-10 overflow-hidden bg-white border-b border-slate-100">
-            {/* Ambient Background Glows */}
-            <div className="absolute top-0 right-0 w-96 h-96 bg-gradient-to-bl from-pink-100/40 via-rose-50/20 to-transparent rounded-full blur-3xl pointer-events-none" />
-            <div className="absolute top-1/2 left-0 w-72 h-72 bg-gradient-to-tr from-slate-100/50 to-transparent rounded-full blur-2xl pointer-events-none" />
+          {/* CANDIDATE JOB WORKSPACE HEADER & FILTERS */}
+          <section className="relative pt-6 sm:pt-8 pb-6 sm:pb-7 px-4 sm:px-6 lg:px-10 bg-white border-b border-slate-200/70">
+            <div className="max-w-[1360px] mx-auto relative z-20 space-y-5">
 
-            <div className="max-w-[1360px] mx-auto relative z-10">
-              <div className="flex flex-col items-start max-w-4xl">
-
-                {/* Brand Badge */}
-                <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[#D10043]/5 border border-[#D10043]/15 text-[#D10043] text-xs font-black uppercase tracking-[0.2em] mb-6 animate-in fade-in slide-in-from-left-3 duration-500">
-                  <Sparkles size={14} className="text-[#D10043] animate-pulse" />
-                  Mariwasa Career Opportunities
+              {/* Top Title + Resume Matcher Quick Action */}
+              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                <div>
+                  <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#D10043]/8 border border-[#D10043]/15 text-[#D10043] text-[11px] font-black uppercase tracking-wider mb-2">
+                    <Sparkles size={13} className="text-[#D10043]" />
+                    Open Positions
+                  </div>
+                  <h1 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
+                    Explore Open Roles at <span className="text-[#D10043]">Mariwasa</span>
+                  </h1>
+                  <p className="text-xs sm:text-sm text-slate-500 font-medium mt-1">
+                    Use the top navigation search bar to look up jobs by letter or keyword, or filter roles below.
+                  </p>
                 </div>
 
-                {/* Primary Headline */}
-                <h1 className="text-3xl sm:text-5xl md:text-6xl font-black text-slate-900 tracking-tight leading-[1.12] mb-5 animate-in fade-in slide-in-from-left-4 duration-600">
-                  Discover Your Next <br className="hidden sm:inline" />
-                  <span className="text-[#D10043]">Career Milestone</span> at Mariwasa.
-                </h1>
-
-                {/* Subtitle */}
-                <p className="text-slate-500 text-sm sm:text-base md:text-lg font-medium leading-relaxed mb-8 sm:mb-10 max-w-2xl animate-in fade-in slide-in-from-left-5 duration-700">
-                  Join the nation's benchmark of ceramic excellence and home solutions. Explore active openings, review comprehensive role specifications, and submit your resume directly to our talent team.
-                </p>
-
-                {/* ADVANCED MULTI-FACETED SEARCH CONSOLE */}
-                <div className="w-full bg-white p-3 sm:p-4 rounded-[28px] sm:rounded-[36px] shadow-xl shadow-slate-200/70 border border-slate-200/80 space-y-3 animate-in fade-in slide-in-from-bottom-4 duration-700">
-
-                  {/* Primary Search Row */}
-                  <div className="flex flex-col md:flex-row gap-2.5">
-
-                    {/* Keyword Search Input */}
-                    <div className="relative flex-grow">
-                      <Search className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
-                      <input
-                        type="text"
-                        placeholder="Search by job title, skill keywords, or description..."
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                        className="w-full pl-14 pr-11 py-4 sm:py-4.5 bg-slate-50 hover:bg-slate-100/60 focus:bg-white border border-slate-200/60 rounded-2xl sm:rounded-3xl focus:ring-4 focus:ring-[#D10043]/10 focus:border-[#D10043]/30 transition-all text-xs sm:text-sm font-bold placeholder:text-slate-400 text-slate-900"
-                      />
-                      {searchTerm && (
-                        <button
-                          type="button"
-                          onClick={() => setSearchTerm('')}
-                          className="absolute right-4 top-1/2 -translate-y-1/2 p-1.5 text-slate-400 hover:text-slate-700 rounded-full hover:bg-slate-200/60 transition-colors"
-                        >
-                          <X size={16} />
-                        </button>
-                      )}
-                    </div>
-
-                    {/* Department Dropdown */}
-                    <div className="relative w-full md:w-64">
-                      <Building2 className="absolute left-4 sm:left-5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={18} />
-                      <select
-                        value={selectedDept}
-                        onChange={(e) => setSelectedDept(e.target.value)}
-                        className="w-full appearance-none pl-12 pr-10 py-4 sm:py-4.5 bg-slate-50 hover:bg-slate-100/60 border border-slate-200/60 rounded-2xl sm:rounded-3xl focus:ring-4 focus:ring-[#D10043]/10 focus:border-[#D10043]/30 text-xs sm:text-sm font-bold text-slate-700 cursor-pointer transition-all"
-                      >
-                        {departments.map((dept) => (
-                          <option key={dept} value={dept}>
-                            {dept === 'All' ? 'All Departments' : dept}
-                          </option>
-                        ))}
-                      </select>
-                      <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={16} />
-                    </div>
-
-                    {/* Job Type Dropdown */}
-                    <div className="relative w-full md:w-52">
-                      <Clock className="absolute left-4 sm:left-5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={18} />
-                      <select
-                        value={selectedJobType}
-                        onChange={(e) => setSelectedJobType(e.target.value)}
-                        className="w-full appearance-none pl-12 pr-10 py-4 sm:py-4.5 bg-slate-50 hover:bg-slate-100/60 border border-slate-200/60 rounded-2xl sm:rounded-3xl focus:ring-4 focus:ring-[#D10043]/10 focus:border-[#D10043]/30 text-xs sm:text-sm font-bold text-slate-700 cursor-pointer transition-all"
-                      >
-                        {jobTypes.map((type) => (
-                          <option key={type} value={type}>
-                            {type === 'All' ? 'All Employment' : type}
-                          </option>
-                        ))}
-                      </select>
-                      <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={16} />
-                    </div>
-
-                  </div>
-
-                  {/* Secondary Quick Filters Strip */}
-                  <div className="flex flex-wrap items-center justify-between gap-3 pt-2 sm:pt-3 border-t border-slate-100">
-
-                    {/* Quick Department Chips */}
-                    <div className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto py-1 max-w-full scrollbar-none">
-                      <span className="text-[11px] font-black uppercase tracking-wider text-slate-400 mr-1 shrink-0">
-                        Popular:
-                      </span>
-                      {departments.slice(0, 5).map((dept) => {
-                        const isSelected = selectedDept === dept;
-                        return (
-                          <button
-                            key={dept}
-                            type="button"
-                            onClick={() => setSelectedDept(dept)}
-                            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all shrink-0 ${isSelected
-                                ? 'bg-[#D10043] text-white shadow-sm shadow-[#D10043]/20'
-                                : 'bg-slate-100/80 hover:bg-slate-200 text-slate-600'
-                              }`}
-                          >
-                            {dept}
-                            {dept !== 'All' && deptCounts[dept] ? (
-                              <span className={`ml-1.5 text-[10px] px-1.5 py-0.2 rounded-full ${isSelected ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-700'
-                                }`}>
-                                {deptCounts[dept]}
-                              </span>
-                            ) : null}
-                          </button>
-                        );
-                      })}
-                    </div>
-
-                    {/* Quick Action Pills: Upload Resume & Saved Jobs */}
-                    <div className="flex items-center gap-2 ml-auto shrink-0">
-                      <button
-                        type="button"
-                        onClick={() => navigate('/candidate/smart-upload')}
-                        className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all bg-[#D10043]/10 hover:bg-[#D10043] text-[#D10043] hover:text-white border border-[#D10043]/20 shadow-2xs group cursor-pointer"
-                      >
-                        <FileUp size={13} className="text-[#D10043] group-hover:text-white" />
-                        <span>Upload Resume</span>
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => setShowSavedOnly(!showSavedOnly)}
-                        className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all border ${showSavedOnly
-                            ? 'bg-pink-50 text-[#D10043] border-pink-200 shadow-sm'
-                            : 'bg-white hover:bg-slate-50 text-slate-600 border-slate-200'
-                          }`}
-                      >
-                        <Bookmark size={13} className={showSavedOnly ? 'fill-[#D10043]' : ''} />
-                        Saved Jobs
-                        {bookmarkedIds.length > 0 && (
-                          <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${showSavedOnly ? 'bg-[#D10043] text-white' : 'bg-slate-100 text-slate-600'
-                            }`}>
-                            {bookmarkedIds.length}
-                          </span>
-                        )}
-                      </button>
-
-                      {hasActiveFilters && (
-                        <button
-                          type="button"
-                          onClick={resetAllFilters}
-                          className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-bold text-slate-500 hover:text-[#D10043] transition-colors"
-                        >
-                          <RotateCcw size={13} />
-                          Reset
-                        </button>
-                      )}
-                    </div>
-
-                  </div>
-
-                </div>
-
-                {/* DEDICATED SMART MATCH UPLOAD PROMO CARD */}
-                <div className="w-full mt-6 bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 text-white rounded-[28px] sm:rounded-[36px] p-6 sm:p-8 shadow-xl border border-slate-700/60 flex flex-col md:flex-row items-start md:items-center justify-between gap-6 relative overflow-hidden group">
-                  <div className="absolute top-0 right-0 w-80 h-80 bg-[#D10043]/15 rounded-full blur-3xl pointer-events-none group-hover:scale-125 transition-transform duration-700" />
-
-                  <div className="relative z-10 space-y-2 max-w-2xl">
-                    <div className="flex items-center gap-2">
-                      <span className="px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-[0.2em] bg-[#D10043]/20 text-rose-300 border border-[#D10043]/30 flex items-center gap-1.5">
-                        <FileUp size={12} className="text-[#D10043]" />
-                        Resume Matching
-                      </span>
-                    </div>
-
-                    <h3 className="text-xl sm:text-2xl font-black tracking-tight text-white">
-                      Unsure which role matches your experience?
-                    </h3>
-
-                    <p className="text-xs sm:text-sm text-slate-300 font-normal leading-relaxed">
-                      Upload your resume and we'll compare your experience with all open positions to show you where you fit best.
+                {/* Compact Candidate-Only Smart Match CTA */}
+                <div className="flex flex-wrap items-center gap-2.5 bg-slate-900 text-white px-4 py-3 rounded-2xl shadow-sm shrink-0">
+                  <div className="min-w-0">
+                    <p className="text-[11px] font-black uppercase tracking-wider text-rose-300">
+                      Not sure which role fits?
+                    </p>
+                    <p className="text-xs text-slate-300 font-medium">
+                      Upload your resume to rank your best matches
                     </p>
                   </div>
+                  <button
+                    type="button"
+                    onClick={() => navigate('/candidate/smart-upload')}
+                    className="px-4 py-2 rounded-xl bg-[#D10043] hover:bg-white hover:text-slate-900 text-white font-black text-xs uppercase tracking-wider flex items-center gap-1.5 transition-all cursor-pointer shrink-0"
+                  >
+                    <FileUp size={14} />
+                    <span>Match Resume</span>
+                  </button>
+                </div>
+              </div>
 
-                  <div className="relative z-10 shrink-0 w-full md:w-auto">
-                    <button
-                      type="button"
-                      onClick={() => navigate('/candidate/smart-upload')}
-                      className="w-full md:w-auto px-7 py-4 rounded-2xl bg-[#D10043] hover:bg-white hover:text-slate-900 text-white font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2.5 transition-all shadow-xl shadow-[#D10043]/25 active:scale-[0.98]"
+              {/* FILTER BAR (No duplicate search bar; uses the navigation bar search) */}
+              <div className="w-full bg-slate-50/70 p-3 sm:p-4 rounded-2xl sm:rounded-3xl border border-slate-200/80 flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 flex-1">
+                  {/* Department Dropdown */}
+                  <div className="relative">
+                    <Building2 className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={16} />
+                    <select
+                      aria-label="Filter by Department"
+                      value={selectedDept}
+                      onChange={(e) => setSelectedDept(e.target.value)}
+                      className="w-full appearance-none pl-10 pr-8 py-2.5 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-4 focus:ring-[#D10043]/10 focus:border-[#D10043] text-xs sm:text-sm font-semibold text-slate-700 cursor-pointer transition-all truncate"
                     >
-                      <FileUp size={16} />
-                      Upload Resume
-                      <ArrowRight size={16} />
-                    </button>
+                      {departments.map((dept) => (
+                        <option key={dept} value={dept}>
+                          {dept === 'All'
+                            ? 'All Departments'
+                            : `${dept}${deptCounts[dept] ? ` (${deptCounts[dept]})` : ''}`}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={15} />
+                  </div>
+
+                  {/* Employment Type Dropdown */}
+                  <div className="relative">
+                    <Clock className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={16} />
+                    <select
+                      aria-label="Filter by Employment Type"
+                      value={selectedJobType}
+                      onChange={(e) => setSelectedJobType(e.target.value)}
+                      className="w-full appearance-none pl-10 pr-8 py-2.5 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-4 focus:ring-[#D10043]/10 focus:border-[#D10043] text-xs sm:text-sm font-semibold text-slate-700 cursor-pointer transition-all truncate"
+                    >
+                      {jobTypes.map((type) => (
+                        <option key={type} value={type}>
+                          {type === 'All' ? 'All Job Types' : type}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={15} />
+                  </div>
+
+                  {/* Location Dropdown */}
+                  <div className="relative">
+                    <MapPin className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={16} />
+                    <select
+                      aria-label="Filter by Location"
+                      value={selectedLocation}
+                      onChange={(e) => setSelectedLocation(e.target.value)}
+                      className="w-full appearance-none pl-10 pr-8 py-2.5 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-4 focus:ring-[#D10043]/10 focus:border-[#D10043] text-xs sm:text-sm font-semibold text-slate-700 cursor-pointer transition-all truncate"
+                    >
+                      {locations.map((loc) => (
+                        <option key={loc} value={loc}>
+                          {loc === 'All' ? 'All Locations' : loc}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={15} />
                   </div>
                 </div>
 
+                {/* Active Search Chip + Saved Jobs + Reset */}
+                <div className="flex flex-wrap items-center gap-2 shrink-0">
+                  {searchTerm.trim() !== '' && (
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-50 text-[#D10043] border border-rose-200 text-xs font-bold">
+                      <span>Search: &ldquo;{searchTerm.trim()}&rdquo;</span>
+                      <button
+                        type="button"
+                        aria-label="Clear active search filter"
+                        onClick={clearNavbarAndPageSearch}
+                        className="p-0.5 rounded-full hover:bg-rose-100 cursor-pointer"
+                      >
+                        <X size={13} />
+                      </button>
+                    </span>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={() => setShowSavedOnly(!showSavedOnly)}
+                    className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition-all border cursor-pointer ${showSavedOnly
+                        ? 'bg-pink-50 text-[#D10043] border-pink-200 shadow-xs'
+                        : 'bg-white hover:bg-slate-100 text-slate-600 border-slate-200'
+                      }`}
+                  >
+                    <Bookmark size={13} className={showSavedOnly ? 'fill-[#D10043]' : ''} />
+                    Saved Jobs
+                    {bookmarkedIds.length > 0 && (
+                      <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${showSavedOnly ? 'bg-[#D10043] text-white' : 'bg-slate-100 text-slate-600'
+                        }`}>
+                        {bookmarkedIds.length}
+                      </span>
+                    )}
+                  </button>
+
+                  {hasActiveFilters && (
+                    <button
+                      type="button"
+                      onClick={resetAllFilters}
+                      className="inline-flex items-center gap-1 px-3 py-2 text-xs font-bold text-[#D10043] hover:bg-pink-50 rounded-xl transition-colors cursor-pointer"
+                    >
+                      <RotateCcw size={13} />
+                      Reset
+                    </button>
+                  )}
+                </div>
               </div>
+
             </div>
           </section>
 
           {/* MAIN RESULTS SECTION */}
-          <section id="jobs-results-anchor" className="max-w-[1360px] mx-auto px-4 sm:px-6 lg:px-10 py-10 sm:py-16">
+          <section id="jobs-results-anchor" className="max-w-[1360px] mx-auto px-4 sm:px-6 lg:px-10 py-6 sm:py-10">
 
             {/* TOOLBAR & CONTROLS */}
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8 sm:mb-10 pb-6 border-b border-slate-200/80">
 
               <div>
-                <div className="flex items-center gap-2.5">
+                <div className="flex items-center gap-2.5 flex-wrap">
                   <h2 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
-                    {showSavedOnly ? 'Your Saved Roles' : 'Available Positions'}
+                    {showSavedOnly
+                      ? 'Your Saved Roles'
+                      : searchTerm.trim()
+                        ? `Results for "${searchTerm.trim()}"`
+                        : 'Available Positions'}
                   </h2>
                   <span className="px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-600 font-mono text-xs font-black">
                     {filteredJobs.length}
@@ -494,9 +471,11 @@ const FindJob: React.FC = () => {
                 <p className="text-xs sm:text-sm text-slate-500 font-medium mt-1">
                   {showSavedOnly
                     ? 'Review bookmarked positions and complete your applications'
-                    : selectedDept !== 'All'
-                      ? `Showing open roles in ${selectedDept}`
-                      : 'Browse open roles across Mariwasa divisions'}
+                    : searchTerm.trim()
+                      ? `Showing ${filteredJobs.length} matching role${filteredJobs.length === 1 ? '' : 's'} sorted by relevance`
+                      : selectedDept !== 'All'
+                        ? `Showing open roles in ${selectedDept}`
+                        : 'Browse open roles across Mariwasa departments'}
                 </p>
               </div>
 
@@ -897,71 +876,6 @@ const FindJob: React.FC = () => {
               </div>
             )}
 
-          </section>
-
-          {/* MARIWASA VALUES & HERITAGE SHOWCASE */}
-          <section className="bg-slate-900 py-16 sm:py-24 px-4 sm:px-6 lg:px-10 text-white relative overflow-hidden">
-            <div className="absolute top-0 right-1/4 w-96 h-96 bg-[#D10043]/10 rounded-full blur-3xl pointer-events-none" />
-
-            <div className="max-w-[1360px] mx-auto relative z-10">
-
-              <div className="text-center max-w-2xl mx-auto mb-12 sm:mb-16">
-                <span className="text-[10px] font-black uppercase tracking-[0.3em] text-[#D10043] block mb-2">
-                  Philippine Ceramic Pioneer
-                </span>
-                <h3 className="text-2xl sm:text-4xl font-black tracking-tight mb-4">
-                  Why Build Your Future With Us
-                </h3>
-                <p className="text-slate-400 text-xs sm:text-sm font-medium leading-relaxed">
-                  Over 60 years of craftsmanship, continuous innovation, and community development across the Philippines and Asia Pacific.
-                </p>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 sm:gap-8">
-                {[
-                  {
-                    icon: ShieldCheck,
-                    badge: "Since 1963",
-                    title: "Legacy of Reliability",
-                    desc: "Philippines' leading ceramic tile brand backed by decades of industrial manufacturing mastery and customer trust."
-                  },
-                  {
-                    icon: Globe2,
-                    badge: "Global Footprint",
-                    title: "20+ Export Destinations",
-                    desc: "Exporting premium home and construction solutions with world-class engineering standards across the region."
-                  },
-                  {
-                    icon: Users,
-                    badge: "1,500+ Strong Team",
-                    title: "People-First Culture",
-                    desc: "Comprehensive health coverage, structured mentorship, and continuous career mobility pathways for all employees."
-                  }
-                ].map((item, idx) => {
-                  const Icon = item.icon;
-                  return (
-                    <div
-                      key={idx}
-                      className="bg-slate-800/60 border border-slate-700/60 rounded-3xl p-6 sm:p-8 hover:border-[#D10043]/40 transition-all duration-300"
-                    >
-                      <div className="w-12 h-12 rounded-2xl bg-[#D10043]/15 text-[#D10043] flex items-center justify-center mb-5">
-                        <Icon size={24} />
-                      </div>
-                      <span className="text-[10px] font-black uppercase tracking-[0.2em] text-[#D10043] block mb-2">
-                        {item.badge}
-                      </span>
-                      <h4 className="text-lg sm:text-xl font-black text-white mb-2 tracking-tight">
-                        {item.title}
-                      </h4>
-                      <p className="text-slate-400 text-xs sm:text-sm leading-relaxed font-normal">
-                        {item.desc}
-                      </p>
-                    </div>
-                  );
-                })}
-              </div>
-
-            </div>
           </section>
 
         </main>
