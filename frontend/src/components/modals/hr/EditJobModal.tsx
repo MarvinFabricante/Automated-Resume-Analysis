@@ -7,8 +7,11 @@ import {
   Trophy, Target, Sparkles, GraduationCap, Award
 } from 'lucide-react';
 
-import { useUpdateJobMutation } from '../../../redux/api/apiSlice';
-import { Job } from '../../../types';
+import { useUpdateJobMutation, useRecalculateJobScoresMutation, useGetMatchingConfigQuery } from '../../../redux/api/apiSlice';
+import { useAppSelector } from '../../../redux/store';
+import api from '../../../services/api';
+import { Job, JobScoringWeights, DEFAULT_JOB_SCORING_WEIGHTS } from '../../../types';
+import JobScoringWeightsEditor, { isWeightsBalanced, areWeightsEqual } from './JobScoringWeightsEditor';
 
 interface EditJobModalProps {
   isOpen: boolean;
@@ -30,12 +33,29 @@ interface EditFormDataState {
   experience_requirements: string;
   certifications_requirements: string;
   is_active: boolean;
+  scoring_weights: JobScoringWeights;
 }
 
 const EditJobModal: React.FC<EditJobModalProps> = ({ isOpen, onClose, onSuccess, jobData }) => {
+  const role = useAppSelector((state) => state.auth.role);
+  const isAdmin = role === 'ADMIN';
+  const { data: matchingConfig } = useGetMatchingConfigQuery(undefined, {
+    skip: !isOpen || !isAdmin,
+  });
+  const globalDefaultWeights: JobScoringWeights = {
+    skills_weight: matchingConfig?.weights?.skills_weight ?? DEFAULT_JOB_SCORING_WEIGHTS.skills_weight,
+    experience_weight: matchingConfig?.weights?.experience_weight ?? DEFAULT_JOB_SCORING_WEIGHTS.experience_weight,
+    education_weight: matchingConfig?.weights?.education_weight ?? DEFAULT_JOB_SCORING_WEIGHTS.education_weight,
+    certifications_weight: matchingConfig?.weights?.certifications_weight ?? DEFAULT_JOB_SCORING_WEIGHTS.certifications_weight,
+    completeness_weight: matchingConfig?.weights?.completeness_weight ?? DEFAULT_JOB_SCORING_WEIGHTS.completeness_weight,
+  };
+
   const [updateJob, { isLoading: isUpdating }] = useUpdateJobMutation();
+  const [recalculateJobScores, { isLoading: isRecalculating }] = useRecalculateJobScoresMutation();
   const [currentStep, setCurrentStep] = useState<number>(1);
   const [status, setStatus] = useState<{ type: 'success' | 'error' | null; message: string }>({ type: null, message: '' });
+  const [showRescoreConfirm, setShowRescoreConfirm] = useState<boolean>(false);
+  const [rescoreProgress, setRescoreProgress] = useState<{ percent: number; label: string } | null>(null);
   const [formData, setFormData] = useState<EditFormDataState>({
     job_id: '',
     job_title: '',
@@ -48,7 +68,8 @@ const EditJobModal: React.FC<EditJobModalProps> = ({ isOpen, onClose, onSuccess,
     education_requirements: '',
     experience_requirements: '',
     certifications_requirements: '',
-    is_active: true
+    is_active: true,
+    scoring_weights: { ...DEFAULT_JOB_SCORING_WEIGHTS }
   });
 
   const [errors, setErrors] = useState<Record<string, string | null>>({});
@@ -74,11 +95,16 @@ const EditJobModal: React.FC<EditJobModalProps> = ({ isOpen, onClose, onSuccess,
         education_requirements: jobData.education_requirements || '',
         experience_requirements: jobData.experience_requirements || '',
         certifications_requirements: jobData.certifications_requirements || '',
-        is_active: jobData.is_active ?? true
+        is_active: jobData.is_active ?? true,
+        scoring_weights: jobData.scoring_weights
+          ? { ...jobData.scoring_weights }
+          : { ...globalDefaultWeights }
       });
       setStatus({ type: null, message: '' });
       setCurrentStep(1);
       setErrors({});
+      setShowRescoreConfirm(false);
+      setRescoreProgress(null);
     }
   }
 
@@ -93,6 +119,9 @@ const EditJobModal: React.FC<EditJobModalProps> = ({ isOpen, onClose, onSuccess,
     } else if (step === 3) {
       if (!formData.description) newErrors.description = 'Description is required';
       if (!formData.skills_requirements) newErrors.skills_requirements = 'Skills are required';
+      if (isAdmin && !isWeightsBalanced(formData.scoring_weights)) {
+        newErrors.scoring_weights = 'Scoring weights must add up to 100%.';
+      }
     }
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
@@ -132,6 +161,68 @@ const EditJobModal: React.FC<EditJobModalProps> = ({ isOpen, onClose, onSuccess,
     setErrors(prev => (prev.salary_range ? { ...prev, salary_range: null } : prev));
   };
 
+  const initialWeights: JobScoringWeights = jobData?.scoring_weights
+    ? { ...jobData.scoring_weights }
+    : { ...globalDefaultWeights };
+  const weightsWereChanged = isAdmin && !areWeightsEqual(formData.scoring_weights, initialWeights);
+  const existingApplicantsCount = jobData?.applicant_count ?? 0;
+
+  const performSave = async (shouldRescoreExisting: boolean) => {
+    setStatus({ type: null, message: '' });
+
+    try {
+      const body = isAdmin
+        ? formData
+        : (({ scoring_weights: _ignored, ...rest }) => rest)(formData);
+      const result = await updateJob({
+        jobId: formData.job_id,
+        body,
+      }).unwrap();
+
+      if (shouldRescoreExisting) {
+        setRescoreProgress({ percent: 10, label: 'Starting score recalculation...' });
+        const recalcRes = await recalculateJobScores(formData.job_id).unwrap();
+
+        if (recalcRes?.task_id) {
+          for (let attempt = 0; attempt < 30; attempt++) {
+            await new Promise((r) => setTimeout(r, 1000));
+            const taskRes = await api.get(`/admins/tasks/${recalcRes.task_id}`);
+            const taskData = taskRes.data;
+            if (taskData?.progress?.percent !== undefined) {
+              setRescoreProgress({
+                percent: taskData.progress.percent,
+                label: `Updating ${taskData.progress.current} of ${taskData.progress.total} applications...`,
+              });
+            }
+            if (taskData?.ready) {
+              setRescoreProgress({ percent: 100, label: 'All application scores updated!' });
+              break;
+            }
+          }
+        }
+      }
+
+      setShowRescoreConfirm(false);
+      setRescoreProgress(null);
+      setStatus({
+        type: 'success',
+        message: shouldRescoreExisting
+          ? `Job updated and ${existingApplicantsCount} application score(s) recalculated.`
+          : 'Job posting has been updated successfully!',
+      });
+
+      setTimeout(() => {
+        if (onSuccess) onSuccess(result);
+        onClose();
+      }, 1500);
+    } catch (err: any) {
+      setShowRescoreConfirm(false);
+      setRescoreProgress(null);
+      const errorMessage = err?.data?.detail || 'An error occurred while updating the job.';
+      setStatus({ type: 'error', message: errorMessage });
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -142,24 +233,12 @@ const EditJobModal: React.FC<EditJobModalProps> = ({ isOpen, onClose, onSuccess,
 
     if (!validateStep(3)) return;
 
-    setStatus({ type: null, message: '' });
-
-    try {
-      const result = await updateJob({ 
-        jobId: formData.job_id, 
-        body: formData 
-      }).unwrap();
-
-      setStatus({ type: 'success', message: 'Job posting has been updated successfully!' });
-
-      setTimeout(() => {
-        if (onSuccess) onSuccess(result);
-        onClose();
-      }, 2000);
-    } catch (err: any) {
-      const errorMessage = err?.data?.detail || 'An error occurred while updating the job.';
-      setStatus({ type: 'error', message: errorMessage });
+    if (weightsWereChanged && existingApplicantsCount > 0) {
+      setShowRescoreConfirm(true);
+      return;
     }
+
+    await performSave(false);
   };
 
   if (!isOpen) return null;
@@ -203,6 +282,78 @@ const EditJobModal: React.FC<EditJobModalProps> = ({ isOpen, onClose, onSuccess,
       </Helmet>
       <div className="bg-white w-full max-w-2xl rounded-2xl sm:rounded-3xl shadow-[0_20px_50px_rgba(0,0,0,0.1)] overflow-hidden animate-in fade-in zoom-in duration-300 max-h-[92vh] sm:max-h-[90vh] flex flex-col relative border border-white/20">
         
+        {showRescoreConfirm && (
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="rescore-confirm-title"
+            className="absolute inset-0 z-[110] flex items-center justify-center p-4 sm:p-6 bg-white/95 backdrop-blur-sm animate-in fade-in duration-200"
+          >
+            <div className="max-w-md w-full p-6 sm:p-8 rounded-2xl sm:rounded-3xl bg-white border border-gray-200 shadow-2xl space-y-4">
+              <div className="flex items-center gap-3">
+                <div className="p-3 rounded-2xl bg-amber-50 text-amber-600 shrink-0">
+                  <AlertCircle size={24} />
+                </div>
+                <div>
+                  <h3 id="rescore-confirm-title" className="text-lg font-black text-gray-900">
+                    Update existing application scores?
+                  </h3>
+                  <p className="text-xs sm:text-sm text-gray-600 mt-1">
+                    This will update the match scores of <strong>{existingApplicantsCount}</strong> application{existingApplicantsCount === 1 ? '' : 's'} for this job.
+                  </p>
+                </div>
+              </div>
+
+              <p className="text-xs text-gray-500">
+                Application statuses and shortlist rosters will not be changed.
+              </p>
+
+              {rescoreProgress && (
+                <div className="space-y-1.5 bg-gray-50 p-3 rounded-xl border border-gray-100">
+                  <div className="flex justify-between text-xs font-bold text-gray-700">
+                    <span>{rescoreProgress.label}</span>
+                    <span>{rescoreProgress.percent}%</span>
+                  </div>
+                  <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-[#d81159] transition-all duration-300"
+                      style={{ width: `${rescoreProgress.percent}%` }}
+                    />
+                  </div>
+                </div>
+              )}
+
+              <div className="flex flex-col gap-2 pt-2">
+                <button
+                  type="button"
+                  disabled={isUpdating || isRecalculating}
+                  onClick={() => performSave(true)}
+                  className="w-full py-3 px-4 bg-[#d81159] text-white rounded-xl text-xs sm:text-sm font-bold hover:opacity-90 transition-all disabled:opacity-50 cursor-pointer flex items-center justify-center gap-2"
+                >
+                  {(isUpdating || isRecalculating) && <Loader2 size={15} className="animate-spin" />}
+                  Update scores now
+                </button>
+                <button
+                  type="button"
+                  disabled={isUpdating || isRecalculating}
+                  onClick={() => performSave(false)}
+                  className="w-full py-3 px-4 bg-gray-100 text-gray-800 rounded-xl text-xs sm:text-sm font-bold hover:bg-gray-200 transition-all disabled:opacity-50 cursor-pointer"
+                >
+                  Apply to new applications only
+                </button>
+                <button
+                  type="button"
+                  disabled={isUpdating || isRecalculating}
+                  onClick={() => setShowRescoreConfirm(false)}
+                  className="w-full py-2 text-xs font-semibold text-gray-400 hover:text-gray-600 cursor-pointer"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {status.type && (
           <div className="absolute inset-0 z-[100] flex items-center justify-center p-4 sm:p-6 bg-white/95 backdrop-blur-sm animate-in fade-in duration-300">
             <div className={`relative max-w-sm w-full p-6 sm:p-10 rounded-2xl sm:rounded-3xl text-center shadow-2xl border ${status.type === 'success' ? 'bg-emerald-50/50 border-emerald-100' : 'bg-red-50/50 border-red-100'}`}>
@@ -501,6 +652,22 @@ const EditJobModal: React.FC<EditJobModalProps> = ({ isOpen, onClose, onSuccess,
                     />
                   </div>
                 </div>
+
+                {isAdmin && (
+                  <JobScoringWeightsEditor
+                    weights={formData.scoring_weights}
+                    defaultWeights={globalDefaultWeights}
+                    defaultExpanded={
+                      Boolean(jobData?.scoring_weights) &&
+                      !areWeightsEqual(jobData!.scoring_weights!, globalDefaultWeights)
+                    }
+                    onChange={(next) => {
+                      setFormData(prev => ({ ...prev, scoring_weights: next }));
+                      setErrors(prev => (prev.scoring_weights ? { ...prev, scoring_weights: null } : prev));
+                    }}
+                    error={errors.scoring_weights}
+                  />
+                )}
               </div>
             )}
           </div>
@@ -539,7 +706,7 @@ const EditJobModal: React.FC<EditJobModalProps> = ({ isOpen, onClose, onSuccess,
                 <button
                   key="submit-btn"
                   type="submit"
-                  disabled={isUpdating}
+                  disabled={isUpdating || (isAdmin && !isWeightsBalanced(formData.scoring_weights))}
                   className="flex items-center gap-1.5 sm:gap-2 px-4 sm:px-10 py-2.5 sm:py-3.5 bg-[#d81159] text-white rounded-xl sm:rounded-2xl text-xs sm:text-sm font-black hover:opacity-90 transition-all shadow-[0_10px_20px_rgba(216,17,89,0.2)] active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                 >
                   {isUpdating ? (

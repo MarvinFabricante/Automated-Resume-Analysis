@@ -104,6 +104,7 @@ async def ensure_application_analysis_columns(conn):
         "completeness_score": "DOUBLE PRECISION",
         "completeness_status": "VARCHAR",
         "missing_sections": "JSON",
+        "applied_weights": "JSON",
         "import_origin": "VARCHAR",
         "imported_by": "VARCHAR",
     }
@@ -123,6 +124,17 @@ async def ensure_application_analysis_columns(conn):
                 ))
         except Exception as e:
             logger.warning(f"Could not ensure job_applications.{column_name}: {e}")
+
+    # Ensure per-job scoring weights column in job_descriptions table
+    try:
+        if dialect == "sqlite":
+            existing = await conn.execute(text("PRAGMA table_info(job_descriptions)"))
+            if "scoring_weights" not in {row[1] for row in existing.fetchall()}:
+                await conn.execute(text("ALTER TABLE job_descriptions ADD COLUMN scoring_weights TEXT"))
+        else:
+            await conn.execute(text("ALTER TABLE job_descriptions ADD COLUMN IF NOT EXISTS scoring_weights JSON"))
+    except Exception as e:
+        logger.warning(f"Could not ensure job_descriptions.scoring_weights: {e}")
 
     # Ensure google_credentials and related fields in users table
     user_columns = {

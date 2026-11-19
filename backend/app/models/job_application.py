@@ -70,6 +70,7 @@ class JobApplication(Base):
     completeness_score = Column(DOUBLE_PRECISION, nullable=True)
     completeness_status = Column(String, nullable=True)
     missing_sections = Column(JSON, nullable=True)
+    applied_weights = Column(JSON, nullable=True)
     
     source = Column(String, default="Online", nullable=True) # "Online" or "Imported"
     import_origin = Column(String, nullable=True) # "Job site", "Email", "Walk-in", "Other"

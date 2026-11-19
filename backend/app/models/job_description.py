@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Boolean, Enum
+from sqlalchemy import Column, Integer, String, Boolean, Enum, JSON
 import enum
 from app.utils.database import Base
 from sqlalchemy.orm import relationship
@@ -26,6 +26,9 @@ class JobDescription(Base):
     certifications_requirements = Column(String, nullable=True)
     experience_requirements = Column(String, nullable=True)
     is_active = Column(Boolean, default=True)
+    # Per-job scoring priorities (fractions summing to 1.0). NULL = inherit the
+    # global default weights from System Settings.
+    scoring_weights = Column(JSON, nullable=True)
 
     # Relationships
     applications = relationship("JobApplication", back_populates="job", cascade="all, delete-orphan")

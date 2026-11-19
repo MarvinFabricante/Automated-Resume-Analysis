@@ -141,6 +141,8 @@ def _resume_data_from_application(app: JobApplication) -> dict:
         "highest_degree": app.degree or "",
         "highest_educational_attainment": getattr(app, "highest_educational_attainment", None) or app.degree or "",
         "education_entries": getattr(app, "education_entries", []) or [],
+        "certifications": getattr(app, "certifications", None) or "",
+        "completeness_score": getattr(app, "completeness_score", None),
     }
 
 
@@ -507,6 +509,8 @@ def serialize_application_summary(app: JobApplication) -> dict:
         "experience_score": app.experience_score,
         "education_score": app.education_score,
         "certifications_score": app.certifications_score,
+        "completeness_score": getattr(app, "completeness_score", None),
+        "applied_weights": getattr(app, "applied_weights", None),
         "profile_image_url": app.profile_image_url,
         "resume_url": app.resume_url,
         "matched_skills": app.matched_skills or [],

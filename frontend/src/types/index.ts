@@ -19,6 +19,22 @@ export interface User {
   last_active?: string;
 }
 
+export interface JobScoringWeights {
+  skills_weight: number;
+  experience_weight: number;
+  education_weight: number;
+  certifications_weight: number;
+  completeness_weight: number;
+}
+
+export const DEFAULT_JOB_SCORING_WEIGHTS: JobScoringWeights = {
+  skills_weight: 0.40,
+  experience_weight: 0.30,
+  education_weight: 0.15,
+  certifications_weight: 0.10,
+  completeness_weight: 0.05,
+};
+
 export interface Job {
   id: number | string;
   job_id?: string;
@@ -39,6 +55,7 @@ export interface Job {
   qualifications?: string;
   description?: string;
   is_active: boolean;
+  scoring_weights?: JobScoringWeights | null;
   created_at?: string;
   updated_at?: string;
   applicant_count?: number;
