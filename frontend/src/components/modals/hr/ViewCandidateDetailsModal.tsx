@@ -384,11 +384,28 @@ const ViewCandidateDetailsModal: React.FC<ViewCandidateDetailsModalProps> = ({
   const experienceScore = Math.round(candidate.experienceScore ?? candidate.experience_score ?? 0);
   const educationScore = Math.round(candidate.educationScore ?? candidate.education_score ?? 0);
   const certificationsScore = candidate.certificationsScore ?? candidate.certifications_score;
+  const completenessScore = Math.round(candidate.completenessScore ?? candidate.completeness_score ?? 100);
 
-  const skillsContribution = Math.round(skillsScore * 0.40);
-  const experienceContribution = Math.round(experienceScore * 0.40);
-  const educationContribution = Math.round(educationScore * 0.20);
-  const calculatedContributionTotal = skillsContribution + experienceContribution + educationContribution;
+  const appliedWeights = candidate.applied_weights || {
+    skills: 40,
+    experience: 30,
+    education: 15,
+    certifications: 10,
+    completeness: 5,
+  };
+  const wSkillsPct = Number(appliedWeights.skills ?? 40);
+  const wExpPct = Number(appliedWeights.experience ?? 30);
+  const wEduPct = Number(appliedWeights.education ?? 15);
+  const wCertsPct = Number(appliedWeights.certifications ?? 10);
+  const wCompPct = Number(appliedWeights.completeness ?? 5);
+
+  const skillsContribution = Math.round(skillsScore * (wSkillsPct / 100));
+  const experienceContribution = Math.round(experienceScore * (wExpPct / 100));
+  const educationContribution = Math.round(educationScore * (wEduPct / 100));
+  const certsContribution = Math.round((certificationsScore ?? 0) * (wCertsPct / 100));
+  const compContribution = Math.round(completenessScore * (wCompPct / 100));
+  const calculatedContributionTotal =
+    skillsContribution + experienceContribution + educationContribution + certsContribution + compContribution;
 
   const strengths: string[] = candidate.strengths || [];
   const weaknesses: string[] = candidate.weaknesses || [];
@@ -1399,13 +1416,13 @@ const ViewCandidateDetailsModal: React.FC<ViewCandidateDetailsModalProps> = ({
                       </div>
                     ) : (
                       <div className="space-y-2 pt-2 border-t border-white/10 text-xs">
-                        <p className="font-mono text-slate-200">
-                          Overall = (Skills <span className="text-blue-400 font-bold">{skillsScore}%</span> × 0.40) + (Experience <span className="text-purple-400 font-bold">{experienceScore}%</span> × 0.40) + (Education <span className="text-amber-400 font-bold">{educationScore}%</span> × 0.20)
+                        <p className="text-slate-200 font-semibold">
+                          Match based on: Skills {wSkillsPct}%, Experience {wExpPct}%, Education {wEduPct}%, Certifications {wCertsPct}%, Completeness {wCompPct}%
                         </p>
                         <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-300">
                           <span>Weighted Contribution:</span>
                           <span className="font-bold text-emerald-400">
-                            {skillsContribution}% + {experienceContribution}% + {educationContribution}% = {calculatedContributionTotal}%
+                            {skillsContribution}% + {experienceContribution}% + {educationContribution}% + {certsContribution}% + {compContribution}% = {calculatedContributionTotal}%
                           </span>
                         </div>
                       </div>
@@ -1572,7 +1589,7 @@ const ViewCandidateDetailsModal: React.FC<ViewCandidateDetailsModalProps> = ({
                       </div>
                       <div>
                         <h3 className="text-sm font-black text-gray-900 uppercase tracking-tight">Skills Alignment & Gap Analysis</h3>
-                        <p className="text-xs text-blue-600 font-semibold">{skillsScore}% Score — Contributes 40% to overall match</p>
+                        <p className="text-xs text-blue-600 font-semibold">{skillsScore}% Score — Contributes {wSkillsPct}% to overall match</p>
                       </div>
                     </div>
                     <div className="flex items-center gap-2">

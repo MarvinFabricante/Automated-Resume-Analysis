@@ -7,7 +7,10 @@ import {
   Trophy, Target, Sparkles, GraduationCap, Award
 } from 'lucide-react';
 
-import { useCreateJobMutation } from '../../../redux/api/apiSlice';
+import { useCreateJobMutation, useGetMatchingConfigQuery } from '../../../redux/api/apiSlice';
+import { useAppSelector } from '../../../redux/store';
+import { JobScoringWeights, DEFAULT_JOB_SCORING_WEIGHTS } from '../../../types';
+import JobScoringWeightsEditor, { isWeightsBalanced } from './JobScoringWeightsEditor';
 
 interface CreateJobModalProps {
   isOpen: boolean;
@@ -28,9 +31,23 @@ interface FormDataState {
   experience_requirements: string;
   certifications_requirements: string;
   is_active: boolean;
+  scoring_weights: JobScoringWeights;
 }
 
 const CreateJobModal: React.FC<CreateJobModalProps> = ({ isOpen, onClose, onSuccess }) => {
+  const role = useAppSelector((state) => state.auth.role);
+  const isAdmin = role === 'ADMIN';
+  const { data: matchingConfig } = useGetMatchingConfigQuery(undefined, {
+    skip: !isOpen || !isAdmin,
+  });
+  const globalDefaultWeights: JobScoringWeights = {
+    skills_weight: matchingConfig?.weights?.skills_weight ?? DEFAULT_JOB_SCORING_WEIGHTS.skills_weight,
+    experience_weight: matchingConfig?.weights?.experience_weight ?? DEFAULT_JOB_SCORING_WEIGHTS.experience_weight,
+    education_weight: matchingConfig?.weights?.education_weight ?? DEFAULT_JOB_SCORING_WEIGHTS.education_weight,
+    certifications_weight: matchingConfig?.weights?.certifications_weight ?? DEFAULT_JOB_SCORING_WEIGHTS.certifications_weight,
+    completeness_weight: matchingConfig?.weights?.completeness_weight ?? DEFAULT_JOB_SCORING_WEIGHTS.completeness_weight,
+  };
+
   const [createJob, { isLoading: isCreating }] = useCreateJobMutation();
   const [currentStep, setCurrentStep] = useState<number>(1);
   const [status, setStatus] = useState<{ type: 'success' | 'error' | null; message: string }>({ type: null, message: '' });
@@ -46,10 +63,12 @@ const CreateJobModal: React.FC<CreateJobModalProps> = ({ isOpen, onClose, onSucc
     education_requirements: '',
     experience_requirements: '',
     certifications_requirements: '',
-    is_active: true
+    is_active: true,
+    scoring_weights: { ...DEFAULT_JOB_SCORING_WEIGHTS }
   });
 
   const [errors, setErrors] = useState<Record<string, string | null>>({});
+  const [weightsTouched, setWeightsTouched] = useState<boolean>(false);
 
   const [prevIsOpen, setPrevIsOpen] = useState(isOpen);
 
@@ -59,8 +78,11 @@ const CreateJobModal: React.FC<CreateJobModalProps> = ({ isOpen, onClose, onSucc
       setStatus({ type: null, message: '' });
       setCurrentStep(1);
       setErrors({});
+      setWeightsTouched(false);
     }
   }
+
+  const effectiveWeights = weightsTouched ? formData.scoring_weights : globalDefaultWeights;
 
   useEffect(() => {
     if (isOpen && !formData.job_id) {
@@ -83,6 +105,9 @@ const CreateJobModal: React.FC<CreateJobModalProps> = ({ isOpen, onClose, onSucc
     } else if (step === 3) {
       if (!formData.description) newErrors.description = 'Description is required';
       if (!formData.skills_requirements) newErrors.skills_requirements = 'Skills are required';
+      if (isAdmin && !isWeightsBalanced(effectiveWeights)) {
+        newErrors.scoring_weights = 'Scoring weights must add up to 100%.';
+      }
     }
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
@@ -135,7 +160,10 @@ const CreateJobModal: React.FC<CreateJobModalProps> = ({ isOpen, onClose, onSucc
     setStatus({ type: null, message: '' });
 
     try {
-      const result = await createJob(formData).unwrap();
+      const payload = isAdmin
+        ? { ...formData, scoring_weights: effectiveWeights }
+        : (({ scoring_weights: _ignored, ...rest }) => rest)(formData);
+      const result = await createJob(payload).unwrap();
       
       setStatus({ type: 'success', message: 'Job posting has been created successfully!' });
 
@@ -149,7 +177,8 @@ const CreateJobModal: React.FC<CreateJobModalProps> = ({ isOpen, onClose, onSucc
           description: '', skills_requirements: '', 
           education_requirements: '', experience_requirements: '',
           certifications_requirements: '',
-          is_active: true
+          is_active: true,
+          scoring_weights: { ...globalDefaultWeights }
         });
       }, 2000);
     } catch (err: any) {
@@ -500,6 +529,19 @@ const CreateJobModal: React.FC<CreateJobModalProps> = ({ isOpen, onClose, onSucc
                     />
                   </div>
                 </div>
+
+                {isAdmin && (
+                  <JobScoringWeightsEditor
+                    weights={effectiveWeights}
+                    defaultWeights={globalDefaultWeights}
+                    onChange={(next) => {
+                      setWeightsTouched(true);
+                      setFormData(prev => ({ ...prev, scoring_weights: next }));
+                      setErrors(prev => (prev.scoring_weights ? { ...prev, scoring_weights: null } : prev));
+                    }}
+                    error={errors.scoring_weights}
+                  />
+                )}
               </div>
             )}
           </div>
@@ -539,7 +581,7 @@ const CreateJobModal: React.FC<CreateJobModalProps> = ({ isOpen, onClose, onSucc
                 <button
                   key="submit-btn"
                   type="submit"
-                  disabled={isCreating}
+                  disabled={isCreating || (isAdmin && !isWeightsBalanced(effectiveWeights))}
                   className="flex items-center gap-1.5 sm:gap-2 px-4 sm:px-10 py-2.5 sm:py-3.5 bg-[#d81159] text-white rounded-xl sm:rounded-2xl text-xs sm:text-sm font-black hover:opacity-90 transition-all shadow-[0_10px_20px_rgba(216,17,89,0.2)] active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                 >
                   {isCreating ? (

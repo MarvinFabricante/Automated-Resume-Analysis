@@ -11,6 +11,7 @@ from app.celery_app import celery_app
 
 
 from app.services.ai_analysis_service import analyze_match_with_fallback
+from app.services.job_matching_service import get_job_scoring_weights
 from app.services.job_application_service import _resume_data_from_application
 from app.repositories.job_application_repository import JobApplicationRepository
 from app.repositories.job_description_repository import JobDescriptionRepository
@@ -59,6 +60,8 @@ async def async_analyze_application(application_id: int):
             "skills_requirements": job.skills_requirements or "",
             "experience_requirements": getattr(job, "experience_requirements", ""),
             "education_requirements": getattr(job, "education_requirements", ""),
+            "certifications_requirements": getattr(job, "certifications_requirements", ""),
+            "scoring_weights": get_job_scoring_weights(job),
         }
         
         from app.utils.cache import get_cache, set_cache
@@ -87,6 +90,10 @@ async def async_analyze_application(application_id: int):
             app.skills_score = ai_result.get("ai_skills_score")
             app.experience_score = ai_result.get("ai_experience_score")
             app.education_score = ai_result.get("ai_education_score")
+            if ai_result.get("ai_certifications_score") is not None:
+                app.certifications_score = ai_result.get("ai_certifications_score")
+            if ai_result.get("applied_weights") is not None:
+                app.applied_weights = ai_result.get("applied_weights")
             app.matched_skills = ai_result.get("matched_skills")
             app.missing_skills = ai_result.get("missing_skills")
             app.recommendations = ai_result.get("recommendations")
@@ -147,6 +154,8 @@ async def async_compare_candidates(job_id: int):
                     "skills_requirements": job.skills_requirements or "",
                     "experience_requirements": getattr(job, "experience_requirements", ""),
                     "education_requirements": getattr(job, "education_requirements", ""),
+                    "certifications_requirements": getattr(job, "certifications_requirements", ""),
+                    "scoring_weights": get_job_scoring_weights(job),
                 }
                 candidates_data = [_resume_data_from_application(a) for a in all_apps]
                 comparison_result = compare_candidates_with_fallback(job_data, candidates_data)
@@ -182,6 +191,7 @@ def match_single_job_task(resume_data: dict, job_dict: dict, use_ai: bool = Fals
             self.experience_requirements = data.get("experience_requirements", "")
             self.education_requirements = data.get("education_requirements", "")
             self.certifications_requirements = data.get("certifications_requirements", "")
+            self.scoring_weights = data.get("scoring_weights")
             
         def get(self, key, default=None):
             return getattr(self, key, default)
@@ -258,18 +268,35 @@ def process_outgoing_email_queue_task(max_batch: int = 25):
     }
 
 
-@celery_app.task(name="recalculate_all_applications_task")
-def recalculate_all_applications_task() -> dict:
+@celery_app.task(bind=True, name="recalculate_all_applications_task")
+def recalculate_all_applications_task(self) -> dict:
     """
     Celery task to recalculate all ATS match scores and breakdowns
-    in the background worker, avoiding HTTP timeouts on large applicant pools.
+    in the background worker, reporting progress as it runs.
     """
     logger.info("[Celery] Starting background recalculation of all job applications ATS scores...")
+
+    def _report_progress(current: int, total: int) -> None:
+        if total <= 0:
+            return
+        if current == total or current % 5 == 0:
+            try:
+                self.update_state(
+                    state="PROGRESS",
+                    meta={
+                        "current": current,
+                        "total": total,
+                        "percent": round((current / total) * 100),
+                    },
+                )
+            except Exception:
+                pass
+
     async def _async_recalculate():
         async with async_session() as db:
             from app.services.system_config_service import recalculate_all_applications
             from app.utils.cache import clear_cache_pattern, invalidate_application_dashboard_caches
-            result = await recalculate_all_applications(db)
+            result = await recalculate_all_applications(db, progress_cb=_report_progress)
             await clear_cache_pattern("ai_analysis:*")
             await clear_cache_pattern("job_matches:*")
             await clear_cache_pattern("job_comparison:*")
@@ -278,6 +305,51 @@ def recalculate_all_applications_task() -> dict:
             logger.info(f"[Celery] Recalculation finished: {result.get('updated_applications', 0)} applications updated.")
             return result
     return asyncio.run(_async_recalculate())
+
+
+@celery_app.task(bind=True, name="recalculate_job_applications_task")
+def recalculate_job_applications_task(self, job_id_str: str) -> dict:
+    """
+    Celery task to recalculate match scores for all applications of ONE job only,
+    reporting progress as it runs.
+    """
+    logger.info(f"[Celery] Starting background recalculation for job {job_id_str}...")
+
+    def _report_progress(current: int, total: int) -> None:
+        if total <= 0:
+            return
+        if current == total or current % 3 == 0:
+            try:
+                self.update_state(
+                    state="PROGRESS",
+                    meta={
+                        "current": current,
+                        "total": total,
+                        "percent": round((current / total) * 100),
+                        "job_id": job_id_str,
+                    },
+                )
+            except Exception:
+                pass
+
+    async def _async_recalculate_job():
+        async with async_session() as db:
+            from app.services.job_description_service import rescore_job_applications
+            from app.utils.cache import clear_cache_pattern, invalidate_application_dashboard_caches
+
+            db_job = await JobDescriptionRepository.get_by_job_id(db, job_id_str)
+            if not db_job:
+                return {"job_id": job_id_str, "updated_applications": 0, "error": "Job not found"}
+
+            updated = await rescore_job_applications(db, db_job, progress_cb=_report_progress)
+            await clear_cache_pattern("ai_analysis:*")
+            await clear_cache_pattern("job_matches:*")
+            await clear_cache_pattern("job_comparison:*")
+            await clear_cache_pattern("screening:*")
+            await invalidate_application_dashboard_caches()
+            return {"job_id": job_id_str, "updated_applications": updated}
+
+    return asyncio.run(_async_recalculate_job())
 
 
 @celery_app.task(name="create_data_backup_task")

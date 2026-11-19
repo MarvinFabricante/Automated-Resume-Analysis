@@ -25,14 +25,11 @@ async def update_config(db: AsyncSession, key: str, value: str, category: str, d
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_WEIGHTS = {
-    "skills_weight": 0.40,
-    "experience_weight": 0.30,
-    "education_weight": 0.15,
-    "certifications_weight": 0.10,
-    "completeness_weight": 0.05,
-    "location_weight": 0.05
-}
+# Global default weights = thesis distribution (Skills 40%, Experience 30%,
+# Education 15%, Certifications 10%, Resume Completeness 5%; total 100%).
+from app.services.job_matching_service import THESIS_DEFAULT_WEIGHTS
+
+DEFAULT_WEIGHTS = dict(THESIS_DEFAULT_WEIGHTS)
 
 DEFAULT_THRESHOLDS = {
     "fuzzy_match_threshold": 0.75,
@@ -135,16 +132,19 @@ async def update_matching_parameters(db: AsyncSession, weights: dict = None, thr
     return updated_data
 
 
-async def recalculate_all_applications(db: AsyncSession) -> dict:
+async def recalculate_all_applications(db: AsyncSession, progress_cb=None) -> dict:
     """
-    Recalculate match scores and ATS breakdowns for all existing job applications
-    using the active system configuration weights and thresholds.
+    Recalculate match scores and ATS breakdowns for all existing job applications.
+    Each application is scored with its job's own weights (or the global default
+    weights when the job has none) and the active thresholds.
+    Never modifies application status or shortlist rosters.
     """
-    import re
     from sqlalchemy import select
     from sqlalchemy.orm import selectinload
     from app.models.job_application import JobApplication
     from app.services.job_matching_service import calculate_match_score
+    from app.services.job_application_service import _resume_data_from_application
+    from app.services.job_description_service import apply_match_result_to_application
 
     config = await get_matching_parameters(db)
 
@@ -152,60 +152,23 @@ async def recalculate_all_applications(db: AsyncSession) -> dict:
         select(JobApplication).options(selectinload(JobApplication.job))
     )
     apps = result.scalars().all()
+    total = len(apps)
 
     updated_count = 0
-    for app in apps:
+    for idx, app in enumerate(apps, start=1):
         if not app.job:
             continue
 
-        resume_data = {
-            "skills": ", ".join(app.skills) if isinstance(app.skills, list) else (app.skills or ""),
-            "years_experience": 0,
-            "highest_degree": app.degree or "",
-            "experience": app.relevance or "",
-            "certifications": app.certifications or "",
-            "location": app.location or "",
-        }
-
-        try:
-            match = re.search(r'(\d+)', app.relevance or "")
-            if match:
-                resume_data["years_experience"] = int(match.group(1))
-        except Exception:
-            pass
-
+        resume_data = _resume_data_from_application(app)
         scores = calculate_match_score(resume_data, app.job, matching_config=config)
-
-        app.match_score = scores.get("match_percentage")
-        app.skills_score = scores.get("skills_score")
-        app.experience_score = scores.get("experience_score")
-        app.education_score = scores.get("education_score")
-        app.certifications_score = scores.get("certifications_score")
-
-        app.skills_reason = scores.get("skills_reason")
-        app.experience_reason = scores.get("experience_reason")
-        app.education_reason = scores.get("education_reason")
-        app.certifications_reason = scores.get("certifications_reason")
-
-        app.matched_skills = scores.get("matched_skills")
-        app.missing_skills = scores.get("missing_skills")
-        app.relevant_experience = scores.get("relevant_experience")
-        app.experience_gaps = scores.get("experience_gaps")
-        app.required_degree = scores.get("required_degree")
-        app.candidate_degree = scores.get("candidate_degree")
-        app.required_certifications = scores.get("required_certifications")
-        app.candidate_certifications = scores.get("candidate_certifications")
-        app.recommendations = scores.get("recommendations")
-        app.ai_summary = scores.get("ai_summary")
-        app.strengths = scores.get("strengths")
-        app.weaknesses = scores.get("weaknesses")
-        app.ai_powered = False
-
+        apply_match_result_to_application(app, scores)
         updated_count += 1
+        if progress_cb:
+            progress_cb(idx, total)
 
     await db.commit()
-    logger.info(f"Recalculated match scores for {updated_count} applications using active system config.")
-    return {"total_applications": len(apps), "updated_applications": updated_count}
+    logger.info(f"Recalculated match scores for {updated_count} applications.")
+    return {"total_applications": total, "updated_applications": updated_count}
 
 
 # ─── Role Permissions ───────────────────────────────────────────────────

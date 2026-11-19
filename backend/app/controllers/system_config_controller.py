@@ -38,11 +38,32 @@ async def update_matching_weights(
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(require_role("ADMIN"))
 ):
+    from app.services.job_matching_service import validate_scoring_weights
+    from app.controllers.admin_controller import _describe_weights
+
+    current_cfg = await system_config_service.get_matching_parameters(db)
+    old_weights = dict(current_cfg.get("weights") or {})
+
     weights_dict = weights.model_dump(exclude_unset=True)
-    result = await system_config_service.update_matching_parameters(db, weights=weights_dict, user_id=current_user.get("id"))
-    
+    if "completeness_weight" not in weights_dict and "location_weight" in weights_dict:
+        weights_dict["completeness_weight"] = weights_dict.pop("location_weight")
+    else:
+        weights_dict.pop("location_weight", None)
+
+    merged = {**old_weights, **weights_dict}
+    try:
+        validated = validate_scoring_weights(merged)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
+
+    result = await system_config_service.update_matching_parameters(db, weights=validated, user_id=current_user.get("id"))
+
     await audit_service.record_activity(
-        db=db, user_id=current_user.get("id"), action="UPDATE_CONFIG", target="Matching Weights", details="Updated matching algorithm weights"
+        db=db,
+        user_id=current_user.get("id"),
+        action="UPDATE_CONFIG",
+        target="Global Matching Weights",
+        details=f"Global default weights changed from ({_describe_weights(old_weights)}) to ({_describe_weights(validated)})",
     )
     await clear_cache_pattern("matching_config*")
     await clear_cache_pattern("ai_analysis:*")

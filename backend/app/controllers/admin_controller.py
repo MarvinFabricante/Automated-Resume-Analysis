@@ -37,6 +37,28 @@ async def _invalidate_job_caches(job_id: Optional[str] = None) -> None:
         await clear_cache_pattern("job_detail:")
     await invalidate_application_dashboard_caches()
 
+def _require_admin_for_weights(current_user: Optional[dict]) -> None:
+    """Only admins may set per-job scoring weights."""
+    if not current_user or current_user.get("role") != "ADMIN":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only administrators can change a job's scoring weights.",
+        )
+
+
+def _describe_weights(weights: Optional[dict]) -> str:
+    if not weights:
+        return "reset to global default"
+    labels = [
+        ("skills_weight", "Skills"),
+        ("experience_weight", "Experience"),
+        ("education_weight", "Education"),
+        ("certifications_weight", "Certifications"),
+        ("completeness_weight", "Completeness"),
+    ]
+    return ", ".join(f"{label} {round(float(weights.get(key, 0)) * 100)}%" for key, label in labels)
+
+
 def get_optional_current_user(authorization: Optional[str] = Header(None)) -> Optional[dict]:
     if not authorization:
         return None
@@ -336,6 +358,9 @@ async def create_job_description(
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
+    if job.scoring_weights is not None:
+        _require_admin_for_weights(current_user)
+
     existing_job = await get_job(db, job_id=job.job_id)
     if existing_job:
         raise HTTPException(
@@ -364,31 +389,120 @@ async def read_active_jobs(
     include_inactive: bool = False,
     db: AsyncSession = Depends(get_db)
 ):
-    return await get_all_active_jobs(db, skip=skip, limit=limit, include_inactive=include_inactive)
+    from sqlalchemy import func, select
+    from app.models.job_application import JobApplication
+
+    jobs = await get_all_active_jobs(db, skip=skip, limit=limit, include_inactive=include_inactive)
+    if jobs:
+        job_ids = [j.id for j in jobs]
+        counts_res = await db.execute(
+            select(JobApplication.job_id, func.count(JobApplication.id))
+            .where(JobApplication.job_id.in_(job_ids))
+            .group_by(JobApplication.job_id)
+        )
+        counts_map = dict(counts_res.fetchall())
+        for j in jobs:
+            setattr(j, "applicant_count", counts_map.get(j.id, 0))
+    return jobs
 
 @router.get("/read-job/{job_id}", response_model=JobResponse)
 @cache_response("job_detail", ttl=600)
 async def read_job(job_id: str, db: AsyncSession = Depends(get_db)):
+    from sqlalchemy import func, select
+    from app.models.job_application import JobApplication
+
     db_job = await get_job(db, job_id=job_id)
     if not db_job:
         raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
+    count_res = await db.execute(
+        select(func.count(JobApplication.id)).where(JobApplication.job_id == db_job.id)
+    )
+    setattr(db_job, "applicant_count", int(count_res.scalar() or 0))
     return db_job
 
 @router.patch("/update-job/{job_id}", response_model=JobResponse)
 async def update_job_details(
     job_id: str, 
     job_data: JobUpdate, 
-    db: AsyncSession = Depends(get_db)
+    rescore_existing: bool = False,
+    db: AsyncSession = Depends(get_db),
+    current_user: Optional[dict] = Depends(get_optional_current_user),
 ):
-    db_job = await update_job(db=db, job_id=job_id, job_data=job_data)
+    weights_changed = "scoring_weights" in job_data.model_fields_set
+    if weights_changed:
+        _require_admin_for_weights(current_user)
+
+    existing_job = await get_job(db, job_id=job_id)
+    old_weights = dict(existing_job.scoring_weights) if (existing_job and existing_job.scoring_weights) else None
+
+    db_job = await update_job(
+        db=db,
+        job_id=job_id,
+        job_data=job_data,
+        rescore_on_weight_change=rescore_existing,
+    )
     if db_job:
         await _invalidate_job_caches(job_id)
+        if weights_changed:
+            await audit_service.record_activity(
+                db=db,
+                user_id=current_user.get("id") if current_user else None,
+                action="UPDATE_JOB_WEIGHTS",
+                target=f"Job: {db_job.job_title}",
+                details=(
+                    f"Admin updated scoring weights for {db_job.job_id} "
+                    f"from ({_describe_weights(old_weights)}) to ({_describe_weights(db_job.scoring_weights)})"
+                ),
+            )
     if not db_job:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, 
             detail=f"Job {job_id} not found"
         )
     return db_job
+
+
+@router.post("/jobs/{job_id}/recalculate-scores")
+async def recalculate_single_job_scores(
+    job_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """Recalculate match scores for all applications of ONE job (Admin only)."""
+    _require_admin_for_weights(current_user)
+    db_job = await get_job(db, job_id=job_id)
+    if not db_job:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Job {job_id} not found")
+
+    await audit_service.record_activity(
+        db=db,
+        user_id=current_user.get("id"),
+        action="RECALCULATE_JOB_SCORES",
+        target=f"Job: {db_job.job_title}",
+        details=f"Admin triggered match score recalculation for job {db_job.job_id}",
+    )
+
+    try:
+        from app.tasks import recalculate_job_applications_task
+        task = recalculate_job_applications_task.delay(job_id)
+        return {
+            "status": "processing",
+            "task_id": task.id,
+            "job_id": job_id,
+            "message": f"Match score recalculation queued for {db_job.job_title}.",
+        }
+    except Exception as celery_err:
+        logger.warning(f"Celery dispatch failed for job {job_id} ({celery_err}). Executing synchronously.")
+        from app.services.job_description_service import rescore_job_applications
+        updated = await rescore_job_applications(db, db_job)
+        await _invalidate_job_caches(job_id)
+        return {
+            "status": "completed",
+            "task_id": None,
+            "job_id": job_id,
+            "updated_applications": updated,
+            "message": f"Updated match scores for {updated} application(s).",
+        }
 
 @router.patch("/archive-job/{job_id}", response_model=JobResponse)
 async def archive_job(
@@ -604,6 +718,8 @@ async def get_celery_task_status(
             "ready": async_result.ready(),
             "successful": async_result.successful() if async_result.ready() else False,
         }
+        if async_result.status == "PROGRESS" and isinstance(async_result.info, dict):
+            response_payload["progress"] = async_result.info
         if async_result.ready():
             try:
                 response_payload["result"] = async_result.result if async_result.successful() else str(async_result.result)

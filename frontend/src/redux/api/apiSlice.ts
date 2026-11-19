@@ -149,6 +149,14 @@ export const apiSlice = createApi({
       invalidatesTags: ['Jobs', 'Applications', 'Dashboard'],
     }),
 
+    recalculateJobScores: builder.mutation<any, number | string>({
+      query: (jobId) => ({
+        url: `/admins/jobs/${jobId}/recalculate-scores`,
+        method: 'POST',
+      }),
+      invalidatesTags: ['Applications', 'Dashboard', 'Candidates', 'Shortlists'],
+    }),
+
     archiveJob: builder.mutation<any, number | string>({
       query: (jobId) => ({
         url: `/admins/archive-job/${jobId}`,
@@ -932,6 +940,7 @@ export const {
   useDeleteApplicationMutation,
   useCreateJobMutation,
   useUpdateJobMutation,
+  useRecalculateJobScoresMutation,
   useArchiveJobMutation,
   useUnarchiveJobMutation,
   useDeleteJobMutation,

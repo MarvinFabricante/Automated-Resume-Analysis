@@ -3,9 +3,10 @@ import { Helmet } from 'react-helmet-async';
 import {
   X, Briefcase, MapPin, Building2, DollarSign,
   ListChecks, FileText, Clock, CheckCircle2,
-  AlertCircle, Globe, Wallet, GraduationCap, Trophy, Award, LucideIcon
+  AlertCircle, Globe, Wallet, GraduationCap, Trophy, Award, Sliders, LucideIcon
 } from 'lucide-react';
-import { Job } from '../../../types';
+import { Job, DEFAULT_JOB_SCORING_WEIGHTS } from '../../../types';
+import { WEIGHT_FIELDS } from './JobScoringWeightsEditor';
 
 interface DetailCardProps {
   icon: LucideIcon;
@@ -170,6 +171,37 @@ const ViewJobDetailsModal: React.FC<ViewJobDetailsModalProps> = ({ isOpen, onClo
                     </p>
                   </div>
                 )}
+
+                {(() => {
+                  const activeWeights = job.scoring_weights || DEFAULT_JOB_SCORING_WEIGHTS;
+                  return (
+                    <div className="p-4 sm:p-6 rounded-2xl sm:rounded-3xl bg-slate-50 border border-slate-200/70">
+                      <div className="flex items-center justify-between gap-2 mb-3">
+                        <div className="flex items-center gap-2 text-slate-700">
+                          <Sliders size={16} className="text-[#d81159]" />
+                          <span className="text-xs font-bold uppercase tracking-wider">Scoring Priorities</span>
+                        </div>
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-white border border-slate-200 text-slate-600">
+                          {job.scoring_weights ? 'Job-Specific' : 'Global Default'}
+                        </span>
+                      </div>
+                      <div className="space-y-2">
+                        {WEIGHT_FIELDS.map((field) => {
+                          const pct = Math.round((activeWeights[field.key] ?? 0) * 100);
+                          return (
+                            <div key={field.key} className="flex items-center justify-between text-xs">
+                              <span className="text-slate-600 font-medium flex items-center gap-1.5">
+                                <span className={`w-2 h-2 rounded-full ${field.color}`} />
+                                {field.label}
+                              </span>
+                              <span className="font-bold text-slate-900">{pct}%</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })()}
 
                 <div className="p-4 sm:p-6 rounded-2xl sm:rounded-3xl bg-pink-50 border border-pink-100/50">
                   <div className="flex items-center gap-2 mb-2 sm:mb-3 text-[#d81159]">

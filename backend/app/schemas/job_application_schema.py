@@ -55,6 +55,7 @@ class JobApplicationBase(BaseModel):
     completeness_score: Optional[float] = None
     completeness_status: Optional[str] = None
     missing_sections: Optional[List[str]] = None
+    applied_weights: Optional[dict] = None
     hr_shortlist_notes: Optional[str] = None
     is_flagged_for_review: Optional[bool] = False
     review_flag_reason: Optional[str] = None

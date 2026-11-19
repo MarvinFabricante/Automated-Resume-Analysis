@@ -7,15 +7,118 @@ from app.models.job_description import JobDescription
 
 logger = logging.getLogger(__name__)
 
+# Thesis-documented default scoring weights (total = 100%).
+# Single source of truth: every new job starts with these unless the admin adjusts them.
+WEIGHT_KEYS = (
+    "skills_weight",
+    "experience_weight",
+    "education_weight",
+    "certifications_weight",
+    "completeness_weight",
+)
+
+# Configurable per-criterion weight bounds (whole-number percentages).
+MIN_WEIGHT_PCT = 5
+MAX_WEIGHT_PCT = 70
+
+THESIS_DEFAULT_WEIGHTS = {
+    "skills_weight": 0.40,          # Skills Match
+    "experience_weight": 0.30,      # Work Experience Relevance
+    "education_weight": 0.15,       # Educational Background
+    "certifications_weight": 0.10,  # Certifications and Trainings
+    "completeness_weight": 0.05,    # Resume Completeness
+}
+
+
+def validate_scoring_weights(raw: Any) -> Dict[str, float]:
+    """
+    Strictly validate a 5-criterion scoring weight mapping on the server:
+    - All five criteria must be present
+    - Each weight must be a whole-number percentage between MIN_WEIGHT_PCT and MAX_WEIGHT_PCT
+    - The five weights must sum to exactly 100%
+    Raises ValueError with a clear message on any violation.
+    """
+    if not isinstance(raw, dict):
+        try:
+            raw = dict(raw)
+        except (TypeError, ValueError):
+            raise ValueError("Scoring weights must be a key-value mapping.")
+
+    pcts: Dict[str, int] = {}
+    for key in WEIGHT_KEYS:
+        val = raw.get(key)
+        if val is None:
+            raise ValueError(f"Missing required weight: {key}.")
+        try:
+            num = float(val)
+        except (TypeError, ValueError):
+            raise ValueError(f"Weight '{key}' must be a number.")
+        if abs(num * 100 - round(num * 100)) > 1e-4:
+            raise ValueError(f"Weight '{key}' must be a whole-number percentage (got {round(num * 100, 2)}%).")
+        pct = int(round(num * 100))
+        if pct < MIN_WEIGHT_PCT or pct > MAX_WEIGHT_PCT:
+            raise ValueError(
+                f"Weight '{key}' must be between {MIN_WEIGHT_PCT}% and {MAX_WEIGHT_PCT}% (got {pct}%)."
+            )
+        pcts[key] = pct
+
+    total_pct = sum(pcts.values())
+    if total_pct != 100:
+        raise ValueError(f"Scoring weights must add up to exactly 100% (currently {total_pct}%).")
+
+    return {key: round(pct / 100.0, 2) for key, pct in pcts.items()}
+
+
+def normalize_scoring_weights(raw: Any) -> Optional[Dict[str, float]]:
+    """
+    Coerce a stored/submitted weights payload (dict or JSON string) into a clean
+    dict containing exactly the five scoring components. Returns None when the
+    payload is missing or unusable so callers can fall back to the global default.
+    """
+    if raw is None:
+        return None
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw)
+        except (ValueError, TypeError):
+            return None
+    if not isinstance(raw, dict):
+        try:
+            raw = dict(raw)
+        except (TypeError, ValueError):
+            return None
+
+    cleaned: Dict[str, float] = {}
+    for key in WEIGHT_KEYS:
+        value = raw.get(key)
+        if value is None:
+            return None
+        try:
+            num = float(value)
+        except (TypeError, ValueError):
+            return None
+        if num < 0:
+            return None
+        cleaned[key] = num
+
+    if sum(cleaned.values()) <= 0:
+        return None
+    return cleaned
+
+
+def get_job_scoring_weights(job: Any) -> Optional[Dict[str, float]]:
+    """Return the job-specific weights (if the job has valid custom weights), else None."""
+    if job is None:
+        return None
+    if isinstance(job, dict):
+        raw = job.get("scoring_weights")
+    else:
+        raw = getattr(job, "scoring_weights", None)
+    return normalize_scoring_weights(raw)
+
+
 _DEFAULT_MATCHING_CONFIG = {
-    "weights": {
-        "skills_weight": 0.40,
-        "experience_weight": 0.30,
-        "education_weight": 0.15,
-        "certifications_weight": 0.10,
-        "completeness_weight": 0.05,
-        "location_weight": 0.05
-    },
+    "weights": dict(THESIS_DEFAULT_WEIGHTS),
     "thresholds": {
         "fuzzy_match_threshold": 0.75,
         "minimum_match_score": 30.0,
@@ -1250,8 +1353,10 @@ def calculate_match_score(resume_data: dict, job, use_ai: bool = False, matching
 
     Scoring Strategy (100% NLP + Rule-Based):
     ──────────────────────────────────────────
-    Dynamic weights and thresholds configured via System Settings:
-    Skills + Experience Relevance + Education + Certifications + Location
+    Weights are resolved per job: if the job has its own `scoring_weights`
+    (set by an admin), those are used; otherwise the global default weights
+    from System Settings apply. Thresholds always come from System Settings.
+    Skills + Experience Relevance + Education + Certifications + Resume Completeness
 
     All analysis is performed locally using spaCy NLP, keyword matching,
     fuzzy matching, and rule-based heuristics. No external AI API is used.
@@ -1259,15 +1364,21 @@ def calculate_match_score(resume_data: dict, job, use_ai: bool = False, matching
     if matching_config is None:
         matching_config = get_current_matching_config()
 
-    weights = matching_config.get("weights") or {}
     thresholds = matching_config.get("thresholds") or {}
 
-    w_skills = float(weights.get("skills_weight", 0.40))
-    w_exp = float(weights.get("experience_weight", 0.30))
-    w_edu = float(weights.get("education_weight", 0.15))
-    w_certs = float(weights.get("certifications_weight", 0.10))
-    w_completeness = float(weights.get("completeness_weight", weights.get("location_weight", 0.05)))
-    w_loc = float(weights.get("location_weight", 0.05))
+    job_weights = get_job_scoring_weights(job)
+    if job_weights is not None:
+        weights = job_weights
+        weights_source = "job"
+    else:
+        weights = matching_config.get("weights") or {}
+        weights_source = "global"
+
+    w_skills = float(weights.get("skills_weight", THESIS_DEFAULT_WEIGHTS["skills_weight"]))
+    w_exp = float(weights.get("experience_weight", THESIS_DEFAULT_WEIGHTS["experience_weight"]))
+    w_edu = float(weights.get("education_weight", THESIS_DEFAULT_WEIGHTS["education_weight"]))
+    w_certs = float(weights.get("certifications_weight", THESIS_DEFAULT_WEIGHTS["certifications_weight"]))
+    w_completeness = float(weights.get("completeness_weight", THESIS_DEFAULT_WEIGHTS["completeness_weight"]))
 
     fuzzy_th = float(thresholds.get("fuzzy_match_threshold", 0.75))
     min_score = float(thresholds.get("minimum_match_score", 30.0))
@@ -1288,6 +1399,7 @@ def calculate_match_score(resume_data: dict, job, use_ai: bool = False, matching
             experience_requirements=job.get("experience_requirements", None),
             education_requirements=job.get("education_requirements", None),
             certifications_requirements=job.get("certifications_requirements", None),
+            scoring_weights=job.get("scoring_weights", None),
         )
 
     # ── Rule-based scoring ────────────────────────────────────────────────────
@@ -1340,7 +1452,26 @@ def calculate_match_score(resume_data: dict, job, use_ai: bool = False, matching
     # Resume Completeness matching (Thesis Criterion: 5%)
     raw_completeness = resume_data.get("completeness_score")
     if raw_completeness is None:
-        raw_completeness = 100.0
+        # Compute completeness from the 4 core profile/form sections (0-100)
+        has_personal = bool(
+            (resume_data.get("fullname") or "").strip()
+            or (resume_data.get("email") or "").strip()
+            or (resume_data.get("phone") or "").strip()
+        )
+        has_skills = bool(resume_data.get("skills") or resume_data.get("skills_list"))
+        has_exp = bool(
+            (resume_data.get("experience") or "").strip()
+            or resume_data.get("work_experiences")
+            or (resume_data.get("years_experience") or 0) > 0
+        )
+        has_edu = bool(
+            (resume_data.get("education") or "").strip()
+            or (resume_data.get("highest_degree") or "").strip()
+            or (resume_data.get("degree") or "").strip()
+            or resume_data.get("education_entries")
+        )
+        present_core = sum(1 for flag in (has_personal, has_skills, has_exp, has_edu) if flag)
+        raw_completeness = round((present_core / 4.0) * 100.0, 1)
     try:
         completeness_num = float(raw_completeness)
         completeness_score_val = (completeness_num / 100.0) if completeness_num > 1.0 else completeness_num
@@ -1380,7 +1511,6 @@ def calculate_match_score(resume_data: dict, job, use_ai: bool = False, matching
     pct_edu = round((w_edu / total_w) * 100)
     pct_certs = round((w_certs / total_w) * 100)
     pct_completeness = round((w_completeness / total_w) * 100)
-    pct_loc = round((w_loc / total_w) * 100)
 
     # ── Generate NLP-based insights ──────────────────────────────────────────
     if final_match_pct >= 80:
@@ -1593,8 +1723,8 @@ def calculate_match_score(resume_data: dict, job, use_ai: bool = False, matching
             "education": pct_edu,
             "certifications": pct_certs,
             "completeness": pct_completeness,
-            "location": pct_loc
         },
+        "weights_source": weights_source,
     }
 
 
@@ -1616,6 +1746,7 @@ def nlp_analyze_match(resume_data: dict, job_data: dict, matching_config: Option
             self.experience_requirements = data.get("experience_requirements", "")
             self.education_requirements = data.get("education_requirements", "")
             self.certifications_requirements = data.get("certifications_requirements", "")
+            self.scoring_weights = data.get("scoring_weights")
             
         def get(self, key, default=None):
             return getattr(self, key, default)
@@ -1762,7 +1893,8 @@ async def match_resume_to_all_jobs(db, resume_data: dict, use_ai: bool = False) 
             "skills_requirements": job.skills_requirements,
             "experience_requirements": job.experience_requirements,
             "education_requirements": getattr(job, "education_requirements", ""),
-            "certifications_requirements": getattr(job, "certifications_requirements", "")
+            "certifications_requirements": getattr(job, "certifications_requirements", ""),
+            "scoring_weights": get_job_scoring_weights(job),
         })
         
     # Fan out to celery workers for parallel processing
