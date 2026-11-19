@@ -47,6 +47,30 @@ def remove_emojis(text: str) -> str:
     return ''.join(cleaned)
 
 
+def _collapse_letter_spaced_line(line: str) -> str:
+    """
+    Collapses kerning / letter-spaced uppercase headings common in modern PDF templates,
+    e.g.:
+      'C O N T A C T' -> 'CONTACT'
+      'S O F T W A R E   D E V E L O P M E N T   L E A D' -> 'SOFTWARE DEVELOPMENT LEAD'
+      '( C O N T I N U E D )' -> '(CONTINUED)'
+    """
+    stripped = line.strip()
+    if not stripped:
+        return line
+    # Case 1: Parenthetical like '( C O N T I N U E D )'
+    m_paren = re.match(r"^\(\s*((?:[A-Z]\s+){3,}[A-Z])\s*\)$", stripped)
+    if m_paren:
+        inner = re.sub(r"\s+", "", m_paren.group(1))
+        return f"({inner})"
+    # Case 2: Entire line is letter-spaced uppercase words (word gap = 2+ spaces, letter gap = 1 space)
+    if re.match(r"^(?:[A-Z]\s){3,}[A-Z](?:\s{2,}(?:[A-Z]\s)+[A-Z])*$", stripped):
+        word_groups = re.split(r"\s{2,}", stripped)
+        collapsed_words = [re.sub(r"\s+", "", wg) for wg in word_groups]
+        return " ".join(collapsed_words)
+    return line
+
+
 def clean_raw_text(text: str) -> str:
     """
     Standardize raw extracted text (REQ005 / TC-RES-011):
@@ -62,6 +86,19 @@ def clean_raw_text(text: str) -> str:
     # Remove null and non-printable control chars (preserve \n)
     text = text.replace('\x00', '').replace('\xa0', ' ').replace('\x0c', '\n')
     text = text.replace('\r\n', '\n').replace('\r', '\n')
+
+    # Clean common UTF-8 / PDF CID mojibake sequences before general cleanup
+    for mojibake, repl in [
+        ('(cid:226)(cid:128)¢', '• '),
+        ('â€¢', '• '),
+        ('â€“', '-'),
+        ('â€”', '-'),
+        ('â€™', "'"),
+        ('â€œ', '"'),
+        ('â€\x9d', '"'),
+    ]:
+        text = text.replace(mojibake, repl)
+    text = re.sub(r'\(cid:\d+\)', '', text)
 
     # Remove zero-width characters and soft hyphens that break word/email boundaries
     for zw in ['\u200b', '\u200c', '\u200d', '\ufeff', '\xad', '\u2060', '\u200e', '\u200f', '\ufffd']:
@@ -104,10 +141,11 @@ def clean_raw_text(text: str) -> str:
         cleaned_chars.append(char)
     text = ''.join(cleaned_chars)
 
-    # Normalize tabs and spaces per line
+    # Normalize tabs and spaces per line (preserving letter-spaced detection before collapsing spaces)
     lines = []
     for line in text.split('\n'):
-        line_clean = re.sub(r'[\t ]+', ' ', line).strip()
+        collapsed_line = _collapse_letter_spaced_line(line)
+        line_clean = re.sub(r'[\t ]+', ' ', collapsed_line).strip()
         lines.append(line_clean)
 
     cleaned = '\n'.join(lines)

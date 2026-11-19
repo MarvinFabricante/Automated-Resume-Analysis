@@ -9,9 +9,21 @@ _NOISE_WORDS = {
     "summary", "about", "me", "page", "application", "career",
     "statement", "overview", "candidate", "references", "education",
     "experience", "work history", "skills", "projects", "certifications",
+    "certification", "certificate", "certificates", "professional",
     "biodata", "bio-data", "personal data sheet", "pds", "personal profile",
     "professional profile", "employment", "qualifications", "curriculum vitae",
-    "cover letter", "applicant", "job application", "application form"
+    "cover letter", "applicant", "job application", "application form",
+    "firstname", "lastname", "first name", "last name", "firstname lastname",
+    "your name", "full name", "sample", "template", "credential", "foundation",
+    "scrum", "cyber", "security", "awareness", "awards", "achievements",
+    "trainings", "training", "seminars", "workshops", "eligibility", "licenses",
+    "postman", "docker", "python", "java", "javascript", "typescript", "react",
+    "angular", "vue", "nodejs", "laravel", "django", "flask", "spring",
+    "mysql", "postgresql", "mongodb", "redis", "firebase", "supabase", "aws",
+    "azure", "gcp", "git", "github", "gitlab", "jira", "selenium", "cypress",
+    "playwright", "appium", "figma", "canva", "photoshop", "illustrator",
+    "wordpress", "shopify", "salesforce", "zendesk", "hubspot", "kubernetes",
+    "terraform", "jenkins", "linux", "ubuntu", "windows", "android", "ios"
 }
 
 # Words that strongly disqualify a line from being a candidate's personal name
@@ -180,7 +192,7 @@ def _invert_surname_first(name: str) -> str:
     return inverted
 
 
-def _is_plausible_name(text: str) -> bool:
+def _is_plausible_name(text: str, allow_single_word: bool = False) -> bool:
     """Check if a string looks like a human candidate name."""
     if not text or '\n' in text or '\r' in text:
         return False
@@ -202,12 +214,15 @@ def _is_plausible_name(text: str) -> bool:
         return False
 
     words = candidate_base.split()
-    if len(words) < 1 or len(words) > 6:
+    min_words = 1 if allow_single_word else 2
+    if len(words) < min_words or len(words) > 6:
         return False
 
     # Check against noise words
     lower = candidate_base.lower()
     if any(nw == lower or f" {nw} " in f" {lower} " for nw in _NOISE_WORDS):
+        return False
+    if any(w.lower().rstrip('.,') in _NOISE_WORDS for w in words):
         return False
 
     # Check for known compound role patterns (e.g. 'Customer Service Representative')
@@ -463,8 +478,8 @@ def extract_all_name_candidates(text: str, email: str = "") -> List[str]:
         add_cand(line, idx, bonus=25.0)
 
         # Strategy 4: Check if adjacent lines at top of header are a split name
-        # E.g., Line 0: "Basagre" and Line 1: "John Paul T." OR Line 0: "John Paul T." and Line 1: "Basagre"
-        if idx <= 2 and idx + 1 < header_lines_count:
+        # E.g., Line 0: "Basagre" and Line 1: "John Paul T." OR Line 0: "JHESED" and Line 1: "TACADENA"
+        if idx <= 3 and idx + 1 < header_lines_count:
             next_line = lines[idx + 1]
             # Only join when neither raw line contains colons, pipes, emails, numbers, or role/noise words
             raw_pair = f"{line} {next_line}"
@@ -478,13 +493,17 @@ def extract_all_name_candidates(text: str, email: str = "") -> List[str]:
                 not has_role_or_noise
                 and not any(c in raw_pair for c in ['@', ':', '|', 'http', '+63', '09'])
                 and not re.search(r'\d', raw_pair)
-                and _is_plausible_name(line)
-                and _is_plausible_name(next_line)
+                and _is_plausible_name(line, allow_single_word=True)
+                and _is_plausible_name(next_line, allow_single_word=True)
             ):
                 curr_words = line.split()
                 next_words = next_line.split()
-                # Join only when one line is a 1-word surname and the other is 2-3 given/middle words
-                if len(curr_words) == 1 and 2 <= len(next_words) <= 3:
+                # Case A: Both lines are 1-word (e.g. Line 0: "JHESED", Line 1: "TACADENA")
+                if len(curr_words) == 1 and len(next_words) == 1:
+                    add_cand(f"{line} {next_line}", idx, bonus=55.0)
+                    add_cand(f"{next_line} {line}", idx, bonus=20.0)
+                # Case B: One line is a 1-word surname and the other is 2-3 given/middle words
+                elif len(curr_words) == 1 and 2 <= len(next_words) <= 3:
                     add_cand(f"{next_line} {line}", idx, bonus=50.0)
                     add_cand(f"{line} {next_line}", idx, bonus=20.0)
                 elif len(next_words) == 1 and 2 <= len(curr_words) <= 3:

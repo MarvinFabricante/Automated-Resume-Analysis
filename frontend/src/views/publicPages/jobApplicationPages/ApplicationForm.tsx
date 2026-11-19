@@ -83,24 +83,54 @@ const ApplicationForm: React.FC = () => {
     }
   }, [jobId, currentStep]);
 
-  const ext = location.state?.extractedData;
-  const cleanField = (val: any) => (val && val !== "null" && val !== "undefined" && val !== "Not specified" ? String(val).trim() : "");
+  const savedDraft = typeof window !== 'undefined' && jobId ? (() => {
+    try {
+      const raw = localStorage.getItem(`draft_application_${jobId}`);
+      return raw ? JSON.parse(raw) : null;
+    } catch { return null; }
+  })() : null;
+
+  const ext = location.state?.extractedData || savedDraft?.extractedData;
+  const cleanField = (val: any) => {
+    if (!val) return "";
+    const str = String(val).trim();
+    if (
+      !str ||
+      ["null", "undefined", "not specified", "candidate name", "firstname lastname", "first name last name", "experience not extracted", "position"].includes(str.toLowerCase())
+    ) {
+      return "";
+    }
+    return str;
+  };
+  const cleanDegreeField = (primary: any, fallbackSpecific: any, fallbackTier: any) => {
+    const p = cleanField(primary);
+    const s = cleanField(fallbackSpecific);
+    const t = cleanField(fallbackTier);
+    const genericTiers = ["BACHELOR", "MASTER", "DOCTORATE", "ASSOCIATE", "VOCATIONAL", "HIGH SCHOOL"];
+    if (p && !genericTiers.includes(p.toUpperCase())) return p;
+    if (s && !genericTiers.includes(s.toUpperCase())) return s;
+    return p || s || t;
+  };
   const initialFormData = {
-    fullName: cleanField(location.state?.personal?.name) || cleanField(ext?.fullname),
-    email: cleanField(location.state?.personal?.email) || cleanField(ext?.email),
-    phone: cleanField(location.state?.personal?.phone) || cleanField(ext?.phone),
-    location: cleanField(location.state?.personal?.location) || cleanField(ext?.location),
-    jobTitle: cleanField(location.state?.experience?.title) || cleanField(ext?.job_title) || cleanField(ext?.work_experiences?.[0]?.job_title),
-    company: cleanField(location.state?.experience?.company) || cleanField(ext?.company) || cleanField(ext?.work_experiences?.[0]?.company_name),
-    relevance: location.state?.experience?.relevance && location.state.experience.relevance !== "Experience not extracted"
-      ? location.state.experience.relevance
-      : cleanField(ext?.relevance),
-    degree: cleanField(location.state?.education?.degree) || cleanField(ext?.degree) || cleanField(ext?.education_entries?.[0]?.degree_or_course) || cleanField(ext?.highest_degree),
-    college: cleanField(location.state?.education?.college) || cleanField(ext?.institution) || cleanField(ext?.college) || cleanField(ext?.education_entries?.[0]?.institution_name),
+    fullName: cleanField(location.state?.personal?.name) || cleanField(ext?.fullname) || cleanField(savedDraft?.formData?.fullName),
+    email: cleanField(location.state?.personal?.email) || cleanField(ext?.email) || cleanField(savedDraft?.formData?.email),
+    phone: cleanField(location.state?.personal?.phone) || cleanField(ext?.phone) || cleanField(savedDraft?.formData?.phone),
+    location: cleanField(location.state?.personal?.location) || cleanField(ext?.location) || cleanField(savedDraft?.formData?.location),
+    jobTitle: cleanField(location.state?.experience?.title) || cleanField(ext?.job_title) || cleanField(ext?.work_experiences?.[0]?.job_title) || cleanField(savedDraft?.formData?.jobTitle),
+    company: cleanField(location.state?.experience?.company) || cleanField(ext?.company) || cleanField(ext?.work_experiences?.[0]?.company_name) || cleanField(savedDraft?.formData?.company),
+    relevance: cleanField(location.state?.experience?.relevance) || cleanField(ext?.relevance) || cleanField(savedDraft?.formData?.relevance) || (ext?.years_experience ? `${ext.years_experience} years of experience` : ""),
+    degree: cleanDegreeField(
+      location.state?.education?.degree || ext?.degree,
+      ext?.education_entries?.[0]?.degree_or_course || savedDraft?.formData?.degree,
+      ext?.highest_degree
+    ),
+    college: cleanField(location.state?.education?.college) || cleanField(ext?.institution) || cleanField(ext?.college) || cleanField(ext?.education_entries?.[0]?.institution_name) || cleanField(savedDraft?.formData?.college),
     skills: Array.isArray(location.state?.skills) && location.state.skills.length > 0 && location.state.skills[0] !== "Extraction in progress"
       ? location.state.skills
-      : Array.isArray(ext?.skills_list)
+      : Array.isArray(ext?.skills_list) && ext.skills_list.length > 0
       ? ext.skills_list
+      : Array.isArray(savedDraft?.formData?.skills)
+      ? savedDraft.formData.skills
       : [] as string[]
   };
 

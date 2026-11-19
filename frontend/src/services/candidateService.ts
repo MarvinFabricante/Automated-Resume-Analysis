@@ -7,6 +7,7 @@ const candidateService = {
     formData.append('file', file);
     return api.post('/candidate/parse-resume', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: 30000,
       ...options
     });
   },
@@ -15,11 +16,11 @@ const candidateService = {
     const endpoint = jobId
       ? `/matching/match-data/${jobId}`
       : '/matching/match-data';
-    return api.post(endpoint, payload);
+    return api.post(endpoint, payload, { timeout: 30000 });
   },
 
   submitApplication: (payload: any) =>
-    api.post('/applications/', payload),
+    api.post('/applications/', payload, { timeout: 30000 }),
 };
 
 export default candidateService;

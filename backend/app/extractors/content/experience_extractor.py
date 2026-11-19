@@ -284,7 +284,11 @@ _RESPONSIBILITY_VERB_START_RE = re.compile(
     r'processed|supported|collaborated|ensured|organized|coordinated|trained|'
     r'taught|delivered|administered|analyzed|investigated|troubleshot|inspected|'
     r'installed|configured|repaired|tested|documented|answered|responded|provided|'
-    r'achieved|increased|reduced|improved|streamlined|generated|facilitated|assigned|responsible)\b',
+    r'achieved|increased|reduced|improved|streamlined|generated|facilitated|assigned|responsible|'
+    r'results[\s\-]driven|detail[\s\-]oriented|goal[\s\-]oriented|motivated|dedicated|'
+    r'hardworking|dynamic|resourceful|passionate|versatile|seeking|looking\s+for|'
+    r'carry\s+out|pioneered|spearheaded|oversee|oversees|leads|established|initiated|'
+    r'exposed|programmed|awarded|recognized|completed|participated|attended)\b',
     re.IGNORECASE,
 )
 
@@ -300,7 +304,11 @@ def _is_likely_responsibility_or_sentence(text: str) -> bool:
         return True
     if _RESPONSIBILITY_VERB_START_RE.match(clean):
         return True
+    if re.search(r'\bwith\s+\d+\+?\s*(?:years?|yrs?)\s+of\s+experience\b', clean, re.IGNORECASE):
+        return True
     if len(clean) > 70 and not _COMPANY_LEGAL_SUFFIXES_RE.search(clean):
+        return True
+    if len(clean.split()) > 12 and not _COMPANY_LEGAL_SUFFIXES_RE.search(clean):
         return True
     if clean.endswith('.') and len(clean.split()) >= 6 and not _COMPANY_LEGAL_SUFFIXES_RE.search(clean):
         return True
@@ -594,7 +602,10 @@ def _normalize_job_title(raw_title: str) -> str:
     if clean.lower() in _RESUME_SECTION_HEADERS or any(clean.lower().startswith(h) for h in _RESUME_SECTION_HEADERS):
         return ""
 
-    if _is_address_or_location(clean):
+    if _is_address_or_location(clean) or _is_likely_responsibility_or_sentence(clean):
+        return ""
+
+    if len(clean) > 85 or len(clean.split()) > 11:
         return ""
 
     acronym_map = {
@@ -622,7 +633,11 @@ def _normalize_job_title(raw_title: str) -> str:
     if clean.isupper():
         return clean.title()
 
-    # Check spaCy POS / entity fallback
+    # If already a concise role title (<= 6 words with a recognized job keyword), preserve full title
+    if len(clean.split()) <= 6 and _JOB_TITLE_KEYWORDS_RE.search(clean):
+        return clean
+
+    # Check spaCy POS / entity fallback for longer or out-of-vocabulary strings
     spacy_cand = _extract_title_with_spacy(clean)
     if spacy_cand:
         return spacy_cand.title() if spacy_cand.isupper() else spacy_cand
@@ -758,6 +773,24 @@ def _extract_title_company_location(title_cand: str, comp_cand: str = "") -> Tup
         else:
             comp, loc = _split_company_and_location(p2)
             return _normalize_job_title(p1), comp, loc or loc_override
+
+    # 2b. Check comma-separated 'Job Title, Company Name[, Location]' on a single line
+    if ',' in title_cand:
+        comma_segs = [s.strip() for s in re.split(r',(?![^()]*\))', title_cand) if s.strip()]
+        if len(comma_segs) >= 2:
+            seg0, seg1 = comma_segs[0], comma_segs[1]
+            seg0_job = bool(_JOB_TITLE_KEYWORDS_RE.search(seg0) or any(t.lower() in seg0.lower() for vars_list in _PHILIPPINE_JOB_TAXONOMY.values() for t in vars_list))
+            seg1_comp = bool(_COMPANY_LEGAL_SUFFIXES_RE.search(seg1) or any(c.lower() in seg1.lower() for c in _PHIL_COMPANY_NAMES))
+            seg0_comp = bool(_COMPANY_LEGAL_SUFFIXES_RE.search(seg0) or any(c.lower() in seg0.lower() for c in _PHIL_COMPANY_NAMES))
+            seg1_job = bool(_JOB_TITLE_KEYWORDS_RE.search(seg1) or any(t.lower() in seg1.lower() for vars_list in _PHILIPPINE_JOB_TAXONOMY.values() for t in vars_list))
+            if seg0_job and (seg1_comp or (len(comma_segs) >= 3 and _is_address_or_location(comma_segs[-1]))):
+                c_part = ", ".join(comma_segs[1:])
+                comp, loc = _split_company_and_location(c_part)
+                return _normalize_job_title(seg0), comp, loc or loc_override
+            elif seg0_comp and seg1_job:
+                loc_tail = ", ".join(comma_segs[2:]) if len(comma_segs) >= 3 else None
+                comp, loc = _split_company_and_location(seg0)
+                return _normalize_job_title(seg1), comp, loc or loc_tail or loc_override
 
     # 3. Check known Philippine company prefixes/suffixes
     for c in sorted(_PHIL_COMPANY_NAMES, key=len, reverse=True):
@@ -969,8 +1002,8 @@ def extract_structured_experience(text: str) -> Dict[str, Any]:
         # ── Case A: Inline or Date-First entry format ─────────────────────────
         if _DATE_RANGE_REGEX.search(line):
             dm = _DATE_RANGE_REGEX.search(line)
-            before_date = line[:dm.start()].strip(' -–—(),|')
-            after_date = line[dm.end():].strip(' -–—(),|')
+            before_date = re.sub(r'[\s\-–—,|(\[]+$', '', line[:dm.start()]).strip()
+            after_date = re.sub(r'^[\s\-–—,|)\]]+|[\s\-–—,|(\[]+$', '', line[dm.end():]).strip()
 
             if not before_date:
                 # Standalone date or Date-First line (e.g. "2021 - Present" or "2021 - Present | Senior Developer | Tech Mahindra")
@@ -1096,8 +1129,15 @@ def extract_structured_experience(text: str) -> Dict[str, Any]:
                 comp_loc_str = lines[i + 1]
                 consumed_header = 3
             elif date_offset == 1:
+                dm_b = _DATE_RANGE_REGEX.search(date_line)
+                before_dm = re.sub(r'[\s\-–—,|(\[]+$', '', date_line[:dm_b.start()]).strip() if dm_b else ""
+                after_dm = re.sub(r'^[\s\-–—,|)\]]+|[\s\-–—,|(\[]+$', '', date_line[dm_b.end():]).strip() if dm_b else ""
+                inline_comp_loc = before_dm or after_dm
                 next_after_date = lines[i + 2] if i + 2 < len(lines) else ""
-                if (
+                if inline_comp_loc and not _is_likely_responsibility_or_sentence(inline_comp_loc):
+                    comp_loc_str = inline_comp_loc
+                    consumed_header = 2
+                elif (
                     next_after_date
                     and not next_after_date.startswith(('-', '•', '*', '▪', '►', '✓'))
                     and not _is_section_header(next_after_date)

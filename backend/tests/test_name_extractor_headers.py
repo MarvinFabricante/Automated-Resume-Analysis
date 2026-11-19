@@ -179,5 +179,100 @@ Quality Control, ISO 9001, Defect Inspection, Microsoft Excel
         self.assertEqual(extracted.get("company"), "Rizal Packaging & Industrial Solutions Inc.")
         self.assertNotIn("(Taytay", extracted.get("company", ""))
 
+    def test_edge_case_autofill_precision_and_anti_hallucination(self):
+        # 1. Two-line 1-word + 1-word split name, letter-spaced headers, space-after-plus phone,
+        #    wrapped degree line, and 'College Scholar' academic honor vs school name
+        resume_two_col = """JHESED
+TACADENA
+S O F T W A R E   D E V E L O P M E N T   L E A D
+C O N T A C T
+Binangonan, Rizal Philippines
+jhesed.tacadena@gmail.com
++ 639776364662
+E D U C A T I O N
+University of the Philippines
+2009 - 2013
+• Bachelor of Science in Computer
+Science
+• College Scholar
+C E R T I F I C A T I O N
+• Scrum Foundation Professional Certificate - CSFPC
+• Credential ID: 42113279
+P R O F I L E
+Leads full-stack developers to deliver applications from system architecture to release.
+E X P E R I E N C E
+2022 - Present
+Senior Engineer
+Iress / Prosource
+• Built scalable backend services.
+Tech Stack:
+Python, React, AWS
+"""
+        extracted_1 = extract_content(resume_two_col)
+        self.assertEqual(extracted_1.get("fullname"), "Jhesed Tacadena")
+        self.assertEqual(extracted_1.get("phone"), "+63 977 636 4662")
+        self.assertEqual(extracted_1.get("job_title"), "Senior Engineer")
+        self.assertEqual(extracted_1.get("company"), "Iress / Prosource")
+        self.assertEqual(extracted_1.get("degree"), "Bachelor of Science in Computer Science")
+        self.assertEqual(extracted_1.get("institution"), "University of the Philippines")
+        self.assertNotIn("Credential ID: 42113279", extracted_1.get("certifications_list", []))
+
+        # 2. Comma-separated Role, Company, City & CERTIFICATIONS & TRAININGS boundary
+        resume_comma_exp = """Maria Angela Dela Cruz
+Pasig City, Metro Manila | (+63) 966-880-
+7703 | maria.delacruz@gmail.com
+
+WORK EXPERIENCE
+Accounting Assistant, Santos Trading Corporation, Pasig City
+March 2021 - Present
+- Prepared monthly financial statements and bank reconciliations.
+
+EDUCATION
+Bachelor of Science in Accountancy - Polytechnic University of the Philippines, Sta. Mesa, Manila (2017 - 2021)
+
+SKILLS
+SAP, QuickBooks, Microsoft Excel, Bookkeeping
+
+CERTIFICATIONS & TRAININGS
+- Certified Bookkeeper - National Institute of Accounting Technicians (2022)
+- QuickBooks Online Certification (2023)
+"""
+        extracted_2 = extract_content(resume_comma_exp)
+        self.assertEqual(extracted_2.get("fullname"), "Maria Angela Dela Cruz")
+        self.assertEqual(extracted_2.get("phone"), "+63 966 880 7703")
+        self.assertEqual(extracted_2.get("job_title"), "Accounting Assistant")
+        self.assertEqual(extracted_2.get("company"), "Santos Trading Corporation")
+        self.assertEqual(extracted_2.get("degree"), "Bachelor of Science in Accountancy")
+        self.assertIn("Polytechnic University of the Philippines", extracted_2.get("institution", ""))
+        skills_lower_2 = {s.lower() for s in extracted_2.get("skills_list", [])}
+        self.assertNotIn("certifications & trainings", skills_lower_2)
+
+        # 3. Reject single-word tech tool ('Postman') as candidate name and summary paragraph as job title
+        resume_qa = """Postman
+Caselyn Parayaoan
+Software Quality Assurance Engineer
+caselyn.qa@gmail.com | 0917-555-8899
+
+SUMMARY
+Results-driven Software Quality Assurance with 4 years of experience in manual and automated testing.
+
+WORK EXPERIENCE
+Software Quality Assurance Engineer
+Accenture Philippines | Taguig City
+Jan 2022 - Present
+- Executed automated API and UI regression suites using Postman and Cypress.
+
+EDUCATION
+Bachelor of Science in Information Technology
+FEU Institute of Technology (2018 - 2022)
+
+SKILLS
+Postman, Cypress, Selenium, Manual Testing, SQL
+"""
+        extracted_3 = extract_content(resume_qa)
+        self.assertEqual(extracted_3.get("fullname"), "Caselyn Parayaoan")
+        self.assertEqual(extracted_3.get("job_title"), "Software Quality Assurance Engineer")
+        self.assertFalse(extracted_3.get("job_title", "").startswith("Results-driven"))
+
 if __name__ == "__main__":
     unittest.main()

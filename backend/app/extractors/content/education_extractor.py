@@ -98,6 +98,18 @@ _PHILIPPINE_DEGREE_MAP: Dict[str, str] = {
     "BSIE": "Bachelor of Science in Industrial Engineering",
     "B.S.I.E.": "Bachelor of Science in Industrial Engineering",
     "BS INDUSTRIAL ENGINEERING": "Bachelor of Science in Industrial Engineering",
+    "BACHELOR OF SCIENCE IN INDUSTRIAL ENGINEERING": "Bachelor of Science in Industrial Engineering",
+    "BACHELOR OF SCIENCE IN ELECTRONICS ENGINEERING": "Bachelor of Science in Electronics Engineering",
+    "BACHELOR OF SCIENCE IN ELECTRONICS AND COMMUNICATIONS ENGINEERING": "Bachelor of Science in Electronics Engineering",
+    "BACHELOR OF SCIENCE IN INFORMATION SYSTEMS": "Bachelor of Science in Information Systems",
+    "BACHELOR OF SCIENCE IN MANAGEMENT ACCOUNTING": "Bachelor of Science in Management Accounting",
+    "BACHELOR OF SCIENCE IN ACCOUNTING TECHNOLOGY": "Bachelor of Science in Accounting Technology",
+    "BACHELOR OF SCIENCE IN PSYCHOLOGY": "Bachelor of Science in Psychology",
+    "BACHELOR OF ARTS IN PSYCHOLOGY": "Bachelor of Arts in Psychology",
+    "BACHELOR OF SCIENCE IN BIOLOGY": "Bachelor of Science in Biology",
+    "BACHELOR OF SCIENCE IN CHEMISTRY": "Bachelor of Science in Chemistry",
+    "BACHELOR OF SCIENCE IN MATHEMATICS": "Bachelor of Science in Mathematics",
+    "BACHELOR OF SCIENCE IN STATISTICS": "Bachelor of Science in Statistics",
     "BS ARCHITECTURE": "Bachelor of Science in Architecture",
     "BS ARCHI": "Bachelor of Science in Architecture",
     "BS ARCH": "Bachelor of Science in Architecture",
@@ -280,7 +292,8 @@ _HONORS_PATTERNS = [
     (re.compile(r'\b(?:With\s+Honors)\b', re.I), "With Honors"),
     (re.compile(r'\b(?:Dean\'?s\s+Lister)\b', re.I), "Dean's Lister"),
     (re.compile(r'\b(?:President\'?s\s+Lister)\b', re.I), "President's Lister"),
-    (re.compile(r'\b(?:Academic\s+Scholar|University\s+Scholar)\b', re.I), "Academic Scholar"),
+    (re.compile(r'\b(?:College\s+Scholar)\b', re.I), "College Scholar"),
+    (re.compile(r'\b(?:Academic\s+Scholar|University\s+Scholar|DOST\s+Scholar|CHED\s+Scholar|Presidential\s+Scholar)\b', re.I), "Academic Scholar"),
     (re.compile(r'\b(?:Valedictorian)\b', re.I), "Valedictorian"),
     (re.compile(r'\b(?:Salutatorian)\b', re.I), "Salutatorian"),
     (re.compile(r'\b(?:Honorable\s+Mention)\b', re.I), "Honorable Mention"),
@@ -359,13 +372,14 @@ _SUB_TIER_HEADERS = [
 _STOP_SECTION_RE = re.compile(
     r'^(?:WORK\s+EXPERIENCE|EMPLOYMENT\s+HISTORY|PROFESSIONAL\s+EXPERIENCE|'
     r'RELEVANT\s+EXPERIENCE|WORK\s+HISTORY|ON-THE-JOB\s+TRAINING(?:\s*\(OJT\))?|'
-    r'SKILLS|TECHNICAL\s+SKILLS|CORE\s+COMPETENCIES|EXPERTISE|'
-    r'CERTIFICATIONS(?:\s*(?:AND|&)\s*LICENSES)?|'
-    r'LICENSES(?:\s*(?:AND|&)\s*ELIGIBILITY)?|ELIGIBILITY|LICENSES|'
-    r'(?:WORK\s+|PERSONAL\s+|ACADEMIC\s+|KEY\s+|NOTABLE\s+|RELEVANT\s+)?PROJECTS|PORTFOLIO|CAPSTONE|'
-    r'SEMINARS(?:\s*/?\s*TRAININGS)?|TRAINING|'
-    r'TRAININGS|PERSONAL\s+DATA|PERSONAL\s+INFORMATION|CHARACTER\s+REFERENCES|'
-    r'REFERENCES|SUMMARY|AFFILIATIONS|AWARDS|CONTACT|LANGUAGES)(?:\s*[:\-–—])?$',
+    r'SKILLS(?:\s*(?:AND|&)\s*CERTIFICATIONS)?|TECHNICAL\s+SKILLS|CORE\s+COMPETENCIES|EXPERTISE|'
+    r'CERTIFICATIONS?(?:\s*(?:AND|&)\s*(?:LICENSES|TRAININGS?|ACHIEVEMENTS|AWARDS))?|'
+    r'CERTIFICATES?(?:\s*(?:AND|&)\s*(?:LICENSES|TRAININGS?|ACHIEVEMENTS|AWARDS))?|'
+    r'LICENSES(?:\s*(?:AND|&)\s*(?:ELIGIBILITY|CERTIFICATIONS?))?|ELIGIBILITY|LICENSES|'
+    r'(?:WORK\s+|PERSONAL\s+|ACADEMIC\s+|KEY\s+|NOTABLE\s+|RELEVANT\s+|FEATURED\s+|OTHER\s+)?PROJECTS|PORTFOLIO|CAPSTONE|'
+    r'SEMINARS(?:\s*(?:/|AND|&)\s*TRAININGS?)?|TRAININGS?(?:\s*(?:/|AND|&)\s*(?:SEMINARS|CERTIFICATIONS?))?|'
+    r'PERSONAL\s+DATA|PERSONAL\s+INFORMATION|CHARACTER\s+REFERENCES|'
+    r'REFERENCES|SUMMARY|AFFILIATIONS|AWARDS|ACHIEVEMENTS|CONTACT|LANGUAGES)(?:\s*[:\-–—])?$',
     re.IGNORECASE
 )
 
@@ -476,7 +490,9 @@ _SCHOOL_HINT_WORDS = (
 
 
 def _has_school_keyword(text: str) -> bool:
-    lower = text.lower()
+    lower = text.lower().strip()
+    if re.search(r'\b(?:college|university|academic|dost|ched|presidential)\s+scholar\b', lower):
+        return False
     if any(w in lower for w in _SCHOOL_HINT_WORDS):
         return True
     return any(re.search(rf'(?<!\w){re.escape(ks.lower())}(?!\w)', lower) for ks in _KNOWN_PH_INSTITUTIONS)
@@ -510,7 +526,9 @@ _NON_INSTITUTION_KEYWORDS = re.compile(
     r'machining|lathe|forklift|calibration|packaging|assembly|fabrication|testing|monitoring|'
     r'supervision|encoding|programming|development|accounting|taxation|bookkeeping|cashiering|'
     r'driving|communication|teamwork|adaptable|fast\s+learner|experienced|proficient|'
-    r'knowledgeable|skilled|familiar)\b',
+    r'knowledgeable|skilled|familiar|certification|certified|yellow\s+belt|green\s+belt|black\s+belt|'
+    r'six\s+sigma|safety\s+officer|bosh|cosh|quickbooks|xero|seminar|workshop|award|'
+    r'employee\s+of\s+the|best\s+in|recognized\s+for|commended\s+for)\b',
     re.I,
 )
 
@@ -886,14 +904,30 @@ def extract_structured_education(text: str) -> Dict[str, Any]:
             }
         edu_lines = lines
 
-    # Pre-process wrapped school continuation lines (e.g. 'Magat Salamat Elementary' + 'School')
+    # Pre-process wrapped school or degree continuation lines
+    # (e.g. 'Magat Salamat Elementary' + 'School' or '• Bachelor of Science in Computer' + 'Science')
+    _DEGREE_CONT_WORDS = {
+        'science', 'engineering', 'technology', 'administration', 'management',
+        'accountancy', 'education', 'arts', 'nursing', 'psychology', 'criminology',
+        'architecture', 'computer science', 'information technology',
+        'computer engineering', 'business administration', 'information systems',
+    }
     merged_edu_lines = []
     k = 0
     while k < len(edu_lines):
         curr_l = edu_lines[k]
         if k + 1 < len(edu_lines):
             nxt_l = edu_lines[k + 1]
-            if nxt_l.lower().strip() in ['school', 'high school', 'college', 'university', 'institute', 'academy', 'campus']:
+            nxt_clean = nxt_l.lower().strip()
+            if nxt_clean in ['school', 'high school', 'college', 'university', 'institute', 'academy', 'campus']:
+                merged_edu_lines.append(f"{curr_l} {nxt_l}")
+                k += 2
+                continue
+            if (
+                not nxt_l.startswith(('•', '-', '*', '▪', '►', '✓'))
+                and re.search(r'\b(?:bachelor|master|doctor|associate|diploma)\b', curr_l, re.I)
+                and nxt_clean in _DEGREE_CONT_WORDS
+            ):
                 merged_edu_lines.append(f"{curr_l} {nxt_l}")
                 k += 2
                 continue

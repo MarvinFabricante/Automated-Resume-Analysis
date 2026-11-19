@@ -2,7 +2,81 @@ from pdfminer.high_level import extract_text
 import fitz  # PyMuPDF
 import os
 import io
+import re
 from typing import Union
+
+
+def _extract_page_text_layout_aware(page) -> str:
+    """
+    Extracts text from a PyMuPDF page while preserving visual reading order:
+    - Sorts out-of-order PDF stream blocks top-to-bottom.
+    - Detects two-column (sidebar + main) layouts so left-column sections
+      (e.g. CONTACT, EDUCATION, SKILLS, CERTIFICATION) never interleave into
+      right-column sections (e.g. PROFILE, EXPERIENCE).
+    """
+    raw_blocks = page.get_text("blocks") or []
+    text_blocks = [
+        (float(b[0]), float(b[1]), float(b[2]), float(b[3]), str(b[4]).strip())
+        for b in raw_blocks
+        if len(b) >= 7 and b[6] == 0 and str(b[4]).strip()
+    ]
+    if not text_blocks:
+        return page.get_text() or ""
+
+    page_w = float(page.rect.width or 600.0)
+    page_h = float(page.rect.height or 800.0)
+
+    # Identify top header band (e.g. Name / Title banner at top of page 1)
+    header_cutoff = min(145.0, page_h * 0.18)
+
+    # Check if body blocks cleanly separate into two vertical columns
+    best_split = None
+    best_score = -1
+    for frac in (0.30, 0.33, 0.35, 0.38, 0.42, 0.48, 0.62, 0.67):
+        split_x = page_w * frac
+        body_blocks = [b for b in text_blocks if b[1] >= header_cutoff]
+        if len(body_blocks) < 4:
+            continue
+        left_b = [b for b in body_blocks if b[2] <= split_x + 8]
+        right_b = [b for b in body_blocks if b[0] >= split_x - 8]
+        crossing_b = [b for b in body_blocks if b[0] < split_x - 8 and b[2] > split_x + 8]
+
+        if len(left_b) >= 2 and len(right_b) >= 2 and len(crossing_b) == 0:
+            # Verify vertical overlap between columns AND multi-line content in both columns
+            left_min_y = min(b[1] for b in left_b)
+            left_max_y = max(b[3] for b in left_b)
+            right_min_y = min(b[1] for b in right_b)
+            right_max_y = max(b[3] for b in right_b)
+            y_overlap = min(left_max_y, right_max_y) - max(left_min_y, right_min_y)
+            left_lines = sum(b[4].count("\n") + 1 for b in left_b)
+            right_lines = sum(b[4].count("\n") + 1 for b in right_b)
+            if y_overlap > 80 and left_lines >= 5 and right_lines >= 5:
+                score = len(left_b) + len(right_b)
+                if score > best_score:
+                    best_score = score
+                    best_split = split_x
+
+    if best_split is not None:
+        # Check if header blocks also split or span across
+        top_blocks = [b for b in text_blocks if b[1] < header_cutoff]
+        body_blocks = [b for b in text_blocks if b[1] >= header_cutoff]
+        top_blocks.sort(key=lambda b: (round(b[1] / 6.0), b[0]))
+
+        left_col = [b for b in body_blocks if b[2] <= best_split + 8]
+        right_col = [b for b in body_blocks if b[0] >= best_split - 8]
+        other_col = [b for b in body_blocks if b not in left_col and b not in right_col]
+
+        left_col.sort(key=lambda b: (round(b[1] / 4.0), b[0]))
+        right_col.sort(key=lambda b: (round(b[1] / 4.0), b[0]))
+        other_col.sort(key=lambda b: (round(b[1] / 4.0), b[0]))
+
+        ordered = top_blocks + left_col + right_col + other_col
+        return "\n".join(b[4] for b in ordered)
+
+    # Single-column layout: sort visually top-to-bottom, left-to-right
+    text_blocks.sort(key=lambda b: (round(b[1] / 4.0), b[0]))
+    return "\n".join(b[4] for b in text_blocks)
+
 
 def extract_text_from_pdf(file_input: Union[str, bytes, io.BytesIO]) -> str:
     """
@@ -14,7 +88,7 @@ def extract_text_from_pdf(file_input: Union[str, bytes, io.BytesIO]) -> str:
     fitz_text = ""
     extra_links = []
 
-    # Engine 1: PyMuPDF (fitz)
+    # Engine 1: PyMuPDF (fitz) with layout-aware block ordering
     try:
         if isinstance(file_input, bytes):
             doc = fitz.open(stream=file_input, filetype="pdf")
@@ -24,7 +98,7 @@ def extract_text_from_pdf(file_input: Union[str, bytes, io.BytesIO]) -> str:
             doc = fitz.open(file_input)
         pages = []
         for page in doc:
-            page_text = page.get_text()
+            page_text = _extract_page_text_layout_aware(page)
             # Scanned or image-only PDF page fallback to OCR
             if not page_text or len(page_text.strip()) < 20:
                 try:
@@ -69,6 +143,8 @@ def extract_text_from_pdf(file_input: Union[str, bytes, io.BytesIO]) -> str:
             pm_text = extract_text(io.BytesIO(file_input)).strip()
         else:
             pm_text = extract_text(file_input).strip()
+        if pm_text:
+            pm_text = re.sub(r"\(cid:\d+\)¢?", "• ", pm_text)
     except Exception as e:
         print(f"pdfminer error reading PDF file: {e}")
 
@@ -102,12 +178,10 @@ def extract_text_from_pdf(file_input: Union[str, bytes, io.BytesIO]) -> str:
     p_fitz = _inversion_penalty(fitz_text)
     p_pm = _inversion_penalty(pm_text)
 
-    # Select the text that preserves natural reading order
-    if p_fitz < p_pm and len(fitz_text) >= 40:
+    # Select the text that preserves natural reading order (prefer layout-ordered PyMuPDF when equal)
+    if p_fitz <= p_pm and len(fitz_text) >= 40:
         chosen_text = fitz_text
     elif p_pm < p_fitz and len(pm_text) >= 40:
-        chosen_text = pm_text
-    elif len(pm_text) >= len(fitz_text) and len(pm_text) >= 40:
         chosen_text = pm_text
     elif fitz_text:
         chosen_text = fitz_text

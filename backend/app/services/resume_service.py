@@ -28,6 +28,12 @@ async def parse_resume_file(db: AsyncSession, file: UploadFile) -> dict:
     file_bytes = await file.read()
     await file.seek(0)  # Reset file pointer for potential local processing
 
+    if len(file_bytes) > 10 * 1024 * 1024:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail="File size exceeds the 10MB maximum limit. Please upload a smaller PDF, Word (.docx/.doc), or text (.txt) document."
+        )
+
     # Security: Content check (magic bytes) to reject disguised executables (.exe renamed to .pdf, etc.)
     is_valid, validation_err = validate_file_content(file_bytes, file.filename)
     if not is_valid:
@@ -35,6 +41,12 @@ async def parse_resume_file(db: AsyncSession, file: UploadFile) -> dict:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=validation_err
+        )
+
+    if file_extension.lower() not in ("pdf", "docx", "doc", "txt", "text"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Unsupported file format (.{file_extension or 'unknown'}). Supported resume formats are PDF, DOCX, DOC, and TXT."
         )
 
     # Write to a temporary file for the resume processor (it needs a file path)
@@ -113,6 +125,8 @@ async def parse_resume_file(db: AsyncSession, file: UploadFile) -> dict:
 
         return extracted_data or {}
 
+    except HTTPException:
+        raise
     except Exception as e:
         import traceback
         logger.error(f"Error in parse_resume_file: {e}")

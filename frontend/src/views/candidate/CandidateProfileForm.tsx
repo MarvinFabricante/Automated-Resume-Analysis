@@ -83,25 +83,49 @@ const CandidateProfileForm: React.FC = () => {
     savedDraft?.extractedData || savedDraft?.fileName
   );
   const ext = location.state?.extractedData || savedDraft?.extractedData;
-  const cleanField = (val: any) => (val && val !== "null" && val !== "undefined" && val !== "Not specified" ? String(val).trim() : "");
+  const cleanField = (val: any) => {
+    if (!val) return "";
+    const str = String(val).trim();
+    if (
+      !str ||
+      ["null", "undefined", "not specified", "candidate name", "firstname lastname", "first name last name", "experience not extracted", "position"].includes(str.toLowerCase())
+    ) {
+      return "";
+    }
+    return str;
+  };
+  const cleanDegreeField = (primary: any, fallbackSpecific: any, fallbackTier: any) => {
+    const p = cleanField(primary);
+    const s = cleanField(fallbackSpecific);
+    const t = cleanField(fallbackTier);
+    const genericTiers = ["BACHELOR", "MASTER", "DOCTORATE", "ASSOCIATE", "VOCATIONAL", "HIGH SCHOOL"];
+    if (p && !genericTiers.includes(p.toUpperCase())) return p;
+    if (s && !genericTiers.includes(s.toUpperCase())) return s;
+    return p || s || t;
+  };
   const accountEmail = typeof loggedInEmail === 'string' ? loggedInEmail : (loggedInEmail as any)?.email || "";
+  const storedFullname = typeof window !== 'undefined' ? cleanField(localStorage.getItem('fullname')) : "";
   const initialFormData: ProfileFormData = {
-    fullName: cleanField(location.state?.personal?.name) || cleanField(ext?.fullname) || cleanField(savedDraft?.formData?.fullName) || (hasUploadContext ? "" : "Alex Thompson"),
-    email: cleanField(location.state?.personal?.email) || cleanField(ext?.email) || cleanField(savedDraft?.formData?.email) || accountEmail || (hasUploadContext ? "" : "alex.t@example.com"),
-    phone: cleanField(location.state?.personal?.phone) || cleanField(ext?.phone) || cleanField(savedDraft?.formData?.phone) || (hasUploadContext ? "" : "+1 (555) 000-1234"),
-    location: cleanField(location.state?.personal?.location) || cleanField(ext?.location) || cleanField(savedDraft?.formData?.location) || (hasUploadContext ? "" : "Chicago, IL"),
-    jobTitle: cleanField(location.state?.experience?.title) || cleanField(ext?.job_title) || cleanField(ext?.work_experiences?.[0]?.job_title) || cleanField(savedDraft?.formData?.jobTitle) || (hasUploadContext ? "" : "Senior Operations Lead"),
-    company: cleanField(location.state?.experience?.company) || cleanField(ext?.company) || cleanField(ext?.work_experiences?.[0]?.company_name) || cleanField(savedDraft?.formData?.company) || (hasUploadContext ? "" : "Global Tech Manufacturing"),
-    relevance: cleanField(location.state?.experience?.relevance) || cleanField(ext?.relevance) || cleanField(savedDraft?.formData?.relevance) || (hasUploadContext ? "" : "7+ years in high-volume production environments"),
-    degree: cleanField(location.state?.education?.degree) || cleanField(ext?.degree) || cleanField(ext?.education_entries?.[0]?.degree_or_course) || cleanField(ext?.highest_degree) || cleanField(savedDraft?.formData?.degree) || (hasUploadContext ? "" : "B.S. in Industrial Engineering"),
-    college: cleanField(location.state?.education?.college) || cleanField(ext?.institution) || cleanField(ext?.college) || cleanField(ext?.education_entries?.[0]?.institution_name) || cleanField(savedDraft?.formData?.college) || (hasUploadContext ? "" : "University of Illinois"),
+    fullName: cleanField(location.state?.personal?.name) || cleanField(ext?.fullname) || cleanField(savedDraft?.formData?.fullName) || storedFullname || "",
+    email: cleanField(location.state?.personal?.email) || cleanField(ext?.email) || cleanField(savedDraft?.formData?.email) || accountEmail || "",
+    phone: cleanField(location.state?.personal?.phone) || cleanField(ext?.phone) || cleanField(savedDraft?.formData?.phone) || "",
+    location: cleanField(location.state?.personal?.location) || cleanField(ext?.location) || cleanField(savedDraft?.formData?.location) || "",
+    jobTitle: cleanField(location.state?.experience?.title) || cleanField(ext?.job_title) || cleanField(ext?.work_experiences?.[0]?.job_title) || cleanField(savedDraft?.formData?.jobTitle) || "",
+    company: cleanField(location.state?.experience?.company) || cleanField(ext?.company) || cleanField(ext?.work_experiences?.[0]?.company_name) || cleanField(savedDraft?.formData?.company) || "",
+    relevance: cleanField(location.state?.experience?.relevance) || cleanField(ext?.relevance) || cleanField(savedDraft?.formData?.relevance) || (ext?.years_experience ? `${ext.years_experience} years of experience` : ""),
+    degree: cleanDegreeField(
+      location.state?.education?.degree || ext?.degree,
+      ext?.education_entries?.[0]?.degree_or_course || savedDraft?.formData?.degree,
+      ext?.highest_degree
+    ),
+    college: cleanField(location.state?.education?.college) || cleanField(ext?.institution) || cleanField(ext?.college) || cleanField(ext?.education_entries?.[0]?.institution_name) || cleanField(savedDraft?.formData?.college) || "",
     skills: (Array.isArray(location.state?.skills) && location.state.skills.length > 0)
       ? location.state.skills
       : (Array.isArray(ext?.skills_list) && ext.skills_list.length > 0)
       ? ext.skills_list
       : (Array.isArray(savedDraft?.formData?.skills) && savedDraft.formData.skills.length > 0)
       ? savedDraft.formData.skills
-      : (hasUploadContext ? [] : ["Process Optimization", "Team Leadership", "Lean Manufacturing", "Safety Compliance", "ERP Systems"])
+      : []
   };
 
   const [formData, setFormData] = useState<ProfileFormData>(initialFormData);
@@ -219,9 +243,12 @@ const CandidateProfileForm: React.FC = () => {
         email: finalForm.email,
         phone: finalForm.phone,
         location: finalForm.location,
+        job_title: finalForm.jobTitle,
+        company: finalForm.company,
         experience: finalForm.jobTitle + (finalForm.company ? " | " + finalForm.company : ""),
         years_experience: clarifiedYears,
         relevance: finalForm.relevance,
+        degree: finalForm.degree,
         highest_degree: finalForm.degree,
         education: finalForm.college,
         college: finalForm.college,
