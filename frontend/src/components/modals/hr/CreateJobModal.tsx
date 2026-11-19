@@ -36,7 +36,8 @@ interface FormDataState {
 
 const CreateJobModal: React.FC<CreateJobModalProps> = ({ isOpen, onClose, onSuccess }) => {
   const role = useAppSelector((state) => state.auth.role);
-  const isAdmin = role === 'ADMIN';
+  const isAdmin = String(role || '').toUpperCase() === 'ADMIN';
+  const totalSteps = isAdmin ? 4 : 3;
   const { data: matchingConfig } = useGetMatchingConfigQuery(undefined, {
     skip: !isOpen || !isAdmin,
   });
@@ -105,6 +106,7 @@ const CreateJobModal: React.FC<CreateJobModalProps> = ({ isOpen, onClose, onSucc
     } else if (step === 3) {
       if (!formData.description) newErrors.description = 'Description is required';
       if (!formData.skills_requirements) newErrors.skills_requirements = 'Skills are required';
+    } else if (step === 4) {
       if (isAdmin && !isWeightsBalanced(effectiveWeights)) {
         newErrors.scoring_weights = 'Scoring weights must add up to 100%.';
       }
@@ -115,7 +117,7 @@ const CreateJobModal: React.FC<CreateJobModalProps> = ({ isOpen, onClose, onSucc
 
   const nextStep = () => {
     if (validateStep(currentStep)) {
-      setCurrentStep(prev => Math.min(prev + 1, 3));
+      setCurrentStep(prev => Math.min(prev + 1, totalSteps));
     }
   };
 
@@ -150,12 +152,12 @@ const CreateJobModal: React.FC<CreateJobModalProps> = ({ isOpen, onClose, onSucc
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (currentStep < 3) {
+    if (currentStep < totalSteps) {
       nextStep();
       return;
     }
 
-    if (!validateStep(3)) return;
+    if (!validateStep(totalSteps)) return;
 
     setStatus({ type: null, message: '' });
 
@@ -192,35 +194,44 @@ const CreateJobModal: React.FC<CreateJobModalProps> = ({ isOpen, onClose, onSucc
   const inputClasses = (hasError?: boolean | string | null) => `w-full px-4 py-3 bg-gray-50 border ${hasError ? 'border-red-300 ring-1 ring-red-50' : 'border-gray-200'} rounded-xl text-sm focus:outline-none focus:border-[#d81159] focus:ring-4 focus:ring-pink-50 transition-all duration-200`;
   const labelClasses = "flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-700 mb-2 ml-1";
 
-  const renderStepIndicator = () => (
-    <div className="px-4 sm:px-8 pt-4 sm:pt-6 pb-2">
-      <div className="flex items-center justify-between relative">
-        {/* Progress Line */}
-        <div className="absolute top-1/2 left-0 w-full h-0.5 bg-gray-100 -translate-y-1/2 z-0" />
-        <div 
-          className="absolute top-1/2 left-0 h-0.5 bg-gradient-to-r from-[#d81159] to-pink-400 -translate-y-1/2 z-0 transition-all duration-500 ease-out" 
-          style={{ width: `${((currentStep - 1) / 2) * 100}%` }}
-        />
-        
-        {[1, 2, 3].map((step) => (
-          <div key={step} className="relative z-10 flex flex-col items-center">
-            <div 
-              className={`w-8 h-8 sm:w-10 sm:h-10 rounded-full flex items-center justify-center border-2 sm:border-4 transition-all duration-300 ${
-                currentStep >= step 
-                  ? 'bg-white border-[#d81159] text-[#d81159] shadow-md sm:shadow-lg shadow-pink-100' 
-                  : 'bg-white border-gray-100 text-gray-300'
-              }`}
-            >
-              {currentStep > step ? <CheckCircle2 size={16} className="sm:w-5 sm:h-5 fill-[#d81159] text-white" /> : <span className="font-bold text-xs sm:text-sm">{step}</span>}
+  const renderStepIndicator = () => {
+    const steps = isAdmin ? [1, 2, 3, 4] : [1, 2, 3];
+    const stepLabels: Record<number, string> = {
+      1: 'General',
+      2: 'Details',
+      3: 'Requirements',
+      4: 'Weights',
+    };
+    return (
+      <div className="px-4 sm:px-8 pt-4 sm:pt-6 pb-2">
+        <div className="flex items-center justify-between relative">
+          {/* Progress Line */}
+          <div className="absolute top-1/2 left-0 w-full h-0.5 bg-gray-100 -translate-y-1/2 z-0" />
+          <div 
+            className="absolute top-1/2 left-0 h-0.5 bg-gradient-to-r from-[#d81159] to-pink-400 -translate-y-1/2 z-0 transition-all duration-500 ease-out" 
+            style={{ width: `${((currentStep - 1) / (totalSteps - 1)) * 100}%` }}
+          />
+          
+          {steps.map((step) => (
+            <div key={step} className="relative z-10 flex flex-col items-center">
+              <div 
+                className={`w-8 h-8 sm:w-10 sm:h-10 rounded-full flex items-center justify-center border-2 sm:border-4 transition-all duration-300 ${
+                  currentStep >= step 
+                    ? 'bg-white border-[#d81159] text-[#d81159] shadow-md sm:shadow-lg shadow-pink-100' 
+                    : 'bg-white border-gray-100 text-gray-300'
+                }`}
+              >
+                {currentStep > step ? <CheckCircle2 size={16} className="sm:w-5 sm:h-5 fill-[#d81159] text-white" /> : <span className="font-bold text-xs sm:text-sm">{step}</span>}
+              </div>
+              <span className={`mt-1.5 sm:mt-2 text-[9px] sm:text-[10px] font-bold uppercase tracking-tighter ${currentStep >= step ? 'text-[#d81159]' : 'text-gray-400'}`}>
+                {stepLabels[step]}
+              </span>
             </div>
-            <span className={`mt-1.5 sm:mt-2 text-[9px] sm:text-[10px] font-bold uppercase tracking-tighter ${currentStep >= step ? 'text-[#d81159]' : 'text-gray-400'}`}>
-              {step === 1 ? 'General' : step === 2 ? 'Details' : 'Requirements'}
-            </span>
-          </div>
-        ))}
+          ))}
+        </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-md transition-opacity duration-300">
@@ -283,7 +294,7 @@ const CreateJobModal: React.FC<CreateJobModalProps> = ({ isOpen, onClose, onSucc
           onKeyDown={(e) => {
             if (e.key === 'Enter' && (e.target as HTMLElement).tagName !== 'TEXTAREA') {
               e.preventDefault();
-              if (currentStep < 3) {
+              if (currentStep < totalSteps) {
                 nextStep();
               }
             }
@@ -530,18 +541,38 @@ const CreateJobModal: React.FC<CreateJobModalProps> = ({ isOpen, onClose, onSucc
                   </div>
                 </div>
 
-                {isAdmin && (
-                  <JobScoringWeightsEditor
-                    weights={effectiveWeights}
-                    defaultWeights={globalDefaultWeights}
-                    onChange={(next) => {
-                      setWeightsTouched(true);
-                      setFormData(prev => ({ ...prev, scoring_weights: next }));
-                      setErrors(prev => (prev.scoring_weights ? { ...prev, scoring_weights: null } : prev));
-                    }}
-                    error={errors.scoring_weights}
-                  />
+                {!isAdmin && (
+                  <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/80 text-xs text-slate-600 flex items-start gap-2.5">
+                    <Info size={15} className="text-slate-400 shrink-0 mt-0.5" />
+                    <span>
+                      This job will use the global scoring weights set in System Config. Only Admins can customize weights per job.
+                    </span>
+                  </div>
                 )}
+              </div>
+            )}
+
+            {/* Step 4: Per-Job Scoring Weights (Admin) */}
+            {isAdmin && currentStep === 4 && (
+              <div className="space-y-4 animate-in slide-in-from-right-4 duration-500">
+                <div className="p-4 rounded-2xl bg-pink-50/50 border border-pink-100">
+                  <h3 className="text-sm font-black text-gray-900">Per-Job Scoring Weights</h3>
+                  <p className="text-xs text-gray-600 mt-0.5 leading-relaxed">
+                    Adjust how much each criterion counts toward candidate match scores for this job posting. Starts from System Config defaults, or click <strong>Publish Position</strong> to save right away.
+                  </p>
+                </div>
+
+                <JobScoringWeightsEditor
+                  weights={effectiveWeights}
+                  defaultWeights={globalDefaultWeights}
+                  defaultExpanded={true}
+                  onChange={(next) => {
+                    setWeightsTouched(true);
+                    setFormData(prev => ({ ...prev, scoring_weights: next }));
+                    setErrors(prev => (prev.scoring_weights ? { ...prev, scoring_weights: null } : prev));
+                  }}
+                  error={errors.scoring_weights}
+                />
               </div>
             )}
           </div>
@@ -568,7 +599,7 @@ const CreateJobModal: React.FC<CreateJobModalProps> = ({ isOpen, onClose, onSucc
             </div>
 
             <div className="flex gap-2 sm:gap-3">
-              {currentStep < 3 ? (
+              {currentStep < totalSteps ? (
                 <button
                   key="continue-btn"
                   type="button"
