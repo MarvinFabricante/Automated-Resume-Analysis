@@ -192,3 +192,72 @@ async def test_security_status_reports_google_linked_for_candidate_hr_and_admin(
     assert hr_status_after.status_code == 200
     assert hr_status_after.json()["is_google_linked"] is False
     assert hr_status_after.json()["google_email"] is None
+
+
+@pytest.mark.asyncio
+async def test_hr_calendar_sync_persists_with_refresh_token_and_auto_upgrades_on_google_login(client, db_session):
+    from datetime import datetime, timedelta
+    from types import SimpleNamespace
+    from unittest.mock import MagicMock, patch
+    from app.models.hr import HR
+    from app.utils.auth import create_access_token, hash_password
+
+    hr_user = HR(
+        fullname="Marvin HR",
+        email="marvin_cal_hr@gmail.com",
+        password=hash_password("custompass123"),
+        role="HR",
+        company_name="Mariwasa",
+        google_linked=True,
+        google_credentials='{"token": "old", "refresh_token": "ref_tok_123", "scopes": ["https://www.googleapis.com/auth/calendar"]}',
+        google_refresh_token="ref_tok_123",
+        google_token_expiry=datetime.utcnow() - timedelta(hours=3),
+    )
+    db_session.add(hr_user)
+    await db_session.commit()
+
+    # 1. Expired access token with refresh_token still reports has_calendar_sync=True
+    hr_token = create_access_token({"sub": hr_user.email, "role": "HR", "id": hr_user.id})
+    status_res = await client.get("/auth/security-status", headers={"Authorization": f"Bearer {hr_token}"})
+    assert status_res.status_code == 200
+    assert status_res.json()["is_google_linked"] is True
+    assert status_res.json()["has_calendar_sync"] is True
+
+    # 2. HR logging in via universal Google Sign-In without calendar creds auto-chains HR Calendar OAuth
+    hr_no_cal = HR(
+        fullname="HR No Cal",
+        email="hr_autoupgrade@gmail.com",
+        password=hash_password("custompass123"),
+        role="HR",
+        company_name="Mariwasa",
+    )
+    db_session.add(hr_no_cal)
+    await db_session.commit()
+
+    fake_creds = SimpleNamespace(
+        token="tok_basic",
+        refresh_token=None,
+        expiry=datetime.utcnow() + timedelta(hours=1),
+        scopes=["openid", "email", "profile"],
+        to_json=lambda: '{"token": "tok_basic"}',
+    )
+    fake_user_resp = MagicMock()
+    fake_user_resp.json.return_value = {"email": "hr_autoupgrade@gmail.com", "name": "HR No Cal", "picture": ""}
+
+    with patch("app.controllers.auth_controller.exchange_code_for_credentials", return_value=(fake_creds, {"flow_type": "login", "role": "auto", "redirect_uri": "http://localhost:3000/api/auth/google/callback"})), \
+         patch("app.controllers.auth_controller.requests.get", return_value=fake_user_resp), \
+         patch("app.controllers.auth_controller.get_hr_google_auth_url", return_value=("https://accounts.google.com/o/oauth2/auth?scope=calendar&login_hint=hr_autoupgrade%40gmail.com", "st2")) as mock_hr_url:
+        cb_res = await client.get("/auth/google/callback?code=abc&state=st1", follow_redirects=False)
+
+    assert cb_res.status_code in (302, 307)
+    assert "accounts.google.com" in cb_res.headers["location"]
+    assert mock_hr_url.called
+    assert mock_hr_url.call_args.kwargs.get("flow_type") == "hr_calendar_upgrade"
+    assert mock_hr_url.call_args.kwargs.get("login_hint") == "hr_autoupgrade@gmail.com"
+
+    # 3. If HR denies calendar consent during upgrade, still logs into /auth/callback gracefully
+    with patch("app.utils.google_auth._pop_pending_flow", return_value={"flow_type": "hr_calendar_upgrade", "user_id": hr_no_cal.id, "redirect_uri": "http://localhost:3000/api/auth/google/callback"}):
+        cancel_res = await client.get("/auth/google/callback?error=access_denied&state=st2", follow_redirects=False)
+    assert cancel_res.status_code in (302, 307)
+    assert "/auth/callback?" in cancel_res.headers["location"]
+    assert "token=" in cancel_res.headers["location"]

@@ -515,7 +515,8 @@ const AccountSettings: React.FC = () => {
   const handleConnectGoogle = () => {
     const clientOrigin = typeof window !== 'undefined' ? window.location.origin : '';
     const flowRole = userRole.toLowerCase();
-    window.location.href = `${API_BASE_URL}/auth/google/login?origin=${encodeURIComponent(clientOrigin)}&flow=link_account&user_id=${userId}&role=${flowRole}`;
+    const userIdParam = userId ? `&user_id=${encodeURIComponent(userId)}` : '';
+    window.location.href = `${API_BASE_URL}/auth/google/login?origin=${encodeURIComponent(clientOrigin)}&flow=link_account${userIdParam}&role=${flowRole}`;
   };
 
   const handleDisconnectGoogle = async () => {

@@ -371,9 +371,20 @@ async def login_with_google(
         # Store google_credentials ONLY for HR/ADMIN when calendar scopes were actually granted
         if role in ["HR", "ADMIN"]:
             if has_calendar_scope and google_credentials:
-                user.google_credentials = google_credentials
+                import json as _json
+                merged_creds = google_credentials
+                effective_refresh = google_refresh_token or user.google_refresh_token
+                try:
+                    creds_dict = _json.loads(google_credentials)
+                    if isinstance(creds_dict, dict) and effective_refresh and not creds_dict.get("refresh_token"):
+                        creds_dict["refresh_token"] = effective_refresh
+                        merged_creds = _json.dumps(creds_dict)
+                except Exception:
+                    pass
+                user.google_credentials = merged_creds
                 user.google_access_token = google_access_token
-                user.google_refresh_token = google_refresh_token
+                if google_refresh_token:
+                    user.google_refresh_token = google_refresh_token
                 user.google_token_expiry = google_token_expiry or (datetime.utcnow() + timedelta(hours=1))
         else:
             user.google_credentials = None
@@ -416,13 +427,20 @@ async def login_with_google(
         details=f"User {email} ({role}) signed in via Google"
     )
 
+    has_calendar_sync = bool(
+        user
+        and user.google_credentials
+        and "calendar" in user.google_credentials
+    )
+
     return {
         "token": token,
         "role": role,
         "fullname": (user.fullname if user else fullname) or "",
         "user_id": user_id,
         "email": email,
-        "profile_image_url": user.profile_image_url if user else picture
+        "profile_image_url": user.profile_image_url if user else picture,
+        "has_calendar_sync": has_calendar_sync,
     }
 
 
@@ -491,13 +509,20 @@ async def register_candidate_with_google(db: AsyncSession, email: str, fullname:
         details=f"Candidate {email} registered via Google"
     )
 
+    has_calendar_sync = bool(
+        user
+        and user.google_credentials
+        and "calendar" in user.google_credentials
+    )
+
     return {
         "token": token,
         "role": role,
         "fullname": (user.fullname if user else fullname) or "",
         "user_id": user_id,
         "email": email,
-        "profile_image_url": user.profile_image_url if user else picture
+        "profile_image_url": user.profile_image_url if user else picture,
+        "has_calendar_sync": has_calendar_sync,
     }
 
 

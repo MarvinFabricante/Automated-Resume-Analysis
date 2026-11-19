@@ -1,5 +1,6 @@
 from datetime import datetime
 import os
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -183,7 +184,15 @@ async def get_security_status(
         except Exception:
             pass
 
-    has_calendar = bool(user.google_credentials and "calendar" in user.google_credentials and not is_google_expired)
+    has_refresh = bool(
+        user.google_refresh_token
+        or (user.google_credentials and "refresh_token" in user.google_credentials)
+    )
+    has_calendar = bool(
+        user.google_credentials
+        and "calendar" in user.google_credentials
+        and (not is_google_expired or has_refresh)
+    )
 
     return {
         "email": user.email,
@@ -397,12 +406,45 @@ async def google_login(request: Request, flow: str = "login", role: str = "auto"
     return RedirectResponse(url)
 
 @router.get("/google/callback")
-async def google_callback(request: Request, code: str, state: str = "", db: AsyncSession = Depends(get_db)):
+async def google_callback(
+    request: Request,
+    code: Optional[str] = None,
+    state: str = "",
+    error: Optional[str] = None,
+    db: AsyncSession = Depends(get_db),
+):
     base_url = _public_origin_from_request(request)
     flow_type = "login"
     role_requested = "auto"
     try:
+        if error or not code:
+            from app.utils.google_auth import _pop_pending_flow
+            pending = _pop_pending_flow(state) if state else {}
+            if pending.get("flow_type") == "hr_calendar_upgrade" and pending.get("user_id"):
+                user = await AuthRepository.get_user_by_id_fresh(db, int(pending["user_id"]))
+                if user:
+                    from app.utils.auth import create_access_token
+                    flow_redirect = pending.get("redirect_uri")
+                    if flow_redirect:
+                        parsed = urllib.parse.urlparse(flow_redirect)
+                        if parsed.scheme and parsed.netloc:
+                            base_url = f"{parsed.scheme}://{parsed.netloc}"
+                    token = create_access_token({"sub": user.email, "role": user.role, "id": user.id})
+                    params = {
+                        "token": token,
+                        "role": user.role,
+                        "fullname": user.fullname or "",
+                        "user_id": user.id,
+                        "email": user.email,
+                        "picture": user.profile_image_url or "",
+                    }
+                    if pending.get("return_to"):
+                        params["return_to"] = pending["return_to"]
+                    return RedirectResponse(f"{base_url}/auth/callback?{urlencode(params)}")
+            raise Exception(error or "Google authentication was canceled or missing authorization code.")
+
         creds, flow_info = exchange_code_for_credentials(code, state)
+        flow_redirect = None
         if isinstance(flow_info, dict):
             flow_type = flow_info.get("flow_type", "login")
             role_requested = flow_info.get("role", "auto")
@@ -460,9 +502,20 @@ async def google_callback(request: Request, code: str, state: str = "", db: Asyn
                 user = await AuthRepository.get_user_by_email_fresh(db, email)
                 
             if user:
-                user.google_credentials = creds_json
+                merged_creds = creds_json
+                effective_refresh = google_refresh_tok or user.google_refresh_token
+                try:
+                    import json as _json
+                    c_dict = _json.loads(creds_json)
+                    if isinstance(c_dict, dict) and effective_refresh and not c_dict.get("refresh_token"):
+                        c_dict["refresh_token"] = effective_refresh
+                        merged_creds = _json.dumps(c_dict)
+                except Exception:
+                    pass
+                user.google_credentials = merged_creds
                 user.google_access_token = google_access_tok
-                user.google_refresh_token = google_refresh_tok
+                if google_refresh_tok:
+                    user.google_refresh_token = google_refresh_tok
                 user.google_token_expiry = google_expiry
                 user.google_linked = True
                 if picture and not user.profile_image_url:
@@ -492,6 +545,26 @@ async def google_callback(request: Request, code: str, state: str = "", db: Asyn
                 google_refresh_token=google_refresh_tok,
                 google_token_expiry=google_expiry
             )
+
+        return_to = flow_info.get("return_to") if isinstance(flow_info, dict) else None
+
+        # When an HR user logs in via universal Google Sign-In without Calendar permissions yet,
+        # automatically chain the HR Calendar authorization step so Google Calendar is connected
+        # to the HR module right away.
+        if (
+            flow_type == "login"
+            and (data.get("role") or "").upper() == "HR"
+            and not data.get("has_calendar_sync")
+        ):
+            cal_redirect = flow_redirect or _redirect_uri_for_origin(base_url)
+            cal_url, _ = get_hr_google_auth_url(
+                flow_type="hr_calendar_upgrade",
+                redirect_uri=cal_redirect,
+                user_id=data["user_id"],
+                return_to=return_to,
+                login_hint=email,
+            )
+            return RedirectResponse(cal_url)
         
         # Redirect to frontend with token, role, email, and user details
         params = {
@@ -502,7 +575,6 @@ async def google_callback(request: Request, code: str, state: str = "", db: Asyn
             "email": email,
             "picture": data.get("profile_image_url", "")
         }
-        return_to = flow_info.get("return_to") if isinstance(flow_info, dict) else None
         if return_to:
             params["return_to"] = return_to
         frontend_url = f"{base_url}/auth/callback?{urlencode(params)}"
