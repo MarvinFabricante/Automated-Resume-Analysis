@@ -478,7 +478,7 @@ const Header: React.FC = () => {
   }, [isMobileMenuOpen]);
 
   const getNavItems = () => {
-    if (isPublicSitePage) return [
+    if (isGuest) return [
       { label: 'Home', path: '/', icon: <Home size={18} /> },
       { label: 'About', path: '/aboutpage', icon: <Info size={18} /> },
       { label: 'Careers', path: '/careerspage', icon: <Briefcase size={18} /> },
@@ -497,6 +497,7 @@ const Header: React.FC = () => {
     ];
     if (isCandidateRole) return [
       { label: 'Dashboard', path: '/candidate/dashboard', icon: <LayoutDashboard size={18} /> },
+      { label: 'Open Positions', path: '/candidate/findjobs', icon: <Briefcase size={18} /> },
       { label: 'Applications', path: '/candidate/applicationtracking', icon: <FileText size={18} /> },
     ];
     return [
@@ -548,7 +549,20 @@ const Header: React.FC = () => {
               </button>
             )}
 
-            <div className="flex items-center space-x-2 sm:space-x-4 cursor-pointer group shrink-0" onClick={() => navigate(isGuest ? '/' : location.pathname)}>
+            <div
+              className="flex items-center space-x-2 sm:space-x-4 cursor-pointer group shrink-0"
+              onClick={() =>
+                navigate(
+                  isGuest
+                    ? '/'
+                    : isAdminRole
+                    ? '/admin/dashboard'
+                    : isHRRole || isHRPage
+                    ? '/hr/dashboard'
+                    : '/candidate/dashboard'
+                )
+              }
+            >
               <div className={`w-8 h-8 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center overflow-hidden transition-all duration-300 shrink-0 ${!isGuest && 'group-hover:shadow-[0_0_15px_rgba(209,0,67,0.3)]'}`}>
                 <img src={(logo as any)?.src || logo} alt="logo" className="w-full h-full object-contain" />
               </div>
