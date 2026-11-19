@@ -51,11 +51,8 @@ const FindJob: React.FC = () => {
   const [jobs, setJobs] = useState<DisplayJob[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
-  // Search & Filter state
+  // Search & Filter state (searchTerm is driven by the navigation bar search query ?search=...)
   const [searchTerm, setSearchTerm] = useState<string>(urlSearch);
-  const [showSuggestions, setShowSuggestions] = useState<boolean>(false);
-  const [highlightedIdx, setHighlightedIdx] = useState<number>(-1);
-  const [startingLetter, setStartingLetter] = useState<string>('All');
 
   useEffect(() => {
     setSearchTerm(urlSearch);
@@ -179,44 +176,6 @@ const FindJob: React.FC = () => {
     return counts;
   }, [jobs]);
 
-  // Available starting letters from active job titles
-  const availableLetters = useMemo(() => {
-    const letters = new Set<string>();
-    jobs.forEach((j) => {
-      if (j.is_active === false) return;
-      const first = (j.title || '').trim().charAt(0).toUpperCase();
-      if (/^[A-Z]$/.test(first)) letters.add(first);
-    });
-    return Array.from(letters).sort();
-  }, [jobs]);
-
-  // Popular skill keywords extracted from active postings
-  const popularSkillKeywords = useMemo(() => {
-    const counts = new Map<string, number>();
-    jobs.forEach((j) => {
-      if (j.is_active === false) return;
-      const tokens = String(j.skills_requirements || '')
-        .split(/[,;\n•]+/)
-        .map((s) => s.trim())
-        .filter((s) => s.length >= 2 && s.length <= 28);
-      tokens.forEach((tok) => {
-        counts.set(tok, (counts.get(tok) || 0) + 1);
-      });
-    });
-    return Array.from(counts.entries())
-      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
-      .slice(0, 6)
-      .map(([skill]) => skill);
-  }, [jobs]);
-
-  // Live autocomplete suggestions (strictly uses filterAndRankJobs so letters & keywords match accurately)
-  const searchSuggestions = useMemo(() => {
-    const q = searchTerm.trim();
-    if (!q) return [];
-    const activeJobs = jobs.filter((j) => j.is_active !== false);
-    return filterAndRankJobs(activeJobs, q).slice(0, 7);
-  }, [jobs, searchTerm]);
-
   // Filtering Logic
   const filteredJobs = useMemo(() => {
     const activeJobs = jobs.filter((j) => j.is_active !== false);
@@ -228,11 +187,8 @@ const FindJob: React.FC = () => {
       const matchesLocation =
         selectedLocation === 'All' || job.location === selectedLocation;
       const matchesSaved = !showSavedOnly || bookmarkedIds.includes(job.id);
-      const matchesLetter =
-        startingLetter === 'All' ||
-        (job.title || '').trim().toUpperCase().startsWith(startingLetter);
 
-      return matchesDept && matchesType && matchesLocation && matchesSaved && matchesLetter;
+      return matchesDept && matchesType && matchesLocation && matchesSaved;
     });
 
     if (sortBy === 'title-asc') {
@@ -247,7 +203,6 @@ const FindJob: React.FC = () => {
   }, [
     jobs,
     searchTerm,
-    startingLetter,
     selectedDept,
     selectedJobType,
     selectedLocation,
@@ -259,8 +214,7 @@ const FindJob: React.FC = () => {
   // Reset page when filters change
   useEffect(() => {
     setCurrentPage(1);
-    setHighlightedIdx(-1);
-  }, [searchTerm, startingLetter, selectedDept, selectedJobType, selectedLocation, showSavedOnly, sortBy]);
+  }, [searchTerm, selectedDept, selectedJobType, selectedLocation, showSavedOnly, sortBy]);
 
   // Pagination Calculations
   const totalPages = Math.ceil(filteredJobs.length / itemsPerPage) || 1;
@@ -287,18 +241,18 @@ const FindJob: React.FC = () => {
 
   const resetAllFilters = () => {
     setSearchTerm('');
-    setStartingLetter('All');
+    if (urlSearch) {
+      navigate('/candidate/findjobs', { replace: true });
+    }
     setSelectedDept('All');
     setSelectedJobType('All');
     setSelectedLocation('All');
     setShowSavedOnly(false);
     setSortBy('featured');
-    setShowSuggestions(false);
   };
 
   const hasActiveFilters =
     searchTerm !== '' ||
-    startingLetter !== 'All' ||
     selectedDept !== 'All' ||
     selectedJobType !== 'All' ||
     selectedLocation !== 'All' ||
@@ -317,8 +271,8 @@ const FindJob: React.FC = () => {
         <Sidebar />
         <main className="flex-grow min-w-0">
 
-          {/* CANDIDATE JOB SEARCH WORKSPACE HEADER */}
-          <section className="relative pt-6 sm:pt-8 pb-6 sm:pb-8 px-4 sm:px-6 lg:px-10 bg-white border-b border-slate-200/70">
+          {/* CANDIDATE JOB WORKSPACE HEADER & FILTERS */}
+          <section className="relative pt-6 sm:pt-8 pb-6 sm:pb-7 px-4 sm:px-6 lg:px-10 bg-white border-b border-slate-200/70">
             <div className="max-w-[1360px] mx-auto relative z-20 space-y-5">
 
               {/* Top Title + Resume Matcher Quick Action */}
@@ -326,13 +280,13 @@ const FindJob: React.FC = () => {
                 <div>
                   <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#D10043]/8 border border-[#D10043]/15 text-[#D10043] text-[11px] font-black uppercase tracking-wider mb-2">
                     <Sparkles size={13} className="text-[#D10043]" />
-                    Candidate Job Finder
+                    Open Positions
                   </div>
                   <h1 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
-                    Find Open Positions at <span className="text-[#D10043]">Mariwasa</span>
+                    Explore Open Roles at <span className="text-[#D10043]">Mariwasa</span>
                   </h1>
                   <p className="text-xs sm:text-sm text-slate-500 font-medium mt-1">
-                    Type a letter or skill keyword to see matching roles right away, save favorites, or apply directly.
+                    Use the top navigation search bar to look up jobs by letter or keyword, or filter roles below.
                   </p>
                 </div>
 
@@ -357,115 +311,23 @@ const FindJob: React.FC = () => {
                 </div>
               </div>
 
-              {/* CANDIDATE SEARCH ENGINE & MULTI-FILTER CONSOLE */}
-              <div className="w-full bg-slate-50/70 p-3 sm:p-4 rounded-3xl border border-slate-200/80 space-y-3">
-                {/* Primary Search Bar + Dropdown Filters */}
-                <div className="flex flex-col lg:flex-row gap-2.5">
-
-                  {/* Keyword & Letter Search Input with Live Suggestions Dropdown */}
-                  <div className="relative flex-grow min-w-0">
-                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 z-20 pointer-events-none" size={18} />
-                    <input
-                      type="text"
-                      aria-label="Search open positions by letter or keyword"
-                      placeholder="Search by starting letter (e.g. S), job title, or skill keyword..."
-                      value={searchTerm}
-                      onChange={(e) => {
-                        setSearchTerm(e.target.value);
-                        setShowSuggestions(true);
-                      }}
-                      onFocus={() => setShowSuggestions(true)}
-                      onBlur={() => setTimeout(() => setShowSuggestions(false), 180)}
-                      onKeyDown={(e) => {
-                        if (!showSuggestions || searchSuggestions.length === 0) return;
-                        if (e.key === 'ArrowDown') {
-                          e.preventDefault();
-                          setHighlightedIdx((prev) => Math.min(prev + 1, searchSuggestions.length - 1));
-                        } else if (e.key === 'ArrowUp') {
-                          e.preventDefault();
-                          setHighlightedIdx((prev) => Math.max(prev - 1, -1));
-                        } else if (e.key === 'Enter' && highlightedIdx >= 0) {
-                          e.preventDefault();
-                          const chosen = searchSuggestions[highlightedIdx];
-                          setSearchTerm(chosen.title);
-                          setShowSuggestions(false);
-                        } else if (e.key === 'Escape') {
-                          setShowSuggestions(false);
-                        }
-                      }}
-                      className="w-full pl-11 pr-10 py-3 bg-white border border-slate-200 rounded-2xl focus:outline-none focus:ring-4 focus:ring-[#D10043]/10 focus:border-[#D10043] transition-all text-xs sm:text-sm font-semibold placeholder:text-slate-400 text-slate-900 relative z-10"
-                    />
-                    {searchTerm && (
-                      <button
-                        type="button"
-                        aria-label="Clear search"
-                        onClick={() => {
-                          setSearchTerm('');
-                          setShowSuggestions(false);
-                        }}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-700 rounded-full hover:bg-slate-100 transition-colors z-20 cursor-pointer"
-                      >
-                        <X size={16} />
-                      </button>
-                    )}
-
-                    {/* Live Matching Jobs Suggestions Dropdown (matching Careers Page + enriched with candidate info) */}
-                    {showSuggestions && searchTerm.trim() !== '' && (
-                      <div className="absolute top-[calc(100%+6px)] left-0 w-full bg-white border border-slate-200 rounded-2xl shadow-2xl z-50 overflow-hidden py-1.5">
-                        <div className="px-4 py-1.5 border-b border-slate-100 flex items-center justify-between text-[11px] font-bold text-slate-400 uppercase tracking-wider">
-                          <span>
-                            Matching Jobs for &ldquo;{searchTerm.trim()}&rdquo;
-                          </span>
-                          <span>{searchSuggestions.length} shown</span>
-                        </div>
-                        {searchSuggestions.length > 0 ? (
-                          searchSuggestions.map((job, idx) => (
-                            <button
-                              key={job.id}
-                              type="button"
-                              onMouseDown={() => {
-                                setSearchTerm(job.title);
-                                setShowSuggestions(false);
-                              }}
-                              className={`w-full text-left px-4 py-2.5 flex items-center justify-between gap-3 transition-colors cursor-pointer ${
-                                idx === highlightedIdx ? 'bg-pink-50 text-[#D10043]' : 'hover:bg-slate-50 text-slate-800'
-                              }`}
-                            >
-                              <div className="flex items-center gap-2.5 min-w-0">
-                                <Search size={14} className="text-[#D10043] shrink-0" />
-                                <div className="min-w-0">
-                                  <p className="text-xs sm:text-sm font-bold truncate">{job.title}</p>
-                                  <p className="text-[11px] text-slate-500 truncate">
-                                    {job.department} • {job.location} • {job.job_type}
-                                  </p>
-                                </div>
-                              </div>
-                              <span className="text-[10px] font-black uppercase tracking-wider text-[#D10043] bg-pink-50 px-2 py-0.5 rounded-lg shrink-0">
-                                Select
-                              </span>
-                            </button>
-                          ))
-                        ) : (
-                          <div className="px-4 py-3 text-xs text-slate-500 font-medium">
-                            No open positions match &ldquo;{searchTerm.trim()}&rdquo;. Try another letter or skill keyword.
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-
+              {/* FILTER BAR (No duplicate search bar; uses the navigation bar search) */}
+              <div className="w-full bg-slate-50/70 p-3 sm:p-4 rounded-2xl sm:rounded-3xl border border-slate-200/80 flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 flex-1">
                   {/* Department Dropdown */}
-                  <div className="relative w-full lg:w-52 shrink-0">
+                  <div className="relative">
                     <Building2 className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={16} />
                     <select
                       aria-label="Filter by Department"
                       value={selectedDept}
                       onChange={(e) => setSelectedDept(e.target.value)}
-                      className="w-full appearance-none pl-10 pr-8 py-3 bg-white border border-slate-200 rounded-2xl focus:outline-none focus:ring-4 focus:ring-[#D10043]/10 focus:border-[#D10043] text-xs sm:text-sm font-semibold text-slate-700 cursor-pointer transition-all truncate"
+                      className="w-full appearance-none pl-10 pr-8 py-2.5 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-4 focus:ring-[#D10043]/10 focus:border-[#D10043] text-xs sm:text-sm font-semibold text-slate-700 cursor-pointer transition-all truncate"
                     >
                       {departments.map((dept) => (
                         <option key={dept} value={dept}>
-                          {dept === 'All' ? 'All Departments' : dept}
+                          {dept === 'All'
+                            ? 'All Departments'
+                            : `${dept}${deptCounts[dept] ? ` (${deptCounts[dept]})` : ''}`}
                         </option>
                       ))}
                     </select>
@@ -473,13 +335,13 @@ const FindJob: React.FC = () => {
                   </div>
 
                   {/* Employment Type Dropdown */}
-                  <div className="relative w-full lg:w-44 shrink-0">
+                  <div className="relative">
                     <Clock className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={16} />
                     <select
                       aria-label="Filter by Employment Type"
                       value={selectedJobType}
                       onChange={(e) => setSelectedJobType(e.target.value)}
-                      className="w-full appearance-none pl-10 pr-8 py-3 bg-white border border-slate-200 rounded-2xl focus:outline-none focus:ring-4 focus:ring-[#D10043]/10 focus:border-[#D10043] text-xs sm:text-sm font-semibold text-slate-700 cursor-pointer transition-all truncate"
+                      className="w-full appearance-none pl-10 pr-8 py-2.5 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-4 focus:ring-[#D10043]/10 focus:border-[#D10043] text-xs sm:text-sm font-semibold text-slate-700 cursor-pointer transition-all truncate"
                     >
                       {jobTypes.map((type) => (
                         <option key={type} value={type}>
@@ -491,13 +353,13 @@ const FindJob: React.FC = () => {
                   </div>
 
                   {/* Location Dropdown */}
-                  <div className="relative w-full lg:w-48 shrink-0">
+                  <div className="relative">
                     <MapPin className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={16} />
                     <select
                       aria-label="Filter by Location"
                       value={selectedLocation}
                       onChange={(e) => setSelectedLocation(e.target.value)}
-                      className="w-full appearance-none pl-10 pr-8 py-3 bg-white border border-slate-200 rounded-2xl focus:outline-none focus:ring-4 focus:ring-[#D10043]/10 focus:border-[#D10043] text-xs sm:text-sm font-semibold text-slate-700 cursor-pointer transition-all truncate"
+                      className="w-full appearance-none pl-10 pr-8 py-2.5 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-4 focus:ring-[#D10043]/10 focus:border-[#D10043] text-xs sm:text-sm font-semibold text-slate-700 cursor-pointer transition-all truncate"
                     >
                       {locations.map((loc) => (
                         <option key={loc} value={loc}>
@@ -509,131 +371,53 @@ const FindJob: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Quick Filters: Starting Letters + Popular Skills + Saved/Reset */}
-                <div className="flex flex-col gap-2.5 pt-2 border-t border-slate-200/70">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    {/* Quick Letter Filter */}
-                    <div className="flex items-center gap-1 flex-wrap">
-                      <span className="text-[11px] font-black uppercase tracking-wider text-slate-400 mr-1">
-                        By Letter:
-                      </span>
+                {/* Active Search Chip + Saved Jobs + Reset */}
+                <div className="flex flex-wrap items-center gap-2 shrink-0">
+                  {searchTerm.trim() !== '' && (
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-50 text-[#D10043] border border-rose-200 text-xs font-bold">
+                      <span>Search: &ldquo;{searchTerm.trim()}&rdquo;</span>
                       <button
                         type="button"
-                        onClick={() => setStartingLetter('All')}
-                        className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${
-                          startingLetter === 'All'
-                            ? 'bg-slate-900 text-white'
-                            : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-100'
-                        }`}
+                        aria-label="Clear active search filter"
+                        onClick={() => {
+                          setSearchTerm('');
+                          if (urlSearch) navigate('/candidate/findjobs', { replace: true });
+                        }}
+                        className="p-0.5 rounded-full hover:bg-rose-100 cursor-pointer"
                       >
-                        All
+                        <X size={13} />
                       </button>
-                      {availableLetters.map((letter) => (
-                        <button
-                          key={letter}
-                          type="button"
-                          onClick={() => setStartingLetter((prev) => (prev === letter ? 'All' : letter))}
-                          className={`w-7 h-7 rounded-lg text-[11px] font-black transition-all cursor-pointer flex items-center justify-center ${
-                            startingLetter === letter
-                              ? 'bg-[#D10043] text-white shadow-xs'
-                              : 'bg-white border border-slate-200 text-slate-700 hover:border-[#D10043]/40 hover:text-[#D10043]'
-                          }`}
-                        >
-                          {letter}
-                        </button>
-                      ))}
-                    </div>
-
-                    {/* Saved Jobs & Reset */}
-                    <div className="flex items-center gap-2 ml-auto shrink-0">
-                      <button
-                        type="button"
-                        onClick={() => setShowSavedOnly(!showSavedOnly)}
-                        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all border cursor-pointer ${showSavedOnly
-                            ? 'bg-pink-50 text-[#D10043] border-pink-200 shadow-xs'
-                            : 'bg-white hover:bg-slate-100 text-slate-600 border-slate-200'
-                          }`}
-                      >
-                        <Bookmark size={13} className={showSavedOnly ? 'fill-[#D10043]' : ''} />
-                        Saved Jobs
-                        {bookmarkedIds.length > 0 && (
-                          <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${showSavedOnly ? 'bg-[#D10043] text-white' : 'bg-slate-100 text-slate-600'
-                            }`}>
-                            {bookmarkedIds.length}
-                          </span>
-                        )}
-                      </button>
-
-                      {hasActiveFilters && (
-                        <button
-                          type="button"
-                          onClick={resetAllFilters}
-                          className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-bold text-[#D10043] hover:bg-pink-50 rounded-xl transition-colors cursor-pointer"
-                        >
-                          <RotateCcw size={13} />
-                          Reset
-                        </button>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Popular Department & Skill Keyword Chips */}
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    <span className="text-[11px] font-black uppercase tracking-wider text-slate-400 mr-1">
-                      Departments:
                     </span>
-                    {departments.slice(0, 5).map((dept) => {
-                      const isSelected = selectedDept === dept;
-                      return (
-                        <button
-                          key={dept}
-                          type="button"
-                          onClick={() => setSelectedDept(dept)}
-                          className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${isSelected
-                              ? 'bg-[#D10043] text-white shadow-xs'
-                              : 'bg-white border border-slate-200 hover:bg-slate-100 text-slate-600'
-                            }`}
-                        >
-                          {dept}
-                          {dept !== 'All' && deptCounts[dept] ? (
-                            <span className={`ml-1.5 text-[10px] px-1 rounded-full ${isSelected ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-600'
-                              }`}>
-                              {deptCounts[dept]}
-                            </span>
-                          ) : null}
-                        </button>
-                      );
-                    })}
+                  )}
 
-                    {popularSkillKeywords.length > 0 && (
-                      <>
-                        <span className="text-slate-300 mx-1 hidden sm:inline">|</span>
-                        <span className="text-[11px] font-black uppercase tracking-wider text-slate-400 mr-1">
-                          Keywords:
-                        </span>
-                        {popularSkillKeywords.map((kw) => {
-                          const isKwActive = searchTerm.toLowerCase() === kw.toLowerCase();
-                          return (
-                            <button
-                              key={kw}
-                              type="button"
-                              onClick={() => {
-                                setSearchTerm(isKwActive ? '' : kw);
-                                setShowSuggestions(false);
-                              }}
-                              className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${
-                                isKwActive
-                                  ? 'bg-slate-900 text-white'
-                                  : 'bg-white border border-slate-200 text-slate-600 hover:border-[#D10043]/40 hover:text-[#D10043]'
-                              }`}
-                            >
-                              {kw}
-                            </button>
-                          );
-                        })}
-                      </>
+                  <button
+                    type="button"
+                    onClick={() => setShowSavedOnly(!showSavedOnly)}
+                    className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition-all border cursor-pointer ${showSavedOnly
+                        ? 'bg-pink-50 text-[#D10043] border-pink-200 shadow-xs'
+                        : 'bg-white hover:bg-slate-100 text-slate-600 border-slate-200'
+                      }`}
+                  >
+                    <Bookmark size={13} className={showSavedOnly ? 'fill-[#D10043]' : ''} />
+                    Saved Jobs
+                    {bookmarkedIds.length > 0 && (
+                      <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${showSavedOnly ? 'bg-[#D10043] text-white' : 'bg-slate-100 text-slate-600'
+                        }`}>
+                        {bookmarkedIds.length}
+                      </span>
                     )}
-                  </div>
+                  </button>
+
+                  {hasActiveFilters && (
+                    <button
+                      type="button"
+                      onClick={resetAllFilters}
+                      className="inline-flex items-center gap-1 px-3 py-2 text-xs font-bold text-[#D10043] hover:bg-pink-50 rounded-xl transition-colors cursor-pointer"
+                    >
+                      <RotateCcw size={13} />
+                      Reset
+                    </button>
+                  )}
                 </div>
               </div>
 
@@ -653,9 +437,7 @@ const FindJob: React.FC = () => {
                       ? 'Your Saved Roles'
                       : searchTerm.trim()
                         ? `Results for "${searchTerm.trim()}"`
-                        : startingLetter !== 'All'
-                          ? `Positions Starting with "${startingLetter}"`
-                          : 'Available Positions'}
+                        : 'Available Positions'}
                   </h2>
                   <span className="px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-600 font-mono text-xs font-black">
                     {filteredJobs.length}

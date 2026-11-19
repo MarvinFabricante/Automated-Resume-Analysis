@@ -83,7 +83,7 @@ const UniversalSearch: React.FC<UniversalSearchProps> = ({
   useEffect(() => {
     const handler = setTimeout(() => {
       setDebouncedQuery(query.trim());
-    }, 250);
+    }, 120);
     return () => clearTimeout(handler);
   }, [query]);
 
@@ -198,7 +198,7 @@ const UniversalSearch: React.FC<UniversalSearchProps> = ({
         type: 'job',
         category: 'Jobs',
         title: job.job_title || job.title || 'Untitled Role',
-        subtitle: job.department || 'Mariwasa Siam Ceramics',
+        subtitle: `${job.department || 'Mariwasa Siam Ceramics'} • ${job.location || 'Sto. Tomas, Batangas'}`,
         location: job.location || 'Sto. Tomas, Batangas',
         tag: job.job_type || 'Full-Time',
         tagColor: 'bg-slate-100 text-slate-700',
@@ -258,6 +258,33 @@ const UniversalSearch: React.FC<UniversalSearchProps> = ({
       return;
     }
 
+    if (e.key === 'Enter') {
+      const trimmed = query.trim();
+      if (!trimmed) return;
+      e.preventDefault();
+
+      if (isOpen && selectedIndex >= 0 && selectedIndex < results.length) {
+        handleSelectResult(results[selectedIndex]);
+        return;
+      }
+
+      if (!isHR) {
+        const targetUrl = isCandidate
+          ? `/candidate/findjobs?search=${encodeURIComponent(trimmed)}`
+          : `/careerspage`;
+        setIsOpen(false);
+        setQuery('');
+        if (onCloseMobile) onCloseMobile();
+        navigate(targetUrl);
+        return;
+      }
+
+      if (results.length > 0) {
+        handleSelectResult(results[0]);
+      }
+      return;
+    }
+
     if (!isOpen || results.length === 0) return;
 
     if (e.key === 'ArrowDown') {
@@ -266,13 +293,6 @@ const UniversalSearch: React.FC<UniversalSearchProps> = ({
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
       setSelectedIndex(prev => (prev > 0 ? prev - 1 : results.length - 1));
-    } else if (e.key === 'Enter') {
-      e.preventDefault();
-      if (selectedIndex >= 0 && selectedIndex < results.length) {
-        handleSelectResult(results[selectedIndex]);
-      } else if (results.length > 0) {
-        handleSelectResult(results[0]);
-      }
     }
   };
 
