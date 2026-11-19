@@ -3,8 +3,8 @@ import sys
 import requests
 import json
 
-ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-BACKEND_DIR = os.path.join(ROOT_DIR, "backend")
+BACKEND_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+ROOT_DIR = os.path.abspath(os.path.join(BACKEND_DIR, ".."))
 
 BACKEND_LOCAL = "http://127.0.0.1:8000"
 FRONTEND_LOCAL = "http://127.0.0.1:5173"

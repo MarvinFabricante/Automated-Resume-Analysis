@@ -1,23 +1,23 @@
 import os
 import sys
 
-# Ensure project root is in sys.path
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+# Ensure backend/scripts directory is in sys.path for manual_builder imports
+sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
 import base64
 import subprocess
 import time
 import fitz
 
-from scripts.manual_builder.styles import get_css
-from scripts.manual_builder.cover import get_cover_html
-from scripts.manual_builder.ch1_overview import get_ch1_html
-from scripts.manual_builder.ch2_access import get_ch2_html
-from scripts.manual_builder.ch3_candidate import get_ch3_html
-from scripts.manual_builder.ch4_hr import get_ch4_html
-from scripts.manual_builder.ch5_admin import get_ch5_html
-from scripts.manual_builder.ch6_ai_engine import get_ch6_html
-from scripts.manual_builder.ch7_ops import get_ch7_html
-from scripts.manual_builder.ch8_troubleshooting import get_ch8_html
+from manual_builder.styles import get_css
+from manual_builder.cover import get_cover_html
+from manual_builder.ch1_overview import get_ch1_html
+from manual_builder.ch2_access import get_ch2_html
+from manual_builder.ch3_candidate import get_ch3_html
+from manual_builder.ch4_hr import get_ch4_html
+from manual_builder.ch5_admin import get_ch5_html
+from manual_builder.ch6_ai_engine import get_ch6_html
+from manual_builder.ch7_ops import get_ch7_html
+from manual_builder.ch8_troubleshooting import get_ch8_html
 
 def load_b64(path):
     if os.path.exists(path):

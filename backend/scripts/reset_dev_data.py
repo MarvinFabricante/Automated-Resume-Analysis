@@ -6,7 +6,7 @@ Resets test applicant data, jobs, rosters, applications, and logs while preservi
 HR & Admin accounts, roles, permissions, database schema, and system configurations.
 
 Usage:
-    python scripts/reset_dev_data.py [--force-dev]
+    python backend/scripts/reset_dev_data.py [--force-dev]
 """
 
 import os
@@ -17,8 +17,8 @@ import argparse
 from datetime import datetime
 
 # Add project root and backend to Python path
-ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-BACKEND_DIR = os.path.join(ROOT_DIR, "backend")
+BACKEND_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+ROOT_DIR = os.path.abspath(os.path.join(BACKEND_DIR, ".."))
 if ROOT_DIR not in sys.path:
     sys.path.insert(0, ROOT_DIR)
 if BACKEND_DIR not in sys.path:
@@ -330,7 +330,7 @@ def main():
             print(f"  ✓ User #{u[0]}: {u[1]} ({u[2]})")
         conn.close()
 
-    print("\nReady for seeding jobs via: python scripts/seed_test_jobs.py")
+    print("\nReady for seeding jobs via: python backend/scripts/seed_test_jobs.py")
     print("=" * 65)
 
 
