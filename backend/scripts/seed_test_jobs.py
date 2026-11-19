@@ -7,7 +7,7 @@ and their corresponding application form templates with suggested questions.
 Idempotent and safe to run multiple times without creating duplicates.
 
 Usage:
-    python scripts/seed_test_jobs.py
+    python backend/scripts/seed_test_jobs.py
 """
 
 import os
@@ -16,8 +16,8 @@ import json
 import sqlite3
 from datetime import datetime
 
-ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-BACKEND_DIR = os.path.join(ROOT_DIR, "backend")
+BACKEND_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+ROOT_DIR = os.path.abspath(os.path.join(BACKEND_DIR, ".."))
 if ROOT_DIR not in sys.path:
     sys.path.insert(0, ROOT_DIR)
 if BACKEND_DIR not in sys.path:

@@ -4,10 +4,10 @@ import base64
 import subprocess
 import fitz
 
-# Ensure project root is in sys.path
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+# Ensure backend/scripts directory is in sys.path for manual_builder imports
+sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
 
-from scripts.manual_builder.styles import get_css
+from manual_builder.styles import get_css
 
 def load_b64(path):
     if os.path.exists(path):
