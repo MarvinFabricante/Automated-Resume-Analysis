@@ -11,7 +11,8 @@ from app.services.interview_service import interview_service
 @pytest.fixture(autouse=True)
 def mock_interview_emails():
     with patch("app.services.email_service.EmailService.send_interview_invitation_email", new_callable=AsyncMock) as m1, \
-         patch("app.services.email_service.EmailService.send_interview_rescheduled_email", new_callable=AsyncMock) as m2:
+         patch("app.services.email_service.EmailService.send_interview_rescheduled_email", new_callable=AsyncMock) as m2, \
+         patch("app.services.interview_service.send_iprogsms_sync", return_value=True):
         m1.return_value = True
         m2.return_value = True
         yield (m1, m2)
@@ -491,8 +492,7 @@ async def test_one_click_scheduling_shortlisted_candidate_creates_calendar_event
     # Step 3: Confirm one-click scheduling with Google Calendar event creation
     with patch("app.services.interview_service.create_real_google_event", return_value=mock_google_event) as mock_create_event, \
          patch("app.services.interview_service.send_sms_notification_sync", return_value=True), \
-         patch("app.services.notification_service.create_notification", new_callable=AsyncMock), \
-         patch("app.tasks.initiate_interview_call_task.delay"):
+         patch("app.services.notification_service.create_notification", new_callable=AsyncMock):
 
         interview = await interview_service.schedule_interview(db_session, schedule_data, hr_user.id)
 
@@ -599,8 +599,7 @@ async def test_invites_sent_to_candidate_hr_and_panel(db_session, mock_interview
     m_email.reset_mock()
 
     with patch("app.services.interview_service.create_real_google_event", return_value=mock_google_event) as mock_create_event, \
-         patch("app.services.notification_service.create_notification", new_callable=AsyncMock) as mock_notif, \
-         patch("app.tasks.initiate_interview_call_task.delay"):
+         patch("app.services.notification_service.create_notification", new_callable=AsyncMock) as mock_notif:
 
         interview = await interview_service.schedule_interview(db_session, schedule_data, hr_scheduler.id)
 
@@ -701,8 +700,7 @@ async def test_double_booking_two_candidates_same_slot_blocked_with_conflict(db_
         start_time=slot_start,
         end_time=slot_end,
     )
-    with patch("app.services.notification_service.create_notification", new_callable=AsyncMock), \
-         patch("app.tasks.initiate_interview_call_task.delay"):
+    with patch("app.services.notification_service.create_notification", new_callable=AsyncMock):
         interview_1 = await interview_service.schedule_interview(db_session, schedule_data_1, hr_user.id)
     assert interview_1.id is not None
     assert interview_1.start_time == slot_start
@@ -797,8 +795,7 @@ async def test_reschedule_interview_moves_slot_removes_old_event_creates_new_and
     )
 
     with patch("app.services.interview_service.create_real_google_event", return_value=initial_google_event), \
-         patch("app.services.notification_service.create_notification", new_callable=AsyncMock), \
-         patch("app.tasks.initiate_interview_call_task.delay"):
+         patch("app.services.notification_service.create_notification", new_callable=AsyncMock):
         interview = await interview_service.schedule_interview(db_session, create_data, hr_user.id)
 
     assert interview.id is not None
@@ -952,8 +949,7 @@ async def test_cancellation_removes_event_notifies_participants_and_updates_stat
     )
 
     with patch("app.services.interview_service.create_real_google_event", return_value=initial_google_event), \
-         patch("app.services.notification_service.create_notification", new_callable=AsyncMock), \
-         patch("app.tasks.initiate_interview_call_task.delay"):
+         patch("app.services.notification_service.create_notification", new_callable=AsyncMock):
         interview = await interview_service.schedule_interview(db_session, create_data, hr_user.id)
 
     assert interview.id is not None
@@ -1161,8 +1157,7 @@ async def test_concurrent_scheduling_five_candidates_no_duplicates_or_lost_event
             return await interview_service.schedule_interview(sess, payload, hr_user.id)
 
     with patch("app.services.interview_service.create_real_google_event", side_effect=mock_create_event_side_effect), \
-         patch("app.services.notification_service.create_notification", new_callable=AsyncMock), \
-         patch("app.tasks.initiate_interview_call_task.delay"):
+         patch("app.services.notification_service.create_notification", new_callable=AsyncMock):
 
         # Execute 5 interview scheduling calls concurrently
         tasks = [
@@ -1260,8 +1255,7 @@ async def test_calendar_api_rate_limit_retry_and_no_partial_booking(db_session, 
 
     # Case A: Persistent 429 across retries -> Error message and NO partial booking
     with patch("app.services.interview_service.create_real_google_event", side_effect=http_429), \
-         patch("app.services.notification_service.create_notification", new_callable=AsyncMock) as mock_notif, \
-         patch("app.tasks.initiate_interview_call_task.delay") as mock_voice:
+         patch("app.services.notification_service.create_notification", new_callable=AsyncMock) as mock_notif:
 
         with pytest.raises(ValueError) as exc_info:
             await interview_service.schedule_interview(db_session, payload, hr_user.id)
@@ -1286,9 +1280,6 @@ async def test_calendar_api_rate_limit_retry_and_no_partial_booking(db_session, 
 
     # (d) No in-app notifications created
     assert mock_notif.call_count == 0
-
-    # (e) No voice call queued
-    assert mock_voice.call_count == 0
 
 
 @pytest.mark.asyncio
@@ -1348,8 +1339,7 @@ async def test_calendar_api_timeout_retry_and_no_partial_booking(db_session, moc
 
     # Case B: Persistent Timeout -> Error message and NO partial booking
     with patch("app.services.interview_service.create_real_google_event", side_effect=TimeoutError("Request timed out after 30000ms")), \
-         patch("app.services.notification_service.create_notification", new_callable=AsyncMock) as mock_notif, \
-         patch("app.tasks.initiate_interview_call_task.delay") as mock_voice:
+         patch("app.services.notification_service.create_notification", new_callable=AsyncMock) as mock_notif:
 
         with pytest.raises(ValueError) as exc_info:
             await interview_service.schedule_interview(db_session, payload, hr_user.id)
@@ -1374,9 +1364,6 @@ async def test_calendar_api_timeout_retry_and_no_partial_booking(db_session, moc
 
     # (d) No in-app notifications created
     assert mock_notif.call_count == 0
-
-    # (e) No voice call queued
-    assert mock_voice.call_count == 0
 
 
 @pytest.mark.asyncio
@@ -1508,8 +1495,7 @@ async def test_calendar_api_transient_retry_success(db_session, mock_interview_e
     }
 
     with patch("app.services.interview_service.create_real_google_event", return_value=recovered_event), \
-         patch("app.services.notification_service.create_notification", new_callable=AsyncMock) as mock_notif, \
-         patch("app.tasks.initiate_interview_call_task.delay"):
+         patch("app.services.notification_service.create_notification", new_callable=AsyncMock) as mock_notif:
 
         interview = await interview_service.schedule_interview(db_session, payload, hr_user.id)
 
@@ -1524,6 +1510,223 @@ async def test_calendar_api_transient_retry_success(db_session, mock_interview_e
         # Notification emails sent (candidate and HR)
         assert m_email.call_count >= 1
         assert any(c.kwargs.get("to_email") == "transient.candidate@example.com" for c in m_email.call_args_list)
+
+
+@pytest.mark.asyncio
+async def test_schedule_interview_falls_back_to_user_phone_and_logs_sms_sent(db_session, mock_interview_emails):
+    """Scheduling an interview resolves phone from User when JobApplication.phone is blank and logs SMS_SENT on True."""
+    from sqlalchemy import select
+    from app.models.interview import InterviewLog
+
+    hr_user = User(
+        email="hr_sms_fallback@example.com",
+        password="password123",
+        role="HR",
+        fullname="HR SMS Tester",
+    )
+    cand_user = User(
+        email="cand.fallback@gmail.com",
+        password="password123",
+        role="CANDIDATE",
+        fullname="Fallback Candidate",
+        phone="09171234567",
+    )
+    db_session.add_all([hr_user, cand_user])
+    await db_session.flush()
+
+    job = JobDescription(
+        job_id="SMS-JOB-1",
+        job_title="Quality Engineer",
+        department="QA",
+        job_type=JobType.FULL_TIME,
+        location="Bulacan",
+        description="QA testing",
+    )
+    db_session.add(job)
+    await db_session.flush()
+
+    app = JobApplication(
+        job_id=job.id,
+        candidate_name="Fallback Candidate",
+        candidate_email="cand.fallback@gmail.com",
+        phone=None,
+        status="SHORTLISTED",
+    )
+    db_session.add(app)
+    await db_session.commit()
+
+    payload = InterviewCreateSchema(
+        job_application_id=app.id,
+        interviewer_id=hr_user.id,
+        title="QA Screening Interview",
+        start_time=datetime(2026, 11, 24, 10, 0),
+        end_time=datetime(2026, 11, 24, 11, 0),
+        meeting_link="https://meet.google.com/qa-fallback",
+    )
+
+    m_email, _ = mock_interview_emails
+    m_email.reset_mock()
+
+    with patch("app.services.interview_service.send_sms_notification_sync", return_value=True) as mock_sms, \
+         patch("app.services.notification_service.create_notification", new_callable=AsyncMock):
+
+        interview = await interview_service.schedule_interview(db_session, payload, hr_user.id)
+
+    assert any(c.kwargs.get("to_email") == "cand.fallback@gmail.com" for c in m_email.call_args_list)
+    mock_sms.assert_called_once()
+    sent_phone, sent_msg = mock_sms.call_args[0]
+    assert sent_phone == "+639171234567"
+    assert "Quality Engineer" in sent_msg
+
+    logs_res = await db_session.execute(
+        select(InterviewLog).where(
+            InterviewLog.interview_id == interview.id,
+            InterviewLog.log_type == "SMS_SENT",
+        )
+    )
+    assert logs_res.scalars().first() is not None
+
+
+@pytest.mark.asyncio
+async def test_schedule_interview_logs_sms_failed_when_sms_delivery_returns_false(db_session, mock_interview_emails):
+    """When SMS delivery returns False, InterviewLog records SMS_FAILED instead of SMS_SENT."""
+    from sqlalchemy import select
+    from app.models.interview import InterviewLog
+
+    hr_user = User(
+        email="hr_sms_fail@example.com",
+        password="password123",
+        role="HR",
+        fullname="HR Fail Tester",
+    )
+    db_session.add(hr_user)
+    await db_session.flush()
+
+    job = JobDescription(
+        job_id="SMS-FAIL-1",
+        job_title="Production Supervisor",
+        department="Operations",
+        job_type=JobType.FULL_TIME,
+        location="Bulacan",
+        description="Supervision",
+    )
+    db_session.add(job)
+    await db_session.flush()
+
+    app = JobApplication(
+        job_id=job.id,
+        candidate_name="Unreachable Candidate",
+        candidate_email="unreachable.cand@gmail.com",
+        phone="09189998877",
+        status="SHORTLISTED",
+    )
+    db_session.add(app)
+    await db_session.commit()
+
+    payload = InterviewCreateSchema(
+        job_application_id=app.id,
+        interviewer_id=hr_user.id,
+        title="Operations Interview",
+        start_time=datetime(2026, 11, 25, 14, 0),
+        end_time=datetime(2026, 11, 25, 15, 0),
+        meeting_link="https://meet.google.com/ops-fail",
+    )
+
+    with patch("app.services.interview_service.send_sms_notification_sync", return_value=False) as mock_sms, \
+         patch("app.services.notification_service.create_notification", new_callable=AsyncMock):
+
+        interview = await interview_service.schedule_interview(db_session, payload, hr_user.id)
+
+    mock_sms.assert_called_once()
+
+    sent_logs = await db_session.execute(
+        select(InterviewLog).where(
+            InterviewLog.interview_id == interview.id,
+            InterviewLog.log_type == "SMS_SENT",
+        )
+    )
+    assert sent_logs.scalars().first() is None
+
+    fail_logs = await db_session.execute(
+        select(InterviewLog).where(
+            InterviewLog.interview_id == interview.id,
+            InterviewLog.log_type == "SMS_FAILED",
+        )
+    )
+    assert fail_logs.scalars().first() is not None
+
+
+@pytest.mark.asyncio
+async def test_candidate_reschedule_sends_confirmation_email_and_sms_to_candidate(db_session, mock_interview_emails):
+    """Candidate self-reschedule sends reschedule email and SMS confirmation to both interviewer and candidate."""
+    from app.schemas.interview_schema import CandidateRescheduleSchema
+
+    hr_user = User(
+        email="hr_cand_resched@example.com",
+        password="password123",
+        role="HR",
+        fullname="HR Resched Reviewer",
+    )
+    db_session.add(hr_user)
+    await db_session.flush()
+
+    job = JobDescription(
+        job_id="RESCHED-JOB-1",
+        job_title="Sales Executive",
+        department="Sales",
+        job_type=JobType.FULL_TIME,
+        location="Manila",
+        description="Sales",
+    )
+    db_session.add(job)
+    await db_session.flush()
+
+    app = JobApplication(
+        job_id=job.id,
+        candidate_name="Maria Resched",
+        candidate_email="maria.resched@gmail.com",
+        phone="09175551234",
+        status="INTERVIEW SCHEDULED",
+    )
+    db_session.add(app)
+    await db_session.flush()
+
+    interview = Interview(
+        job_application_id=app.id,
+        interviewer_id=hr_user.id,
+        title="Sales Interview",
+        start_time=datetime(2026, 11, 26, 10, 0),
+        end_time=datetime(2026, 11, 26, 11, 0),
+        status="SCHEDULED",
+    )
+    db_session.add(interview)
+    await db_session.commit()
+
+    _, m2_resched = mock_interview_emails
+    m2_resched.reset_mock()
+
+    resched_payload = CandidateRescheduleSchema(
+        start_time=datetime(2026, 11, 27, 15, 0),
+        end_time=datetime(2026, 11, 27, 16, 0),
+        reason="Doctor appointment",
+    )
+
+    with patch("app.services.interview_service.send_sms_notification_sync", return_value=True) as mock_sms, \
+         patch("app.services.notification_service.create_notification", new_callable=AsyncMock):
+
+        updated = await interview_service.candidate_reschedule_interview(
+            db_session,
+            interview.id,
+            resched_payload,
+            "maria.resched@gmail.com",
+        )
+
+    assert updated.start_time == datetime(2026, 11, 27, 15, 0)
+    emailed_recipients = [c.kwargs.get("to_email") for c in m2_resched.call_args_list]
+    assert "hr_cand_resched@example.com" in emailed_recipients
+    assert "maria.resched@gmail.com" in emailed_recipients
+    mock_sms.assert_called_once()
+    assert mock_sms.call_args[0][0] == "+639175551234"
 
 
 

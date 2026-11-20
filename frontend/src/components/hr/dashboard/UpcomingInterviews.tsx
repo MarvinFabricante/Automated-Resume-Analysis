@@ -2,13 +2,12 @@ import React from 'react';
 import { useNavigate } from '@/utils/navigation';
 import { 
   Calendar, Clock, Video, User, ChevronRight, 
-  Plus, ArrowUpRight, Phone 
+  Plus, ArrowUpRight
 } from 'lucide-react';
 import { useGetAllInterviewsQuery } from '../../../redux/api/apiSlice';
 import { Interview } from '../../../types';
 import {
   filterAndSortUpcomingInterviews,
-  getCallOutcomeBadgeClass,
 } from '../../../utils/interviewUtils';
 
 interface UpcomingInterviewsProps {
@@ -111,8 +110,6 @@ const UpcomingInterviews: React.FC<UpcomingInterviewsProps> = ({ onScheduleClick
           <div className="space-y-3">
             {upcomingInterviews.map((item) => {
               const { dateStr, timeStr, isToday } = formatInterviewTime(item.start_time);
-              const callAttempts = item.call_attempts ?? item.call_records?.length ?? 0;
-              const callStatus = item.call_status || 'PENDING';
               return (
                 <div
                   key={item.id}
@@ -144,15 +141,6 @@ const UpcomingInterviews: React.FC<UpcomingInterviewsProps> = ({ onScheduleClick
                         <h4 className="text-xs sm:text-sm font-bold text-slate-900 group-hover:text-[#D60041] transition-colors truncate">
                           {item.candidate_name || item.title || 'Applicant'}
                         </h4>
-                        {(callAttempts > 0 || callStatus !== 'PENDING') && (
-                          <span
-                            className={`inline-flex items-center gap-1 text-[9px] font-black uppercase px-1.5 py-0.5 rounded-full border ${getCallOutcomeBadgeClass(callStatus)}`}
-                            title="AI Voice Call Status"
-                          >
-                            <Phone size={8} />
-                            <span>{callStatus.replace(/_/g, ' ')}{callAttempts > 0 ? ` (${callAttempts})` : ''}</span>
-                          </span>
-                        )}
                       </div>
                       <p className="text-[11px] text-slate-500 truncate mt-0.5">
                         {item.job_title || 'Position Interview'}

@@ -9,7 +9,8 @@ from app.utils.auth import create_access_token
 @pytest.fixture(autouse=True)
 def mock_interview_emails():
     with patch("app.services.email_service.EmailService.send_interview_invitation_email", new_callable=AsyncMock) as m1, \
-         patch("app.services.email_service.EmailService.send_interview_rescheduled_email", new_callable=AsyncMock) as m2:
+         patch("app.services.email_service.EmailService.send_interview_rescheduled_email", new_callable=AsyncMock) as m2, \
+         patch("app.services.interview_service.send_iprogsms_sync", return_value=True):
         m1.return_value = True
         m2.return_value = True
         yield (m1, m2)
@@ -635,8 +636,7 @@ async def test_interview_controller_invites_sent_to_candidate_hr_and_panel(clien
     m_email.reset_mock()
 
     with patch("app.services.interview_service.create_real_google_event", return_value=mock_google_event) as mock_create_event, \
-         patch("app.services.notification_service.create_notification", new_callable=AsyncMock) as mock_notif, \
-         patch("app.tasks.initiate_interview_call_task.delay"):
+         patch("app.services.notification_service.create_notification", new_callable=AsyncMock) as mock_notif:
 
         resp = await client.post(
             "/interviews/schedule",
@@ -1183,8 +1183,7 @@ async def test_interview_controller_concurrent_scheduling_five_candidates(client
 
     try:
         with patch("app.services.interview_service.create_real_google_event", side_effect=mock_create_event_side_effect), \
-             patch("app.services.notification_service.create_notification", new_callable=AsyncMock), \
-             patch("app.tasks.initiate_interview_call_task.delay"):
+             patch("app.services.notification_service.create_notification", new_callable=AsyncMock):
             # Fire 5 schedule requests concurrently
             tasks = [
                 client.post(
@@ -1305,8 +1304,7 @@ async def test_interview_controller_calendar_api_rate_limit_429_graceful_error(c
         side_effect=GoogleCalendarRateLimitError(
             "Google Calendar API rate limit exceeded (429). The interview could not be scheduled. No booking was created. Please try again later."
         )
-    ), patch("app.services.notification_service.create_notification", new_callable=AsyncMock) as mock_notif, \
-       patch("app.tasks.initiate_interview_call_task.delay") as mock_voice:
+    ), patch("app.services.notification_service.create_notification", new_callable=AsyncMock) as mock_notif:
 
         resp = await client.post("/interviews/schedule", json=schedule_payload, headers=headers)
 
@@ -1329,7 +1327,6 @@ async def test_interview_controller_calendar_api_rate_limit_429_graceful_error(c
 
     # 4. Verify no background tasks queued
     assert mock_notif.call_count == 0
-    assert mock_voice.call_count == 0
 
 
 @pytest.mark.asyncio
@@ -1396,8 +1393,7 @@ async def test_interview_controller_calendar_api_timeout_504_graceful_error(clie
         side_effect=GoogleCalendarTimeoutError(
             "Google Calendar API request timed out. The interview could not be scheduled. No booking was created. Please try again later."
         )
-    ), patch("app.services.notification_service.create_notification", new_callable=AsyncMock) as mock_notif, \
-       patch("app.tasks.initiate_interview_call_task.delay") as mock_voice:
+    ), patch("app.services.notification_service.create_notification", new_callable=AsyncMock) as mock_notif:
 
         resp = await client.post("/interviews/schedule", json=schedule_payload, headers=headers)
 
@@ -1420,7 +1416,6 @@ async def test_interview_controller_calendar_api_timeout_504_graceful_error(clie
 
     # 4. Verify no background tasks queued
     assert mock_notif.call_count == 0
-    assert mock_voice.call_count == 0
 
 
 @pytest.mark.asyncio
