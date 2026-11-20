@@ -1,11 +1,11 @@
 from fastapi.logger import logger
 import os
+import re
 import asyncio
+import requests
 from datetime import datetime, timedelta
 from typing import List, Optional, Union
 from sqlalchemy.ext.asyncio import AsyncSession
-
-from twilio.rest import Client as TwilioClient
 
 from app.schemas.interview_schema import (
     CandidateRescheduleSchema,
@@ -102,48 +102,147 @@ def _populate_candidate_info(interview, app_override=None, interviewer_override=
     setattr(interview, "is_missed", is_missed)
     return interview
 
-def send_sms_notification_sync(to_phone: str, message: str):
-    provider = os.getenv('AI_CALLER_PROVIDER', 'twilio').lower()
-    
-    # Priority 1: DIY ADB Provider via connected Android phone (SIM 09771331871)
-    if provider == 'adb':
-        try:
-            from app.services.ai_caller_service import get_connected_adb_device, trigger_adb_sms
-            device = get_connected_adb_device()
-            if device and to_phone:
-                sent = trigger_adb_sms(to_phone, message, device)
-                if sent:
-                    return True
-        except Exception as e:
-            print(f"DIY ADB SMS Error: {e}")
+IPROG_SMS_DEFAULT_URL = "https://www.iprogsms.com/api/v1/sms_messages"
 
-    account_sid = os.getenv('TWILIO_ACCOUNT_SID')
-    auth_token = os.getenv('TWILIO_AUTH_TOKEN')
-    from_phone = os.getenv('TWILIO_PHONE_NUMBER', os.getenv('AI_CALLER_PHONE_NUMBER', '09771331871'))
-    
-    if account_sid and auth_token and from_phone and to_phone:
+
+def format_phone_for_iprogsms(phone: str) -> str:
+    """Normalize phone number into IPROG SMS digits format (e.g., 639771331871)."""
+    digits = re.sub(r"\D", "", (phone or "").strip())
+    if not digits:
+        return ""
+    if len(digits) == 11 and digits.startswith("09"):
+        return "63" + digits[1:]
+    if len(digits) == 10 and digits.startswith("9"):
+        return "63" + digits
+    return digits
+
+
+def send_iprogsms_sync(to_phone: str, message: str) -> bool:
+    """Send an SMS via the IPROG SMS REST API."""
+    api_token = (os.getenv("IPROG_SMS_API_TOKEN") or "").strip()
+    api_url = (os.getenv("IPROG_SMS_API_URL") or IPROG_SMS_DEFAULT_URL).strip()
+    recipient = format_phone_for_iprogsms(to_phone)
+    clean_message = (message or "").strip()
+    if not api_token or not recipient or not clean_message:
+        logger.warning("IPROG SMS skipped: missing api_token, phone_number, or message.")
+        return False
+
+    try:
+        sms_provider_id = int(os.getenv("IPROG_SMS_PROVIDER", "0"))
+    except ValueError:
+        sms_provider_id = 0
+
+    payload = {
+        "api_token": api_token,
+        "phone_number": recipient,
+        "message": clean_message,
+        "sms_provider": sms_provider_id,
+    }
+
+    try:
+        resp = requests.post(api_url, json=payload, timeout=15)
         try:
-            client = TwilioClient(account_sid, auth_token)
-            client.messages.create(
-                body=message,
-                from_=from_phone,
-                to=to_phone
+            data = resp.json()
+        except ValueError:
+            data = {}
+
+        api_status = data.get("status")
+        accepted = resp.status_code in (200, 201) and (
+            (isinstance(api_status, int) and 200 <= api_status < 300)
+            or (isinstance(api_status, str) and api_status.lower() in {"success", "ok", "200"})
+            or ("message_id" in data and api_status is None)
+        )
+        if accepted:
+            logger.info(
+                f"IPROG SMS queued for {recipient} (message_id={data.get('message_id')})"
             )
             return True
-        except Exception as e:
-            print(f"Twilio SMS Error: {e}")
 
-    # Fallback to DIY ADB if Twilio failed or wasn't configured
-    if provider != 'adb':
-        try:
-            from app.services.ai_caller_service import get_connected_adb_device, trigger_adb_sms
-            device = get_connected_adb_device()
-            if device and to_phone:
-                return trigger_adb_sms(to_phone, message, device)
-        except Exception as e:
-            print(f"DIY ADB SMS Error: {e}")
+        logger.error(
+            f"IPROG SMS API rejected message for {recipient}: http={resp.status_code}, body={resp.text[:300]}"
+        )
+        return False
+    except Exception as exc:
+        logger.error(f"IPROG SMS request failed for {recipient}: {exc}")
+        return False
 
-    return False
+
+def format_to_e164(phone: Optional[str]) -> Optional[str]:
+    """Normalize phone numbers to E.164 format."""
+    if not phone:
+        return None
+    cleaned = re.sub(r"[^\d+]", "", str(phone).strip())
+    if not cleaned:
+        return None
+    if cleaned.startswith("+"):
+        return cleaned
+    if cleaned.startswith("09") and len(cleaned) == 11:
+        return "+63" + cleaned[1:]
+    if cleaned.startswith("63") and len(cleaned) >= 11:
+        return "+" + cleaned
+    if cleaned.startswith("9") and len(cleaned) == 10:
+        return "+63" + cleaned
+    return f"+{cleaned}" if cleaned.isdigit() else cleaned
+
+
+def send_sms_notification_sync(to_phone: str, message: str) -> bool:
+    """Send an SMS exclusively via IPROG SMS REST API."""
+    return send_iprogsms_sync(to_phone, message)
+
+
+async def _resolve_candidate_phone(db: AsyncSession, application) -> Optional[str]:
+    """Return candidate phone from JobApplication, falling back to their User profile."""
+    if not application:
+        return None
+    phone = (getattr(application, "phone", None) or "").strip()
+    if phone:
+        return phone
+    candidate_email = (getattr(application, "candidate_email", None) or "").strip()
+    if not candidate_email:
+        return None
+    try:
+        from app.repositories.auth_repository import AuthRepository
+        cand_user = await AuthRepository.get_user_by_email(db, candidate_email)
+        fallback_phone = (getattr(cand_user, "phone", None) or "").strip()
+        return fallback_phone or None
+    except Exception as e:
+        logger.warning(f"Could not resolve fallback candidate phone for {candidate_email}: {e}")
+        return None
+
+
+async def _dispatch_candidate_sms(
+    db: AsyncSession,
+    interview_id: int,
+    phone: Optional[str],
+    message: str,
+    success_event: str,
+    success_desc_prefix: str,
+) -> bool:
+    """Format phone number, send SMS notification via configured provider, and log actual outcome."""
+    clean_phone = (phone or "").strip()
+    if not clean_phone:
+        return False
+
+    formatted_phone = format_to_e164(clean_phone) or clean_phone
+    sms_sent = await asyncio.to_thread(send_sms_notification_sync, formatted_phone, message)
+
+    event_name = success_event if sms_sent else "SMS_FAILED"
+    log_desc = (
+        f"{success_desc_prefix} to {formatted_phone}: {message}"
+        if sms_sent
+        else f"Failed to deliver SMS notification to {formatted_phone}: {message}"
+    )
+    if not sms_sent:
+        logger.warning(f"SMS delivery failed for interview {interview_id} ({formatted_phone})")
+
+    try:
+        await InterviewRepository.add_interview_log(db, interview_id, event_name, log_desc)
+        await InterviewRepository.commit_changes(db)
+    except Exception as log_err:
+        await db.rollback()
+        logger.warning(f"Could not persist SMS log ({event_name}): {log_err}")
+
+    return bool(sms_sent)
 
 
 
@@ -478,7 +577,7 @@ async def schedule_interview(db: AsyncSession, data: InterviewCreateSchema, user
         scheduler_email = getattr(scheduler_user, "email", None) if scheduler_user else None
         candidate_email = getattr(application, "candidate_email", None)
         candidate_name = getattr(application, "candidate_name", None) or "Candidate"
-        candidate_phone = getattr(application, "phone", None)
+        candidate_phone = await _resolve_candidate_phone(db, application)
         credentials_json = _get_valid_credentials(user) or _get_valid_credentials(scheduler_user)
 
         # Collect distinct panel recipients (assigned interviewer / additional panelists)
@@ -730,26 +829,20 @@ async def schedule_interview(db: AsyncSession, data: InterviewCreateSchema, user
 
         # 5. Send SMS Notification (if phone configured)
         if candidate_phone:
-            from app.services.ai_caller_service import format_to_e164
-            formatted_phone = format_to_e164(candidate_phone) or candidate_phone
             sched_time_str = data.start_time.strftime('%A, %b %d, %Y at %I:%M %p')
             message = (
                 f"Mariwasa HR: Magandang araw, {candidate_name}! Nais naming ipaalam na scheduled na ang "
                 f"iyong interview para sa posisyong {job_name} sa {sched_time_str}. Kindly check your email ({candidate_email}) "
                 f"para sa meeting link at complete interview details. Maraming salamat and see you!"
             )
-            await asyncio.to_thread(send_sms_notification_sync, formatted_phone, message)
-            try:
-                await InterviewRepository.add_interview_log(
-                    db,
-                    interview.id,
-                    "SMS_SENT",
-                    f"SMS interview notification delivered to {formatted_phone}: {message}"
-                )
-                await InterviewRepository.commit_changes(db)
-            except Exception as log_err:
-                await db.rollback()
-                logger.warning(f"Could not persist SMS log: {log_err}")
+            await _dispatch_candidate_sms(
+                db,
+                interview.id,
+                candidate_phone,
+                message,
+                "SMS_SENT",
+                "SMS interview notification delivered",
+            )
 
         # 6. In-App Notifications
         try:
@@ -794,27 +887,6 @@ async def schedule_interview(db: AsyncSession, data: InterviewCreateSchema, user
                     )
         except Exception as e_notif:
             print(f"Warning: Could not create interview notification: {e_notif}")
-
-        # 7. REQ028: Automatically place voice calls to candidates after interview scheduling
-        if candidate_phone:
-            try:
-                from app.tasks import initiate_interview_call_task
-                initiate_interview_call_task.delay(interview.id)
-                try:
-                    await InterviewRepository.add_interview_log(
-                        db, interview.id, "VOICE_CALL_QUEUED", f"Automated AI voice call queued for candidate phone {candidate_phone}"
-                    )
-                    await InterviewRepository.commit_changes(db)
-                except Exception as log_err:
-                    await db.rollback()
-                    logger.warning(f"Could not persist voice call log: {log_err}")
-            except Exception as e_voice:
-                logger.warning(f"Celery dispatch notice for interview voice call: {e_voice}. Falling back to background async...")
-                try:
-                    from app.services.ai_caller_service import initiate_candidate_interview_call
-                    asyncio.create_task(initiate_candidate_interview_call(interview.id))
-                except Exception as e_direct:
-                    logger.error(f"Error queueing automated voice call: {e_direct}")
 
         # Attach candidate and interviewer attributes for Pydantic response
         fresh_interview = await InterviewRepository.get_interview_by_id(db, interview.id)
@@ -1094,27 +1166,22 @@ async def update_interview(db: AsyncSession, interview_id: int, data: InterviewU
                 print(f"Warning: Could not send reschedule email: {e}")
 
         # 4. SMS Notification to Candidate
-        if application.phone:
-            from app.services.ai_caller_service import format_to_e164
-            formatted_phone = format_to_e164(application.phone) or application.phone
+        candidate_phone = await _resolve_candidate_phone(db, application)
+        if candidate_phone:
             sched_time_str = interview.start_time.strftime('%A, %b %d, %Y at %I:%M %p')
             message = (
                 f"Mariwasa HR Update: Magandang araw, {application.candidate_name}! Nais naming ipagbigay-alam na na-reschedule ang "
                 f"iyong interview para sa posisyong {job_name} sa {sched_time_str}. Pakitingnan ang iyong email ({application.candidate_email}) "
                 f"para sa updated calendar invite at complete details. Maraming salamat!"
             )
-            await asyncio.to_thread(send_sms_notification_sync, formatted_phone, message)
-            try:
-                await InterviewRepository.add_interview_log(
-                    db,
-                    interview.id,
-                    "SMS_RESCHEDULED",
-                    f"Reschedule SMS notification delivered to {formatted_phone}: {message}"
-                )
-                await InterviewRepository.commit_changes(db)
-            except Exception as log_err:
-                await db.rollback()
-                logger.warning(f"Could not persist reschedule SMS log: {log_err}")
+            await _dispatch_candidate_sms(
+                db,
+                interview.id,
+                candidate_phone,
+                message,
+                "SMS_RESCHEDULED",
+                "Reschedule SMS notification delivered",
+            )
 
         # 5. In-App Notifications for Candidate, HR, and Panel
         try:
@@ -1509,26 +1576,21 @@ async def cancel_interview(
             except Exception as e:
                 print(f"Warning: Could not send cancellation email to candidate: {e}")
 
-        if application.phone:
-            from app.services.ai_caller_service import format_to_e164
-            formatted_phone = format_to_e164(application.phone) or application.phone
+        candidate_phone = await _resolve_candidate_phone(db, application)
+        if candidate_phone:
             message = (
                 f"Mariwasa HR Update: Magandang araw, {application.candidate_name}! Nais naming ipaalam na kinansela ang "
                 f"iyong interview para sa posisyong {job_name}. Pakitingnan ang iyong email ({application.candidate_email}) "
                 f"para sa karagdagang impormasyon. Maraming salamat."
             )
-            await asyncio.to_thread(send_sms_notification_sync, formatted_phone, message)
-            try:
-                await InterviewRepository.add_interview_log(
-                    db,
-                    interview.id,
-                    "SMS_CANCELED",
-                    f"Cancellation SMS notification delivered to {formatted_phone}: {message}"
-                )
-                await InterviewRepository.commit_changes(db)
-            except Exception as log_err:
-                await db.rollback()
-                logger.warning(f"Could not persist cancel SMS log: {log_err}")
+            await _dispatch_candidate_sms(
+                db,
+                interview.id,
+                candidate_phone,
+                message,
+                "SMS_CANCELED",
+                "Cancellation SMS notification delivered",
+            )
 
         # (d) In-App Notifications
         try:
@@ -1703,6 +1765,38 @@ async def candidate_reschedule_interview(
             )
         except Exception as email_err:
             logger.warning(f"Could not send reschedule email to interviewer: {email_err}")
+
+    if getattr(application, "candidate_email", None):
+        try:
+            await email_service.send_interview_rescheduled_email(
+                to_email=application.candidate_email,
+                candidate_name=application.candidate_name or "Candidate",
+                job_title=job_name,
+                interview_title=interview.title,
+                start_time=interview.start_time,
+                end_time=interview.end_time,
+                interviewer_name=interviewer_name,
+                notes=f"Your interview reschedule from {old_time_str} is confirmed.{reason_note}",
+            )
+        except Exception as email_err:
+            logger.warning(f"Could not send reschedule confirmation email to candidate: {email_err}")
+
+    candidate_phone = await _resolve_candidate_phone(db, application)
+    if candidate_phone:
+        sched_time_str = interview.start_time.strftime('%A, %b %d, %Y at %I:%M %p')
+        message = (
+            f"Mariwasa HR Update: Magandang araw, {application.candidate_name or 'Candidate'}! "
+            f"Na-confirm ang iyong bagong interview schedule para sa posisyong {job_name} sa {sched_time_str}. "
+            f"Pakitingnan ang iyong email ({application.candidate_email}) para sa complete details. Maraming salamat!"
+        )
+        await _dispatch_candidate_sms(
+            db,
+            interview.id,
+            candidate_phone,
+            message,
+            "SMS_RESCHEDULED",
+            "Candidate reschedule confirmation SMS delivered",
+        )
 
     _populate_candidate_info(interview, app_override=application, interviewer_override=interviewer_user)
     return interview

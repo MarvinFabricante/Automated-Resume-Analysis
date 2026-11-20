@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Helmet } from 'react-helmet-async';
 import {
-  X, MapPin, Briefcase, GraduationCap, Mail, Phone, PhoneForwarded, Video, User,
+  X, MapPin, Briefcase, GraduationCap, Mail, Phone, Video, User,
   Target, TrendingUp, Lightbulb, CheckCircle2, XCircle, AlertTriangle,
   Zap, BarChart3, BookOpen, Award, Copy, Check, Calendar, Download,
   Building2, Clock, Sparkles, ShieldCheck, Printer, CheckCircle,
@@ -12,8 +12,6 @@ import {
   useGetApplicationByIdQuery,
   useGetApplicationInterviewsQuery,
   useGetCandidateInterviewsQuery,
-  useGetApplicationCallLogsQuery,
-  useGetCandidateCallLogsQuery,
   useRecordApplicationViewedMutation,
   useGetApplicationHistoryQuery,
   useUndoAutoStatusMutation,
@@ -21,10 +19,8 @@ import {
 import {
   filterAndSortUpcomingInterviews,
   mergeInterviewsById,
-  mergeCallLogs,
   extractMessageLogs,
   formatUtcLogTimestamp,
-  getCallOutcomeBadgeClass,
   isUpcomingInterview,
 } from '../../../utils/interviewUtils';
 
@@ -332,14 +328,6 @@ const ViewCandidateDetailsModal: React.FC<ViewCandidateDetailsModalProps> = ({
     validCandidateEmail,
     { skip: !isOpen || !validCandidateEmail, ...queryOpts }
   );
-  const { data: appCallLogs = [], isLoading: isLoadingAppLogs } = useGetApplicationCallLogsQuery(
-    candidateAppId,
-    { skip: !isOpen || !candidateAppId, ...queryOpts }
-  );
-  const { data: emailCallLogs = [], isLoading: isLoadingEmailLogs } = useGetCandidateCallLogsQuery(
-    validCandidateEmail,
-    { skip: !isOpen || !validCandidateEmail, ...queryOpts }
-  );
 
   if (!isOpen || !initialCandidate) return null;
 
@@ -348,16 +336,14 @@ const ViewCandidateDetailsModal: React.FC<ViewCandidateDetailsModalProps> = ({
   const allCandidateInterviews = mergeInterviewsById(appInterviews, emailInterviews);
   const upcomingInterviews = filterAndSortUpcomingInterviews(allCandidateInterviews);
   const pastOrCompletedInterviews = allCandidateInterviews.filter((iv) => !isUpcomingInterview(iv));
-  const callLogs = mergeCallLogs(appCallLogs, emailCallLogs, allCandidateInterviews);
   const messageLogs = extractMessageLogs(
     allCandidateInterviews,
-    callLogs,
+    [],
     candidate.phone,
     candidate.email || candidate.candidate_email
   );
   const smsLogsCount = messageLogs.filter((m) => m.channel === 'SMS').length;
-  const isLoadingHistory =
-    isLoadingAppInterviews || isLoadingEmailInterviews || isLoadingAppLogs || isLoadingEmailLogs;
+  const isLoadingHistory = isLoadingAppInterviews || isLoadingEmailInterviews;
 
   const handleCopy = (text?: string, field?: string) => {
     if (!text || text === 'N/A' || !field) return;
@@ -551,8 +537,8 @@ const ViewCandidateDetailsModal: React.FC<ViewCandidateDetailsModalProps> = ({
     { id: 'overview', label: 'Executive Overview', icon: Target },
     {
       id: 'schedule_calls',
-      label: 'Interviews & Calls',
-      count: upcomingInterviews.length + callLogs.length + messageLogs.length || undefined,
+      label: 'Interviews & Messages',
+      count: upcomingInterviews.length + messageLogs.length || undefined,
       icon: Calendar,
     },
     { id: 'skills', label: 'Skills Gap', count: missingSkills.length ? missingSkills.length : undefined, icon: Zap },
@@ -584,7 +570,6 @@ const ViewCandidateDetailsModal: React.FC<ViewCandidateDetailsModalProps> = ({
   const renderScheduleAndCallHistory = (compact: boolean) => {
     const displayedUpcoming = compact ? upcomingInterviews.slice(0, 3) : upcomingInterviews;
     const displayedPast = compact ? [] : pastOrCompletedInterviews;
-    const displayedLogs = compact ? callLogs.slice(0, 4) : callLogs;
     const displayedMessages = compact ? messageLogs.slice(0, 4) : messageLogs;
 
     return (
@@ -609,7 +594,7 @@ const ViewCandidateDetailsModal: React.FC<ViewCandidateDetailsModalProps> = ({
               </div>
             </div>
 
-            {compact && (upcomingInterviews.length > 0 || callLogs.length > 0 || messageLogs.length > 0) && (
+            {compact && (upcomingInterviews.length > 0 || messageLogs.length > 0) && (
               <button
                 type="button"
                 onClick={() => setActiveTab('schedule_calls')}
@@ -656,18 +641,9 @@ const ViewCandidateDetailsModal: React.FC<ViewCandidateDetailsModalProps> = ({
                       <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase bg-pink-100 text-[#D60041]">
                         {iv.status || 'SCHEDULED'}
                       </span>
-                      {iv.call_status && iv.call_status !== 'PENDING' && (
-                        <span
-                          className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase border ${getCallOutcomeBadgeClass(iv.call_status)}`}
-                        >
-                          Call: {String(iv.call_status).replace(/_/g, ' ')}
-                        </span>
-                      )}
                       {(iv.candidate_phone || (candidatePhone && candidatePhone !== 'Not provided')) && (
                         <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase bg-emerald-100 text-emerald-800 border border-emerald-200">
-                          {iv.sms_backup_sent || String(iv.call_status || '').toUpperCase() === 'SMS_BACKUP_SENT'
-                            ? 'SMS: BACKUP SENT'
-                            : 'SMS: DELIVERED'}
+                          SMS: DELIVERED
                         </span>
                       )}
                     </div>
@@ -720,91 +696,6 @@ const ViewCandidateDetailsModal: React.FC<ViewCandidateDetailsModalProps> = ({
                   </div>
                 ))}
               </div>
-            </div>
-          )}
-        </div>
-
-        {/* Call Logs Section */}
-        <div
-          data-testid={compact ? 'overview-call-logs' : 'candidate-profile-call-logs'}
-          className="bg-white border border-gray-200/80 rounded-2xl p-4 sm:p-5 space-y-3"
-        >
-          <div className="flex items-center justify-between gap-2 pb-2 border-b border-gray-100">
-            <div className="flex items-center gap-2">
-              <div className="w-7 h-7 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center text-blue-600">
-                <PhoneForwarded size={14} />
-              </div>
-              <div>
-                <h4 className="text-xs font-black text-gray-900 uppercase tracking-wider">
-                  AI Voice Call Logs ({callLogs.length})
-                </h4>
-                <p className="text-[11px] text-gray-500 font-medium">
-                  Outbound call attempts, candidate responses, and SMS backups
-                </p>
-              </div>
-            </div>
-          </div>
-
-          {isLoadingHistory ? (
-            <div className="h-14 rounded-xl bg-slate-50 animate-pulse" />
-          ) : displayedLogs.length === 0 ? (
-            <div className="py-4 px-3 rounded-xl bg-slate-50/80 border border-slate-100 text-xs text-gray-500 font-medium">
-              No voice call attempts or logs recorded for this candidate yet.
-            </div>
-          ) : (
-            <div className="space-y-2.5 max-h-72 overflow-y-auto pr-1">
-              {displayedLogs.map((log: any, idx: number) => {
-                const outcomeLabel = log.extracted_intent || log.status || 'INITIATED';
-                return (
-                  <div
-                    key={log.id || `${log.call_sid || 'log'}-${idx}`}
-                    data-testid="candidate-call-log-item"
-                    className="p-3 rounded-xl bg-slate-50/70 border border-slate-200/70 flex flex-col sm:flex-row sm:items-start justify-between gap-2 text-xs"
-                  >
-                    <div className="space-y-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-black text-gray-900">
-                          Attempt #{log.attempt_number || 1}
-                        </span>
-                        <span
-                          className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase border ${getCallOutcomeBadgeClass(outcomeLabel)}`}
-                        >
-                          {log.status || outcomeLabel}
-                        </span>
-                        {log.extracted_intent && log.extracted_intent !== log.status && (
-                          <span
-                            className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase border ${getCallOutcomeBadgeClass(log.extracted_intent)}`}
-                          >
-                            {log.extracted_intent}
-                          </span>
-                        )}
-                        {log.sms_backup_sent && (
-                          <span className="px-2 py-0.5 bg-blue-100 text-blue-800 border border-blue-200 rounded-full text-[9px] font-black uppercase">
-                            SMS Backup Sent
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-[11px] text-gray-500 font-medium">
-                        {log.phone_number ? `To ${log.phone_number}` : 'Outbound Call'}
-                        {log.language ? ` • Lang: ${String(log.language).toUpperCase()}` : ''}
-                        {typeof log.duration === 'number' && log.duration > 0 ? ` • ${log.duration}s` : ''}
-                        {log.interview_title ? ` • ${log.interview_title}` : ''}
-                      </p>
-                      {log.candidate_verbal_response && (
-                        <p className="text-[11px] font-medium text-gray-800 italic">
-                          "{log.candidate_verbal_response}"
-                        </p>
-                      )}
-                      {log.notes && (
-                        <p className="text-[11px] text-gray-600">{log.notes}</p>
-                      )}
-                    </div>
-                    <span className="text-[10px] text-gray-400 font-mono shrink-0">
-                      {formatUtcLogTimestamp(log.created_at)}
-                    </span>
-                  </div>
-                );
-              })}
             </div>
           )}
         </div>

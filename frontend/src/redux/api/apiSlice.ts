@@ -452,59 +452,6 @@ export const apiSlice = createApi({
       providesTags: ['Applications', 'Interviews'],
     }),
 
-    // --- AI VOICE NOTIFICATION CALLER (REQ028 - REQ034) ---
-    placeInterviewCall: builder.mutation<any, number | string | { interviewId: number | string; language?: string }>({
-      query: (arg) => {
-        const interviewId = typeof arg === 'object' ? arg.interviewId : arg;
-        const language = typeof arg === 'object' ? arg.language : undefined;
-        return {
-          url: `/ai-caller/interview/${interviewId}/call${language ? `?language=${encodeURIComponent(language)}` : ''}`,
-          method: 'POST',
-        };
-      },
-      invalidatesTags: ['Interviews', 'CalendarEvents', 'Applications'],
-    }),
-
-    retryInterviewCall: builder.mutation<any, number | string>({
-      query: (interviewId) => ({
-        url: `/ai-caller/interview/${interviewId}/retry`,
-        method: 'POST',
-      }),
-      invalidatesTags: ['Interviews', 'CalendarEvents', 'Applications'],
-    }),
-
-    sendInterviewBackupSMS: builder.mutation<any, number | string>({
-      query: (interviewId) => ({
-        url: `/ai-caller/interview/${interviewId}/send-backup-sms`,
-        method: 'POST',
-      }),
-      invalidatesTags: ['Interviews', 'CalendarEvents', 'Applications'],
-    }),
-
-    simulateVoiceCall: builder.mutation<any, { interviewId: number | string; outcome: string; spoken_phrase?: string; language?: string }>({
-      query: ({ interviewId, ...body }) => ({
-        url: `/ai-caller/interview/${interviewId}/simulate`,
-        method: 'POST',
-        body,
-      }),
-      invalidatesTags: ['Interviews', 'CalendarEvents', 'Applications'],
-    }),
-
-    getInterviewCallLogs: builder.query<any[], number | string>({
-      query: (interviewId) => `/ai-caller/interview/${interviewId}/logs`,
-      providesTags: ['Interviews'],
-    }),
-
-    getApplicationCallLogs: builder.query<any[], number | string>({
-      query: (applicationId) => `/ai-caller/application/${applicationId}/logs`,
-      providesTags: ['Interviews', 'Applications'],
-    }),
-
-    getCandidateCallLogs: builder.query<any[], string>({
-      query: (email) => `/ai-caller/candidate/${encodeURIComponent(email)}/logs`,
-      providesTags: ['Interviews', 'Applications'],
-    }),
-
 
     // --- ADMIN / HR TOOLS ---
     getUsers: builder.query<any[], void>({
@@ -994,14 +941,6 @@ export const {
   useGetCeleryTaskStatusQuery,
   useLazyGetCeleryTaskStatusQuery,
   useTriggerMLRetrainMutation,
-  usePlaceInterviewCallMutation,
-  useRetryInterviewCallMutation,
-  useSendInterviewBackupSMSMutation,
-  useSimulateVoiceCallMutation,
-  useGetInterviewCallLogsQuery,
-  useLazyGetInterviewCallLogsQuery,
-  useGetApplicationCallLogsQuery,
-  useGetCandidateCallLogsQuery,
   useGetPhysicalResumesQuery,
   useGetPhysicalResumeStatsQuery,
   useGetPhysicalResumeByIdQuery,

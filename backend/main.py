@@ -29,7 +29,6 @@ from app.controllers.job_application_controller import router as job_application
 from app.controllers.notification_controller import router as notification_router
 from app.controllers.job_matching_controller import router as job_matching_router
 from app.controllers.chat_controller import router as chat_router
-from app.controllers.ai_caller_controller import router as ai_caller_router
 from app.controllers.interview_controller import router as interview_router
 from app.controllers.system_config_controller import router as system_config_router
 from app.controllers.physical_resume_controller import router as physical_resume_router
@@ -510,7 +509,6 @@ app.include_router(job_application_router, prefix="/job-applications")
 app.include_router(notification_router)
 app.include_router(job_matching_router)
 app.include_router(chat_router)
-app.include_router(ai_caller_router)
 app.include_router(interview_router)
 app.include_router(system_config_router)
 app.include_router(physical_resume_router)

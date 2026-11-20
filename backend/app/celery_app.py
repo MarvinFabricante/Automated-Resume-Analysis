@@ -44,10 +44,6 @@ celery_app.conf.update(
             "task": "refresh_active_comparisons_task",
             "schedule": 1800.0,
         },
-        "periodic_voice_call_retries_check": {
-            "task": "process_voice_call_retries_task",
-            "schedule": 60.0,
-        },
     },
 )
 
