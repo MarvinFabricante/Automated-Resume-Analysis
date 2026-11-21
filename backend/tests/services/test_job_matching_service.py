@@ -663,5 +663,203 @@ def test_unrelated_years_experience_not_shown_as_strength():
     assert res_mixed_ok["experience_below_minimum"] is False
 
 
+def test_unrelated_certification_not_perfect_score_or_strength():
+    """
+    Regression test: detecting ANY certification on a resume (when the job either
+    has no certification requirement, mentions generic 'certification', or requires
+    a different certification) must NOT automatically yield a 100% certification
+    score or add 'Relevant certifications...' to strengths.
+    """
+    cfg = {"weights": {}, "thresholds": {}}
+
+    # 1. Job has no certification requirement (empty and "None required") + unrelated cert on resume
+    for cert_req in ("", "None", "None required"):
+        job_no_cert_req = {
+            "job_id": "J_DEV_CERT",
+            "job_title": "Software Developer",
+            "department": "IT",
+            "description": "Builds backend REST APIs and web applications.",
+            "skills_requirements": "Python, FastAPI, PostgreSQL, React",
+            "experience_requirements": "2 years",
+            "education_requirements": "Bachelor's Degree in Computer Science",
+            "certifications_requirements": cert_req,
+        }
+        resume_unrelated_cert = {
+            "fullname": "Chef Applicant",
+            "skills": "Python, FastAPI, PostgreSQL, React",
+            "experience": "Software Developer at Acme (2022 - 2024)",
+            "years_experience": 2,
+            "education": "Bachelor of Science in Computer Science",
+            "certifications": "Food Safety Certificate | TESDA NC II Cookery",
+        }
+        res = job_matching_service.calculate_match_score(resume_unrelated_cert, job_no_cert_req, matching_config=cfg)
+        strengths_lower = " ".join(res.get("strengths") or []).lower()
+        assert res["certifications_score"] == 0.0, f"Unrelated cert got non-zero score for req={cert_req!r}: {res}"
+        assert "certification" not in strengths_lower, f"False cert strength for req={cert_req!r}: {res['strengths']}"
+        assert res["required_certifications"] == "None"
+        assert not any("required certifications are missing" in w.lower() for w in (res.get("weaknesses") or []))
+
+    # 2. Job description mentions generic "certification" -> must not fuzzy-match "<X> Certification"
+    job_generic_cert = {
+        "job_id": "J_DEV_GENERIC",
+        "job_title": "Software Developer",
+        "department": "IT",
+        "description": "Builds backend APIs. Relevant certification is an advantage.",
+        "skills_requirements": "Python, FastAPI, PostgreSQL",
+        "experience_requirements": "2 years",
+        "certifications_requirements": "",
+    }
+    resume_event_cert = {
+        "fullname": "Event Cert Applicant",
+        "skills": "Python, FastAPI",
+        "experience": "Software Developer (2 years)",
+        "years_experience": 2,
+        "education": "BS Computer Science",
+        "certifications": "Event Certification | Barista Training Certificate",
+    }
+    res_generic = job_matching_service.calculate_match_score(resume_event_cert, job_generic_cert, matching_config=cfg)
+    assert res_generic["certifications_score"] == 0.0
+    assert "certification" not in " ".join(res_generic.get("strengths") or []).lower()
+
+    # 3. Job has explicit certification requirement -> unrelated cert (even sharing generic word 'safety'/'training') must score 0
+    job_prod = {
+        "job_id": "J_PROD_CERT",
+        "job_title": "Production Operator",
+        "department": "Manufacturing",
+        "description": "Operates tile kilns and follows plant safety procedures.",
+        "skills_requirements": "kiln operation, machine handling, safety compliance",
+        "experience_requirements": "3 years",
+        "certifications_requirements": "safety training (OSHA or BOSH)",
+    }
+    resume_food_safety = {
+        "fullname": "Food Safety Applicant",
+        "skills": "kiln operation, machine handling",
+        "experience": "Production Operator at Factory (3 years)",
+        "years_experience": 3,
+        "certifications": "Food Safety Certificate | Customer Service Training",
+    }
+    res_prod_unrelated = job_matching_service.calculate_match_score(resume_food_safety, job_prod, matching_config=cfg)
+    assert res_prod_unrelated["certifications_score"] == 0.0
+    assert "certification" not in " ".join(res_prod_unrelated.get("strengths") or []).lower()
+    assert any("required certifications" in w.lower() for w in (res_prod_unrelated.get("weaknesses") or []))
+
+    # 4. Skills alone must never masquerade as certifications when certifications field is empty
+    job_iso = {
+        "job_id": "J_QA_ISO",
+        "job_title": "QA Inspector",
+        "department": "Manufacturing",
+        "description": "Inspects tiles against ISO quality standards.",
+        "skills_requirements": "quality control, ISO 9001",
+        "certifications_requirements": "ISO 9001",
+    }
+    resume_skills_only = {
+        "fullname": "No Cert Applicant",
+        "skills": "quality control, ISO 9001",
+        "experience": "QA Inspector (2 years)",
+        "years_experience": 2,
+        "certifications": "",
+    }
+    res_no_cert = job_matching_service.calculate_match_score(resume_skills_only, job_iso, matching_config=cfg)
+    assert res_no_cert["certifications_score"] == 0.0
+    assert res_no_cert["candidate_certifications"] == "None"
+    assert "certification" not in " ".join(res_no_cert.get("strengths") or []).lower()
+
+
+def test_relevant_certification_scores_and_appears_as_strength():
+    """
+    Verify genuinely relevant certifications (explicitly required or domain-aligned)
+    still receive credit and appear in strengths.
+    """
+    cfg = {"weights": {}, "thresholds": {}}
+
+    # 1. Explicit requirement match (OSHA/BOSH alternative)
+    job_prod = {
+        "job_id": "J_PROD_OK",
+        "job_title": "Production Operator",
+        "department": "Manufacturing",
+        "description": "Operates tile production equipment and enforces plant safety.",
+        "skills_requirements": "kiln operation, safety compliance",
+        "certifications_requirements": "safety training (OSHA or BOSH)",
+    }
+    resume_bosh = {
+        "fullname": "Safety Certified Operator",
+        "skills": "kiln operation, safety compliance",
+        "experience": "Production Operator (3 years)",
+        "years_experience": 3,
+        "certifications": "DOLE BOSH Safety Officer 2",
+    }
+    res_bosh = job_matching_service.calculate_match_score(resume_bosh, job_prod, matching_config=cfg)
+    assert res_bosh["certifications_score"] == 100.0
+    assert any("relevant certifications meet the job requirements" in s.lower() for s in (res_bosh.get("strengths") or []))
+
+    # 2. Job lists "None required", candidate holds genuinely domain-relevant certification (CPA for Accounting)
+    job_acct = {
+        "job_id": "J_ACCT",
+        "job_title": "Accounting Assistant",
+        "department": "Finance",
+        "description": "Encodes invoices, reconciles bank accounts, prepares financial reports.",
+        "skills_requirements": "SAP, bookkeeping, Excel, reconciliation",
+        "certifications_requirements": "None required",
+    }
+    resume_cpa = {
+        "fullname": "CPA Candidate",
+        "skills": "SAP, bookkeeping, Excel, reconciliation",
+        "experience": "Accounting Staff (2 years)",
+        "years_experience": 2,
+        "certifications": "Certified Public Accountant (CPA)",
+    }
+    res_cpa = job_matching_service.calculate_match_score(resume_cpa, job_acct, matching_config=cfg)
+    assert res_cpa["certifications_score"] == 100.0
+    assert any("relevant certifications" in s.lower() for s in (res_cpa.get("strengths") or []))
+
+
+def test_nlp_analyze_match_exposes_completeness_and_consistent_weighted_sum():
+    """
+    Verify nlp_analyze_match includes completeness_score, applied_weights, and
+    certification metadata so downstream persistence & ATS Verdict Formulation
+    stay aligned with ai_match_score.
+    """
+    resume_data = {
+        "fullname": "Partial Resume",
+        "skills": "Python, SQL",
+        "experience": "Cashier at Retail Store (2 years)",
+        "years_experience": 2,
+        "education": "Bachelor of Science in Accountancy",
+        "completeness_score": 50.0,
+    }
+    job_data = {
+        "job_title": "Software Developer",
+        "description": "Builds backend REST APIs in Python and FastAPI.",
+        "skills_requirements": "Python, FastAPI, SQL, Docker, React",
+        "experience_requirements": "3 years",
+        "education_requirements": "Bachelor's Degree in Computer Science",
+        "certifications_requirements": "None required",
+    }
+
+    analysis = job_matching_service.nlp_analyze_match(resume_data, job_data, matching_config={"weights": {}, "thresholds": {}})
+    assert analysis["completeness_score"] == 50.0
+    assert analysis["applied_weights"] == {
+        "skills": 40,
+        "experience": 30,
+        "education": 15,
+        "certifications": 10,
+        "completeness": 5,
+    }
+    assert "certifications_reason" in analysis
+    assert analysis["required_certifications"] == "None"
+
+    weights = analysis["applied_weights"]
+    recomputed = (
+        analysis["ai_skills_score"] * (weights["skills"] / 100.0)
+        + analysis["ai_experience_score"] * (weights["experience"] / 100.0)
+        + analysis["ai_education_score"] * (weights["education"] / 100.0)
+        + analysis["ai_certifications_score"] * (weights["certifications"] / 100.0)
+        + analysis["completeness_score"] * (weights["completeness"] / 100.0)
+    )
+    assert abs(recomputed - analysis["ai_match_score"]) <= 0.2
+
+
+
+
 
 

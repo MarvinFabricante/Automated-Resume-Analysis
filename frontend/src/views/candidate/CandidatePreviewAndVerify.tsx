@@ -365,6 +365,8 @@ const CandidatePreviewAndVerify: React.FC = () => {
       experience_score: activeMatch?.experience_score || 0,
       education_score: activeMatch?.education_score || 0,
       certifications_score: activeMatch?.certifications_score || 0,
+      completeness_score: activeMatch?.completeness_score ?? data?.completeness_score ?? undefined,
+      applied_weights: activeMatch?.applied_weights ?? undefined,
       skills_reason: activeMatch?.skills_reason || "",
       experience_reason: activeMatch?.experience_reason || "",
       education_reason: activeMatch?.education_reason || "",

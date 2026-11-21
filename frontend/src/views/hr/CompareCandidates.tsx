@@ -212,8 +212,8 @@ const calculateRuleBasedScore = (
         certScore = jobCert.split(/[\s,]+/).some(w => w.length > 3 && candCert.includes(w)) ? 100 : 0;
       }
     } else {
-      // Certification not required for this job
-      certScore = (candidate.certifications_score || candidate.certificationsScore || 0) > 0 ? 100 : 100;
+      // Certification not required for this job — preserve backend relevance score without forcing 100%
+      certScore = candidate.certifications_score ?? candidate.certificationsScore ?? 0;
     }
   } else {
     // Original AI Scores

@@ -82,7 +82,7 @@ async def async_analyze_application(application_id: int):
         hash_resume = {k: v for k, v in resume_data.items() if k not in ("id", "application_id")}
         hash_payload = json.dumps({"resume": hash_resume, "job": job_data}, sort_keys=True).encode("utf-8")
         content_hash = hashlib.sha256(hash_payload).hexdigest()
-        cache_key = f"ai_analysis:v3:{content_hash}"
+        cache_key = f"ai_analysis:v4:{content_hash}"
         
         cached_result = await get_cache(cache_key)
         
@@ -104,6 +104,8 @@ async def async_analyze_application(application_id: int):
             app.education_score = ai_result.get("ai_education_score")
             if ai_result.get("ai_certifications_score") is not None:
                 app.certifications_score = ai_result.get("ai_certifications_score")
+            if ai_result.get("completeness_score") is not None:
+                app.completeness_score = ai_result.get("completeness_score")
             if ai_result.get("applied_weights") is not None:
                 app.applied_weights = ai_result.get("applied_weights")
             app.matched_skills = ai_result.get("matched_skills")
@@ -115,6 +117,11 @@ async def async_analyze_application(application_id: int):
             app.skills_reason = ai_result.get("skills_reason") or app.skills_reason
             app.experience_reason = ai_result.get("experience_reason") or app.experience_reason
             app.education_reason = ai_result.get("education_reason") or app.education_reason
+            app.certifications_reason = ai_result.get("certifications_reason") or app.certifications_reason
+            if ai_result.get("required_certifications") is not None:
+                app.required_certifications = ai_result.get("required_certifications")
+            if ai_result.get("candidate_certifications") is not None:
+                app.candidate_certifications = ai_result.get("candidate_certifications")
             if "experience_gaps" in ai_result:
                 app.experience_gaps = ai_result.get("experience_gaps")
             app.ai_powered = False

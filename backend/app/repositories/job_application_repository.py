@@ -121,7 +121,7 @@ async def get_all(db: AsyncSession) -> List[JobApplication]:
 
 async def get_all_summaries(db: AsyncSession) -> List[Dict[str, Any]]:
     """Get lightweight dashboard summary rows via SQL column projection (checks Redis cache first)."""
-    cache_key = "all_apps:summaries:list"
+    cache_key = "all_apps:summaries:list:v2"
     cached = await get_cache(cache_key)
     if cached is not None:
         return cached
@@ -142,6 +142,8 @@ async def get_all_summaries(db: AsyncSession) -> List[Dict[str, Any]]:
             JobApplication.experience_score,
             JobApplication.education_score,
             JobApplication.certifications_score,
+            JobApplication.completeness_score,
+            JobApplication.applied_weights,
             JobApplication.profile_image_url,
             JobApplication.resume_url,
             JobApplication.matched_skills,
@@ -182,6 +184,8 @@ async def get_all_summaries(db: AsyncSession) -> List[Dict[str, Any]]:
             "experience_score": row.experience_score,
             "education_score": row.education_score,
             "certifications_score": row.certifications_score,
+            "completeness_score": row.completeness_score,
+            "applied_weights": row.applied_weights,
             "profile_image_url": row.profile_image_url,
             "resume_url": row.resume_url,
             "matched_skills": row.matched_skills or [],
