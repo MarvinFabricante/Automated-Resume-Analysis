@@ -38,6 +38,23 @@ DB_CONTAINER="resume_analysis_db"
 REDIS_CONTAINER="resume_analysis_redis"
 FRONTEND_CONTAINER="resume_analysis_frontend"
 
+# --- Helper: Read Key from .env ---
+get_env_value() {
+    local key="$1"
+    local default_val="${2:-}"
+    if [ ! -f "$ENV_FILE" ]; then
+        echo "$default_val"
+        return
+    fi
+    local val
+    val=$(grep -E "^${key}=" "$ENV_FILE" 2>/dev/null | tail -n 1 | cut -d= -f2- | tr -d '\r"' | sed "s/^'//;s/'$//" || true)
+    if [ -n "$val" ]; then
+        echo "$val"
+    else
+        echo "$default_val"
+    fi
+}
+
 # --- Helper: Detect Docker Compose Command ---
 detect_docker_compose() {
     if docker compose version >/dev/null 2>&1; then
@@ -69,14 +86,16 @@ show_help() {
     echo -e "${WHITE}Usage:${NC} ./start.sh [OPTION]"
     echo ""
     echo -e "${BOLD}Options:${NC}"
-    echo -e "  ${GREEN}(no flags)${NC}      Default: Check, build & start all services, setup Cloudflare domain, and sync env"
+    echo -e "  ${GREEN}(no flags)${NC}      Default: Check, build & start all services, auto-seed missing data, setup Cloudflare tunnel"
     echo -e "  ${GREEN}-q, --quick${NC}     Fast start: Start existing containers without rebuilding images"
     echo -e "  ${GREEN}-b, --rebuild${NC}   Force clean rebuild of all container images (--no-cache)"
     echo -e "  ${GREEN}-r, --restart${NC}   Restart all containers and re-verify Cloudflare tunnel"
     echo -e "  ${GREEN}-s, --stop${NC}      Gracefully stop and take down all containers"
     echo -e "  ${GREEN}--status${NC}        Show current health of all containers, domain, and tunnel"
     echo -e "  ${GREEN}--logs [svc]${NC}    View logs (e.g. ./start.sh --logs backend or ./start.sh --logs frontend)"
-    echo -e "  ${GREEN}--seed${NC}          Run database seeds for jobs and HR accounts"
+    echo -e "  ${GREEN}--seed${NC}          Run idempotent database & ML seeds (jobs, HR/Admin accounts, templates, configs)"
+    echo -e "  ${GREEN}--no-seed${NC}       Skip automatic database seeding during startup"
+    echo -e "  ${GREEN}--no-tunnel${NC}     Start local services without Cloudflare tunnel"
     echo -e "  ${GREEN}-h, --help${NC}      Show this help menu"
     echo ""
 }
@@ -113,12 +132,17 @@ preflight_checks() {
     fi
 
     # 4. Check & create required host directories
-    mkdir -p "$PROJECT_DIR/uploads/resumes" "$PROJECT_DIR/uploads/resume_images"
-    chmod -R 777 "$PROJECT_DIR/uploads" 2>/dev/null || true
+    mkdir -p \
+        "$PROJECT_DIR/uploads/resumes" \
+        "$PROJECT_DIR/uploads/resume_images" \
+        "$PROJECT_DIR/uploads/physical_resumes" \
+        "$PROJECT_DIR/exports" \
+        "$PROJECT_DIR/backend/data"
+    chmod -R 777 "$PROJECT_DIR/uploads" "$PROJECT_DIR/exports" 2>/dev/null || true
 
     # 5. Check Cloudflare Tunnel tool if custom domain is used
     local custom_domain
-    custom_domain=$(grep -E "^CUSTOM_DOMAIN=" "$ENV_FILE" 2>/dev/null | cut -d= -f2- | tr -d ' "' || true)
+    custom_domain=$(get_env_value "CUSTOM_DOMAIN" "")
     if [ -n "$custom_domain" ]; then
         if command -v cloudflared >/dev/null 2>&1; then
             echo -e "${GREEN}  ✓ Cloudflare connector CLI (cloudflared) detected${NC}"
@@ -134,10 +158,14 @@ preflight_checks() {
 # --- Wait for Container Health ---
 wait_for_db() {
     echo -e "  ... waiting for PostgreSQL to be ready"
+    local db_user
+    local db_name
+    db_user=$(get_env_value "DB_USER" "postgres")
+    db_name=$(get_env_value "DB_NAME" "automated_resume_db")
     local max_retries=30
     local count=0
     while [ $count -lt $max_retries ]; do
-        if $DOCKER_COMPOSE exec -T db pg_isready -U "${DB_USER:-postgres}" -d "${DB_NAME:-automated_resume_db}" >/dev/null 2>&1; then
+        if $DOCKER_COMPOSE exec -T db pg_isready -U "$db_user" -d "$db_name" >/dev/null 2>&1; then
             return 0
         fi
         sleep 1
@@ -175,11 +203,13 @@ wait_for_backend() {
 }
 
 wait_for_frontend() {
-    echo -e "  ... waiting for Frontend (Nginx) to respond"
-    local max_retries=20
+    local http_port
+    http_port=$(get_env_value "HTTP_PORT" "8080")
+    echo -e "  ... waiting for Frontend (Nginx) to respond on port ${http_port}"
+    local max_retries=25
     local count=0
     while [ $count -lt $max_retries ]; do
-        if curl -sf http://localhost:8080/ >/dev/null 2>&1; then
+        if curl -sf "http://localhost:${http_port}/" >/dev/null 2>&1; then
             return 0
         fi
         sleep 1
@@ -408,30 +438,48 @@ apply_environment_changes() {
     echo ""
 }
 
-# --- Optional Database Verification / Seeding ---
+# --- Database Verification & Auto-Seeding ---
 verify_database() {
-    echo -e "${BLUE}[6/6] Verifying database integrity...${NC}"
-    local job_count=0
-    job_count=$($DOCKER_COMPOSE exec -T backend python -c "
-import asyncio
+    local auto_seed="${1:-true}"
+    echo -e "${BLUE}[6/6] Verifying database integrity & seed data...${NC}"
+
+    local counts_line="0|0|0|0|0"
+    counts_line=$($DOCKER_COMPOSE exec -T backend python -c "
+import asyncio, os
 from app.utils.database import AsyncSessionLocal
 from sqlalchemy import text
-async def count_jobs():
+async def check_counts():
     try:
         async with AsyncSessionLocal() as session:
-            res = await session.execute(text('SELECT count(*) FROM job_descriptions'))
-            return res.scalar() or 0
+            jobs = (await session.execute(text('SELECT count(*) FROM job_descriptions'))).scalar() or 0
+            staff = (await session.execute(text(\"SELECT count(*) FROM users WHERE role IN ('HR', 'ADMIN')\"))).scalar() or 0
+            tpls = (await session.execute(text('SELECT count(*) FROM form_templates'))).scalar() or 0
+            cfgs = (await session.execute(text('SELECT count(*) FROM system_configs'))).scalar() or 0
+            has_ml = 1 if os.path.exists('data/production_model.pkl') else 0
+            return f'{jobs}|{staff}|{tpls}|{cfgs}|{has_ml}'
     except Exception:
-        return 0
-print(asyncio.run(count_jobs()))
-" 2>/dev/null || echo 0)
+        return '0|0|0|0|0'
+print(asyncio.run(check_counts()))
+" 2>/dev/null || echo "0|0|0|0|0")
 
-    if [ "$job_count" -eq 0 ]; then
-        echo -e "${YELLOW}  ! Database has no job descriptions yet.${NC}"
-        echo -e "${CYAN}  Tip: You can seed default Mariwasa jobs and HR accounts anytime with:${NC}"
-        echo -e "       ${BOLD}./start.sh --seed${NC}"
+    IFS='|' read -r job_count staff_count tpl_count cfg_count has_ml <<< "$counts_line"
+    job_count=${job_count:-0}
+    staff_count=${staff_count:-0}
+    tpl_count=${tpl_count:-0}
+    cfg_count=${cfg_count:-0}
+    has_ml=${has_ml:-0}
+
+    if [ "$job_count" -eq 0 ] || [ "$staff_count" -eq 0 ] || [ "$tpl_count" -eq 0 ] || [ "$cfg_count" -eq 0 ] || [ "$has_ml" -eq 0 ]; then
+        if [ "$auto_seed" = "true" ]; then
+            echo -e "${YELLOW}  ! Missing initial seed data (jobs=${job_count}, staff=${staff_count}, templates=${tpl_count}, configs=${cfg_count}, ml=${has_ml}).${NC}"
+            echo -e "${CYAN}  🌱 Automatically seeding jobs, HR/Admin accounts, templates, configs & ML model...${NC}"
+            $DOCKER_COMPOSE exec -T backend python scripts/seed_defaults.py
+        else
+            echo -e "${YELLOW}  ! Initial seed data incomplete (jobs=${job_count}, staff=${staff_count}). Skipped due to --no-seed.${NC}"
+            echo -e "${CYAN}  Tip: Run ${BOLD}./start.sh --seed${NC}${CYAN} anytime to populate jobs, accounts, and configs.${NC}"
+        fi
     else
-        echo -e "${GREEN}  ✓ Database connected and populated (${job_count} active jobs)${NC}"
+        echo -e "${GREEN}  ✓ Database verified (${job_count} jobs, ${staff_count} HR/Admin accounts, ${tpl_count} form templates, ${cfg_count} configs, ML model ready)${NC}"
     fi
     echo ""
 }
@@ -440,13 +488,21 @@ print(asyncio.run(count_jobs()))
 run_seeds() {
     show_banner
     preflight_checks
-    echo -e "${BLUE}🌱 Running Database Seeds (Jobs & HR Accounts)...${NC}"
+    echo -e "${BLUE}🌱 Running Unified Database & ML Seeds (Jobs, HR/Admin Accounts, Templates, Configs)...${NC}"
     echo ""
-    echo -e "  [1/2] Seeding Mariwasa Job Descriptions..."
-    $DOCKER_COMPOSE exec -T backend python seed_mariwasa_jobs.py
-    echo ""
-    echo -e "  [2/2] Seeding HR Staff Accounts..."
-    $DOCKER_COMPOSE exec -T backend python seed_hr_accounts.py
+
+    # Ensure db, redis, and backend are up before seeding
+    $DOCKER_COMPOSE up -d db redis backend >/dev/null 2>&1
+    if ! wait_for_db; then
+        echo -e "${RED}  ✗ PostgreSQL failed to become ready.${NC}"
+        exit 1
+    fi
+    if ! wait_for_backend; then
+        echo -e "${RED}  ✗ Backend failed to become ready.${NC}"
+        exit 1
+    fi
+
+    $DOCKER_COMPOSE exec -T backend python scripts/seed_defaults.py
     echo ""
     echo -e "${GREEN}✓ Seeding complete!${NC}"
 }
@@ -527,7 +583,9 @@ view_logs() {
 display_dashboard() {
     local tunnel_url="$1"
     local custom_domain
-    custom_domain=$(grep -E "^CUSTOM_DOMAIN=" "$ENV_FILE" 2>/dev/null | cut -d= -f2- | tr -d ' "' || true)
+    local http_port
+    custom_domain=$(get_env_value "CUSTOM_DOMAIN" "")
+    http_port=$(get_env_value "HTTP_PORT" "8080")
 
     echo -e "${GREEN}${BOLD}═════════════════════════════════════════════════════════════════${NC}"
     echo -e "${GREEN}${BOLD}             🎉 APPLICATION READY & RUNNING!                    ${NC}"
@@ -536,21 +594,26 @@ display_dashboard() {
     if [ -n "$custom_domain" ]; then
         echo -e "  ${WHITE}${BOLD}🌐 PUBLIC DOMAIN:${NC}            ${CYAN}${BOLD}https://${custom_domain}${NC}"
         echo -e "  ${WHITE}${BOLD}🌐 WWW DOMAIN:${NC}               ${CYAN}${BOLD}https://www.${custom_domain}${NC}"
-    else
+    elif [ -n "$tunnel_url" ]; then
         echo -e "  ${WHITE}${BOLD}🌐 PUBLIC URL (Cloudflare):${NC}   ${CYAN}${BOLD}${tunnel_url}${NC}"
+    else
+        echo -e "  ${WHITE}${BOLD}🌐 PUBLIC TUNNEL:${NC}            ${YELLOW}Disabled (--no-tunnel)${NC}"
     fi
-    echo -e "  ${WHITE}${BOLD}💻 LOCAL FRONTEND:${NC}           ${WHITE}http://localhost:8080${NC}"
+    echo -e "  ${WHITE}${BOLD}💻 LOCAL FRONTEND:${NC}           ${WHITE}http://localhost:${http_port}${NC}"
     echo -e "  ${WHITE}${BOLD}📚 FASTAPI DOCS (Swagger):${NC}   ${WHITE}http://localhost:8000/docs${NC}"
     echo -e "  ${WHITE}${BOLD}🗄️  POSTGRESQL PORT:${NC}         ${WHITE}localhost:5434${NC}"
     echo -e "  ${WHITE}${BOLD}⚡ REDIS CACHE PORT:${NC}         ${WHITE}localhost:6380${NC}"
     echo ""
-    echo -e "${YELLOW}${BOLD}  🔑 GOOGLE OAUTH CONFIGURATION:${NC}"
-    echo -e "     If using Google Login, add this authorized redirect URI in"
-    echo -e "     Google Cloud Console (Credentials > Authorized redirect URIs):"
-    echo -e "     ${BOLD}${tunnel_url}/api/auth/google/callback${NC}"
-    echo ""
+    if [ -n "$tunnel_url" ]; then
+        echo -e "${YELLOW}${BOLD}  🔑 GOOGLE OAUTH CONFIGURATION:${NC}"
+        echo -e "     If using Google Login, add this authorized redirect URI in"
+        echo -e "     Google Cloud Console (Credentials > Authorized redirect URIs):"
+        echo -e "     ${BOLD}${tunnel_url}/api/auth/google/callback${NC}"
+        echo ""
+    fi
     echo -e "${WHITE}${BOLD}  🛠️  HELPFUL COMMANDS:${NC}"
     echo -e "     View status:   ${GREEN}./start.sh --status${NC}"
+    echo -e "     Run seeds:     ${GREEN}./start.sh --seed${NC}"
     echo -e "     Stream logs:   ${GREEN}./start.sh --logs${NC} (or ./start.sh --logs backend)"
     echo -e "     Stop app:      ${GREEN}./start.sh --stop${NC}"
     echo -e "     Restart app:   ${GREEN}./start.sh --restart${NC}"
@@ -563,6 +626,8 @@ display_dashboard() {
 # ==============================================================================
 main() {
     local mode="build"
+    local auto_seed="true"
+    local use_tunnel="true"
 
     while [ $# -gt 0 ]; do
         case "$1" in
@@ -581,6 +646,14 @@ main() {
             --seed|seed)
                 run_seeds
                 exit 0
+                ;;
+            --no-seed)
+                auto_seed="false"
+                shift
+                ;;
+            --no-tunnel)
+                use_tunnel="false"
+                shift
                 ;;
             -l|--logs|logs)
                 shift
@@ -620,10 +693,22 @@ main() {
     fi
 
     start_containers "$mode"
-    setup_cloudflare_tunnel
-    sync_env_file "$ACTIVE_TUNNEL_URL"
-    apply_environment_changes
-    verify_database
+
+    local http_port
+    http_port=$(get_env_value "HTTP_PORT" "8080")
+    ACTIVE_TUNNEL_URL=""
+    if [ "$use_tunnel" = "true" ]; then
+        setup_cloudflare_tunnel
+        sync_env_file "$ACTIVE_TUNNEL_URL"
+        apply_environment_changes
+    else
+        echo -e "${BLUE}[3/6] Cloudflare Tunnel skipped (--no-tunnel).${NC}"
+        sync_env_file "http://localhost:${http_port}"
+        apply_environment_changes
+        ACTIVE_TUNNEL_URL=""
+    fi
+
+    verify_database "$auto_seed"
     display_dashboard "$ACTIVE_TUNNEL_URL"
 }
 
