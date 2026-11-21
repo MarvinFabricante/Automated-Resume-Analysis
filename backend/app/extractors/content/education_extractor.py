@@ -1072,17 +1072,30 @@ def extract_structured_education(text: str) -> Dict[str, Any]:
                     deg, raw_deg, spec = d, rd, sp
                 elif rd and not raw_deg:
                     raw_deg = rd
-                # Check institution
-                if _is_school_text(bline_clean) and not _is_degree_text(bline_clean):
-                    i, l = _extract_school_and_location(bline_clean)
-                    if i and not _is_invalid_institution(i) and not inst:
-                        inst, loc = i, l
+                # Check institution (also handle right-aligned 'School | Date' single-pipe lines)
+                inst_candidates = [bline_clean]
+                if bline_clean.count('|') == 1:
+                    inst_candidates.extend(p.strip() for p in bline_clean.split('|') if p.strip())
+                for inst_cand in inst_candidates:
+                    if _is_school_text(inst_cand) and not _is_degree_text(inst_cand):
+                        i, l = _extract_school_and_location(inst_cand)
+                        if i and not _is_invalid_institution(i) and not inst:
+                            inst, loc = i, l
+                            break
 
             if not inst:
                 for bline in block_lines:
                     bline_clean = bline.strip(' -•*')
-                    if _is_school_text(bline_clean):
-                        inst, loc = _extract_school_and_location(bline_clean)
+                    inst_candidates = [bline_clean]
+                    if bline_clean.count('|') == 1:
+                        inst_candidates.extend(p.strip() for p in bline_clean.split('|') if p.strip())
+                    found_inst = False
+                    for inst_cand in inst_candidates:
+                        if _is_school_text(inst_cand):
+                            inst, loc = _extract_school_and_location(inst_cand)
+                            found_inst = True
+                            break
+                    if found_inst:
                         break
             if not inst and block_lines:
                 for bline in block_lines:

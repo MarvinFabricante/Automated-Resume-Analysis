@@ -113,6 +113,18 @@ def _format_para_text(p_elem, doc_obj: docx.Document) -> str:
         if not txt:
             return ""
 
+        if "\t" in txt and "\n" not in txt:
+            tab_segs = [seg.strip() for seg in re.split(r'\t+', txt) if seg.strip()]
+            if (
+                2 <= len(tab_segs) <= 4
+                and re.search(
+                    r'\b(?:19|20)\d{2}\b|\b(?:present|current(?:ly)?|now|ongoing|yrs?|years?|mos?|months?)\b',
+                    txt,
+                    re.IGNORECASE,
+                )
+            ):
+                txt = " | ".join(tab_segs)
+
         # Check if paragraph has bullet or numbering properties
         has_num = bool(p_elem.xpath('.//*[local-name()="numPr"]'))
         style_name = ""
@@ -220,25 +232,97 @@ def _extract_table_text(tbl_elem, doc_obj: docx.Document) -> List[str]:
             row_items = [t for t in cell_texts if t]
             header_terms = {
                 "date", "dates", "year", "years", "period", "duration",
-                "role", "roles", "position", "positions", "title", "job title",
+                "from", "to", "inclusive dates", "inclusive dates mm/dd/yyyy",
+                "inclusive dates of attendance", "date from", "date to",
+                "role", "roles", "position", "positions", "position title", "title", "job title",
                 "company", "companies", "employer", "organization", "company name",
+                "company / organization", "department / agency / office / company",
+                "department/agency/office/company", "office / company",
+                "monthly salary", "salary", "salary / job / pay grade", "salary/job/pay grade",
+                "salary grade", "pay grade", "status of appointment", "employment status",
+                "gov't service", "govt service", "govt service y/n", "govt service yn",
                 "responsibilities", "duties", "key responsibilities", "description",
                 "degree", "degrees", "school", "institution", "location", "details",
                 "role & company", "position & company", "position / company"
             }
-            if row_items and all(re.sub(r'[^a-zA-Z\s&/]', '', t.lower()).strip() in header_terms for t in row_items):
+            def _norm_tbl_hdr(val: str) -> str:
+                cleaned = re.sub(r'\s+', ' ', re.sub(r'[^a-zA-Z\s&/]', '', val.lower())).strip()
+                cleaned = re.sub(r'\s*/\s*', ' / ', cleaned)
+                return cleaned
+            if row_items and all(_norm_tbl_hdr(t) in header_terms or _norm_tbl_hdr(t).replace(' / ', '/') in header_terms for t in row_items):
                 continue
 
+            _title_kw_re = re.compile(
+                r'\b(?:developer|engineer|manager|officer|assistant|clerk|lead|analyst|specialist|'
+                r'technician|representative|crew|nurse|supervisor|director|designer|aide|operator|'
+                r'cashier|driver|rider|teacher|accountant|auditor|architect|intern|trainee)\b',
+                re.I,
+            )
+            _date_cell_re = re.compile(
+                r'^(?:\d{1,2}[./-]\d{1,2}[./-]\d{2,4}|\d{4}[./-]\d{1,2}(?:[./-]\d{1,2})?|'
+                r'(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z.]*\s*[,.]?\s*(?:19|20)\d{2}|'
+                r'(?:19|20)\d{2}|\d{1,2}[./-](?:19|20)?\d{2})$',
+                re.I,
+            )
+            _end_date_cell_re = re.compile(
+                r'^(?:present|current(?:ly)?|now|to\s+date|to\s+present|ongoing|active|pres\.?)$',
+                re.I,
+            )
+
+            # Merge CSC Form 212 PDS separate From | To date columns into a single range cell
+            merged_pds_dates = False
+            if len(cell_texts) >= 4:
+                c0_clean = re.sub(r'\s+', ' ', cell_texts[0]).strip()
+                c1_clean = re.sub(r'\s+', ' ', cell_texts[1]).strip()
+                if (
+                    c0_clean
+                    and c1_clean
+                    and not _title_kw_re.search(c0_clean)
+                    and not _title_kw_re.search(c1_clean)
+                    and _date_cell_re.match(c0_clean)
+                    and (_date_cell_re.match(c1_clean) or _end_date_cell_re.match(c1_clean))
+                ):
+                    cell_texts = [f"{c0_clean} - {c1_clean}"] + cell_texts[2:]
+                    merged_pds_dates = True
+
             # If row has multiple cells, check if cell 0 is solely a date while cell 1 is role/company.
-            # In Word resume tables, placing Dates in column 0 and Position/Company in column 1 is very common.
-            # Align them so Position/Company comes first, then Date, then Duties.
-            if len(cell_texts) >= 2:
+            # For compact header cells (<=2 lines, no bullets), align Position/Company before Date.
+            # For multi-line date-gutter layout cells containing bullets or >2 lines, preserve Date-First order
+            # and normalize wrapped newlines inside the date cell so dates stay before responsibilities.
+            if not merged_pds_dates and len(cell_texts) >= 2:
                 c0 = cell_texts[0]
                 c1 = cell_texts[1]
-                is_c0_date = bool(re.search(r'\b(?:\d{4}|present|current)\b', c0, re.I) and not re.search(r'\b(?:developer|engineer|manager|officer|assistant|clerk|lead|analyst|specialist|technician|representative|crew|nurse|supervisor|director|designer)\b', c0, re.I))
+                c0_nonempty = [ln.strip() for ln in c0.splitlines() if ln.strip()]
+                def _is_pure_date_line(ln_str: str) -> bool:
+                    stripped = re.sub(
+                        r'\b(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|'
+                        r'aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?|'
+                        r'present|current(?:ly)?|now|to\s+date|to\s+present|ongoing|active|pres|'
+                        r'from|to|until|thru|through|since|approx|ca|yrs?|years?|mos?|months?)\b',
+                        ' ',
+                        ln_str,
+                        flags=re.I,
+                    )
+                    stripped = re.sub(r'[\d\W_]+', '', stripped)
+                    return len(stripped) <= 2
+
+                is_c0_date = bool(
+                    c0_nonempty
+                    and len(c0_nonempty) <= 3
+                    and len(c0) <= 50
+                    and re.search(r'\b(?:\d{4}|present|current)\b', c0, re.I)
+                    and not _title_kw_re.search(c0)
+                    and all(_is_pure_date_line(ln) for ln in c0_nonempty)
+                )
                 is_c1_role_or_comp = bool(len(c1) > 2 and not re.search(r'^\s*(?:\d{4}|present|current)\b', c1, re.I))
                 if is_c0_date and is_c1_role_or_comp:
-                    cell_texts = [c1, c0] + cell_texts[2:]
+                    c1_nonempty = [ln.strip() for ln in c1.splitlines() if ln.strip()]
+                    c1_has_bullets_or_many = bool(re.search(r'(?:^|\n)\s*[•\-*▪►✓]\s', c1)) or len(c1_nonempty) > 2
+                    if is_layout and c1_has_bullets_or_many:
+                        c0_norm = re.sub(r'\s*\n\s*', ' ', c0).strip()
+                        cell_texts = [c0_norm, c1] + cell_texts[2:]
+                    else:
+                        cell_texts = [c1, c0] + cell_texts[2:]
 
             if is_layout:
                 # Vertical extraction for multi-column resume layout

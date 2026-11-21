@@ -712,9 +712,9 @@ def assess_resume_completeness(data: dict, sections: Optional[dict] = None, raw_
     exp_section = sections.get("EXPERIENCE", "").strip() if sections else ""
 
     # Check for empty / placeholder sections like "N/A", "None", "Fresh Graduate with no experience"
-    placeholder_exp = bool(re.search(r'^(?:none|n/?a|not\s+applicable|no\s+experience|fresh\s+graduate\s+with\s+no\s+work\s+experience)$', exp_section, re.I))
+    placeholder_exp = bool(re.search(r'^(?:none\.?|n/?a\.?|not\s+applicable\.?|no\s+(?:prior\s+|work\s+)?experience\.?|fresh\s+graduate(?:\s*[-–—:(]\s*no\s+(?:prior\s+|work\s+)?experience\)?|\s+with\s+no\s+(?:prior\s+|work\s+)?experience)?)$', exp_section, re.I))
     has_other_headers_for_exp = bool(sections and any(k in sections for k in ("EDUCATION", "SKILLS", "CERTIFICATIONS")))
-    if has_other_headers_for_exp and not exp_section:
+    if has_other_headers_for_exp and not exp_section and not work_exps:
         has_work_experience = False
     else:
         has_work_experience = (

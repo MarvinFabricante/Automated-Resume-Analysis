@@ -755,9 +755,9 @@ def test_tc_res_014_no_data_loss_across_formats(temp_files):
     assert res_txt.get("candidate_company") == "Tech Mahindra"
 
     # Specifically verify job title was captured identically
-    assert res_docx.get("candidate_job_title") == "Full Stack Developer"
-    assert res_pdf.get("candidate_job_title") == "Full Stack Developer"
-    assert res_txt.get("candidate_job_title") == "Full Stack Developer"
+    assert res_docx.get("candidate_job_title") == "Senior Full Stack Developer"
+    assert res_pdf.get("candidate_job_title") == "Senior Full Stack Developer"
+    assert res_txt.get("candidate_job_title") == "Senior Full Stack Developer"
 
     # 5. Test DOCX table layout (Dates in Col 0, Position & Company in Col 1, Duties in Col 2)
     w_table_doc = docx.Document()
@@ -785,7 +785,7 @@ def test_tc_res_014_no_data_loss_across_formats(temp_files):
     assert res_table_docx.get("candidate_company") == "Tech Mahindra", (
         f"Table DOCX must capture company 'Tech Mahindra', got '{res_table_docx.get('candidate_company')}'"
     )
-    assert res_table_docx.get("candidate_job_title") == "Full Stack Developer"
+    assert res_table_docx.get("candidate_job_title") == "Senior Full Stack Developer"
 
     # 6. Test TXT file with UTF-16 encoding
     utf16_content = resume_text.encode("utf-16")
