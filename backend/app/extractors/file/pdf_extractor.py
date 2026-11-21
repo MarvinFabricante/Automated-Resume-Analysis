@@ -6,6 +6,32 @@ import re
 from typing import Union
 
 
+_PDF_DATE_HINT_RE = re.compile(
+    r'\b(?:19|20)\d{2}\b|\b(?:present|current(?:ly)?|now|to\s+date|ongoing)\b|'
+    r'\b\d+(?:\.\d+)?\s*(?:yrs?|years?|mos?|months?)\b',
+    re.IGNORECASE,
+)
+_PDF_PAGE_FOOTER_RE = re.compile(r'^\s*page\s+\d+(?:\s*(?:of|/)\s*\d+)?\s*$', re.IGNORECASE)
+
+
+def _is_date_gutter_column(blocks, detect_section_label_fn) -> bool:
+    """Return True if a column's blocks are predominantly short date/timeline fragments with no section headers."""
+    if not blocks:
+        return False
+    if detect_section_label_fn is not None:
+        for b in blocks:
+            for ln in b[4].splitlines():
+                if ln.strip() and detect_section_label_fn(ln.strip()) is not None:
+                    return False
+    date_frag_count = 0
+    for b in blocks:
+        txt = b[4].strip()
+        lines = [ln.strip() for ln in txt.splitlines() if ln.strip()]
+        if len(lines) <= 3 and len(txt) <= 45 and _PDF_DATE_HINT_RE.search(txt):
+            date_frag_count += 1
+    return (date_frag_count / len(blocks)) >= 0.6
+
+
 def _extract_page_text_layout_aware(page) -> str:
     """
     Extracts text from a PyMuPDF page while preserving visual reading order:
@@ -13,6 +39,7 @@ def _extract_page_text_layout_aware(page) -> str:
     - Detects two-column (sidebar + main) layouts so left-column sections
       (e.g. CONTACT, EDUCATION, SKILLS, CERTIFICATION) never interleave into
       right-column sections (e.g. PROFILE, EXPERIENCE).
+    - Separates bottom page footers and rejects date-only timeline gutters from 2-column splitting.
     """
     raw_blocks = page.get_text("blocks") or []
     text_blocks = [
@@ -26,20 +53,41 @@ def _extract_page_text_layout_aware(page) -> str:
     page_w = float(page.rect.width or 600.0)
     page_h = float(page.rect.height or 800.0)
 
+    # Separate bottom page footers so they don't cross column boundaries and disable 2-column detection
+    footer_blocks = []
+    main_blocks = []
+    for b in text_blocks:
+        is_single_line = "\n" not in b[4]
+        if b[1] >= page_h * 0.90 or (is_single_line and _PDF_PAGE_FOOTER_RE.match(b[4])):
+            footer_blocks.append(b)
+        else:
+            main_blocks.append(b)
+
+    if not main_blocks:
+        main_blocks = text_blocks
+        footer_blocks = []
+
+    detect_section_label_fn = None
+    try:
+        from app.extractors.content.section_parser import detect_section_label
+        detect_section_label_fn = detect_section_label
+    except Exception:
+        pass
+
     # Identify top header band (e.g. Name / Title banner at top of page 1),
     # stopping before the first column-level section header so 2-column sections
     # starting near the top (e.g. y=80) are never interleaved into top_blocks.
     default_cutoff = min(145.0, page_h * 0.18)
     first_section_y = default_cutoff
-    try:
-        from app.extractors.content.section_parser import detect_section_label
-        for b in text_blocks:
-            first_line = b[4].split("\n", 1)[0].strip()
-            if first_line and detect_section_label(first_line) is not None:
-                if b[1] < first_section_y:
-                    first_section_y = b[1]
-    except Exception:
-        pass
+    if detect_section_label_fn is not None:
+        try:
+            for b in main_blocks:
+                first_line = b[4].split("\n", 1)[0].strip()
+                if first_line and detect_section_label_fn(first_line) is not None:
+                    if b[1] < first_section_y:
+                        first_section_y = b[1]
+        except Exception:
+            pass
     header_cutoff = first_section_y
 
     # Check if body blocks cleanly separate into two vertical columns
@@ -47,7 +95,7 @@ def _extract_page_text_layout_aware(page) -> str:
     best_score = -1
     for frac in (0.30, 0.33, 0.35, 0.38, 0.40, 0.42, 0.48, 0.62, 0.67):
         split_x = page_w * frac
-        body_blocks = [b for b in text_blocks if b[1] >= header_cutoff]
+        body_blocks = [b for b in main_blocks if b[1] >= header_cutoff]
         if len(body_blocks) < 4:
             continue
         left_b = [b for b in body_blocks if b[2] <= split_x + 8]
@@ -55,6 +103,10 @@ def _extract_page_text_layout_aware(page) -> str:
         crossing_b = [b for b in body_blocks if b[0] < split_x - 8 and b[2] > split_x + 8]
 
         if len(left_b) >= 2 and len(right_b) >= 2 and len(crossing_b) == 0:
+            # Reject timeline / date-gutter splits so dates remain y-aligned with their roles
+            if _is_date_gutter_column(left_b, detect_section_label_fn) or _is_date_gutter_column(right_b, detect_section_label_fn):
+                continue
+
             # Verify vertical overlap between columns AND multi-line content in both columns
             left_min_y = min(b[1] for b in left_b)
             left_max_y = max(b[3] for b in left_b)
@@ -69,10 +121,11 @@ def _extract_page_text_layout_aware(page) -> str:
                     best_score = score
                     best_split = split_x
 
+    footer_blocks.sort(key=lambda b: (round(b[1] / 4.0), b[0]))
+
     if best_split is not None:
-        # Check if header blocks also split or span across
-        top_blocks = [b for b in text_blocks if b[1] < header_cutoff]
-        body_blocks = [b for b in text_blocks if b[1] >= header_cutoff]
+        top_blocks = [b for b in main_blocks if b[1] < header_cutoff]
+        body_blocks = [b for b in main_blocks if b[1] >= header_cutoff]
         top_blocks.sort(key=lambda b: (round(b[1] / 6.0), b[0]))
 
         left_col = [b for b in body_blocks if b[2] <= best_split + 8]
@@ -83,12 +136,36 @@ def _extract_page_text_layout_aware(page) -> str:
         right_col.sort(key=lambda b: (round(b[1] / 4.0), b[0]))
         other_col.sort(key=lambda b: (round(b[1] / 4.0), b[0]))
 
-        ordered = top_blocks + left_col + right_col + other_col
+        ordered = top_blocks + left_col + right_col + other_col + footer_blocks
         return "\n".join(b[4] for b in ordered)
 
     # Single-column layout: sort visually top-to-bottom, left-to-right
-    text_blocks.sort(key=lambda b: (round(b[1] / 4.0), b[0]))
-    return "\n".join(b[4] for b in text_blocks)
+    ordered_blocks = sorted(main_blocks, key=lambda b: (round(b[1] / 4.0), b[0]))
+    # Pair same-baseline left/right single-line blocks (e.g. Role/Company on left, Date range on right)
+    merged_texts: list[str] = []
+    idx = 0
+    while idx < len(ordered_blocks):
+        curr = ordered_blocks[idx]
+        if idx + 1 < len(ordered_blocks):
+            nxt = ordered_blocks[idx + 1]
+            if (
+                "\n" not in curr[4]
+                and "\n" not in nxt[4]
+                and abs(curr[1] - nxt[1]) <= 4.0
+                and nxt[0] > curr[2] + 4.0
+            ):
+                curr_has_date = bool(_PDF_DATE_HINT_RE.search(curr[4]))
+                nxt_has_date = bool(_PDF_DATE_HINT_RE.search(nxt[4]))
+                if (curr_has_date and len(nxt[4]) < 80) or (nxt_has_date and len(curr[4]) < 80):
+                    merged_texts.append(f"{curr[4]} | {nxt[4]}")
+                    idx += 2
+                    continue
+        merged_texts.append(curr[4])
+        idx += 1
+
+    for fb in footer_blocks:
+        merged_texts.append(fb[4])
+    return "\n".join(merged_texts)
 
 
 def extract_text_from_pdf(file_input: Union[str, bytes, io.BytesIO]) -> str:

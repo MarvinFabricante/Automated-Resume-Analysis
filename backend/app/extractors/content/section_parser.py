@@ -107,6 +107,19 @@ _SECTION_DEFINITIONS: dict[str, list[str]] = {
         "INDUSTRIAL EXPERIENCE", "FIELD EXPERIENCE", "CLINICAL EXPERIENCE",
         "TEACHING EXPERIENCE", "CORPORATE EXPERIENCE", "MILITARY EXPERIENCE",
         "FREELANCE EXPERIENCE", "CONSULTING EXPERIENCE", "LEADERSHIP & WORK EXPERIENCE",
+        "CAREER PROGRESSION", "CAREER HIGHLIGHTS", "EXPERIENCE SUMMARY",
+        "WORK EXPERIENCE SUMMARY", "RELEVANT WORK", "PROFESSIONAL APPOINTMENTS",
+        "APPOINTMENTS", "ACADEMIC APPOINTMENTS", "RESEARCH EXPERIENCE",
+        "TEACHING & RESEARCH EXPERIENCE", "SEA SERVICE", "SEA SERVICE RECORD",
+        "VOYAGE HISTORY", "SERVICE RECORD", "JOB PROFILE", "WORK PROFILE",
+        "EMPLOYMENT & EXPERIENCE", "WORK EXPERIENCE & INTERNSHIPS",
+        "EXPERIENCE & INTERNSHIPS", "EXPERIENCE & PROJECTS",
+        "WORK HISTORY & ACHIEVEMENTS", "INTERNSHIP & WORK EXPERIENCE",
+        "CO-OP EXPERIENCE", "INDUSTRIAL TRAINING", "PRACTICAL TRAINING",
+        "CLINICAL ROTATIONS", "RESIDENCY & FELLOWSHIP", "MILITARY SERVICE",
+        "SELF-EMPLOYMENT", "ENGAGEMENTS", "ASSIGNMENTS",
+        "KARANASAN SA TRABAHO", "MGA KARANASAN SA TRABAHO", "KARANASAN",
+        "EXPERIENCIA LABORAL", "EXPERIENCIA PROFESIONAL",
     ],
     "EDUCATION": [
         "EDUCATION", "ACADEMIC", "QUALIFICATIONS", "SCHOLASTIC",
@@ -221,6 +234,9 @@ def _normalise_header(line: str) -> str:
     clean = _LEADING_NUM_RE.sub('', clean).strip()
     clean = _DECORATION_RE.sub('', clean).strip()
     clean = clean.rstrip(':').strip()
+    if re.match(r"^(?:[A-Z]\s){3,}[A-Z](?:\s{2,}(?:[A-Z]\s)+[A-Z])*$", clean):
+        word_groups = re.split(r"\s{2,}", clean)
+        clean = " ".join(re.sub(r"\s+", "", wg) for wg in word_groups)
     clean = re.sub(r'\s+', ' ', clean)
     return clean.upper()
 
@@ -296,7 +312,19 @@ def _match_header_text(normalised: str, allow_fuzzy: bool = True) -> Optional[st
         )
     ):
         return "SKILLS"
-    if re.search(r'\b(?:WORK|WORKING|EMPLOYMENT|PROFESSIONAL|CAREER|INDUSTRY|RELEVANT|PRACTICAL|FIELD|CLINICAL|TEACHING|CORPORATE|FREELANCE|INTERNSHIP|OJT)\b', normalised) and re.search(r'\b(?:EXPERIENCES?|HISTORY|BACKGROUND|RECORD|TIMELINE)\b', normalised):
+    if (
+        len(normalised.split()) <= 6
+        and re.search(
+            r'\b(?:WORK|WORKING|EMPLOYMENT|PROFESSIONAL|CAREER|INDUSTRY|RELEVANT|PRACTICAL|FIELD|CLINICAL|'
+            r'TEACHING|CORPORATE|FREELANCE|INTERNSHIP|OJT|RESEARCH|SEA|SERVICE|ACADEMIC|CO-OP|COOP|'
+            r'PRACTICUM|APPRENTICESHIP|MILITARY|CONSULTING|EXECUTIVE|MANAGEMENT|LEADERSHIP)\b',
+            normalised,
+        )
+        and re.search(
+            r'\b(?:EXPERIENCES?|HISTORY|BACKGROUND|RECORD|TIMELINE|PROGRESSION|APPOINTMENTS?|SUMMARY|ENGAGEMENTS?|HIGHLIGHTS?|ROTATIONS?)\b',
+            normalised,
+        )
+    ):
         return "EXPERIENCE"
     if re.search(r'\b(?:EDUCATION|EDUCATIONAL|ACADEMIC|SCHOLASTIC)\b', normalised) and not re.search(
         r'\b(?:PHYSICAL|SPECIAL|CONTINUING|DEPARTMENT|MINISTRY|BOARD)\s+EDUCATION\b', normalised
@@ -310,6 +338,9 @@ def _match_header_text(normalised: str, allow_fuzzy: bool = True) -> Optional[st
             _FUZZY_TARGETS = [
                 "EXPERIENCE", "WORK EXPERIENCE", "WORKING EXPERIENCE",
                 "PROFESSIONAL EXPERIENCE", "EMPLOYMENT HISTORY", "RELEVANT EXPERIENCE",
+                "WORK HISTORY", "CAREER HISTORY", "CAREER PROGRESSION", "EMPLOYMENT",
+                "INTERNSHIP", "ON-THE-JOB TRAINING", "PROFESSIONAL BACKGROUND",
+                "EXPERIENCE SUMMARY", "PRACTICUM",
                 "EDUCATION", "EDUCATIONAL BACKGROUND", "SKILLS", "TECHNICAL SKILLS",
                 "CERTIFICATIONS", "REFERENCES", "SUMMARY",
             ]
