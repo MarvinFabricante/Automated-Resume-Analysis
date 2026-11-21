@@ -48,6 +48,7 @@ const Header: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const [isProfileOpen, setIsProfileOpen] = useState(false);
+  const [isAccessPortalOpen, setIsAccessPortalOpen] = useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isMobileNotifsOpen, setIsMobileNotifsOpen] = useState(false);
@@ -349,6 +350,7 @@ const Header: React.FC = () => {
   useEffect(() => {
     setIsMobileMenuOpen(false);
     setIsProfileOpen(false);
+    setIsAccessPortalOpen(false);
     setIsNotificationsOpen(false);
     setIsMobileNotifsOpen(false);
     setIsMobileSearchOpen(false);
@@ -368,6 +370,7 @@ const Header: React.FC = () => {
       if (e.key === 'Escape') {
         setIsMobileMenuOpen(false);
         setIsProfileOpen(false);
+        setIsAccessPortalOpen(false);
         setIsNotificationsOpen(false);
         setIsMobileNotifsOpen(false);
         setIsMobileSearchOpen(false);
@@ -389,11 +392,14 @@ const Header: React.FC = () => {
     };
   }, [hasSidebar, dispatch]);
 
-  // Handle click outside to close dropdowns and mobile menu
+  // Handle click/tap outside to close dropdowns and mobile menu
   useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
+    const handleClickOutside = (event: PointerEvent) => {
       const target = event.target as Node;
-      if (dropdownRef.current && !dropdownRef.current.contains(target)) setIsProfileOpen(false);
+      if (dropdownRef.current && !dropdownRef.current.contains(target)) {
+        setIsProfileOpen(false);
+        setIsAccessPortalOpen(false);
+      }
       if (notificationsRef.current && !notificationsRef.current.contains(target)) setIsNotificationsOpen(false);
       if (
         isMobileMenuOpen &&
@@ -405,8 +411,8 @@ const Header: React.FC = () => {
         setIsMobileMenuOpen(false);
       }
     };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
+    document.addEventListener("pointerdown", handleClickOutside);
+    return () => document.removeEventListener("pointerdown", handleClickOutside);
   }, [isMobileMenuOpen]);
 
   const getNavItems = () => {
@@ -454,7 +460,7 @@ const Header: React.FC = () => {
               <button
                 type="button"
                 onClick={() => dispatch(toggleSidebar())}
-                className={`lg:hidden p-2 sm:p-2.5 rounded-xl transition-all duration-200 active:scale-95 border cursor-pointer ${isSidebarOpen
+                className={`lg:hidden min-w-[44px] min-h-[44px] flex items-center justify-center p-2 sm:p-2.5 rounded-xl transition-all duration-200 active:scale-95 border cursor-pointer touch-manipulation ${isSidebarOpen
                   ? 'bg-rose-50 text-[#D60041] border-rose-200'
                   : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
                   }`}
@@ -467,11 +473,14 @@ const Header: React.FC = () => {
               <button
                 ref={hamburgerBtnRef}
                 type="button"
-                className={`lg:hidden relative p-2 sm:p-2.5 rounded-xl transition-all active:scale-95 -ml-1 cursor-pointer ${isMobileMenuOpen
+                className={`lg:hidden relative min-w-[44px] min-h-[44px] flex items-center justify-center p-2 sm:p-2.5 rounded-xl transition-all active:scale-95 -ml-1 cursor-pointer touch-manipulation ${isMobileMenuOpen
                   ? 'bg-red-50 text-[#D60041]'
                   : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
                   }`}
-                onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+                onClick={() => {
+                  setIsAccessPortalOpen(false);
+                  setIsMobileMenuOpen(!isMobileMenuOpen);
+                }}
                 aria-label={isMobileMenuOpen ? "Close navigation menu" : "Open navigation menu"}
                 aria-expanded={isMobileMenuOpen}
               >
@@ -484,7 +493,9 @@ const Header: React.FC = () => {
             )}
 
             <div
-              className="flex items-center space-x-2 sm:space-x-4 cursor-pointer group shrink-0"
+              role="button"
+              tabIndex={0}
+              className="flex items-center space-x-2 sm:space-x-4 cursor-pointer group shrink-0 touch-manipulation"
               onClick={() =>
                 navigate(
                   isGuest
@@ -496,6 +507,20 @@ const Header: React.FC = () => {
                     : '/candidate/dashboard'
                 )
               }
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  navigate(
+                    isGuest
+                      ? '/'
+                      : isAdminRole
+                      ? '/admin/dashboard'
+                      : isHRRole || isHRPage
+                      ? '/hr/dashboard'
+                      : '/candidate/dashboard'
+                  );
+                }
+              }}
             >
               <div className={`w-8 h-8 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center overflow-hidden transition-all duration-300 shrink-0 ${!isGuest && 'group-hover:shadow-[0_0_15px_rgba(209,0,67,0.3)]'}`}>
                 <img src={(logo as any)?.src || logo} alt="logo" className="w-full h-full object-contain" />
@@ -535,8 +560,9 @@ const Header: React.FC = () => {
                   return (
                     <button
                       key={index}
+                      type="button"
                       onClick={() => navigate(item.path)}
-                      className={`desktop-nav-item px-5 py-2.5 rounded-xl flex items-center space-x-2.5 transition-all duration-300 group ${isActive
+                      className={`desktop-nav-item min-h-[44px] px-5 py-2.5 rounded-xl flex items-center space-x-2.5 transition-all duration-300 group cursor-pointer touch-manipulation ${isActive
                         ? 'active-nav-item bg-red-50 text-[#D60041] shadow-xs font-bold ring-1 ring-red-100'
                         : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900 font-semibold'
                         }`}
@@ -555,18 +581,63 @@ const Header: React.FC = () => {
           <div className="flex items-center space-x-1.5 sm:space-x-3 md:space-x-4 relative shrink-0" ref={dropdownRef}>
 
             {isGuest ? (
-              <div className="hidden sm:block relative group">
-                <button className="flex items-center space-x-2 bg-[#D60041] text-white px-4 sm:px-6 py-2.5 sm:py-3 rounded-full text-xs sm:text-sm font-bold hover:bg-[#b50037] transition-all shadow-md shadow-pink-200 cursor-pointer">
+              <div className="hidden sm:block relative">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsMobileMenuOpen(false);
+                    setIsAccessPortalOpen(prev => !prev);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'ArrowDown') {
+                      e.preventDefault();
+                      setIsMobileMenuOpen(false);
+                      setIsAccessPortalOpen(true);
+                    }
+                  }}
+                  aria-haspopup="menu"
+                  aria-expanded={isAccessPortalOpen}
+                  aria-controls="access-portal-menu"
+                  className="flex items-center space-x-2 bg-[#D60041] text-white px-4 sm:px-6 min-h-[44px] min-w-[44px] py-2.5 sm:py-3 rounded-full text-xs sm:text-sm font-bold hover:bg-[#b50037] transition-all shadow-md shadow-pink-200 cursor-pointer touch-manipulation select-none"
+                >
                   <span>Access Portal</span>
-                  <ChevronDown size={16} className="group-hover:rotate-180 transition-transform duration-300" />
+                  <ChevronDown size={16} className={`transition-transform duration-300 ${isAccessPortalOpen ? 'rotate-180' : ''}`} />
                 </button>
-                <div className="desktop-dropdown absolute right-0 mt-3 w-64 bg-white border border-gray-100 rounded-[24px] shadow-2xl py-3 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-[60]">
-                  <div className="px-5 py-2 mb-2 border-b border-gray-50">
-                    <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">Select Portal</p>
+                {isAccessPortalOpen && (
+                  <div
+                    id="access-portal-menu"
+                    role="menu"
+                    className="desktop-dropdown absolute right-0 top-[calc(100%+10px)] w-64 bg-white border border-gray-100 rounded-[24px] shadow-2xl py-3 z-[60] animate-in fade-in slide-in-from-top-2 duration-150"
+                  >
+                    <div className="px-5 py-2 mb-2 border-b border-gray-50">
+                      <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">Select Portal</p>
+                    </div>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
+                        setIsAccessPortalOpen(false);
+                        navigate('/login');
+                      }}
+                      className="w-full min-h-[44px] flex items-center space-x-4 px-5 py-3.5 text-sm font-bold text-gray-700 hover:bg-pink-50 hover:text-[#D60041] transition-colors cursor-pointer touch-manipulation"
+                    >
+                      <LogIn size={18} className="text-gray-400" />
+                      <span>Login to Account</span>
+                    </button>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
+                        setIsAccessPortalOpen(false);
+                        navigate('/register');
+                      }}
+                      className="w-full min-h-[44px] flex items-center space-x-4 px-5 py-3.5 text-sm font-bold text-gray-700 hover:bg-pink-50 hover:text-[#D60041] transition-colors cursor-pointer touch-manipulation"
+                    >
+                      <UserPlus size={18} className="text-gray-400" />
+                      <span>Register Candidate</span>
+                    </button>
                   </div>
-                  <button onClick={() => navigate('/login')} className="w-full flex items-center space-x-4 px-5 py-3.5 text-sm font-bold text-gray-700 hover:bg-pink-50 hover:text-[#D60041] transition-colors cursor-pointer"><LogIn size={18} className="text-gray-400" /> <span>Login to Account</span></button>
-                  <button onClick={() => navigate('/register')} className="w-full flex items-center space-x-4 px-5 py-3.5 text-sm font-bold text-gray-700 hover:bg-pink-50 hover:text-[#D60041] transition-colors cursor-pointer"><UserPlus size={18} className="text-gray-400" /> <span>Register Candidate</span></button>
-                </div>
+                )}
               </div>
             ) : (
               <>
@@ -641,7 +712,14 @@ const Header: React.FC = () => {
                 </div>
                 <div
                   onClick={() => setIsProfileOpen(!isProfileOpen)}
-                  className={`desktop-profile-pill flex items-center sm:space-x-3 border p-1 sm:px-2 sm:py-2 sm:pr-4 rounded-full cursor-pointer transition-all duration-300 group ${isProfileOpen ? 'bg-gray-50 border-gray-200 shadow-inner' : 'hover:border-pink-200 border-gray-200/80 hover:shadow-md hover:bg-gray-50 bg-white'}`}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      setIsProfileOpen(!isProfileOpen);
+                    }
+                  }}
+                  tabIndex={0}
+                  className={`desktop-profile-pill flex items-center sm:space-x-3 border p-1 sm:px-2 sm:py-2 sm:pr-4 rounded-full cursor-pointer touch-manipulation transition-all duration-300 group ${isProfileOpen ? 'bg-gray-50 border-gray-200 shadow-inner' : 'hover:border-pink-200 border-gray-200/80 hover:shadow-md hover:bg-gray-50 bg-white'}`}
                   title="Account menu"
                   role="button"
                   aria-label="Account menu"
@@ -707,7 +785,7 @@ const Header: React.FC = () => {
         {isMobileMenuOpen && (
           <div
             ref={mobileMenuRef}
-            className="lg:hidden absolute top-full left-0 w-full bg-white border-b border-gray-200/90 shadow-2xl z-50 animate-in fade-in slide-in-from-top-2 duration-200 max-h-[calc(100vh-73px)] overflow-y-auto"
+            className="lg:hidden absolute top-full left-0 w-full bg-white border-b border-gray-200/90 shadow-2xl z-50 animate-in fade-in slide-in-from-top-2 duration-200 max-h-[calc(100vh-73px)] supports-[height:100dvh]:max-h-[calc(100dvh-73px)] overflow-y-auto"
           >
             <div className="flex flex-col py-3 divide-y divide-gray-100">
               {/* 1. Primary Navigation Links */}
@@ -721,11 +799,12 @@ const Header: React.FC = () => {
                     return (
                       <button
                         key={index}
+                        type="button"
                         onClick={() => {
                           navigate(item.path);
                           setIsMobileMenuOpen(false);
                         }}
-                        className={`w-full flex items-center justify-between px-4 py-3 rounded-2xl transition-all duration-200 text-left ${isActive
+                        className={`w-full min-h-[44px] flex items-center justify-between px-4 py-3 rounded-2xl transition-all duration-200 text-left cursor-pointer touch-manipulation ${isActive
                           ? 'bg-red-50 text-[#D60041] font-bold shadow-xs border border-red-100/70'
                           : 'text-gray-700 hover:bg-gray-50 hover:text-gray-900 font-semibold'
                           }`}
@@ -937,11 +1016,12 @@ const Header: React.FC = () => {
                   </div>
                   <div className="space-y-2.5">
                     <button
+                      type="button"
                       onClick={() => {
                         navigate('/login');
                         setIsMobileMenuOpen(false);
                       }}
-                      className="w-full flex items-center justify-between px-4 py-3 rounded-2xl bg-[#D60041] hover:bg-[#b50037] text-white text-sm font-bold transition-all shadow-md shadow-pink-500/20 active:scale-[0.99] group"
+                      className="w-full min-h-[44px] flex items-center justify-between px-4 py-3 rounded-2xl bg-[#D60041] hover:bg-[#b50037] text-white text-sm font-bold transition-all shadow-md shadow-pink-500/20 active:scale-[0.99] group cursor-pointer touch-manipulation"
                     >
                       <div className="flex items-center space-x-3">
                         <div className="w-8 h-8 rounded-xl bg-white/20 flex items-center justify-center">
@@ -956,11 +1036,12 @@ const Header: React.FC = () => {
                     </button>
 
                     <button
+                      type="button"
                       onClick={() => {
                         navigate('/register');
                         setIsMobileMenuOpen(false);
                       }}
-                      className="w-full flex items-center justify-between px-4 py-3 rounded-2xl bg-white text-gray-800 border border-gray-200 text-sm font-bold transition-all hover:bg-gray-50 shadow-xs active:scale-[0.99] group"
+                      className="w-full min-h-[44px] flex items-center justify-between px-4 py-3 rounded-2xl bg-white text-gray-800 border border-gray-200 text-sm font-bold transition-all hover:bg-gray-50 shadow-xs active:scale-[0.99] group cursor-pointer touch-manipulation"
                     >
                       <div className="flex items-center space-x-3">
                         <div className="w-8 h-8 rounded-xl bg-gray-100 flex items-center justify-center text-gray-600">
@@ -1000,49 +1081,54 @@ const Header: React.FC = () => {
 
                   <div className="space-y-2">
                     <button
+                      type="button"
                       onClick={() => {
                         navigate(isAdminRole ? '/admin/dashboard' : (isHRRole || isHRPage) ? '/hr/dashboard' : '/candidate/dashboard');
                         setIsMobileMenuOpen(false);
                       }}
-                      className="w-full flex items-center space-x-3 px-4 py-2.5 rounded-2xl bg-[#D60041] hover:bg-[#b50037] text-white text-sm font-bold shadow-md shadow-pink-500/20 transition-all"
+                      className="w-full min-h-[44px] flex items-center space-x-3 px-4 py-2.5 rounded-2xl bg-[#D60041] hover:bg-[#b50037] text-white text-sm font-bold shadow-md shadow-pink-500/20 transition-all cursor-pointer touch-manipulation"
                     >
                       <LayoutDashboard size={18} /> <span>Open Portal Dashboard</span>
                     </button>
                     <button
+                      type="button"
                       onClick={() => {
                         navigate(isAdminRole ? '/admin/profile' : (isHRRole || isHRPage) ? '/hr/profile' : '/candidate/profile');
                         setIsMobileMenuOpen(false);
                       }}
-                      className="w-full flex items-center space-x-3 px-4 py-2.5 rounded-2xl bg-white text-gray-700 border border-gray-200 text-sm font-bold hover:bg-gray-50 transition-all"
+                      className="w-full min-h-[44px] flex items-center space-x-3 px-4 py-2.5 rounded-2xl bg-white text-gray-700 border border-gray-200 text-sm font-bold hover:bg-gray-50 transition-all cursor-pointer touch-manipulation"
                     >
                       <User size={18} className="text-gray-400" /> <span>My Profile</span>
                     </button>
                     <button
+                      type="button"
                       onClick={() => {
                         navigate(isAdminRole ? '/admin/settings' : (isHRRole || isHRPage) ? '/hr/settings' : '/candidate/settings');
                         setIsMobileMenuOpen(false);
                       }}
-                      className="w-full flex items-center space-x-3 px-4 py-2.5 rounded-2xl bg-white text-gray-700 border border-gray-200 text-sm font-bold hover:bg-gray-50 transition-all"
+                      className="w-full min-h-[44px] flex items-center space-x-3 px-4 py-2.5 rounded-2xl bg-white text-gray-700 border border-gray-200 text-sm font-bold hover:bg-gray-50 transition-all cursor-pointer touch-manipulation"
                     >
                       <Settings size={18} className="text-gray-400" /> <span>Account Settings</span>
                     </button>
                     {(isHRRole || isHRPage) && (
                       <button
+                        type="button"
                         onClick={() => {
                           navigate('/careerspage');
                           setIsMobileMenuOpen(false);
                         }}
-                        className="w-full flex items-center space-x-3 px-4 py-2.5 rounded-2xl bg-white text-gray-700 border border-gray-200 text-sm font-bold hover:bg-gray-50 transition-all"
+                        className="w-full min-h-[44px] flex items-center space-x-3 px-4 py-2.5 rounded-2xl bg-white text-gray-700 border border-gray-200 text-sm font-bold hover:bg-gray-50 transition-all cursor-pointer touch-manipulation"
                       >
                         <Briefcase size={18} className="text-gray-400" /> <span>View Careers Portal</span>
                       </button>
                     )}
                     <button
+                      type="button"
                       onClick={() => {
                         handleLogout();
                         setIsMobileMenuOpen(false);
                       }}
-                      className="w-full flex items-center space-x-3 px-4 py-2.5 rounded-2xl bg-red-50 text-red-600 text-sm font-bold border border-red-100 hover:bg-red-100 transition-all"
+                      className="w-full min-h-[44px] flex items-center space-x-3 px-4 py-2.5 rounded-2xl bg-red-50 text-red-600 text-sm font-bold border border-red-100 hover:bg-red-100 transition-all cursor-pointer touch-manipulation"
                     >
                       <LogOut size={18} /> <span>Sign Out</span>
                     </button>
