@@ -444,7 +444,7 @@ def _extract_page_layout_parts(page, prev_split_x: float | None = None) -> dict:
     fracs = [0.24, 0.28, 0.30, 0.33, 0.35, 0.38, 0.40, 0.42, 0.48, 0.52, 0.62, 0.67, 0.72]
     for cutoff in candidate_cutoffs:
         body_blocks = [b for b in main_blocks if b[1] >= cutoff]
-        if len(body_blocks) < 3:
+        if len(body_blocks) < 2:
             continue
         for frac in fracs:
             split_x = page_w * frac
