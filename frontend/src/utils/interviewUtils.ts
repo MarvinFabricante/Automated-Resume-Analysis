@@ -178,21 +178,24 @@ export const extractMessageLogs = (
       const lType = String(log.log_type || '').toUpperCase().trim();
       const details = String(log.details || '').trim();
 
-      if (lType === 'SMS_SENT' || lType === 'SMS_RESCHEDULED' || lType === 'SMS_CANCELED' || lType === 'SMS_BACKUP_SENT') {
-        if (lType === 'SMS_SENT' || lType === 'SMS_RESCHEDULED') hasSmsScheduleLog = true;
+      if (lType === 'SMS_SENT' || lType === 'SMS_RESCHEDULED' || lType === 'SMS_CANCELED' || lType === 'SMS_BACKUP_SENT' || lType === 'SMS_FAILED') {
+        if (lType === 'SMS_SENT' || lType === 'SMS_RESCHEDULED' || lType === 'SMS_FAILED') hasSmsScheduleLog = true;
         if (lType === 'SMS_BACKUP_SENT') hasSmsBackupLog = true;
 
         const phoneMatch = details.match(/(?:\+63|09)\d[\d\s-]{7,13}/);
         const recipient = phoneMatch ? phoneMatch[0].trim() : ivPhone;
+        const isFailed = lType === 'SMS_FAILED';
 
         const label =
-          lType === 'SMS_BACKUP_SENT'
-            ? 'Backup SMS Notification'
-            : lType === 'SMS_RESCHEDULED'
-              ? 'Reschedule SMS Notification'
-              : lType === 'SMS_CANCELED'
-                ? 'Cancellation SMS Notification'
-                : 'SMS Notification';
+          isFailed
+            ? 'SMS Delivery Failed'
+            : lType === 'SMS_BACKUP_SENT'
+              ? 'Backup SMS Notification'
+              : lType === 'SMS_RESCHEDULED'
+                ? 'Reschedule SMS Notification'
+                : lType === 'SMS_CANCELED'
+                  ? 'Cancellation SMS Notification'
+                  : 'SMS Notification';
 
         addEntry(`log-${log.id || `${ivId}-${lType}-${log.created_at}`}`, {
           id: log.id || `${ivId}-${lType}-${log.created_at}`,
@@ -201,9 +204,9 @@ export const extractMessageLogs = (
           log_type: lType,
           channel: 'SMS',
           label,
-          status: 'DELIVERED',
+          status: isFailed ? 'FAILED' : 'DELIVERED',
           recipient,
-          details: details || `${label} delivered to ${recipient} for ${ivTitle}.`,
+          details: details || (isFailed ? `Failed to deliver SMS to ${recipient} for ${ivTitle}.` : `${label} delivered to ${recipient} for ${ivTitle}.`),
           created_at: log.created_at || iv.created_at,
         });
       } else if (lType === 'EMAIL_SENT' || lType === 'EMAIL_RESCHEDULED' || lType === 'EMAIL_CANCELED') {

@@ -72,6 +72,39 @@ async def mark_all_read(
     await notification_service.mark_all_as_read(db, effective_role, effective_email)
     return {"message": "All notifications marked as read"}
 
+
+@router.put("/{notification_id}/read", status_code=status.HTTP_200_OK)
+async def mark_notification_read(
+    notification_id: int,
+    role: Optional[str] = None,
+    email: Optional[str] = None,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Mark a single notification as read for the authenticated role and user.
+    """
+    user_role = (current_user.get("role") or "").upper()
+    user_email = (current_user.get("sub") or "").lower()
+
+    if user_role not in ["ADMIN", "HR", "CANDIDATE"]:
+        raise HTTPException(status_code=403, detail="Access denied: unauthorized role")
+
+    if user_role == "CANDIDATE":
+        effective_role = "CANDIDATE"
+        effective_email = user_email
+    elif user_role == "HR":
+        effective_role = "HR"
+        effective_email = user_email
+    else:  # ADMIN
+        effective_role = role.upper() if role and role.upper() in ["ADMIN", "HR"] else "ADMIN"
+        effective_email = email.lower() if email else user_email
+
+    marked = await notification_service.mark_as_read(db, notification_id, effective_role, effective_email)
+    if not marked:
+        raise HTTPException(status_code=404, detail="Notification not found")
+    return {"message": "Notification marked as read", "id": notification_id}
+
 @router.websocket("/ws")
 async def websocket_endpoint(
     websocket: WebSocket,

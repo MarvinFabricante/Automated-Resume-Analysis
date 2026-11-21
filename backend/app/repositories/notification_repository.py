@@ -150,6 +150,74 @@ async def mark_all_as_read(db: AsyncSession, role: Optional[str] = None, email: 
         raise
 
 
+async def mark_one_as_read(
+    db: AsyncSession,
+    notification_id: int,
+    role: Optional[str] = None,
+    email: Optional[str] = None,
+) -> bool:
+    """Mark a single notification as read if accessible by the caller (Redis-first transaction)."""
+    norm_role = (role or "").upper()
+    norm_email = (email or "").lower()
+
+    if norm_role not in ["ADMIN", "HR", "CANDIDATE"]:
+        return False
+
+    tx_id = await redis_tx_manager.stage_transaction(
+        target="notification",
+        action="MARK_ONE_READ",
+        payload={"id": notification_id, "role": norm_role, "email": norm_email},
+    )
+    try:
+        query = select(Notification).where(Notification.id == notification_id)
+
+        if norm_role == "CANDIDATE":
+            if norm_email:
+                email_condition = or_(
+                    Notification.target_email == None,
+                    func.lower(Notification.target_email) == norm_email,
+                )
+            else:
+                email_condition = Notification.target_email == None
+            query = query.where(and_(Notification.target_role == "CANDIDATE", email_condition))
+        elif norm_role == "HR":
+            query = query.where(
+                and_(
+                    or_(Notification.target_role == None, Notification.target_role == "HR"),
+                    or_(
+                        Notification.target_email == None,
+                        func.lower(Notification.target_email) == norm_email,
+                    ),
+                )
+            )
+        elif norm_role == "ADMIN":
+            query = query.where(
+                or_(
+                    Notification.target_role == None,
+                    Notification.target_role == "ADMIN",
+                    Notification.target_role == "HR",
+                )
+            )
+
+        res = await db.execute(query)
+        notif = res.scalar_one_or_none()
+        if not notif:
+            await redis_tx_manager.fail_transaction(tx_id, "Notification not found or inaccessible")
+            return False
+
+        if not notif.is_read:
+            notif.is_read = True
+            await db.commit()
+            await clear_cache_pattern("notifs:criteria:")
+
+        await redis_tx_manager.commit_transaction(tx_id, {"id": notification_id, "marked": True})
+        return True
+    except Exception as e:
+        await redis_tx_manager.fail_transaction(tx_id, str(e))
+        logger.error(f"[Redis-First] mark_one_as_read failed: {e}")
+        raise
+
+
 import sys
 notification_repository = sys.modules[__name__]
 NotificationRepository = sys.modules[__name__]

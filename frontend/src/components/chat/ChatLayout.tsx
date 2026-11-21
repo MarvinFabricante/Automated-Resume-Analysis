@@ -5,9 +5,10 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import chatService from '../../services/chatService';
-import { useSelector } from 'react-redux';
+import { useSelector, useDispatch } from 'react-redux';
 import { WS_BASE_URL } from '../../services/api';
 import { RootState } from '../../redux/store';
+import { setUnreadMessagesCount } from '../../redux/slices/notificationSlice';
 import { ChatContactItem, ChatMessageItem } from '../layout/ChatWidget';
 import { decodeToken } from '../../utils/token';
 
@@ -94,7 +95,9 @@ const getRoleBadge = (role?: string) => {
 };
 
 const ChatLayout: React.FC<ChatLayoutProps> = ({ isFullPage = true }) => {
+    const dispatch = useDispatch();
     const { profileImageUrl: myProfileImage } = useSelector((state: RootState) => state.auth);
+    const autoOpenedSenderRef = useRef<string | null>(null);
     const [view, setView] = useState<'contacts' | 'chat'>('contacts');
     const [contacts, setContacts] = useState<ChatContactItem[]>([]);
     const [search, setSearch] = useState('');
@@ -277,6 +280,29 @@ const ChatLayout: React.FC<ChatLayoutProps> = ({ isFullPage = true }) => {
             const userList: ChatContactItem[] = res.data.users || [];
             setContacts(userList);
 
+            const totalUnread = userList.reduce((acc, c) => acc + (c.unread_count || 0), 0);
+            dispatch(setUnreadMessagesCount(totalUnread));
+
+            // If navigated from a message notification (?sender=... or ?contact=...), auto-open that chat
+            if (typeof window !== 'undefined' && !activeContactRef.current && userList.length > 0) {
+                const params = new URLSearchParams(window.location.search);
+                const senderHint = (params.get('sender') || '').trim().toLowerCase();
+                const contactParam = (params.get('contact') || '').trim();
+                const lookupKey = contactParam || senderHint;
+                if (lookupKey && autoOpenedSenderRef.current !== lookupKey) {
+                    const matched = contactParam
+                        ? userList.find(c => String(c.id) === contactParam)
+                        : userList.find(c =>
+                            (c.fullname || '').toLowerCase().includes(senderHint) ||
+                            senderHint.includes((c.fullname || '').toLowerCase())
+                          );
+                    if (matched) {
+                        autoOpenedSenderRef.current = lookupKey;
+                        openChat(matched);
+                    }
+                }
+            }
+
             // Synchronize archived contact IDs from backend contacts
             const backendArchivedIds = userList.filter(c => c.is_archived).map(c => c.id);
             setArchivedContactIds(prev => {
@@ -311,10 +337,15 @@ const ChatLayout: React.FC<ChatLayoutProps> = ({ isFullPage = true }) => {
             const res = await chatService.getMessages(contact.id, token);
             setMessages(res.data || []);
             
-            // Mark as read locally
-            setContacts(prev => prev.map(c => 
-                c.id === contact.id ? { ...c, unread_count: 0 } : c
-            ));
+            // Mark as read locally and sync unread counter
+            setContacts(prev => {
+                const updated = prev.map(c =>
+                    c.id === contact.id ? { ...c, unread_count: 0 } : c
+                );
+                const totalUnread = updated.reduce((acc, c) => acc + (c.unread_count || 0), 0);
+                dispatch(setUnreadMessagesCount(totalUnread));
+                return updated;
+            });
         } catch (error) {
             console.error("Failed to fetch messages", error);
         } finally {

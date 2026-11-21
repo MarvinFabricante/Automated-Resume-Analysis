@@ -142,12 +142,15 @@ async def store_physical_resume(
     elif not submission_date:
         submission_date = datetime.utcnow()
 
+    parsed_email = ((parsed_data or {}).get("email") or "").strip() if isinstance(parsed_data, dict) else ""
+    parsed_phone = ((parsed_data or {}).get("phone") or "").strip() if isinstance(parsed_data, dict) else ""
+
     # 4. Create PhysicalResume DB record
     physical_resume = PhysicalResume(
         hr_id=hr_id,
         candidate_name=(data.get("candidate_name") or "").strip(),
-        candidate_email=(data.get("candidate_email") or "").strip() or None,
-        candidate_phone=(data.get("candidate_phone") or "").strip() or None,
+        candidate_email=(data.get("candidate_email") or "").strip() or parsed_email or None,
+        candidate_phone=(data.get("candidate_phone") or "").strip() or parsed_phone or None,
         target_job_id=int(target_job_id) if target_job_id else None,
         target_job_title=target_job_title,
         physical_location=(data.get("physical_location") or "").strip() or "General HR Archive",

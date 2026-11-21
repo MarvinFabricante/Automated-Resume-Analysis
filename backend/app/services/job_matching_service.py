@@ -1,5 +1,6 @@
 import re
 import json
+import math
 import logging
 from typing import Optional, Any, List, Dict
 from difflib import SequenceMatcher
@@ -231,22 +232,28 @@ def _fuzzy_match(a: str, b: str, threshold: Optional[float] = None) -> bool:
 
 # ── Experience Relevance Analysis ─────────────────────────────────────────
 ROLE_FAMILY_KEYWORDS = {
-    "software": ["developer", "software engineer", "programmer", "coding", "software", "backend", "frontend", "fullstack", "full-stack", "devops", "sre", "automation", "api", "microservices", "ci/cd", "git", "agile", "scrum", "it support", "technical support", "systems", "deployment", "infrastructure", "web developer"],
-    "data": ["data", "data analyst", "scientist", "machine learning", "ai", "analytics", "business intelligence", "statistics", "etl", "big data", "data pipeline", "deep learning"],
-    "design": ["designer", "ui", "ux", "graphic", "creative", "visual", "figma", "adobe", "illustration", "wireframe", "prototype"],
-    "marketing": ["marketing", "seo", "content", "social media", "digital marketing", "advertising", "brand", "copywriter", "campaign", "e-commerce", "shopify"],
-    "finance": ["accountant", "accounting", "finance", "auditor", "bookkeeper", "bookkeeping", "financial", "cpa", "banking", "investment", "tax", "budget", "accounts payable", "accounts receivable", "reconciliation", "sap", "quickbooks", "payroll", "billing", "invoicing"],
-    "hr": ["human resources", "hr", "recruiter", "recruitment", "talent", "hiring", "payroll", "compensation", "onboarding", "employee relations", "hris"],
-    "sales": ["sales", "account executive", "business development", "relationship manager", "account manager", "revenue", "promodiser", "merchandiser", "sales officer", "customer handling", "negotiation", "product knowledge"],
-    "operations": ["operations", "logistics", "supply chain", "warehouse", "warehouseman", "inventory", "procurement", "shipping", "3pl", "forklift", "stockman", "delivery", "dispatch"],
-    "healthcare": ["nurse", "doctor", "medical", "healthcare", "clinical", "pharmacy", "patient", "diagnosis", "first aid", "bls"],
-    "education": ["teacher", "instructor", "professor", "tutor", "education", "training", "curriculum", "academic", "lpt"],
-    "service": ["cashier", "service crew", "barista", "waiter", "waitress", "food", "retail", "customer service", "csr", "tsr", "call center", "chat support", "email support", "fast food", "restaurant", "counter", "crew member", "food service", "virtual assistant", "order processing"],
-    "admin": ["administrative", "secretary", "clerk", "receptionist", "office", "assistant", "filing", "clerical", "data encoder", "data entry", "documentation"],
-    "engineering": ["civil engineer", "mechanical engineer", "electrical engineer", "structural", "construction", "cad", "autocad", "blueprint", "maintenance technician", "plc", "preventive maintenance", "hvac", "troubleshooting", "welder", "electrician"],
-    "legal": ["lawyer", "attorney", "paralegal", "legal", "compliance", "litigation"],
-    "management": ["manager", "director", "supervisor", "team lead", "head of", "vp", "chief", "line leader"],
-    "manufacturing": ["factory", "assembly", "production", "manufacturing", "quality control", "quality assurance", "qa inspector", "qc inspector", "product inspection", "defect reporting", "measuring tools", "machine operator", "machine handling", "kiln", "ceramic", "glaze", "tile", "plant", "factory worker", "laborer", "iso 9001", "5s", "kaizen", "gmp", "safety compliance"],
+    "software": ["software engineer", "software developer", "software development", "software architecture", "web developer", "developer", "programmer", "coding", "backend", "frontend", "fullstack", "full-stack", "devops", "sre", "rest api", "api", "microservices", "ci/cd", "git", "agile", "scrum", "it support", "helpdesk", "technical support", "system administration", "network administration", "deployment", "python", "javascript", "typescript", "react", "fastapi", "django", "node.js", "sql"],
+    "data": ["data analyst", "data analysis", "data scientist", "data science", "data engineer", "data engineering", "data pipeline", "big data", "data visualization", "database", "machine learning", "artificial intelligence", "ai", "analytics", "business intelligence", "statistics", "statistical analysis", "etl", "deep learning", "tableau", "power bi", "powerbi"],
+    "design": ["graphic designer", "ui designer", "ux designer", "designer", "ui", "ux", "graphic", "figma", "adobe", "photoshop", "illustrator", "canva", "wireframe", "prototype", "typography", "layout design", "multimedia"],
+    "marketing": ["marketing", "seo", "social media", "digital marketing", "advertising", "brand", "copywriter", "copywriting", "campaign", "e-commerce", "shopify"],
+    "finance": ["accountant", "accounting", "finance", "auditor", "auditing", "bookkeeper", "bookkeeping", "financial", "cpa", "banking", "investment", "tax", "budget", "budgeting", "accounts payable", "accounts receivable", "reconciliation", "sap", "quickbooks", "xero", "payroll", "billing", "invoicing", "general ledger"],
+    "hr": ["human resources", "hr", "recruiter", "recruitment", "talent acquisition", "hiring", "payroll", "compensation", "onboarding", "employee relations", "hris", "training officer", "organizational development"],
+    "sales": ["sales", "salesperson", "salesman", "saleswoman", "sales executive", "sales clerk", "sales officer", "account executive", "business development", "relationship manager", "account manager", "revenue", "promodiser", "merchandiser", "b2b sales"],
+    "operations": ["operations manager", "operations coordinator", "logistics", "supply chain", "warehouse", "warehouseman", "warehousing", "inventory", "procurement", "purchasing", "shipping", "3pl", "forklift", "stockman", "dispatch", "freight"],
+    "healthcare": ["nurse", "doctor", "medical", "healthcare", "clinical", "pharmacy", "patient", "diagnosis", "first aid", "bls", "nursing", "hospital"],
+    "education": ["teacher", "instructor", "professor", "tutor", "teaching", "curriculum", "lesson plan", "academic", "lpt", "classroom"],
+    "service": ["cashier", "service crew", "barista", "waiter", "waitress", "food service", "fast food", "restaurant", "retail", "customer service", "customer support", "csr", "tsr", "call center", "chat support", "email support", "counter", "crew member", "virtual assistant", "order processing", "pos"],
+    "admin": ["administrative", "admin assistant", "office assistant", "executive assistant", "office clerk", "office staff", "secretary", "receptionist", "filing", "clerical", "data encoder", "data entry", "front desk"],
+    "engineering": ["civil engineer", "mechanical engineer", "electrical engineer", "industrial engineer", "chemical engineer", "structural", "construction", "cad", "autocad", "blueprint", "maintenance technician", "plant maintenance", "plc", "preventive maintenance", "hvac", "troubleshooting", "welder", "welding", "electrician", "machinist"],
+    "legal": ["lawyer", "attorney", "paralegal", "legal", "litigation", "corporate law", "juris doctor", "bar"],
+    "manufacturing": ["factory", "assembly", "production", "manufacturing", "quality control", "quality assurance", "qc", "qa", "qa inspector", "qc inspector", "product inspection", "defect reporting", "measuring tools", "machine operator", "machine handling", "cnc", "injection molding", "kiln", "ceramic", "ceramics", "glaze", "tile", "tiles", "plant", "factory worker", "laborer", "iso 9001", "5s", "kaizen", "gmp", "lean manufacturing", "six sigma", "root cause analysis", "process optimization"],
+    "science": ["chemist", "chemistry", "chemical analysis", "laboratory", "material testing", "formulation", "r&d", "research and development"],
+    "ehs": ["safety officer", "ehs", "osh", "bosh", "cosh", "hazard identification", "pollution control", "denr", "environmental compliance", "safety compliance"],
+}
+
+_ROLE_FAMILY_PATTERNS: dict[str, list[re.Pattern]] = {
+    family: [re.compile(r'(?<!\w)' + re.escape(kw) + r'(?!\w)', re.IGNORECASE) for kw in keywords]
+    for family, keywords in ROLE_FAMILY_KEYWORDS.items()
 }
 
 TRANSFERABLE_SKILLS = {
@@ -263,16 +270,67 @@ TRANSFERABLE_SKILLS = {
 # Maximum score transferable skills alone can contribute (out of 10)
 _TRANSFERABLE_ONLY_CAP = 2
 
+_NON_EXPERIENCE_PLACEHOLDERS = {
+    "none", "n/a", "na", "nil", "not specified", "not applicable",
+    "no experience", "no work experience", "none yet", "fresh graduate",
+    "no prior experience", "no relevant experience", "-", "--",
+}
 
-def _detect_role_family(text: str) -> str:
-    if not text:
+_GENERIC_EXPERIENCE_WORDS = {
+    "a", "an", "and", "are", "as", "at", "be", "by", "for", "from", "has", "have",
+    "in", "into", "is", "it", "its", "of", "on", "or", "our", "that", "the", "their",
+    "them", "this", "to", "was", "were", "will", "with", "you", "your",
+    "ability", "abilities", "adaptable", "adaptability", "all", "any", "applicable",
+    "area", "areas", "assistant", "assisted", "associate", "attention", "based",
+    "candidate", "client", "clients", "collaborate", "communication", "company",
+    "competencies", "coord", "coordination", "corp", "current", "customer", "customers",
+    "daily", "day", "days", "deadline", "deadlines", "detail", "details", "duties",
+    "duty", "ensure", "ensuring", "etc", "experience", "experienced", "fast",
+    "flexible", "full", "general", "goal", "goals", "good", "group", "handled",
+    "handling", "help", "helped", "high", "hours", "inc", "including", "information",
+    "interpersonal", "issue", "issues", "job", "jobs", "knowledge", "lead", "leader",
+    "leadership", "level", "looking", "maintain", "maintained", "manage", "managed",
+    "management", "member", "members", "minimum", "month", "months", "multitask",
+    "multitasking", "must", "need", "needs", "new", "none", "office", "one",
+    "organization", "other", "part", "people", "perform", "performed", "person",
+    "philippines", "position", "positions", "preferred", "prepare", "prepared",
+    "present", "prioritize", "problem", "problems", "process", "processes",
+    "professional", "quality", "related", "relevant", "report", "reports",
+    "require", "required", "requirements", "responsibilities", "responsibility",
+    "responsible", "role", "roles", "rule", "rules", "seeking", "service",
+    "services", "shift", "shifts", "skill", "skills", "solving", "staff",
+    "store", "stores", "strong", "support", "supported", "task", "tasks",
+    "team", "teams", "teamwork", "time", "using", "various", "versatile",
+    "way", "work", "worked", "working", "works", "year", "years", "yrs", "yr",
+}
+
+_GENERIC_SIM_TOKENS = {
+    "and", "or", "the", "for", "with", "full", "senior", "junior", "intern",
+    "assistant", "associate", "manager", "supervisor", "officer", "representative",
+    "specialist", "executive", "lead", "public", "english", "process", "company",
+    "work", "experience", "responsibilities", "duties", "role", "position",
+    "team", "staff", "general", "service", "customer", "support", "communication",
+}
+
+
+def _term_in_text(term: str, text_lower: str) -> bool:
+    """Check whether a term appears in text on word/token boundaries."""
+    if not term or not text_lower:
+        return False
+    return bool(re.search(r'(?<!\w)' + re.escape(term.lower()) + r'(?!\w)', text_lower))
+
+
+def _detect_role_family(text: str, priority_text: str = "") -> str:
+    if not text and not priority_text:
         return ""
-    text_lower = text.lower()
-    best_family, best_count = "", 0
-    for family, keywords in ROLE_FAMILY_KEYWORDS.items():
-        count = sum(1 for kw in keywords if kw in text_lower)
-        if count > best_count:
-            best_count = count
+    best_family, best_score = "", (0, 0)
+    for family, patterns in _ROLE_FAMILY_PATTERNS.items():
+        title_hits = sum(1 for pat in patterns if pat.search(priority_text)) if priority_text else 0
+        total_hits = sum(1 for pat in patterns if pat.search(text)) if text else 0
+        # Give title hits extra weight and use them as a deterministic tie-breaker
+        score = (total_hits + title_hits * 2, title_hits)
+        if (total_hits > 0 or title_hits > 0) and score > best_score:
+            best_score = score
             best_family = family
     return best_family
 
@@ -281,10 +339,9 @@ def _detect_all_role_families(text: str) -> dict[str, int]:
     """Return a dict mapping each role family to the number of keyword hits."""
     if not text:
         return {}
-    text_lower = text.lower()
     result = {}
-    for family, keywords in ROLE_FAMILY_KEYWORDS.items():
-        count = sum(1 for kw in keywords if kw in text_lower)
+    for family, patterns in _ROLE_FAMILY_PATTERNS.items():
+        count = sum(1 for pat in patterns if pat.search(text))
         if count > 0:
             result[family] = count
     return result
@@ -294,29 +351,76 @@ def _identify_transferable_skills(experience_text: str) -> list[str]:
     if not experience_text:
         return []
     text_lower = experience_text.lower()
-    return [name for name, indicators in TRANSFERABLE_SKILLS.items() if any(ind in text_lower for ind in indicators)]
+    return [
+        name for name, indicators in TRANSFERABLE_SKILLS.items()
+        if any(_term_in_text(ind, text_lower) for ind in indicators)
+    ]
+
+
+def _extract_grounded_embedding_tokens(embedding_engine: Any, text: str) -> list[str]:
+    """
+    Extract only vocabulary-grounded skill/domain tokens from text so that
+    unmatched prose sentences do not fall back to the non-negative subword SVD
+    and fabricate high similarity across unrelated domains.
+    """
+    if not text or not embedding_engine:
+        return []
+
+    token_vecs = getattr(embedding_engine, "token_vectors_", None) or {}
+    found: list[str] = []
+    seen: set[str] = set()
+
+    def _add(tok: str) -> None:
+        norm = re.sub(r'[^a-z0-9+#/_ ]', '', tok.lower()).strip().replace(' ', '_')
+        if (
+            norm
+            and len(norm) >= 2
+            and len(norm) <= 40
+            and norm not in _GENERIC_SIM_TOKENS
+            and norm not in seen
+        ):
+            seen.add(norm)
+            found.append(norm)
+
+    try:
+        embedding_engine._get_spacy()
+        if getattr(embedding_engine, "_skills_matcher", None) and getattr(embedding_engine, "_nlp", None):
+            doc = embedding_engine._nlp(text)
+            for _, start, end in embedding_engine._skills_matcher(doc):
+                _add(doc[start:end].text)
+    except Exception:
+        pass
+
+    words = [w for w in re.findall(r'[a-z0-9+#/]+', text.lower()) if len(w) >= 2]
+    for i, w in enumerate(words):
+        if w in token_vecs:
+            _add(w)
+        if i + 1 < len(words):
+            bigram = f"{w}_{words[i + 1]}"
+            if bigram in token_vecs:
+                _add(bigram)
+
+    return found
 
 
 def _compute_semantic_similarity(text_a: str, text_b: str) -> float:
     """
-    Compute semantic similarity between two text fragments using the FastText
-    embedding engine. Returns bounded score [0.0, 1.0].
-    Falls back gracefully if embeddings are uninitialized.
+    Compute semantic similarity between two text fragments using vocabulary-grounded
+    FastText embeddings or spaCy word vectors (when available).
+    Returns bounded score [0.0, 1.0].
     """
     try:
         from app.ml_engine import get_production_model
         model = get_production_model()
         if model and model.embedding_engine:
-            tokens_a = model.embedding_engine.extract_clean_skills(text_a)
-            tokens_b = model.embedding_engine.extract_clean_skills(text_b)
-            if not tokens_a:
-                tokens_a = [t for t in text_a.lower().split() if t]
-            if not tokens_b:
-                tokens_b = [t for t in text_b.lower().split() if t]
-            vec_a = model.embedding_engine.vectorize_tokens(tokens_a)
-            vec_b = model.embedding_engine.vectorize_tokens(tokens_b)
-            sim = model.embedding_engine.compute_cosine_similarity(vec_a, vec_b)
-            return float(sim)
+            ee = model.embedding_engine
+            tokens_a = _extract_grounded_embedding_tokens(ee, text_a)
+            tokens_b = _extract_grounded_embedding_tokens(ee, text_b)
+            if tokens_a and tokens_b:
+                vec_a = ee.vectorize_tokens(tokens_a)
+                vec_b = ee.vectorize_tokens(tokens_b)
+                sim = ee.compute_cosine_similarity(vec_a, vec_b)
+                return float(sim)
     except Exception:
         pass
 
@@ -343,26 +447,79 @@ def _compute_semantic_similarity(text_a: str, text_b: str) -> float:
         return 0.0
 
 
+def _extract_domain_keywords(text: str) -> set[str]:
+    """
+    Extract meaningful domain/technical terms and multi-word skill phrases from
+    a job description or work experience entry, filtering out stopwords, years,
+    generic resume boilerplate, and soft/transferable skills.
+    """
+    if not text:
+        return set()
+
+    keywords: set[str] = set()
+
+    # 1. Include phrase-matched technical skills if the NLP skills matcher is available
+    try:
+        from app.ml_engine import get_production_model
+        model = get_production_model()
+        if model and model.embedding_engine:
+            ee = model.embedding_engine
+            ee._get_spacy()
+            if getattr(ee, "_skills_matcher", None) and getattr(ee, "_nlp", None):
+                doc = ee._nlp(text)
+                for _, start, end in ee._skills_matcher(doc):
+                    norm = _normalize_skill(doc[start:end].text)
+                    if norm and len(norm) > 1 and norm not in _GENERIC_EXPERIENCE_WORDS:
+                        keywords.add(norm)
+    except Exception:
+        pass
+
+    # 2. Include short comma/pipe/semicolon-delimited skill phrases
+    for chunk in re.split(r'[|,;•]', text):
+        cleaned = _normalize_skill(chunk)
+        words = cleaned.split()
+        if 1 <= len(words) <= 3 and len(cleaned) >= 2:
+            if not all(w in _GENERIC_EXPERIENCE_WORDS or w.isdigit() for w in words):
+                if cleaned not in _GENERIC_EXPERIENCE_WORDS and not cleaned.isdigit():
+                    keywords.add(cleaned)
+
+    # 3. Include meaningful individual content words (excluding years/stopwords/boilerplate)
+    for tok in re.findall(r'[a-z0-9+#/]{2,}', text.lower()):
+        norm = _SKILL_SYNONYMS.get(tok, tok)
+        if (
+            len(norm) >= 3
+            and not norm.isdigit()
+            and norm not in _GENERIC_EXPERIENCE_WORDS
+        ):
+            keywords.add(norm)
+
+    return keywords
+
 
 def _count_job_keyword_hits(entry_text: str, job_keywords: set[str]) -> tuple[int, list[str]]:
     """
-    Count how many job-requirement keywords appear in an experience entry.
+    Count how many job-requirement keywords appear in an experience entry
+    using word-boundary matching (never partial substring matches).
     Returns (count, list_of_matched_keywords).
     """
     entry_lower = entry_text.lower()
-    matched = [kw for kw in job_keywords if kw in entry_lower and len(kw) > 2]
+    matched = [kw for kw in job_keywords if len(kw) > 2 and _term_in_text(kw, entry_lower)]
     return len(matched), matched
 
 
 def _validate_verb_objects_against_job(verbs_objs: list[tuple[str, str]], job_text_lower: str) -> list[tuple[str, str]]:
     """
-    Filter verb-object pairs to only those whose object terms appear in the
-    job description/requirements. This prevents crediting unrelated actions.
+    Filter verb-object pairs to only those whose meaningful domain object terms
+    appear in the job description/requirements on word boundaries.
     """
     relevant = []
     for verb, obj in verbs_objs:
-        obj_tokens = [t.strip().lower() for t in obj.split() if len(t.strip()) > 2]
-        if any(tok in job_text_lower for tok in obj_tokens):
+        obj_tokens = [
+            t.strip().lower()
+            for t in re.findall(r'[a-z0-9+#/]+', obj.lower())
+            if len(t.strip()) > 2 and t.strip().lower() not in _GENERIC_EXPERIENCE_WORDS and not t.strip().isdigit()
+        ]
+        if any(_term_in_text(tok, job_text_lower) for tok in obj_tokens):
             relevant.append((verb, obj))
     return relevant
 
@@ -374,13 +531,11 @@ def calculate_experience_relevance(resume_experience: str, resume_skills: str, j
     STRICT SCORING POLICY:
     ─────────────────────
     • Irrelevant experience contributes ZERO to the experience score.
+    • Transferable soft skills alone (without direct domain/technical alignment)
+      do NOT qualify an entry as relevant or directly relevant.
     • Only relevant entries count toward the denominator/maximum score.
-    • Transferable skills alone are capped at a small contribution.
-    • Semantic similarity (spaCy vectors) gates borderline decisions.
+    • Semantic similarity (grounded domain embeddings) gates borderline decisions.
     • Each entry receives a transparent explanation of why it was scored.
-
-    Uses a hybrid approach (NLP, spaCy semantic similarity, keyword matching,
-    rule-based validation) to analyze each entry individually.
     """
     if transferable_cap is None:
         try:
@@ -395,13 +550,17 @@ def calculate_experience_relevance(resume_experience: str, resume_skills: str, j
     except ImportError:
         nlp_available = False
 
-    job_text = job_title + " " + (job_description or "")
+    job_text = (job_title or "") + " " + (job_description or "")
     job_text_lower = job_text.lower()
-    target_family = _detect_role_family(job_text)
+    target_family = _detect_role_family(job_text, priority_text=job_title or "")
     target_families = _detect_all_role_families(job_text)
-    job_kw = set(_tokenize_skills(job_text))
+    job_kw = _extract_domain_keywords(job_text)
 
-    exp_entries = [e.strip() for e in (resume_experience or "").split("|") if e.strip()]
+    raw_entries = [e.strip() for e in (resume_experience or "").split("|") if e.strip()]
+    exp_entries = [
+        e for e in raw_entries
+        if re.sub(r'[^a-z0-9/\- ]', '', e.lower()).strip() not in _NON_EXPERIENCE_PLACEHOLDERS
+    ]
     if not exp_entries:
         return {
             "relevance_level": "Irrelevant",
@@ -410,20 +569,26 @@ def calculate_experience_relevance(resume_experience: str, resume_skills: str, j
             "reason": "No work experience provided to evaluate relevance.",
             "detailed_breakdown": "No work experience provided.",
             "relevant_count": 0,
+            "highly_relevant_count": 0,
+            "partially_relevant_count": 0,
             "irrelevant_count": 0,
             "total_entries": 0,
+            "entry_relevances": [],
         }
 
     relevant_scores = []     # Scores from Highly Relevant / Partially Relevant entries only
     all_transferable = set()
     breakdown_texts = []
+    entry_relevances = []
     relevant_count = 0
+    highly_relevant_count = 0
+    partially_relevant_count = 0
     irrelevant_count = 0
 
     for i, entry in enumerate(exp_entries):
         candidate_family = _detect_role_family(entry)
         candidate_families = _detect_all_role_families(entry)
-        entry_kw = set(_tokenize_skills(entry))
+        entry_kw = _extract_domain_keywords(entry)
         direct_overlap = job_kw & entry_kw
         transferable = _identify_transferable_skills(entry)
         all_transferable.update(transferable)
@@ -431,7 +596,7 @@ def calculate_experience_relevance(resume_experience: str, resume_skills: str, j
         # Semantic similarity between the experience entry and the job description
         semantic_sim = _compute_semantic_similarity(entry, job_text) if nlp_available else 0.0
 
-        # Job keyword hits inside the entry
+        # Job keyword hits inside the entry (word-boundary matched)
         kw_hit_count, kw_hits = _count_job_keyword_hits(entry, job_kw)
 
         # NLP verb-object pair extraction & validation
@@ -448,7 +613,7 @@ def calculate_experience_relevance(resume_experience: str, resume_skills: str, j
         reasons = []
 
         # Check if there is family overlap (including secondary families)
-        family_match = (target_family and candidate_family and target_family == candidate_family)
+        family_match = bool(target_family and candidate_family and target_family == candidate_family)
         secondary_family_overlap = bool(set(target_families.keys()) & set(candidate_families.keys())) if not family_match else False
 
         if family_match:
@@ -474,8 +639,12 @@ def calculate_experience_relevance(resume_experience: str, resume_skills: str, j
                 f"({overlap_sample}), semantic similarity: {semantic_sim:.0%}."
             )
 
-        elif secondary_family_overlap and (len(direct_overlap) >= 1 or semantic_sim >= 0.45):
-            # ── Partially Relevant: related domain with some evidence ──
+        elif secondary_family_overlap and (
+            len(direct_overlap) >= 2
+            or len(relevant_verbs_objs) >= 1
+            or (semantic_sim >= 0.55 and kw_hit_count >= 2)
+        ):
+            # ── Partially Relevant: related domain with concrete evidence ──
             overlap_families = set(target_families.keys()) & set(candidate_families.keys())
             relevance = "Partially Relevant"
             score_contrib = 4
@@ -502,17 +671,17 @@ def calculate_experience_relevance(resume_experience: str, resume_skills: str, j
                 f"⚠️ Matched job-relevant responsibilities via NLP analysis: {vo_text}."
             )
 
-        elif transferable and (semantic_sim >= 0.35 or len(direct_overlap) >= 1):
-            # ── Minimally Relevant: only transferable skills with weak signal ──
+        elif transferable and len(direct_overlap) >= 1 and transferable_cap > 0:
+            # ── Minimally Relevant: transferable skills backed by at least 1 direct term overlap ──
             relevance = "Partially Relevant"
             score_contrib = min(transferable_cap, len(transferable))
             reasons.append(
-                f"⚠️ Limited relevance. Transferable skills detected but no direct "
-                f"technical or domain alignment. Score capped at {transferable_cap}/10."
+                f"⚠️ Limited relevance. Transferable skills detected with minimal overlap "
+                f"({', '.join(list(direct_overlap)[:2])}). Score capped at {transferable_cap}/10."
             )
 
         else:
-            # ── Irrelevant: no meaningful signal ──
+            # ── Irrelevant: no meaningful domain or technical signal ──
             relevance = "Irrelevant"
             score_contrib = 0  # STRICT: zero contribution
             if candidate_family:
@@ -521,7 +690,7 @@ def calculate_experience_relevance(resume_experience: str, resume_skills: str, j
                     f"which is not related to the target '{target_family.title() if target_family else 'Unknown'}' domain."
                 )
             else:
-                reasons.append("❌ No recognizable professional domain detected in this entry.")
+                reasons.append("❌ No recognizable professional domain alignment detected in this entry.")
             reasons.append(
                 "❌ No technical tools, relevant technologies, or domain-specific "
                 "responsibilities were found that align with the target position."
@@ -529,7 +698,7 @@ def calculate_experience_relevance(resume_experience: str, resume_skills: str, j
             if transferable:
                 reasons.append(
                     f"ℹ️ Transferable skills noted ({', '.join(transferable)}), but they are "
-                    f"insufficient on their own to generate a score for this specific role."
+                    f"insufficient on their own to qualify as relevant experience for this role."
                 )
 
         # ── Add supplementary detail ─────────────────────────────────────
@@ -546,11 +715,22 @@ def calculate_experience_relevance(resume_experience: str, resume_skills: str, j
             reasons.append(f"ℹ️ Semantic similarity to job description: {semantic_sim:.0%}.")
 
         # ── Track scores ─────────────────────────────────────────────────
-        if relevance in ("Highly Relevant", "Partially Relevant"):
+        if relevance == "Highly Relevant":
             relevant_scores.append(score_contrib)
             relevant_count += 1
+            highly_relevant_count += 1
+        elif relevance == "Partially Relevant":
+            relevant_scores.append(score_contrib)
+            relevant_count += 1
+            partially_relevant_count += 1
         else:
             irrelevant_count += 1
+
+        entry_relevances.append({
+            "index": i,
+            "entry": entry,
+            "relevance": relevance,
+        })
 
         breakdown_texts.append(
             f"{i+1}. {entry}\n"
@@ -608,8 +788,11 @@ def calculate_experience_relevance(resume_experience: str, resume_skills: str, j
             + "\n".join(breakdown_texts)
         ),
         "relevant_count": relevant_count,
+        "highly_relevant_count": highly_relevant_count,
+        "partially_relevant_count": partially_relevant_count,
         "irrelevant_count": irrelevant_count,
         "total_entries": len(exp_entries),
+        "entry_relevances": entry_relevances,
     }
 
 
@@ -1008,6 +1191,18 @@ def calculate_certifications_match(resume_certs: str, job_description: str, cert
     return {"score": score, "required_certifications": required_certs, "candidate_certifications": ", ".join(matched), "reason": f"Your certifications match {int(score*100)}% of the requirement."}
 
 
+def _format_years_label(val: int | float) -> str:
+    """Format a year count compactly (e.g. '3 yrs', '1 yr', '0.5 yrs')."""
+    num = int(val) if float(val).is_integer() else round(float(val), 1)
+    return f"{num} yr{'s' if num != 1 else ''}"
+
+
+def _format_years_word(val: int | float) -> str:
+    """Format a year count in prose (e.g. '3 years', '1 year', '0.5 years')."""
+    num = int(val) if float(val).is_integer() else round(float(val), 1)
+    return f"{num} year{'s' if num != 1 else ''}"
+
+
 def _generate_recommendations(skills_result: dict, experience_result: dict, education_result: dict, job_title: str) -> list[str]:
     """
     Generate actionable optimization recommendations based on gap analysis.
@@ -1024,15 +1219,25 @@ def _generate_recommendations(skills_result: dict, experience_result: dict, educ
         )
 
     # Experience gap recommendation
-    req_years = experience_result.get("required_years", 0)
-    cand_years = experience_result.get("candidate_years", 0)
+    req_years = experience_result.get("required_years", 0) or 0
+    cand_years = experience_result.get("candidate_years", 0) or 0
+    total_years = experience_result.get("total_years", cand_years) or cand_years
     if req_years > 0 and cand_years < req_years:
-        gap = req_years - cand_years
-        recommendations.append(
-            f"The role requires {req_years} years of experience, but your resume reflects {cand_years}. "
-            f"Highlight freelance projects, internships, or open-source contributions to bridge the {gap}-year gap."
-        )
-    elif cand_years == 0:
+        gap = max(0, req_years - cand_years)
+        gap_num = int(gap) if float(gap).is_integer() else round(float(gap), 1)
+        if total_years > cand_years:
+            recommendations.append(
+                f"The role requires {_format_years_word(req_years)} of relevant experience, but only "
+                f"{_format_years_word(cand_years)} on your resume align with {job_title} "
+                f"({_format_years_word(total_years)} total in other roles). Highlight relevant projects, "
+                f"trainings, or domain experience to bridge the {gap_num}-year gap."
+            )
+        else:
+            recommendations.append(
+                f"The role requires {req_years} years of experience, but your resume reflects {cand_years}. "
+                f"Highlight freelance projects, internships, or open-source contributions to bridge the {gap_num}-year gap."
+            )
+    elif cand_years == 0 and total_years == 0:
         recommendations.append(
             f"Quantify your work experience with specific durations (e.g., 'Jan 2022 – Present') "
             f"so the ATS can accurately calculate your tenure for the {job_title} role."
@@ -1116,11 +1321,32 @@ def _generate_nlp_strengths(skills_result: dict, experience_result: dict, educat
         strengths.append(f"Strong skills alignment — matched {len(skills_result['matched'])} of {len(skills_result['matched']) + len(skills_result['missing'])} required skills.")
     elif skills_result["score"] >= 0.4:
         strengths.append(f"Moderate skills match — {len(skills_result['matched'])} relevant skills identified.")
-    if experience_result["score"] >= 0.8:
-        strengths.append(f"Meets or exceeds the experience requirement with {experience_result.get('candidate_years', 0)} years.")
-    rel_count = relevance_result.get("relevant_count", 0)
-    if rel_count > 0:
-        strengths.append(f"{rel_count} work experience(s) are directly relevant to this position.")
+
+    relevant_count = relevance_result.get("relevant_count", 0) or 0
+    irrelevant_count = relevance_result.get("irrelevant_count", 0) or 0
+    duration_verified = experience_result.get("duration_verified", irrelevant_count == 0)
+    cand_years = experience_result.get("candidate_years", 0) or 0
+    req_years = experience_result.get("required_years", 0) or 0
+    if (
+        relevant_count > 0
+        and duration_verified
+        and cand_years > 0
+        and experience_result.get("score", 0) >= 0.8
+    ):
+        yr_text = _format_years_word(cand_years)
+        if req_years > 0:
+            strengths.append(f"Meets or exceeds the experience requirement with {yr_text} of relevant experience.")
+        else:
+            strengths.append(f"Brings {yr_text} of relevant work experience.")
+
+    highly_rel_count = relevance_result.get("highly_relevant_count")
+    if highly_rel_count is None:
+        highly_rel_count = relevance_result.get("relevant_count", 0)
+    partially_rel_count = relevance_result.get("partially_relevant_count", 0)
+    if highly_rel_count > 0:
+        strengths.append(f"{highly_rel_count} work experience(s) are directly relevant to this position.")
+    elif partially_rel_count > 0:
+        strengths.append(f"{partially_rel_count} work experience(s) are partially relevant to this position.")
     transferable = relevance_result.get("transferable_skills", [])
     if transferable:
         strengths.append(f"Transferable skills: {', '.join(transferable[:4])}.")
@@ -1138,11 +1364,13 @@ def _generate_nlp_weaknesses(skills_result: dict, experience_result: dict, educa
     weaknesses = []
     req_years = experience_result.get("required_years", 0) or 0
     cand_years = experience_result.get("candidate_years", 0) or 0
+    total_years = experience_result.get("total_years", cand_years) or cand_years
     if req_years > 0 and (experience_result.get("below_minimum") or cand_years < req_years):
         gap = max(0, req_years - cand_years)
+        rel_suffix = " relevant" if total_years > cand_years else ""
         weaknesses.append(
-            f"Gap reported: experience below minimum ({cand_years} yr{'s' if cand_years != 1 else ''} "
-            f"vs {req_years} yr{'s' if req_years != 1 else ''} required; {gap} yr{'s' if gap != 1 else ''} short)."
+            f"Gap reported: experience below minimum ({_format_years_label(cand_years)}{rel_suffix} "
+            f"vs {_format_years_label(req_years)} required; {_format_years_label(gap)} short)."
         )
     if skills_result["missing"] and len(skills_result["missing"]) > 0:
         missing_sample = ", ".join([s.title() for s in skills_result["missing"][:4]])
@@ -1369,6 +1597,157 @@ def build_job_specific_questions(
     return questions
 
 
+def _extract_entry_duration_months(entry_text: str, work_exp: Optional[dict] = None) -> int:
+    """Extract duration in months for a single work experience entry."""
+    if isinstance(work_exp, dict):
+        try:
+            dur = int(work_exp.get("duration_months") or 0)
+            if dur > 0:
+                return dur
+        except (TypeError, ValueError):
+            pass
+        date_str = " - ".join(
+            p for p in [str(work_exp.get("start_date") or "").strip(), str(work_exp.get("end_date") or "").strip()]
+            if p
+        )
+        if not date_str:
+            date_str = str(work_exp.get("duration") or work_exp.get("dates") or "").strip()
+        if date_str:
+            entry_text = f"{entry_text} ({date_str})" if entry_text else date_str
+
+    if not entry_text:
+        return 0
+
+    try:
+        from app.extractors.content.experience_extractor import _parse_date_and_duration
+        _, _, dur_months, _ = _parse_date_and_duration(entry_text)
+        if dur_months > 0:
+            return dur_months
+    except Exception:
+        pass
+
+    yr_matches = re.findall(r'\b(\d+(?:\.\d+)?)\s*\+?\s*(?:years?|yrs?)\b', entry_text, re.IGNORECASE)
+    if yr_matches:
+        try:
+            yrs = max(float(m) for m in yr_matches)
+            if 0 < yrs < 50:
+                return max(1, round(yrs * 12))
+        except ValueError:
+            pass
+
+    mo_matches = re.findall(r'\b(\d+)\s*(?:months?|mos?)\b', entry_text, re.IGNORECASE)
+    if mo_matches:
+        try:
+            mos = max(int(m) for m in mo_matches)
+            if 0 < mos < 600:
+                return mos
+        except ValueError:
+            pass
+
+    return 0
+
+
+def _match_work_exp_for_entry(entry_text: str, idx: int, total_entries: int, work_exps: list) -> Optional[dict]:
+    """Find the structured work_experiences dict corresponding to a pipe-delimited entry."""
+    if not isinstance(work_exps, list) or not work_exps:
+        return None
+    entry_lower = entry_text.lower()
+    for we in work_exps:
+        if not isinstance(we, dict):
+            continue
+        title = str(we.get("job_title") or we.get("role") or we.get("title") or "").strip().lower()
+        company = str(we.get("company_name") or we.get("company") or "").strip().lower()
+        if title and company and title in entry_lower and company in entry_lower:
+            return we
+    for we in work_exps:
+        if not isinstance(we, dict):
+            continue
+        title = str(we.get("job_title") or we.get("role") or we.get("title") or "").strip().lower()
+        if title and title in entry_lower:
+            return we
+    if len(work_exps) == total_entries and 0 <= idx < len(work_exps) and isinstance(work_exps[idx], dict):
+        return work_exps[idx]
+    return None
+
+
+def _resolve_relevant_experience_years(
+    resume_data: dict,
+    resume_years: int | float,
+    relevance_result: dict,
+) -> tuple[int | float, bool]:
+    """
+    Determine years of experience attributable to relevant roles only.
+    Returns (relevant_years, duration_verified).
+    """
+    relevant_count = int(relevance_result.get("relevant_count", 0) or 0)
+    irrelevant_count = int(relevance_result.get("irrelevant_count", 0) or 0)
+    total_entries = int(relevance_result.get("total_entries", 0) or 0)
+
+    if total_entries == 0:
+        return 0, False
+
+    if relevant_count == 0:
+        return 0, True
+
+    if irrelevant_count == 0:
+        return resume_years, True
+
+    entry_relevances = relevance_result.get("entry_relevances") or []
+    work_exps = resume_data.get("work_experiences") or []
+    relevant_months = 0
+    irrelevant_months = 0
+
+    for item in entry_relevances:
+        idx = int(item.get("index", 0) or 0)
+        entry_text = str(item.get("entry") or "")
+        rel_label = item.get("relevance", "Irrelevant")
+        matched_we = _match_work_exp_for_entry(entry_text, idx, len(entry_relevances), work_exps)
+        months = _extract_entry_duration_months(entry_text, matched_we)
+        if rel_label in ("Highly Relevant", "Partially Relevant"):
+            relevant_months += months
+        else:
+            irrelevant_months += months
+
+    if relevant_months + irrelevant_months > 0:
+        if relevant_months == 0:
+            rel_years: int | float = 0
+        elif relevant_months < 12:
+            rel_years = round(relevant_months / 12.0, 1)
+        else:
+            rel_years = round(relevant_months / 12.0)
+        if resume_years > 0 and rel_years > resume_years:
+            rel_years = resume_years
+        return rel_years, True
+
+    return resume_years, False
+
+
+def _resolve_experience_text(resume_data: dict) -> str:
+    """Resolve pipe-delimited experience text, falling back to structured work_experiences."""
+    raw = str(resume_data.get("experience") or "").strip()
+    if raw:
+        return raw
+    work_exps = resume_data.get("work_experiences") or []
+    if not isinstance(work_exps, list):
+        return ""
+    parts = []
+    for we in work_exps:
+        if not isinstance(we, dict):
+            continue
+        title = str(we.get("job_title") or we.get("role") or we.get("title") or "").strip()
+        company = str(we.get("company_name") or we.get("company") or "").strip()
+        resp = we.get("responsibilities") or we.get("description") or []
+        if isinstance(resp, list):
+            resp_text = "; ".join(str(r).strip() for r in resp if str(r).strip())
+        else:
+            resp_text = str(resp).strip()
+        header = f"{title} at {company}" if (title and company) else (title or company)
+        entry = f"{header} - Responsibilities: {resp_text}" if (header and resp_text) else (header or resp_text)
+        if entry:
+            parts.append(entry)
+    return " | ".join(parts)
+
+
 def calculate_match_score(resume_data: dict, job, use_ai: bool = False, matching_config: Optional[dict] = None) -> dict:
     """
     Calculate the overall match score between a parsed resume and a job.
@@ -1431,13 +1810,39 @@ def calculate_match_score(resume_data: dict, job, use_ai: bool = False, matching
 
     resume_years = resume_data.get("years_experience", 0) or 0
     job_desc = (job.description or "") + " " + (job.skills_requirements or "")
-    experience_result = calculate_experience_match(resume_years, job_desc, getattr(job, 'experience_requirements', None))
 
-    # Experience RELEVANCE analysis (not just years)
-    resume_experience = resume_data.get("experience", "")
+    # Experience RELEVANCE analysis (evaluated before years-of-experience check so
+    # tenure on unrelated roles is never credited as meeting the job's requirement).
+    resume_experience = _resolve_experience_text(resume_data)
     relevance_result = calculate_experience_relevance(
         resume_experience, resume_skills, job.job_title, job_desc, transferable_cap=trans_cap
     )
+    relevant_years, duration_verified = _resolve_relevant_experience_years(
+        resume_data, resume_years, relevance_result
+    )
+    total_exp_entries = relevance_result.get("total_entries", 0) or 0
+    effective_exp_years = (
+        relevant_years
+        if (total_exp_entries > 0 and (relevance_result.get("relevant_count", 0) == 0 or duration_verified))
+        else resume_years
+    )
+    experience_result = calculate_experience_match(
+        effective_exp_years, job_desc, getattr(job, 'experience_requirements', None)
+    )
+    experience_result["total_years"] = resume_years
+    experience_result["duration_verified"] = duration_verified
+    if resume_years > effective_exp_years:
+        req_yrs_exp = experience_result.get("required_years", 0) or 0
+        gap_yrs_exp = experience_result.get("gap_years", max(0, req_yrs_exp - effective_exp_years))
+        other_ctx = f"{_format_years_label(resume_years)} unrelated" if effective_exp_years == 0 else f"{_format_years_label(resume_years)} total"
+        if experience_result.get("below_minimum") and req_yrs_exp > 0:
+            experience_result["reason"] = (
+                f"Gap reported: experience below minimum — {_format_years_label(effective_exp_years)} relevant "
+                f"({other_ctx}) vs {_format_years_label(req_yrs_exp)} required "
+                f"({_format_years_label(gap_yrs_exp)} short)."
+            )
+        elif req_yrs_exp == 0 and effective_exp_years == 0:
+            experience_result["reason"] = "No relevant work experience found for this position."
     # STRICT COMBINED SCORE: Relevance dominates at 75%.
     relevance_score = relevance_result["relevance_score"]
     has_any_relevant = relevance_result.get("relevant_count", 0) > 0
@@ -1571,7 +1976,7 @@ def calculate_match_score(resume_data: dict, job, use_ai: bool = False, matching
         f"{'Strong alignment with the technical requirements.' if blended_skills_score >= 70 else 'Several critical skills from the job description are missing from the resume.'}"
     )
 
-    experience_text = resume_data.get("experience", "")
+    experience_text = resume_experience
     exp_entries = [e.strip() for e in experience_text.split("|") if e.strip()] if experience_text else []
     relevant_experience = " | ".join(exp_entries[:3]) if exp_entries else "No specific roles extracted."
 
@@ -1666,11 +2071,15 @@ def calculate_match_score(resume_data: dict, job, use_ai: bool = False, matching
     req_yrs_gap = experience_result.get("required_years", 0) or 0
     cand_yrs_gap = experience_result.get("candidate_years", 0) or 0
     below_min_exp = bool(experience_result.get("below_minimum", req_yrs_gap > 0 and cand_yrs_gap < req_yrs_gap))
-    gap_years_val = int(experience_result.get("gap_years", max(0, req_yrs_gap - cand_yrs_gap)) or 0) if below_min_exp else 0
+    gap_years_val = int(math.ceil(float(experience_result.get("gap_years", max(0, req_yrs_gap - cand_yrs_gap)) or 0))) if below_min_exp else 0
     if below_min_exp:
+        cand_label = _format_years_label(cand_yrs_gap)
+        if resume_years > cand_yrs_gap:
+            other_ctx = f"{_format_years_label(resume_years)} unrelated" if cand_yrs_gap == 0 else f"{_format_years_label(resume_years)} total"
+            cand_label = f"{cand_label} relevant ({other_ctx})"
         experience_gaps_text = (
             f"Gap reported: experience below minimum — Required: {req_yrs_gap} yrs | "
-            f"Candidate: {cand_yrs_gap} yr{'s' if cand_yrs_gap != 1 else ''} "
+            f"Candidate: {cand_label} "
             f"({gap_years_val} yr{'s' if gap_years_val != 1 else ''} short)"
         )
         requirement_gaps = [experience_gaps_text]

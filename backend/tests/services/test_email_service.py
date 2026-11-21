@@ -186,3 +186,32 @@ async def test_send_application_status_update_email_technical_interview():
         assert "Technical Interview" in args[2]
 
 
+@pytest.mark.asyncio
+async def test_send_email_skips_local_placeholder_recipient():
+    with patch("app.tasks.send_email_task.delay") as mock_delay:
+        res = await email_service._send_email_redis_first(
+            "imported_42@walkin.mariwasa.local", "Subject", "<p>Body</p>"
+        )
+    assert res is False
+    mock_delay.assert_not_called()
+
+
+def test_process_outgoing_email_queue_task_skips_blank_entries_and_sends_valid():
+    from app.tasks import process_outgoing_email_queue_task
+
+    queued_items = [
+        {"tx_id": "tx-empty", "to_email": "cand@gmail.com", "subject": "Dup", "html_body": ""},
+        {"tx_id": "tx-valid", "to_email": "cand@gmail.com", "subject": "Invite", "html_body": "<p>Hello</p>"},
+        None,
+    ]
+    with patch("app.utils.redis_client.pop_from_queue_sync", side_effect=queued_items), \
+         patch("app.services.email_service._send_smtp_sync", return_value=True) as mock_smtp, \
+         patch("app.utils.redis_client.redis_tx_manager.commit_transaction_sync") as mock_commit:
+        result = process_outgoing_email_queue_task(max_batch=10)
+
+    assert result["processed_count"] == 1
+    assert result["delivered_count"] == 1
+    mock_smtp.assert_called_once_with("cand@gmail.com", "Invite", "<p>Hello</p>")
+    mock_commit.assert_called_once_with("tx-valid", {"delivered_via_worker": True})
+
+

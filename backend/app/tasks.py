@@ -24,12 +24,24 @@ logger = logging.getLogger(__name__)
 effective_db_url = DATABASE_URL or os.getenv("DATABASE_URL", "postgresql+asyncpg://postgres:passwordnamin@localhost/automated_resume_db")
 engine = create_async_engine(
     effective_db_url,
-    pool_size=10,
-    max_overflow=5,
-    pool_recycle=1800,
-    pool_pre_ping=True
+    poolclass=NullPool,
 )
 async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+
+
+def _run_async_task(coro):
+    """Run an async task coroutine and disconnect loop-bound Redis pools before exit."""
+    async def _runner():
+        try:
+            return await coro
+        finally:
+            try:
+                from app.utils.redis_client import close_redis_pools
+                await close_redis_pools()
+            except Exception:
+                pass
+
+    return asyncio.run(_runner())
 
 async def async_analyze_application(application_id: int):
     async with async_session() as db:
@@ -70,7 +82,7 @@ async def async_analyze_application(application_id: int):
         hash_resume = {k: v for k, v in resume_data.items() if k not in ("id", "application_id")}
         hash_payload = json.dumps({"resume": hash_resume, "job": job_data}, sort_keys=True).encode("utf-8")
         content_hash = hashlib.sha256(hash_payload).hexdigest()
-        cache_key = f"ai_analysis:v2:{content_hash}"
+        cache_key = f"ai_analysis:v3:{content_hash}"
         
         cached_result = await get_cache(cache_key)
         
@@ -169,11 +181,11 @@ async def async_compare_candidates(job_id: int):
 
 @celery_app.task(name="analyze_application_task")
 def analyze_application_task(application_id: int):
-    asyncio.run(async_analyze_application(application_id))
+    _run_async_task(async_analyze_application(application_id))
 
 @celery_app.task(name="compare_candidates_task")
 def compare_candidates_task(job_id: int):
-    asyncio.run(async_compare_candidates(job_id))
+    _run_async_task(async_compare_candidates(job_id))
 
 @celery_app.task(name="match_single_job_task")
 def match_single_job_task(resume_data: dict, job_dict: dict, use_ai: bool = False) -> dict:
@@ -232,25 +244,29 @@ def send_email_task(self, to_email: str, subject: str, html_body: str, email_typ
 
 @celery_app.task(name="process_outgoing_email_queue_task")
 def process_outgoing_email_queue_task(max_batch: int = 25):
-    """Celery task to drain queued emails from Redis and deliver them in batch."""
-    from app.utils.redis_client import pop_from_queue, redis_tx_manager
+    """Celery task to drain queued fallback emails from Redis and deliver them in batch."""
+    from app.utils.redis_client import pop_from_queue_sync, redis_tx_manager
     from app.services.email_service import _send_smtp_sync
-    import asyncio
 
     processed_count = 0
     delivered_count = 0
 
     for _ in range(max_batch):
-        item = asyncio.run(pop_from_queue("queue:outgoing_emails"))
+        item = pop_from_queue_sync("queue:outgoing_emails")
         if not item:
             break
 
-        processed_count += 1
         tx_id = item.get("tx_id")
-        to_email = item.get("to_email")
-        subject = item.get("subject")
-        html_body = item.get("html_body", "")
+        to_email = (item.get("to_email") or "").strip()
+        subject = item.get("subject") or ""
+        html_body = item.get("html_body") or ""
 
+        # Skip audit-only entries that lack a body so blank duplicate emails are never sent
+        if not to_email or not html_body.strip():
+            logger.debug(f"[Celery] Skipping metadata-only queued email entry tx={tx_id} to={to_email}")
+            continue
+
+        processed_count += 1
         logger.info(f"[Celery] Processing queued email tx={tx_id} to={to_email}")
         success = _send_smtp_sync(to_email, subject, html_body)
         if success:
@@ -304,7 +320,7 @@ def recalculate_all_applications_task(self) -> dict:
             await invalidate_application_dashboard_caches()
             logger.info(f"[Celery] Recalculation finished: {result.get('updated_applications', 0)} applications updated.")
             return result
-    return asyncio.run(_async_recalculate())
+    return _run_async_task(_async_recalculate())
 
 
 @celery_app.task(bind=True, name="recalculate_job_applications_task")
@@ -349,7 +365,7 @@ def recalculate_job_applications_task(self, job_id_str: str) -> dict:
             await invalidate_application_dashboard_caches()
             return {"job_id": job_id_str, "updated_applications": updated}
 
-    return asyncio.run(_async_recalculate_job())
+    return _run_async_task(_async_recalculate_job())
 
 
 @celery_app.task(name="create_data_backup_task")
@@ -377,7 +393,7 @@ def cleanup_expired_cache_task() -> dict:
         await clear_cache_pattern("analyzing:*")
         return {"status": "success", "cleaned_at": asyncio.get_event_loop().time()}
     try:
-        return asyncio.run(_cleanup())
+        return _run_async_task(_cleanup())
     except Exception as e:
         logger.error(f"[Celery] Cache cleanup task failed: {e}")
         return {"status": "error", "error": str(e)}
@@ -398,7 +414,7 @@ def refresh_active_comparisons_task() -> dict:
                 count += 1
             return {"status": "success", "jobs_dispatched": count}
     try:
-        return asyncio.run(_refresh())
+        return _run_async_task(_refresh())
     except Exception as e:
         logger.error(f"[Celery] Candidate comparisons refresh task failed: {e}")
         return {"status": "error", "error": str(e)}
@@ -440,8 +456,7 @@ def retrain_ml_model_task(min_new_samples: int = 5, force: bool = False) -> dict
         logger.info(f"[Celery] ML Retraining task finished: status={result.get('status')} version={result.get('version')}")
         if result.get("status") == "success":
             try:
-                import asyncio
-                asyncio.run(_notify_retraining_success(result))
+                _run_async_task(_notify_retraining_success(result))
             except Exception as notify_err:
                 logger.debug(f"Notice on async notification in worker: {notify_err}")
         return result

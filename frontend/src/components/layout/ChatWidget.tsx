@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { MessageSquare, Send, Search, ArrowLeft, X, Lock, CheckCheck, Clock } from 'lucide-react';
 import chatService from '../../services/chatService';
-import { useSelector } from 'react-redux';
+import { useSelector, useDispatch } from 'react-redux';
 import { WS_BASE_URL } from '../../services/api';
 import { RootState } from '../../redux/store';
+import { setUnreadMessagesCount } from '../../redux/slices/notificationSlice';
 
 export interface ChatContactItem {
   id: number;
@@ -28,6 +29,7 @@ export interface ChatMessageItem {
 }
 
 const ChatWidget: React.FC = () => {
+    const dispatch = useDispatch();
     const { profileImageUrl: myProfileImage } = useSelector((state: RootState) => state.auth);
     const [isOpen, setIsOpen] = useState(false);
     const [view, setView] = useState<'contacts' | 'chat'>('contacts');
@@ -211,17 +213,20 @@ const ChatWidget: React.FC = () => {
     const fetchContacts = async () => {
         try {
             const res = await chatService.getContacts(token, search);
-            setContacts(res.data.users || []);
+            const userList: ChatContactItem[] = res.data.users || [];
+            setContacts(userList);
+            const totalUnread = userList.reduce((acc, c) => acc + (c.unread_count || 0), 0);
+            dispatch(setUnreadMessagesCount(totalUnread));
         } catch (error) {
             console.error("Failed to fetch contacts", error);
         }
     };
 
     useEffect(() => {
-        if (isOpen) {
+        if (token) {
             fetchContacts();
         }
-    }, [isOpen, search]);
+    }, [token, isOpen, search]);
 
     const openChat = async (contact: ChatContactItem) => {
         setActiveContact(contact);
@@ -231,10 +236,15 @@ const ChatWidget: React.FC = () => {
             const res = await chatService.getMessages(contact.id, token);
             setMessages(res.data || []);
             
-            // Mark as read locally in contacts list
-            setContacts(prev => prev.map(c => 
-                c.id === contact.id ? { ...c, unread_count: 0 } : c
-            ));
+            // Mark as read locally in contacts list and sync Redux unread counter
+            setContacts(prev => {
+                const updated = prev.map(c =>
+                    c.id === contact.id ? { ...c, unread_count: 0 } : c
+                );
+                const totalUnread = updated.reduce((acc, c) => acc + (c.unread_count || 0), 0);
+                dispatch(setUnreadMessagesCount(totalUnread));
+                return updated;
+            });
         } catch (error) {
             console.error("Failed to fetch messages", error);
         } finally {
@@ -570,7 +580,7 @@ const ChatWidget: React.FC = () => {
                 >
                     <MessageSquare className="h-6 w-6 group-hover:rotate-6 transition-transform" />
                     {contacts.some(c => (c.unread_count || 0) > 0) && (
-                        <span className="absolute -top-1 -right-1 w-4 h-4 bg-green-500 border-2 border-white rounded-full animate-pulse"></span>
+                        <span className="absolute -top-1 -right-1 w-4 h-4 bg-[#D60041] border-2 border-white rounded-full animate-pulse"></span>
                     )}
                 </button>
             </div>

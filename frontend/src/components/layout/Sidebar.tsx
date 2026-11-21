@@ -18,6 +18,7 @@ export interface NavItem {
   icon: ReactNode;
   badge?: string;
   badgeColor?: string;
+  hasUnreadDot?: boolean;
 }
 
 export interface NavSection {
@@ -31,6 +32,7 @@ const Sidebar: React.FC = () => {
   const dispatch = useDispatch();
   const { role: userRole } = useSelector((state: RootState) => state.auth);
   const { isSidebarOpen } = useSelector((state: RootState) => state.ui);
+  const { unreadMessagesCount } = useSelector((state: RootState) => state.notifications);
 
   const normRole = (userRole || '').toUpperCase();
   const isAdminRole = normRole === 'ADMIN';
@@ -72,7 +74,14 @@ const Sidebar: React.FC = () => {
         {
           title: 'COMMUNICATION',
           items: [
-            { label: 'Messages', path: '/admin/messages', icon: <MessageSquare size={18} /> },
+            {
+              label: 'Messages',
+              path: '/admin/messages',
+              icon: <MessageSquare size={18} />,
+              badge: unreadMessagesCount > 0 ? String(unreadMessagesCount) : undefined,
+              badgeColor: 'bg-[#D60041] text-white',
+              hasUnreadDot: unreadMessagesCount > 0,
+            },
           ],
         },
       ];
@@ -102,7 +111,14 @@ const Sidebar: React.FC = () => {
         {
           title: 'COMMUNICATION',
           items: [
-            { label: 'Messages', path: '/hr/messages', icon: <MessageSquare size={18} /> },
+            {
+              label: 'Messages',
+              path: '/hr/messages',
+              icon: <MessageSquare size={18} />,
+              badge: unreadMessagesCount > 0 ? String(unreadMessagesCount) : undefined,
+              badgeColor: 'bg-[#D60041] text-white',
+              hasUnreadDot: unreadMessagesCount > 0,
+            },
           ],
         },
       ];
@@ -127,7 +143,14 @@ const Sidebar: React.FC = () => {
               icon: <FileUp size={18} />,
             },
             { label: 'My Applications', path: '/candidate/applicationtracking', icon: <FileText size={18} /> },
-            { label: 'Messages', path: '/candidate/messages', icon: <MessageSquare size={18} /> },
+            {
+              label: 'Messages',
+              path: '/candidate/messages',
+              icon: <MessageSquare size={18} />,
+              badge: unreadMessagesCount > 0 ? String(unreadMessagesCount) : undefined,
+              badgeColor: 'bg-[#D60041] text-white',
+              hasUnreadDot: unreadMessagesCount > 0,
+            },
           ],
         },
       ];
@@ -303,13 +326,20 @@ const Sidebar: React.FC = () => {
                             {item.label}
                           </span>
                         </div>
-                        {item.badge && (
-                          <span
-                            className={`text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-md shrink-0 shadow-2xs ${item.badgeColor || 'bg-[#D60041] text-white'
-                              }`}
-                          >
-                            {item.badge}
-                          </span>
+                        {(item.badge || item.hasUnreadDot) && (
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            {item.hasUnreadDot && (
+                              <span className="w-2 h-2 rounded-full bg-[#D60041] animate-pulse" aria-label="Unread messages" />
+                            )}
+                            {item.badge && (
+                              <span
+                                className={`text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-md shadow-2xs ${item.badgeColor || 'bg-[#D60041] text-white'
+                                  }`}
+                              >
+                                {item.badge}
+                              </span>
+                            )}
+                          </div>
                         )}
                       </button>
                     );

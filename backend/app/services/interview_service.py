@@ -2,10 +2,14 @@ from fastapi.logger import logger
 import os
 import re
 import asyncio
+import threading
 import requests
+from dotenv import load_dotenv
 from datetime import datetime, timedelta
 from typing import List, Optional, Union
 from sqlalchemy.ext.asyncio import AsyncSession
+
+load_dotenv()
 
 from app.schemas.interview_schema import (
     CandidateRescheduleSchema,
@@ -103,27 +107,77 @@ def _populate_candidate_info(interview, app_override=None, interviewer_override=
     return interview
 
 IPROG_SMS_DEFAULT_URL = "https://www.iprogsms.com/api/v1/sms_messages"
+_PLACEHOLDER_PHONES = {"", "n/a", "na", "none", "null", "not specified", "not provided", "unknown", "-"}
+_sms_thread_state = threading.local()
+
+
+def _clean_phone_candidate(raw_phone: Optional[str]) -> Optional[str]:
+    """Return a single cleaned phone number or None if blank/placeholder."""
+    if not raw_phone:
+        return None
+    text = str(raw_phone).strip()
+    if not text or text.lower() in _PLACEHOLDER_PHONES:
+        return None
+    # If multiple numbers are concatenated with delimiters (e.g., "0917... / 0918..."), pick the primary one
+    if any(sep in text for sep in ("/", "|", ",", ";")):
+        try:
+            from app.extractors.content.phone_extractor import extract_phone
+            extracted = extract_phone(text)
+            if extracted:
+                return extracted
+        except Exception:
+            pass
+        text = re.split(r"[/|,;]+", text)[0].strip()
+    digits = re.sub(r"\D", "", text)
+    if len(digits) < 7:
+        return None
+    return text
+
+
+def _normalize_ph_digits(digits: str) -> str:
+    """Normalize Philippine mobile digit prefixes into 639XXXXXXXXX when applicable."""
+    if digits.startswith("0063"):
+        digits = digits[2:]
+    if digits.startswith("6309") and len(digits) == 13:
+        digits = "63" + digits[3:]
+    elif len(digits) == 11 and digits.startswith("09"):
+        digits = "63" + digits[1:]
+    elif len(digits) == 10 and digits.startswith("9"):
+        digits = "63" + digits
+    return digits
 
 
 def format_phone_for_iprogsms(phone: str) -> str:
     """Normalize phone number into IPROG SMS digits format (e.g., 639771331871)."""
-    digits = re.sub(r"\D", "", (phone or "").strip())
+    cleaned = _clean_phone_candidate(phone)
+    if not cleaned:
+        return ""
+    digits = re.sub(r"\D", "", cleaned)
     if not digits:
         return ""
-    if len(digits) == 11 and digits.startswith("09"):
-        return "63" + digits[1:]
-    if len(digits) == 10 and digits.startswith("9"):
-        return "63" + digits
-    return digits
+    return _normalize_ph_digits(digits)
+
+
+def _extract_iprogsms_error(data: dict, status_code: int, raw_text: str) -> str:
+    msg = data.get("message")
+    if isinstance(msg, list):
+        msg_str = "; ".join(str(m) for m in msg if m)
+    elif msg:
+        msg_str = str(msg)
+    else:
+        msg_str = raw_text[:300].strip()
+    return msg_str or f"HTTP {status_code}"
 
 
 def send_iprogsms_sync(to_phone: str, message: str) -> bool:
     """Send an SMS via the IPROG SMS REST API."""
+    _sms_thread_state.last_error = None
     api_token = (os.getenv("IPROG_SMS_API_TOKEN") or "").strip()
     api_url = (os.getenv("IPROG_SMS_API_URL") or IPROG_SMS_DEFAULT_URL).strip()
     recipient = format_phone_for_iprogsms(to_phone)
     clean_message = (message or "").strip()
     if not api_token or not recipient or not clean_message:
+        _sms_thread_state.last_error = "Missing API token, valid recipient phone number, or message."
         logger.warning("IPROG SMS skipped: missing api_token, phone_number, or message.")
         return False
 
@@ -138,6 +192,9 @@ def send_iprogsms_sync(to_phone: str, message: str) -> bool:
         "message": clean_message,
         "sms_provider": sms_provider_id,
     }
+    sender_name = (os.getenv("IPROG_SMS_SENDER_NAME") or "").strip()
+    if sender_name:
+        payload["sender_name"] = sender_name
 
     try:
         resp = requests.post(api_url, json=payload, timeout=15)
@@ -158,31 +215,33 @@ def send_iprogsms_sync(to_phone: str, message: str) -> bool:
             )
             return True
 
+        err_reason = _extract_iprogsms_error(data, resp.status_code, resp.text or "")
+        _sms_thread_state.last_error = err_reason
         logger.error(
             f"IPROG SMS API rejected message for {recipient}: http={resp.status_code}, body={resp.text[:300]}"
         )
         return False
     except Exception as exc:
+        _sms_thread_state.last_error = str(exc)
         logger.error(f"IPROG SMS request failed for {recipient}: {exc}")
         return False
 
 
 def format_to_e164(phone: Optional[str]) -> Optional[str]:
     """Normalize phone numbers to E.164 format."""
-    if not phone:
+    cleaned_input = _clean_phone_candidate(phone)
+    if not cleaned_input:
         return None
-    cleaned = re.sub(r"[^\d+]", "", str(phone).strip())
-    if not cleaned:
+    has_plus = cleaned_input.startswith("+")
+    digits = re.sub(r"\D", "", cleaned_input)
+    if not digits:
         return None
-    if cleaned.startswith("+"):
-        return cleaned
-    if cleaned.startswith("09") and len(cleaned) == 11:
-        return "+63" + cleaned[1:]
-    if cleaned.startswith("63") and len(cleaned) >= 11:
-        return "+" + cleaned
-    if cleaned.startswith("9") and len(cleaned) == 10:
-        return "+63" + cleaned
-    return f"+{cleaned}" if cleaned.isdigit() else cleaned
+    normalized_digits = _normalize_ph_digits(digits)
+    if normalized_digits.startswith("639") and len(normalized_digits) == 12:
+        return "+" + normalized_digits
+    if has_plus:
+        return "+" + digits
+    return "+" + normalized_digits
 
 
 def send_sms_notification_sync(to_phone: str, message: str) -> bool:
@@ -190,24 +249,119 @@ def send_sms_notification_sync(to_phone: str, message: str) -> bool:
     return send_iprogsms_sync(to_phone, message)
 
 
+def _extract_phone_from_parsed_payload(parsed_data: object) -> Optional[str]:
+    if not isinstance(parsed_data, dict):
+        return None
+    for key in ("phone", "candidate_phone", "mobile", "contact_number"):
+        val = _clean_phone_candidate(parsed_data.get(key))
+        if val:
+            return val
+    return None
+
+
 async def _resolve_candidate_phone(db: AsyncSession, application) -> Optional[str]:
-    """Return candidate phone from JobApplication, falling back to their User profile."""
+    """
+    Resolve candidate phone from JobApplication, falling back to parsed PhysicalResume,
+    parsed Candidate Resume, local resume file extraction, and User profile.
+    """
     if not application:
         return None
-    phone = (getattr(application, "phone", None) or "").strip()
-    if phone:
-        return phone
+
+    direct_phone = _clean_phone_candidate(getattr(application, "phone", None))
+    if direct_phone:
+        return direct_phone
+
     candidate_email = (getattr(application, "candidate_email", None) or "").strip()
-    if not candidate_email:
-        return None
+    resume_url = (getattr(application, "resume_url", None) or "").strip()
+    resolved_phone: Optional[str] = None
+
+    # 1. Check PhysicalResume records (by resume file_url or candidate_email)
     try:
-        from app.repositories.auth_repository import AuthRepository
-        cand_user = await AuthRepository.get_user_by_email(db, candidate_email)
-        fallback_phone = (getattr(cand_user, "phone", None) or "").strip()
-        return fallback_phone or None
+        from sqlalchemy import select, func
+        from app.models.physical_resume import PhysicalResume
+
+        if resume_url:
+            pr_stmt = (
+                select(PhysicalResume)
+                .where(PhysicalResume.file_url == resume_url)
+                .order_by(PhysicalResume.created_at.desc())
+            )
+            pr = (await db.execute(pr_stmt)).scalars().first()
+            if pr:
+                resolved_phone = _clean_phone_candidate(getattr(pr, "candidate_phone", None)) or _extract_phone_from_parsed_payload(getattr(pr, "parsed_data", None))
+
+        if not resolved_phone and candidate_email and not candidate_email.lower().endswith(".local"):
+            pr_stmt = (
+                select(PhysicalResume)
+                .where(func.lower(PhysicalResume.candidate_email) == candidate_email.lower())
+                .order_by(PhysicalResume.created_at.desc())
+            )
+            pr = (await db.execute(pr_stmt)).scalars().first()
+            if pr:
+                resolved_phone = _clean_phone_candidate(getattr(pr, "candidate_phone", None)) or _extract_phone_from_parsed_payload(getattr(pr, "parsed_data", None))
     except Exception as e:
-        logger.warning(f"Could not resolve fallback candidate phone for {candidate_email}: {e}")
-        return None
+        logger.debug(f"PhysicalResume phone lookup skipped: {e}")
+
+    # 2. Check Candidate Resume records (by file_url or Candidate email)
+    if not resolved_phone:
+        try:
+            from sqlalchemy import select, func
+            from app.models.resume import Resume
+            from app.models.candidate import Candidate
+
+            if resume_url:
+                r_stmt = select(Resume).where(Resume.file_url == resume_url).order_by(Resume.created_at.desc())
+                r_obj = (await db.execute(r_stmt)).scalars().first()
+                if r_obj:
+                    resolved_phone = _extract_phone_from_parsed_payload(getattr(r_obj, "parsed_data", None))
+
+            if not resolved_phone and candidate_email:
+                r_stmt = (
+                    select(Resume)
+                    .join(Candidate, Resume.candidate_id == Candidate.id)
+                    .where(func.lower(Candidate.email) == candidate_email.lower())
+                    .order_by(Resume.created_at.desc())
+                )
+                r_obj = (await db.execute(r_stmt)).scalars().first()
+                if r_obj:
+                    resolved_phone = _extract_phone_from_parsed_payload(getattr(r_obj, "parsed_data", None))
+        except Exception as e:
+            logger.debug(f"Resume phone lookup skipped: {e}")
+
+    # 3. Fallback to User profile
+    if not resolved_phone and candidate_email:
+        try:
+            from app.repositories.auth_repository import AuthRepository
+            cand_user = await AuthRepository.get_user_by_email(db, candidate_email)
+            resolved_phone = _clean_phone_candidate(getattr(cand_user, "phone", None))
+        except Exception as e:
+            logger.warning(f"Could not resolve fallback candidate phone for {candidate_email}: {e}")
+
+    # 4. Last resort: extract from local resume file if stored on disk
+    if not resolved_phone and resume_url and resume_url.startswith("/uploads/"):
+        local_path = resume_url.lstrip("/")
+        if os.path.isfile(local_path):
+            try:
+                ext = os.path.splitext(local_path)[1].strip(".")
+                from app.extractors.resume_processor import process_resume
+                extracted = await asyncio.to_thread(process_resume, local_path, ext)
+                resolved_phone = _extract_phone_from_parsed_payload(extracted)
+            except Exception as e:
+                logger.debug(f"Local resume phone extraction skipped for {local_path}: {e}")
+
+    if resolved_phone:
+        try:
+            application.phone = resolved_phone
+        except Exception:
+            pass
+
+    return resolved_phone
+
+
+def _send_sms_with_reason_sync(to_phone: str, message: str) -> tuple[bool, Optional[str]]:
+    _sms_thread_state.last_error = None
+    sent = bool(send_sms_notification_sync(to_phone, message))
+    return sent, getattr(_sms_thread_state, "last_error", None)
 
 
 async def _dispatch_candidate_sms(
@@ -219,21 +373,23 @@ async def _dispatch_candidate_sms(
     success_desc_prefix: str,
 ) -> bool:
     """Format phone number, send SMS notification via configured provider, and log actual outcome."""
-    clean_phone = (phone or "").strip()
+    clean_phone = _clean_phone_candidate(phone)
     if not clean_phone:
         return False
 
     formatted_phone = format_to_e164(clean_phone) or clean_phone
-    sms_sent = await asyncio.to_thread(send_sms_notification_sync, formatted_phone, message)
+    sms_sent, failure_reason = await asyncio.to_thread(_send_sms_with_reason_sync, formatted_phone, message)
 
     event_name = success_event if sms_sent else "SMS_FAILED"
-    log_desc = (
-        f"{success_desc_prefix} to {formatted_phone}: {message}"
-        if sms_sent
-        else f"Failed to deliver SMS notification to {formatted_phone}: {message}"
-    )
+    if sms_sent:
+        log_desc = f"{success_desc_prefix} to {formatted_phone}: {message}"
+    elif failure_reason:
+        log_desc = f"Failed to deliver SMS notification to {formatted_phone} ({failure_reason}): {message}"
+    else:
+        log_desc = f"Failed to deliver SMS notification to {formatted_phone}: {message}"
+
     if not sms_sent:
-        logger.warning(f"SMS delivery failed for interview {interview_id} ({formatted_phone})")
+        logger.warning(f"SMS delivery failed for interview {interview_id} ({formatted_phone}): {failure_reason or 'unknown error'}")
 
     try:
         await InterviewRepository.add_interview_log(db, interview_id, event_name, log_desc)
