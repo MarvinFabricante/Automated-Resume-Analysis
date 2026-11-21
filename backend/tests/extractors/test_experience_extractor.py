@@ -919,5 +919,460 @@ def test_pdf_timeline_gutter_and_two_col_footer_layout():
     assert parsed_2c["years_experience"] == 4
 
 
+def test_harvard_overleaf_all_four_header_layouts():
+    # (a) Company | Location + Role | Dates
+    cv_a = """
+    WORK EXPERIENCE
+    Pointwest Technologies | Quezon City, Metro Manila
+    Senior QA Engineer | Jan 2020 - Dec 2022
+    • Automated API and regression test suites
+    """
+    res_a = extract_structured_experience(cv_a)
+    assert len(res_a["work_experiences"]) == 1
+    e_a = res_a["work_experiences"][0]
+    assert "Qa Engineer" in e_a["job_title"] or "QA Engineer" in e_a["job_title"]
+    assert "Pointwest" in e_a["company_name"]
+    assert "Quezon City" in (e_a["location"] or "")
+    assert e_a["duration_months"] == 36
+
+    # (b) Company | Dates + Role | Location
+    cv_b = """
+    WORK EXPERIENCE
+    Pointwest Technologies | Jan 2020 - Dec 2022
+    Senior QA Engineer | Quezon City, Metro Manila
+    • Led release verification
+    """
+    res_b = extract_structured_experience(cv_b)
+    assert len(res_b["work_experiences"]) == 1
+    e_b = res_b["work_experiences"][0]
+    assert "QA Engineer" in e_b["job_title"]
+    assert "Pointwest" in e_b["company_name"]
+    assert "Quezon City" in (e_b["location"] or "")
+    assert e_b["duration_months"] == 36
+
+    # (c) Role | Dates + Company | Location
+    cv_c = """
+    WORK EXPERIENCE
+    Senior QA Engineer | Jan 2020 - Dec 2022
+    Pointwest Technologies | Quezon City, Metro Manila
+    • Designed test automation frameworks
+    """
+    res_c = extract_structured_experience(cv_c)
+    assert len(res_c["work_experiences"]) == 1
+    e_c = res_c["work_experiences"][0]
+    assert "QA Engineer" in e_c["job_title"]
+    assert "Pointwest" in e_c["company_name"]
+    assert "Quezon City" in (e_c["location"] or "")
+    assert e_c["duration_months"] == 36
+
+    # (d) Title + Company + Location + Dates on 4 lines
+    cv_d = """
+    WORK EXPERIENCE
+    Senior QA Engineer
+    Pointwest Technologies
+    Quezon City, Metro Manila
+    Jan 2020 - Dec 2022
+    • Maintained CI test pipelines
+    """
+    res_d = extract_structured_experience(cv_d)
+    assert len(res_d["work_experiences"]) == 1
+    e_d = res_d["work_experiences"][0]
+    assert "QA Engineer" in e_d["job_title"]
+    assert "Pointwest" in e_d["company_name"]
+    assert "Quezon City" in (e_d["location"] or "")
+    assert e_d["duration_months"] == 36
+
+
+def test_linkedin_international_grouped_and_metadata_layouts():
+    # International grouped roles under parent company with total duration + full-time/hybrid metadata
+    cv_grouped_dur = """
+    EXPERIENCE
+    Stripe Pte. Ltd.
+    2 yrs 6 mos
+    Senior Backend Engineer
+    Jan 2023 - Dec 2023 · 1 yr · Full-time · Hybrid
+    • Built idempotent payment webhook handlers
+
+    Backend Engineer
+    Jul 2021 - Dec 2022 · 1 yr 6 mos · Full-time
+    • Maintained settlement microservices
+    """
+    res1 = extract_structured_experience(cv_grouped_dur)
+    assert len(res1["work_experiences"]) == 2
+    assert all("Stripe" in w["company_name"] for w in res1["work_experiences"])
+    assert res1["work_experiences"][0]["employment_type"] == "Full-time"
+    assert res1["total_experience_months"] == 30
+
+    # Grouped roles WITHOUT parent duration line (company + location only)
+    cv_grouped_no_dur = """
+    EXPERIENCE
+    Shopee Philippines
+    Makati City
+    Senior Product Manager
+    Jan 2023 - Dec 2024
+    • Owned checkout conversion roadmap
+
+    Associate Product Manager
+    Jan 2021 - Dec 2022
+    • Launched seller analytics dashboards
+    """
+    res2 = extract_structured_experience(cv_grouped_no_dur)
+    assert len(res2["work_experiences"]) == 2
+    assert all("Shopee" in w["company_name"] for w in res2["work_experiences"])
+    assert all("Makati" in (w["location"] or "") for w in res2["work_experiences"])
+    assert res2["total_experience_months"] == 48
+
+    # Parent company with location line BEFORE duration + inline metadata stripping
+    cv_loc_before_dur = """
+    EXPERIENCE
+    Globe Telecom
+    BGC, Taguig City
+    3 yrs
+    Cloud Solutions Architect
+    Jan 2022 - Dec 2023 · Full-time · Hybrid · 2 yrs
+    • Architected multi-region Kubernetes clusters
+
+    Systems Engineer
+    Jan 2021 - Dec 2021 · 1 yr
+    • Automated server provisioning with Ansible
+    """
+    res3 = extract_structured_experience(cv_loc_before_dur)
+    assert len(res3["work_experiences"]) == 2
+    assert all("Globe Telecom" in w["company_name"] for w in res3["work_experiences"])
+    assert all("Taguig" in (w["location"] or "") or "BGC" in (w["location"] or "") for w in res3["work_experiences"])
+    assert "Hybrid" not in res3["work_experiences"][0]["company_name"]
+    assert res3["total_experience_months"] == 36
+
+
+def test_csc_pds_and_biodata_kv_layouts():
+    # CSC Form 212 PDS table row with separate From | To dates + salary/SG/Y/N noise
+    cv_pds = """
+    WORK EXPERIENCE
+    01/15/2020 | 12/31/2023 | Administrative Officer II | Department of Education | ₱27,000.00 | SG 11-1 | Permanent | Y
+    """
+    res_pds = extract_structured_experience(cv_pds)
+    assert len(res_pds["work_experiences"]) == 1
+    e_pds = res_pds["work_experiences"][0]
+    assert "Administrative Officer II" in e_pds["job_title"]
+    assert "Department of Education" in e_pds["company_name"]
+    assert "27,000" not in e_pds["company_name"]
+    assert "SG" not in e_pds["company_name"]
+    assert e_pds["start_date"] == "2020-01"
+    assert e_pds["end_date"] == "2023-12"
+    assert e_pds["duration_months"] == 48
+
+    # Biodata multi-line KV layout with From: / To:
+    cv_bio = """
+    EMPLOYMENT RECORD
+    Position: Warehouse Supervisor
+    Company: San Miguel Logistics Corp.
+    Location: Cabuyao, Laguna
+    From: March 2020
+    To: August 2023
+    • Managed cold-chain inventory and dispatch schedules
+    """
+    res_bio = extract_structured_experience(cv_bio)
+    assert len(res_bio["work_experiences"]) == 1
+    e_bio = res_bio["work_experiences"][0]
+    assert e_bio["job_title"] == "Warehouse Supervisor"
+    assert "San Miguel Logistics" in e_bio["company_name"]
+    assert "Cabuyao" in (e_bio["location"] or "")
+    assert e_bio["start_date"] == "2020-03"
+    assert e_bio["end_date"] == "2023-08"
+    assert e_bio["duration_months"] == 42
+
+
+def test_bullet_dates_preserved_and_nested_subheadings():
+    cv_bullets = """
+    WORK EXPERIENCE
+    Senior Internal Auditor
+    SGV & Co.
+    Jan 2020 - Dec 2024
+    • Audited 2020 - 2023 financial records and tax compliance filings across 14 business units
+    • Led statutory audit teams and prepared executive remediation briefings
+      for quarterly board committee reviews
+    Key Achievements
+    • Reduced closing cycle reconciliation bottlenecks by 30%
+    Selected Projects
+    • Implemented automated SOX sampling workbook
+
+    EDUCATION
+    BS Accountancy
+    """
+    res_b = extract_structured_experience(cv_bullets)
+    assert len(res_b["work_experiences"]) == 1
+    e = res_b["work_experiences"][0]
+    assert e["job_title"] == "Senior Internal Auditor"
+    assert any("Audited 2020 - 2023 financial records" in r for r in e["responsibilities"])
+    assert any("for quarterly board committee reviews" in r for r in e["responsibilities"])
+    assert any("Reduced closing cycle reconciliation" in r for r in e["responsibilities"])
+    assert any("SOX sampling workbook" in r for r in e["responsibilities"])
+
+    # Kestrel Digital bullet sub-roles must STILL split cleanly
+    cv_kestrel = """
+    WORK EXPERIENCE
+    Kestrel Digital
+    • Senior Software Engineer (2022 - 2024)
+    - Architected microservices platform
+    • Software Engineer (2020 - 2021)
+    - Developed REST endpoints
+    """
+    res_k = extract_structured_experience(cv_kestrel)
+    assert len(res_k["work_experiences"]) == 2
+    assert all("Kestrel Digital" in w["company_name"] for w in res_k["work_experiences"])
+
+
+def test_substring_and_header_prefix_traps():
+    cv_traps = """
+    WORK EXPERIENCE
+    Training Officer | Concrete Corp | Jan 2022 - Dec 2023
+    Education Coordinator | Davao Medical Mission Foundation | Jan 2020 - Dec 2021
+    Salesman | Nuvali Retail Depot | Jan 2019 - Dec 2019
+    Draftsman | Tech Innovations Inc. | Jan 2018 - Dec 2018
+    Project Management Specialist | Ayala Land Inc. | Jan 2017 - Dec 2017
+    Software Development Lead | Pointwest Technologies | Jan 2016 - Dec 2016
+    """
+    res = extract_structured_experience(cv_traps)
+    assert len(res["work_experiences"]) == 6
+    titles = [w["job_title"] for w in res["work_experiences"]]
+    companies = [w["company_name"] for w in res["work_experiences"]]
+    assert titles[0] == "Training Officer" and "Concrete Corp" in companies[0]
+    assert titles[1] == "Education Coordinator" and "Davao" in companies[1]
+    assert titles[2] == "Salesman" and "Nuvali" in companies[2]
+    assert titles[3] == "Draftsman" and "Tech Innovations Inc." in companies[3]
+    assert "Project Management Specialist" in titles[4] and "Ayala Land" in companies[4]
+    assert "Software Development Lead" in titles[5] and "Pointwest" in companies[5]
+
+
+def test_expanded_dates_ocr_repair_and_acronym_title_case():
+    # Expanded date formats + OCR repair
+    assert _parse_date_and_duration("Jan2020 - Dec2022")[:3] == ("2020-01", "2022-12", 36)
+    assert _parse_date_and_duration("15 Jan - 30 May 2024")[:3] == ("2024-01", "2024-05", 5)
+    assert _parse_date_and_duration("01/06/20 - 31/12/23")[:3] == ("2020-06", "2023-12", 43)
+    assert _parse_date_and_duration("Jan 20 - Dec 23")[:3] == ("2020-01", "2023-12", 48)
+    s_jp, e_jp, d_jp, _ = _parse_date_and_duration("Jun 21 - Present")
+    assert s_jp == "2021-06" and e_jp == "Present" and d_jp >= 48
+    assert _parse_date_and_duration("Jan 2020 - 23")[:3] == ("2020-01", "2023-12", 48)
+    assert _parse_date_and_duration("Early 2021 - Late 2023")[:3] == ("2021-02", "2023-10", 33)
+    assert _parse_date_and_duration("VI/2020 - XII/2023")[:3] == ("2020-06", "2023-12", 43)
+    assert _parse_date_and_duration("Q1 2022 - Q4 2023")[:3] == ("2022-01", "2023-12", 24)
+    s_pr, e_pr, _, _ = _parse_date_and_duration("Jan 2024 - Pres.")
+    assert s_pr == "2024-01" and e_pr == "Present"
+    s_og, e_og, _, _ = _parse_date_and_duration("Jan 2024 - On-going")
+    assert s_og == "2024-01" and e_og == "Present"
+    assert _parse_date_and_duration("3y 4m")[2] == 40
+    assert _parse_date_and_duration("6+ months")[2] == 6
+
+    # Day-range guard: Jan 15 - Jan 20 must NOT be parsed as 2015-2020
+    assert _parse_date_and_duration("Jan 15 - Jan 20")[2] == 0
+    assert _parse_date_and_duration("June 15 - August 20, 2023")[:3] == ("2023-06", "2023-08", 3)
+
+    # OCR repair & acronym-preserving Title Case
+    cv_ocr = """
+    WORK EXPERIENCE
+    UI/UX DESIGNER & QA/QC LEAD | Jan 2O2O - Dec 2O23
+    Accenture Philippines
+    IT HR SPECIALIST | 0ct 2021 - Pr3sent
+    Makati Development Corp.
+    BOSH SAFETY OFFICER / CNC OPERATOR | Jan 2019 - Dec 2020
+    San Miguel Packaging
+    CI/CD IOS DEVELOPER | Jan 2018 - Dec 2018
+    Pointwest Technologies
+    """
+    res_ocr = extract_structured_experience(cv_ocr)
+    assert len(res_ocr["work_experiences"]) == 4
+    assert res_ocr["work_experiences"][0]["start_date"] == "2020-01"
+    assert res_ocr["work_experiences"][0]["end_date"] == "2023-12"
+    assert res_ocr["work_experiences"][1]["start_date"] == "2021-10"
+    assert res_ocr["work_experiences"][1]["end_date"] == "Present"
+    t0 = res_ocr["work_experiences"][0]["job_title"]
+    t1 = res_ocr["work_experiences"][1]["job_title"]
+    t2 = res_ocr["work_experiences"][2]["job_title"]
+    t3 = res_ocr["work_experiences"][3]["job_title"]
+    assert "UI / UX" in t0 and "QA / QC" in t0
+    assert "IT" in t1 and "HR" in t1
+    assert "BOSH" in t2 and "CNC" in t2
+    assert "CI / CD" in t3 and "iOS" in t3
+
+
+def test_recency_inline_header_rescue_and_mixed_dated_undated():
+    # Oldest-first chronological CV must still return most recent role & company
+    cv_oldest_first = """
+    WORK EXPERIENCE
+    Junior Developer
+    Startup Alpha Inc.
+    Jan 2018 - Dec 2019
+
+    Senior Software Architect
+    Enterprise Beta Corp.
+    Jan 2023 - Dec 2025
+    """
+    assert extract_job_title(cv_oldest_first) == "Senior Software Architect"
+    assert extract_company(cv_oldest_first) == "Enterprise Beta Corp."
+
+    # Inline single-line header
+    cv_inline = """
+    Work Experience: Senior Accountant | SGV & Co. | 2020 - 2024
+    EDUCATION
+    BS Accountancy
+    """
+    res_inline = extract_structured_experience(cv_inline)
+    assert len(res_inline["work_experiences"]) == 1
+    assert res_inline["work_experiences"][0]["job_title"] == "Senior Accountant"
+    assert "SGV" in res_inline["work_experiences"][0]["company_name"]
+    assert res_inline["total_experience_months"] == 60
+
+    # Creative heading ("WHERE I'VE WORKED") and unlabeled rescue vs TC-RES-013 incomplete guard
+    cv_creative = """
+    WHERE I'VE WORKED
+    Data Engineer
+    Globe Telecom
+    Jan 2021 - Dec 2023
+    • Built ETL streaming pipelines
+    """
+    res_creative = extract_structured_experience(cv_creative)
+    assert len(res_creative["work_experiences"]) == 1
+    assert res_creative["work_experiences"][0]["job_title"] == "Data Engineer"
+
+    cv_unlabeled = """
+    JUAN DELA CRUZ
+    juan@gmail.com | 09171234567
+
+    Backend Developer
+    Stratpoint Technologies
+    Jan 2021 - Dec 2023
+    • Built microservices APIs
+
+    EDUCATION
+    BS Computer Science
+    UP Diliman
+    2016 - 2020
+
+    SKILLS
+    Python, FastAPI
+    """
+    res_unl = extract_structured_experience(cv_unlabeled)
+    assert len(res_unl["work_experiences"]) == 1
+    assert res_unl["work_experiences"][0]["job_title"] == "Backend Developer"
+
+    cv_incomplete = """
+    JANE DOE
+    jane@gmail.com | 09171234567
+    EDUCATION
+    BS Information Technology
+    STI College
+    2020 - 2024
+    SKILLS
+    Python, SQL
+    CERTIFICATIONS
+    AWS Cloud Practitioner
+    """
+    parsed_inc = extract_content(cv_incomplete)
+    assert parsed_inc["work_experiences"] == []
+    assert parsed_inc["is_incomplete"] is True
+
+    # Mixed dated + undated roles inside EXPLICIT EXPERIENCE section
+    cv_mixed = """
+    WORK EXPERIENCE
+    Senior QA Engineer
+    Pointwest Technologies
+    Jan 2022 - Dec 2024
+    • Led test automation
+
+    Freelance Web Developer
+    Independent Consultant
+    • Built landing pages for SMEs
+    """
+    res_mix = extract_structured_experience(cv_mixed)
+    assert len(res_mix["work_experiences"]) == 2
+    assert any("Freelance" in w["job_title"] or "Web Developer" in w["job_title"] for w in res_mix["work_experiences"])
+
+
+def test_pdf_and_docx_layout_integrations():
+    import os
+    import tempfile
+    import docx
+    import fitz
+    from app.extractors.file.docx_extractor import extract_text_from_docx
+    from app.extractors.file.pdf_extractor import extract_text_from_pdf
+
+    # 1. Tab-separated DOCX paragraph + date-gutter table + CSC PDS From|To table
+    d = docx.Document()
+    d.add_paragraph("WORK EXPERIENCE")
+    d.add_paragraph("Full Stack Engineer\tInnovatech Corp\tJan 2022 - Dec 2023")
+
+    t_gutter = d.add_table(rows=1, cols=2)
+    t_gutter.cell(0, 0).text = "Jan 2020 -\nDec 2021"
+    t_gutter.cell(0, 1).text = "Software Developer\nBeta Systems Inc.\n• Built REST APIs\n• Wrote unit tests\n• Deployed containers"
+
+    t_pds = d.add_table(rows=2, cols=6)
+    for idx, hdr in enumerate(["From", "To", "Position Title", "Department / Agency / Office / Company", "Monthly Salary", "Gov't Service (Y/N)"]):
+        t_pds.cell(0, idx).text = hdr
+    for idx, val in enumerate(["01/01/2018", "12/31/2019", "IT Officer I", "DICT Philippines", "35,000.00", "Y"]):
+        t_pds.cell(1, idx).text = val
+
+    with tempfile.NamedTemporaryFile(suffix=".docx", delete=False) as tf:
+        docx_path = tf.name
+    try:
+        d.save(docx_path)
+        docx_txt = extract_text_from_docx(docx_path)
+    finally:
+        if os.path.exists(docx_path):
+            os.remove(docx_path)
+
+    parsed_docx = extract_structured_experience(docx_txt)
+    assert len(parsed_docx["work_experiences"]) == 3
+    assert parsed_docx["total_experience_months"] == 72
+
+    # 2. PDF: Full-width summary above 2-col body + right-aligned dates + 2-page 2-col continuation
+    pdf_doc = fitz.open()
+    p1 = pdf_doc.new_page(width=595, height=842)
+    p1.insert_text((40, 45), "CARLOS MENDOZA", fontsize=16)
+    p1.insert_text((40, 62), "carlos.mendoza@gmail.com | 09175559999", fontsize=10)
+    p1.insert_text((40, 88), "SUMMARY\nExperienced backend engineer specializing in distributed APIs and cloud databases across enterprise teams.", fontsize=10)
+    # 2-column body below y=130 (x<210 sidebar, x>=230 main with right-aligned dates at x=430)
+    p1.insert_text((40, 145), "SKILLS\nPython\nFastAPI\nPostgreSQL\nDocker\nRedis\nAWS", fontsize=10)
+    p1.insert_text((40, 290), "EDUCATION\nBS Computer Science\nUP Diliman\n2014 - 2018", fontsize=10)
+    p1.insert_text((230, 145), "WORK EXPERIENCE", fontsize=12)
+    p1.insert_text((230, 170), "Lead Backend Engineer", fontsize=10)
+    p1.insert_text((430, 170), "Jan 2022 - Dec 2024", fontsize=10)
+    p1.insert_text((230, 185), "Accenture Philippines\n• Led backend platform migration\n• Mentored 8 engineers\n• Improved API latency", fontsize=10)
+
+    # Page 2 continues WORK EXPERIENCE directly on right column while left column shows certifications
+    p2 = pdf_doc.new_page(width=595, height=842)
+    p2.insert_text((40, 60), "CERTIFICATIONS\nAWS Solutions Architect\nGCP Data Engineer\nScrum Master\nITIL Foundation", fontsize=10)
+    p2.insert_text((230, 60), "Software Engineer", fontsize=10)
+    p2.insert_text((430, 60), "Jan 2019 - Dec 2021", fontsize=10)
+    p2.insert_text((230, 75), "Stratpoint Technologies\n• Built GraphQL services\n• Automated CI pipelines\n• Tuned SQL queries", fontsize=10)
+
+    pdf_txt = extract_text_from_pdf(pdf_doc.tobytes())
+    pdf_doc.close()
+
+    parsed_pdf = extract_content(pdf_txt)
+    assert len(parsed_pdf["work_experiences"]) == 2
+    assert parsed_pdf["total_experience_months"] == 72
+    assert parsed_pdf["years_experience"] == 6
+
+
+def test_expanded_explicit_years_and_strict_rejections():
+    assert extract_years_experience("Experience: 6+ years | Skills: Python, SQL") == 6
+    assert extract_years_experience("Logistics Experience: 5 years") == 5
+    assert extract_years_experience("SUMMARY\nEngineer with 7 years of hands-on, enterprise-scale software engineering experience.") == 7
+    assert extract_years_experience("SUMMARY\nSoftware Engineer since 2020 building APIs.") >= 5
+    assert extract_years_experience("SUMMARY\nCareer spanning 2018 - Present across fintech platforms.") >= 7
+    assert extract_years_experience("SUMMARY\nOver five (5)+ years of experience in retail management.") == 5
+    assert extract_experience_years_float("SUMMARY\nCandidate has a year and 6 months of accounting experience.") == 1.5
+    assert extract_experience_years_float("SUMMARY\n3 taon at 6 buwan karanasan bilang warehouse staff.") == 3.5
+    assert extract_years_experience("SUMMARY\nMay 8 na buwang karanasan sa pagiging kahera.") == 1
+    assert extract_years_experience("SUMMARY\nWorked for a retail company for 4 years in Metro Manila.") == 4
+
+    # Strict rejections
+    assert extract_years_experience("CERTIFICATIONS\nPRC License valid for 5 years.") == 0
+    assert extract_years_experience("CERTIFICATIONS\nCertification with validity of 3 years.") == 0
+    assert extract_years_experience("CERTIFICATIONS\n2 years remaining before renewal.") == 0
+    assert extract_years_experience("EDUCATION\nCompleted 4 years of coursework in civil engineering.") == 0
+
+
+
 
 

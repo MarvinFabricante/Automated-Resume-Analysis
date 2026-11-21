@@ -1912,13 +1912,24 @@ def _extract_title_company_location(title_cand: str, comp_cand: str = "") -> Tup
                         "desk", "front", "back", "full", "part", "remote", "outsourced",
                         "contract", "seasonal", "reliever", "acting", "deputy", "vice",
                         "it", "hr", "qa", "qc", "cloud", "software", "data", "network",
-                        "database", "systems", "security", "quality",
+                        "database", "systems", "security", "quality", "solutions", "services",
+                        "service", "support", "engineering", "development", "infrastructure",
+                        "platform", "product", "business", "enterprise", "digital",
+                        "application", "applications", "technology", "information", "human",
+                        "resources", "customer", "supply", "chain", "social", "media",
+                        "financial", "health", "safety", "store", "office", "call",
+                        "center", "delivery", "food",
                     }
+                    prefix_words = prefix.split()
+                    all_modifier_words = bool(prefix_words) and all(
+                        w.lower().strip(".,-/&") in _ROLE_MODIFIERS for w in prefix_words
+                    )
                     if (
                         len(prefix) >= 3
                         and not _is_address_or_location(prefix)
                         and not _JOB_TITLE_KEYWORDS_RE.search(prefix)
                         and prefix.lower() not in _ROLE_MODIFIERS
+                        and not (all_modifier_words and not _has_strong_company_signals(prefix))
                         and (
                             len(prefix.split()) >= 2
                             or _has_company_signals(prefix)
@@ -2344,6 +2355,7 @@ def _collect_responsibilities(
                         not responsibilities[-1].rstrip().endswith(('.', '!', '?', ';'))
                         and not _has_company_signals(next_l)
                         and not _has_job_signals(next_l)
+                        and not (next_l[0].isupper() and _RESPONSIBILITY_VERB_START_RE.match(next_l))
                     )
                 )
             ):
@@ -2477,15 +2489,34 @@ def _is_parent_company_header(lines: List[str], idx: int) -> Optional[Tuple[str,
                             if comp:
                                 return comp, loc, 1
 
-    # Pattern 3: 'Company [- Location]' without date, followed directly by 2+ dated sub-roles (inline OR multi-line)
+    # Pattern 3: 'Company [- Location]\n[Location/Metadata]' without date, followed directly by 2+ dated sub-roles
     if not dm and not _has_job_signals(clean_line) and not _is_address_or_location(clean_line) and idx + 2 < len(lines):
-        if _has_company_signals(clean_line) or _spacy_looks_like_org(clean_line):
-            sub_1 = lines[idx + 1].lstrip('•-*▪►✓ ').strip()
+        has_known_comp = _has_company_signals(clean_line) or _spacy_looks_like_org(clean_line)
+        for role_start, skip_cnt in ((idx + 1, 1), (idx + 2, 2)):
+            if role_start + 1 >= len(lines):
+                continue
+            mid_loc: Optional[str] = None
+            if skip_cnt == 2:
+                mid_l = lines[idx + 1].strip()
+                if not mid_l or mid_l.startswith(_BULLET_PREFIXES) or _is_section_header(mid_l) or _DATE_RANGE_REGEX.search(mid_l):
+                    continue
+                mid_clean, _ = _strip_linkedin_metadata(mid_l)
+                if not (_is_address_or_location(mid_l) or _is_pure_metadata_seg(mid_l) or (mid_l and not mid_clean)):
+                    continue
+                if mid_clean and _is_address_or_location(mid_clean):
+                    mid_loc = mid_clean
+
+            raw_sub1 = lines[role_start]
+            sub_1 = raw_sub1.lstrip('•-*▪►✓ ').strip()
+            is_bullet_sub1 = raw_sub1.startswith(_BULLET_PREFIXES) and _is_bullet_sub_role_header(raw_sub1)
+            if not (has_known_comp or (is_bullet_sub1 and len(clean_line) <= 55)):
+                continue
+
             dm_1 = _DATE_RANGE_REGEX.search(sub_1)
             if dm_1:
                 sub1_before = re.sub(r'[\s\-–—,|(\[]+$', '', sub_1[:dm_1.start()]).strip()
                 if sub1_before and _has_job_signals(sub1_before):
-                    for fwd in range(idx + 2, min(idx + 10, len(lines))):
+                    for fwd in range(role_start + 1, min(role_start + 10, len(lines))):
                         if _is_section_header(lines[fwd]):
                             break
                         if lines[fwd].startswith(_BULLET_PREFIXES) and not _is_bullet_sub_role_header(lines[fwd]):
@@ -2497,24 +2528,25 @@ def _is_parent_company_header(lines: List[str], idx: int) -> Optional[Tuple[str,
                             if subk_before and _has_job_signals(subk_before):
                                 comp, loc = _split_company_and_location(line)
                                 if comp:
-                                    return comp, loc, 1
+                                    return comp, loc or mid_loc, skip_cnt
                             break
                         elif not _is_likely_responsibility_or_sentence(sub_k) and not _is_address_or_location(sub_k):
                             if _has_job_signals(sub_k) and not _has_strong_company_signals(sub_k) and fwd + 1 < len(lines) and _DATE_RANGE_REGEX.search(lines[fwd + 1]):
                                 comp, loc = _split_company_and_location(line)
                                 if comp:
-                                    return comp, loc, 1
+                                    return comp, loc or mid_loc, skip_cnt
                             break
             elif (
-                not lines[idx + 1].startswith(_BULLET_PREFIXES)
+                role_start + 2 < len(lines)
+                and not raw_sub1.startswith(_BULLET_PREFIXES)
                 and _has_job_signals(sub_1)
                 and not _has_strong_company_signals(sub_1)
-                and _DATE_RANGE_REGEX.search(lines[idx + 2])
+                and _DATE_RANGE_REGEX.search(lines[role_start + 1])
             ):
-                dm_2 = _DATE_RANGE_REGEX.search(lines[idx + 2])
-                d2_before = re.sub(r'[\s\-–—,|(\[]+$', '', lines[idx + 2][:dm_2.start()]).strip()
-                if not d2_before or _PURE_METADATA_SEG_RE.match(d2_before):
-                    for fwd in range(idx + 3, min(idx + 16, len(lines))):
+                dm_2 = _DATE_RANGE_REGEX.search(lines[role_start + 1])
+                d2_before = re.sub(r'[\s\-–—,|(\[]+$', '', lines[role_start + 1][:dm_2.start()]).strip()
+                if not d2_before or _is_pure_metadata_seg(d2_before):
+                    for fwd in range(role_start + 2, min(role_start + 16, len(lines))):
                         if _is_section_header(lines[fwd]) or _is_contact_or_identity_line(lines[fwd]):
                             break
                         cand_l = lines[fwd]
@@ -2529,15 +2561,15 @@ def _is_parent_company_header(lines: List[str], idx: int) -> Optional[Tuple[str,
                             if nb and _has_job_signals(nb) and not _has_strong_company_signals(nb):
                                 comp, loc = _split_company_and_location(line)
                                 if comp:
-                                    return comp, loc, 1
+                                    return comp, loc or mid_loc, skip_cnt
                             break
                         if _has_job_signals(cand_s) and not _has_strong_company_signals(cand_s) and fwd + 1 < len(lines) and _DATE_RANGE_REGEX.search(lines[fwd + 1]):
                             dm_n2 = _DATE_RANGE_REGEX.search(lines[fwd + 1])
                             dn2_b = re.sub(r'[\s\-–—,|(\[]+$', '', lines[fwd + 1][:dm_n2.start()]).strip()
-                            if not dn2_b or _PURE_METADATA_SEG_RE.match(dn2_b):
+                            if not dn2_b or _is_pure_metadata_seg(dn2_b):
                                 comp, loc = _split_company_and_location(line)
                                 if comp:
-                                    return comp, loc, 1
+                                    return comp, loc or mid_loc, skip_cnt
                         break
 
     return None
@@ -2906,6 +2938,8 @@ def extract_structured_experience(text: str) -> Dict[str, Any]:
             return False
         if _is_likely_responsibility_or_sentence(next_line) or _is_academic_degree_title(next_line) or len(next_line) > 70:
             return False
+        if (not norm_t or not _has_job_signals(norm_t)) and _has_job_signals(next_line):
+            return True
         if not comp_v:
             after_ok = (not after_d) or any(rx.search(after_d) for rx, _ in _EMPLOYMENT_TYPE_RULES) or _is_pure_metadata_seg(after_d)
             if not after_ok:
@@ -3677,7 +3711,7 @@ def _extract_explicit_experience_months(text: str) -> int:
             best_months = max(best_months, max(1, round(yrs * 12.0 + extra_mo)))
 
     pat_3b = re.compile(
-        r'\b(?:experienced|working|employed|practicing|serving|operating)\s+'
+        r'\b(?:experienced|worked|working|employed|practicing|served|serving|operating)\s+'
         r'(?:(?:as\s+(?:a|an)\s+|in\s+|for\s+)[A-Za-z0-9&/\-,\s]{2,40}\s+)?for\s+'
         r'(?:over|more\s+than|at\s+least|nearly|almost|about|around|approx\.?|approximately)?\s*'
         r'(\d+(?:\.\d+)?)\+?\s*(?:years?|yrs?\.?)(?:\s*(?:and|,|&)?\s*(\d+(?:\.\d+)?)\s*(?:months?|mos?\.?))?\b',

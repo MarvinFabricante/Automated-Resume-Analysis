@@ -362,8 +362,16 @@ def _match_header_text(normalised: str, allow_fuzzy: bool = True) -> Optional[st
         )
     ):
         return "EXPERIENCE"
-    if re.search(r'\b(?:EDUCATION|EDUCATIONAL|ACADEMIC|SCHOLASTIC)\b', normalised) and not re.search(
-        r'\b(?:PHYSICAL|SPECIAL|CONTINUING|DEPARTMENT|MINISTRY|BOARD)\s+EDUCATION\b', normalised
+    if (
+        len(normalised.split()) <= 5
+        and re.search(r'\b(?:EDUCATION|EDUCATIONAL|ACADEMIC|SCHOLASTIC)\b', normalised)
+        and not re.search(
+            r'\b(?:PHYSICAL|SPECIAL|CONTINUING|DEPARTMENT|MINISTRY|BOARD)\s+EDUCATION\b|'
+            r'\b(?:COORDINATOR|OFFICER|SPECIALIST|MANAGER|DIRECTOR|ADVISOR|COUNSELOR|'
+            r'ASSISTANT|SUPERVISOR|ADMINISTRATOR|CONSULTANT|TEACHER|INSTRUCTOR|TRAINER|'
+            r'LEAD|HEAD|REPRESENTATIVE|ANALYST|CLERK|ASSOCIATE|FOUNDATION|INSTITUTE|SERVICES|CENTER|CENTRE)\b',
+            normalised,
+        )
     ):
         return "EDUCATION"
 
@@ -416,21 +424,22 @@ def detect_section_label(line: str) -> Optional[str]:
         if prefix and len(prefix.split()) <= 5:
             norm_prefix = _normalise_header(prefix)
             if norm_prefix and norm_prefix != "COMMUNICATION":
-                res = _match_header_text(norm_prefix)
+                res = _match_header_text(norm_prefix, allow_fuzzy=False)
                 if res:
                     return res
 
     # 3. Inline pipe table row (e.g. "Skills | Python, React, Docker, PostgreSQL")
     pipe_idx = stripped.find('|')
-    if pipe_idx > 0 and split_dual_column_header(stripped) is None:
+    if pipe_idx > 0 and stripped.count('|') < 2 and split_dual_column_header(stripped) is None:
         left = stripped[:pipe_idx].strip()
         right = stripped[pipe_idx + 1:].strip()
         if left and right and len(left.split()) <= 4:
             norm_left = _normalise_header(left)
             if norm_left and norm_left != "COMMUNICATION":
-                res = _match_header_text(norm_left)
-                if res:
-                    return res
+                if norm_left in _HEADER_MAP or not re.search(r'\b(?:19|20)\d{2}\b', right):
+                    res = _match_header_text(norm_left, allow_fuzzy=False)
+                    if res:
+                        return res
 
     # 4. Full-line flexible compound header match (only when no inline delimiter)
     if word_count <= 9:
