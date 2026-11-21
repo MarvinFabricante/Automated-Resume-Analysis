@@ -415,3 +415,253 @@ def test_followup_questions_skip_criteria_already_covered_in_resume():
     assert "relevance" in fields_missing
 
 
+def test_irrelevant_work_experience_not_counted_as_directly_relevant():
+    """
+    Regression test: having a work experience entry (with transferable soft skills or
+    common words like 'maintained', 'inquiries', 'retail', 'three', 'posts') must NOT
+    automatically count as '1 work experience(s) are directly relevant' when the role
+    is unrelated to the target position.
+    """
+    unrelated_cases = [
+        (
+            "Cashier at Jollibee (2022 - 2024) - Responsibilities: Handled customer payments, operated POS, maintained cleanliness",
+            "Cashier, Customer Service",
+            {
+                "job_id": "J_CHEM",
+                "job_title": "R&D Chemist",
+                "department": "R&D",
+                "description": "Creates new mixtures for ceramic tiles and tests materials in the laboratory.",
+                "skills_requirements": "Chemical analysis, Material testing, Formulation, Data Analysis",
+                "experience_requirements": "2 years",
+            },
+        ),
+        (
+            "OJT Intern at Barangay Hall (2023) - Responsibilities: Filed documents, encoded resident records, answered inquiries",
+            "MS Word, Filing",
+            {
+                "job_id": "J_DES",
+                "job_title": "Graphic Designer",
+                "department": "Marketing",
+                "description": "Designs advertising materials and layouts for social media and print.",
+                "skills_requirements": "Adobe Creative Suite, Layout design, Typography, Creativity",
+                "experience_requirements": "2 years",
+            },
+        ),
+        (
+            "Sales Clerk at SM Store (2022 - 2024) - Responsibilities: Assisted shoppers, arranged retail display, processed returns",
+            "Sales, Retail, Customer Handling",
+            {
+                "job_id": "J_DATA",
+                "job_title": "Data Analyst",
+                "department": "Strategy and Planning",
+                "description": "Looks at our sales and the market to help company leaders make smart choices.",
+                "skills_requirements": "SQL, Python, Tableau, Statistical Analysis",
+                "experience_requirements": "2 years",
+            },
+        ),
+        (
+            "Service Crew at McDonalds (2021 - 2023) - Responsibilities: Prepared food orders, assisted customers, maintained kitchen",
+            "Food Service, Teamwork, Communication",
+            {
+                "job_id": "J_DEV",
+                "job_title": "Software Developer",
+                "department": "IT",
+                "description": "Builds and fixes backend APIs and web applications for three internal teams.",
+                "skills_requirements": "Python, React, SQL, API Development",
+                "experience_requirements": "2 years",
+            },
+        ),
+    ]
+
+    cfg = {"weights": {}, "thresholds": {}}
+    for exp_text, skills_text, job in unrelated_cases:
+        rel = job_matching_service.calculate_experience_relevance(
+            exp_text, skills_text, job["job_title"], job["description"] + " " + job["skills_requirements"]
+        )
+        assert rel["relevant_count"] == 0, f"Expected 0 relevant for {exp_text} vs {job['job_title']}, got: {rel}"
+        assert rel["highly_relevant_count"] == 0
+        assert rel["relevance_score"] == 0.0
+        assert rel["relevance_level"] == "Irrelevant"
+
+        match_res = job_matching_service.calculate_match_score(
+            {
+                "fullname": "Applicant",
+                "skills": skills_text,
+                "experience": exp_text,
+                "years_experience": 2,
+                "education": "Bachelor's Degree",
+            },
+            job,
+            matching_config=cfg,
+        )
+        strengths_text = " ".join(match_res.get("strengths") or []).lower()
+        assert "directly relevant" not in strengths_text, f"False 'directly relevant' strength for {job['job_title']}: {match_res['strengths']}"
+        assert any("none of the work experience entries are relevant" in w.lower() for w in (match_res.get("weaknesses") or []))
+        assert "none of the 1 work experience(s) are relevant" in (match_res.get("experience_reason") or "").lower()
+        assert match_res["experience_score"] <= 10.0
+
+
+def test_directly_and_partially_relevant_work_experience_distinction():
+    cfg = {"weights": {}, "thresholds": {}}
+
+    # Directly relevant experience must still be detected as directly relevant
+    dev_job = {
+        "job_id": "J_SWE",
+        "job_title": "Software Developer",
+        "department": "IT",
+        "description": "Builds and maintains web applications and REST APIs.",
+        "skills_requirements": "Python, FastAPI, React, SQL",
+        "experience_requirements": "2 years",
+    }
+    dev_resume = {
+        "fullname": "Dev Candidate",
+        "skills": "Python, FastAPI, React, SQL",
+        "experience": "",
+        "work_experiences": [
+            {
+                "job_title": "Backend Software Developer",
+                "company_name": "Tech Corp",
+                "responsibilities": ["Built Python FastAPI microservices and SQL database schemas."],
+            }
+        ],
+        "years_experience": 3,
+        "education": "Bachelor of Science in Computer Science",
+    }
+    res_direct = job_matching_service.calculate_match_score(dev_resume, dev_job, matching_config=cfg)
+    assert any("1 work experience(s) are directly relevant" in s.lower() for s in (res_direct.get("strengths") or []))
+    assert res_direct["experience_score"] >= 70.0
+
+    # Partially relevant experience (related domain overlap, not direct) must not claim "directly relevant"
+    mkt_job = {
+        "job_id": "J_MKT",
+        "job_title": "Marketing Associate",
+        "department": "Marketing",
+        "description": "Runs ad campaigns, plans events, and posts on social media pages.",
+        "skills_requirements": "Copywriting, Social Media Management, Event Coordination, Creativity",
+        "experience_requirements": "1 year",
+    }
+    designer_resume = {
+        "fullname": "Designer Candidate",
+        "skills": "Adobe Photoshop, Canva, Social Media",
+        "experience": "Freelance Graphic Designer (2021 - 2024) - Responsibilities: Created logos and social media posters using Adobe Photoshop",
+        "years_experience": 3,
+        "education": "Bachelor of Fine Arts",
+    }
+    res_partial = job_matching_service.calculate_match_score(designer_resume, mkt_job, matching_config=cfg)
+    strengths_lower = " ".join(res_partial.get("strengths") or []).lower()
+    assert "directly relevant" not in strengths_lower
+    assert "partially relevant" in strengths_lower
+
+    # Placeholder experience values must evaluate as 0 entries
+    rel_placeholder = job_matching_service.calculate_experience_relevance(
+        "None | N/A | Fresh Graduate", "", dev_job["job_title"], dev_job["description"]
+    )
+    assert rel_placeholder["total_entries"] == 0
+    assert rel_placeholder["relevant_count"] == 0
+
+
+def test_unrelated_years_experience_not_shown_as_strength():
+    """
+    Regression test: 3 years of experience on an unrelated ('other') job on the
+    resume must NOT appear as a strength (e.g. 'Meets or exceeds the experience
+    requirement with 3 years.') for the job applied.
+    """
+    cfg = {"weights": {}, "thresholds": {}}
+    target_job = {
+        "job_id": "J_DEV_3YR",
+        "job_title": "Software Developer",
+        "department": "IT",
+        "description": "Builds and maintains backend APIs and web applications.",
+        "skills_requirements": "Python, FastAPI, PostgreSQL, React",
+        "experience_requirements": "3 years",
+    }
+    target_job_no_req = {
+        "job_id": "J_DEV_NOREQ",
+        "job_title": "Software Developer",
+        "department": "IT",
+        "description": "Builds and maintains backend APIs and web applications.",
+        "skills_requirements": "Python, FastAPI, PostgreSQL, React",
+        "experience_requirements": "",
+    }
+
+    # 1. Purely unrelated 3-year job (with and without explicit years requirement)
+    unrelated_resume = {
+        "fullname": "Other Job Applicant",
+        "skills": "Cash Handling, POS Operation, Customer Service",
+        "experience": "Cashier at SM Supermarket (Jan 2021 - Jan 2024) - Responsibilities: Operated POS register, processed payments, assisted shoppers",
+        "work_experiences": [
+            {
+                "job_title": "Cashier",
+                "company_name": "SM Supermarket",
+                "duration_months": 36,
+                "responsibilities": ["Operated POS register", "Processed payments", "Assisted shoppers"],
+            }
+        ],
+        "years_experience": 3,
+        "education": "High School Diploma",
+    }
+
+    for job in (target_job, target_job_no_req):
+        res = job_matching_service.calculate_match_score(unrelated_resume, job, matching_config=cfg)
+        strengths_lower = " ".join(res.get("strengths") or []).lower()
+        assert "meets or exceeds" not in strengths_lower, f"False experience strength for {job['job_id']}: {res['strengths']}"
+        assert "3 years" not in strengths_lower, f"Unrelated 3 years shown as strength: {res['strengths']}"
+        assert "relevant work experience" not in strengths_lower
+        assert res["experience_score"] <= 10.0
+
+    res_req = job_matching_service.calculate_match_score(unrelated_resume, target_job, matching_config=cfg)
+    assert res_req["experience_below_minimum"] is True
+    assert res_req["experience_gap_years"] == 3
+
+    # 2. Mixed resume: 3 years unrelated + 1 year relevant for a 3-year requirement
+    mixed_short_resume = {
+        "fullname": "Mixed Short Applicant",
+        "skills": "Python, FastAPI, PostgreSQL, React",
+        "experience": "",
+        "work_experiences": [
+            {
+                "job_title": "Cashier",
+                "company_name": "SM Supermarket",
+                "duration_months": 36,
+                "responsibilities": ["Operated POS register and processed customer payments."],
+            },
+            {
+                "job_title": "Junior Software Developer",
+                "company_name": "Startup Inc",
+                "duration_months": 12,
+                "responsibilities": ["Built Python FastAPI endpoints and PostgreSQL queries."],
+            },
+        ],
+        "years_experience": 4,
+        "education": "Bachelor of Science in Computer Science",
+    }
+    res_mixed_short = job_matching_service.calculate_match_score(mixed_short_resume, target_job, matching_config=cfg)
+    mixed_short_strengths = " ".join(res_mixed_short.get("strengths") or []).lower()
+    assert "meets or exceeds" not in mixed_short_strengths
+    assert "4 years" not in mixed_short_strengths
+    assert res_mixed_short["experience_below_minimum"] is True
+    assert res_mixed_short["experience_gap_years"] == 2
+
+    # 3. Mixed resume: 3 years unrelated + 3 years relevant -> only the 3 relevant years count
+    mixed_ok_resume = {
+        **mixed_short_resume,
+        "work_experiences": [
+            mixed_short_resume["work_experiences"][0],
+            {
+                "job_title": "Software Developer",
+                "company_name": "Tech Corp",
+                "duration_months": 36,
+                "responsibilities": ["Built Python FastAPI microservices and React UIs."],
+            },
+        ],
+        "years_experience": 6,
+    }
+    res_mixed_ok = job_matching_service.calculate_match_score(mixed_ok_resume, target_job, matching_config=cfg)
+    mixed_ok_strengths = " ".join(res_mixed_ok.get("strengths") or []).lower()
+    assert "meets or exceeds the experience requirement with 3 years of relevant experience" in mixed_ok_strengths
+    assert "6 years" not in mixed_ok_strengths
+    assert res_mixed_ok["experience_below_minimum"] is False
+
+
+
+

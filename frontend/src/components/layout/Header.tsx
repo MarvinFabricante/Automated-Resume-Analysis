@@ -4,20 +4,34 @@ import {
   ChevronDown, LayoutDashboard, Users, Database, ShieldCheck, LogOut,
   Settings, Menu, X, FileText, Search, User, Building2, Info, Briefcase, LogIn, UserPlus,
   Bell, Clock, CheckCircle2, AlertCircle, MessageSquare, ChevronRight,
-  TrendingUp, Zap, Radio, Edit3, Calendar, Home, Scale, Lock,
+  TrendingUp, Zap, Radio, Edit3, Calendar, Home, Scale,
   PanelLeft, PanelLeftClose, Maximize2, ChevronUp
 } from 'lucide-react';
 import NotificationDropdown from './NotificationDropdown';
 import NotificationDetailModal from '../modals/shared/NotificationDetailModal';
 import { NotificationItem } from '../../types';
 import notificationService from '../../services/notificationService';
+import chatService from '../../services/chatService';
 import profileService from '../../services/profileService';
 import { useSelector, useDispatch } from 'react-redux';
+import toast from 'react-hot-toast';
 import { logout as logoutAction, updateProfileImage } from '../../redux/slices/authSlice';
-import { setNotifications, addNotification, markAllRead as markAllReadAction } from '../../redux/slices/notificationSlice';
+import {
+  setNotifications,
+  addNotification,
+  markNotificationRead,
+  markAllRead as markAllReadAction,
+  setUnreadMessagesCount,
+  incrementUnreadMessagesCount,
+} from '../../redux/slices/notificationSlice';
 import { closeSidebar, toggleSidebar } from '../../redux/slices/uiSlice';
 import { WS_BASE_URL } from '../../services/api';
-import { formatNotificationTime } from '../../utils/notificationUtils';
+import {
+  formatRawNotification,
+  isMessageNotification,
+  getMessagesPathForRole,
+  extractMessageSenderHint,
+} from '../../utils/notificationUtils';
 import logo from '../../assets/logo.png';
 import { RootState } from '../../redux/store';
 import { apiSlice } from '../../redux/api/apiSlice';
@@ -26,6 +40,9 @@ import { clearAllAuthSessions, performUserLogout } from '../../utils/token';
 import UniversalSearch from '../common/UniversalSearch';
 
 const BRAND_RED = "#D60041";
+
+const seenNotificationIds = new Set<string>();
+let initializedNotificationSession: string | null = null;
 
 const Header: React.FC = () => {
   const navigate = useNavigate();
@@ -55,7 +72,7 @@ const Header: React.FC = () => {
 
   const dispatch = useDispatch();
   const { user: userEmail, role: userRole, profileImageUrl } = useSelector((state: RootState) => state.auth);
-  const { notifications, unreadCount } = useSelector((state: RootState) => state.notifications);
+  const { notifications, unreadCount, unreadMessagesCount } = useSelector((state: RootState) => state.notifications);
   const { isSidebarOpen } = useSelector((state: RootState) => state.ui);
 
   const normRole = (userRole || '').toUpperCase();
@@ -63,6 +80,115 @@ const Header: React.FC = () => {
   const isHRRole = normRole === 'HR';
   const isAdminRole = normRole === 'ADMIN';
   const isGuest = normRole === 'GUEST' || !userRole || userRole === 'Guest';
+
+  const syncUnreadMessagesCount = React.useCallback(async () => {
+    if (isGuest || !(isAdminRole || isHRRole || isCandidateRole)) return;
+    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+    if (!token) return;
+    try {
+      const res = await chatService.getContacts(token, '');
+      const list = res?.data?.users || [];
+      const total = list.reduce((acc: number, c: any) => acc + (c?.unread_count || 0), 0);
+      dispatch(setUnreadMessagesCount(total));
+    } catch {
+      // Ignore background unread count errors
+    }
+  }, [dispatch, isGuest, isAdminRole, isHRRole, isCandidateRole]);
+
+  const handleMarkOneRead = React.useCallback(async (notif: NotificationItem) => {
+    if (!notif || notif.read) return;
+    dispatch(markNotificationRead(notif.id));
+    if (!isGuest && notif.id !== undefined && notif.id !== null) {
+      try {
+        await notificationService.markAsRead(notif.id);
+      } catch (err) {
+        console.error("Failed to mark notification as read:", err);
+      }
+    }
+  }, [dispatch, isGuest]);
+
+  const handleNotificationClick = React.useCallback((notif: NotificationItem) => {
+    if (!notif) return;
+    if (!notif.read) {
+      handleMarkOneRead(notif);
+    }
+    setIsNotificationsOpen(false);
+    setIsMobileNotifsOpen(false);
+    setIsMobileMenuOpen(false);
+
+    if (isMessageNotification(notif)) {
+      const basePath = getMessagesPathForRole(userRole, location.pathname);
+      const senderHint = extractMessageSenderHint(notif);
+      const targetUrl = senderHint
+        ? `${basePath}?sender=${encodeURIComponent(senderHint)}`
+        : basePath;
+      navigate(targetUrl);
+      return;
+    }
+
+    setSelectedMobileNotif({ ...notif, read: true });
+  }, [handleMarkOneRead, userRole, location.pathname, navigate]);
+
+  const showNotificationPopup = React.useCallback((notif: NotificationItem) => {
+    const idKey = String(notif.id);
+    if (seenNotificationIds.has(idKey)) return;
+    seenNotificationIds.add(idKey);
+
+    const isMsg = isMessageNotification(notif);
+    toast.custom(
+      (t) => (
+        <div
+          onClick={() => {
+            toast.dismiss(t.id);
+            handleNotificationClick(notif);
+          }}
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              toast.dismiss(t.id);
+              handleNotificationClick(notif);
+            }
+          }}
+          className={`${t.visible ? 'animate-in fade-in slide-in-from-top-3 duration-200' : 'opacity-0'} pointer-events-auto w-full max-w-sm bg-white border border-rose-200/90 shadow-2xl rounded-2xl p-3.5 cursor-pointer hover:border-[#D60041]/50 transition-all flex items-start gap-3`}
+        >
+          <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 border border-black/5 ${notif.bgColor || 'bg-rose-50'} ${notif.textColor || 'text-[#D60041]'}`}>
+            {isMsg ? <MessageSquare size={17} /> : <Bell size={17} />}
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-[10px] font-black uppercase tracking-wider text-[#D60041]">
+                {notif.tag || (isMsg ? 'New Message' : 'New Notification')}
+              </span>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  toast.dismiss(t.id);
+                }}
+                aria-label="Dismiss notification"
+                className="p-0.5 rounded text-slate-400 hover:text-slate-700 hover:bg-slate-100 cursor-pointer"
+              >
+                <X size={14} />
+              </button>
+            </div>
+            <p className="text-xs font-black text-slate-900 truncate mt-0.5">{notif.title || 'Notification'}</p>
+            <p className="text-[11px] text-slate-600 line-clamp-2 mt-0.5 leading-snug">{notif.desc || notif.message}</p>
+            <p className="text-[10px] font-bold text-[#D60041] mt-1.5 flex items-center gap-1">
+              <span>{isMsg ? 'Click to open message' : 'Click to view & mark read'}</span>
+              <ChevronRight size={11} />
+            </p>
+          </div>
+        </div>
+      ),
+      {
+        id: `notif-popup-${idKey}`,
+        duration: 6000,
+        position: 'top-right',
+      }
+    );
+  }, [handleNotificationClick]);
 
   useEffect(() => {
     // Only auto-close on mobile screens (< 768px). Tablet and desktop stay expanded.
@@ -72,164 +198,42 @@ const Header: React.FC = () => {
   }, [dispatch]);
 
   useEffect(() => {
+    syncUnreadMessagesCount();
+  }, [syncUnreadMessagesCount, location.pathname]);
+
+  useEffect(() => {
+    if (isGuest) {
+      seenNotificationIds.clear();
+      initializedNotificationSession = null;
+      dispatch(setUnreadMessagesCount(0));
+      return;
+    }
+
     let ws: WebSocket | null = null;
+    const sessionKey = `${normRole}:${(userEmail || '').toLowerCase()}`;
+
     const fetchNotifications = async () => {
-      if (isAdminRole || isHRRole) {
-        try {
-          const res = await notificationService.getNotifications(userRole, userEmail || '');
-          const formatted = (res.data || []).map((n: any) => {
-            let iconName = 'AlertCircle';
-            let bgColor = 'bg-slate-50';
-            let textColor = 'text-slate-600';
-            let tag: string | null = null;
-            let tagColor: string | null = null;
+      if (!(isAdminRole || isHRRole || isCandidateRole)) return;
+      try {
+        const res = await notificationService.getNotifications(userRole, userEmail || '');
+        const formatted = (res.data || []).map((n: any) => formatRawNotification(n, userRole));
 
-            if (n.type === 'registration') {
-              iconName = 'UserPlus';
-              bgColor = 'bg-blue-50';
-              textColor = 'text-blue-600';
-            } else if (n.type === 'application' || n.type === 'application_update') {
-              iconName = 'Briefcase';
-              bgColor = 'bg-pink-50';
-              textColor = 'text-[#D60041]';
-              tag = 'Update';
-              tagColor = 'bg-pink-100 text-[#D60041]';
-            } else if (n.type === 'upload') {
-              iconName = 'FileText';
-              bgColor = 'bg-orange-50';
-              textColor = 'text-orange-600';
-            } else if (n.type === 'hr_registration') {
-              iconName = 'ShieldCheck';
-              bgColor = 'bg-indigo-50';
-              textColor = 'text-indigo-600';
-              tag = 'System';
-              tagColor = 'bg-indigo-100 text-indigo-700';
-            } else if (n.type === 'job_creation') {
-              iconName = 'Zap';
-              bgColor = 'bg-green-50';
-              textColor = 'text-green-600';
-            } else if (n.type === 'job_update') {
-              iconName = 'Edit3';
-              bgColor = 'bg-amber-50';
-              textColor = 'text-amber-600';
-            } else if (n.type === 'candidate_login') {
-              iconName = 'Radio';
-              bgColor = 'bg-green-50';
-              textColor = 'text-green-600';
-            } else if (n.type === 'hr_login') {
-              iconName = 'Radio';
-              bgColor = 'bg-purple-50';
-              textColor = 'text-purple-600';
-            } else if (n.type === 'message' || n.type === 'chat') {
-              iconName = 'MessageSquare';
-              bgColor = 'bg-blue-50';
-              textColor = 'text-blue-600';
-              tag = 'Message';
-              tagColor = 'bg-blue-100 text-blue-700';
+        if (initializedNotificationSession === sessionKey) {
+          for (const item of formatted) {
+            if (!item.read && !seenNotificationIds.has(String(item.id))) {
+              showNotificationPopup(item);
+            } else {
+              seenNotificationIds.add(String(item.id));
             }
-
-            const timeInfo = formatNotificationTime(n.created_at);
-
-            return {
-              id: n.id,
-              title: n.title,
-              desc: isAdminRole && n.sender_role ? `[Sender: ${n.sender_role}] ${n.message}` : n.message,
-              time: timeInfo.relativeTime,
-              relativeTime: timeInfo.relativeTime,
-              timeStr: timeInfo.timeStr,
-              dateStr: timeInfo.dateStr,
-              displayDateTime: timeInfo.displayDateTime,
-              fullDateTime: timeInfo.fullDateTime,
-              createdAt: timeInfo.date,
-              type: n.type,
-              icon: iconName,
-              bgColor,
-              textColor,
-              tag,
-              tagColor,
-              read: n.is_read
-            };
-          });
-          dispatch(setNotifications(formatted));
-        } catch (err) {
-          console.error("Failed to fetch notifications:", err);
+          }
+        } else {
+          formatted.forEach((item: NotificationItem) => seenNotificationIds.add(String(item.id)));
+          initializedNotificationSession = sessionKey;
         }
-      }
 
-      if (isCandidateRole) {
-        try {
-          const res = await notificationService.getNotifications(userRole, userEmail || '');
-          const formatted = (res.data || []).map((n: any) => {
-            let iconName = 'Briefcase';
-            let bgColor = 'bg-blue-50';
-            let textColor = 'text-blue-600';
-            let tag: string | null = 'Update';
-            let tagColor: string | null = 'bg-blue-100 text-blue-700';
-
-            if (n.type === 'schedule') {
-              iconName = 'MessageSquare';
-              bgColor = 'bg-pink-50';
-              textColor = 'text-[#D60041]';
-              tag = 'Interview';
-              tagColor = 'bg-pink-100 text-[#D60041]';
-            } else if (n.type === 'job') {
-              iconName = 'TrendingUp';
-              bgColor = 'bg-green-50';
-              textColor = 'text-green-600';
-              tag = 'Match';
-              tagColor = 'bg-green-100 text-green-700';
-            } else if (n.type === 'message' || n.type === 'chat') {
-              iconName = 'MessageSquare';
-              bgColor = 'bg-blue-50';
-              textColor = 'text-blue-600';
-              tag = 'Message';
-              tagColor = 'bg-blue-100 text-blue-700';
-            } else if (n.type === 'application_update') {
-              if (n.title?.includes('Accepted') || n.title?.includes('🎉')) {
-                bgColor = 'bg-emerald-50';
-                textColor = 'text-emerald-600';
-                tag = 'Accepted';
-                tagColor = 'bg-emerald-100 text-emerald-700';
-              } else if (n.title?.includes('Rejected') || n.message?.includes('regret') || n.message?.includes('other candidates') || n.desc?.includes('regret') || n.desc?.includes('other candidates')) {
-                bgColor = 'bg-rose-50';
-                textColor = 'text-rose-600';
-                tag = 'Rejected';
-                tagColor = 'bg-rose-100 text-rose-700';
-              } else {
-                bgColor = 'bg-pink-50';
-                textColor = 'text-[#D60041]';
-                tag = 'Update';
-                tagColor = 'bg-pink-100 text-[#D60041]';
-              }
-            }
-
-            const timeInfo = formatNotificationTime(n.created_at);
-
-            return {
-              id: n.id,
-              title: n.title,
-              desc: isAdminRole && n.sender_role ? `[Sender: ${n.sender_role}] ${n.message}` : n.message,
-              time: timeInfo.relativeTime,
-              relativeTime: timeInfo.relativeTime,
-              timeStr: timeInfo.timeStr,
-              dateStr: timeInfo.dateStr,
-              displayDateTime: timeInfo.displayDateTime,
-              fullDateTime: timeInfo.fullDateTime,
-              createdAt: timeInfo.date,
-              type: n.type,
-              icon: iconName,
-              bgColor,
-              textColor,
-              tag,
-              tagColor,
-              read: n.is_read
-            };
-          });
-
-          dispatch(setNotifications(formatted));
-        } catch (err) {
-          console.error("Failed to fetch candidate notifications:", err);
-        }
+        dispatch(setNotifications(formatted));
+      } catch (err) {
+        console.error("Failed to fetch notifications:", err);
       }
     };
 
@@ -251,92 +255,15 @@ const Header: React.FC = () => {
       ws.onmessage = (event) => {
         try {
           const n = JSON.parse(event.data);
-          let iconName = 'AlertCircle';
-          let bgColor = 'bg-slate-50';
-          let textColor = 'text-slate-600';
-          let tag: string | null = null;
-          let tagColor: string | null = null;
-
-          if (isCandidateRole) {
-            iconName = 'Briefcase';
-            bgColor = 'bg-blue-50';
-            textColor = 'text-blue-600';
-            tag = 'Update';
-            tagColor = 'bg-blue-100 text-blue-700';
-
-            if (n.type === 'schedule') {
-              iconName = 'MessageSquare';
-              bgColor = 'bg-pink-50';
-              textColor = 'text-[#D60041]';
-              tag = 'Interview';
-              tagColor = 'bg-pink-100 text-[#D60041]';
-            } else if (n.type === 'job') {
-              iconName = 'TrendingUp';
-              bgColor = 'bg-green-50';
-              textColor = 'text-green-600';
-              tag = 'Match';
-              tagColor = 'bg-green-100 text-green-700';
-            } else if (n.type === 'message' || n.type === 'chat') {
-              iconName = 'MessageSquare';
-              bgColor = 'bg-blue-50';
-              textColor = 'text-blue-600';
-              tag = 'Message';
-              tagColor = 'bg-blue-100 text-blue-700';
-            } else if (n.type === 'application_update') {
-              if (n.title?.includes('Accepted') || n.title?.includes('🎉')) {
-                bgColor = 'bg-emerald-50';
-                textColor = 'text-emerald-600';
-                tag = 'Accepted';
-                tagColor = 'bg-emerald-100 text-emerald-700';
-              } else if (n.title?.includes('Rejected') || n.message?.includes('regret') || n.message?.includes('other candidates')) {
-                bgColor = 'bg-rose-50';
-                textColor = 'text-rose-600';
-                tag = 'Rejected';
-                tagColor = 'bg-rose-100 text-rose-700';
-              } else {
-                bgColor = 'bg-pink-50';
-                textColor = 'text-[#D60041]';
-                tag = 'Update';
-                tagColor = 'bg-pink-100 text-[#D60041]';
-              }
-            }
-          } else {
-            // HR / Admin
-            if (n.type === 'registration') { iconName = 'UserPlus'; bgColor = 'bg-blue-50'; textColor = 'text-blue-600'; }
-            else if (n.type === 'application' || n.type === 'application_update') { iconName = 'Briefcase'; bgColor = 'bg-pink-50'; textColor = 'text-[#D60041]'; tag = 'Update'; tagColor = 'bg-pink-100 text-[#D60041]'; }
-            else if (n.type === 'upload') { iconName = 'FileText'; bgColor = 'bg-orange-50'; textColor = 'text-orange-600'; }
-            else if (n.type === 'hr_registration') { iconName = 'ShieldCheck'; bgColor = 'bg-indigo-50'; textColor = 'text-indigo-600'; tag = 'System'; tagColor = 'bg-indigo-100 text-indigo-700'; }
-            else if (n.type === 'job_creation') { iconName = 'Zap'; bgColor = 'bg-green-50'; textColor = 'text-green-600'; }
-            else if (n.type === 'job_update') { iconName = 'Edit3'; bgColor = 'bg-amber-50'; textColor = 'text-amber-600'; }
-            else if (n.type === 'candidate_login') { iconName = 'Radio'; bgColor = 'bg-green-50'; textColor = 'text-green-600'; }
-            else if (n.type === 'hr_login') { iconName = 'Radio'; bgColor = 'bg-purple-50'; textColor = 'text-purple-600'; }
-            else if (n.type === 'message' || n.type === 'chat') { iconName = 'MessageSquare'; bgColor = 'bg-blue-50'; textColor = 'text-blue-600'; tag = 'Message'; tagColor = 'bg-blue-100 text-blue-700'; }
-          }
-
-          const timeInfo = formatNotificationTime(n.created_at || new Date());
-          const desc = isAdminRole && n.sender_role ? `[Sender: ${n.sender_role}] ${n.message}` : n.message;
-          const formattedNewNotif = {
-            id: n.id,
-            title: n.title,
-            desc,
-            time: timeInfo.relativeTime,
-            relativeTime: timeInfo.relativeTime,
-            timeStr: timeInfo.timeStr,
-            dateStr: timeInfo.dateStr,
-            displayDateTime: timeInfo.displayDateTime,
-            fullDateTime: timeInfo.fullDateTime,
-            createdAt: timeInfo.date,
-            type: n.type,
-            icon: iconName,
-            bgColor,
-            textColor,
-            tag,
-            tagColor,
-            read: n.is_read
-          };
+          const formattedNewNotif = formatRawNotification(n, userRole);
 
           dispatch(addNotification(formattedNewNotif));
           dispatch(apiSlice.util.invalidateTags(getTagsForRealtimeEvent(n.type) as any));
+          if (isMessageNotification(formattedNewNotif)) {
+            dispatch(incrementUnreadMessagesCount());
+            syncUnreadMessagesCount();
+          }
+          showNotificationPopup(formattedNewNotif);
           setPulse(true);
           setTimeout(() => setPulse(false), 2000);
         } catch (err) { console.error("Error processing websocket message:", err); }
@@ -354,9 +281,14 @@ const Header: React.FC = () => {
       isMounted = false;
       unsubscribeAts();
       if (reconnectTimer) clearTimeout(reconnectTimer);
-      if (ws && ws.readyState === WebSocket.OPEN) ws.close();
+      if (ws) {
+        ws.onclose = null;
+        if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
+          ws.close();
+        }
+      }
     };
-  }, [userRole, userEmail, dispatch, isAdminRole, isHRRole, isCandidateRole]);
+  }, [userRole, normRole, userEmail, dispatch, isGuest, isAdminRole, isHRRole, isCandidateRole, showNotificationPopup, syncUnreadMessagesCount]);
 
   // Sync profile image from database on mount
   useEffect(() => {
@@ -487,18 +419,20 @@ const Header: React.FC = () => {
       { label: 'Dashboard', path: '/admin/dashboard', icon: <LayoutDashboard size={18} /> },
       { label: 'User Management', path: '/admin/users', icon: <Users size={18} /> },
       { label: 'Jobs', path: '/admin/jobmanagement', icon: <Settings size={18} /> },
+      { label: 'Messages', path: '/admin/messages', icon: <MessageSquare size={18} />, isMessages: true },
     ];
     if (isHRRole || isHRPage) return [
       { label: 'Dashboard', path: '/hr/dashboard', icon: <Building2 size={18} /> },
       { label: 'Screening', path: '/hr/screeningportal', icon: <User size={18} /> },
       { label: 'Scheduling', path: '/hr/scheduling', icon: <Calendar size={18} /> },
       { label: 'Compare Candidates', path: '/hr/comparecandidates', icon: <Scale size={18} /> },
-      { label: 'Messages', path: '/hr/messages', icon: <MessageSquare size={18} /> },
+      { label: 'Messages', path: '/hr/messages', icon: <MessageSquare size={18} />, isMessages: true },
     ];
     if (isCandidateRole) return [
       { label: 'Dashboard', path: '/candidate/dashboard', icon: <LayoutDashboard size={18} /> },
       { label: 'Open Positions', path: '/candidate/findjobs', icon: <Briefcase size={18} /> },
       { label: 'Applications', path: '/candidate/applicationtracking', icon: <FileText size={18} /> },
+      { label: 'Messages', path: '/candidate/messages', icon: <MessageSquare size={18} />, isMessages: true },
     ];
     return [
       { label: 'Home', path: '/', icon: <Home size={18} /> },
@@ -652,6 +586,30 @@ const Header: React.FC = () => {
                   </button>
                 )}
 
+                {/* Nav Bar Messages Button with Unread Red Dot */}
+                {(isCandidateRole || isHRRole || isAdminRole || isHRPage) && (
+                  <button
+                    type="button"
+                    onClick={() => navigate(getMessagesPathForRole(userRole, location.pathname))}
+                    className={`relative desktop-icon-btn w-9 h-9 sm:w-11 sm:h-11 rounded-xl sm:rounded-2xl flex items-center justify-center transition-all duration-300 border cursor-pointer ${location.pathname.endsWith('/messages')
+                      ? 'bg-slate-900 border-slate-900 text-white shadow-xl'
+                      : 'bg-white border-gray-200/80 text-gray-600 hover:bg-gray-50 hover:border-pink-200 hover:shadow-md hover:scale-105 active:scale-95'
+                      }`}
+                    title={unreadMessagesCount > 0 ? `Messages (${unreadMessagesCount} unread)` : 'Messages'}
+                    aria-label="Messages"
+                  >
+                    <MessageSquare size={18} />
+                    {unreadMessagesCount > 0 && (
+                      <span
+                        className="absolute -top-1 -right-1 min-w-[16px] h-4 sm:min-w-[20px] sm:h-5 px-1 bg-[#D60041] text-white text-[8px] sm:text-[9px] font-black rounded-full border-2 border-white flex items-center justify-center shadow-lg animate-pulse"
+                        aria-label={`${unreadMessagesCount} unread messages`}
+                      >
+                        {unreadMessagesCount > 99 ? '99+' : unreadMessagesCount}
+                      </span>
+                    )}
+                  </button>
+                )}
+
                 <div className="relative mr-0 sm:mr-1" ref={notificationsRef}>
                   <button
                     type="button"
@@ -675,6 +633,8 @@ const Header: React.FC = () => {
                       userRole={userRole}
                       notifications={notifications}
                       onMarkAllRead={handleMarkAllRead}
+                      onMarkOneRead={handleMarkOneRead}
+                      onNotificationClick={handleNotificationClick}
                       onClose={() => setIsNotificationsOpen(false)}
                     />
                   )}
@@ -776,9 +736,19 @@ const Header: React.FC = () => {
                           </span>
                           <span className="text-sm tracking-tight">{item.label}</span>
                         </div>
-                        {isActive && (
-                          <span className="w-2 h-2 rounded-full bg-[#D60041]" />
-                        )}
+                        <div className="flex items-center gap-1.5">
+                          {(item as any).isMessages && unreadMessagesCount > 0 && (
+                            <>
+                              <span className="w-2 h-2 rounded-full bg-[#D60041] animate-pulse" />
+                              <span className="text-[10px] font-black px-1.5 py-0.5 rounded-full bg-[#D60041] text-white">
+                                {unreadMessagesCount}
+                              </span>
+                            </>
+                          )}
+                          {isActive && (
+                            <span className="w-2 h-2 rounded-full bg-[#D60041]" />
+                          )}
+                        </div>
                       </button>
                     );
                   })}
@@ -806,9 +776,6 @@ const Header: React.FC = () => {
                       <div>
                         <p className="text-xs font-bold text-gray-900 flex items-center gap-2 flex-wrap">
                           <span>{userRole === 'HR' ? 'Recruitment Alerts' : 'Notifications'}</span>
-                          <span className="inline-flex items-center gap-1 text-[8px] font-black uppercase tracking-wider text-amber-700 bg-amber-50 border border-amber-200/80 px-1.5 py-0.5 rounded-full">
-                            <Lock size={8} className="text-amber-600" /> Read-Only
-                          </span>
                           {unreadCount > 0 ? (
                             <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-red-100 text-[#D60041]">
                               {unreadCount} new
@@ -860,13 +827,13 @@ const Header: React.FC = () => {
                           return (
                             <div
                               key={n.id}
-                              onClick={() => setSelectedMobileNotif(n)}
+                              onClick={() => handleNotificationClick(n)}
                               role="button"
                               tabIndex={0}
                               onKeyDown={(e) => {
                                 if (e.key === 'Enter' || e.key === ' ') {
                                   e.preventDefault();
-                                  setSelectedMobileNotif(n);
+                                  handleNotificationClick(n);
                                 }
                               }}
                               className={`p-3 rounded-xl border transition-all cursor-pointer focus:outline-hidden ${!n.read
@@ -888,7 +855,8 @@ const Header: React.FC = () => {
                                     type="button"
                                     onClick={(e) => {
                                       e.stopPropagation();
-                                      setSelectedMobileNotif(n);
+                                      if (!n.read) handleMarkOneRead(n);
+                                      setSelectedMobileNotif({ ...n, read: true });
                                     }}
                                     title="Enlarge notification details"
                                     aria-label="Enlarge notification details"
@@ -1104,12 +1072,16 @@ const Header: React.FC = () => {
         />
       )}
 
-      {/* Mobile Enlarged Notification Modal */}
+      {/* Enlarged Notification Modal */}
       <NotificationDetailModal
         isOpen={!!selectedMobileNotif}
         onClose={() => setSelectedMobileNotif(null)}
         notification={selectedMobileNotif}
         userRole={userRole}
+        onOpenMessages={(notif) => {
+          setSelectedMobileNotif(null);
+          handleNotificationClick(notif);
+        }}
       />
     </>
   );

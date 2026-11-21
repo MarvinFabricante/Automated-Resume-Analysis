@@ -7,6 +7,7 @@ from datetime import datetime
 from typing import Optional
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from email.utils import formataddr
 from dotenv import load_dotenv
 
 from app.utils.redis_client import redis_tx_manager, push_to_queue
@@ -20,12 +21,17 @@ async def _send_email_redis_first(to_email: str, subject: str, html_body: str, e
     """
     Redis-First Email Dispatcher:
     1. Stages an email transaction in Redis first with status 'PENDING'.
-    2. Pushes email metadata into the outgoing emails queue in Redis.
-    3. Attempts SMTP delivery to the destination.
-    4. Commits transaction in Redis as 'COMMITTED' / 'DELIVERED' or marks 'FAILED'.
+    2. Records audit metadata in Redis without duplicating onto the fallback retry queue.
+    3. Dispatches SMTP delivery via Celery worker (or async fallback).
+    4. Commits transaction in Redis as 'COMMITTED' or marks 'FAILED'.
     """
+    clean_to = (to_email or "").strip()
+    if not clean_to or "@" not in clean_to or clean_to.lower().endswith(".local"):
+        logger.warning(f"Skipping email dispatch for invalid/placeholder recipient: {to_email!r}")
+        return False
+
     tx_payload = {
-        "to_email": to_email,
+        "to_email": clean_to,
         "subject": subject,
         "email_type": email_type,
         "body_preview": html_body[:200] if html_body else "",
@@ -36,10 +42,10 @@ async def _send_email_redis_first(to_email: str, subject: str, html_body: str, e
         payload=tx_payload,
     )
 
-    # Push to Redis outgoing email queue for audit trail & async queueing
-    await push_to_queue("queue:outgoing_emails", {
+    # Record outgoing email audit metadata separately from the fallback retry queue
+    await push_to_queue("audit:outgoing_emails", {
         "tx_id": tx_id,
-        "to_email": to_email,
+        "to_email": clean_to,
         "subject": subject,
         "email_type": email_type,
         "created_at": datetime.utcnow().isoformat(),
@@ -48,7 +54,7 @@ async def _send_email_redis_first(to_email: str, subject: str, html_body: str, e
     # If _send_smtp_sync is patched by unit tests, call it directly to preserve test assertions
     if hasattr(_send_smtp_sync, "mock_calls") or hasattr(_send_smtp_sync, "assert_called"):
         try:
-            success = await asyncio.to_thread(_send_smtp_sync, to_email, subject, html_body)
+            success = await asyncio.to_thread(_send_smtp_sync, clean_to, subject, html_body)
             if success:
                 await redis_tx_manager.commit_transaction(tx_id, {"delivered": True})
             else:
@@ -62,7 +68,7 @@ async def _send_email_redis_first(to_email: str, subject: str, html_body: str, e
     try:
         from app.tasks import send_email_task
         send_email_task.delay(
-            to_email=to_email,
+            to_email=clean_to,
             subject=subject,
             html_body=html_body,
             email_type=email_type,
@@ -72,7 +78,7 @@ async def _send_email_redis_first(to_email: str, subject: str, html_body: str, e
     except Exception as celery_err:
         logger.warning(f"Celery dispatch failed ({celery_err}). Falling back to async delivery.")
         try:
-            success = await asyncio.to_thread(_send_smtp_sync, to_email, subject, html_body)
+            success = await asyncio.to_thread(_send_smtp_sync, clean_to, subject, html_body)
             if success:
                 await redis_tx_manager.commit_transaction(tx_id, {"delivered": True})
             else:
@@ -85,12 +91,17 @@ async def _send_email_redis_first(to_email: str, subject: str, html_body: str, e
 
 def _send_smtp_sync(to_email: str, subject: str, html_body: str) -> bool:
     """Synchronously send an email using SMTP credentials from environment variables."""
-    smtp_host = os.getenv("SMTP_HOST", "smtp.gmail.com")
-    smtp_port = int(os.getenv("SMTP_PORT", 587))
-    smtp_user = os.getenv("SMTP_USER")
-    smtp_password = os.getenv("SMTP_PASSWORD")
+    smtp_host = (os.getenv("SMTP_HOST") or "smtp.gmail.com").strip()
+    smtp_port = int((os.getenv("SMTP_PORT") or "587").strip())
+    smtp_user = (os.getenv("SMTP_USER") or "").strip()
+    smtp_password = (os.getenv("SMTP_PASSWORD") or "").strip()
+    clean_to = (to_email or "").strip()
 
-    print(f"\n--- ATTEMPTING TO SEND EMAIL TO {to_email} ---")
+    if not clean_to or "@" not in clean_to or clean_to.lower().endswith(".local"):
+        logger.warning(f"SMTP skipped for invalid/placeholder recipient: {to_email!r}")
+        return False
+
+    print(f"\n--- ATTEMPTING TO SEND EMAIL TO {clean_to} ---")
     print(f"Subject: {subject}")
 
     if not smtp_user or not smtp_password or "your-email" in smtp_user:
@@ -98,25 +109,38 @@ def _send_smtp_sync(to_email: str, subject: str, html_body: str) -> bool:
         print(f"Body Preview:\n{html_body[:300]}...")
         return True
 
+    server = None
     try:
-        msg = MIMEMultipart()
-        msg['From'] = f"Mariwasa HR Team <{smtp_user}>"
-        msg['To'] = to_email
-        msg['Subject'] = subject
-        msg.attach(MIMEText(html_body, 'html'))
+        msg = MIMEMultipart("alternative")
+        msg["From"] = formataddr(("Mariwasa HR Team", smtp_user))
+        msg["Reply-To"] = smtp_user
+        msg["To"] = clean_to
+        msg["Subject"] = subject
+        msg.attach(MIMEText(html_body or "", "html", "utf-8"))
 
-        server = smtplib.SMTP(smtp_host, smtp_port, timeout=15)
-        server.starttls()
+        if smtp_port == 465:
+            server = smtplib.SMTP_SSL(smtp_host, smtp_port, timeout=15)
+        else:
+            server = smtplib.SMTP(smtp_host, smtp_port, timeout=15)
+            server.ehlo()
+            server.starttls()
+            server.ehlo()
         server.login(smtp_user, smtp_password)
         server.send_message(msg)
-        server.quit()
-        print(f"EMAIL SENT SUCCESSFULLY VIA SMTP to {to_email}")
+        print(f"EMAIL SENT SUCCESSFULLY VIA SMTP to {clean_to}")
         print("------------------------------\n")
         return True
     except Exception as e:
-        print(f"Error sending email via SMTP to {to_email}: {e}")
+        logger.error(f"Error sending email via SMTP to {clean_to}: {e}")
+        print(f"Error sending email via SMTP to {clean_to}: {e}")
         print("------------------------------\n")
         return False
+    finally:
+        if server is not None:
+            try:
+                server.quit()
+            except Exception:
+                pass
 
 
 async def send_reset_password_email(email: str, token: str):

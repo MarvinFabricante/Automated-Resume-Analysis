@@ -44,6 +44,10 @@ async def mark_all_as_read(db: AsyncSession, role: str = None, email: str = None
     return await NotificationRepository.mark_all_as_read(db, role=role, email=email)
 
 
+async def mark_as_read(db: AsyncSession, notification_id: int, role: str = None, email: str = None) -> bool:
+    return await NotificationRepository.mark_one_as_read(db, notification_id, role=role, email=email)
+
+
 import sys
 notification_service = sys.modules[__name__]
 

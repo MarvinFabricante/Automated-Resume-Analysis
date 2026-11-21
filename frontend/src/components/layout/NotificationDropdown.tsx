@@ -2,16 +2,19 @@ import React, { useState } from 'react';
 import { 
   Clock, ShieldCheck, Briefcase, 
   AlertCircle, CheckCircle2, MessageSquare, ChevronRight,
-  UserPlus, FileText, Zap, Edit3, Radio, TrendingUp, Lock, X,
-  Maximize2, ChevronDown, ChevronUp
+  UserPlus, FileText, Zap, Edit3, Radio, TrendingUp, X,
+  Maximize2, ChevronDown, ChevronUp, Check
 } from 'lucide-react';
 import { NotificationItem } from '../../types';
 import NotificationDetailModal from '../modals/shared/NotificationDetailModal';
+import { isMessageNotification } from '../../utils/notificationUtils';
 
 export interface NotificationDropdownProps {
   userRole?: string;
   notifications?: NotificationItem[];
   onMarkAllRead?: () => void;
+  onMarkOneRead?: (notif: NotificationItem) => void;
+  onNotificationClick?: (notif: NotificationItem) => void;
   onClose?: () => void;
 }
 
@@ -19,6 +22,8 @@ const NotificationDropdown: React.FC<NotificationDropdownProps> = ({
   userRole, 
   notifications = [], 
   onMarkAllRead, 
+  onMarkOneRead,
+  onNotificationClick,
   onClose 
 }) => {
   const [showAll, setShowAll] = useState(false);
@@ -57,6 +62,17 @@ const NotificationDropdown: React.FC<NotificationDropdownProps> = ({
   const unreadCount = notifications.filter(n => !n.read).length;
   const displayNotifications = showAll ? notifications : notifications.slice(0, 10);
 
+  const handleItemClick = (notif: NotificationItem) => {
+    if (onNotificationClick) {
+      onNotificationClick(notif);
+      return;
+    }
+    if (!notif.read && onMarkOneRead) {
+      onMarkOneRead(notif);
+    }
+    setSelectedNotification(notif);
+  };
+
   return (
     <>
       <div className="fixed sm:absolute inset-x-2.5 sm:inset-x-auto sm:right-0 top-16 sm:top-[calc(100%+12px)] w-auto sm:w-[420px] max-w-none sm:max-w-[420px] bg-white border border-gray-200/90 rounded-2xl sm:rounded-3xl shadow-2xl py-4 sm:py-5 z-[70] animate-in fade-in slide-in-from-top-3 duration-200 max-h-[85vh] sm:max-h-[580px] flex flex-col">
@@ -68,9 +84,6 @@ const NotificationDropdown: React.FC<NotificationDropdownProps> = ({
               <h4 className="text-sm sm:text-base font-black text-slate-900 tracking-tight">
                 {userRole === 'CANDIDATE' ? 'Your Updates' : userRole === 'HR' ? 'Recruitment Alerts' : 'System Console'}
               </h4>
-              <span className="inline-flex items-center gap-1 text-[9px] font-bold uppercase tracking-wider text-amber-700 bg-amber-50 border border-amber-200/80 px-2 py-0.5 rounded-full shadow-2xs">
-                <Lock size={10} className="text-amber-600" /> Read-Only
-              </span>
             </div>
             <p className="text-[10px] sm:text-[11px] font-bold text-slate-400 uppercase tracking-wider mt-0.5">
               {unreadCount > 0 ? (
@@ -118,17 +131,18 @@ const NotificationDropdown: React.FC<NotificationDropdownProps> = ({
             displayNotifications.map((notif) => {
               const isLong = isLongMessage(notif.desc);
               const isExpanded = !!expandedIds[notif.id];
+              const isMsg = isMessageNotification(notif);
 
               return (
                 <div 
                   key={notif.id} 
-                  onClick={() => setSelectedNotification(notif)}
+                  onClick={() => handleItemClick(notif)}
                   role="button"
                   tabIndex={0}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' || e.key === ' ') {
                       e.preventDefault();
-                      setSelectedNotification(notif);
+                      handleItemClick(notif);
                     }
                   }}
                   className={`p-3 sm:p-3.5 rounded-xl sm:rounded-2xl transition-all border relative overflow-hidden group cursor-pointer focus:outline-hidden focus:ring-2 focus:ring-[#D60041]/30 ${
@@ -157,12 +171,28 @@ const NotificationDropdown: React.FC<NotificationDropdownProps> = ({
                             </span>
                           )}
 
+                          {!notif.read && onMarkOneRead && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onMarkOneRead(notif);
+                              }}
+                              title="Mark as read"
+                              aria-label="Mark as read"
+                              className="p-1 rounded-md text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 transition-colors cursor-pointer"
+                            >
+                              <Check size={12} />
+                            </button>
+                          )}
+
                           {/* Enlarge in Modal Button */}
                           <button
                             type="button"
                             onClick={(e) => {
                               e.stopPropagation();
-                              setSelectedNotification(notif);
+                              if (!notif.read && onMarkOneRead) onMarkOneRead(notif);
+                              setSelectedNotification({ ...notif, read: true });
                             }}
                             title="Enlarge notification details"
                             aria-label="Enlarge notification details"
@@ -185,6 +215,14 @@ const NotificationDropdown: React.FC<NotificationDropdownProps> = ({
                       }`}>
                         {notif.desc}
                       </p>
+
+                      {isMsg && (
+                        <div className="mb-1.5 inline-flex items-center gap-1 text-[10px] font-bold text-blue-600 group-hover:text-blue-700">
+                          <MessageSquare size={10} />
+                          <span>Click to open message</span>
+                          <ChevronRight size={10} />
+                        </div>
+                      )}
 
                       {/* Interactive Expand / Enlarge Controls for Long Messages */}
                       {isLong && (
@@ -268,6 +306,12 @@ const NotificationDropdown: React.FC<NotificationDropdownProps> = ({
         onClose={() => setSelectedNotification(null)}
         notification={selectedNotification}
         userRole={userRole}
+        onOpenMessages={(notif) => {
+          setSelectedNotification(null);
+          if (onNotificationClick) {
+            onNotificationClick(notif);
+          }
+        }}
       />
     </>
   );

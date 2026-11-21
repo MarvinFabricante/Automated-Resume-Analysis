@@ -84,3 +84,167 @@ export const formatNotificationTime = (dateVal?: string | Date | null): Formatte
     fullDateTime
   };
 };
+
+export const isMessageNotification = (notif?: {
+  type?: string | null;
+  tag?: string | null;
+  title?: string | null;
+} | null): boolean => {
+  if (!notif) return false;
+  const type = String(notif.type || '').trim().toLowerCase();
+  const tag = String(notif.tag || '').trim().toLowerCase();
+  const title = String(notif.title || '').trim().toLowerCase();
+  return (
+    type === 'message' ||
+    type === 'chat' ||
+    tag === 'message' ||
+    title.startsWith('new message')
+  );
+};
+
+export const getMessagesPathForRole = (userRole?: string | null, pathname: string = ''): string => {
+  const normRole = String(userRole || '').trim().toUpperCase();
+  if (normRole === 'ADMIN') return '/admin/messages';
+  if (normRole === 'HR' || pathname.startsWith('/hr')) return '/hr/messages';
+  return '/candidate/messages';
+};
+
+export const extractMessageSenderHint = (notif?: {
+  desc?: string | null;
+  message?: string | null;
+} | null): string => {
+  const raw = String(notif?.desc || notif?.message || '').replace(/^\[Sender:[^\]]+\]\s*/i, '').trim();
+  if (!raw) return '';
+  const colonIdx = raw.indexOf(':');
+  if (colonIdx > 0 && colonIdx <= 60) {
+    return raw.slice(0, colonIdx).trim();
+  }
+  return '';
+};
+
+export const formatRawNotification = (n: any, userRole?: string | null) => {
+  const normRole = String(userRole || '').trim().toUpperCase();
+  const isCandidateRole = normRole === 'CANDIDATE';
+  const isAdminRole = normRole === 'ADMIN';
+
+  let iconName = isCandidateRole ? 'Briefcase' : 'AlertCircle';
+  let bgColor = isCandidateRole ? 'bg-blue-50' : 'bg-slate-50';
+  let textColor = isCandidateRole ? 'text-blue-600' : 'text-slate-600';
+  let tag: string | null = isCandidateRole ? 'Update' : null;
+  let tagColor: string | null = isCandidateRole ? 'bg-blue-100 text-blue-700' : null;
+
+  if (isCandidateRole) {
+    if (n.type === 'schedule') {
+      iconName = 'MessageSquare';
+      bgColor = 'bg-pink-50';
+      textColor = 'text-[#D60041]';
+      tag = 'Interview';
+      tagColor = 'bg-pink-100 text-[#D60041]';
+    } else if (n.type === 'job') {
+      iconName = 'TrendingUp';
+      bgColor = 'bg-green-50';
+      textColor = 'text-green-600';
+      tag = 'Match';
+      tagColor = 'bg-green-100 text-green-700';
+    } else if (n.type === 'message' || n.type === 'chat') {
+      iconName = 'MessageSquare';
+      bgColor = 'bg-blue-50';
+      textColor = 'text-blue-600';
+      tag = 'Message';
+      tagColor = 'bg-blue-100 text-blue-700';
+    } else if (n.type === 'application_update') {
+      if (n.title?.includes('Accepted') || n.title?.includes('🎉')) {
+        bgColor = 'bg-emerald-50';
+        textColor = 'text-emerald-600';
+        tag = 'Accepted';
+        tagColor = 'bg-emerald-100 text-emerald-700';
+      } else if (
+        n.title?.includes('Rejected') ||
+        n.message?.includes('regret') ||
+        n.message?.includes('other candidates') ||
+        n.desc?.includes('regret') ||
+        n.desc?.includes('other candidates')
+      ) {
+        bgColor = 'bg-rose-50';
+        textColor = 'text-rose-600';
+        tag = 'Rejected';
+        tagColor = 'bg-rose-100 text-rose-700';
+      } else {
+        bgColor = 'bg-pink-50';
+        textColor = 'text-[#D60041]';
+        tag = 'Update';
+        tagColor = 'bg-pink-100 text-[#D60041]';
+      }
+    }
+  } else {
+    if (n.type === 'registration') {
+      iconName = 'UserPlus';
+      bgColor = 'bg-blue-50';
+      textColor = 'text-blue-600';
+    } else if (n.type === 'application' || n.type === 'application_update') {
+      iconName = 'Briefcase';
+      bgColor = 'bg-pink-50';
+      textColor = 'text-[#D60041]';
+      tag = 'Update';
+      tagColor = 'bg-pink-100 text-[#D60041]';
+    } else if (n.type === 'upload') {
+      iconName = 'FileText';
+      bgColor = 'bg-orange-50';
+      textColor = 'text-orange-600';
+    } else if (n.type === 'hr_registration') {
+      iconName = 'ShieldCheck';
+      bgColor = 'bg-indigo-50';
+      textColor = 'text-indigo-600';
+      tag = 'System';
+      tagColor = 'bg-indigo-100 text-indigo-700';
+    } else if (n.type === 'job_creation') {
+      iconName = 'Zap';
+      bgColor = 'bg-green-50';
+      textColor = 'text-green-600';
+    } else if (n.type === 'job_update') {
+      iconName = 'Edit3';
+      bgColor = 'bg-amber-50';
+      textColor = 'text-amber-600';
+    } else if (n.type === 'candidate_login') {
+      iconName = 'Radio';
+      bgColor = 'bg-green-50';
+      textColor = 'text-green-600';
+    } else if (n.type === 'hr_login') {
+      iconName = 'Radio';
+      bgColor = 'bg-purple-50';
+      textColor = 'text-purple-600';
+    } else if (n.type === 'message' || n.type === 'chat') {
+      iconName = 'MessageSquare';
+      bgColor = 'bg-blue-50';
+      textColor = 'text-blue-600';
+      tag = 'Message';
+      tagColor = 'bg-blue-100 text-blue-700';
+    }
+  }
+
+  const timeInfo = formatNotificationTime(n.created_at || new Date());
+  const rawMessage = n.message ?? n.desc ?? '';
+  const desc = isAdminRole && n.sender_role ? `[Sender: ${n.sender_role}] ${rawMessage}` : rawMessage;
+
+  return {
+    id: n.id,
+    title: n.title,
+    message: rawMessage,
+    desc,
+    sender_role: n.sender_role,
+    time: timeInfo.relativeTime,
+    relativeTime: timeInfo.relativeTime,
+    timeStr: timeInfo.timeStr,
+    dateStr: timeInfo.dateStr,
+    displayDateTime: timeInfo.displayDateTime,
+    fullDateTime: timeInfo.fullDateTime,
+    createdAt: timeInfo.date,
+    type: n.type,
+    icon: iconName,
+    bgColor,
+    textColor,
+    tag,
+    tagColor,
+    read: Boolean(n.is_read ?? n.read ?? false),
+  };
+};

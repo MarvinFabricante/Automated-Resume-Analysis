@@ -5,19 +5,22 @@ import {
   UserPlus, FileText, Zap, Edit3, Radio, TrendingUp, Lock, Tag, User
 } from 'lucide-react';
 import { NotificationItem } from '../../../types';
+import { isMessageNotification } from '../../../utils/notificationUtils';
 
 export interface NotificationDetailModalProps {
   isOpen: boolean;
   onClose: () => void;
   notification: NotificationItem | null;
   userRole?: string;
+  onOpenMessages?: (notification: NotificationItem) => void;
 }
 
 const NotificationDetailModal: React.FC<NotificationDetailModalProps> = ({
   isOpen,
   onClose,
   notification,
-  userRole
+  userRole,
+  onOpenMessages
 }) => {
   const [copied, setCopied] = useState(false);
 
@@ -198,13 +201,25 @@ const NotificationDetailModal: React.FC<NotificationDetailModalProps> = ({
             )}
           </button>
 
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-5 py-2 bg-[#D60041] hover:bg-[#B50037] text-white text-xs font-black uppercase tracking-wider rounded-xl transition-all shadow-md shadow-pink-200 hover:shadow-lg active:scale-95 cursor-pointer"
-          >
-            Close
-          </button>
+          <div className="flex items-center gap-2">
+            {isMessageNotification(notification) && onOpenMessages && (
+              <button
+                type="button"
+                onClick={() => onOpenMessages(notification)}
+                className="inline-flex items-center gap-1.5 px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-black uppercase tracking-wider rounded-xl transition-all shadow-sm active:scale-95 cursor-pointer"
+              >
+                <MessageSquare size={14} />
+                <span>Open Messages</span>
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-5 py-2 bg-[#D60041] hover:bg-[#B50037] text-white text-xs font-black uppercase tracking-wider rounded-xl transition-all shadow-md shadow-pink-200 hover:shadow-lg active:scale-95 cursor-pointer"
+            >
+              Close
+            </button>
+          </div>
         </div>
       </div>
     </div>

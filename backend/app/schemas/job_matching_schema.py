@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Optional
+from typing import Any, Optional
 
 
 class JobMatchResult(BaseModel):
@@ -60,6 +60,7 @@ class ResumeMatchRequest(BaseModel):
     phone: Optional[str] = ""
     location: Optional[str] = ""
     experience: Optional[str] = ""
+    work_experiences: Optional[list[dict[str, Any]]] = None
     education: Optional[str] = ""
     job_title: Optional[str] = ""
     company: Optional[str] = ""

@@ -72,14 +72,36 @@ def ensure_local_redis_running() -> bool:
 ensure_local_redis_running()
 
 _async_pools: Dict[Any, aioredis.ConnectionPool] = {}
+_async_pool_loops: Dict[Any, Any] = {}
 _sync_pool: Optional[syncredis.ConnectionPool] = None
 
 
+def _prune_closed_async_pools() -> None:
+    """Drop async pools bound to closed event loops to avoid leaking sockets/FDs."""
+    for key in list(_async_pools.keys()):
+        loop_ref = _async_pool_loops.get(key)
+        if loop_ref is not None and loop_ref.is_closed():
+            pool = _async_pools.pop(key, None)
+            _async_pool_loops.pop(key, None)
+            if pool is not None:
+                for conn in list(getattr(pool, "_available_connections", [])) + list(getattr(pool, "_in_use_connections", [])):
+                    transport = getattr(conn, "_transport", None)
+                    if transport is not None:
+                        try:
+                            transport.close()
+                        except Exception:
+                            pass
+
+
 def get_async_pool() -> aioredis.ConnectionPool:
+    _prune_closed_async_pools()
+    loop = None
     try:
-        loop = asyncio.get_running_loop()
-        loop_key = id(loop)
-        if loop.is_closed():
+        running = asyncio.get_running_loop()
+        if not running.is_closed():
+            loop = running
+            loop_key = id(running)
+        else:
             loop_key = "default"
     except RuntimeError:
         loop_key = "default"
@@ -92,6 +114,8 @@ def get_async_pool() -> aioredis.ConnectionPool:
             socket_connect_timeout=5,
             decode_responses=False,
         )
+        if loop is not None:
+            _async_pool_loops[loop_key] = loop
     return _async_pools[loop_key]
 
 
@@ -127,6 +151,7 @@ async def close_redis_pools():
         except Exception as e:
             logger.debug(f"Error disconnecting async pool {loop_key}: {e}")
     _async_pools.clear()
+    _async_pool_loops.clear()
 
     if _sync_pool is not None:
         try:
