@@ -118,6 +118,25 @@ _SECTION_DEFINITIONS: dict[str, list[str]] = {
         "CO-OP EXPERIENCE", "INDUSTRIAL TRAINING", "PRACTICAL TRAINING",
         "CLINICAL ROTATIONS", "RESIDENCY & FELLOWSHIP", "MILITARY SERVICE",
         "SELF-EMPLOYMENT", "ENGAGEMENTS", "ASSIGNMENTS",
+        "WHERE I'VE WORKED", "WHERE I HAVE WORKED", "PROFESSIONAL JOURNEY", "CAREER JOURNEY",
+        "MY EXPERIENCE", "MY WORK EXPERIENCE", "WORK EXPERIENCE & ACHIEVEMENTS",
+        "PROFESSIONAL EXPERIENCE & ACHIEVEMENTS", "EMPLOYMENT & WORK HISTORY",
+        "WORK & LEADERSHIP EXPERIENCE", "RELEVANT WORK & INTERNSHIP",
+        "WORK EXPERIENCE & TRAINING", "CAREER SUMMARY & EXPERIENCE",
+        "WORK & VOLUNTEER EXPERIENCE", "PRACTICAL / OJT EXPERIENCE",
+        "ON THE JOB TRAINING (OJT)", "INDUSTRY / WORK EXPERIENCE", "CAREER PATH",
+        "JOB EXPERIENCES", "PAST WORK", "HISTORY OF EMPLOYMENT",
+        "PROFESSIONAL WORK HISTORY", "BUSINESS & WORK EXPERIENCE",
+        "EXPERIENCE & EMPLOYMENT", "WORK HISTORY & EXPERIENCE",
+        "EMPLOYMENT HISTORY & EXPERIENCE", "EXPERIENCE / EMPLOYMENT",
+        "INTERNSHIP / OJT", "OJT / INTERNSHIP", "PRACTICUM EXPERIENCE",
+        "HOSPITAL EXPERIENCE", "TEACHING / WORK EXPERIENCE", "SELECTED EXPERIENCE",
+        "CORE EXPERIENCE", "EXECUTIVE EXPERIENCE", "MANAGEMENT EXPERIENCE",
+        "ENGINEERING EXPERIENCE", "TECHNICAL EXPERIENCE", "IT EXPERIENCE",
+        "BPO EXPERIENCE", "MANUFACTURING EXPERIENCE", "RETAIL EXPERIENCE",
+        "HOSPITALITY EXPERIENCE", "SALES EXPERIENCE", "ACCOUNTING EXPERIENCE",
+        "NURSING EXPERIENCE", "MEDICAL EXPERIENCE", "ADMINISTRATIVE EXPERIENCE",
+        "GOVERNMENT SERVICE",
         "KARANASAN SA TRABAHO", "MGA KARANASAN SA TRABAHO", "KARANASAN",
         "EXPERIENCIA LABORAL", "EXPERIENCIA PROFESIONAL",
     ],
@@ -219,16 +238,27 @@ for label, headers in _SECTION_DEFINITIONS.items():
 # ─── Header Detection ────────────────────────────────────────────────────────
 
 # Decorations that surround or prefix section headers
-_DECORATION_RE = re.compile(r'^[\s\-–—=_*#•►◆■□▪▸▹:│┃]+|[\s\-–—=_*#•►◆■□▪▸▹:│┃]+$')
+_DECORATION_RE = re.compile(r'^[\s\-–—=_*#•►◆■□▪▸▹:│┃><~«»]+|[\s\-–—=_*#•►◆■□▪▸▹:│┃><~«»]+$')
 
 
 _LEADING_NUM_RE = re.compile(r'^(?:\(?(?:\d{1,2}|[ivxlc]{1,4})\)?[\.\)\-:]\s+|\(\d{1,2}\)\s+)', re.I)
 _TRAILING_PAREN_RE = re.compile(r'\s*\([^)]*\)\s*$')
+_TRAILING_DATE_OR_YRS_ANNOT_RE = re.compile(
+    r'\s*(?:[-–—|]\s*(?:(?:19|20)\d{2}\s*[-–—to]+\s*(?:(?:19|20)\d{2}|PRESENT|CURRENT|NOW|ONGOING)|'
+    r'\d+(?:\.\d+)?\+?\s*(?:YEARS?|YRS?)(?:\s+OF\s+EXPERIENCE)?)|'
+    r'\(\s*(?:(?:19|20)\d{2}\s*[-–—to]+\s*(?:(?:19|20)\d{2}|PRESENT|CURRENT|NOW|ONGOING)|'
+    r'\d+(?:\.\d+)?\+?\s*(?:YEARS?|YRS?)(?:\s+OF\s+EXPERIENCE)?)\s*\))\s*$'
+)
 
 
 def _normalise_header(line: str) -> str:
-    """Strip decorations, numbering, and normalise a candidate header line to UPPER with normalized spaces."""
-    clean = _DECORATION_RE.sub('', line).strip()
+    """Strip decorations, markdown emphasis, outer pipes, numbering, and normalise a candidate header line to UPPER."""
+    clean = line.strip()
+    if clean.startswith('|') and clean.endswith('|') and len(clean) > 2:
+        clean = clean[1:-1].strip()
+    clean = _DECORATION_RE.sub('', clean).strip()
+    if (clean.startswith('**') and clean.endswith('**')) or (clean.startswith('__') and clean.endswith('__')):
+        clean = clean[2:-2].strip()
     if (clean.startswith('(') and clean.endswith(')')) or (clean.startswith('[') and clean.endswith(']')):
         clean = clean[1:-1].strip()
     clean = _LEADING_NUM_RE.sub('', clean).strip()
@@ -249,6 +279,12 @@ def _match_header_text(normalised: str, allow_fuzzy: bool = True) -> Optional[st
     res = _HEADER_MAP.get(normalised)
     if res:
         return res
+
+    without_annot = _TRAILING_DATE_OR_YRS_ANNOT_RE.sub('', normalised).strip()
+    if without_annot and without_annot != normalised:
+        res = _HEADER_MAP.get(without_annot)
+        if res:
+            return res
 
     without_paren = _TRAILING_PAREN_RE.sub('', normalised).strip()
     without_paren = re.sub(r'\s*[-–—]?\s*\b(?:CONTINUED|CONT\.?)\s*$', '', without_paren).strip()
@@ -472,9 +508,31 @@ def split_into_sections(text: str) -> dict[str, str]:
         re.I,
     )
 
+    _SUMMARY_PROSE_START_RE = re.compile(
+        r'^(?:motivated|dedicated|experienced|results[\s\-]driven|detail[\s\-]oriented|'
+        r'goal[\s\-]oriented|seeking|passionate|hardworking|hard[\s\-]working|'
+        r'versatile|dynamic|resourceful|organized|proactive|aspiring|recent)\b',
+        re.I,
+    )
+
+    _EXP_NESTED_SUBHEADINGS = {
+        "KEY ACHIEVEMENTS", "ACHIEVEMENTS", "ACCOMPLISHMENTS", "NOTABLE ACHIEVEMENTS",
+        "KEY PROJECTS", "SELECTED PROJECTS", "NOTABLE PROJECTS",
+        "KEY RESPONSIBILITIES", "CORE RESPONSIBILITIES", "ROLE SUMMARY",
+    }
+    _MAJOR_STOP_SECTIONS = {
+        "EDUCATION", "SKILLS", "CERTIFICATIONS", "REFERENCES",
+        "PERSONAL", "LANGUAGES", "INTERESTS", "AFFILIATIONS", "PUBLICATIONS",
+    }
+    _EXP_DATE_HINT_RE = re.compile(
+        r'(?:\b(?:19|20)\d{2}\s*[-–—~]\s*(?:(?:19|20)\d{2}|present|current|now|ongoing)\b|'
+        r'\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z.]*\s*[,.]?\s*(?:19|20)\d{2})',
+        re.I,
+    )
+
     active_dual: Optional[tuple[str, str]] = None
 
-    for line in lines:
+    for line_idx, line in enumerate(lines):
         cleaned_line = line.strip()
         if not cleaned_line:
             sections[current_label].append(line)
@@ -511,6 +569,23 @@ def split_into_sections(text: str) -> dict[str, str]:
             ):
                 sections[current_label].append(line)
                 continue
+            # Inside EXPERIENCE, nested sub-headings (even without colons) like "Key Achievements" or
+            # "Selected Projects" should stay in EXPERIENCE when followed by bullets or another dated role
+            if current_label == "EXPERIENCE" and full_norm in _EXP_NESTED_SUBHEADINGS:
+                keep_in_exp = False
+                for fwd_line in lines[line_idx + 1:line_idx + 25]:
+                    fwd_s = fwd_line.strip()
+                    if not fwd_s:
+                        continue
+                    fwd_lbl = detect_section_label(fwd_s)
+                    if fwd_lbl in _MAJOR_STOP_SECTIONS:
+                        break
+                    if fwd_s.startswith(('•', '-', '*', '▪', '►', '✓')) or _EXP_DATE_HINT_RE.search(fwd_s):
+                        keep_in_exp = True
+                        break
+                if keep_in_exp:
+                    sections[current_label].append(line)
+                    continue
             is_bare_header = bool(_match_header_text(full_norm, allow_fuzzy=False))
             if not is_bare_header:
                 colon_idx = cleaned_line.find(':')
@@ -569,15 +644,20 @@ def split_into_sections(text: str) -> dict[str, str]:
             elif label == "EXPERIENCE" and sections.get(current_label) and current_label not in ("EDUCATION", "SKILLS"):
                 prev_lines = [l for l in sections[current_label] if l.strip()]
                 if prev_lines:
-                    tail = prev_lines[-4:]
+                    tail = [
+                        tl for tl in prev_lines[-4:]
+                        if len(tl.strip()) <= 70 and not _SUMMARY_PROSE_START_RE.match(tl.strip())
+                    ]
                     tail_text = " ".join(tail).upper()
-                    if any(hint in tail_text for hint in _ROLE_DATE_HINTS):
+                    if tail and any(hint in tail_text for hint in _ROLE_DATE_HINTS):
                         moved = []
                         while sections[current_label]:
                             top = sections[current_label][-1].strip()
                             if not top:
                                 sections[current_label].pop()
                                 continue
+                            if len(top) > 70 or _SUMMARY_PROSE_START_RE.match(top):
+                                break
                             top_upper = top.upper()
                             if any(hint in top_upper for hint in _ROLE_DATE_HINTS):
                                 moved.insert(0, sections[current_label].pop())

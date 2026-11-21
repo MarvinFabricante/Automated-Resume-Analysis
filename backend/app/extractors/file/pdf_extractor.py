@@ -7,11 +7,53 @@ from typing import Union
 
 
 _PDF_DATE_HINT_RE = re.compile(
-    r'\b(?:19|20)\d{2}\b|\b(?:present|current(?:ly)?|now|to\s+date|ongoing)\b|'
+    r'\b(?:19|20)\d{2}\b|\b(?:present|current(?:ly)?|now|to\s+date|ongoing|pres\.?)\b|'
     r'\b\d+(?:\.\d+)?\s*(?:yrs?|years?|mos?|months?)\b',
     re.IGNORECASE,
 )
+_PDF_LOC_HINT_RE = re.compile(
+    r'\b(?:manila|makati|taguig|bgc|bonifacio\s+global\s+city|pasig|ortigas|quezon\s+city|'
+    r'mandaluyong|pasay|paranaque|parañaque|muntinlupa|alabang|las\s+pinas|las\s+piñas|'
+    r'caloocan|marikina|san\s+juan|valenzuela|antipolo|taytay|cainta|rizal|laguna|calamba|'
+    r'santa\s+rosa|cavite|batangas|bulacan|pampanga|clark|subic|cebu|davao|iloilo|baguio|'
+    r'bacolod|cagayan\s+de\s+oro|ncr|metro\s+manila|calabarzon|philippines|singapore|'
+    r'dubai|uae|usa|united\s+states|uk|united\s+kingdom|canada|australia|japan|tokyo|'
+    r'hong\s+kong|taiwan|malaysia|remote|hybrid|onsite|on-site|wfh)\b|'
+    r'^[A-Z][A-Za-z.\-\s]{2,25},\s*(?:[A-Z]{2,3}|[A-Z][A-Za-z.\-\s]{2,25})$',
+    re.IGNORECASE,
+)
+_PDF_DANGLING_DATE_START_RE = re.compile(
+    r'(?:\b(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|'
+    r'Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)'
+    r'\.?(?:\s+\d{1,2}(?:st|nd|rd|th)?)?(?:\s*[,.]?\s*(?:19|20)\d{2})?|'
+    r'(?:19|20)\d{2}|\d{1,2}[./-]\d{4})\s*(?:-|–|—|\bto|\buntil|\bthru|\bthrough)\s*$',
+    re.IGNORECASE,
+)
+_PDF_FULL_DATE_RANGE_HINT_RE = re.compile(
+    r'(?:(?:19|20)\d{2}|(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z.]*\s*[,.]?\s*(?:19|20)\d{2})'
+    r'\s*(?:-|–|—|\bto\b|\buntil\b|\bthru\b|\bthrough\b)\s*'
+    r'(?:(?:19|20)\d{2}|present|current|now|ongoing)',
+    re.IGNORECASE,
+)
+_PDF_DECORATIVE_BLOCK_RE = re.compile(r'^[\s\-–—=_*#•►◆■□▪▸▹│┃|.·~]+$')
+_PDF_BULLET_ONLY_RE = re.compile(r'^[•\-*▪►✓◆■□▸▹·]$')
 _PDF_PAGE_FOOTER_RE = re.compile(r'^\s*page\s+\d+(?:\s*(?:of|/)\s*\d+)?\s*$', re.IGNORECASE)
+
+
+def _is_decorative_block(txt: str) -> bool:
+    s = txt.strip()
+    if not s:
+        return True
+    if _PDF_DECORATIVE_BLOCK_RE.match(s):
+        return True
+    return False
+
+
+def _is_dangling_date_start(txt: str) -> bool:
+    s = txt.strip()
+    if not s or _PDF_FULL_DATE_RANGE_HINT_RE.search(s):
+        return False
+    return bool(_PDF_DANGLING_DATE_START_RE.search(s))
 
 
 def _is_date_gutter_column(blocks, detect_section_label_fn) -> bool:
@@ -32,26 +74,318 @@ def _is_date_gutter_column(blocks, detect_section_label_fn) -> bool:
     return (date_frag_count / len(blocks)) >= 0.6
 
 
-def _extract_page_text_layout_aware(page) -> str:
+def _extract_region_lines_paired(
+    blocks: list[tuple[float, float, float, float, str]],
+    dict_blocks: list[dict],
+    detect_section_label_fn=None,
+) -> list[str]:
     """
-    Extracts text from a PyMuPDF page while preserving visual reading order:
-    - Sorts out-of-order PDF stream blocks top-to-bottom.
-    - Detects two-column (sidebar + main) layouts so left-column sections
-      (e.g. CONTACT, EDUCATION, SKILLS, CERTIFICATION) never interleave into
-      right-column sections (e.g. PROFILE, EXPERIENCE).
-    - Separates bottom page footers and rejects date-only timeline gutters from 2-column splitting.
+    Extract lines from *blocks* using PyMuPDF dict line geometry (when available) so
+    same-baseline left/right fragments (e.g. Job Title + right-aligned Date or Company + Location)
+    are paired cleanly with ' | ', while preserving wrapped gutter dates and bullets.
+    """
+    if not blocks:
+        return []
+
+    raw_lines: list[tuple[float, float, float, float, str]] = []
+    if dict_blocks:
+        for b in blocks:
+            bx0, by0, bx1, by1, btxt = b
+            matched_lines: list[tuple[float, float, float, float, str]] = []
+            for db in dict_blocks:
+                if db.get("type") != 0:
+                    continue
+                for ln in db.get("lines", []):
+                    bbox = ln.get("bbox")
+                    if not bbox or len(bbox) < 4:
+                        continue
+                    lx0, ly0, lx1, ly1 = float(bbox[0]), float(bbox[1]), float(bbox[2]), float(bbox[3])
+                    cx = (lx0 + lx1) * 0.5
+                    cy = (ly0 + ly1) * 0.5
+                    if (bx0 - 2.5) <= cx <= (bx1 + 2.5) and (by0 - 2.5) <= cy <= (by1 + 2.5):
+                        ltxt = "".join(sp.get("text", "") for sp in ln.get("spans", [])).strip()
+                        if ltxt and not _PDF_DECORATIVE_BLOCK_RE.match(ltxt):
+                            matched_lines.append((lx0, ly0, lx1, ly1, ltxt))
+            if matched_lines:
+                raw_lines.extend(matched_lines)
+            else:
+                split_lns = [s.strip() for s in btxt.splitlines() if s.strip() and not _PDF_DECORATIVE_BLOCK_RE.match(s.strip())]
+                step = max(8.0, (by1 - by0) / max(1, len(split_lns)))
+                for idx, st in enumerate(split_lns):
+                    raw_lines.append((bx0, by0 + idx * step, bx1, by0 + (idx + 1) * step, st))
+    else:
+        for bx0, by0, bx1, by1, btxt in blocks:
+            split_lns = [s.strip() for s in btxt.splitlines() if s.strip() and not _PDF_DECORATIVE_BLOCK_RE.match(s.strip())]
+            step = max(8.0, (by1 - by0) / max(1, len(split_lns)))
+            for idx, st in enumerate(split_lns):
+                raw_lines.append((bx0, by0 + idx * step, bx1, by0 + (idx + 1) * step, st))
+
+    if not raw_lines:
+        return []
+
+    raw_lines.sort(key=lambda r: (r[1], r[0]))
+
+    # Cluster into visual rows using vertical overlap >= 45% or y-center proximity <= 4.5pt
+    rows: list[list[tuple[float, float, float, float, str]]] = []
+    anchor_y0 = anchor_y1 = 0.0
+    for item in raw_lines:
+        _, ly0, _, ly1, _ = item
+        if not rows:
+            rows.append([item])
+            anchor_y0, anchor_y1 = ly0, ly1
+            continue
+        overlap = min(anchor_y1, ly1) - max(anchor_y0, ly0)
+        min_h = max(1.0, min(anchor_y1 - anchor_y0, ly1 - ly0))
+        y_center_diff = abs(((anchor_y0 + anchor_y1) * 0.5) - ((ly0 + ly1) * 0.5))
+        if (overlap / min_h) >= 0.45 or y_center_diff <= 4.5:
+            rows[-1].append(item)
+        else:
+            rows.append([item])
+            anchor_y0, anchor_y1 = ly0, ly1
+
+    out_lines: list[str] = []
+    for row in rows:
+        row.sort(key=lambda r: r[0])
+        if len(row) == 1:
+            out_lines.append(row[0][4])
+            continue
+
+        # Merge standalone bullet symbols or tight (<8pt gap) inline spans first
+        compact: list[tuple[float, float, float, float, str]] = [row[0]]
+        for nxt in row[1:]:
+            prev = compact[-1]
+            gap = nxt[0] - prev[2]
+            if _PDF_BULLET_ONLY_RE.match(prev[4]) or gap < 8.0:
+                compact[-1] = (prev[0], min(prev[1], nxt[1]), max(prev[2], nxt[2]), max(prev[3], nxt[3]), f"{prev[4]} {nxt[4]}")
+            else:
+                compact.append(nxt)
+
+        if len(compact) == 1:
+            out_lines.append(compact[0][4])
+            continue
+
+        texts = [c[4] for c in compact]
+        has_dangling = any(_is_dangling_date_start(t) for t in texts)
+        has_date_or_loc = any(_PDF_DATE_HINT_RE.search(t) or _PDF_LOC_HINT_RE.search(t) for t in texts)
+        all_short = all(len(t) < 90 for t in texts)
+        both_headers = (
+            detect_section_label_fn is not None
+            and len(texts) >= 2
+            and all(detect_section_label_fn(t) is not None for t in texts)
+        )
+        any_bullet = any(t.startswith(("•", "-", "*", "▪", "►", "✓")) for t in texts)
+
+        if not has_dangling and not both_headers and all_short and (
+            has_date_or_loc or (not any_bullet and all(len(t) < 60 for t in texts))
+        ):
+            out_lines.append(" | ".join(texts))
+        else:
+            out_lines.extend(texts)
+
+    return out_lines
+
+
+def _join_gutter_block_text(txt: str) -> str:
+    """Join wrapped lines inside a narrow date-gutter block cleanly."""
+    parts = [ln.strip() for ln in txt.splitlines() if ln.strip()]
+    if not parts:
+        return ""
+    if len(parts) == 1:
+        return parts[0]
+    joined = parts[0]
+    for p in parts[1:]:
+        if re.search(r'(?:-|–|—|\bto|\buntil|\bthru|\bthrough)\s*$', joined, re.IGNORECASE):
+            joined = f"{joined} {p}"
+        else:
+            joined = f"{joined} {p}"
+    return joined
+
+
+def _extract_date_gutter_lines(
+    gutter_b: list[tuple[float, float, float, float, str]],
+    main_b: list[tuple[float, float, float, float, str]],
+    dict_blocks: list[dict],
+    detect_section_label_fn=None,
+) -> list[str]:
+    """Emit date-gutter blocks right before their vertically aligned main-column blocks."""
+    main_sorted = sorted(main_b, key=lambda b: (round(b[1] / 4.0), b[0]))
+    attached: dict[int, list[str]] = {idx: [] for idx in range(len(main_sorted))}
+    orphan_gutter: list[tuple[float, str]] = []
+
+    def _is_hdr_block(b) -> bool:
+        if detect_section_label_fn is None:
+            return False
+        first_ln = b[4].splitlines()[0].strip() if b[4].strip() else ""
+        return bool(first_ln and detect_section_label_fn(first_ln) is not None and "\n" not in b[4].strip())
+
+    for gb in sorted(gutter_b, key=lambda b: b[1]):
+        g_txt = _join_gutter_block_text(gb[4])
+        if not g_txt:
+            continue
+        best_idx = None
+        best_score = 1e9
+        for m_idx, mb in enumerate(main_sorted):
+            if _is_hdr_block(mb):
+                continue
+            y_dist = abs(gb[1] - mb[1])
+            overlap = min(gb[3], mb[3]) - max(gb[1], mb[1])
+            score = y_dist - (20.0 if overlap > 0 else 0.0)
+            if score < best_score:
+                best_score = score
+                best_idx = m_idx
+        if best_idx is not None and abs(gb[1] - main_sorted[best_idx][1]) <= 45.0:
+            attached[best_idx].append(g_txt)
+        else:
+            orphan_gutter.append((gb[1], g_txt))
+
+    out: list[str] = []
+    orphan_idx = 0
+    for m_idx, mb in enumerate(main_sorted):
+        while orphan_idx < len(orphan_gutter) and orphan_gutter[orphan_idx][0] <= mb[1]:
+            out.append(orphan_gutter[orphan_idx][1])
+            orphan_idx += 1
+        out.extend(attached[m_idx])
+        out.extend(_extract_region_lines_paired([mb], dict_blocks, detect_section_label_fn))
+    while orphan_idx < len(orphan_gutter):
+        out.append(orphan_gutter[orphan_idx][1])
+        orphan_idx += 1
+    return out
+
+
+def _split_horizontally_bridged_blocks(
+    text_blocks: list[tuple[float, float, float, float, str]],
+    dict_blocks: list[dict],
+    page_w: float,
+) -> list[tuple[float, float, float, float, str]]:
+    """
+    Split blocks where PyMuPDF coalesced two horizontally disjoint columns (e.g. a narrow
+    left date-gutter and main right-hand content) across a wide empty vertical gap.
+    Preserves single-line right-aligned rows so paired-row extraction can join them cleanly.
+    """
+    if not dict_blocks or not text_blocks:
+        return text_blocks
+
+    out: list[tuple[float, float, float, float, str]] = []
+    for b in text_blocks:
+        bx0, by0, bx1, by1, _ = b
+        if (bx1 - bx0) < 120.0 or (by1 - by0) <= 18.0:
+            out.append(b)
+            continue
+
+        spans: list[tuple[float, float, float, float, str]] = []
+        for db in dict_blocks:
+            if db.get("type") != 0:
+                continue
+            for ln in db.get("lines", []):
+                for sp in ln.get("spans", []):
+                    stxt = (sp.get("text") or "").strip()
+                    if not stxt or _PDF_DECORATIVE_BLOCK_RE.match(stxt):
+                        continue
+                    sb = sp.get("bbox")
+                    if not sb or len(sb) < 4:
+                        continue
+                    sx0, sy0, sx1, sy1 = float(sb[0]), float(sb[1]), float(sb[2]), float(sb[3])
+                    scx = (sx0 + sx1) * 0.5
+                    scy = (sy0 + sy1) * 0.5
+                    if (bx0 - 2.5) <= scx <= (bx1 + 2.5) and (by0 - 2.5) <= scy <= (by1 + 2.5):
+                        spans.append((sx0, sy0, sx1, sy1, stxt))
+
+        if len(spans) < 2:
+            out.append(b)
+            continue
+
+        # Sweep sorted spans by x0 to find the widest zero-overlap vertical gap >= 22pt
+        sorted_x = sorted(spans, key=lambda s: (s[0], s[2]))
+        running_max_x1 = sorted_x[0][2]
+        best_gap = 0.0
+        best_gap_mid = None
+        for idx in range(len(sorted_x) - 1):
+            running_max_x1 = max(running_max_x1, sorted_x[idx][2])
+            next_x0 = sorted_x[idx + 1][0]
+            gap = next_x0 - running_max_x1
+            if gap >= 22.0 and gap > best_gap:
+                best_gap = gap
+                best_gap_mid = (running_max_x1 + next_x0) * 0.5
+
+        if best_gap_mid is None:
+            out.append(b)
+            continue
+
+        left_sp = [s for s in spans if s[2] <= best_gap_mid]
+        right_sp = [s for s in spans if s[0] >= best_gap_mid]
+        if not left_sp or not right_sp:
+            out.append(b)
+            continue
+
+        def _rebuild_subblock(sub_spans: list[tuple[float, float, float, float, str]]):
+            sub_spans_s = sorted(sub_spans, key=lambda s: (round(s[1] / 3.0), s[0]))
+            lines_acc: list[list[tuple[float, float, float, float, str]]] = []
+            for sp in sub_spans_s:
+                if not lines_acc:
+                    lines_acc.append([sp])
+                    continue
+                cy_prev = (lines_acc[-1][0][1] + lines_acc[-1][0][3]) * 0.5
+                cy_curr = (sp[1] + sp[3]) * 0.5
+                if abs(cy_curr - cy_prev) <= 4.5:
+                    lines_acc[-1].append(sp)
+                else:
+                    lines_acc.append([sp])
+            built_lines = [" ".join(x[4] for x in sorted(ln, key=lambda s: s[0])) for ln in lines_acc]
+            sx0 = min(s[0] for s in sub_spans)
+            sy0 = min(s[1] for s in sub_spans)
+            sx1 = max(s[2] for s in sub_spans)
+            sy1 = max(s[3] for s in sub_spans)
+            return (sx0, sy0, sx1, sy1, "\n".join(built_lines)), len(built_lines)
+
+        l_blk, l_nlines = _rebuild_subblock(left_sp)
+        r_blk, r_nlines = _rebuild_subblock(right_sp)
+        left_w = l_blk[2] - l_blk[0]
+        # Split if both columns are multi-line OR left column is a narrow gutter beside a multi-line body
+        if (l_nlines >= 2 and r_nlines >= 2) or (left_w <= page_w * 0.22 and r_nlines >= 2):
+            out.append(l_blk)
+            out.append(r_blk)
+        else:
+            out.append(b)
+
+    return out
+
+
+def _extract_page_layout_parts(page, prev_split_x: float | None = None) -> dict:
+    """
+    Extract structured layout regions from a PyMuPDF page while preserving visual reading order.
+    Returns dict with keys:
+      is_two_col, split_x, top_lines, left_lines, right_lines, other_lines, footer_lines, text
     """
     raw_blocks = page.get_text("blocks") or []
     text_blocks = [
         (float(b[0]), float(b[1]), float(b[2]), float(b[3]), str(b[4]).strip())
         for b in raw_blocks
-        if len(b) >= 7 and b[6] == 0 and str(b[4]).strip()
+        if len(b) >= 7 and b[6] == 0 and str(b[4]).strip() and not _is_decorative_block(str(b[4]))
     ]
     if not text_blocks:
-        return page.get_text() or ""
+        fallback = page.get_text() or ""
+        return {
+            "is_two_col": False,
+            "split_x": None,
+            "top_lines": [],
+            "left_lines": [],
+            "right_lines": [],
+            "other_lines": fallback.splitlines() if fallback else [],
+            "footer_lines": [],
+            "text": fallback,
+        }
+
+    dict_blocks: list[dict] = []
+    try:
+        d = page.get_text("dict")
+        if isinstance(d, dict):
+            dict_blocks = d.get("blocks") or []
+    except Exception:
+        dict_blocks = []
 
     page_w = float(page.rect.width or 600.0)
     page_h = float(page.rect.height or 800.0)
+    text_blocks = _split_horizontally_bridged_blocks(text_blocks, dict_blocks, page_w)
 
     # Separate bottom page footers so they don't cross column boundaries and disable 2-column detection
     footer_blocks = []
@@ -74,9 +408,9 @@ def _extract_page_text_layout_aware(page) -> str:
     except Exception:
         pass
 
-    # Identify top header band (e.g. Name / Title banner at top of page 1),
-    # stopping before the first column-level section header so 2-column sections
-    # starting near the top (e.g. y=80) are never interleaved into top_blocks.
+    # Identify candidate header cutoffs:
+    # 1) standard top banner cutoff (capped by first detected section header)
+    # 2) dynamic cutoff below full-width top blocks (e.g. Name + Summary above 2-col body) in top 45%
     default_cutoff = min(145.0, page_h * 0.18)
     first_section_y = default_cutoff
     if detect_section_label_fn is not None:
@@ -88,84 +422,160 @@ def _extract_page_text_layout_aware(page) -> str:
                         first_section_y = b[1]
         except Exception:
             pass
-    header_cutoff = first_section_y
 
-    # Check if body blocks cleanly separate into two vertical columns
+    candidate_cutoffs: list[float] = [first_section_y]
+    if prev_split_x is not None:
+        candidate_cutoffs.append(0.0)
+    for b in main_blocks:
+        if b[0] < page_w * 0.35 and b[2] > page_w * 0.65 and b[3] <= page_h * 0.45:
+            below_ys = [mb[1] for mb in main_blocks if mb[1] >= b[3] - 2.0 and mb is not b]
+            if below_ys:
+                c_y = min(below_ys)
+                if c_y not in candidate_cutoffs:
+                    candidate_cutoffs.append(c_y)
+
     best_split = None
-    best_score = -1
-    for frac in (0.30, 0.33, 0.35, 0.38, 0.40, 0.42, 0.48, 0.62, 0.67):
-        split_x = page_w * frac
-        body_blocks = [b for b in main_blocks if b[1] >= header_cutoff]
-        if len(body_blocks) < 4:
+    best_cutoff = first_section_y
+    best_score = -1.0
+    best_gutter_split = None
+    best_gutter_cutoff = first_section_y
+    best_gutter_score = -1.0
+
+    fracs = [0.24, 0.28, 0.30, 0.33, 0.35, 0.38, 0.40, 0.42, 0.48, 0.52, 0.62, 0.67, 0.72]
+    for cutoff in candidate_cutoffs:
+        body_blocks = [b for b in main_blocks if b[1] >= cutoff]
+        if len(body_blocks) < 3:
             continue
-        left_b = [b for b in body_blocks if b[2] <= split_x + 8]
-        right_b = [b for b in body_blocks if b[0] >= split_x - 8]
-        crossing_b = [b for b in body_blocks if b[0] < split_x - 8 and b[2] > split_x + 8]
+        for frac in fracs:
+            split_x = page_w * frac
+            left_b = [b for b in body_blocks if b[2] <= split_x + 8]
+            right_b = [b for b in body_blocks if b[0] >= split_x - 8 and b not in left_b]
+            crossing_b = [b for b in body_blocks if b[0] < split_x - 8 and b[2] > split_x + 8]
 
-        if len(left_b) >= 2 and len(right_b) >= 2 and len(crossing_b) == 0:
-            # Reject timeline / date-gutter splits so dates remain y-aligned with their roles
-            if _is_date_gutter_column(left_b, detect_section_label_fn) or _is_date_gutter_column(right_b, detect_section_label_fn):
-                continue
+            if len(left_b) >= 1 and len(right_b) >= 1 and len(crossing_b) == 0:
+                left_is_gutter = _is_date_gutter_column(left_b, detect_section_label_fn)
+                right_is_gutter = _is_date_gutter_column(right_b, detect_section_label_fn)
+                left_min_y = min(b[1] for b in left_b)
+                left_max_y = max(b[3] for b in left_b)
+                right_min_y = min(b[1] for b in right_b)
+                right_max_y = max(b[3] for b in right_b)
+                y_overlap = min(left_max_y, right_max_y) - max(left_min_y, right_min_y)
+                left_lines_cnt = sum(b[4].count("\n") + 1 for b in left_b)
+                right_lines_cnt = sum(b[4].count("\n") + 1 for b in right_b)
 
-            # Verify vertical overlap between columns AND multi-line content in both columns
-            left_min_y = min(b[1] for b in left_b)
-            left_max_y = max(b[3] for b in left_b)
-            right_min_y = min(b[1] for b in right_b)
-            right_max_y = max(b[3] for b in right_b)
-            y_overlap = min(left_max_y, right_max_y) - max(left_min_y, right_min_y)
-            left_lines = sum(b[4].count("\n") + 1 for b in left_b)
-            right_lines = sum(b[4].count("\n") + 1 for b in right_b)
-            if y_overlap > 80 and left_lines >= 5 and right_lines >= 5:
-                score = len(left_b) + len(right_b)
-                if score > best_score:
-                    best_score = score
-                    best_split = split_x
+                if left_is_gutter or right_is_gutter:
+                    if len(left_b) >= 2 and len(right_b) >= 2 and y_overlap > 60:
+                        g_score = float(len(left_b) + len(right_b)) - (0.01 if cutoff != first_section_y else 0.0)
+                        if g_score > best_gutter_score:
+                            best_gutter_score = g_score
+                            best_gutter_split = split_x
+                            best_gutter_cutoff = cutoff
+                    continue
+
+                is_prev_cont = (
+                    prev_split_x is not None
+                    and abs(split_x - prev_split_x) <= page_w * 0.12
+                    and y_overlap > 25
+                    and left_lines_cnt >= 2
+                    and right_lines_cnt >= 2
+                )
+                is_std_two_col = (
+                    len(left_b) >= 2
+                    and len(right_b) >= 2
+                    and y_overlap > 80
+                    and left_lines_cnt >= 5
+                    and right_lines_cnt >= 5
+                )
+                if is_std_two_col or is_prev_cont:
+                    score = float(len(left_b) + len(right_b))
+                    if cutoff == first_section_y:
+                        score += 0.5
+                    if prev_split_x is not None and abs(split_x - prev_split_x) <= page_w * 0.10:
+                        score += 0.25
+                    if score > best_score:
+                        best_score = score
+                        best_split = split_x
+                        best_cutoff = cutoff
 
     footer_blocks.sort(key=lambda b: (round(b[1] / 4.0), b[0]))
+    footer_lines = _extract_region_lines_paired(footer_blocks, dict_blocks, detect_section_label_fn)
 
     if best_split is not None:
-        top_blocks = [b for b in main_blocks if b[1] < header_cutoff]
-        body_blocks = [b for b in main_blocks if b[1] >= header_cutoff]
-        top_blocks.sort(key=lambda b: (round(b[1] / 6.0), b[0]))
+        top_blocks = sorted([b for b in main_blocks if b[1] < best_cutoff], key=lambda b: (round(b[1] / 6.0), b[0]))
+        body_blocks = [b for b in main_blocks if b[1] >= best_cutoff]
 
-        left_col = [b for b in body_blocks if b[2] <= best_split + 8]
-        right_col = [b for b in body_blocks if b[0] >= best_split - 8]
-        other_col = [b for b in body_blocks if b not in left_col and b not in right_col]
+        left_col = sorted([b for b in body_blocks if b[2] <= best_split + 8], key=lambda b: (round(b[1] / 4.0), b[0]))
+        right_col = sorted([b for b in body_blocks if b[0] >= best_split - 8 and b not in left_col], key=lambda b: (round(b[1] / 4.0), b[0]))
+        other_col = sorted([b for b in body_blocks if b not in left_col and b not in right_col], key=lambda b: (round(b[1] / 4.0), b[0]))
 
-        left_col.sort(key=lambda b: (round(b[1] / 4.0), b[0]))
-        right_col.sort(key=lambda b: (round(b[1] / 4.0), b[0]))
-        other_col.sort(key=lambda b: (round(b[1] / 4.0), b[0]))
+        top_lines = _extract_region_lines_paired(top_blocks, dict_blocks, detect_section_label_fn)
+        left_lines = _extract_region_lines_paired(left_col, dict_blocks, detect_section_label_fn)
+        right_lines = _extract_region_lines_paired(right_col, dict_blocks, detect_section_label_fn)
+        other_lines = _extract_region_lines_paired(other_col, dict_blocks, detect_section_label_fn)
 
-        ordered = top_blocks + left_col + right_col + other_col + footer_blocks
-        return "\n".join(b[4] for b in ordered)
+        all_lines = top_lines + left_lines + right_lines + other_lines + footer_lines
+        return {
+            "is_two_col": True,
+            "split_x": best_split,
+            "page_w": page_w,
+            "top_lines": top_lines,
+            "left_lines": left_lines,
+            "right_lines": right_lines,
+            "other_lines": other_lines,
+            "footer_lines": footer_lines,
+            "text": "\n".join(all_lines),
+        }
 
-    # Single-column layout: sort visually top-to-bottom, left-to-right
+    if best_gutter_split is not None:
+        top_blocks = sorted([b for b in main_blocks if b[1] < best_gutter_cutoff], key=lambda b: (round(b[1] / 6.0), b[0]))
+        body_blocks = [b for b in main_blocks if b[1] >= best_gutter_cutoff]
+        left_col = [b for b in body_blocks if b[2] <= best_gutter_split + 8]
+        right_col = [b for b in body_blocks if b[0] >= best_gutter_split - 8 and b not in left_col]
+        if _is_date_gutter_column(left_col, detect_section_label_fn):
+            body_lines = _extract_date_gutter_lines(left_col, right_col, dict_blocks, detect_section_label_fn)
+        else:
+            body_lines = _extract_date_gutter_lines(right_col, left_col, dict_blocks, detect_section_label_fn)
+        top_lines = _extract_region_lines_paired(top_blocks, dict_blocks, detect_section_label_fn)
+        all_lines = top_lines + body_lines + footer_lines
+        return {
+            "is_two_col": False,
+            "split_x": None,
+            "page_w": page_w,
+            "top_lines": top_lines,
+            "left_lines": [],
+            "right_lines": [],
+            "other_lines": body_lines,
+            "footer_lines": footer_lines,
+            "text": "\n".join(all_lines),
+        }
+
+    # Single-column layout: sort visually top-to-bottom, left-to-right with dict-level visual row pairing
     ordered_blocks = sorted(main_blocks, key=lambda b: (round(b[1] / 4.0), b[0]))
-    # Pair same-baseline left/right single-line blocks (e.g. Role/Company on left, Date range on right)
-    merged_texts: list[str] = []
-    idx = 0
-    while idx < len(ordered_blocks):
-        curr = ordered_blocks[idx]
-        if idx + 1 < len(ordered_blocks):
-            nxt = ordered_blocks[idx + 1]
-            if (
-                "\n" not in curr[4]
-                and "\n" not in nxt[4]
-                and abs(curr[1] - nxt[1]) <= 4.0
-                and nxt[0] > curr[2] + 4.0
-            ):
-                curr_has_date = bool(_PDF_DATE_HINT_RE.search(curr[4]))
-                nxt_has_date = bool(_PDF_DATE_HINT_RE.search(nxt[4]))
-                if (curr_has_date and len(nxt[4]) < 80) or (nxt_has_date and len(curr[4]) < 80):
-                    merged_texts.append(f"{curr[4]} | {nxt[4]}")
-                    idx += 2
-                    continue
-        merged_texts.append(curr[4])
-        idx += 1
+    body_lines = _extract_region_lines_paired(ordered_blocks, dict_blocks, detect_section_label_fn)
+    all_lines = body_lines + footer_lines
+    return {
+        "is_two_col": False,
+        "split_x": None,
+        "page_w": page_w,
+        "top_lines": [],
+        "left_lines": [],
+        "right_lines": [],
+        "other_lines": body_lines,
+        "footer_lines": footer_lines,
+        "text": "\n".join(all_lines),
+    }
 
-    for fb in footer_blocks:
-        merged_texts.append(fb[4])
-    return "\n".join(merged_texts)
+
+def _extract_page_text_layout_aware(page) -> str:
+    """
+    Extracts text from a PyMuPDF page while preserving visual reading order:
+    - Sorts out-of-order PDF stream blocks top-to-bottom.
+    - Detects two-column (sidebar + main) layouts so left-column sections
+      (e.g. CONTACT, EDUCATION, SKILLS, CERTIFICATION) never interleave into
+      right-column sections (e.g. PROFILE, EXPERIENCE).
+    - Separates bottom page footers and aligns date-only timeline gutters with their roles.
+    """
+    return _extract_page_layout_parts(page)["text"]
 
 
 def extract_text_from_pdf(file_input: Union[str, bytes, io.BytesIO]) -> str:
@@ -178,6 +588,13 @@ def extract_text_from_pdf(file_input: Union[str, bytes, io.BytesIO]) -> str:
     fitz_text = ""
     extra_links = []
 
+    detect_section_label_fn = None
+    try:
+        from app.extractors.content.section_parser import detect_section_label
+        detect_section_label_fn = detect_section_label
+    except Exception:
+        pass
+
     # Engine 1: PyMuPDF (fitz) with layout-aware block ordering
     try:
         if isinstance(file_input, bytes):
@@ -186,19 +603,32 @@ def extract_text_from_pdf(file_input: Union[str, bytes, io.BytesIO]) -> str:
             doc = fitz.open(stream=file_input.getvalue(), filetype="pdf")
         else:
             doc = fitz.open(file_input)
-        pages = []
+        pages_parts: list[dict] = []
+        prev_two_col_split: float | None = None
         for page in doc:
-            page_text = _extract_page_text_layout_aware(page)
-            # Scanned or image-only PDF page fallback to OCR
+            parts = _extract_page_layout_parts(page, prev_split_x=prev_two_col_split)
+            page_text = parts["text"]
+            # Scanned or image-only PDF page fallback to OCR at 250 DPI
             if not page_text or len(page_text.strip()) < 20:
                 try:
-                    ocr_tp = page.get_textpage_ocr(flags=0, dpi=150, full=True)
+                    ocr_tp = page.get_textpage_ocr(flags=0, dpi=250, full=True)
                     ocr_text = ocr_tp.extractText()
                     if ocr_text and len(ocr_text.strip()) > len(page_text.strip()):
-                        page_text = ocr_text
+                        parts = {
+                            "is_two_col": False,
+                            "split_x": None,
+                            "page_w": float(page.rect.width or 600.0),
+                            "top_lines": [],
+                            "left_lines": [],
+                            "right_lines": [],
+                            "other_lines": ocr_text.splitlines(),
+                            "footer_lines": [],
+                            "text": ocr_text,
+                        }
                 except Exception:
                     pass
-            pages.append(page_text)
+            pages_parts.append(parts)
+            prev_two_col_split = parts["split_x"] if parts.get("is_two_col") else None
 
             # Check links
             for link in page.get_links():
@@ -222,7 +652,41 @@ def extract_text_from_pdf(file_input: Union[str, bytes, io.BytesIO]) -> str:
                     extra_links.append(f"Phone Annotation: {content.strip()}")
 
         doc.close()
-        fitz_text = "\n".join(pages).strip()
+
+        # Multi-page 2-column continuity: if page p+1 continues a 2-column layout and its
+        # right column starts without a section header (continuing page p's right column),
+        # emit page p+1's right column before page p+1's left sidebar.
+        page_texts: list[str] = []
+        for idx, p_info in enumerate(pages_parts):
+            if (
+                idx > 0
+                and pages_parts[idx - 1].get("is_two_col")
+                and p_info.get("is_two_col")
+                and p_info.get("right_lines")
+                and p_info.get("left_lines")
+            ):
+                prev_sx = pages_parts[idx - 1].get("split_x") or 0.0
+                curr_sx = p_info.get("split_x") or 0.0
+                pw = p_info.get("page_w") or 600.0
+                first_right = next((ln.strip() for ln in p_info["right_lines"] if ln.strip()), "")
+                right_starts_with_hdr = (
+                    detect_section_label_fn is not None
+                    and bool(first_right)
+                    and detect_section_label_fn(first_right) is not None
+                )
+                if abs(curr_sx - prev_sx) <= pw * 0.15 and not right_starts_with_hdr:
+                    reordered = (
+                        p_info["top_lines"]
+                        + p_info["right_lines"]
+                        + p_info["left_lines"]
+                        + p_info["other_lines"]
+                        + p_info["footer_lines"]
+                    )
+                    page_texts.append("\n".join(reordered))
+                    continue
+            page_texts.append(p_info["text"])
+
+        fitz_text = "\n".join(page_texts).strip()
     except Exception as e:
         print(f"PyMuPDF extraction error: {e}")
 
@@ -239,7 +703,8 @@ def extract_text_from_pdf(file_input: Union[str, bytes, io.BytesIO]) -> str:
         print(f"pdfminer error reading PDF file: {e}")
 
     # Structural evaluation: Detect header inversions (e.g. EDUCATION placed below school)
-    def _inversion_penalty(t: str) -> int:
+    # and dropped sections / heavy text loss compared to the alternative engine.
+    def _inversion_penalty(t: str, other_t: str = "") -> int:
         if not t:
             return 999
         penalty = 0
@@ -261,12 +726,18 @@ def extract_text_from_pdf(file_input: Union[str, bytes, io.BytesIO]) -> str:
             secs = split_into_sections(t)
             if "SKILLS" in secs and not secs["SKILLS"].strip():
                 penalty += 50
+            if other_t:
+                other_secs = split_into_sections(other_t)
+                if other_secs.get("EXPERIENCE", "").strip() and not secs.get("EXPERIENCE", "").strip():
+                    penalty += 60
         except Exception:
             pass
+        if other_t and len(t) < len(other_t) * 0.70:
+            penalty += 40
         return penalty
 
-    p_fitz = _inversion_penalty(fitz_text)
-    p_pm = _inversion_penalty(pm_text)
+    p_fitz = _inversion_penalty(fitz_text, pm_text)
+    p_pm = _inversion_penalty(pm_text, fitz_text)
 
     # Select the text that preserves natural reading order (prefer layout-ordered PyMuPDF when equal)
     if p_fitz <= p_pm and len(fitz_text) >= 40:

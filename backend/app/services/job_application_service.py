@@ -24,17 +24,23 @@ def _resolve_application_years(
     if total_months:
         try:
             if int(total_months) > 0:
-                return max(1, round(int(total_months) / 12.0))
+                return max(1, (int(total_months) + 6) // 12)
         except (TypeError, ValueError):
             pass
     if isinstance(work_experiences, list) and work_experiences:
+        from app.extractors.content.experience_extractor import _compute_merged_experience_months
+        merged_months = _compute_merged_experience_months(
+            [we for we in work_experiences if isinstance(we, dict)]
+        )
+        if merged_months > 0:
+            return max(1, (merged_months + 6) // 12)
         summed_months = sum(
             int(we.get("duration_months") or 0)
             for we in work_experiences
             if isinstance(we, dict)
         )
         if summed_months > 0:
-            return max(1, round(summed_months / 12.0))
+            return max(1, (summed_months + 6) // 12)
     try:
         import re
         combined = f"{relevance or ''} | {relevant_experience or ''}"
