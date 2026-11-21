@@ -82,19 +82,31 @@ _SECTION_DEFINITIONS: dict[str, list[str]] = {
         "TECHNICAL SKILLS & CERTIFICATIONS", "TECHNICAL SKILLS AND CERTIFICATIONS",
     ],
     "EXPERIENCE": [
-        "EXPERIENCE", "WORK HISTORY", "EMPLOYMENT", "PROFESSIONAL BACKGROUND",
-        "WORK EXPERIENCE", "PROFESSIONAL EXPERIENCE", "CAREER HISTORY",
+        "EXPERIENCE", "EXPERIENCES", "WORK HISTORY", "EMPLOYMENT", "PROFESSIONAL BACKGROUND",
+        "WORK EXPERIENCE", "WORK EXPERIENCES", "WORKING EXPERIENCE", "PROFESSIONAL EXPERIENCE",
+        "PROFESSIONAL EXPERIENCES", "CAREER HISTORY",
         "RELEVANT EXPERIENCE", "EMPLOYMENT HISTORY", "JOB EXPERIENCE",
-        "CAREER SUMMARY", "CAREER EXPERIENCE",
+        "CAREER SUMMARY", "CAREER EXPERIENCE", "CAREER OVERVIEW", "CAREER TRACK",
+        "PROFESSIONAL CAREER", "CAREER TIMELINE", "EMPLOYMENT TIMELINE",
         "POSITIONS HELD", "WORK RECORD", "INDUSTRY EXPERIENCE",
         "PROFESSIONAL HISTORY", "WORK AND EXPERIENCE",
-        "RELEVANT WORK EXPERIENCE", "EMPLOYMENT RECORD",
+        "RELEVANT WORK EXPERIENCE", "RELEVANT WORK HISTORY", "PROFESSIONAL WORK EXPERIENCE",
+        "EMPLOYMENT RECORD", "EMPLOYMENT DETAILS", "EMPLOYMENT SUMMARY", "WORK SUMMARY",
         "ON-THE-JOB TRAINING (OJT)", "ON-THE-JOB TRAINING", "ON THE JOB TRAINING",
-        "OJT", "INTERNSHIP", "INTERNSHIPS", "PRACTICUM",
+        "OJT", "OJT EXPERIENCE", "INTERNSHIP", "INTERNSHIPS", "INTERNSHIP EXPERIENCE",
+        "PRACTICUM", "ON-THE-JOB TRAINING EXPERIENCE",
         "ON-THE-JOB TRAINING / INTERNSHIP", "ON-THE-JOB TRAINING (OJT) / INTERNSHIP / PRACTICUM",
         "PRACTICUM / INTERNSHIP", "INTERNSHIP / PRACTICUM", "APPRENTICESHIP",
+        "WORK & INTERNSHIP EXPERIENCE", "WORK AND INTERNSHIP EXPERIENCE",
+        "EXPERIENCE & INTERNSHIP", "WORK / OJT EXPERIENCE",
         "WORK BACKGROUND", "OCCUPATIONAL HISTORY", "EMPLOYMENT BACKGROUND",
-        "CAREER BACKGROUND", "RELEVANT EMPLOYMENT",
+        "CAREER BACKGROUND", "RELEVANT EMPLOYMENT", "JOB HISTORY", "JOBS HELD",
+        "PREVIOUS EMPLOYMENT", "PAST EXPERIENCE", "CURRENT & PREVIOUS EMPLOYMENT",
+        "WORK ENGAGEMENTS", "OTHER EXPERIENCE", "ADDITIONAL EXPERIENCE",
+        "RELATED EXPERIENCE", "PRIOR EXPERIENCE", "PRACTICAL EXPERIENCE",
+        "INDUSTRIAL EXPERIENCE", "FIELD EXPERIENCE", "CLINICAL EXPERIENCE",
+        "TEACHING EXPERIENCE", "CORPORATE EXPERIENCE", "MILITARY EXPERIENCE",
+        "FREELANCE EXPERIENCE", "CONSULTING EXPERIENCE", "LEADERSHIP & WORK EXPERIENCE",
     ],
     "EDUCATION": [
         "EDUCATION", "ACADEMIC", "QUALIFICATIONS", "SCHOLASTIC",
@@ -284,12 +296,28 @@ def _match_header_text(normalised: str, allow_fuzzy: bool = True) -> Optional[st
         )
     ):
         return "SKILLS"
-    if re.search(r'\b(?:WORK|EMPLOYMENT|PROFESSIONAL|CAREER)\b', normalised) and re.search(r'\b(?:EXPERIENCE|HISTORY|BACKGROUND|RECORD)\b', normalised):
+    if re.search(r'\b(?:WORK|WORKING|EMPLOYMENT|PROFESSIONAL|CAREER|INDUSTRY|RELEVANT|PRACTICAL|FIELD|CLINICAL|TEACHING|CORPORATE|FREELANCE|INTERNSHIP|OJT)\b', normalised) and re.search(r'\b(?:EXPERIENCES?|HISTORY|BACKGROUND|RECORD|TIMELINE)\b', normalised):
         return "EXPERIENCE"
     if re.search(r'\b(?:EDUCATION|EDUCATIONAL|ACADEMIC|SCHOLASTIC)\b', normalised) and not re.search(
         r'\b(?:PHYSICAL|SPECIAL|CONTINUING|DEPARTMENT|MINISTRY|BOARD)\s+EDUCATION\b', normalised
     ):
         return "EDUCATION"
+
+    # Fuzzy fallback for common typos in standalone 1-4 word headers (e.g. EXPERIANCE, EMPLOYEMENT)
+    if len(normalised.split()) <= 4 and len(normalised) >= 6 and re.fullmatch(r'[A-Z\s&-]+', normalised):
+        try:
+            from rapidfuzz import fuzz, process
+            _FUZZY_TARGETS = [
+                "EXPERIENCE", "WORK EXPERIENCE", "WORKING EXPERIENCE",
+                "PROFESSIONAL EXPERIENCE", "EMPLOYMENT HISTORY", "RELEVANT EXPERIENCE",
+                "EDUCATION", "EDUCATIONAL BACKGROUND", "SKILLS", "TECHNICAL SKILLS",
+                "CERTIFICATIONS", "REFERENCES", "SUMMARY",
+            ]
+            best = process.extractOne(normalised, _FUZZY_TARGETS, scorer=fuzz.ratio, score_cutoff=88)
+            if best:
+                return _HEADER_MAP.get(best[0])
+        except Exception:
+            pass
 
     return None
 
@@ -469,6 +497,16 @@ def split_into_sections(text: str) -> dict[str, str]:
                         and current_label in ("PROJECTS", "EXPERIENCE")
                     ):
                         sections.setdefault("SKILLS", []).append(inline_after)
+                        sections[current_label].append(line)
+                        continue
+                    # Inside EXPERIENCE, inline duty/sub-labels ("Training: ...", "Projects: ...", "Achievements: ...")
+                    # describe aspects of the current job and must not hijack subsequent jobs out of EXPERIENCE
+                    if (
+                        is_colon_split
+                        and inline_after
+                        and current_label == "EXPERIENCE"
+                        and label in ("TRAINING", "PROJECTS", "AWARDS", "CERTIFICATIONS")
+                    ):
                         sections[current_label].append(line)
                         continue
 
