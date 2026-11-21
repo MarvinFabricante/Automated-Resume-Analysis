@@ -725,7 +725,7 @@ const SystemSettings: React.FC = () => {
             </div>
             <h3 className="text-lg font-extrabold text-gray-900">Re-evaluate Candidate Scores?</h3>
             <p className="text-xs text-gray-500 mt-2 leading-relaxed">
-              This will recompute the ATS match percentage, skill breakdowns, and explanations for all existing job applications using your currently active configuration.
+              This will recompute the ATS match percentage, skill breakdowns, and explanations for all existing job applications using your currently active configuration. Application statuses and shortlist rosters will not be modified.
             </p>
             <p className="text-xs font-semibold text-gray-700 mt-2 bg-gray-50 p-2.5 rounded-xl">
               Make sure you have saved your desired weights before proceeding.

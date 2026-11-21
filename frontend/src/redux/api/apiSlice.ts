@@ -22,9 +22,11 @@ const normalizeApplicationItem = (app: any) => ({
     app.match_score !== null && app.match_score !== undefined
       ? Number(app.match_score)
       : Math.round(
-        (app.skills_score || 0) * 0.4 +
-        (app.experience_score || 0) * 0.4 +
-        (app.certifications_score || app.education_score || 0) * 0.2
+        (app.skills_score || 0) * 0.40 +
+        (app.experience_score || 0) * 0.30 +
+        (app.education_score || 0) * 0.15 +
+        (app.certifications_score || 0) * 0.10 +
+        (app.completeness_score ?? 100) * 0.05
       ) || 0,
   skillsScore: app.skills_score || 0,
   experienceScore: app.experience_score || 0,
@@ -34,6 +36,10 @@ const normalizeApplicationItem = (app: any) => ({
   completenessScore: app.completeness_score ?? null,
   completeness_score: app.completeness_score ?? null,
   applied_weights: app.applied_weights ?? null,
+  skills_status: app.skills_status || null,
+  experience_status: app.experience_status || null,
+  education_status: app.education_status || null,
+  certifications_status: app.certifications_status || null,
   skills_reason: app.skills_reason,
   experience_reason: app.experience_reason,
   education_reason: app.education_reason,

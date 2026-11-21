@@ -99,37 +99,76 @@ def _apply_experience_gap_evaluation(data: dict, job_desc) -> None:
         data["experience_gaps"] = None
 
 
+def _sanitize_application_payload(data: dict) -> None:
+    """
+    Strip standalone no-value markers ('None', 'N/A', 'wala', '-', etc.) from
+    applicant-supplied resume/profile fields before persistence and gap checks.
+    """
+    from app.services.requirement_rules import clean_list_items, normalize_requirement_text
+
+    if "skills" in data:
+        if isinstance(data["skills"], list):
+            data["skills"] = clean_list_items(data["skills"])
+        elif isinstance(data["skills"], str):
+            cleaned_skills = clean_list_items(data["skills"])
+            data["skills"] = cleaned_skills
+
+    for text_field in (
+        "company",
+        "job_title",
+        "relevance",
+        "degree",
+        "college",
+        "highest_educational_attainment",
+        "certifications",
+        "candidate_certifications",
+    ):
+        if text_field in data and data[text_field] is not None:
+            data[text_field] = normalize_requirement_text(data[text_field])
+
+
 def _resume_data_from_application(app: JobApplication) -> dict:
-    skills = app.skills or []
-    if isinstance(skills, list):
-        skills_text = " | ".join(str(skill).strip() for skill in skills if str(skill).strip())
-    else:
-        skills_text = str(skills or "")
+    from app.services.requirement_rules import clean_list_items, normalize_requirement_text
+
+    cleaned_skills = clean_list_items(app.skills or [])
+    skills_text = " | ".join(cleaned_skills)
 
     exp_parts = []
-    if app.job_title or app.company:
-        exp_parts.append(f"{app.job_title} at {app.company}" if (app.job_title and app.company) else (app.job_title or app.company))
+    app_title = normalize_requirement_text(app.job_title)
+    app_company = normalize_requirement_text(app.company)
+    if app_title or app_company:
+        exp_parts.append(f"{app_title} at {app_company}" if (app_title and app_company) else (app_title or app_company))
+    cleaned_work_exps = []
     if getattr(app, "work_experiences", None) and isinstance(app.work_experiences, list):
         for we in app.work_experiences:
             if isinstance(we, dict):
-                r_title = we.get("job_title") or we.get("role") or we.get("title") or ""
-                r_comp = we.get("company_name") or we.get("company") or ""
+                r_title = normalize_requirement_text(we.get("job_title") or we.get("role") or we.get("title")) or ""
+                r_comp = normalize_requirement_text(we.get("company_name") or we.get("company")) or ""
                 if r_title or r_comp:
+                    cleaned_work_exps.append(we)
                     entry_str = f"{r_title} at {r_comp}" if (r_title and r_comp) else (r_title or r_comp)
                     if entry_str not in exp_parts:
                         exp_parts.append(entry_str)
-    if app.relevant_experience and app.relevant_experience not in exp_parts:
-        exp_parts.append(app.relevant_experience)
+                elif we.get("responsibilities") or we.get("description"):
+                    cleaned_work_exps.append(we)
+    rel_exp = normalize_requirement_text(app.relevant_experience)
+    if rel_exp and rel_exp not in exp_parts:
+        exp_parts.append(rel_exp)
 
     experience_text = " | ".join(part for part in exp_parts if part)
 
     years_experience = _resolve_application_years(
         explicit_years=getattr(app, "years_experience", None),
         total_months=getattr(app, "total_experience_months", 0) or 0,
-        work_experiences=getattr(app, "work_experiences", None),
-        relevance=app.relevance or "",
-        relevant_experience=app.relevant_experience or "",
+        work_experiences=cleaned_work_exps or getattr(app, "work_experiences", None),
+        relevance=normalize_requirement_text(app.relevance) or "",
+        relevant_experience=rel_exp or "",
     )
+
+    degree = normalize_requirement_text(app.degree) or normalize_requirement_text(getattr(app, "candidate_degree", None)) or ""
+    college = normalize_requirement_text(app.college) or ""
+    highest_edu = normalize_requirement_text(getattr(app, "highest_educational_attainment", None)) or degree
+    certs = normalize_requirement_text(getattr(app, "certifications", None)) or normalize_requirement_text(getattr(app, "candidate_certifications", None)) or ""
 
     return {
         "id": app.id,
@@ -138,16 +177,21 @@ def _resume_data_from_application(app: JobApplication) -> dict:
         "email": app.candidate_email,
         "phone": app.phone or "",
         "location": app.location or "",
+        "job_title": app_title or "",
         "skills": skills_text,
+        "skills_list": cleaned_skills,
         "experience": experience_text,
-        "work_experiences": getattr(app, "work_experiences", []) or [],
+        "work_experiences": cleaned_work_exps,
         "total_experience_months": getattr(app, "total_experience_months", 0) or 0,
         "years_experience": years_experience,
-        "education": " - ".join(part for part in [app.degree, app.college] if part),
-        "highest_degree": app.degree or "",
-        "highest_educational_attainment": getattr(app, "highest_educational_attainment", None) or app.degree or "",
+        "education": " - ".join(part for part in [degree, college] if part),
+        "degree": degree,
+        "college": college,
+        "highest_degree": degree,
+        "highest_educational_attainment": highest_edu,
         "education_entries": getattr(app, "education_entries", []) or [],
-        "certifications": getattr(app, "certifications", None) or "",
+        "certifications": certs,
+        "candidate_certifications": certs,
         "completeness_score": getattr(app, "completeness_score", None),
     }
 
@@ -380,6 +424,7 @@ async def create_job_application(
             data = application_in.model_dump()
             if 'job_id' in data:
                 del data['job_id']
+            _sanitize_application_payload(data)
             _apply_experience_gap_evaluation(data, job_desc)
             valid_cols = set(JobApplication.__table__.columns.keys())
             for k, v in data.items():
@@ -431,6 +476,7 @@ async def create_job_application(
     if 'job_id' in data:
         del data['job_id']
 
+    _sanitize_application_payload(data)
     _apply_experience_gap_evaluation(data, job_desc)
 
     # Create the application via repository

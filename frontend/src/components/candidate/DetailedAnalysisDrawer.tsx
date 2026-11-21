@@ -14,6 +14,10 @@ import {
   Sparkles,
 } from 'lucide-react';
 import HelpTooltip from '../common/HelpTooltip';
+import {
+  resolveCriterionStatus,
+  getCriterionStatusBadgeStyle,
+} from '../../utils/criterionStatus';
 
 interface DetailedAnalysisDrawerProps {
   isOpen: boolean;
@@ -157,7 +161,30 @@ const DetailedAnalysisDrawer: React.FC<DetailedAnalysisDrawerProps> = ({
   const skillsReason = formatSecondPersonText(match.skills_reason, candidateName);
   const expReason = formatSecondPersonText(match.experience_reason || match.experience_explanation, candidateName);
   const eduReason = formatSecondPersonText(match.education_reason, candidateName);
+  const certsReason = formatSecondPersonText(match.certifications_reason || match.certification_explanation, candidateName);
   const aiSummary = formatSecondPersonText(match.ai_summary, candidateName);
+
+  const skillsStatus = resolveCriterionStatus({
+    explicitStatus: match.skills_status,
+    reason: match.skills_reason,
+    score: match.skills_score,
+  });
+  const expStatus = resolveCriterionStatus({
+    explicitStatus: match.experience_status,
+    reason: match.experience_reason,
+    score: match.experience_score,
+    isBelowMinimum: Boolean(match.experience_below_minimum),
+  });
+  const eduStatus = resolveCriterionStatus({
+    explicitStatus: match.education_status,
+    reason: match.education_reason,
+    score: match.education_score,
+  });
+  const certsStatus = resolveCriterionStatus({
+    explicitStatus: match.certifications_status,
+    reason: match.certifications_reason || match.certification_explanation,
+    score: match.certifications_score,
+  });
 
   return (
     <div
@@ -247,22 +274,49 @@ const DetailedAnalysisDrawer: React.FC<DetailedAnalysisDrawerProps> = ({
               <div className="space-y-2.5">
                 {skillsReason && (
                   <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-100">
-                    <p className="text-xs font-bold text-slate-900 mb-0.5">Skills Alignment</p>
+                    <div className="flex items-center justify-between gap-2 mb-0.5">
+                      <p className="text-xs font-bold text-slate-900">Skills Alignment</p>
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${getCriterionStatusBadgeStyle(skillsStatus).badgeClass}`}>
+                        {skillsStatus}
+                      </span>
+                    </div>
                     <p className="text-xs text-slate-600 leading-relaxed">{skillsReason}</p>
                   </div>
                 )}
 
                 {expReason && (
                   <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-100">
-                    <p className="text-xs font-bold text-slate-900 mb-0.5">Experience Background</p>
+                    <div className="flex items-center justify-between gap-2 mb-0.5">
+                      <p className="text-xs font-bold text-slate-900">Experience Background</p>
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${getCriterionStatusBadgeStyle(expStatus).badgeClass}`}>
+                        {expStatus}
+                      </span>
+                    </div>
                     <p className="text-xs text-slate-600 leading-relaxed">{expReason}</p>
                   </div>
                 )}
 
                 {eduReason && (
                   <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-100">
-                    <p className="text-xs font-bold text-slate-900 mb-0.5">Education</p>
+                    <div className="flex items-center justify-between gap-2 mb-0.5">
+                      <p className="text-xs font-bold text-slate-900">Education</p>
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${getCriterionStatusBadgeStyle(eduStatus).badgeClass}`}>
+                        {eduStatus}
+                      </span>
+                    </div>
                     <p className="text-xs text-slate-600 leading-relaxed">{eduReason}</p>
+                  </div>
+                )}
+
+                {certsReason && (
+                  <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-100">
+                    <div className="flex items-center justify-between gap-2 mb-0.5">
+                      <p className="text-xs font-bold text-slate-900">Certifications & Trainings</p>
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${getCriterionStatusBadgeStyle(certsStatus).badgeClass}`}>
+                        {certsStatus}
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-600 leading-relaxed">{certsReason}</p>
                   </div>
                 )}
               </div>

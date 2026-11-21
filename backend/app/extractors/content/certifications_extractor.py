@@ -592,7 +592,8 @@ class PhilippineCertificationsExtractor:
             items = split_compound_cert_line(target_line, in_cert_section=in_cert_section)
 
             for item in items:
-                if _NON_ITEM_METADATA_RE.match(item) or _PURE_DATE_OR_YEAR_RE.match(item):
+                from app.services.requirement_rules import is_no_value
+                if is_no_value(item) or _NON_ITEM_METADATA_RE.match(item) or _PURE_DATE_OR_YEAR_RE.match(item):
                     continue
 
                 matched_for_item = False

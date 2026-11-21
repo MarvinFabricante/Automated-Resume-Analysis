@@ -240,19 +240,28 @@ const CandidateCard: React.FC<CandidateCardProps> = ({
 
             {/* Mini Score Pillar Breakdown */}
             <div className="grid grid-cols-3 sm:flex items-center gap-1.5 sm:gap-2 w-full sm:w-auto bg-gray-50/90 px-2.5 py-1.5 rounded-xl border border-gray-100 mt-2 sm:mt-0">
-              <div className="flex items-center justify-center sm:justify-start gap-1 text-[10px] font-bold text-blue-700" title="Skills score (40% weight)">
+              <div
+                className="flex items-center justify-center sm:justify-start gap-1 text-[10px] font-bold text-blue-700"
+                title={`Skills score (${candidate.applied_weights?.skills ?? 40}% weight)`}
+              >
                 <Zap size={11} className="text-blue-500 shrink-0" />
                 <span className="text-[9px] uppercase tracking-wider text-gray-400 font-semibold sm:hidden">Skill</span>
                 <span>{Math.round(candidate.skillsScore || 0)}%</span>
               </div>
               <span className="hidden sm:inline text-gray-300 text-xs">|</span>
-              <div className="flex items-center justify-center sm:justify-start gap-1 text-[10px] font-bold text-purple-700" title="Experience score (40% weight)">
+              <div
+                className="flex items-center justify-center sm:justify-start gap-1 text-[10px] font-bold text-purple-700"
+                title={`Experience score (${candidate.applied_weights?.experience ?? 30}% weight)`}
+              >
                 <Briefcase size={11} className="text-purple-500 shrink-0" />
                 <span className="text-[9px] uppercase tracking-wider text-gray-400 font-semibold sm:hidden">Exp</span>
                 <span>{Math.round(candidate.experienceScore || 0)}%</span>
               </div>
               <span className="hidden sm:inline text-gray-300 text-xs">|</span>
-              <div className="flex items-center justify-center sm:justify-start gap-1 text-[10px] font-bold text-amber-700" title="Education score (20% weight)">
+              <div
+                className="flex items-center justify-center sm:justify-start gap-1 text-[10px] font-bold text-amber-700"
+                title={`Education score (${candidate.applied_weights?.education ?? 15}% weight)`}
+              >
                 <GraduationCap size={11} className="text-amber-500 shrink-0" />
                 <span className="text-[9px] uppercase tracking-wider text-gray-400 font-semibold sm:hidden">Edu</span>
                 <span>{Math.round(candidate.educationScore || 0)}%</span>

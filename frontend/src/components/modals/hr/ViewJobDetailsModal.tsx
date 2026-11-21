@@ -151,41 +151,41 @@ const ViewJobDetailsModal: React.FC<ViewJobDetailsModalProps> = ({ isOpen, onClo
                   <code className="text-xs sm:text-sm font-mono font-bold text-gray-800">{job.job_id}</code>
                 </div>
 
-                {job.education_requirements && (
-                  <div className="p-4 sm:p-6 rounded-2xl sm:rounded-3xl bg-blue-50/50 border border-blue-100/50">
-                    <div className="flex items-center gap-2 mb-2 text-blue-700">
-                      <GraduationCap size={16} />
-                      <span className="text-xs font-bold uppercase tracking-wider">Education Needed</span>
-                    </div>
-                    <p className="text-xs sm:text-sm text-gray-800 font-bold leading-normal">
-                      {job.education_requirements}
-                    </p>
+                <div className="p-4 sm:p-6 rounded-2xl sm:rounded-3xl bg-blue-50/50 border border-blue-100/50">
+                  <div className="flex items-center gap-2 mb-2 text-blue-700">
+                    <GraduationCap size={16} />
+                    <span className="text-xs font-bold uppercase tracking-wider">Education Needed</span>
                   </div>
-                )}
+                  <p className="text-xs sm:text-sm text-gray-800 font-bold leading-normal">
+                    {!job.education_requirements || /^(?:none|n\/?a|not required|not applicable|wala|-+)$/i.test(String(job.education_requirements).trim())
+                      ? 'Not required'
+                      : job.education_requirements}
+                  </p>
+                </div>
 
-                {job.experience_requirements && (
-                  <div className="p-4 sm:p-6 rounded-2xl sm:rounded-3xl bg-orange-50/50 border border-orange-100/50">
-                    <div className="flex items-center gap-2 mb-2 text-orange-700">
-                      <Trophy size={16} />
-                      <span className="text-xs font-bold uppercase tracking-wider">Experience Needed</span>
-                    </div>
-                    <p className="text-xs sm:text-sm text-gray-800 font-bold leading-normal">
-                      {job.experience_requirements}
-                    </p>
+                <div className="p-4 sm:p-6 rounded-2xl sm:rounded-3xl bg-orange-50/50 border border-orange-100/50">
+                  <div className="flex items-center gap-2 mb-2 text-orange-700">
+                    <Trophy size={16} />
+                    <span className="text-xs font-bold uppercase tracking-wider">Experience Needed</span>
                   </div>
-                )}
+                  <p className="text-xs sm:text-sm text-gray-800 font-bold leading-normal">
+                    {!job.experience_requirements || /^(?:none|n\/?a|not required|not applicable|wala|-+)$/i.test(String(job.experience_requirements).trim())
+                      ? 'Not required'
+                      : job.experience_requirements}
+                  </p>
+                </div>
 
-                {job.certifications_requirements && (
-                  <div className="p-4 sm:p-6 rounded-2xl sm:rounded-3xl bg-purple-50/50 border border-purple-100/50">
-                    <div className="flex items-center gap-2 mb-2 text-purple-700">
-                      <Award size={16} />
-                      <span className="text-xs font-bold uppercase tracking-wider">Certifications</span>
-                    </div>
-                    <p className="text-xs sm:text-sm text-gray-800 font-bold leading-normal">
-                      {job.certifications_requirements}
-                    </p>
+                <div className="p-4 sm:p-6 rounded-2xl sm:rounded-3xl bg-purple-50/50 border border-purple-100/50">
+                  <div className="flex items-center gap-2 mb-2 text-purple-700">
+                    <Award size={16} />
+                    <span className="text-xs font-bold uppercase tracking-wider">Certifications</span>
                   </div>
-                )}
+                  <p className="text-xs sm:text-sm text-gray-800 font-bold leading-normal">
+                    {!job.certifications_requirements || /^(?:none|n\/?a|not required|not applicable|wala|-+)$/i.test(String(job.certifications_requirements).trim())
+                      ? 'Not required'
+                      : job.certifications_requirements}
+                  </p>
+                </div>
 
                 {(() => {
                   const activeWeights = job.scoring_weights || DEFAULT_JOB_SCORING_WEIGHTS;

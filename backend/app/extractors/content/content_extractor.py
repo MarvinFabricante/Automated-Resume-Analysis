@@ -124,6 +124,8 @@ def _post_process(data: dict) -> dict:
     - Cleans up empty/whitespace-only fields
     - Ensures consistency and validates values
     """
+    from app.services.requirement_rules import is_no_value, clean_list_items
+
     string_fields = [
         "fullname", "email", "phone", "location", "job_title", "company",
         "relevance", "experience", "education", "degree", "highest_degree",
@@ -131,9 +133,17 @@ def _post_process(data: dict) -> dict:
     ]
     for key in string_fields:
         if key in data and isinstance(data[key], str):
-            data[key] = data[key].strip()
-            data[key] = re.sub(r'\s*\|\s*\|\s*', ' | ', data[key])
-            data[key] = data[key].strip(' |')
+            val = data[key].strip()
+            val = re.sub(r'\s*\|\s*\|\s*', ' | ', val)
+            val = val.strip(' |')
+            if key in {"skills", "certifications", "education", "degree", "highest_degree", "institution", "college", "company", "job_title", "experience"} and is_no_value(val):
+                val = ""
+            data[key] = val
+
+    if isinstance(data.get("skills_list"), list):
+        data["skills_list"] = clean_list_items(data["skills_list"])
+    if isinstance(data.get("certifications_list"), list):
+        data["certifications_list"] = clean_list_items(data["certifications_list"])
 
     # Validate email
     email = data.get("email", "")
@@ -748,7 +758,8 @@ def assess_resume_completeness(data: dict, sections: Optional[dict] = None, raw_
     education_str = (data.get("education") or "").strip()
     edu_section = sections.get("EDUCATION", "").strip() if sections else ""
 
-    placeholder_edu = bool(re.search(r'^(?:none|n/?a|not\s+applicable)$', edu_section, re.I))
+    from app.services.requirement_rules import is_no_value
+    placeholder_edu = is_no_value(edu_section) or bool(re.search(r'^(?:none|n/?a|not\s+applicable)$', edu_section, re.I))
     has_other_headers_for_edu = bool(sections and any(k in sections for k in ("EXPERIENCE", "SKILLS", "CERTIFICATIONS")))
     if has_other_headers_for_edu and not edu_section:
         has_education = False
@@ -779,9 +790,9 @@ def assess_resume_completeness(data: dict, sections: Optional[dict] = None, raw_
     skills_details = data.get("skills_details") or {}
     skills_section_present = bool(sections and "SKILLS" in sections)
     skills_section = sections.get("SKILLS", "").strip() if sections else ""
-    has_extracted_skills = bool(skills_list or (skills_str and len(skills_str) > 2))
+    has_extracted_skills = bool(skills_list or (skills_str and not is_no_value(skills_str) and len(skills_str) > 2))
 
-    placeholder_skills = bool(re.search(r'^(?:none|n/?a|not\s+applicable)\.?$', skills_section, re.I))
+    placeholder_skills = is_no_value(skills_section) or bool(re.search(r'^(?:none|n/?a|not\s+applicable)\.?$', skills_section, re.I))
     has_other_headers_for_skills = bool(sections and any(k in sections for k in ("EXPERIENCE", "EDUCATION", "CERTIFICATIONS")))
 
     if placeholder_skills:

@@ -157,7 +157,42 @@ const ApplicantProfile: React.FC<ApplicantProfileProps> = ({
   const statusHistory = profile?.status_history || [];
   const summaryStrip = profile?.summary_strip || 'Candidate Profile';
 
-  const content = (
+  const content = isLoading ? (
+    <div className="w-full max-w-6xl mx-auto py-16 flex flex-col items-center justify-center text-slate-500 space-y-3">
+      <div className="w-8 h-8 border-2 border-slate-300 border-t-[#D60041] rounded-full animate-spin" />
+      <p className="text-sm font-medium">Loading candidate profile...</p>
+    </div>
+  ) : isError || !profile ? (
+    <div className="w-full max-w-6xl mx-auto py-12">
+      <div className="bg-white rounded-2xl border border-rose-200 p-8 text-center max-w-lg mx-auto space-y-4 shadow-xs">
+        <AlertTriangle size={36} className="text-rose-500 mx-auto" />
+        <div className="space-y-1">
+          <h2 className="text-lg font-bold text-slate-900">Unable to Load Candidate Profile</h2>
+          <p className="text-xs text-slate-500">
+            We couldn&apos;t retrieve the profile details for <span className="font-semibold text-slate-700">{emailParam}</span>.
+          </p>
+        </div>
+        <div className="flex items-center justify-center gap-3 pt-2">
+          {!isModal && (
+            <button
+              type="button"
+              onClick={() => navigate(-1)}
+              className="px-4 py-2 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 text-xs font-bold rounded-xl cursor-pointer"
+            >
+              Go Back
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => refetch()}
+            className="px-4 py-2 bg-[#D60041] hover:bg-[#b50037] text-white text-xs font-bold rounded-xl cursor-pointer"
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    </div>
+  ) : (
     <div className="w-full max-w-6xl mx-auto space-y-6" onClick={handleUserEngagement} onScroll={handleUserEngagement}>
       {/* Top Navigation & Mode Switch */}
       <div className="flex flex-wrap items-center justify-between gap-4">

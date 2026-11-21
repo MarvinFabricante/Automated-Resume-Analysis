@@ -1,3 +1,5 @@
+import { isNoValueRequirement } from './criterionStatus';
+
 export interface ClarificationQuestion {
   id: string;
   field: string;
@@ -62,8 +64,11 @@ function buildFallbackJobQuestions(
 
   const questions: ClarificationQuestion[] = [];
 
+  const expNotRequired =
+    String(matchData?.experience_status || '').toLowerCase() === 'not required' ||
+    isNoValueRequirement(job?.experience_requirements);
   const hasYears = hasExplicitExperienceDuration(extractedData, relevanceStr, extractedYears);
-  if (!hasYears) {
+  if (!expNotRequired && !hasYears) {
     questions.push({
       id: `clarify_${slug}_years_experience`,
       field: 'years_experience',
@@ -82,18 +87,25 @@ function buildFallbackJobQuestions(
     });
   }
 
+  const skillsNotRequired =
+    String(matchData?.skills_status || '').toLowerCase() === 'not required' ||
+    isNoValueRequirement(job?.skills_requirements);
   const missingFromMatch: string[] = Array.isArray(matchData?.missing_skills)
     ? matchData.missing_skills.slice(0, 5)
     : [];
-  const rawReqSkills = String(job?.skills_requirements || '')
-    .split(/[,;\n|]+/)
-    .map((s) => s.trim())
-    .filter(Boolean);
+  const rawReqSkills = skillsNotRequired
+    ? []
+    : String(job?.skills_requirements || '')
+        .split(/[,;\n|]+/)
+        .map((s) => s.trim())
+        .filter((s) => s && !isNoValueRequirement(s));
   const candLower = candidateSkills.map((s) => s.toLowerCase());
   const missingFromReq = rawReqSkills
     .filter((req) => !candLower.some((cs) => cs.includes(req.toLowerCase()) || req.toLowerCase().includes(cs)))
     .slice(0, 5);
-  const missingSkills = missingFromMatch.length > 0 ? missingFromMatch : missingFromReq;
+  const missingSkills = skillsNotRequired
+    ? []
+    : (missingFromMatch.length > 0 ? missingFromMatch : missingFromReq);
 
   if (missingSkills.length > 0) {
     questions.push({
@@ -123,29 +135,7 @@ function buildFallbackJobQuestions(
   }
 
   const reqCerts = String(job?.certifications_requirements || '').trim();
-  const reqCertNorm = reqCerts.toLowerCase().replace(/[.\s]+$/, '');
-  const noCertReqValues = new Set([
-    '',
-    'none',
-    'none required',
-    'no',
-    'no certification',
-    'no certifications',
-    'no certification required',
-    'no certifications required',
-    'no specific certification required',
-    'no specific certifications required',
-    'n/a',
-    'na',
-    'nil',
-    'not required',
-    'not applicable',
-    'not specified',
-    'optional',
-    '-',
-    '--',
-  ]);
-  const hasCertRequirement = !noCertReqValues.has(reqCertNorm);
+  const hasCertRequirement = !isNoValueRequirement(reqCerts);
   const rawCandCerts = Array.isArray(extractedData?.certifications_list)
     ? extractedData.certifications_list.join(' ')
     : Array.isArray(extractedData?.certifications)
@@ -200,7 +190,7 @@ function buildFallbackJobQuestions(
           (Boolean(String(we.job_title || '').trim()) ||
             Boolean(String(we.responsibilities || we.description || '').trim()))
       ));
-  if (!hasSubstantiveExp || matchData?.relevant_experience_count === 0) {
+  if (!expNotRequired && (!hasSubstantiveExp || matchData?.relevant_experience_count === 0)) {
     questions.push({
       id: `clarify_${slug}_role_fit`,
       field: 'relevance',

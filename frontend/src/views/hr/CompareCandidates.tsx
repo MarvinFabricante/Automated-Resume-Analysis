@@ -13,6 +13,11 @@ import { useGetApplicationsQuery, useGetJobsQuery, useCompareCandidatesMutation 
 import HelpTooltip from '../../components/common/HelpTooltip';
 import api, { getAssetUrl } from '../../services/api';
 import { Job, Application } from '../../types';
+import {
+  isNoValueRequirement,
+  resolveCriterionStatus,
+  getCriterionStatusBadgeStyle,
+} from '../../utils/criterionStatus';
 
 interface CandidateComparisonData extends Partial<Application> {
   id: number;
@@ -27,7 +32,17 @@ interface CandidateComparisonData extends Partial<Application> {
   company?: string;
   job_title?: string;
   relevance?: string;
+  skills_reason?: string;
   experience_reason?: string;
+  education_reason?: string;
+  certifications_reason?: string;
+  skills_status?: string;
+  experience_status?: string;
+  education_status?: string;
+  certifications_status?: string;
+  required_degree?: string;
+  candidate_degree?: string;
+  required_certifications?: string;
   skills?: string[];
   matched_skills?: string[];
   missing_skills?: string[];
@@ -44,7 +59,6 @@ interface CandidateComparisonData extends Partial<Application> {
   certifications_score?: number;
   candidate_certifications?: string;
   certifications?: string;
-  certifications_reason?: string;
   completeness_score?: number;
   completeness_status?: string;
   missing_sections?: string[];
@@ -193,14 +207,13 @@ const calculateRuleBasedScore = (
     }
 
     // 3. Certifications Matching
-    const jobCert = (job.certifications_requirements || '').toLowerCase().trim();
+    const jobCertRaw = job.certifications_requirements || '';
+    const hasCertReq = !isNoValueRequirement(jobCertRaw);
+    const jobCert = jobCertRaw.toLowerCase().trim();
     const candCert = ([
       candidate.candidate_certifications,
       candidate.certifications,
-      Array.isArray(candidate.skills) ? candidate.skills.join(' ') : (candidate.skills || '')
-    ]).filter(Boolean).join(' ').toLowerCase();
-
-    const hasCertReq = jobCert.length > 0 && !jobCert.includes('none') && !jobCert.includes('not required') && !jobCert.includes('n/a');
+    ]).filter((v) => !isNoValueRequirement(v)).join(' ').toLowerCase();
 
     if (hasCertReq) {
       const stopWords = new Set(['certification', 'certified', 'license', 'licensed', 'preferred', 'plus', 'with', 'have', 'must', 'required']);
@@ -212,8 +225,8 @@ const calculateRuleBasedScore = (
         certScore = jobCert.split(/[\s,]+/).some(w => w.length > 3 && candCert.includes(w)) ? 100 : 0;
       }
     } else {
-      // Certification not required for this job — preserve backend relevance score without forcing 100%
-      certScore = candidate.certifications_score ?? candidate.certificationsScore ?? 0;
+      // Certification not required for this job — automatic full credit at normal weight
+      certScore = 100;
     }
   } else {
     // Original AI Scores
@@ -226,16 +239,22 @@ const calculateRuleBasedScore = (
   let rawScore = 0;
 
   if (filters?.skills) {
-    totalWeight += 50;
-    rawScore += skillsScore * 50;
+    totalWeight += 40;
+    rawScore += skillsScore * 40;
   }
   if (filters?.experience) {
     totalWeight += 30;
     rawScore += expScore * 30;
   }
   if (filters?.certifications) {
+    totalWeight += 10;
+    rawScore += certScore * 10;
+  }
+  const eduScore = candidate.education_score ?? 100;
+  const compScore = candidate.completeness_score ?? 100;
+  if (job) {
     totalWeight += 20;
-    rawScore += certScore * 20;
+    rawScore += (eduScore * 15) + (compScore * 5);
   }
 
   let matchScore = 0;
@@ -450,6 +469,17 @@ const CompareCandidates: React.FC = () => {
           education_score: sc.education_score,
           certificationsScore: sc.certifications_score,
           completeness_score: sc.completeness_score,
+          skills_status: sc.skills_status || localApp?.skills_status,
+          experience_status: sc.experience_status || localApp?.experience_status,
+          education_status: sc.education_status || localApp?.education_status,
+          certifications_status: sc.certifications_status || localApp?.certifications_status,
+          skills_reason: sc.skills_reason || localApp?.skills_reason,
+          experience_reason: sc.experience_reason || localApp?.experience_reason,
+          education_reason: sc.education_reason || localApp?.education_reason,
+          certifications_reason: sc.certifications_reason || localApp?.certifications_reason,
+          required_degree: sc.required_degree || localApp?.required_degree,
+          candidate_degree: sc.candidate_degree || localApp?.candidate_degree,
+          required_certifications: sc.required_certifications || localApp?.required_certifications,
           matched_skills: sc.matched_skills || [],
           missing_skills: sc.missing_skills || [],
           transferable_skills: sc.transferable_skills || [],
@@ -457,8 +487,8 @@ const CompareCandidates: React.FC = () => {
           strengths: sc.strengths,
           weaknesses: sc.weaknesses,
           status: sc.status,
-          highest_educational_attainment: sc.degree || localApp?.highest_educational_attainment,
-          candidate_certifications: sc.certifications || localApp?.candidate_certifications,
+          highest_educational_attainment: sc.degree || sc.candidate_degree || localApp?.highest_educational_attainment,
+          candidate_certifications: !isNoValueRequirement(sc.certifications) ? sc.certifications : (!isNoValueRequirement(localApp?.candidate_certifications) ? localApp?.candidate_certifications : undefined),
           relevance: sc.relevance || localApp?.relevance,
         };
       });
@@ -1220,13 +1250,25 @@ const CompareCandidates: React.FC = () => {
                           <span>Experience</span>
                         </div>
                       </td>
-                      {selectedCandidatesData.map((candidate, idx) => (
-                        <td key={candidate.id} className={`p-3 sm:p-5 text-[11px] sm:text-xs text-slate-700 leading-relaxed ${idx === 0 ? 'bg-rose-50/15' : ''}`}>
-                          <span className="font-bold text-slate-900 block">{candidate.company || "Company Unspecified"}</span>
-                          <span className="text-[10px] uppercase font-bold text-slate-400 block mb-0.5">{candidate.relevance || "Role unspecified"}</span>
-                          <p className="line-clamp-3 text-slate-500 text-[10px] sm:text-[11px]">{candidate.experience_reason || "No details provided"}</p>
-                        </td>
-                      ))}
+                      {selectedCandidatesData.map((candidate, idx) => {
+                        const expStatus = resolveCriterionStatus({
+                          explicitStatus: candidate.experience_status,
+                          reason: candidate.experience_reason,
+                          score: candidate.experienceScore ?? 0,
+                        });
+                        return (
+                          <td key={candidate.id} className={`p-3 sm:p-5 text-[11px] sm:text-xs text-slate-700 leading-relaxed ${idx === 0 ? 'bg-rose-50/15' : ''}`}>
+                            <div className="flex items-center justify-between gap-2 mb-1">
+                              <span className="font-bold text-slate-900">{!isNoValueRequirement(candidate.company) ? candidate.company : "Company Unspecified"}</span>
+                              <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold border shrink-0 ${getCriterionStatusBadgeStyle(expStatus).badgeClass}`}>
+                                {expStatus}
+                              </span>
+                            </div>
+                            <span className="text-[10px] uppercase font-bold text-slate-400 block mb-0.5">{!isNoValueRequirement(candidate.relevance) ? candidate.relevance : "Role unspecified"}</span>
+                            <p className="line-clamp-3 text-slate-500 text-[10px] sm:text-[11px]">{candidate.experience_reason || "No details provided"}</p>
+                          </td>
+                        );
+                      })}
                     </tr>
 
                     {/* Row 8: Certifications */}
@@ -1237,12 +1279,26 @@ const CompareCandidates: React.FC = () => {
                           <span>Certifications</span>
                         </div>
                       </td>
-                      {selectedCandidatesData.map((candidate, idx) => (
-                        <td key={candidate.id} className={`p-3 sm:p-5 text-[11px] sm:text-xs text-slate-700 ${idx === 0 ? 'bg-rose-50/15' : ''}`}>
-                          <p className="font-bold text-slate-900">{candidate.candidate_certifications || candidate.certifications || "None specified"}</p>
-                          <p className="text-[10px] text-slate-400 mt-0.5 italic">{candidate.certifications_reason}</p>
-                        </td>
-                      ))}
+                      {selectedCandidatesData.map((candidate, idx) => {
+                        const rawCert = candidate.candidate_certifications || candidate.certifications;
+                        const displayCert = !isNoValueRequirement(rawCert) ? rawCert : "None provided";
+                        const certStatus = resolveCriterionStatus({
+                          explicitStatus: candidate.certifications_status,
+                          reason: candidate.certifications_reason,
+                          score: candidate.certificationsScore ?? candidate.certifications_score ?? 0,
+                        });
+                        return (
+                          <td key={candidate.id} className={`p-3 sm:p-5 text-[11px] sm:text-xs text-slate-700 ${idx === 0 ? 'bg-rose-50/15' : ''}`}>
+                            <div className="flex items-center justify-between gap-2 mb-1">
+                              <p className="font-bold text-slate-900">{displayCert}</p>
+                              <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold border shrink-0 ${getCriterionStatusBadgeStyle(certStatus).badgeClass}`}>
+                                {certStatus}
+                              </span>
+                            </div>
+                            <p className="text-[10px] text-slate-500 mt-0.5">{candidate.certifications_reason}</p>
+                          </td>
+                        );
+                      })}
                     </tr>
 
                     {/* Row 9: Contact Details */}
@@ -1559,8 +1615,8 @@ const CompareCandidates: React.FC = () => {
                       <div>
                         <p className="text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1">Experience</p>
                         <div className="bg-slate-50/70 border border-slate-100 rounded-xl p-2.5 text-xs text-slate-700">
-                          <p className="font-bold text-slate-900">{candidate.company || "Company Unspecified"}</p>
-                          <p className="text-[10px] uppercase font-bold text-slate-400">{candidate.relevance || "Role unspecified"}</p>
+                          <p className="font-bold text-slate-900">{!isNoValueRequirement(candidate.company) ? candidate.company : "Company Unspecified"}</p>
+                          <p className="text-[10px] uppercase font-bold text-slate-400">{!isNoValueRequirement(candidate.relevance) ? candidate.relevance : "Role unspecified"}</p>
                           {candidate.experience_reason && (
                             <p className="text-[11px] text-slate-500 mt-1 line-clamp-2 leading-relaxed">{candidate.experience_reason}</p>
                           )}
@@ -1571,9 +1627,13 @@ const CompareCandidates: React.FC = () => {
                       <div>
                         <p className="text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1">Certifications</p>
                         <div className="bg-slate-50/70 border border-slate-100 rounded-xl p-2.5 text-xs text-slate-700">
-                          <p className="font-bold text-slate-900">{candidate.candidate_certifications || candidate.certifications || "None specified"}</p>
+                          <p className="font-bold text-slate-900">
+                            {!isNoValueRequirement(candidate.candidate_certifications || candidate.certifications)
+                              ? (candidate.candidate_certifications || candidate.certifications)
+                              : "None provided"}
+                          </p>
                           {candidate.certifications_reason && (
-                            <p className="text-[10px] text-slate-400 mt-0.5 italic">{candidate.certifications_reason}</p>
+                            <p className="text-[10px] text-slate-500 mt-0.5">{candidate.certifications_reason}</p>
                           )}
                         </div>
                       </div>

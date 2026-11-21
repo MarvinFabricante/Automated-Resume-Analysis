@@ -82,7 +82,7 @@ async def async_analyze_application(application_id: int):
         hash_resume = {k: v for k, v in resume_data.items() if k not in ("id", "application_id")}
         hash_payload = json.dumps({"resume": hash_resume, "job": job_data}, sort_keys=True).encode("utf-8")
         content_hash = hashlib.sha256(hash_payload).hexdigest()
-        cache_key = f"ai_analysis:v4:{content_hash}"
+        cache_key = f"ai_analysis:v5:{content_hash}"
         
         cached_result = await get_cache(cache_key)
         
@@ -118,6 +118,10 @@ async def async_analyze_application(application_id: int):
             app.experience_reason = ai_result.get("experience_reason") or app.experience_reason
             app.education_reason = ai_result.get("education_reason") or app.education_reason
             app.certifications_reason = ai_result.get("certifications_reason") or app.certifications_reason
+            if ai_result.get("required_degree") is not None:
+                app.required_degree = ai_result.get("required_degree")
+            if ai_result.get("candidate_degree") is not None:
+                app.candidate_degree = ai_result.get("candidate_degree")
             if ai_result.get("required_certifications") is not None:
                 app.required_certifications = ai_result.get("required_certifications")
             if ai_result.get("candidate_certifications") is not None:
@@ -302,7 +306,7 @@ def recalculate_all_applications_task(self) -> dict:
     def _report_progress(current: int, total: int) -> None:
         if total <= 0:
             return
-        if current == total or current % 5 == 0:
+        if current == 1 or current == total or current % 5 == 0:
             try:
                 self.update_state(
                     state="PROGRESS",
@@ -341,7 +345,7 @@ def recalculate_job_applications_task(self, job_id_str: str) -> dict:
     def _report_progress(current: int, total: int) -> None:
         if total <= 0:
             return
-        if current == total or current % 3 == 0:
+        if current == 1 or current == total or current % 3 == 0:
             try:
                 self.update_state(
                     state="PROGRESS",

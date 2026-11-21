@@ -5,6 +5,30 @@ import logging
 from typing import Optional, Any, List, Dict
 from difflib import SequenceMatcher
 from app.models.job_description import JobDescription
+from app.services.requirement_rules import (
+    STATUS_MEETS,
+    STATUS_EXCEEDS,
+    STATUS_PARTIAL,
+    STATUS_NOT_REQUIRED,
+    STATUS_MANUAL_REVIEW,
+    STATUS_DOES_NOT_MEET,
+    format_criterion_reason,
+    NO_VALUE_MARKERS,
+    normalize_requirement_text,
+    is_no_value,
+    clean_list_items,
+    EDUCATION_LEVELS,
+    EDUCATION_SHORT_LABELS,
+    EDUCATION_MANUAL_REVIEW_SCORE,
+    EDUCATION_LEVEL_MET_WRONG_FIELD_SCORE,
+    EDUCATION_LEVEL_MET_UNSPECIFIED_FIELD_SCORE,
+    EDUCATION_RELATED_FIELD_SCORE,
+    EDUCATION_PARTIAL_FIELD_SCORE,
+    EDUCATION_FIELD_SYNONYMS,
+    RELATED_EDUCATION_FIELDS,
+    parse_education_level,
+    compare_graded_certifications,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -151,16 +175,23 @@ def get_current_matching_config() -> dict:
 AI_SCORE_WEIGHT = 0.0
 RULE_SCORE_WEIGHT = 1.0 - AI_SCORE_WEIGHT
 
-# Degree hierarchy for education matching
+# Shared 1-8 education level hierarchy (canonical single source of truth in requirement_rules.py)
 DEGREE_HIERARCHY = {
-    "SENIOR HIGH SCHOOL": 1,
-    "SHS": 1,
-    "DIPLOMA/VOCATIONAL": 2,
-    "ASSOCIATE": 3,
-    "BACHELOR": 4,
-    "MASTER": 5,
-    "DOCTORATE": 6,
-    "PHD": 6
+    "ELEMENTARY": 1,
+    "HIGH SCHOOL": 2,
+    "JUNIOR HIGH SCHOOL": 2,
+    "SENIOR HIGH SCHOOL": 3,
+    "SHS": 3,
+    "VOCATIONAL / TESDA": 4,
+    "DIPLOMA/VOCATIONAL": 4,
+    "ASSOCIATE": 5,
+    "ASSOCIATE DEGREE": 5,
+    "BACHELOR": 6,
+    "BACHELOR'S DEGREE": 6,
+    "MASTER": 7,
+    "MASTER'S DEGREE": 7,
+    "DOCTORATE": 8,
+    "PHD": 8,
 }
 
 _SKILL_SYNONYMS = {
@@ -178,36 +209,43 @@ _SKILL_SYNONYMS = {
 
 def _normalize_skill(s: str) -> str:
     """Normalize a skill string for comparison."""
-    if not s:
+    if not s or is_no_value(s):
         return ""
     s = s.lower().strip()
     # Remove common suffixes/versions to improve matching (e.g., React.js -> react)
     s = re.sub(r'\.js$', '', s)
     s = re.sub(r'[^a-z0-9+#/ ]', '', s).strip()
+    if is_no_value(s):
+        return ""
     return _SKILL_SYNONYMS.get(s, s)
 
 
 def _tokenize_skills(skills_input: Any) -> list[str]:
-    """Split a skills string or list into individual normalized tokens."""
-    if not skills_input:
+    """Split a skills string or list into individual normalized tokens, dropping no-value markers."""
+    if not skills_input or is_no_value(skills_input):
         return []
-    
+
     if isinstance(skills_input, (list, tuple, set)):
         raw = []
         for item in skills_input:
             if isinstance(item, str):
-                raw.extend(re.split(r'[|,;•\-]', item))
-            elif isinstance(item, dict) and "name" in item:
-                raw.extend(re.split(r'[|,;•\-]', str(item["name"])))
-            elif item:
+                if not is_no_value(item):
+                    raw.extend(re.split(r'[|,;•\-]', item))
+            elif isinstance(item, dict) and ("name" in item or "skill_name" in item):
+                val = str(item.get("name") or item.get("skill_name") or "")
+                if not is_no_value(val):
+                    raw.extend(re.split(r'[|,;•\-]', val))
+            elif item and not is_no_value(item):
                 raw.append(str(item))
     else:
         # Split by pipe, comma, semicolon, or bullet
         raw = re.split(r'[|,;•\-]', str(skills_input))
     skills = []
     for s in raw:
+        if is_no_value(s):
+            continue
         cleaned = _normalize_skill(s)
-        if cleaned and len(cleaned) > 1:
+        if cleaned and len(cleaned) > 1 and not is_no_value(cleaned):
             skills.append(cleaned)
     return skills
 
@@ -363,7 +401,7 @@ def _extract_grounded_embedding_tokens(embedding_engine: Any, text: str) -> list
     unmatched prose sentences do not fall back to the non-negative subword SVD
     and fabricate high similarity across unrelated domains.
     """
-    if not text or not embedding_engine:
+    if not text or not embedding_engine or is_no_value(text):
         return []
 
     token_vecs = getattr(embedding_engine, "token_vectors_", None) or {}
@@ -371,12 +409,15 @@ def _extract_grounded_embedding_tokens(embedding_engine: Any, text: str) -> list
     seen: set[str] = set()
 
     def _add(tok: str) -> None:
+        if is_no_value(tok):
+            return
         norm = re.sub(r'[^a-z0-9+#/_ ]', '', tok.lower()).strip().replace(' ', '_')
         if (
             norm
             and len(norm) >= 2
             and len(norm) <= 40
             and norm not in _GENERIC_SIM_TOKENS
+            and norm not in NO_VALUE_MARKERS
             and norm not in seen
         ):
             seen.add(norm)
@@ -451,9 +492,9 @@ def _extract_domain_keywords(text: str) -> set[str]:
     """
     Extract meaningful domain/technical terms and multi-word skill phrases from
     a job description or work experience entry, filtering out stopwords, years,
-    generic resume boilerplate, and soft/transferable skills.
+    generic resume boilerplate, no-value markers, and soft/transferable skills.
     """
-    if not text:
+    if not text or is_no_value(text):
         return set()
 
     keywords: set[str] = set()
@@ -469,18 +510,20 @@ def _extract_domain_keywords(text: str) -> set[str]:
                 doc = ee._nlp(text)
                 for _, start, end in ee._skills_matcher(doc):
                     norm = _normalize_skill(doc[start:end].text)
-                    if norm and len(norm) > 1 and norm not in _GENERIC_EXPERIENCE_WORDS:
+                    if norm and len(norm) > 1 and norm not in _GENERIC_EXPERIENCE_WORDS and norm not in NO_VALUE_MARKERS:
                         keywords.add(norm)
     except Exception:
         pass
 
     # 2. Include short comma/pipe/semicolon-delimited skill phrases
     for chunk in re.split(r'[|,;•]', text):
+        if is_no_value(chunk):
+            continue
         cleaned = _normalize_skill(chunk)
         words = cleaned.split()
         if 1 <= len(words) <= 3 and len(cleaned) >= 2:
-            if not all(w in _GENERIC_EXPERIENCE_WORDS or w.isdigit() for w in words):
-                if cleaned not in _GENERIC_EXPERIENCE_WORDS and not cleaned.isdigit():
+            if not all(w in _GENERIC_EXPERIENCE_WORDS or w in NO_VALUE_MARKERS or w.isdigit() for w in words):
+                if cleaned not in _GENERIC_EXPERIENCE_WORDS and cleaned not in NO_VALUE_MARKERS and not cleaned.isdigit():
                     keywords.add(cleaned)
 
     # 3. Include meaningful individual content words (excluding years/stopwords/boilerplate)
@@ -490,6 +533,7 @@ def _extract_domain_keywords(text: str) -> set[str]:
             len(norm) >= 3
             and not norm.isdigit()
             and norm not in _GENERIC_EXPERIENCE_WORDS
+            and norm not in NO_VALUE_MARKERS
         ):
             keywords.add(norm)
 
@@ -559,7 +603,8 @@ def calculate_experience_relevance(resume_experience: str, resume_skills: str, j
     raw_entries = [e.strip() for e in (resume_experience or "").split("|") if e.strip()]
     exp_entries = [
         e for e in raw_entries
-        if re.sub(r'[^a-z0-9/\- ]', '', e.lower()).strip() not in _NON_EXPERIENCE_PLACEHOLDERS
+        if not is_no_value(e)
+        and re.sub(r'[^a-z0-9/\- ]', '', e.lower()).strip() not in _NON_EXPERIENCE_PLACEHOLDERS
     ]
     if not exp_entries:
         return {
@@ -802,7 +847,10 @@ def _find_education_context(text: str) -> str:
         return ""
     sentences = re.split(r'(?<=[.!?])\s+', text)
     ed_sentences = []
-    level_pattern = r'\b(bachelor|master|doctorate|ph\.?d|degree|university|college|graduated)\b'
+    level_pattern = (
+        r'\b(bachelor|master|doctorate|ph\.?d|degree|university|college|graduated|'
+        r'senior\s+high|junior\s+high|high\s+school|shs|jhs|tesda|vocational|associate|elementary|k-?12)\b'
+    )
     for s in sentences:
         if re.search(level_pattern, s, re.IGNORECASE):
             ed_sentences.append(s)
@@ -811,195 +859,434 @@ def _find_education_context(text: str) -> str:
 
 def _extract_core_subject(text: str) -> str:
     """Extract the core field of study by removing generic degree terms, school names, and qualifiers."""
-    if not text:
+    from app.services.requirement_rules import extract_education_fields
+    return " ".join(extract_education_fields(text))
+
+
+def _resolve_education_text(resume_data: dict) -> str:
+    """Resolve candidate education string from resume/application fields, skipping no-value markers."""
+    if not isinstance(resume_data, dict):
         return ""
-    cleaned = re.sub(r'\b(?:19|20)\d{2}\b', ' ', text)
-    # Strip institution suffixes if present after a dash or comma
-    cleaned = re.split(r'\s+[-–—|]\s+(?=[A-Za-z\s]*(?:University|College|Colleges|Institute|School|Academy|Polytechnic|TESDA|Campus))', cleaned, maxsplit=1)[0]
-    level_pattern = (
-        r'\b(bachelor\'?s?|master\'?s?|doctorate|doctor|ph\.?d|associate\'?s?|diploma|'
-        r'vocational|technical|tesda|senior|junior|high|school|shs|jhs|secondary|elementary|primary|'
-        r'college|university|colleges|institute|academy|polytechnic|campus|'
-        r'degree|course|program|curriculum|strand|track|certificate|certification|nc|ii|iii|iv|'
-        r'of|in|the|at|or|and|with|from|for|to|by|on|as|a|an|'
-        r'any|all|related|relevant|field|fields|discipline|equivalent|similar|'
-        r'minimum|least|preferred|required|must|have|holder|level|year|years|four|two|'
-        r'completer|undergraduate|graduate|graduated|postgraduate|majoring|major|'
-        r'bs|ba|ab|ms|ma|bsc|msc|b\.s\.?|m\.s\.?|b\.a\.?|m\.a\.?)\b'
+    candidates: list[str] = []
+    seen: set[str] = set()
+    for key in ("education", "degree", "highest_degree"):
+        val = normalize_requirement_text(resume_data.get(key))
+        if val and val.lower() not in seen:
+            seen.add(val.lower())
+            candidates.append(val)
+    if candidates:
+        return " | ".join(candidates)
+    fallback = normalize_requirement_text(resume_data.get("highest_educational_attainment"))
+    return fallback or ""
+
+
+def _evaluate_education_field_alignment(req_fields: list[str], cand_fields: list[str]) -> tuple[str, str, str]:
+    """
+    Compare candidate's fields against job's required field options.
+    Returns (match_type, matched_req_field, matched_cand_field) where match_type is
+    one of 'exact', 'related', 'partial', 'unspecified', or 'mismatch'.
+    """
+    if not cand_fields:
+        return "unspecified", req_fields[0], ""
+
+    # 1. Exact / canonical synonym match
+    for rf in req_fields:
+        rf_canon = EDUCATION_FIELD_SYNONYMS.get(rf, rf)
+        rf_tokens = set(rf_canon.split())
+        for cf in cand_fields:
+            cf_canon = EDUCATION_FIELD_SYNONYMS.get(cf, cf)
+            cf_tokens = set(cf_canon.split())
+            if rf_canon == cf_canon or (rf_tokens and rf_tokens == cf_tokens):
+                return "exact", rf, cf
+
+    # 2. Related major table (checked symmetrically, plus broad umbrella fields like "engineering")
+    for rf in req_fields:
+        rf_canon = EDUCATION_FIELD_SYNONYMS.get(rf, rf)
+        rf_words = set(rf_canon.split())
+        for cf in cand_fields:
+            cf_canon = EDUCATION_FIELD_SYNONYMS.get(cf, cf)
+            cf_words = set(cf_canon.split())
+            # Broad requirement like "engineering" satisfied closely by "industrial engineering"
+            if rf_words and rf_words <= cf_words:
+                return "related", rf, cf
+            for table_key, rel_list in RELATED_EDUCATION_FIELDS.items():
+                tk_words = set(table_key.split())
+                if tk_words <= rf_words:
+                    if any(set(rel.split()) <= cf_words for rel in rel_list):
+                        return "related", rf, cf
+                if tk_words <= cf_words:
+                    if any(set(rel.split()) <= rf_words for rel in rel_list):
+                        return "related", rf, cf
+
+    # 3. Partial token overlap on meaningful field words
+    generic = {"science", "arts", "applied", "general", "course", "program", "studies", "technology", "management"}
+    for rf in req_fields:
+        rf_core = set(rf.split()) - generic
+        if not rf_core:
+            rf_core = set(rf.split())
+        for cf in cand_fields:
+            cf_core = set(cf.split()) - generic
+            if not cf_core:
+                cf_core = set(cf.split())
+            if rf_core & cf_core:
+                return "partial", rf, cf
+
+    return "mismatch", req_fields[0], cand_fields[0]
+
+
+def calculate_education_match(
+    resume_education: str,
+    job_description: str,
+    education_req: str = None,
+    education_entries: Optional[list[dict[str, Any]]] = None,
+) -> dict:
+    """
+    Compare candidate's education against job requirements using the shared
+    1-8 Philippine education hierarchy, ongoing/undergraduate completion rules,
+    no-value normalization, and separate field-of-study verification.
+    """
+    cand_parsed = parse_education_level(
+        resume_education,
+        is_job_requirement=False,
+        entries=education_entries,
     )
-    cleaned = re.sub(level_pattern, ' ', cleaned, flags=re.IGNORECASE)
-    cleaned = re.sub(r'[^\w\s]', ' ', cleaned)
-    words = [w for w in cleaned.lower().split() if len(w) > 2 and not w.isdigit()]
-    return " ".join(words)
 
-
-def calculate_education_match(resume_education: str, job_description: str, education_req: str = None) -> dict:
-    """
-    Compare candidate's education against job requirements with STRICT matching.
-    Only assigns percentage scores if the degree field is exactly or highly relevant.
-    """
-    req_text = education_req if education_req else _find_education_context(job_description)
-    cand_text = resume_education or ""
-    
-    required_level = _extract_education_requirement(req_text)
-    candidate_level = _extract_education_requirement(cand_text)
-
-    if not required_level and not req_text.strip():
-        score = 1.0 if candidate_level else 0.7
-        return {
-            "score": score, 
-            "required_education": "Not specified", 
-            "candidate_education": candidate_level or "Not specified", 
-            "reason": "No specific education requirement found in job description."
-        }
-
-    if not candidate_level and not cand_text.strip():
-        return {
-            "score": 0.0, 
-            "required_education": required_level or req_text, 
-            "candidate_education": "Not specified", 
-            "reason": f"Job requires education ({required_level or 'specified in description'}), but no education details were found in the resume."
-        }
-        
-    req_rank = DEGREE_HIERARCHY.get(required_level, 0)
-    cand_rank = DEGREE_HIERARCHY.get(candidate_level, 0)
-    
-    level_met = False
-    level_reason = ""
-    if req_rank > 0 and cand_rank > 0:
-        if cand_rank >= req_rank:
-            level_met = True
-            level_reason = f"Candidate meets the required {required_level} degree level."
-        else:
-            level_met = False
-            level_reason = f"Candidate's {candidate_level} is below the required {required_level}."
-    else:
-        level_met = True
-        level_reason = "Degree level inferred from context."
-
-    req_subject = _extract_core_subject(req_text)
-    cand_subject = _extract_core_subject(cand_text)
-
-    if not req_subject:
-        if level_met:
+    if education_req is not None:
+        if is_no_value(education_req):
+            cand_label = cand_parsed["label"] or "None provided"
             return {
-                "score": 1.0, 
-                "required_education": required_level or "Degree", 
-                "candidate_education": candidate_level or cand_text, 
-                "reason": f"Required degree level met. No specific major was required. {level_reason}"
+                "score": 1.0,
+                "status": STATUS_NOT_REQUIRED,
+                "has_requirement": False,
+                "needs_manual_review": False,
+                "required_education": "Not required",
+                "candidate_education": cand_label,
+                "reason": format_criterion_reason(
+                    STATUS_NOT_REQUIRED,
+                    "No education requirement for this position.",
+                ),
             }
-        else:
+        req_text = str(education_req).strip()
+    else:
+        req_text = _find_education_context(job_description)
+        if is_no_value(req_text):
+            cand_label = cand_parsed["label"] or "None provided"
             return {
-                "score": 0.0, 
-                "required_education": required_level or "Degree", 
-                "candidate_education": candidate_level or cand_text, 
-                "reason": f"Required degree level not met. {level_reason}"
+                "score": 1.0,
+                "status": STATUS_NOT_REQUIRED,
+                "has_requirement": False,
+                "needs_manual_review": False,
+                "required_education": "Not required",
+                "candidate_education": cand_label,
+                "reason": format_criterion_reason(
+                    STATUS_NOT_REQUIRED,
+                    "No education requirement for this position.",
+                ),
             }
 
-    if not cand_subject:
+    req_parsed = parse_education_level(req_text, is_job_requirement=True)
+
+    if not req_parsed["recognized"] or req_parsed["level"] is None:
+        logger.warning("Unrecognized job education requirement text (manual review): %r", req_text)
+        cand_disp = cand_parsed["label"] or normalize_requirement_text(resume_education) or "None provided"
         return {
-            "score": 0.0, 
-            "required_education": req_text, 
-            "candidate_education": cand_text, 
-            "reason": f"Job requires a specific major (related to '{req_subject}') but candidate education only mentions generic terms."
+            "score": EDUCATION_MANUAL_REVIEW_SCORE,
+            "status": STATUS_MANUAL_REVIEW,
+            "has_requirement": True,
+            "needs_manual_review": True,
+            "required_education": req_text,
+            "candidate_education": cand_disp,
+            "reason": format_criterion_reason(
+                STATUS_MANUAL_REVIEW,
+                f"Job education requirement ('{req_text}') could not be automatically parsed; HR review recommended.",
+            ),
         }
 
-    req_tokens = set(req_subject.split())
-    cand_tokens = set(cand_subject.split())
-    
-    generic_subject_words = {"science", "arts", "applied", "general", "course", "program"}
-    req_core = req_tokens - generic_subject_words
-    cand_core = cand_tokens - generic_subject_words
-    
-    if not req_core:
-        req_core = req_tokens
-    if not cand_core:
-        cand_core = cand_tokens
+    req_level = int(req_parsed["level"])
+    req_label = EDUCATION_SHORT_LABELS[req_level]
+    req_fields = list(req_parsed["field_options"] or [])
+    req_display = f"{req_label} in {' or '.join(req_fields)}" if req_fields else req_label
 
-    overlap = req_core & cand_core
-    overlap_ratio = len(overlap) / len(req_core) if req_core else 0.0
+    if cand_parsed["is_no_value"]:
+        return {
+            "score": 0.0,
+            "status": STATUS_DOES_NOT_MEET,
+            "has_requirement": True,
+            "needs_manual_review": False,
+            "required_education": req_display,
+            "candidate_education": "None provided",
+            "reason": format_criterion_reason(
+                STATUS_DOES_NOT_MEET,
+                f"Requires {req_display}; no education details were provided on the resume.",
+            ),
+        }
 
-    semantic_sim = _compute_semantic_similarity(req_subject, cand_subject)
-    
-    RELATED_MAJORS = {
-        "computer science": ["information technology", "software engineering", "computer engineering", "information systems", "computing", "data science"],
-        "information technology": ["computer science", "software engineering", "computer engineering", "information systems", "computing"],
-        "business": ["management", "administration", "commerce", "finance", "accounting", "accountancy", "marketing", "entrepreneurship", "economics"],
-        "accountancy": ["accounting", "management accounting", "accounting technology", "finance", "financial management", "business administration", "commerce", "banking"],
-        "accounting": ["accountancy", "management accounting", "accounting technology", "finance", "financial management", "business administration", "commerce", "banking"],
-        "engineering": ["mechanical", "electrical", "electronics", "civil", "chemical", "industrial", "ceramic", "materials", "metallurgical", "computer engineering", "software", "industrial technology", "mechatronics"],
-        "chemistry": ["chemical engineering", "chemical", "biochemistry", "materials", "ceramic", "industrial technology"],
-        "human resource": ["psychology", "business administration", "management", "human resource", "behavioral science", "organizational"],
-        "psychology": ["human resource", "business administration", "behavioral science", "guidance"],
-        "marketing": ["business administration", "commerce", "management", "communication", "advertising", "entrepreneurship"],
-    }
-    
-    is_related = False
-    for req_field, related_list in RELATED_MAJORS.items():
-        if all(w in req_subject for w in req_field.split()):
-            for rel in related_list:
-                if all(w in cand_subject for w in rel.split()):
-                    is_related = True
-                    break
-                    
-    score = 0.0
-    match_quality = "Irrelevant"
-    reason_details = []
-    
-    if level_met:
-        if overlap_ratio >= 0.6 or (len(overlap) >= 2):
-            score = 1.0
-            match_quality = "Exact/Strong Match"
-            reason_details.append(f"Major strictly aligns with requirements (Matched terms: {', '.join(overlap)}).")
-        elif is_related or (semantic_sim >= 0.6 and len(overlap) >= 1):
-            score = 0.8
-            match_quality = "Highly Relevant Match"
-            reason_details.append(f"Major is highly relevant to the required field.")
-        elif overlap_ratio > 0 or semantic_sim >= 0.4:
-            score = 0.5
-            match_quality = "Partial Match"
-            reason_details.append(f"Major has partial relevance to the required field.")
-        else:
-            score = 0.0
-            match_quality = "Mismatch"
-            reason_details.append(f"Candidate's major ('{cand_subject}') does not match the required field ('{req_subject}').")
+    if not cand_parsed["recognized"] or cand_parsed["level"] is None:
+        logger.warning("Unrecognized candidate education text (manual review): %r", resume_education)
+        raw_cand_disp = normalize_requirement_text(resume_education) or "Unrecognized"
+        return {
+            "score": EDUCATION_MANUAL_REVIEW_SCORE,
+            "status": STATUS_MANUAL_REVIEW,
+            "has_requirement": True,
+            "needs_manual_review": True,
+            "required_education": req_display,
+            "candidate_education": raw_cand_disp,
+            "reason": format_criterion_reason(
+                STATUS_MANUAL_REVIEW,
+                f"Candidate education ('{raw_cand_disp}') could not be automatically verified against required {req_display}. HR manual review recommended.",
+            ),
+        }
+
+    cand_level = int(cand_parsed["level"])
+    cand_label = EDUCATION_SHORT_LABELS[cand_level]
+    is_ongoing = bool(cand_parsed["is_ongoing"])
+    pursuing_level = cand_parsed.get("pursuing_level") or cand_level
+
+    # Gather fields from entries that actually meet/exceed req_level (or all cand fields if below)
+    if cand_level >= req_level:
+        qualifying_fields: list[str] = []
+        seen_qf: set[str] = set()
+        for entry in cand_parsed.get("parsed_entries") or []:
+            if (entry.get("level") or 0) >= req_level:
+                for f in entry.get("field_options") or []:
+                    if f not in seen_qf:
+                        seen_qf.add(f)
+                        qualifying_fields.append(f)
+        cand_fields = qualifying_fields or list(cand_parsed["field_options"] or [])
     else:
-        if overlap_ratio >= 0.5 or is_related:
-            score = 0.5
-            match_quality = "Lower Degree Level"
-            reason_details.append(f"Major is relevant, but degree level is lower than required.")
-        else:
-            score = 0.0
-            match_quality = "Mismatch"
-            reason_details.append(f"Neither degree level nor major match requirements.")
+        cand_fields = list(cand_parsed["field_options"] or [])
 
-    final_reason = f"{match_quality}: {level_reason} " + " ".join(reason_details)
-    
+    if is_ongoing and pursuing_level > cand_level:
+        pursuing_label = EDUCATION_SHORT_LABELS.get(pursuing_level, "higher education")
+        cand_display = f"{cand_label} (currently pursuing {pursuing_label})"
+    elif cand_fields:
+        cand_display = f"{cand_label} in {', '.join(cand_fields[:2])}"
+    else:
+        cand_display = cand_label
+
+    # Case 1: Job does NOT require a specific field/course
+    if not req_fields:
+        if cand_level > req_level:
+            return {
+                "score": 1.0,
+                "status": STATUS_EXCEEDS,
+                "has_requirement": True,
+                "needs_manual_review": False,
+                "required_education": req_display,
+                "candidate_education": cand_display,
+                "reason": format_criterion_reason(
+                    STATUS_EXCEEDS,
+                    f"Candidate has {cand_display}, exceeding the required {req_label}.",
+                ),
+            }
+        if cand_level == req_level:
+            return {
+                "score": 1.0,
+                "status": STATUS_MEETS,
+                "has_requirement": True,
+                "needs_manual_review": False,
+                "required_education": req_display,
+                "candidate_education": cand_display,
+                "reason": format_criterion_reason(
+                    STATUS_MEETS,
+                    f"Candidate has {cand_display}, meeting the required {req_label}.",
+                ),
+            }
+
+        # cand_level < req_level
+        proportional_score = round(cand_level / float(req_level), 2)
+        if is_ongoing and pursuing_level >= req_level:
+            return {
+                "score": proportional_score,
+                "status": STATUS_PARTIAL,
+                "has_requirement": True,
+                "needs_manual_review": False,
+                "required_education": req_display,
+                "candidate_education": cand_display,
+                "reason": format_criterion_reason(
+                    STATUS_PARTIAL,
+                    f"Requires {req_label}; candidate is currently an undergraduate/enrolled (highest completed level: {cand_label}).",
+                ),
+            }
+        return {
+            "score": proportional_score,
+            "status": STATUS_DOES_NOT_MEET,
+            "has_requirement": True,
+            "needs_manual_review": False,
+            "required_education": req_display,
+            "candidate_education": cand_display,
+            "reason": format_criterion_reason(
+                STATUS_DOES_NOT_MEET,
+                f"Requires {req_label}; candidate has {cand_label}.",
+            ),
+        }
+
+    # Case 2: Job explicitly requires a specific course / field of study
+    field_match, matched_req_field, matched_cand_field = _evaluate_education_field_alignment(
+        req_fields, cand_fields
+    )
+    req_field_str = " or ".join(req_fields)
+
+    if cand_level >= req_level:
+        if field_match == "exact":
+            status = STATUS_EXCEEDS if cand_level > req_level else STATUS_MEETS
+            detail = (
+                f"Candidate has {cand_label} in {matched_cand_field}, exceeding the required {req_label} in {matched_req_field}."
+                if cand_level > req_level
+                else f"Candidate has {cand_label} in {matched_cand_field}, meeting the required {req_label} in {matched_req_field}."
+            )
+            return {
+                "score": 1.0,
+                "status": status,
+                "has_requirement": True,
+                "needs_manual_review": False,
+                "required_education": req_display,
+                "candidate_education": cand_display,
+                "reason": format_criterion_reason(status, detail),
+            }
+
+        lvl_prefix = (
+            f"Exceeds {req_label} level with {cand_label}"
+            if cand_level > req_level
+            else f"Meets {req_label} level"
+        )
+        if field_match == "related":
+            return {
+                "score": EDUCATION_RELATED_FIELD_SCORE,
+                "status": STATUS_PARTIAL,
+                "has_requirement": True,
+                "needs_manual_review": False,
+                "required_education": req_display,
+                "candidate_education": cand_display,
+                "reason": format_criterion_reason(
+                    STATUS_PARTIAL,
+                    f"{lvl_prefix} with a related field ({matched_cand_field}; requires {req_field_str}).",
+                ),
+            }
+        if field_match == "partial":
+            return {
+                "score": EDUCATION_PARTIAL_FIELD_SCORE,
+                "status": STATUS_PARTIAL,
+                "has_requirement": True,
+                "needs_manual_review": False,
+                "required_education": req_display,
+                "candidate_education": cand_display,
+                "reason": format_criterion_reason(
+                    STATUS_PARTIAL,
+                    f"{lvl_prefix} with partial field alignment ({matched_cand_field}; requires {req_field_str}).",
+                ),
+            }
+        if field_match == "unspecified":
+            return {
+                "score": EDUCATION_LEVEL_MET_UNSPECIFIED_FIELD_SCORE,
+                "status": STATUS_PARTIAL,
+                "has_requirement": True,
+                "needs_manual_review": False,
+                "required_education": req_display,
+                "candidate_education": cand_display,
+                "reason": format_criterion_reason(
+                    STATUS_PARTIAL,
+                    f"{lvl_prefix}, but specific field of study ({req_field_str}) was not listed on the resume.",
+                ),
+            }
+
+        # Being overqualified in level never fixes a wrong field
+        return {
+            "score": EDUCATION_LEVEL_MET_WRONG_FIELD_SCORE,
+            "status": STATUS_PARTIAL,
+            "has_requirement": True,
+            "needs_manual_review": False,
+            "required_education": req_display,
+            "candidate_education": cand_display,
+            "reason": format_criterion_reason(
+                STATUS_PARTIAL,
+                f"{lvl_prefix}, but field of study does not match (Requires {req_field_str}; candidate has {matched_cand_field}).",
+            ),
+        }
+
+    # cand_level < req_level with specific required field
+    level_ratio = cand_level / float(req_level)
+    field_factor = 0.85 if field_match in ("exact", "related", "partial") else 0.40
+    partial_score = round(level_ratio * field_factor, 2)
+
+    if is_ongoing and pursuing_level >= req_level:
+        return {
+            "score": partial_score,
+            "status": STATUS_PARTIAL,
+            "has_requirement": True,
+            "needs_manual_review": False,
+            "required_education": req_display,
+            "candidate_education": cand_display,
+            "reason": format_criterion_reason(
+                STATUS_PARTIAL,
+                f"Requires {req_display}; candidate is currently an undergraduate/enrolled (highest completed level: {cand_label}).",
+            ),
+        }
+
     return {
-        "score": score,
-        "required_education": required_level or req_text,
-        "candidate_education": candidate_level or cand_text,
-        "reason": final_reason.strip()
+        "score": partial_score,
+        "status": STATUS_DOES_NOT_MEET,
+        "has_requirement": True,
+        "needs_manual_review": False,
+        "required_education": req_display,
+        "candidate_education": cand_display,
+        "reason": format_criterion_reason(
+            STATUS_DOES_NOT_MEET,
+            f"Requires {req_display}; candidate has {cand_display}.",
+        ),
     }
 
 
 def calculate_skills_match(resume_skills: str, job_skills: str, fuzzy_threshold: Optional[float] = None) -> dict:
     """
     Compare resume skills against job requirements.
-    Returns match ratio and lists of matched/missing skills.
+    Skills are non-hierarchical (match / no-match).
     """
+    if is_no_value(job_skills):
+        return {
+            "score": 1.0,
+            "status": STATUS_NOT_REQUIRED,
+            "has_requirement": False,
+            "matched": [],
+            "missing": [],
+            "reason": format_criterion_reason(
+                STATUS_NOT_REQUIRED,
+                "No specific skills requirement for this position.",
+            ),
+        }
 
     resume_tokens = _tokenize_skills(resume_skills)
     job_tokens = _tokenize_skills(job_skills)
-    
+
     if not job_tokens:
-        return {"score": 1.0, "matched": [], "missing": []}
+        return {
+            "score": 1.0,
+            "status": STATUS_NOT_REQUIRED,
+            "has_requirement": False,
+            "matched": [],
+            "missing": [],
+            "reason": format_criterion_reason(
+                STATUS_NOT_REQUIRED,
+                "No specific skills requirement for this position.",
+            ),
+        }
+
     if not resume_tokens:
-        return {"score": 0.0, "matched": [], "missing": job_tokens}
-    
+        return {
+            "score": 0.0,
+            "status": STATUS_DOES_NOT_MEET,
+            "has_requirement": True,
+            "matched": [],
+            "missing": job_tokens,
+            "reason": format_criterion_reason(
+                STATUS_DOES_NOT_MEET,
+                f"No matching skills found on resume (required: {', '.join(job_tokens[:6])}).",
+            ),
+        }
+
     matched = []
     missing = []
-    
+
     for job_skill in job_tokens:
         found = False
         for resume_skill in resume_tokens:
@@ -1009,9 +1296,29 @@ def calculate_skills_match(resume_skills: str, job_skills: str, fuzzy_threshold:
                 break
         if not found:
             missing.append(job_skill)
-    
+
     score = len(matched) / len(job_tokens) if job_tokens else 0.0
-    return {"score": score, "matched": matched, "missing": missing}
+    if len(matched) == len(job_tokens):
+        status = STATUS_MEETS
+        detail = f"Matched all {len(matched)} required skill(s): {', '.join(matched[:6])}."
+    elif matched:
+        status = STATUS_PARTIAL
+        detail = (
+            f"Matched {len(matched)} of {len(job_tokens)} required skills "
+            f"({', '.join(matched[:5])}); missing {', '.join(missing[:5])}."
+        )
+    else:
+        status = STATUS_DOES_NOT_MEET
+        detail = f"None of the required skills matched ({', '.join(missing[:6])})."
+
+    return {
+        "score": score,
+        "status": status,
+        "has_requirement": True,
+        "matched": matched,
+        "missing": missing,
+        "reason": format_criterion_reason(status, detail),
+    }
 
 
 def _extract_years_from_text(text: Any, explicit_req: bool = False) -> int:
@@ -1021,6 +1328,8 @@ def _extract_years_from_text(text: Any, explicit_req: bool = False) -> int:
     if isinstance(text, (int, float)):
         val = int(text)
         return val if 0 < val <= 50 else 0
+    if is_no_value(text):
+        return 0
 
     raw = str(text).strip()
     if not raw:
@@ -1063,12 +1372,24 @@ def _extract_years_from_text(text: Any, explicit_req: bool = False) -> int:
 
 def calculate_experience_match(resume_years: int, job_description: str, experience_req: str = None) -> dict:
     """
-    Compare resume years of experience against job requirements.
-    Returns a dict with score, gap flags, and details.
+    Compare resume years of experience against job requirements using >= hierarchy.
+    More experience never penalizes a candidate; 'None'/empty requirement earns full credit.
     """
-    required_years = _extract_years_from_text(experience_req, explicit_req=True) if experience_req else 0
-    if required_years == 0:
-        required_years = _extract_years_from_text(job_description, explicit_req=False)
+    explicit_non_empty_no_value = (
+        experience_req is not None
+        and str(experience_req).strip() != ""
+        and is_no_value(experience_req)
+    )
+    has_non_no_value_explicit_text = (
+        experience_req is not None and not is_no_value(experience_req)
+    )
+
+    if explicit_non_empty_no_value:
+        required_years = 0
+    else:
+        required_years = _extract_years_from_text(experience_req, explicit_req=True) if experience_req else 0
+        if required_years == 0:
+            required_years = _extract_years_from_text(job_description, explicit_req=False)
 
     resume_years = resume_years or 0
 
@@ -1077,79 +1398,131 @@ def calculate_experience_match(resume_years: int, job_description: str, experien
         return f"{num} yr{'s' if num != 1 else ''}"
 
     if required_years == 0:
-        # No explicit requirement — give full marks if candidate has any experience
-        score = 1.0 if resume_years > 0 else 0.5
-        reason = "No specific experience requirement found in job description." if resume_years > 0 else "No specific experience requirement, but no experience provided."
+        if has_non_no_value_explicit_text and not explicit_non_empty_no_value:
+            detail = (
+                f"No minimum years specified in requirement (candidate has {_yr_label(resume_years)})."
+                if resume_years > 0
+                else "No minimum years specified in experience requirement."
+            )
+            return {
+                "score": 1.0 if resume_years > 0 else 0.5,
+                "status": STATUS_MEETS if resume_years > 0 else STATUS_PARTIAL,
+                "has_requirement": True,
+                "has_years_requirement": False,
+                "required_years": 0,
+                "candidate_years": resume_years,
+                "below_minimum": False,
+                "gap_years": 0,
+                "reason": format_criterion_reason(
+                    STATUS_MEETS if resume_years > 0 else STATUS_PARTIAL,
+                    detail,
+                ),
+            }
+
+        detail = (
+            f"No experience requirement for this position (candidate has {_yr_label(resume_years)})."
+            if resume_years > 0
+            else "No experience requirement for this position."
+        )
         return {
-            "score": score,
+            "score": 1.0,
+            "status": STATUS_NOT_REQUIRED,
+            "has_requirement": False,
+            "has_years_requirement": False,
             "required_years": 0,
             "candidate_years": resume_years,
             "below_minimum": False,
             "gap_years": 0,
-            "reason": reason,
+            "reason": format_criterion_reason(STATUS_NOT_REQUIRED, detail),
         }
 
     if resume_years <= 0:
         return {
-            "score": 0.2,
+            "score": 0.0,
+            "status": STATUS_DOES_NOT_MEET,
+            "has_requirement": True,
+            "has_years_requirement": True,
             "required_years": required_years,
             "candidate_years": 0,
             "below_minimum": True,
             "gap_years": required_years,
-            "reason": (
+            "reason": format_criterion_reason(
+                STATUS_DOES_NOT_MEET,
                 f"Gap reported: experience below minimum — required {_yr_label(required_years)}, "
-                f"but no experience duration was extracted from resume."
+                f"but no experience duration was extracted from resume.",
             ),
         }
 
-    if resume_years >= required_years:
+    if resume_years > required_years:
         return {
             "score": 1.0,
+            "status": STATUS_EXCEEDS,
+            "has_requirement": True,
+            "has_years_requirement": True,
             "required_years": required_years,
             "candidate_years": resume_years,
             "below_minimum": False,
             "gap_years": 0,
-            "reason": f"Your {resume_years} years of experience meets or exceeds the required {required_years} years.",
+            "reason": format_criterion_reason(
+                STATUS_EXCEEDS,
+                f"Candidate has {_yr_label(resume_years)} of experience (exceeds required {_yr_label(required_years)}).",
+            ),
+        }
+
+    if resume_years == required_years:
+        return {
+            "score": 1.0,
+            "status": STATUS_MEETS,
+            "has_requirement": True,
+            "has_years_requirement": True,
+            "required_years": required_years,
+            "candidate_years": resume_years,
+            "below_minimum": False,
+            "gap_years": 0,
+            "reason": format_criterion_reason(
+                STATUS_MEETS,
+                f"Candidate has {_yr_label(resume_years)} of experience, meeting the {_yr_label(required_years)} requirement.",
+            ),
         }
 
     score = round(resume_years / required_years, 2)
     gap_years = max(0, required_years - resume_years)
+    status = STATUS_PARTIAL if score >= 0.4 else STATUS_DOES_NOT_MEET
     return {
         "score": score,
+        "status": status,
+        "has_requirement": True,
+        "has_years_requirement": True,
         "required_years": required_years,
         "candidate_years": resume_years,
         "below_minimum": True,
         "gap_years": gap_years,
-        "reason": (
+        "reason": format_criterion_reason(
+            status,
             f"Gap reported: experience below minimum — {_yr_label(resume_years)} vs "
-            f"{_yr_label(required_years)} required ({int(score * 100)}% of minimum; {_yr_label(gap_years)} short)."
+            f"{_yr_label(required_years)} required ({int(score * 100)}% of minimum; {_yr_label(gap_years)} short).",
         ),
     }
 
 
+_LEVEL_TO_LEGACY_LABEL = {
+    8: "DOCTORATE",
+    7: "MASTER",
+    6: "BACHELOR",
+    5: "ASSOCIATE",
+    4: "DIPLOMA/VOCATIONAL",
+    3: "SENIOR HIGH SCHOOL",
+    2: "HIGH SCHOOL",
+    1: "ELEMENTARY",
+}
+
+
 def _extract_education_requirement(text: str) -> str:
-    """Extract the education level required from a job description."""
-    if not text:
+    """Extract the education level required from text using the shared hierarchy."""
+    parsed = parse_education_level(text, is_job_requirement=True)
+    if parsed.get("is_no_value") or not parsed.get("recognized") or not parsed.get("level"):
         return ""
-    
-    text_upper = text.upper()
-    
-    # Check from highest to lowest
-    checks = [
-        ("DOCTORATE", [r"PH\.?D", r"DOCTORATE", r"DOCTOR"]),
-        ("MASTER", [r"MASTER", r"MBA", r"GRADUATE\s+DEGREE"]),
-        ("BACHELOR", [r"BACHELOR", r"BS\b", r"BA\b", r"B\.S\b", r"COLLEGE\s+DEGREE", r"UNDERGRADUATE"]),
-        ("ASSOCIATE", [r"ASSOCIATE", r"2.YEAR\s+DEGREE"]),
-        ("DIPLOMA/VOCATIONAL", [r"DIPLOMA", r"VOCATIONAL", r"TESDA", r"CERTIFICATE"]),
-        ("SENIOR HIGH SCHOOL", [r"SENIOR\s+HIGH", r"SHS", r"HIGH\s+SCHOOL"]),
-    ]
-    
-    for degree_label, patterns in checks:
-        for p in patterns:
-            if re.search(p, text_upper):
-                return degree_label
-    
-    return ""
+    return _LEVEL_TO_LEGACY_LABEL.get(parsed["level"], "")
 
 
 _NO_CERT_REQUIREMENTS = {
@@ -1226,7 +1599,7 @@ _CERT_ABBREVIATIONS = {
 
 def _is_no_cert_requirement(text: Any) -> bool:
     """Return True when a certification requirement string represents 'none' / not required."""
-    if text is None:
+    if is_no_value(text):
         return True
     norm = re.sub(r'[.\s]+$', '', str(text).strip().lower())
     return norm in _NO_CERT_REQUIREMENTS
@@ -1252,17 +1625,17 @@ def _normalize_certifications_input(certs_input: Any) -> list[str]:
             if isinstance(item, dict):
                 val = item.get("canonical_name") or item.get("name") or ""
                 if val:
-                    raw_items.extend(re.split(r'[|,\n;•]', str(val)))
+                    raw_items.extend(clean_list_items(val))
             elif item:
-                raw_items.extend(re.split(r'[|,\n;•]', str(item)))
+                raw_items.extend(clean_list_items(item))
     else:
-        raw_items = re.split(r'[|,\n;•]', str(certs_input))
+        raw_items = clean_list_items(certs_input)
 
     cleaned: list[str] = []
     seen: set[str] = set()
     for item in raw_items:
         label = re.sub(r'\s+', ' ', str(item)).strip()
-        if not label:
+        if not label or is_no_value(label):
             continue
         low = re.sub(r'[.\s]+$', '', label.lower())
         if low in _NO_CERT_REQUIREMENTS or low in {"unknown", "none specified"}:
@@ -1406,13 +1779,13 @@ def calculate_certifications_match(
     job_title: str = "",
 ) -> dict:
     """
-    Compare resume certifications against job requirements and role relevance.
-    Irrelevant or unverified certifications never earn a perfect score or strength.
+    Compare resume certifications against job requirements, supporting graded certification
+    hierarchies (e.g. TESDA NC I < NC II < NC III < NC IV) and no-value normalization.
     """
     cand_certs = _normalize_certifications_input(resume_certs)
-    req_raw = str(certifications_req or "").strip()
-    req_norm = re.sub(r'[.\s]+$', '', req_raw.lower())
-    explicit_no_req = bool(certifications_req is not None and _is_no_cert_requirement(req_raw))
+    req_raw = normalize_requirement_text(certifications_req)
+    req_norm = re.sub(r'[.\s]+$', '', req_raw.lower()) if req_raw else ""
+    explicit_no_req = _is_no_cert_requirement(certifications_req)
 
     has_specific_req = False
     has_generic_req = False
@@ -1425,7 +1798,10 @@ def calculate_certifications_match(
             has_generic_req = True
         else:
             parsed = [p.strip() for p in re.split(r'[|,\n;•]', req_raw) if p.strip()]
-            meaningful = [p for p in parsed if _cert_core_tokens(_normalize_cert_text(p))]
+            meaningful = [
+                p for p in parsed
+                if not is_no_value(p) and _cert_core_tokens(_normalize_cert_text(p))
+            ]
             if meaningful:
                 required_certs = req_raw
                 req_items = meaningful
@@ -1433,54 +1809,54 @@ def calculate_certifications_match(
             else:
                 required_certs = req_raw
                 has_generic_req = True
-    elif not explicit_no_req and job_description:
-        if re.search(r'\b(certification|certified|certificate)\b', job_description, re.IGNORECASE):
-            required_certs = "Relevant Certification"
-            has_generic_req = True
 
-    cand_display = ", ".join(cand_certs) if cand_certs else "None"
+    cand_display = ", ".join(cand_certs) if cand_certs else "None provided"
 
     if not has_specific_req and not has_generic_req:
         if not cand_certs:
             return {
-                "score": 0.0,
+                "score": 1.0,
+                "status": STATUS_NOT_REQUIRED,
                 "required_certifications": "None",
-                "candidate_certifications": "None",
+                "candidate_certifications": "None provided",
                 "matched_certifications": [],
                 "is_relevant": False,
                 "has_requirement": False,
-                "reason": "No specific certification requirement found; no certifications listed on resume.",
+                "reason": format_criterion_reason(
+                    STATUS_NOT_REQUIRED,
+                    "No certification requirement for this position.",
+                ),
             }
         relevant_certs = _filter_relevant_certifications(cand_certs, job_title, job_description)
-        if relevant_certs:
-            return {
-                "score": 1.0,
-                "required_certifications": "None",
-                "candidate_certifications": cand_display,
-                "matched_certifications": relevant_certs,
-                "is_relevant": True,
-                "has_requirement": False,
-                "reason": f"No specific certification required; candidate holds relevant certification(s): {', '.join(relevant_certs)}.",
-            }
+        detail = (
+            f"No certification requirement for this position (candidate holds relevant certification(s): {', '.join(relevant_certs)})."
+            if relevant_certs
+            else f"No certification requirement for this position (candidate listed: {cand_display})."
+        )
         return {
-            "score": 0.0,
+            "score": 1.0,
+            "status": STATUS_NOT_REQUIRED,
             "required_certifications": "None",
             "candidate_certifications": cand_display,
-            "matched_certifications": [],
-            "is_relevant": False,
+            "matched_certifications": relevant_certs,
+            "is_relevant": bool(relevant_certs),
             "has_requirement": False,
-            "reason": f"No specific certification required; candidate certification(s) ({cand_display}) are not relevant to this role.",
+            "reason": format_criterion_reason(STATUS_NOT_REQUIRED, detail),
         }
 
     if not cand_certs:
         return {
             "score": 0.0,
+            "status": STATUS_DOES_NOT_MEET,
             "required_certifications": required_certs,
-            "candidate_certifications": "None",
+            "candidate_certifications": "None provided",
             "matched_certifications": [],
             "is_relevant": False,
             "has_requirement": True,
-            "reason": f"Job requires {required_certs}, but no certifications were found.",
+            "reason": format_criterion_reason(
+                STATUS_DOES_NOT_MEET,
+                f"No certification found. Job requires {required_certs}.",
+            ),
         }
 
     if has_generic_req:
@@ -1488,54 +1864,110 @@ def calculate_certifications_match(
         if relevant_certs:
             return {
                 "score": 1.0,
+                "status": STATUS_MEETS,
                 "required_certifications": required_certs,
                 "candidate_certifications": ", ".join(relevant_certs),
                 "matched_certifications": relevant_certs,
                 "is_relevant": True,
                 "has_requirement": True,
-                "reason": f"Candidate holds relevant certification(s) ({', '.join(relevant_certs)}) aligned with this role.",
+                "reason": format_criterion_reason(
+                    STATUS_MEETS,
+                    f"Candidate holds relevant certification(s) ({', '.join(relevant_certs)}) aligned with this role.",
+                ),
             }
         return {
             "score": 0.0,
+            "status": STATUS_DOES_NOT_MEET,
             "required_certifications": required_certs,
             "candidate_certifications": cand_display,
             "matched_certifications": [],
             "is_relevant": False,
             "has_requirement": True,
-            "reason": f"Candidate certifications ({cand_display}) are not relevant to this role.",
+            "reason": format_criterion_reason(
+                STATUS_DOES_NOT_MEET,
+                f"Candidate certifications ({cand_display}) do not match the required {required_certs} for this role.",
+            ),
         }
 
-    # Mode A: Specific required certifications
-    matched_reqs: list[str] = []
+    # Mode A: Specific required certifications (supports graded certification hierarchies)
+    total_req_score = 0.0
     matched_cands: list[str] = []
-    for req_item in req_items:
-        for cand_item in cand_certs:
-            if _cert_item_matches(cand_item, req_item, fuzzy_threshold=fuzzy_threshold):
-                matched_reqs.append(req_item)
-                if cand_item not in matched_cands:
-                    matched_cands.append(cand_item)
-                break
+    exceeds_any = False
 
-    if not matched_reqs:
+    for req_item in req_items:
+        best_req_score = 0.0
+        best_cand_item: Optional[str] = None
+        best_exceeds = False
+        alts = _extract_cert_alternatives(req_item)
+
+        for cand_item in cand_certs:
+            graded_handled = False
+            for alt in alts:
+                graded = compare_graded_certifications(cand_item, alt)
+                if graded is not None:
+                    graded_handled = True
+                    if graded["matched"]:
+                        if 1.0 > best_req_score or (1.0 == best_req_score and graded["exceeds"] and not best_exceeds):
+                            best_req_score = 1.0
+                            best_cand_item = cand_item
+                            best_exceeds = bool(graded["exceeds"])
+                    elif graded["below_level"] and graded["score"] > best_req_score:
+                        best_req_score = float(graded["score"])
+                        best_cand_item = cand_item
+                        best_exceeds = False
+
+            if not graded_handled and _cert_item_matches(cand_item, req_item, fuzzy_threshold=fuzzy_threshold):
+                if 1.0 > best_req_score:
+                    best_req_score = 1.0
+                    best_cand_item = cand_item
+                    best_exceeds = False
+
+        if best_req_score > 0.0 and best_cand_item:
+            total_req_score += best_req_score
+            if best_cand_item not in matched_cands:
+                matched_cands.append(best_cand_item)
+            if best_exceeds:
+                exceeds_any = True
+
+    if total_req_score <= 0.0:
         return {
             "score": 0.0,
+            "status": STATUS_DOES_NOT_MEET,
             "required_certifications": required_certs,
             "candidate_certifications": cand_display,
             "matched_certifications": [],
             "is_relevant": False,
             "has_requirement": True,
-            "reason": f"Candidate certifications ({cand_display}) do not match the required {required_certs}.",
+            "reason": format_criterion_reason(
+                STATUS_DOES_NOT_MEET,
+                f"Candidate certifications ({cand_display}) do not match the required {required_certs}.",
+            ),
         }
 
-    score = round(len(matched_reqs) / len(req_items), 4)
+    score = round(total_req_score / len(req_items), 4)
+    if score >= 1.0:
+        status = STATUS_EXCEEDS if exceeds_any else STATUS_MEETS
+        detail = (
+            f"Candidate exceeds required certification ({required_certs}) with {', '.join(matched_cands)}."
+            if exceeds_any
+            else f"Matched required certification(s): {', '.join(matched_cands)}."
+        )
+    else:
+        status = STATUS_PARTIAL
+        detail = (
+            f"Partially meets certification requirement ({required_certs}); "
+            f"candidate holds {', '.join(matched_cands)}."
+        )
+
     return {
         "score": score,
+        "status": status,
         "required_certifications": required_certs,
-        "candidate_certifications": ", ".join(matched_cands),
+        "candidate_certifications": ", ".join(matched_cands) if matched_cands else cand_display,
         "matched_certifications": matched_cands,
-        "is_relevant": True,
+        "is_relevant": score >= 1.0,
         "has_requirement": True,
-        "reason": f"Matched {len(matched_reqs)} of {len(req_items)} required certification(s): {', '.join(matched_cands)}.",
+        "reason": format_criterion_reason(status, detail),
     }
 
 
@@ -1591,61 +2023,72 @@ def _generate_recommendations(
                 f"Low overall alignment ({match_percentage:.0f}%) for {role_label} — consider redirecting to better-matched open positions or evaluate trainability before advancing."
             )
 
-    # 2. Skills probing for the interviewer
-    missing_skills = skills_result.get("missing") or []
-    matched_skills = skills_result.get("matched") or []
-    if missing_skills:
-        missing_list = ", ".join([str(s).title() for s in missing_skills[:5]])
-        recommendations.append(
-            f"Probe practical familiarity and onboarding needs for missing required skills: {missing_list}."
-        )
-    elif matched_skills:
-        matched_sample = ", ".join([str(s).title() for s in matched_skills[:4]])
-        recommendations.append(
-            f"Validate hands-on depth and real-world scenarios across matched core skills: {matched_sample}."
-        )
+    # 2. Skills probing for the interviewer (only when skills are required)
+    if skills_result.get("has_requirement", True):
+        missing_skills = skills_result.get("missing") or []
+        matched_skills = skills_result.get("matched") or []
+        if missing_skills:
+            missing_list = ", ".join([str(s).title() for s in missing_skills[:5]])
+            recommendations.append(
+                f"Probe practical familiarity and onboarding needs for missing required skills: {missing_list}."
+            )
+        elif matched_skills:
+            matched_sample = ", ".join([str(s).title() for s in matched_skills[:4]])
+            recommendations.append(
+                f"Validate hands-on depth and real-world scenarios across matched core skills: {matched_sample}."
+            )
 
-    # 3. Experience & role-relevance probing
-    req_years = experience_result.get("required_years", 0) or 0
-    cand_years = experience_result.get("candidate_years", 0) or 0
-    total_years = experience_result.get("total_years", cand_years) or cand_years
-    rel_count = (relevance_result or {}).get("relevant_count", 0) or 0
-    total_entries = (relevance_result or {}).get("total_entries", 0) or 0
+    # 3. Experience & role-relevance probing (only when experience is required)
+    if experience_result.get("has_requirement", True):
+        req_years = experience_result.get("required_years", 0) or 0
+        cand_years = experience_result.get("candidate_years", 0) or 0
+        total_years = experience_result.get("total_years", cand_years) or cand_years
+        rel_count = (relevance_result or {}).get("relevant_count", 0) or 0
+        total_entries = (relevance_result or {}).get("total_entries", 0) or 0
 
-    if total_entries > 0 and rel_count == 0:
-        yr_ctx = _format_years_word(total_years) if total_years > 0 else "prior"
-        recommendations.append(
-            f"Candidate's {yr_ctx} work history is in an unrelated domain — ask how transferable skills apply to {role_label} and assess ramp-up time."
-        )
-    elif req_years > 0 and cand_years < req_years:
-        gap = max(0, req_years - cand_years)
-        recommendations.append(
-            f"Relevant experience ({_format_years_word(cand_years)}) is {_format_years_word(gap)} below the {_format_years_word(req_years)} requirement — probe whether hands-on projects or domain training offset the tenure gap."
-        )
-    elif cand_years == 0 and total_years == 0:
-        recommendations.append(
-            f"Work tenure was not explicitly quantified on the resume — verify exact employment dates and duration for {role_label} during initial screening."
-        )
-    elif rel_count > 0 and experience_result.get("score", 0) >= 0.8:
-        recommendations.append(
-            f"Confirm day-to-day scope, independent ownership, and measurable outcomes from the candidate's {_format_years_word(cand_years)} of relevant experience."
-        )
+        if total_entries > 0 and rel_count == 0:
+            yr_ctx = _format_years_word(total_years) if total_years > 0 else "prior"
+            recommendations.append(
+                f"Candidate's {yr_ctx} work history is in an unrelated domain — ask how transferable skills apply to {role_label} and assess ramp-up time."
+            )
+        elif req_years > 0 and cand_years < req_years:
+            gap = max(0, req_years - cand_years)
+            recommendations.append(
+                f"Relevant experience ({_format_years_word(cand_years)}) is {_format_years_word(gap)} below the {_format_years_word(req_years)} requirement — probe whether hands-on projects or domain training offset the tenure gap."
+            )
+        elif cand_years == 0 and total_years == 0:
+            recommendations.append(
+                f"Work tenure was not explicitly quantified on the resume — verify exact employment dates and duration for {role_label} during initial screening."
+            )
+        elif rel_count > 0 and experience_result.get("score", 0) >= 0.8:
+            recommendations.append(
+                f"Confirm day-to-day scope, independent ownership, and measurable outcomes from the candidate's {_format_years_word(cand_years)} of relevant experience."
+            )
 
     # 4. Certifications / compliance & education verification
     cert_source = certs_result if certs_result is not None else {}
+    cert_has_req = cert_source.get("has_requirement", True)
     req_certs = cert_source.get("required_certifications", "None")
     cand_certs = cert_source.get("candidate_certifications", "None")
     certs_relevant = bool(cert_source.get("is_relevant"))
-    if req_certs and req_certs != "None" and not certs_relevant:
+    if cert_has_req and req_certs and not is_no_value(req_certs) and not certs_relevant:
         recommendations.append(
             f"Confirm whether the candidate holds, is renewing, or is willing to obtain required credentials ({req_certs})."
         )
-    elif certs_relevant and cand_certs and cand_certs != "None":
+    elif certs_relevant and cand_certs and not is_no_value(cand_certs) and cand_certs != "None provided":
         recommendations.append(
             f"Verify authenticity and validity dates of relevant credentials ({cand_certs}) during pre-employment screening."
         )
 
-    if (education_result.get("score", 1.0) or 0.0) < 0.5:
+    edu_status = education_result.get("status")
+    if edu_status == STATUS_MANUAL_REVIEW or education_result.get("needs_manual_review"):
+        recommendations.append(
+            "Manually review the candidate's educational background (unrecognized degree/attainment format)."
+        )
+    elif (
+        edu_status not in (STATUS_NOT_REQUIRED, STATUS_EXCEEDS, STATUS_MEETS)
+        and (education_result.get("score", 1.0) or 0.0) < 0.5
+    ):
         req_edu = education_result.get("required_education", "required degree")
         cand_edu = education_result.get("candidate_education", "listed background")
         recommendations.append(
@@ -1712,10 +2155,11 @@ def calculate_location_match(candidate_location: str, job_location: str) -> dict
 def _generate_nlp_strengths(skills_result: dict, experience_result: dict, education_result: dict, relevance_result: dict, certs_result: dict) -> list[str]:
     """Generate strengths list from NLP analysis results."""
     strengths = []
-    if skills_result["score"] >= 0.7:
-        strengths.append(f"Strong skills alignment — matched {len(skills_result['matched'])} of {len(skills_result['matched']) + len(skills_result['missing'])} required skills.")
-    elif skills_result["score"] >= 0.4:
-        strengths.append(f"Moderate skills match — {len(skills_result['matched'])} relevant skills identified.")
+    if skills_result.get("has_requirement", True):
+        if skills_result["score"] >= 0.7:
+            strengths.append(f"Strong skills alignment — matched {len(skills_result['matched'])} of {len(skills_result['matched']) + len(skills_result['missing'])} required skills.")
+        elif skills_result["score"] >= 0.4:
+            strengths.append(f"Moderate skills match — {len(skills_result['matched'])} relevant skills identified.")
 
     relevant_count = relevance_result.get("relevant_count", 0) or 0
     irrelevant_count = relevance_result.get("irrelevant_count", 0) or 0
@@ -1723,7 +2167,8 @@ def _generate_nlp_strengths(skills_result: dict, experience_result: dict, educat
     cand_years = experience_result.get("candidate_years", 0) or 0
     req_years = experience_result.get("required_years", 0) or 0
     if (
-        relevant_count > 0
+        experience_result.get("has_requirement", True)
+        and relevant_count > 0
         and duration_verified
         and cand_years > 0
         and experience_result.get("score", 0) >= 0.8
@@ -1745,21 +2190,38 @@ def _generate_nlp_strengths(skills_result: dict, experience_result: dict, educat
     transferable = relevance_result.get("transferable_skills", [])
     if transferable:
         strengths.append(f"Transferable skills: {', '.join(transferable[:4])}.")
-    if education_result["score"] >= 0.8:
+
+    edu_status = education_result.get("status")
+    if edu_status == STATUS_EXCEEDS:
+        strengths.append(
+            f"Exceeds the education requirement ({education_result.get('candidate_education')} vs {education_result.get('required_education')})."
+        )
+    elif edu_status == STATUS_MEETS or (
+        edu_status not in (STATUS_NOT_REQUIRED, STATUS_MANUAL_REVIEW)
+        and education_result.get("score", 0) >= 0.8
+    ):
         strengths.append("Education background aligns well with job requirements.")
+
     certs_is_relevant = certs_result.get("is_relevant")
     if certs_is_relevant is None:
         certs_is_relevant = (
-            certs_result.get("required_certifications", "None") != "None"
-            and certs_result.get("candidate_certifications", "None") not in ("None", "Unrelated", "")
+            not is_no_value(certs_result.get("required_certifications", "None"))
+            and certs_result.get("candidate_certifications", "None") not in ("None", "None provided", "Unrelated", "")
         )
+    cert_status = certs_result.get("status")
     if certs_is_relevant and certs_result["score"] >= 0.8:
-        if certs_result.get("required_certifications", "None") != "None":
-            strengths.append("Relevant certifications meet the job requirements.")
+        if certs_result.get("has_requirement", True) and not is_no_value(certs_result.get("required_certifications", "None")):
+            if cert_status == STATUS_EXCEEDS:
+                strengths.append(
+                    f"Exceeds certification requirement ({', '.join(certs_result.get('matched_certifications') or [])})."
+                )
+            else:
+                strengths.append("Relevant certifications meet the job requirements.")
         else:
             rel_certs = certs_result.get("matched_certifications") or []
             if rel_certs:
                 strengths.append(f"Holds relevant certifications for this role ({', '.join(rel_certs[:3])}).")
+
     if not strengths:
         strengths.append("Resume was successfully parsed and analyzed.")
     return strengths[:5]
@@ -1768,28 +2230,35 @@ def _generate_nlp_strengths(skills_result: dict, experience_result: dict, educat
 def _generate_nlp_weaknesses(skills_result: dict, experience_result: dict, education_result: dict, relevance_result: dict, certs_result: dict) -> list[str]:
     """Generate weaknesses list from NLP analysis results."""
     weaknesses = []
-    req_years = experience_result.get("required_years", 0) or 0
-    cand_years = experience_result.get("candidate_years", 0) or 0
-    total_years = experience_result.get("total_years", cand_years) or cand_years
-    if req_years > 0 and (experience_result.get("below_minimum") or cand_years < req_years):
-        gap = max(0, req_years - cand_years)
-        rel_suffix = " relevant" if total_years > cand_years else ""
-        weaknesses.append(
-            f"Gap reported: experience below minimum ({_format_years_label(cand_years)}{rel_suffix} "
-            f"vs {_format_years_label(req_years)} required; {_format_years_label(gap)} short)."
-        )
-    if skills_result["missing"] and len(skills_result["missing"]) > 0:
+    if experience_result.get("has_requirement", True):
+        req_years = experience_result.get("required_years", 0) or 0
+        cand_years = experience_result.get("candidate_years", 0) or 0
+        total_years = experience_result.get("total_years", cand_years) or cand_years
+        if req_years > 0 and (experience_result.get("below_minimum") or cand_years < req_years):
+            gap = max(0, req_years - cand_years)
+            rel_suffix = " relevant" if total_years > cand_years else ""
+            weaknesses.append(
+                f"Gap reported: experience below minimum ({_format_years_label(cand_years)}{rel_suffix} "
+                f"vs {_format_years_label(req_years)} required; {_format_years_label(gap)} short)."
+            )
+    if skills_result.get("has_requirement", True) and skills_result["missing"]:
         missing_sample = ", ".join([s.title() for s in skills_result["missing"][:4]])
         weaknesses.append(f"Missing critical skills: {missing_sample}.")
-    irr_count = relevance_result.get("irrelevant_count", 0)
-    total = relevance_result.get("total_entries", 0)
-    if irr_count > 0 and irr_count == total:
-        weaknesses.append("None of the work experience entries are relevant to this position.")
-    elif irr_count > 0:
-        weaknesses.append(f"{irr_count} of {total} experience entries are not relevant to this role.")
-    if education_result["score"] < 0.5:
+    if experience_result.get("has_requirement", True):
+        irr_count = relevance_result.get("irrelevant_count", 0)
+        total = relevance_result.get("total_entries", 0)
+        if irr_count > 0 and irr_count == total:
+            weaknesses.append("None of the work experience entries are relevant to this position.")
+        elif irr_count > 0:
+            weaknesses.append(f"{irr_count} of {total} experience entries are not relevant to this role.")
+    edu_status = education_result.get("status")
+    if edu_status not in (STATUS_NOT_REQUIRED, STATUS_MANUAL_REVIEW) and education_result["score"] < 0.5:
         weaknesses.append("Education does not fully meet the job requirements.")
-    if certs_result["score"] < 0.5 and certs_result.get("required_certifications", "None") != "None":
+    if (
+        certs_result.get("has_requirement", True)
+        and certs_result["score"] < 0.5
+        and not is_no_value(certs_result.get("required_certifications", "None"))
+    ):
         weaknesses.append("Required certifications are missing or do not match.")
     return weaknesses[:5]
 
@@ -1810,7 +2279,8 @@ def _generate_nlp_summary(resume_data: dict, job_title: str, final_pct: float, s
         level_desc = "a low match"
 
     summary = f"{name} is {level_desc} ({final_pct:.0f}%) for the {job_title} position. "
-    summary += f"Skills analysis shows {matched}/{total} required skills matched. "
+    if skills_result.get("has_requirement", True) and total > 0:
+        summary += f"Skills analysis shows {matched}/{total} required skills matched. "
     if total_exp > 0:
         summary += f"{rel_count} of {total_exp} work experience(s) are relevant to this role. "
     else:
@@ -1820,11 +2290,19 @@ def _generate_nlp_summary(resume_data: dict, job_title: str, final_pct: float, s
 
 def _generate_nlp_skills_explanation(skills_result: dict) -> str:
     """Generate a detailed skills explanation from NLP matching."""
+    if not skills_result.get("has_requirement", True):
+        return skills_result.get("reason") or format_criterion_reason(
+            STATUS_NOT_REQUIRED,
+            "No specific skills requirements were found in the job description.",
+        )
     matched = skills_result["matched"]
     missing = skills_result["missing"]
     total = len(matched) + len(missing)
     if total == 0:
-        return "No specific skills requirements were found in the job description."
+        return format_criterion_reason(
+            STATUS_NOT_REQUIRED,
+            "No specific skills requirements were found in the job description.",
+        )
     pct = round(skills_result["score"] * 100)
     parts = [f"Skills Match: {pct}% ({len(matched)}/{total} required skills found)."]
     if matched:
@@ -1895,7 +2373,7 @@ def build_job_specific_questions(
         or bool(re.search(r"\b(?:19|20)\d{2}\s*[-–—to]+\s*(?:(?:19|20)\d{2}|present|current)\b", exp_text, re.IGNORECASE))
     )
 
-    if not has_explicit_years:
+    if experience_result.get("has_requirement", True) and not has_explicit_years:
         if is_mfg_job:
             q_text = f"How many years of manufacturing experience do you have for the {job_title} role?"
         elif department:
@@ -1919,36 +2397,42 @@ def build_job_specific_questions(
 
     missing_skills = [s.title() for s in (skills_result.get("missing") or []) if s][:5]
     matched_skills = [s.title() for s in (skills_result.get("matched") or []) if s][:5]
-    has_resume_skills = bool(str(resume_data.get("skills") or "").strip()) or bool(resume_data.get("skills_list"))
-    if missing_skills:
-        questions.append({
-            "id": f"clarify_{job_slug}_skills",
-            "field": "skills",
-            "job_id": job_id,
-            "job_title": job_title,
-            "question": f"For {job_title}, which of these required skills have you used: {', '.join(missing_skills)}?",
-            "type": "text",
-            "placeholder": f"e.g. {', '.join(missing_skills[:3])}",
-            "required": False,
-            "domain": department or "General",
-            "reason": f"Required skills for {job_title} not explicitly found in resume.",
-        })
-    elif skills_req and not matched_skills and not has_resume_skills:
-        questions.append({
-            "id": f"clarify_{job_slug}_skills",
-            "field": "skills",
-            "job_id": job_id,
-            "job_title": job_title,
-            "question": f"Which key tools or competencies from {job_title} ({skills_req[:80]}) have you practiced?",
-            "type": "text",
-            "placeholder": "List relevant tools or processes",
-            "required": False,
-            "domain": department or "General",
-            "reason": f"Aligning candidate competencies with {job_title}.",
-        })
+    has_resume_skills = bool(normalize_requirement_text(resume_data.get("skills"))) or bool(resume_data.get("skills_list"))
+    if skills_result.get("has_requirement", True):
+        if missing_skills:
+            questions.append({
+                "id": f"clarify_{job_slug}_skills",
+                "field": "skills",
+                "job_id": job_id,
+                "job_title": job_title,
+                "question": f"For {job_title}, which of these required skills have you used: {', '.join(missing_skills)}?",
+                "type": "text",
+                "placeholder": f"e.g. {', '.join(missing_skills[:3])}",
+                "required": False,
+                "domain": department or "General",
+                "reason": f"Required skills for {job_title} not explicitly found in resume.",
+            })
+        elif skills_req and not is_no_value(skills_req) and not matched_skills and not has_resume_skills:
+            questions.append({
+                "id": f"clarify_{job_slug}_skills",
+                "field": "skills",
+                "job_id": job_id,
+                "job_title": job_title,
+                "question": f"Which key tools or competencies from {job_title} ({skills_req[:80]}) have you practiced?",
+                "type": "text",
+                "placeholder": "List relevant tools or processes",
+                "required": False,
+                "domain": department or "General",
+                "reason": f"Aligning candidate competencies with {job_title}.",
+            })
 
     req_certs = (certs_result.get("required_certifications") or "").strip()
-    if req_certs and req_certs.lower() != "none" and float(certs_result.get("score", 1.0) or 0.0) < 1.0:
+    if (
+        certs_result.get("has_requirement", True)
+        and req_certs
+        and not is_no_value(req_certs)
+        and float(certs_result.get("score", 1.0) or 0.0) < 1.0
+    ):
         questions.append({
             "id": f"clarify_{job_slug}_certifications",
             "field": "certifications",
@@ -1986,7 +2470,7 @@ def build_job_specific_questions(
         )
         for we in work_exps
     )
-    if rel_count == 0 or not has_exp_description:
+    if experience_result.get("has_requirement", True) and (rel_count == 0 or not has_exp_description):
         questions.append({
             "id": f"clarify_{job_slug}_role_fit",
             "field": "relevance",
@@ -2129,10 +2613,15 @@ def _resolve_relevant_experience_years(
 
 
 def _resolve_experience_text(resume_data: dict) -> str:
-    """Resolve pipe-delimited experience text, falling back to structured work_experiences."""
-    raw = str(resume_data.get("experience") or "").strip()
+    """Resolve pipe-delimited experience text, falling back to structured work_experiences, stripping no-value markers."""
+    raw = normalize_requirement_text(resume_data.get("experience"))
     if raw:
-        return raw
+        cleaned_entries = [
+            e.strip() for e in raw.split("|")
+            if normalize_requirement_text(e)
+        ]
+        if cleaned_entries:
+            return " | ".join(cleaned_entries)
     work_exps = resume_data.get("work_experiences") or []
     if not isinstance(work_exps, list):
         return ""
@@ -2140,13 +2629,15 @@ def _resolve_experience_text(resume_data: dict) -> str:
     for we in work_exps:
         if not isinstance(we, dict):
             continue
-        title = str(we.get("job_title") or we.get("role") or we.get("title") or "").strip()
-        company = str(we.get("company_name") or we.get("company") or "").strip()
+        title = normalize_requirement_text(we.get("job_title") or we.get("role") or we.get("title"))
+        company = normalize_requirement_text(we.get("company_name") or we.get("company"))
         resp = we.get("responsibilities") or we.get("description") or []
         if isinstance(resp, list):
-            resp_text = "; ".join(str(r).strip() for r in resp if str(r).strip())
+            resp_text = "; ".join(
+                normalize_requirement_text(r) for r in resp if normalize_requirement_text(r)
+            )
         else:
-            resp_text = str(resp).strip()
+            resp_text = normalize_requirement_text(resp)
         header = f"{title} at {company}" if (title and company) else (title or company)
         entry = f"{header} - Responsibilities: {resp_text}" if (header and resp_text) else (header or resp_text)
         if entry:
@@ -2219,6 +2710,10 @@ def calculate_match_score(
     resume_skills = resume_data.get("skills", "")
     job_skills = job.skills_requirements or ""
     skills_result = calculate_skills_match(resume_skills, job_skills, fuzzy_threshold=fuzzy_th)
+    skills_status = skills_result.get(
+        "status",
+        STATUS_NOT_REQUIRED if not skills_result.get("has_requirement", True) else STATUS_MEETS,
+    )
 
     resume_years = resume_data.get("years_experience", 0) or 0
     job_desc = (job.description or "") + " " + (job.skills_requirements or "")
@@ -2243,51 +2738,81 @@ def calculate_match_score(
     )
     experience_result["total_years"] = resume_years
     experience_result["duration_verified"] = duration_verified
-    if resume_years > effective_exp_years:
+    exp_has_requirement = bool(experience_result.get("has_requirement", True))
+
+    if exp_has_requirement and resume_years > effective_exp_years:
         req_yrs_exp = experience_result.get("required_years", 0) or 0
         gap_yrs_exp = experience_result.get("gap_years", max(0, req_yrs_exp - effective_exp_years))
         other_ctx = f"{_format_years_label(resume_years)} unrelated" if effective_exp_years == 0 else f"{_format_years_label(resume_years)} total"
         if experience_result.get("below_minimum") and req_yrs_exp > 0:
-            experience_result["reason"] = (
-                f"Gap reported: experience below minimum — {_format_years_label(effective_exp_years)} relevant "
-                f"({other_ctx}) vs {_format_years_label(req_yrs_exp)} required "
-                f"({_format_years_label(gap_yrs_exp)} short)."
+            experience_result["reason"] = format_criterion_reason(
+                experience_result.get("status", STATUS_PARTIAL),
+                (
+                    f"Gap reported: experience below minimum — {_format_years_label(effective_exp_years)} relevant "
+                    f"({other_ctx}) vs {_format_years_label(req_yrs_exp)} required "
+                    f"({_format_years_label(gap_yrs_exp)} short)."
+                ),
             )
         elif req_yrs_exp == 0 and effective_exp_years == 0:
-            experience_result["reason"] = "No relevant work experience found for this position."
-    # STRICT COMBINED SCORE: Relevance dominates at 75%.
-    relevance_score = relevance_result["relevance_score"]
-    has_any_relevant = relevance_result.get("relevant_count", 0) > 0
-    if not has_any_relevant:
-        combined_exp_score = min(0.10, experience_result["score"] * 0.10)
-    else:
-        combined_exp_score = (
-            experience_result["score"] * 0.25 +
-            relevance_score * 0.75
-        )
-        if experience_result.get("below_minimum"):
-            max_below_min_score = round(
-                experience_result["score"] * 0.65 + min(relevance_score, experience_result["score"]) * 0.35,
-                4,
+            experience_result["reason"] = format_criterion_reason(
+                STATUS_DOES_NOT_MEET,
+                "No relevant work experience found for this position.",
             )
-            combined_exp_score = min(combined_exp_score, max_below_min_score)
 
-    # Education matching
-    resume_education = resume_data.get("education", "")
+    rel_count = relevance_result.get("relevant_count", 0)
+    irr_count = relevance_result.get("irrelevant_count", 0)
+    if not exp_has_requirement:
+        # Bug 2 fix: "None" / no experience requirement earns full credit at its normal weight
+        combined_exp_score = 1.0
+        exp_status = STATUS_NOT_REQUIRED
+    else:
+        # STRICT COMBINED SCORE: Relevance dominates at 75%.
+        relevance_score = relevance_result["relevance_score"]
+        has_any_relevant = rel_count > 0
+        if not has_any_relevant:
+            combined_exp_score = min(0.10, experience_result["score"] * 0.10)
+            exp_status = STATUS_DOES_NOT_MEET
+        else:
+            combined_exp_score = (
+                experience_result["score"] * 0.25 +
+                relevance_score * 0.75
+            )
+            if experience_result.get("below_minimum"):
+                max_below_min_score = round(
+                    experience_result["score"] * 0.65 + min(relevance_score, experience_result["score"]) * 0.35,
+                    4,
+                )
+                combined_exp_score = min(combined_exp_score, max_below_min_score)
+            exp_status = experience_result.get("status") or STATUS_MEETS
+            if irr_count > 0 and experience_result.get("below_minimum"):
+                exp_status = STATUS_PARTIAL if combined_exp_score >= 0.4 else STATUS_DOES_NOT_MEET
+
+    # Education matching (shared 1-8 hierarchy + ongoing rules + separate field check + manual review)
+    resume_education = _resolve_education_text(resume_data)
     education_result = calculate_education_match(
-        resume_education, job_desc, getattr(job, 'education_requirements', None)
+        resume_education,
+        job_desc,
+        getattr(job, 'education_requirements', None),
+        education_entries=resume_data.get("education_entries"),
     )
+    edu_status = education_result.get("status", STATUS_MEETS)
 
     # Certifications matching (never fall back to skills — only actual certifications)
     raw_certs = resume_data.get("certifications")
     if not raw_certs or (isinstance(raw_certs, str) and _is_no_cert_requirement(raw_certs)):
         raw_certs = resume_data.get("candidate_certifications") or resume_data.get("certifications_list") or ""
+    if isinstance(raw_certs, str) and is_no_value(raw_certs):
+        raw_certs = ""
     certs_result = calculate_certifications_match(
         raw_certs,
         job_desc,
         getattr(job, 'certifications_requirements', None),
         fuzzy_threshold=fuzzy_th,
         job_title=getattr(job, 'job_title', "") or "",
+    )
+    certs_status = certs_result.get(
+        "status",
+        STATUS_NOT_REQUIRED if not certs_result.get("has_requirement", True) else STATUS_MEETS,
     )
 
     # Location matching
@@ -2297,22 +2822,24 @@ def calculate_match_score(
     # Resume Completeness matching (Thesis Criterion: 5%)
     raw_completeness = resume_data.get("completeness_score")
     if raw_completeness is None:
-        # Compute completeness from the 4 core profile/form sections (0-100)
+        # Compute completeness from the 4 core profile/form sections (0-100), ignoring no-value placeholders
         has_personal = bool(
-            (resume_data.get("fullname") or "").strip()
-            or (resume_data.get("email") or "").strip()
-            or (resume_data.get("phone") or "").strip()
+            normalize_requirement_text(resume_data.get("fullname"))
+            or normalize_requirement_text(resume_data.get("email"))
+            or normalize_requirement_text(resume_data.get("phone"))
         )
-        has_skills = bool(resume_data.get("skills") or resume_data.get("skills_list"))
+        raw_skills_val = resume_data.get("skills")
+        skills_list_val = clean_list_items(resume_data.get("skills_list") or [])
+        has_skills = bool(normalize_requirement_text(raw_skills_val) or skills_list_val)
         has_exp = bool(
-            (resume_data.get("experience") or "").strip()
+            normalize_requirement_text(resume_experience)
             or resume_data.get("work_experiences")
             or (resume_data.get("years_experience") or 0) > 0
         )
         has_edu = bool(
-            (resume_data.get("education") or "").strip()
-            or (resume_data.get("highest_degree") or "").strip()
-            or (resume_data.get("degree") or "").strip()
+            normalize_requirement_text(resume_education)
+            or normalize_requirement_text(resume_data.get("highest_degree"))
+            or normalize_requirement_text(resume_data.get("degree"))
             or resume_data.get("education_entries")
         )
         present_core = sum(1 for flag in (has_personal, has_skills, has_exp, has_edu) if flag)
@@ -2381,7 +2908,11 @@ def calculate_match_score(
     weaknesses = _generate_nlp_weaknesses(skills_result, experience_result, education_result, relevance_result, certs_result)
     ai_summary = _generate_nlp_summary(resume_data, job.job_title, final_match_pct, skills_result, relevance_result)
     skills_explanation = _generate_nlp_skills_explanation(skills_result)
-    experience_explanation = relevance_result.get("detailed_breakdown", "")
+    experience_explanation = (
+        experience_result.get("reason", "")
+        if not exp_has_requirement
+        else (relevance_result.get("detailed_breakdown", "") or experience_result.get("reason", ""))
+    )
     education_explanation = education_result.get("reason", "")
     certification_explanation = certs_result.get("reason", "")
     location_explanation = location_result.get("reason", "")
@@ -2397,10 +2928,17 @@ def calculate_match_score(
 
     # ── Build reason strings ──────────────────────────────────────────────────
     total_job_skills = len(skills_result["matched"]) + len(skills_result["missing"])
-    skills_reason = (
-        f"Matched {len(all_matched)} out of {total_job_skills} required skills. "
-        f"{'Strong alignment with the technical requirements.' if blended_skills_score >= 70 else 'Several critical skills from the job description are missing from the resume.'}"
-    )
+    if not skills_result.get("has_requirement", True) or total_job_skills == 0:
+        skills_reason = skills_result.get("reason") or format_criterion_reason(
+            STATUS_NOT_REQUIRED,
+            "No specific skills requirement for this position.",
+        )
+    else:
+        skills_reason = format_criterion_reason(
+            skills_status,
+            f"Matched {len(all_matched)} out of {total_job_skills} required skills. "
+            f"{'Strong alignment with the technical requirements.' if blended_skills_score >= 70 else 'Several critical skills from the job description are missing from the resume.'}",
+        )
 
     experience_text = resume_experience
     exp_entries = [e.strip() for e in experience_text.split("|") if e.strip()] if experience_text else []
@@ -2410,19 +2948,23 @@ def calculate_match_score(
     irr_count = relevance_result.get("irrelevant_count", 0)
     total_exp = relevance_result.get("total_entries", len(exp_entries))
     experience_reason_strict = experience_result["reason"]
-    if total_exp > 0:
+    if exp_has_requirement and total_exp > 0:
         if rel_count == 0:
-            experience_reason_strict = (
+            strict_detail = (
                 f"None of the {total_exp} work experience(s) are relevant to this position. "
                 f"Experience score reflects zero qualifying entries."
             )
             if experience_result.get("below_minimum"):
-                experience_reason_strict += f" {experience_result['reason']}"
+                strict_detail += f" {experience_result['reason']}"
+            experience_reason_strict = format_criterion_reason(STATUS_DOES_NOT_MEET, strict_detail)
         elif irr_count > 0:
-            experience_reason_strict = (
-                f"{rel_count} of {total_exp} experience(s) are relevant. "
-                f"{irr_count} irrelevant experience(s) were excluded from scoring. "
-                + experience_result["reason"]
+            experience_reason_strict = format_criterion_reason(
+                exp_status,
+                (
+                    f"{rel_count} of {total_exp} experience(s) are relevant. "
+                    f"{irr_count} irrelevant experience(s) were excluded from scoring. "
+                    + experience_result["reason"]
+                ),
             )
 
     # ── Self-Improving ML Engine Evaluation & Feedback Logging ──
@@ -2435,11 +2977,11 @@ def calculate_match_score(
             job.skills_requirements if hasattr(job, "skills_requirements")
             else (job.get("skills_requirements", "") if isinstance(job, dict) else (getattr(job, "description", "") or ""))
         )
-        cand_title = resume_data.get("job_title", "") or resume_data.get("experience", "") or "applicant"
+        cand_title = resume_data.get("job_title", "") or resume_experience or "applicant"
         target_title = job.get("job_title", "") if isinstance(job, dict) else getattr(job, "job_title", "")
         cand_years = resume_data.get("years_experience", 0) or 0
         req_years = experience_result.get("required_years", 0) or 0
-        cand_edu = resume_data.get("education", "")
+        cand_edu = resume_education
         req_edu = getattr(job, "education_requirements", "") if not isinstance(job, dict) else job.get("education_requirements", "")
 
         ml_eval = prod_model.predict(
@@ -2497,7 +3039,10 @@ def calculate_match_score(
 
     req_yrs_gap = experience_result.get("required_years", 0) or 0
     cand_yrs_gap = experience_result.get("candidate_years", 0) or 0
-    below_min_exp = bool(experience_result.get("below_minimum", req_yrs_gap > 0 and cand_yrs_gap < req_yrs_gap))
+    below_min_exp = bool(
+        exp_has_requirement
+        and experience_result.get("below_minimum", req_yrs_gap > 0 and cand_yrs_gap < req_yrs_gap)
+    )
     gap_years_val = int(math.ceil(float(experience_result.get("gap_years", max(0, req_yrs_gap - cand_yrs_gap)) or 0))) if below_min_exp else 0
     if below_min_exp:
         cand_label = _format_years_label(cand_yrs_gap)
@@ -2516,6 +3061,49 @@ def calculate_match_score(
         experience_gaps_text = None
         requirement_gaps = []
 
+    completeness_status = (
+        STATUS_MEETS if blended_completeness_score >= 75
+        else (STATUS_PARTIAL if blended_completeness_score >= 25 else STATUS_DOES_NOT_MEET)
+    )
+    criteria_evaluations = {
+        "skills": {
+            "status": skills_status,
+            "score": round(blended_skills_score, 1),
+            "weight": pct_skills,
+            "has_requirement": bool(skills_result.get("has_requirement", True)),
+            "reason": skills_reason,
+        },
+        "experience": {
+            "status": exp_status,
+            "score": round(blended_exp_score, 1),
+            "weight": pct_exp,
+            "has_requirement": exp_has_requirement,
+            "reason": experience_reason_strict,
+        },
+        "education": {
+            "status": edu_status,
+            "score": round(blended_edu_score, 1),
+            "weight": pct_edu,
+            "has_requirement": bool(education_result.get("has_requirement", True)),
+            "needs_manual_review": bool(education_result.get("needs_manual_review", False)),
+            "reason": education_result.get("reason", ""),
+        },
+        "certifications": {
+            "status": certs_status,
+            "score": round(blended_certs_score, 1),
+            "weight": pct_certs,
+            "has_requirement": bool(certs_result.get("has_requirement", True)),
+            "reason": certs_result.get("reason", ""),
+        },
+        "completeness": {
+            "status": completeness_status,
+            "score": round(blended_completeness_score, 1),
+            "weight": pct_completeness,
+            "has_requirement": True,
+            "reason": completeness_explanation,
+        },
+    }
+
     return {
         "job_id": job.get("job_id") if isinstance(job, dict) else getattr(job, "job_id", None),
         "job_title": job.get("job_title", "Unknown Job") if isinstance(job, dict) else getattr(job, "job_title", "Unknown Job"),
@@ -2531,16 +3119,21 @@ def calculate_match_score(
         "ml_model_version": ml_eval["model_version"] if ml_eval else None,
         "skills_score": round(blended_skills_score, 1),
         "skills_explanation": skills_explanation,
+        "skills_status": skills_status,
         "experience_score": round(blended_exp_score, 1),
         "experience_explanation": experience_explanation,
+        "experience_status": exp_status,
         "education_score": round(blended_edu_score, 1),
         "education_explanation": education_explanation,
+        "education_status": edu_status,
         "certifications_score": round(blended_certs_score, 1),
         "certification_explanation": certification_explanation,
+        "certifications_status": certs_status,
         "completeness_score": round(blended_completeness_score, 1),
         "completeness_explanation": completeness_explanation,
         "location_score": round(blended_location_score, 1),
         "location_explanation": location_explanation,
+        "criteria_evaluations": criteria_evaluations,
         # ── Skills ──
         "matched_skills": all_matched,
         "missing_skills": all_missing,
@@ -2620,6 +3213,13 @@ def nlp_analyze_match(resume_data: dict, job_data: dict, matching_config: Option
         "ai_education_score": result["education_score"],
         "ai_certifications_score": result["certifications_score"],
         "completeness_score": result["completeness_score"],
+        "skills_status": result.get("skills_status"),
+        "experience_status": result.get("experience_status"),
+        "education_status": result.get("education_status"),
+        "certifications_status": result.get("certifications_status"),
+        "criteria_evaluations": result.get("criteria_evaluations"),
+        "required_degree": result.get("required_degree"),
+        "candidate_degree": result.get("candidate_degree"),
         "ai_summary": result["ai_summary"],
         "strengths": result["strengths"],
         "weaknesses": result["weaknesses"],

@@ -17,6 +17,7 @@ import ResumePreviewModal from '../../components/modals/shared/ResumePreviewModa
 import ExperienceGapAlert from '../../components/common/ExperienceGapAlert';
 import { useSubmitApplicationMutation } from '../../redux/api/apiSlice';
 import { formatApiErrorDetail, formatUploadOrParseError, toPositiveIntOrUndefined, toStringArray } from '../../utils/errorUtils';
+import { cleanRequirementInput, cleanRequirementList, resolveCriterionStatus } from '../../utils/criterionStatus';
 
 
 const CandidatePreviewAndVerify: React.FC = () => {
@@ -341,6 +342,13 @@ const CandidatePreviewAndVerify: React.FC = () => {
       ? extractedData.experience.title
       : "";
 
+    const validCandidateCompany = cleanRequirementInput(
+      (extractedData.experience.company && extractedData.experience.company !== "Not specified")
+        ? extractedData.experience.company
+        : ""
+    );
+    const cleanedCerts = cleanRequirementInput(certString) || cleanRequirementInput(String(data?.candidate_certifications || ""));
+
     const payload = {
       job_id: String(effectiveJobId),
       candidate_name: candidateName,
@@ -348,18 +356,18 @@ const CandidatePreviewAndVerify: React.FC = () => {
       phone: extractedData.personal.phone,
       location: extractedData.personal.location,
       job_title: validCandidateJobTitle || validStateJobTitle || "Applicant",
-      company: (extractedData.experience.company && extractedData.experience.company !== "Not specified") ? extractedData.experience.company : "",
-      relevance: extractedData.experience.relevance,
-      degree: extractedData.education.degree,
-      college: extractedData.education.college,
-      skills: toStringArray(extractedData.skills),
+      company: validCandidateCompany,
+      relevance: cleanRequirementInput(extractedData.experience.relevance),
+      degree: cleanRequirementInput(extractedData.education.degree),
+      college: cleanRequirementInput(extractedData.education.college),
+      skills: cleanRequirementList(toStringArray(extractedData.skills)),
       work_experiences: extractedData.work_experiences,
       total_experience_months: toPositiveIntOrUndefined(activeData?.total_experience_months ?? data?.total_experience_months),
       years_experience: toPositiveIntOrUndefined(extractedData.years_experience),
       education_entries: extractedData.education_entries,
-      highest_educational_attainment: data?.highest_educational_attainment || state?.highest_educational_attainment || "",
-      certifications: certString || undefined,
-      candidate_certifications: certString || String(data?.candidate_certifications || "").trim() || undefined,
+      highest_educational_attainment: cleanRequirementInput(data?.highest_educational_attainment || state?.highest_educational_attainment || ""),
+      certifications: cleanedCerts || undefined,
+      candidate_certifications: cleanedCerts || undefined,
       match_score: activeMatch?.match_percentage || state?.matchScore || 0,
       skills_score: activeMatch?.skills_score || 0,
       experience_score: activeMatch?.experience_score || 0,
@@ -591,22 +599,50 @@ const CandidatePreviewAndVerify: React.FC = () => {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
                   {[
-                    { label: 'Skills', score: activeMatch.skills_score, icon: <Cpu size={16} /> },
-                    { label: 'Experience', score: activeMatch.experience_score, icon: <Briefcase size={16} /> },
-                    { label: 'Education', score: activeMatch.education_score, icon: <GraduationCap size={16} /> }
+                    {
+                      label: 'Skills',
+                      status: resolveCriterionStatus({
+                        explicitStatus: activeMatch.skills_status,
+                        reason: activeMatch.skills_reason,
+                        score: activeMatch.skills_score,
+                      }),
+                      icon: <Cpu size={16} />,
+                    },
+                    {
+                      label: 'Experience',
+                      status: resolveCriterionStatus({
+                        explicitStatus: activeMatch.experience_status,
+                        reason: activeMatch.experience_reason,
+                        score: activeMatch.experience_score,
+                        isBelowMinimum: Boolean(activeMatch.experience_below_minimum),
+                      }),
+                      icon: <Briefcase size={16} />,
+                    },
+                    {
+                      label: 'Education',
+                      status: resolveCriterionStatus({
+                        explicitStatus: activeMatch.education_status,
+                        reason: activeMatch.education_reason,
+                        score: activeMatch.education_score,
+                      }),
+                      icon: <GraduationCap size={16} />,
+                    },
+                    {
+                      label: 'Certifications',
+                      status: resolveCriterionStatus({
+                        explicitStatus: activeMatch.certifications_status,
+                        reason: activeMatch.certifications_reason,
+                        score: activeMatch.certifications_score,
+                      }),
+                      icon: <Award size={16} />,
+                    },
                   ].map((item, idx) => (
-                    <div key={idx} className="bg-slate-50/50 p-5 rounded-[24px] border border-slate-100/50 flex flex-col items-center">
+                    <div key={idx} className="bg-slate-50/50 p-5 rounded-[24px] border border-slate-100/50 flex flex-col items-center text-center">
                       <div className="text-slate-400 mb-2">{item.icon}</div>
-                      <p className="text-lg font-black uppercase tracking-wider text-slate-900 mb-0.5">
-                        {item.label === 'Experience' && activeMatch.experience_below_minimum
-                          ? 'Below Min'
-                          : item.score >= 70
-                            ? 'High'
-                            : item.score >= 40
-                              ? 'Medium'
-                              : 'Basic'}
+                      <p className="text-sm font-black tracking-wide text-slate-900 mb-0.5">
+                        {item.status}
                       </p>
                       <span className="text-[9px] font-black uppercase tracking-widest text-slate-400">{item.label}</span>
                     </div>

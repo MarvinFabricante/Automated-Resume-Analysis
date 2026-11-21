@@ -44,6 +44,21 @@ class JobBase(BaseModel):
     experience_requirements: Optional[str] = None
     is_active: bool = True
 
+    @field_validator(
+        "skills_requirements",
+        "education_requirements",
+        "certifications_requirements",
+        "experience_requirements",
+        mode="before",
+    )
+    @classmethod
+    def _clean_requirement_fields(cls, value: Any):
+        if value is None:
+            return None
+        from app.services.requirement_rules import normalize_requirement_text
+        cleaned = normalize_requirement_text(value)
+        return cleaned or None
+
 
 class JobCreate(JobBase):
     # Omit to start the job with the global default weights.
@@ -80,6 +95,21 @@ class JobUpdate(BaseModel):
     is_active: Optional[bool] = None
     # Send explicit null to drop custom weights and inherit the global default again.
     scoring_weights: Optional[JobScoringWeights] = None
+
+    @field_validator(
+        "skills_requirements",
+        "education_requirements",
+        "certifications_requirements",
+        "experience_requirements",
+        mode="before",
+    )
+    @classmethod
+    def _clean_update_requirement_fields(cls, value: Any):
+        if value is None:
+            return None
+        from app.services.requirement_rules import normalize_requirement_text
+        cleaned = normalize_requirement_text(value)
+        return cleaned or None
 
     class Config:
         from_attributes = True

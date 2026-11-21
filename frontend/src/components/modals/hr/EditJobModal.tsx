@@ -11,6 +11,7 @@ import { useUpdateJobMutation, useRecalculateJobScoresMutation, useGetMatchingCo
 import { useAppSelector } from '../../../redux/store';
 import api from '../../../services/api';
 import { Job, JobScoringWeights, DEFAULT_JOB_SCORING_WEIGHTS } from '../../../types';
+import { cleanRequirementInput } from '../../../utils/criterionStatus';
 import JobScoringWeightsEditor, { isWeightsBalanced, areWeightsEqual } from './JobScoringWeightsEditor';
 
 interface EditJobModalProps {
@@ -92,10 +93,10 @@ const EditJobModal: React.FC<EditJobModalProps> = ({ isOpen, onClose, onSuccess,
         description: jobData.description || '',
         skills_requirements: Array.isArray(jobData.skills_requirements) 
           ? jobData.skills_requirements.join(', ') 
-          : jobData.skills_requirements || '',
-        education_requirements: jobData.education_requirements || '',
-        experience_requirements: jobData.experience_requirements || '',
-        certifications_requirements: jobData.certifications_requirements || '',
+          : cleanRequirementInput(jobData.skills_requirements),
+        education_requirements: cleanRequirementInput(jobData.education_requirements),
+        experience_requirements: cleanRequirementInput(jobData.experience_requirements),
+        certifications_requirements: cleanRequirementInput(jobData.certifications_requirements),
         is_active: jobData.is_active ?? true,
         scoring_weights: jobData.scoring_weights
           ? { ...jobData.scoring_weights }
@@ -173,9 +174,16 @@ const EditJobModal: React.FC<EditJobModalProps> = ({ isOpen, onClose, onSuccess,
     setStatus({ type: null, message: '' });
 
     try {
+      const normalizedForm = {
+        ...formData,
+        skills_requirements: cleanRequirementInput(formData.skills_requirements),
+        education_requirements: cleanRequirementInput(formData.education_requirements),
+        experience_requirements: cleanRequirementInput(formData.experience_requirements),
+        certifications_requirements: cleanRequirementInput(formData.certifications_requirements),
+      };
       const body = isAdmin
-        ? formData
-        : (({ scoring_weights: _ignored, ...rest }) => rest)(formData);
+        ? normalizedForm
+        : (({ scoring_weights: _ignored, ...rest }) => rest)(normalizedForm);
       const result = await updateJob({
         jobId: formData.job_id,
         body,
@@ -633,6 +641,7 @@ const EditJobModal: React.FC<EditJobModalProps> = ({ isOpen, onClose, onSuccess,
                         setFormData(prev => ({ ...prev, education_requirements: val }));
                       }}
                     />
+                    <p className="mt-1.5 ml-1 text-[11px] text-slate-500">Leave blank or type &apos;None&apos; if nothing is required.</p>
                   </div>
 
                   <div>
@@ -647,6 +656,7 @@ const EditJobModal: React.FC<EditJobModalProps> = ({ isOpen, onClose, onSuccess,
                         setFormData(prev => ({ ...prev, experience_requirements: val }));
                       }}
                     />
+                    <p className="mt-1.5 ml-1 text-[11px] text-slate-500">Leave blank or type &apos;None&apos; if nothing is required.</p>
                   </div>
 
                   <div className="sm:col-span-2 md:col-span-1">
@@ -661,6 +671,7 @@ const EditJobModal: React.FC<EditJobModalProps> = ({ isOpen, onClose, onSuccess,
                         setFormData(prev => ({ ...prev, certifications_requirements: val }));
                       }}
                     />
+                    <p className="mt-1.5 ml-1 text-[11px] text-slate-500">Leave blank or type &apos;None&apos; if nothing is required.</p>
                   </div>
                 </div>
 
