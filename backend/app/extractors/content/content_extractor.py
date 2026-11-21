@@ -5,8 +5,9 @@ from .email_extractor import extract_email, extract_all_emails, _clean_email, is
 from .phone_extractor import extract_phone, extract_all_phones, _clean_phone, is_valid_phone
 from .location_extractor import extract_location, extract_applicant_address
 from .experience_extractor import (
-    extract_experience, extract_years_experience, extract_experience_entries,
-    extract_job_title, extract_company, extract_relevance, extract_structured_experience
+    extract_experience, extract_years_experience, extract_experience_years_float,
+    extract_experience_entries, extract_job_title, extract_company,
+    extract_relevance, extract_structured_experience
 )
 from .education_extractor import (
     extract_education, extract_highest_degree, extract_education_entries,
@@ -732,8 +733,11 @@ def assess_resume_completeness(data: dict, sections: Optional[dict] = None, raw_
         data["job_title"] = ""
         data["company"] = ""
         data["experience"] = ""
-        data["years_experience"] = 0
-        data["total_experience_months"] = 0
+        explicit_exp_months = int(data.get("explicit_experience_months") or 0)
+        if placeholder_exp or explicit_exp_months <= 0:
+            data["years_experience"] = 0
+            data["years_experience_float"] = 0.0
+            data["total_experience_months"] = 0
         data["relevance"] = ""
 
     # ── 3. Education Assessment ───────────────────────────────────────────────
@@ -868,8 +872,9 @@ def extract_content(text: str) -> dict:
     # Structured entries
     structured_exp = extract_structured_experience(text)
     work_experiences = structured_exp.get("work_experiences", [])
-    total_experience_months = structured_exp.get("total_experience_months", 0)
-    exp_entries = extract_experience_entries(text)
+    explicit_experience_months = int(structured_exp.get("explicit_experience_months") or 0)
+    total_experience_months = max(int(structured_exp.get("total_experience_months") or 0), explicit_experience_months)
+    exp_entries = extract_experience_entries(text, structured=structured_exp)
 
     structured_edu = extract_structured_education(text)
     education_entries = structured_edu.get("education_entries", [])
@@ -891,8 +896,9 @@ def extract_content(text: str) -> dict:
 
     job_title = extract_job_title(text, exp_entries)
     company = extract_company(text, exp_entries)
-    experience_str = extract_experience(text)
-    years_experience = extract_years_experience(text)
+    experience_str = extract_experience(text, structured=structured_exp)
+    years_experience = extract_years_experience(text, structured=structured_exp)
+    years_experience_float = extract_experience_years_float(text, structured=structured_exp)
 
     skills_details = extract_structured_skills(text)
     skills_list = [s["canonical_skill"] for s in skills_details.get("extracted_skills", [])]
@@ -931,7 +937,9 @@ def extract_content(text: str) -> dict:
         "experience_details": exp_entries,
         "work_experiences": work_experiences,
         "total_experience_months": total_experience_months,
+        "explicit_experience_months": explicit_experience_months,
         "years_experience": years_experience,
+        "years_experience_float": years_experience_float,
         "relevance": relevance,
 
         # Education Details

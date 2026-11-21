@@ -17,6 +17,7 @@ Strictly deterministic local NLP (spaCy + EntityRuler + PhraseMatcher + flashtex
 import re
 import json
 from datetime import datetime
+from functools import lru_cache
 from typing import Optional, List, Dict, Any, Tuple
 
 try:
@@ -49,6 +50,11 @@ try:
 except ImportError:
     rapidfuzz_fuzz = None
     rapidfuzz_process = None
+
+try:
+    from number_parser import parse as _np_parse
+except ImportError:
+    _np_parse = None
 
 from app.extractors.content.section_parser import (
     split_into_sections,
@@ -267,6 +273,7 @@ if KeywordProcessor is not None:
 _EMPLOYMENT_TYPE_RULES = [
     (re.compile(r'\b(?:OJT|On-the-Job\s+Training|Intern(?:ship)?|Practicum|Student\s+Trainee|Trainee|Apprentice)\b', re.IGNORECASE), "OJT"),
     (re.compile(r'\b(?:End\s+of\s+Contract|ENDO|Contractual|Fixed-Term|Contract|Temporary)\b', re.IGNORECASE), "Contractual"),
+    (re.compile(r'\b(?:Job\s+Order|Contract\s+of\s+Service|COS|Casual|Coterminous|Freelance(?:r)?|Self[\s\-]Employed)\b', re.IGNORECASE), "Contractual"),
     (re.compile(r'\b(?:Project-Based|Project\s+Based|Per\s+Project)\b', re.IGNORECASE), "Contractual"),
     (re.compile(r'\b(?:via\s+Manpower\s+Agency|Manpower\s+Agency|Agency-Hired|Agency|Outsourced)\b', re.IGNORECASE), "Contractual"),
     (re.compile(r'\b(?:Seasonal|Holiday(?:\s+(?:Hire|Reliever|Staff))?|Peak\s+Season|Christmas\s+Hire)\b', re.IGNORECASE), "Seasonal"),
@@ -307,17 +314,26 @@ _JOB_TITLE_KEYWORDS_RE = re.compile(
     r'\b(?:Engineer|Developer|Programmer|Specialist|Manager|Director|Officer|Analyst|Lead|Leader|Leadman|Foreman|Supervisor|'
     r'Technician|Assistant|Associate|Operator|Representative|Consultant|Architect|Designer|Coordinator|'
     r'Administrator|Secretary|Crew|Cashier|Rider|Driver|Clerk|Intern|Trainee|Nurse|Midwife|Caregiver|Therapist|Dentist|'
-    r'Teacher|Instructor|Professor|Lecturer|Tutor|Trainer|Accountant|Auditor|Chemist|Pharmacist|Janitor|Cook|Chef|Baker|Butcher|'
+    r'Teacher|Instructor|Professor|Lecturer|Tutor|Trainer|Accountant|Auditor|Chemist|Pharmacist|Janitor|Janitress|Cook|Chef|Baker|Butcher|'
     r'Waiter|Waitress|Server|Bartender|Staff|Executive|Practitioner|Worker|Scientist|Researcher|'
     r'Carpenter|Welder|Mason|Electrician|Plumber|Mechanic|Helper|Apprentice|Inspector|Bagger|Promodiser|'
     r'Merchandiser|Warehouseman|Stockman|Guard|Watchman|Barista|Dishwasher|Busboy|Bookkeeper|Encoder|Typist|Receptionist|'
     r'Checker|Packer|Picker|Loader|Sorter|Dispatcher|Assembler|Machinist|Painter|Fabricator|Tailor|'
-    r'Writer|Editor|Marketer|Buyer|Purchaser|Broker|Collector|Teller|Moderator|Transcriber|Freelancer|Superintendent|Principal|Head|Chief)\b',
+    r'Writer|Editor|Marketer|Buyer|Purchaser|Broker|Collector|Teller|Moderator|Transcriber|Freelancer|Superintendent|Principal|Head|Chief|'
+    r'Aide|Agent|Attendant|Captain|Pilot|Seaman|Seafarer|Cadet|Bosun|Oiler|Wiper|Steward|Messman|'
+    r'Counsel|Lawyer|Attorney|Paralegal|Doctor|Physician|Surgeon|Optometrist|Veterinarian|Psychologist|Psychometrician|'
+    r'Nutritionist|Dietitian|Technologist|Phlebotomist|Paramedic|EMT|President|Founder|Owner|Proprietor|Partner|'
+    r'Controller|Treasurer|Bursar|Actuary|Underwriter|Appraiser|Realtor|Surveyor|Enumerator|Timekeeper|Storekeeper|Toolkeeper|Keeper|'
+    r'Fitter|Rigger|Lineman|Splicer|Tiler|Scaffolder|Steelman|Pahinante|Porter|Courier|Messenger|Liaison|Caretaker|'
+    r'Stylist|Barber|Cutter|Sewer|Sommelier|Concierge|Housekeeper|Cleaner|Nanny|OIC|SME|RTA|WFM|CEO|CTO|CFO|COO|VP|'
+    r'Tester|QA|QC|SRE|DBA|DevOps|SysAdmin|Webmaster|Illustrator|Animator|Photographer|Videographer|Creator|'
+    r'Strategist|Planner|Scheduler|Estimator|Draftsman|Drafter|Detailer|Master|Coach|Mentor|Facilitator|Proctor|'
+    r'Librarian|Archivist|Curator|Washer|Utility|Personnel)\b',
     re.IGNORECASE
 )
 
 _RESPONSIBILITY_VERB_START_RE = re.compile(
-    r'^(?:[•\-*▪►✓]\s*)?(?:duties|responsibilities|key\s+tasks|tasks|achievements|'
+    r'^(?:[•\-*▪►✓·]\s*)?(?:duties|responsibilities|key\s+tasks|tasks|achievements|'
     r'reviewed|developed|built|managed|supervised|performed|assisted|handled|'
     r'conducted|prepared|designed|created|led|worked|maintained|operated|'
     r'implemented|executed|engineered|monitored|verified|discovered|resolved|'
@@ -341,6 +357,12 @@ _PROSE_ROLE_RE = re.compile(
 )
 
 
+_LOWERCASE_SENTENCE_START_RE = re.compile(
+    r'^(?:and|or|with|for|to|of|in|on|by|from|that|which|who|where|when|while|'
+    r'using|including|such\s+as|as\s+well\s+as|during|through|via)\b'
+)
+
+
 def _is_likely_responsibility_or_sentence(text: str) -> bool:
     """Detect whether a line is a job duty/responsibility sentence rather than a title or company name."""
     if not text:
@@ -348,10 +370,16 @@ def _is_likely_responsibility_or_sentence(text: str) -> bool:
     clean = text.strip()
     if not clean:
         return False
-    if clean[0].islower():
-        return True
     if _RESPONSIBILITY_VERB_START_RE.match(clean):
         return True
+    if clean[0].islower():
+        if _LOWERCASE_SENTENCE_START_RE.match(clean):
+            return True
+        words_cnt = len(clean.split())
+        if words_cnt > 6 and not _COMPANY_LEGAL_SUFFIXES_RE.search(clean):
+            return True
+        if words_cnt >= 4 and not _has_job_signals(clean) and not _has_company_signals(clean):
+            return True
     if re.search(r'\bwith\s+\d+\+?\s*(?:years?|yrs?)\s+of\s+experience\b', clean, re.IGNORECASE):
         return True
     if len(clean) > 70 and not _COMPANY_LEGAL_SUFFIXES_RE.search(clean):
@@ -367,15 +395,26 @@ def _is_likely_responsibility_or_sentence(text: str) -> bool:
 # Philippine Locations
 _PHIL_LOCATIONS_SET = {
     "manila", "quezon city", "makati", "makati city", "taguig", "taguig city", "bgc",
-    "bonifacio global city", "pasig", "pasig city", "ortigas", "mandaluyong",
-    "san juan", "marikina", "pasay", "parañaque", "muntinlupa", "las piñas",
-    "caloocan", "malabon", "navotas", "valenzuela", "rizal", "antipolo", "taytay",
-    "cainta", "teresa", "binangonan", "san mateo", "rodriguez", "laguna", "calamba",
-    "santa rosa", "biñan", "san pedro", "cabuyao", "los baños", "cavite", "bacoor",
+    "bonifacio global city", "pasig", "pasig city", "ortigas", "ortigas center", "mandaluyong",
+    "mandaluyong city", "san juan", "san juan city", "marikina", "marikina city", "pasay",
+    "pasay city", "parañaque", "paranaque", "muntinlupa", "muntinlupa city", "alabang",
+    "las piñas", "las pinas", "caloocan", "caloocan city", "malabon", "navotas", "valenzuela",
+    "valenzuela city", "cubao", "eastwood", "binondo", "ermita", "malate",
+    "intramuros", "sampaloc", "tondo", "mckinley", "rizal", "antipolo", "antipolo city",
+    "taytay", "cainta", "teresa", "binangonan", "san mateo", "rodriguez", "laguna",
+    "calamba", "calamba city", "santa rosa", "santa rosa city", "sta. rosa", "biñan",
+    "binan", "san pedro", "cabuyao", "los baños", "los banos", "cavite", "bacoor",
     "dasmarinas", "dasmariñas", "imus", "general trias", "tagaytay", "batangas",
-    "bulacan", "pampanga", "angeles city", "san fernando", "clark", "subic",
-    "cebu", "cebu city", "davao", "davao city", "iloilo", "baguio", "baguio city",
-    "cagayan de oro", "bacolod", "general santos"
+    "batangas city", "lipa", "lipa city", "tanauan", "bulacan", "malolos", "meycauayan",
+    "san jose del monte", "pampanga", "angeles", "angeles city", "san fernando", "clark",
+    "subic", "cebu", "cebu city", "mandaue", "lapu-lapu", "davao", "davao city", "iloilo",
+    "iloilo city", "baguio", "baguio city", "cagayan de oro", "bacolod", "bacolod city",
+    "general santos"
+}
+
+_LOCATION_ONLY_TERMS = {
+    "ncr", "metro manila", "calabarzon", "philippines", "luzon", "visayas", "mindanao",
+    "diliman", "remote", "hybrid", "on-site", "onsite", "wfh", "work from home",
 }
 
 
@@ -426,6 +465,7 @@ def _get_spacy_pipeline():
     return _SPACY_NLP, _PHRASE_MATCHER
 
 
+@lru_cache(maxsize=512)
 def _extract_title_with_spacy(line: str) -> Optional[str]:
     """
     Uses spaCy EntityRuler, PhraseMatcher, and POS dependency parsing
@@ -470,6 +510,7 @@ def _extract_title_with_spacy(line: str) -> Optional[str]:
     return None
 
 
+@lru_cache(maxsize=512)
 def _spacy_looks_like_org(text: str) -> bool:
     """Return True if spaCy NER identifies an ORG entity spanning most of text."""
     if not text or len(text.strip()) < 3:
@@ -490,41 +531,55 @@ def _spacy_looks_like_org(text: str) -> bool:
 # ─── 5. Date & Duration Parsing ──────────────────────────────────────────────
 
 _MONTHS_NAMES = (
-    r'(?:Jan(?:uary|uray)?|Feb(?:ruary|uary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|'
-    r'Jul(?:y)?|Aug(?:ust|st)?|Sep(?:t(?:ember|mber)?)?|Oct(?:ober|ber)?|Nov(?:ember|emeber)?|Dec(?:ember|emeber)?)'
+    r'(?:Jan(?:uary|uary|uray|vier|uar)?|Feb(?:ruary|ruary|uary|rero|ruar)?|'
+    r'Mar(?:ch|so|z)?|Apr(?:il)?|Abr(?:il)?|Avr(?:il)?|May|Mayo|Mai|'
+    r'Jun(?:e|io|i)?|Juin|Jul(?:y|io|i)?|Juillet|Hunyo|Hulyo|'
+    r'Aug(?:ust|st)?|Agust|Agosto|Août|Aout|'
+    r'Sep(?:t(?:ember|mber|iembre)?)?|Set(?:ember|yembre)?|Spetember|'
+    r'Oct(?:ober|ber|ubre)?|Okt(?:ubre|ober)?|Ocotober|'
+    r'Nov(?:ember|emeber|embre|iembre)?|Novmber|Nobyembre|'
+    r'Dec(?:ember|emeber|embre)?|Decmber|Dic(?:iembre)?|Dez(?:ember)?|'
+    r'Enero|Pebrero|Disyembre)'
 )
 _YEAR_RE = r'(?:19|20)\d{2}'
 _SHORT_YEAR_RE = r'(?:[0-3]\d|[5-9]\d)'
+_SEASON_RE = r'(?:Spring|Summer|Fall|Autumn|Winter)'
 _PRESENT_RE = (
-    r'(?:Present|Current(?:ly)?|Now|To\s+Date|To-Date|Up\s+to\s+(?:present|date|now)|'
+    r'(?:Pres(?:e?nt|net)|Preesnt|Current(?:ly)?|Currenly|Now|To\s+Present|To\s+Date|To-Date|'
+    r'Up\s+to\s+(?:present|date|now)|Until\s+(?:present|date|now)|As\s+of\s+(?:present|date|today)|'
     r'Till?\s+(?:date|present|now)|At\s+present|Ongoing|Today|Onwards|Continuing|'
-    r'Active|Still\s+(?:employed|working)|Incumbent)'
+    r'Current\s+Position|Active|Still\s+(?:employed|working|here|active)|Incumbent|'
+    r'Kasalukuyan|Presente|Actualidad)'
 )
 _ORDINAL_DAY_RE = r'\d{1,2}(?:st|nd|rd|th)?'
 
 _DATE_TOKEN_RE = (
     rf'(?:'
-    rf'{_ORDINAL_DAY_RE}\s+{_MONTHS_NAMES}\s*[,.]?\s*{_YEAR_RE}'
-    rf'|{_MONTHS_NAMES}(?:\s+{_ORDINAL_DAY_RE})?\s*[,. /]?\s*{_YEAR_RE}'
-    rf'|{_YEAR_RE}\s+{_MONTHS_NAMES}'
-    rf'|{_MONTHS_NAMES}\s*[\'’]{_SHORT_YEAR_RE}'
+    rf'{_ORDINAL_DAY_RE}(?:[-/\s]+|\s+of\s+){_MONTHS_NAMES}\.?[-/,\s]+{_YEAR_RE}'
+    rf'|{_MONTHS_NAMES}\.?(?:\s+{_ORDINAL_DAY_RE})?\s*[,. /-]\s*{_YEAR_RE}'
+    rf'|{_YEAR_RE}\s*[-/\s]\s*{_MONTHS_NAMES}\.?'
+    rf'|{_MONTHS_NAMES}\.?\s*[\'’]{_SHORT_YEAR_RE}'
     rf'|(?:Q[1-4]|(?:1st|2nd|3rd|4th)\s+Quarter)\s*{_YEAR_RE}'
+    rf'|{_SEASON_RE}\s+{_YEAR_RE}'
     rf'|\d{{4}}[-/.](?:0?[1-9]|1[0-2])(?:[-/.]\d{{1,2}})?\b'
     rf'|\b\d{{1,2}}[./-]\d{{1,2}}[./-]\d{{4}}\b'
-    rf'|\b(?:0?[1-9]|1[0-2])[./-]\d{{4}}\b'
-    rf'|\b(?:0?[1-9]|1[0-2])[/-]{_SHORT_YEAR_RE}\b'
+    rf'|\b(?:0?[1-9]|1[0-2])(?:\s*/\s*|[./-])\d{{4}}\b'
+    rf'|(?<!v)(?<!\d\.)\b(?:0[1-9]|1[0-2])[./-]{_SHORT_YEAR_RE}\b'
+    rf'|\b(?:0?[1-9]|1[0-2])\s*/\s*{_SHORT_YEAR_RE}\b'
     rf'|{_YEAR_RE}'
     rf')'
 )
 
-_RANGE_CONNECTOR_RE = r'(?:[-–—~→]|->|to|until|up\s+to|thru|through|till?|\'til)'
+_RANGE_CONNECTOR_RE = r'(?:[-–—~→]|->|\b(?:to|until|up\s+to|thru|through|till?|hanggang)\b|\'til)'
 
 _DATE_RANGE_REGEX = re.compile(
     rf'(?:'
-    rf'(?P<start>{_DATE_TOKEN_RE})\s*{_RANGE_CONNECTOR_RE}\s*(?P<end>{_DATE_TOKEN_RE}|{_PRESENT_RE})'
-    rf'|(?P<sm_start>{_MONTHS_NAMES}\.?)\s*(?:[-–—~]|to|until|thru|through)\s*(?P<sm_end>{_MONTHS_NAMES}\s*[,.]?\s*{_YEAR_RE})'
-    rf'|(?:Since|From)\s+(?P<open_start>{_MONTHS_NAMES}(?:\s+{_ORDINAL_DAY_RE})?\s*[,.]?\s*{_YEAR_RE}|(?:0?[1-9]|1[0-2])[/-]\d{{4}}|{_YEAR_RE})(?!\s*{_RANGE_CONNECTOR_RE})'
-    rf'|(?P<trail_start>{_MONTHS_NAMES}(?:\s+{_ORDINAL_DAY_RE})?\s*[,.]?\s*{_YEAR_RE}|(?:0?[1-9]|1[0-2])[/-]\d{{4}})\s*[-–—]\s*(?=$|[)\]|,])'
+    rf'(?:between)\s+(?P<btw_start>{_DATE_TOKEN_RE})\s+and\s+(?P<btw_end>{_DATE_TOKEN_RE}|{_PRESENT_RE})'
+    rf'|(?P<start>{_DATE_TOKEN_RE})\s*{_RANGE_CONNECTOR_RE}\s*(?P<end>{_DATE_TOKEN_RE}|{_PRESENT_RE})'
+    rf'|(?P<yr_short_s>(?:19|20)\d{{2}})\s*[-–—]\s*(?P<yr_short_e>\d{{2}})\b(?![-/.]\d)'
+    rf'|(?P<sm_start>{_MONTHS_NAMES}\.?(?:\s+{_ORDINAL_DAY_RE})?)\s*(?:[-–—~]|\b(?:to|until|thru|through|hanggang)\b)\s*(?P<sm_end>{_MONTHS_NAMES}\.?(?:\s+{_ORDINAL_DAY_RE})?\s*[,.]?\s*(?:{_YEAR_RE}|[\'’]{_SHORT_YEAR_RE}))'
+    rf'|(?:Since|From|Started|Effective)\s+(?P<open_start>{_MONTHS_NAMES}\.?(?:\s+{_ORDINAL_DAY_RE})?\s*[,.]?\s*{_YEAR_RE}|(?:0?[1-9]|1[0-2])\s*[/-]\s*\d{{4}}|{_YEAR_RE})(?!\s*{_RANGE_CONNECTOR_RE})'
+    rf'|(?P<trail_start>{_MONTHS_NAMES}\.?(?:\s+{_ORDINAL_DAY_RE})?\s*[,.]?\s*{_YEAR_RE}|(?:0?[1-9]|1[0-2])\s*[/-]\s*\d{{4}})\s*[-–—]\s*(?=$|[)\]|,])'
     rf')',
     re.IGNORECASE,
 )
@@ -532,15 +587,26 @@ _DATE_RANGE_REGEX = re.compile(
 _HOURS_REGEX = re.compile(r'\(?(\d+)\s*(?:Hours?|Hrs?)\)?', re.IGNORECASE)
 
 _WORD_NUM_MAP = {
-    "one": 1.0, "two": 2.0, "three": 3.0, "four": 4.0, "five": 5.0,
+    "zero": 0.0, "one": 1.0, "two": 2.0, "three": 3.0, "four": 4.0, "five": 5.0,
     "six": 6.0, "seven": 7.0, "eight": 8.0, "nine": 9.0, "ten": 10.0,
     "eleven": 11.0, "twelve": 12.0, "thirteen": 13.0, "fourteen": 14.0,
     "fifteen": 15.0, "sixteen": 16.0, "seventeen": 17.0, "eighteen": 18.0,
-    "nineteen": 19.0, "twenty": 20.0, "half": 0.5, "a": 1.0, "an": 1.0,
+    "nineteen": 19.0, "twenty": 20.0, "thirty": 30.0, "forty": 40.0,
+    "fifty": 50.0, "sixty": 60.0, "seventy": 70.0, "eighty": 80.0, "ninety": 90.0,
+    "half": 0.5, "a": 1.0, "an": 1.0,
+}
+
+_NUMBER_WORDS_ONLY = {
+    "zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine",
+    "ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen",
+    "seventeen", "eighteen", "nineteen", "twenty", "thirty", "forty", "fifty",
+    "sixty", "seventy", "eighty", "ninety", "hundred", "and",
 }
 
 _STANDALONE_DATE_OR_DUR_RE = re.compile(
-    rf'^\(?\s*(?:{_MONTHS_NAMES}\s*[,.]?\s*{_YEAR_RE}'
+    rf'^\(?\s*(?:{_MONTHS_NAMES}\.?\s*[,.]?\s*{_YEAR_RE}'
+    rf'|{_SEASON_RE}\s+{_YEAR_RE}'
+    rf'|(?:Q[1-4]|(?:1st|2nd|3rd|4th)\s+Quarter)\s*{_YEAR_RE}'
     rf'|(?:19|20)\d{{2}}'
     rf'|\d+(?:\.\d+)?\s*(?:years?|yrs?)(?:\s*(?:and|,)?\s*\d+(?:\.\d+)?\s*(?:months?|mos?))?'
     rf'|\d+(?:\.\d+)?\s*(?:months?|mos?|weeks?|wks?|hours?|hrs?))\s*\)?$',
@@ -548,10 +614,108 @@ _STANDALONE_DATE_OR_DUR_RE = re.compile(
 )
 
 _INLINE_DURATION_OR_YEAR_RE = re.compile(
-    r'(?:\(\s*(?P<paren_dur>(?:\d+(?:\.\d+)?\s*(?:years?|yrs?|months?|mos?|weeks?|wks?|hours?|hrs?)(?:\s*(?:and|,)?\s*\d+(?:\.\d+)?\s*(?:months?|mos?))?)|(?:19|20)\d{2})\s*\)'
-    r'|\|\s*(?P<pipe_dur>\d+(?:\.\d+)?\s*(?:years?|yrs?|months?|mos?|hours?|hrs?)(?:\s*(?:and|,)?\s*\d+(?:\.\d+)?\s*(?:months?|mos?))?)\s*$)',
+    r'(?:\(\s*(?P<paren_dur>(?:\d+(?:\.\d+)?\s*(?:years?|yrs?|months?|mos?|weeks?|wks?|hours?|hrs?)(?:\s*(?:and|,|&)?\s*\d+(?:\.\d+)?\s*(?:months?|mos?))?)|(?:19|20)\d{2})\s*\)'
+    r'|\|\s*(?P<pipe_dur>\d+(?:\.\d+)?\s*(?:years?|yrs?|months?|mos?|hours?|hrs?)(?:\s*(?:and|,|&)?\s*\d+(?:\.\d+)?\s*(?:months?|mos?))?)\s*$'
+    r'|(?:\s+[-–—]\s+|,\s*)(?P<dash_dur>\d+(?:\.\d+)?\s*(?:years?|yrs?|months?|mos?|weeks?|wks?|hours?|hrs?)(?:\s*(?:and|,|&)?\s*\d+(?:\.\d+)?\s*(?:months?|mos?))?)\s*$)',
     re.IGNORECASE,
 )
+
+
+def _words_to_number(phrase: str) -> Optional[float]:
+    """Deterministically convert English number phrases (0-999) to float, optionally using number-parser."""
+    if not phrase:
+        return None
+    cleaned = re.sub(r'[-]+', ' ', phrase.strip().lower())
+    tokens = [t for t in cleaned.split() if t]
+    if not tokens or not all(t in _NUMBER_WORDS_ONLY for t in tokens):
+        return None
+    if tokens == ["and"]:
+        return None
+    if _np_parse is not None:
+        try:
+            parsed_str = _np_parse(cleaned)
+            if re.fullmatch(r'\d+(?:\.\d+)?', str(parsed_str).strip()):
+                return float(parsed_str)
+        except Exception:
+            pass
+    total = 0.0
+    current = 0.0
+    for tok in tokens:
+        if tok == "and":
+            continue
+        if tok == "hundred":
+            current = (current or 1.0) * 100.0
+        elif tok in _WORD_NUM_MAP:
+            current += _WORD_NUM_MAP[tok]
+        else:
+            return None
+    total += current
+    return total if total > 0 else None
+
+
+def _normalize_written_numbers(text: str) -> str:
+    """
+    Normalize written numbers, fractions, and decades near experience/duration units
+    into clean numeric strings without mutating unrelated prose numbers.
+    """
+    if not text:
+        return ""
+    res = text
+    # Unicode fractions (e.g., 2½ -> 2.5, ½ year -> 0.5 year)
+    for frac, dec in (("½", ".5"), ("¼", ".25"), ("¾", ".75")):
+        res = re.sub(rf'(\d)\s*{frac}', rf'\1{dec}', res)
+        res = res.replace(frac, f"0{dec}")
+
+    # "three (3) years" -> "3 years"
+    res = re.sub(r'\b[a-z]+\s*\(\s*(\d+(?:\.\d+)?)\s*\)(?=\s*[-–]?\s*(?:years?|yrs?|months?|mos?)\b)', r'\1', res, flags=re.I)
+
+    # Decades ("a decade" -> "10 years", "two decades" -> "20 years")
+    res = re.sub(r'\b(?:a|an|one)\s+decade\b', '10 years', res, flags=re.I)
+    def _repl_decades(m):
+        val = _words_to_number(m.group(1))
+        if val is not None and val < 10:
+            return f"{int(round(val * 10))} years"
+        return m.group(0)
+    res = re.sub(r'\b([a-z-]+)\s+decades\b', _repl_decades, res, flags=re.I)
+
+    # Half-year / "one and a half" / "a year and a half"
+    res = re.sub(r'\b(?:a|an|one|1)\s+year\s+and\s+a\s+half\b', '1.5 years', res, flags=re.I)
+    res = re.sub(r'\b(\d+)\s+and\s+a\s+half\b', lambda m: f"{int(m.group(1)) + 0.5}", res, flags=re.I)
+    def _repl_word_half(m):
+        val = _words_to_number(m.group(1))
+        if val is not None:
+            return f"{val + 0.5}"
+        return m.group(0)
+    res = re.sub(r'\b([a-z-]+(?:\s+[a-z-]+)?)\s+and\s+a\s+half(?=\s*(?:years?|yrs?)\b)', _repl_word_half, res, flags=re.I)
+    res = re.sub(r'\b(?:half\s+a|a\s+half)\s*(years?|yrs?)\b', r'0.5 \1', res, flags=re.I)
+
+    # "over a year" / "more than a year" / "a year of experience"
+    res = re.sub(r'\b(over|more\s+than|at\s+least|nearly|almost|about|around)\s+(?:a|an)\s+(year|yr)\b', r'\1 1 \2', res, flags=re.I)
+    res = re.sub(r'\b(?:a|an)\s+(year|yr)\s+(?=(?:of\s+)?(?:[a-z]+\s+){0,3}(?:experience|exp\.?)\b)', r'1 \1 ', res, flags=re.I)
+
+    # Compound written numbers immediately before duration units or "-year"
+    def _repl_unit_num(m):
+        phrase = m.group(1)
+        sep = m.group(2)
+        unit = m.group(3)
+        val = _words_to_number(phrase)
+        if val is not None:
+            val_str = str(int(val)) if val == int(val) else str(val)
+            return f"{val_str}{sep}{unit}"
+        return m.group(0)
+
+    _num_word_alt = (
+        r'(?:zero|one|two|three|four|five|six|seven|eight|nine|ten|'
+        r'eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|'
+        r'twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred)'
+    )
+    res = re.sub(
+        rf'\b({_num_word_alt}(?:(?:[\s-]+and)?[\s-]+{_num_word_alt}){{0,3}})([\s-]+)(years?|yrs?|months?|mos?|weeks?|wks?|hours?|hrs?|yoe)\b',
+        _repl_unit_num,
+        res,
+        flags=re.I,
+    )
+    return res
 
 
 def _expand_short_year(yy: int) -> int:
@@ -562,18 +726,18 @@ def _expand_short_year(yy: int) -> int:
 def _month_name_to_num(month_str: str) -> int:
     m = re.sub(r'[^a-z]', '', month_str.strip().lower())
     mapping = {
-        'jan': 1, 'january': 1, 'januray': 1,
-        'feb': 2, 'february': 2, 'febuary': 2,
-        'mar': 3, 'march': 3,
-        'apr': 4, 'april': 4, 'apirl': 4,
-        'may': 5,
-        'jun': 6, 'june': 6,
-        'jul': 7, 'july': 7,
-        'aug': 8, 'august': 8, 'augst': 8,
-        'sep': 9, 'sept': 9, 'september': 9, 'septmber': 9,
-        'oct': 10, 'october': 10, 'octber': 10,
-        'nov': 11, 'november': 11, 'novemeber': 11,
-        'dec': 12, 'december': 12, 'decemeber': 12,
+        'jan': 1, 'january': 1, 'janaury': 1, 'januray': 1, 'enero': 1, 'janvier': 1, 'januar': 1,
+        'feb': 2, 'february': 2, 'febraury': 2, 'febuary': 2, 'pebrero': 2, 'febrero': 2, 'fevrier': 2, 'februar': 2,
+        'mar': 3, 'march': 3, 'marso': 3, 'marzo': 3, 'mars': 3, 'marz': 3,
+        'apr': 4, 'april': 4, 'apirl': 4, 'abril': 4, 'avril': 4,
+        'may': 5, 'mayo': 5, 'mai': 5,
+        'jun': 6, 'june': 6, 'hunyo': 6, 'junio': 6, 'juin': 6, 'juni': 6,
+        'jul': 7, 'july': 7, 'hulyo': 7, 'julio': 7, 'juillet': 7, 'juli': 7,
+        'aug': 8, 'august': 8, 'augst': 8, 'agust': 8, 'agosto': 8, 'aout': 8,
+        'sep': 9, 'sept': 9, 'september': 9, 'septmber': 9, 'setember': 9, 'spetember': 9, 'setyembre': 9, 'septiembre': 9,
+        'oct': 10, 'october': 10, 'octber': 10, 'ocotober': 10, 'oktubre': 10, 'octubre': 10, 'oktober': 10,
+        'nov': 11, 'november': 11, 'novemeber': 11, 'novmber': 11, 'nobyembre': 11, 'noviembre': 11, 'novembre': 11,
+        'dec': 12, 'december': 12, 'decemeber': 12, 'decmber': 12, 'disyembre': 12, 'diciembre': 12, 'decembre': 12, 'dezember': 12, 'dez': 12,
     }
     if m in mapping:
         return mapping[m]
@@ -588,11 +752,11 @@ def _parse_duration_text(text: str) -> int:
     """Parse explicit duration expressions like '2 yrs 6 mos', '1.5 years', '486 hours', or 'two years' into months."""
     if not text:
         return 0
-    clean = text.strip()
+    clean = _normalize_written_numbers(text.strip())
 
-    # 1. Combined years + months: "2 years 6 months", "1 yr, 3 mos"
+    # 1. Combined years + months: "2 years 6 months", "1 yr, 3 mos", "2 yrs & 4 mos"
     ym_match = re.search(
-        r'\b(\d+(?:\.\d+)?)\s*(?:years?|yrs?)\s*(?:and|,)?\s*(\d+(?:\.\d+)?)\s*(?:months?|mos?)\b',
+        r'\b(\d+(?:\.\d+)?)\s*(?:years?|yrs?\.?)\s*(?:and|,|&)?\s*(\d+(?:\.\d+)?)\s*(?:months?|mos?\.?)\b',
         clean,
         re.IGNORECASE,
     )
@@ -602,22 +766,24 @@ def _parse_duration_text(text: str) -> int:
         if 0 <= yrs < 50 and 0 <= mos < 60:
             return max(1, round(yrs * 12.0 + mos))
 
-    # 2. Numeric years
-    yr_match = re.search(r'\b(\d+(?:\.\d+)?)\s*\+?\s*(?:years?|yrs?)\b', clean, re.IGNORECASE)
+    # 2. Numeric years (including "5-year")
+    yr_match = re.search(r'\b(\d+(?:\.\d+)?)\s*(?:\+?\s*|[-–])(?:years?|yrs?\.?|year\b)', clean, re.IGNORECASE)
+    if not yr_match:
+        yr_match = re.search(r'\b(\d+(?:\.\d+)?)\s*\+?\s*(?:years?|yrs?\.?)\b', clean, re.IGNORECASE)
     if yr_match:
         yrs = float(yr_match.group(1))
         if 0 < yrs < 50:
             return max(1, round(yrs * 12.0))
 
     # 3. Numeric months
-    mo_match = re.search(r'\b(\d+(?:\.\d+)?)\s*(?:months?|mos?)\b', clean, re.IGNORECASE)
+    mo_match = re.search(r'\b(\d+(?:\.\d+)?)\s*(?:[-–]\s*)?(?:months?|mos?\.?)\b', clean, re.IGNORECASE)
     if mo_match:
         mos = float(mo_match.group(1))
         if 0 < mos < 600:
             return max(1, round(mos))
 
     # 4. Weeks
-    wk_match = re.search(r'\b(\d+)\s*(?:weeks?|wks?)\b', clean, re.IGNORECASE)
+    wk_match = re.search(r'\b(\d+)\s*(?:weeks?|wks?\.?)\b', clean, re.IGNORECASE)
     if wk_match:
         wks = int(wk_match.group(1))
         if 0 < wks < 500:
@@ -630,7 +796,7 @@ def _parse_duration_text(text: str) -> int:
         if hrs > 0:
             return max(1, round(hrs / 160.0))
 
-    # 6. Word-number durations ("two years", "two and a half years", "six months")
+    # 6. Word-number durations fallback
     word_pat = '|'.join(sorted(_WORD_NUM_MAP.keys(), key=len, reverse=True))
     w_half = re.search(rf'\b({word_pat})\s+and\s+a\s+half\s*(?:years?|yrs?)\b', clean, re.IGNORECASE)
     if w_half:
@@ -652,7 +818,7 @@ def _parse_duration_text(text: str) -> int:
 
 
 def _parse_single_date(d_str: str, is_end: bool = False, prefer_day_first: bool = False) -> Tuple[Optional[str], Optional[int], Optional[int]]:
-    """Parse string like 'June 2023', '15 June 2020', '06/2023', 'Jan \'20', 'Q2 2023', '2023' into ('2023-06', year, month)."""
+    """Parse string like 'June 2023', '15 June 2020', '06/2023', 'Jan \'20', 'Summer 2022', 'Q2 2023', '2023' into ('2023-06', year, month)."""
     if not d_str:
         return None, None, None
     d_clean = d_str.strip()
@@ -668,29 +834,56 @@ def _parse_single_date(d_str: str, is_end: bool = False, prefer_day_first: bool 
         m_num = (q * 3) if is_end else ((q - 1) * 3 + 1)
         return f"{yr:04d}-{m_num:02d}", yr, m_num
 
-    # "DD Month[,] YYYY"
-    dmy_word = re.search(rf'\b{_ORDINAL_DAY_RE}\s+({_MONTHS_NAMES})\s*[,.]?\s*({_YEAR_RE})\b', d_clean, re.IGNORECASE)
+    # Season: Spring/Summer/Fall/Autumn/Winter YYYY
+    season_m = re.search(rf'\b(Spring|Summer|Fall|Autumn|Winter)\s+({_YEAR_RE})\b', d_clean, re.IGNORECASE)
+    if season_m:
+        s_name = season_m.group(1).lower()
+        yr = int(season_m.group(2))
+        if s_name == "spring":
+            m_num = 5 if is_end else 3
+        elif s_name == "summer":
+            m_num = 8 if is_end else 6
+        elif s_name in ("fall", "autumn"):
+            m_num = 11 if is_end else 9
+        else:
+            if is_end:
+                m_num = 2
+                yr += 1
+            else:
+                m_num = 12
+        return f"{yr:04d}-{m_num:02d}", yr, m_num
+
+    # "DD[-/ ]Month[.] [,] YYYY"
+    dmy_word = re.search(
+        rf'\b{_ORDINAL_DAY_RE}(?:[-/\s]+|\s+of\s+)({_MONTHS_NAMES})\.?[-/,\s]+({_YEAR_RE})\b',
+        d_clean,
+        re.IGNORECASE,
+    )
     if dmy_word:
         m_num = _month_name_to_num(dmy_word.group(1))
         yr = int(dmy_word.group(2))
         return f"{yr:04d}-{m_num:02d}", yr, m_num
 
-    # "Month [DD,] YYYY"
-    m_match = re.search(rf'({_MONTHS_NAMES})(?:\s+{_ORDINAL_DAY_RE})?\s*[,. /]?\s*({_YEAR_RE})', d_clean, re.IGNORECASE)
+    # "Month[.] [DD,] YYYY"
+    m_match = re.search(
+        rf'({_MONTHS_NAMES})\.?(?:\s+{_ORDINAL_DAY_RE})?\s*[,. /-]\s*({_YEAR_RE})',
+        d_clean,
+        re.IGNORECASE,
+    )
     if m_match:
         m_num = _month_name_to_num(m_match.group(1))
         yr = int(m_match.group(2))
         return f"{yr:04d}-{m_num:02d}", yr, m_num
 
     # "YYYY Month"
-    ym_word = re.search(rf'\b({_YEAR_RE})\s+({_MONTHS_NAMES})\b', d_clean, re.IGNORECASE)
+    ym_word = re.search(rf'\b({_YEAR_RE})\s*[-/\s]\s*({_MONTHS_NAMES})\.?\b', d_clean, re.IGNORECASE)
     if ym_word:
         yr = int(ym_word.group(1))
         m_num = _month_name_to_num(ym_word.group(2))
         return f"{yr:04d}-{m_num:02d}", yr, m_num
 
     # "Month 'YY"
-    m_short_y = re.search(rf'({_MONTHS_NAMES})\s*[\'’]({_SHORT_YEAR_RE})\b', d_clean, re.IGNORECASE)
+    m_short_y = re.search(rf'({_MONTHS_NAMES})\.?\s*[\'’]({_SHORT_YEAR_RE})\b', d_clean, re.IGNORECASE)
     if m_short_y:
         m_num = _month_name_to_num(m_short_y.group(1))
         yr = _expand_short_year(int(m_short_y.group(2)))
@@ -717,15 +910,15 @@ def _parse_single_date(d_str: str, is_end: bool = False, prefer_day_first: bool 
             m_num = max(1, min(12, p2))
         return f"{yr:04d}-{m_num:02d}", yr, m_num
 
-    # MM/YYYY, MM-YYYY, MM.YYYY
-    slash_match = re.search(r'\b(0?[1-9]|1[0-2])[./-](\d{4})\b', d_clean)
+    # MM / YYYY, MM-YYYY, MM.YYYY
+    slash_match = re.search(r'\b(0?[1-9]|1[0-2])(?:\s*/\s*|[./-])(\d{4})\b', d_clean)
     if slash_match:
         m_num = max(1, min(12, int(slash_match.group(1))))
         yr = int(slash_match.group(2))
         return f"{yr:04d}-{m_num:02d}", yr, m_num
 
-    # MM/YY or MM-YY
-    short_slash = re.search(rf'\b(0?[1-9]|1[0-2])[/-]({_SHORT_YEAR_RE})\b', d_clean)
+    # MM/YY, MM-YY, MM.YY
+    short_slash = re.search(rf'\b(0?[1-9]|1[0-2])(?:\s*/\s*|[./-])({_SHORT_YEAR_RE})\b', d_clean)
     if short_slash:
         m_num = int(short_slash.group(1))
         yr = _expand_short_year(int(short_slash.group(2)))
@@ -746,10 +939,10 @@ def _parse_single_date(d_str: str, is_end: bool = False, prefer_day_first: bool 
         except Exception:
             pass
 
-    # Fallback to dateparser (strictly requiring year part, English)
+    # Fallback to dateparser (strictly requiring year part, multilingual EN/TL/ES)
     if dateparser is not None and re.search(_YEAR_RE, d_clean):
         try:
-            parsed = dateparser.parse(d_clean, languages=['en'], settings={'REQUIRE_PARTS': ['year']})
+            parsed = dateparser.parse(d_clean, languages=['en', 'tl', 'es'], settings={'REQUIRE_PARTS': ['year']})
             if parsed and 1950 <= parsed.year <= datetime.now().year + 2:
                 return f"{parsed.year:04d}-{parsed.month:02d}", parsed.year, parsed.month
         except Exception:
@@ -762,12 +955,60 @@ def _parse_date_and_duration(text: str) -> Tuple[Optional[str], Optional[str], i
     """
     Extracts start_date (YYYY-MM), end_date (YYYY-MM | Present), duration_months, and extra status string.
     """
-    match = _DATE_RANGE_REGEX.search(text or "")
+    raw_text = text or ""
+    match = _DATE_RANGE_REGEX.search(raw_text)
+    now = datetime.now()
+    now_ym = (now.year, now.month)
+
+    # Validate yr_short_s/e match so standalone ISO YYYY-MM (e.g. "2020-06") is never misread as 2020-2006
+    if match and match.groupdict().get("yr_short_s"):
+        s_yr_chk = int(match.group("yr_short_s"))
+        ey_chk = int(match.group("yr_short_e"))
+        has_ws = bool(re.search(r'\s', match.group(0)))
+        if not has_ws and 1 <= ey_chk <= 12 and (s_yr_chk % 100) >= ey_chk:
+            match = None
+        elif not has_ws and 1 <= ey_chk <= 12 and ey_chk <= 12:
+            # e.g. "2010-12" without spaces is ambiguous with ISO YYYY-MM; reject unless spaces present
+            match = None
+
     if not match:
-        clean_t = (text or "").strip()
+        clean_t = raw_text.strip()
+        # Standalone season (e.g. "Summer 2022") -> 3 months
+        season_only = re.search(rf'\b({_SEASON_RE}\s+{_YEAR_RE})\b', clean_t, re.IGNORECASE)
+        if season_only:
+            s_iso, s_yr, s_mo = _parse_single_date(season_only.group(1), is_end=False)
+            e_iso, e_yr, e_mo = _parse_single_date(season_only.group(1), is_end=True)
+            if s_yr and e_yr and s_mo and e_mo:
+                if (s_yr, s_mo) > now_ym:
+                    return s_iso, e_iso, 0, ""
+                if (e_yr, e_mo) > now_ym:
+                    e_yr, e_mo = now.year, now.month
+                    e_iso = f"{e_yr:04d}-{e_mo:02d}"
+                dur = max(1, (e_yr - s_yr) * 12 + (e_mo - s_mo) + 1)
+                extra = (clean_t[:season_only.start()] + " " + clean_t[season_only.end():]).strip()
+                return s_iso, e_iso, dur, extra
+
         dur_only = _parse_duration_text(clean_t)
-        if dur_only > 0 and (_STANDALONE_DATE_OR_DUR_RE.match(clean_t) or _INLINE_DURATION_OR_YEAR_RE.search(clean_t)):
-            return None, None, dur_only, clean_t
+        if dur_only > 0:
+            # Check single date + explicit duration (e.g., "2022 (6 months)", "June 2023 (486 hours)")
+            date_part = re.sub(r'\([^)]*\)', '', clean_t).strip()
+            has_single_date = bool(
+                re.search(rf'\b(?:{_MONTHS_NAMES}\.?\s*[,.]?\s*{_YEAR_RE}|{_YEAR_RE})\b', date_part, re.I)
+            )
+            if has_single_date:
+                s_iso, s_yr, s_mo = _parse_single_date(date_part, is_end=False)
+                if s_iso and s_yr and s_mo:
+                    s_idx = s_yr * 12 + (s_mo - 1)
+                    now_idx = now.year * 12 + (now.month - 1)
+                    if s_idx > now_idx:
+                        return s_iso, s_iso, 0, ""
+                    e_idx = min(now_idx, s_idx + dur_only - 1)
+                    e_yr, e_mo = e_idx // 12, (e_idx % 12) + 1
+                    e_iso = f"{e_yr:04d}-{e_mo:02d}"
+                    eff_dur = max(1, e_idx - s_idx + 1)
+                    return s_iso, e_iso, eff_dur, clean_t
+            if _STANDALONE_DATE_OR_DUR_RE.match(clean_t) or _INLINE_DURATION_OR_YEAR_RE.search(clean_t):
+                return None, None, dur_only, clean_t
         if _STANDALONE_DATE_OR_DUR_RE.match(clean_t):
             iso, _, _ = _parse_single_date(clean_t)
             if iso:
@@ -775,12 +1016,25 @@ def _parse_date_and_duration(text: str) -> Tuple[Optional[str], Optional[str], i
         return None, None, 0, ""
 
     gd = match.groupdict()
+    is_yr_short = False
     if gd.get("open_start") or gd.get("trail_start"):
         raw_start = (gd.get("open_start") or gd.get("trail_start") or "").strip()
         raw_end = "Present"
     elif gd.get("sm_start") and gd.get("sm_end"):
         raw_start = gd["sm_start"].strip()
         raw_end = gd["sm_end"].strip()
+    elif gd.get("btw_start") and gd.get("btw_end"):
+        raw_start = gd["btw_start"].strip()
+        raw_end = gd["btw_end"].strip()
+    elif gd.get("yr_short_s") and gd.get("yr_short_e"):
+        raw_start = gd["yr_short_s"].strip()
+        s_yr_tmp = int(raw_start)
+        ey_2 = int(gd["yr_short_e"])
+        e_yr_full = (s_yr_tmp // 100) * 100 + ey_2
+        if e_yr_full < s_yr_tmp and (s_yr_tmp % 100) >= 80 and ey_2 <= 30:
+            e_yr_full += 100
+        raw_end = f"{e_yr_full:04d}"
+        is_yr_short = True
     else:
         raw_start = (gd.get("start") or "").strip()
         raw_end = (gd.get("end") or "").strip()
@@ -810,31 +1064,40 @@ def _parse_date_and_duration(text: str) -> Tuple[Optional[str], Optional[str], i
         s_mo, e_mo = e_mo, s_mo
         start_iso, end_iso = end_iso, start_iso
 
+    # Clamp future dates to current month/year so future years are never counted as earned experience
+    if end_iso != "Present" and e_yr and e_mo and (e_yr, e_mo) > now_ym:
+        if s_yr and s_mo and (s_yr, s_mo) > now_ym:
+            return start_iso, end_iso, 0, ""
+        e_yr, e_mo = now.year, now.month
+        end_iso = f"{e_yr:04d}-{e_mo:02d}"
+
     duration = 0
-    now = datetime.now()
     if s_yr and s_mo:
         if end_iso == "Present" or not e_yr:
             target_yr, target_mo = now.year, now.month
-            if s_yr <= target_yr + 1:
+            if (s_yr, s_mo) <= (target_yr, target_mo):
                 duration = max(1, (target_yr - s_yr) * 12 + (target_mo - s_mo) + 1)
         elif e_yr and e_mo:
             duration = max(1, (e_yr - s_yr) * 12 + (e_mo - s_mo) + 1)
 
     # Check if hours mentioned (e.g. 486 Hours) when calendar duration is zero
-    hrs_match = _HOURS_REGEX.search(text)
+    hrs_match = _HOURS_REGEX.search(raw_text)
     if hrs_match and duration == 0:
         hrs = int(hrs_match.group(1))
         duration = max(1, round(hrs / 160.0))
 
     # Extra text (status info outside date range)
-    extra_text = text[:match.start()] + " " + text[match.end():]
-    extra_text = re.sub(r'[\s\-–—()|]+', ' ', extra_text).strip()
+    extra_text = raw_text[:match.start()] + " " + raw_text[match.end():]
+    extra_text = re.sub(r'[\s\-–—()|·]+', ' ', extra_text).strip()
 
     # Honor explicit year/month duration annotations on year-only ranges like "2020 - 2024 (4 years)"
-    if re.fullmatch(r'\d{4}', raw_start.strip()) and re.fullmatch(r'\d{4}', raw_end.strip()) and extra_text:
+    if (re.fullmatch(r'\d{4}', raw_start.strip()) and (re.fullmatch(r'\d{4}', raw_end.strip()) or is_yr_short)) and extra_text:
         explicit_dur = _parse_duration_text(extra_text)
         if 0 < explicit_dur < 600:
             duration = explicit_dur
+
+    if duration > 600:
+        duration = 0
 
     return start_iso, end_iso, duration, extra_text
 
@@ -851,6 +1114,8 @@ def _detect_employment_type(raw_title: str, company: str = "", date_line: str = 
 _RESUME_SECTION_HEADERS = {
     "professional experience", "work experience", "experience", "employment history",
     "work history", "career history", "relevant experience", "on-the-job training",
+    "career progression", "sea service", "research experience", "service record",
+    "karanasan sa trabaho", "experience summary", "employment record",
     "education", "educational background", "academic background", "qualifications",
     "skills", "technical skills", "core competencies", "certifications", "licenses",
     "licenses and eligibility", "trainings", "seminars", "projects", "references",
@@ -860,25 +1125,106 @@ _RESUME_SECTION_HEADERS = {
 
 
 _ADDRESS_PATTERNS = re.compile(
-    r'\b(?:Avenue|Ave\.?|Street|St\.?|Barangay|Brgy\.?|Subdivision|Subd\.?|Boulevard|Blvd\.?|Road|Rd\.?|Highway|Hwy\.?|Bldg\.?|Building|Block|Blk\.?|Lot|Compound|Phase|Sitio|Purok)\b',
+    r'\b(?:Avenue|Ave\.?|Street|Barangay|Brgy\.?|Subdivision|Subd\.?|Boulevard|Blvd\.?|Road|Rd\.?|Highway|Hwy\.?|Bldg\.?|Building|Block|Blk\.?|Lot|Compound|Phase|Sitio|Purok)\b|'
+    r'(?:(?<=\d)|(?<=[A-Za-z]))\s+St\.?\b',
     re.IGNORECASE
 )
+
+_KV_PREFIX_ROLE_RE = re.compile(r'^(?:position|job\s*title|role|designation|occupation|post)\s*[:\-–]\s*', re.IGNORECASE)
+_KV_PREFIX_COMP_RE = re.compile(r'^(?:company(?:\s+name)?|employer(?:\s+name)?|organization|firm|agency|establishment)\s*[:\-–]\s*', re.IGNORECASE)
+_KV_PREFIX_DATE_RE = re.compile(r'^(?:inclusive\s+dates?|dates?\s*(?:of\s+employment)?|period|duration|employment\s+dates?|tenure|years?)\s*[:\-–]\s*', re.IGNORECASE)
+_KV_PREFIX_LOC_RE = re.compile(r'^(?:location|address|work\s+location|branch|site|place\s+of\s+work)\s*[:\-–]\s*', re.IGNORECASE)
+
+_PURE_METADATA_SEG_RE = re.compile(
+    r'^(?:full[\s\-]?time|part[\s\-]?time|regular|permanent|contract(?:ual)?|temporary|seasonal|'
+    r'freelance(?:r)?|self[\s\-]?employed|outsourced|project[\s\-]?based|job\s+order|contract\s+of\s+service|'
+    r'cos|casual|coterminous|ojt|internship|practicum|remote|hybrid|on[\s\-]?site|onsite|wfh|work\s+from\s+home|'
+    r'\d+(?:\.\d+)?\s*(?:years?|yrs?|months?|mos?|weeks?|wks?|hours?|hrs?)'
+    r'(?:\s*(?:and|,|&)?\s*\d+(?:\.\d+)?\s*(?:months?|mos?))?)$',
+    re.IGNORECASE,
+)
+
+
+def _strip_kv_prefix(text: str) -> Tuple[str, Optional[str]]:
+    """Strip common Biodata/CV key-value field labels and return (clean_value, kind)."""
+    if not text:
+        return "", None
+    s = text.strip()
+    for rx, kind in (
+        (_KV_PREFIX_ROLE_RE, "ROLE"),
+        (_KV_PREFIX_COMP_RE, "COMPANY"),
+        (_KV_PREFIX_DATE_RE, "DATE"),
+        (_KV_PREFIX_LOC_RE, "LOCATION"),
+    ):
+        m = rx.match(s)
+        if m:
+            return s[m.end():].strip(), kind
+    return s, None
+
+
+def _strip_linkedin_metadata(text: str) -> Tuple[str, str]:
+    """
+    Remove LinkedIn-style middle-dot metadata segments (e.g. '· Full-time', '· Hybrid', '· 2 yrs 3 mos')
+    while preserving them in the second return element for employment-type detection.
+    """
+    if not text:
+        return "", ""
+    if '·' not in text:
+        clean = text.strip()
+        if _PURE_METADATA_SEG_RE.match(clean):
+            return "", clean
+        return clean, ""
+    parts = [p.strip() for p in text.split('·')]
+    kept = []
+    meta = []
+    for p in parts:
+        if not p:
+            continue
+        if _PURE_METADATA_SEG_RE.match(p):
+            meta.append(p)
+        else:
+            kept.append(p)
+    return " · ".join(kept).strip(), " ".join(meta).strip()
 
 
 def _is_address_or_location(text: str) -> bool:
     """Detect if text is an address or location rather than job title or company."""
     if not text:
         return False
-    lower = text.lower().strip()
-    if _ADDRESS_PATTERNS.search(lower):
-        job_words = ["developer", "engineer", "crew", "cashier", "rider", "driver", "clerk", "agent", "assistant", "manager", "specialist", "technician", "worker", "officer", "analyst"]
-        if not any(w in lower for w in job_words):
-            return True
-    # If string consists primarily of Philippine location names
-    if any(loc == lower or f", {loc}" in lower for loc in _PHIL_LOCATIONS_SET):
-        job_words = ["developer", "engineer", "crew", "cashier", "rider", "driver", "clerk", "agent", "assistant", "manager", "specialist", "technician", "worker", "officer", "analyst"]
-        if not any(w in lower for w in job_words) and not _COMPANY_LEGAL_SUFFIXES_RE.search(lower):
-            return True
+    clean, kv_kind = _strip_kv_prefix(text)
+    if kv_kind == "LOCATION":
+        return True
+    clean, _ = _strip_linkedin_metadata(clean)
+    if not clean:
+        return False
+    lower = clean.lower().strip()
+    all_locs = _PHIL_LOCATIONS_SET | _LOCATION_ONLY_TERMS
+    if lower in ("philippines", "metro manila", "ncr", "remote", "hybrid", "on-site", "onsite", "wfh", "work from home"):
+        return True
+    if _has_job_signals(clean) or _has_company_signals(clean):
+        return False
+    if _ADDRESS_PATTERNS.search(clean):
+        return True
+    if lower in all_locs:
+        return True
+    if ',' in lower:
+        parts = [p.strip() for p in lower.split(',') if p.strip()]
+        if parts and any(
+            any(loc == p or p == f"{loc} city" for loc in all_locs)
+            for p in parts
+        ):
+            loc_hits = sum(
+                1 for p in parts
+                if any(loc == p or p == f"{loc} city" or loc in p.split() for loc in all_locs)
+                or _ADDRESS_PATTERNS.search(p)
+            )
+            first_is_loc = (
+                parts[0] in all_locs
+                or bool(_ADDRESS_PATTERNS.search(parts[0]))
+                or any(parts[0] == f"{loc} city" for loc in all_locs)
+            )
+            if first_is_loc or (len(parts) >= 3 and loc_hits >= 2):
+                return True
     return False
 
 
@@ -893,9 +1239,16 @@ def _normalize_job_title(raw_title: str) -> str:
     if not raw_title:
         return ""
 
-    clean = re.sub(r'\s*\([^)]*\)', '', raw_title).strip()
+    clean, kv_kind = _strip_kv_prefix(raw_title)
+    if kv_kind in ("COMPANY", "LOCATION", "DATE"):
+        return ""
+    clean, _ = _strip_linkedin_metadata(clean)
+    clean = re.sub(r'\s*\([^)]*\)', '', clean).strip()
     clean = re.sub(r'\s*\|\s*.*$', '', clean).strip()
-    clean = re.sub(r'^(?:\(?\d{1,2}\)?[\.\)]\s+|[•\-\*▪►✓\s:]+)|[•\-\*▪►✓\s:]+$', '', clean).strip()
+    clean = re.sub(r'^(?:\(?\d{1,2}\)?[\.\)]\s+|[•\-\*▪►✓\s:·]+)|[•\-\*▪►✓\s:·]+$', '', clean).strip()
+
+    if not clean or _PURE_METADATA_SEG_RE.match(clean):
+        return ""
 
     if clean.lower() in _RESUME_SECTION_HEADERS or any(clean.lower().startswith(h) for h in _RESUME_SECTION_HEADERS):
         return ""
@@ -921,14 +1274,14 @@ def _normalize_job_title(raw_title: str) -> str:
 
     if '/' in clean:
         parts = [p.strip() for p in clean.split('/')]
-        norm_parts = [acronym_map.get(p.upper(), p.title() if p.isupper() else p) for p in parts]
+        norm_parts = [acronym_map.get(p.upper(), p.title() if (p.isupper() or p.islower()) else p) for p in parts]
         dedup = []
         for np in norm_parts:
             if np not in dedup:
                 dedup.append(np)
         return " / ".join(dedup)
 
-    if clean.isupper():
+    if clean.isupper() or clean.islower():
         return clean.title()
 
     # If already a concise role title (<= 6 words with a recognized job keyword), preserve full title
@@ -947,16 +1300,24 @@ def _split_company_and_location(raw_text: str) -> Tuple[str, Optional[str]]:
     """
     Splits company string into (company_name, location).
     """
-    clean = raw_text.strip()
+    clean, kv_kind = _strip_kv_prefix(raw_text.strip())
+    if kv_kind == "LOCATION":
+        return "", clean or None
+    clean, _ = _strip_linkedin_metadata(clean)
     # Strip parenthetical agency remarks from company name
     clean = re.sub(r'\(via\s+[^)]+\)', '', clean, flags=re.IGNORECASE).strip()
+    if not clean or _PURE_METADATA_SEG_RE.match(clean):
+        return "", None
+    if clean.islower():
+        clean = clean.title()
 
+    all_locs = _PHIL_LOCATIONS_SET | _LOCATION_ONLY_TERMS
     # Case 0: Trailing parenthetical location e.g. 'Rizal Packaging & Industrial Solutions Inc. (Taytay, Rizal)'
     paren_loc_m = re.search(r'^(.+?)\s*\(([^()]+)\)\s*$', clean)
     if paren_loc_m:
         base_comp = paren_loc_m.group(1).strip(' ,-–—|')
         inside_paren = paren_loc_m.group(2).strip()
-        if any(loc in inside_paren.lower() for loc in _PHIL_LOCATIONS_SET) or _is_address_or_location(inside_paren):
+        if any(loc in inside_paren.lower() for loc in all_locs) or _is_address_or_location(inside_paren):
             return base_comp, inside_paren
 
     # Case 1: Pipe separator 'Accenture Philippines | BGC, Taguig City'
@@ -978,16 +1339,16 @@ def _split_company_and_location(raw_text: str) -> Tuple[str, Optional[str]]:
         rest = comma_parts[1].strip()
         if _COMPANY_LEGAL_SUFFIXES_RE.search(first) or any(c.lower() in first.lower() for c in _PHIL_COMPANY_NAMES):
             return first, rest
-        if any(loc in rest.lower() for loc in _PHIL_LOCATIONS_SET):
+        if any(loc in rest.lower() for loc in all_locs):
             return first, rest
 
-    # Case 4: No separator, check if location is trailing
+    # Case 4: No separator, check if location is trailing (never break 'Municipality of X', 'University of Manila', '<Company> Philippines')
     for loc in sorted(_PHIL_LOCATIONS_SET, key=len, reverse=True):
-        if clean.lower().endswith(loc):
+        if clean.lower().endswith(loc) and (len(clean) == len(loc) or clean[-len(loc) - 1] in " \t"):
             idx = clean.lower().rfind(loc)
             comp = clean[:idx].strip(' ,-–—')
             found_loc = clean[idx:].strip(' ,-–—')
-            if comp:
+            if comp and not comp.lower().endswith(("of", "the", "in", "at", "de", "del", "san", "sta", "sta.", "santo", "new")):
                 return comp, found_loc
 
     return clean, None
@@ -1022,15 +1383,30 @@ def _extract_title_company_location(title_cand: str, comp_cand: str = "") -> Tup
     title_cand = title_cand.strip() if title_cand else ""
     comp_cand = comp_cand.strip() if comp_cand else ""
 
+    # Strip leading bullet/list markers before splitting so bullets never leak into company/title
+    title_cand = re.sub(r'^(?:\(?\d{1,2}\)?[\.\)]\s+|[•\-\*▪►✓]+\s+)', '', title_cand).strip()
+    comp_cand = re.sub(r'^(?:\(?\d{1,2}\)?[\.\)]\s+|[•\-\*▪►✓]+\s+)', '', comp_cand).strip()
+
+    title_cand, kv_title_kind = _strip_kv_prefix(title_cand)
+    comp_cand, kv_comp_kind = _strip_kv_prefix(comp_cand)
+    title_cand, _ = _strip_linkedin_metadata(title_cand)
+    comp_cand, _ = _strip_linkedin_metadata(comp_cand)
+
+    if kv_title_kind == "COMPANY" and kv_comp_kind == "ROLE":
+        title_cand, comp_cand = comp_cand, title_cand
+    elif kv_title_kind == "COMPANY" and not comp_cand:
+        comp_cand = title_cand
+        title_cand = ""
+
     if _is_likely_responsibility_or_sentence(title_cand):
         return "", "", None
 
-    if comp_cand and (_is_likely_responsibility_or_sentence(comp_cand) or _DATE_RANGE_REGEX.search(comp_cand)):
+    if comp_cand and (_is_likely_responsibility_or_sentence(comp_cand) or _DATE_RANGE_REGEX.search(comp_cand) or _PURE_METADATA_SEG_RE.match(comp_cand)):
         comp_cand = ""
 
     # Check if comp_cand is actually an address or country/location
     loc_override = None
-    if comp_cand and (_is_address_or_location(comp_cand) or comp_cand.lower() in ("philippines", "metro manila", "ncr", "remote")):
+    if comp_cand and (kv_comp_kind == "LOCATION" or _is_address_or_location(comp_cand) or comp_cand.lower() in ("philippines", "metro manila", "ncr", "remote", "hybrid", "on-site", "onsite")):
         loc_override = comp_cand
         comp_cand = ""
 
@@ -1044,7 +1420,7 @@ def _extract_title_company_location(title_cand: str, comp_cand: str = "") -> Tup
         title_cand = t_part
 
     # Check if lines were swapped: title_cand is company and comp_cand is job title
-    if comp_cand:
+    if comp_cand and kv_title_kind != "ROLE":
         title_has_comp_signals = _has_company_signals(title_cand)
         comp_has_comp_signals = _has_company_signals(comp_cand)
 
@@ -1354,16 +1730,58 @@ def _is_academic_degree_title(raw_title: str, company_or_loc: str = "") -> bool:
     if re.search(
         r'\b(?:bachelor(?:\'?s)?|master(?:\'?s)?\s+(?:of|in|degree)|doctor(?:ate)?\s+(?:of|in)|'
         r'ph\.?d|associate(?:\'?s)?\s+(?:degree|of|in)|diploma\s+(?:in|of)|'
-        r'elementary|high\s+school|senior\s+high|junior\s+high)\b',
+        r'elementary|high\s+school|senior\s+high|junior\s+high|'
+        r'tesda\s+nc\s*[ivx1-4]*|vocational\s+(?:course|track|diploma)|'
+        r'bscs|bsit|bscpe|bsce|bsis|bsme|bsee|bsie|bsba|bsa|bsn|bsed)\b',
         raw_title,
         re.I,
     ):
         return True
-    if re.search(r'\b(?:university|college|polytechnic|academy|school)\b', company_or_loc or "", re.I) and re.search(
-        r'\b(?:bachelor|master|degree|course|bs|ba|ab|bba|bsba|bscpe|bsit|bscs)\b',
+    if re.match(
+        r'^(?:B\.?S\.?|M\.?S\.?|B\.?A\.?|M\.?A\.?|M\.?B\.?A\.?|A\.?B\.?)\s+(?:in\s+)?'
+        r'(?:Computer|Information|Civil|Mechanical|Electrical|Electronics|Industrial|Chemical|Materials|'
+        r'Accountancy|Business|Nursing|Education|Psychology|Biology|Mathematics|Engineering|'
+        r'Architecture|Science|Arts|Commerce|Management|Tourism|Hospitality|Criminology)\b',
+        raw_title.strip(),
+        re.I,
+    ):
+        return True
+    if re.search(
+        r'\b(?:university|college|polytechnic|academy|school|institute|campus|pup|up|dlsu|ust|feu|admu|sti|map[uú]a|tip|ue|nu)\b',
+        company_or_loc or "",
+        re.I,
+    ) and re.search(
+        r'\b(?:bachelor|master|degree|course|bs|ba|ab|ms|ma|mba|bba|bsba|bscpe|bsit|bscs|stem|abm|humss|tvl|student)\b',
         raw_title,
         re.I,
     ):
+        return True
+    return False
+
+
+def _is_certification_or_award_entry(raw_title: str, company_or_loc: str = "") -> bool:
+    """Return True when an entry is clearly a certification, license, or academic award rather than a job."""
+    combined = f"{raw_title or ''} {company_or_loc or ''}".strip()
+    if not combined:
+        return False
+    return bool(
+        re.search(
+            r'\b(?:(?:aws|azure|gcp|google\s+cloud|microsoft|cisco|oracle|comptia|red\s+hat|itil|pmp|scrum|istqb)\s+certified|'
+            r'certified\s+(?:scrum|cloud|solutions|ethical|public\s+accountant\s+exam)|'
+            r'prc\s+(?:board|license|licensure)|civil\s+service\s+(?:eligibility|exam|professional|sub-?professional)|'
+            r'dean\'?s\s+list(?:er)?|(?:summa|magna)?\s*cum\s+laude|valedictorian|salutatorian|'
+            r'honorable\s+mention|scholarship|national\s+certificate|driver\'?s\s+license)\b',
+            combined,
+            re.I,
+        )
+    )
+
+
+def _is_contact_or_identity_line(line: str) -> bool:
+    """Return True if line contains contact info (email, phone, URL) unlikely to be a role header."""
+    if not line:
+        return False
+    if re.search(r'@|https?://|www\.|(?:\+63|09)\d[\d\s\-]{7,}', line, re.I):
         return True
     return False
 
@@ -1372,7 +1790,7 @@ def _is_upcoming_role_header(lines: List[str], curr_idx: int) -> bool:
     """Return True when lines[curr_idx] starts a subsequent multi-line role header."""
     curr_l = lines[curr_idx]
     stripped = curr_l.lstrip('•-*▪►✓ ').strip()
-    if not stripped:
+    if not stripped or _is_contact_or_identity_line(stripped):
         return False
     if curr_l.startswith(_BULLET_PREFIXES):
         # Only treat a bulleted line as a new role header if it looks like a concise title/company and precedes a date
@@ -1386,7 +1804,7 @@ def _is_upcoming_role_header(lines: List[str], curr_idx: int) -> bool:
         if curr_idx + fwd >= len(lines):
             break
         fwd_l = lines[curr_idx + fwd]
-        if _is_section_header(fwd_l):
+        if _is_section_header(fwd_l) or _is_contact_or_identity_line(fwd_l):
             break
         if fwd_l.startswith(_BULLET_PREFIXES):
             fwd_clean = fwd_l.lstrip('•-*▪►✓ ').strip()
@@ -1397,9 +1815,10 @@ def _is_upcoming_role_header(lines: List[str], curr_idx: int) -> bool:
     return False
 
 
-def _collect_responsibilities(lines: List[str], start_idx: int) -> Tuple[List[str], int]:
+def _collect_responsibilities(lines: List[str], start_idx: int) -> Tuple[List[str], int, Optional[str]]:
     """Collect job duty/responsibility lines starting at start_idx until next role or section."""
     responsibilities: List[str] = []
+    captured_location: Optional[str] = None
     curr_idx = start_idx
     while curr_idx < len(lines):
         next_l = lines[curr_idx]
@@ -1412,6 +1831,16 @@ def _collect_responsibilities(lines: List[str], start_idx: int) -> Tuple[List[st
             break
         if _is_upcoming_role_header(lines, curr_idx):
             break
+
+        # Capture a standalone location/work-mode line placed right below the date header
+        if not responsibilities and captured_location is None and not next_l.startswith(_BULLET_PREFIXES):
+            loc_clean, kv_kind = _strip_kv_prefix(next_l)
+            loc_clean, _ = _strip_linkedin_metadata(loc_clean)
+            if kv_kind == "LOCATION" or _is_address_or_location(next_l):
+                if loc_clean:
+                    captured_location = loc_clean
+                curr_idx += 1
+                continue
 
         d_match = re.match(r'^(?:Duties|Responsibilities|Key\s+Tasks)\s*[:.\-]\s*(.+)', next_l, re.IGNORECASE)
         if d_match:
@@ -1430,7 +1859,7 @@ def _collect_responsibilities(lines: List[str], start_idx: int) -> Tuple[List[st
                 curr_idx += 1
                 continue
         break
-    return responsibilities, curr_idx
+    return responsibilities, curr_idx, captured_location
 
 
 def _ym_to_index(ym_str: Optional[str]) -> Optional[int]:
@@ -1459,7 +1888,7 @@ def _compute_merged_experience_months(work_experiences: List[Dict[str, Any]]) ->
         dur = int(exp.get("duration_months") or 0)
         s_idx = _ym_to_index(exp.get("start_date"))
         e_idx = _ym_to_index(exp.get("end_date"))
-        if s_idx is not None and e_idx is not None and e_idx >= s_idx:
+        if dur > 0 and s_idx is not None and e_idx is not None and e_idx >= s_idx:
             raw_span = e_idx - s_idx + 1
             eff_end = (s_idx + dur - 1) if (0 < dur < raw_span) else e_idx
             dated_intervals.append((s_idx, eff_end, dur))
@@ -1486,10 +1915,17 @@ def _is_parent_company_header(lines: List[str], idx: int) -> Optional[Tuple[str,
     Detect LinkedIn/grouped parent company headers that precede multiple sub-roles:
       - 'Accenture Philippines\\n4 yrs 2 mos\\nSenior Developer\\nJan 2022 - Present'
       - 'Accenture Philippines (2020 - 2024)\\nSenior Developer (2022 - 2024)'
+      - 'Accenture Philippines - Taguig City\\nSenior Developer (2022 - 2024)\\nDeveloper (2020 - 2022)'
     Returns (company_name, location, lines_to_skip) or None.
     """
     line = lines[idx]
-    if line.startswith(_BULLET_PREFIXES) or _is_likely_responsibility_or_sentence(line):
+    if line.startswith(_BULLET_PREFIXES) or _is_likely_responsibility_or_sentence(line) or _is_contact_or_identity_line(line):
+        return None
+    if _is_academic_degree_title(line) or _is_certification_or_award_entry(line):
+        return None
+
+    clean_line, kv_kind = _strip_kv_prefix(line)
+    if kv_kind == "ROLE":
         return None
 
     # Pattern 1: Company line followed by standalone duration line ('3 yrs 5 mos'), then sub-role with date
@@ -1499,8 +1935,8 @@ def _is_parent_company_header(lines: List[str], idx: int) -> Optional[Tuple[str,
             _STANDALONE_DATE_OR_DUR_RE.match(next_l)
             and not _DATE_RANGE_REGEX.search(next_l)
             and _parse_duration_text(next_l) > 0
-            and not _has_job_signals(line)
-            and (_has_company_signals(line) or _spacy_looks_like_org(line))
+            and not _has_job_signals(clean_line)
+            and not _is_address_or_location(clean_line)
         ):
             for fwd in range(idx + 2, min(idx + 5, len(lines))):
                 if _DATE_RANGE_REGEX.search(lines[fwd]):
@@ -1512,15 +1948,177 @@ def _is_parent_company_header(lines: List[str], idx: int) -> Optional[Tuple[str,
     dm = _DATE_RANGE_REGEX.search(line)
     if dm and idx + 1 < len(lines):
         before = re.sub(r'[\s\-–—,|(\[]+$', '', line[:dm.start()]).strip()
-        if before and not _has_job_signals(before) and (_has_company_signals(before) or _spacy_looks_like_org(before)):
-            # Check if next 1-2 lines start a sub-role with a date range
+        before_clean, _ = _strip_kv_prefix(before)
+        if before_clean and not _has_job_signals(before_clean) and not _is_address_or_location(before_clean):
             for fwd in (idx + 1, idx + 2):
-                if fwd < len(lines) and _DATE_RANGE_REGEX.search(lines[fwd]) and not _is_section_header(lines[fwd]):
-                    comp, loc = _split_company_and_location(before)
-                    if comp:
-                        return comp, loc, 1
+                if fwd < len(lines) and not _is_section_header(lines[fwd]):
+                    sub_l = lines[fwd].lstrip('•-*▪►✓ ').strip()
+                    sub_dm = _DATE_RANGE_REGEX.search(sub_l)
+                    if sub_dm:
+                        sub_before = re.sub(r'[\s\-–—,|(\[]+$', '', sub_l[:sub_dm.start()]).strip()
+                        if (sub_before and _has_job_signals(sub_before)) or _has_company_signals(before_clean) or _spacy_looks_like_org(before_clean):
+                            comp, loc = _split_company_and_location(before_clean)
+                            if comp:
+                                return comp, loc, 1
+
+    # Pattern 3: 'Company [- Location]' without date, followed directly by dated sub-roles (each having a job title + date)
+    if not dm and not _has_job_signals(clean_line) and not _is_address_or_location(clean_line) and idx + 2 < len(lines):
+        if _has_company_signals(clean_line) or _spacy_looks_like_org(clean_line):
+            sub_1 = lines[idx + 1].lstrip('•-*▪►✓ ').strip()
+            dm_1 = _DATE_RANGE_REGEX.search(sub_1)
+            if dm_1:
+                sub1_before = re.sub(r'[\s\-–—,|(\[]+$', '', sub_1[:dm_1.start()]).strip()
+                if sub1_before and _has_job_signals(sub1_before):
+                    # Check that at least a second dated sub-role follows within next few lines
+                    for fwd in range(idx + 2, min(idx + 8, len(lines))):
+                        if _is_section_header(lines[fwd]):
+                            break
+                        sub_k = lines[fwd].lstrip('•-*▪►✓ ').strip()
+                        dm_k = _DATE_RANGE_REGEX.search(sub_k)
+                        if dm_k:
+                            subk_before = re.sub(r'[\s\-–—,|(\[]+$', '', sub_k[:dm_k.start()]).strip()
+                            if subk_before and _has_job_signals(subk_before):
+                                comp, loc = _split_company_and_location(line)
+                                if comp:
+                                    return comp, loc, 1
+                            break
 
     return None
+
+
+_COMPLETE_DATE_RANGE_NO_TRAIL_RE = re.compile(
+    rf'(?:'
+    rf'(?:between)\s+{_DATE_TOKEN_RE}\s+and\s+(?:{_DATE_TOKEN_RE}|{_PRESENT_RE})'
+    rf'|{_DATE_TOKEN_RE}\s*{_RANGE_CONNECTOR_RE}\s*(?:{_DATE_TOKEN_RE}|{_PRESENT_RE})'
+    rf'|(?:19|20)\d{{2}}\s*[-–—]\s*\d{{2}}\b(?![-/.]\d)'
+    rf'|{_MONTHS_NAMES}\.?(?:\s+{_ORDINAL_DAY_RE})?\s*(?:[-–—~]|\b(?:to|until|thru|through|hanggang)\b)\s*{_MONTHS_NAMES}\.?(?:\s+{_ORDINAL_DAY_RE})?\s*[,.]?\s*(?:{_YEAR_RE}|[\'’]{_SHORT_YEAR_RE})'
+    rf'|(?:Since|From|Started|Effective)\s+(?:{_MONTHS_NAMES}\.?(?:\s+{_ORDINAL_DAY_RE})?\s*[,.]?\s*{_YEAR_RE}|(?:0?[1-9]|1[0-2])\s*[/-]\s*\d{{4}}|{_YEAR_RE})'
+    rf')',
+    re.IGNORECASE,
+)
+
+
+def _preprocess_experience_text(text: str) -> str:
+    """Normalize dashes, quotes, bullets, whitespace, letter-spaced headings, and strip page footers."""
+    if not text:
+        return ""
+    t = text.replace('\xa0', ' ').replace('\u202f', ' ').replace('\r\n', '\n').replace('\r', '\n')
+    t = re.sub(r'[\u2010\u2011\u2012\u2013\u2014\u2015]', '-', t)
+    t = re.sub(r'[\u2018\u2019]', "'", t)
+    t = re.sub(r'[\u201c\u201d]', '"', t)
+    t = re.sub(r'[\u2022\u2023\u25e6\u2043\u2219\u25cb\u25cf\u25a0\u25aa]', '•', t)
+    out_lines = []
+    for ln in t.split('\n'):
+        s = ln.strip()
+        if not s:
+            out_lines.append("")
+            continue
+        if re.fullmatch(r'page\s+\d+(?:\s*(?:of|/)\s*\d+)?', s, re.IGNORECASE):
+            continue
+        m_ls = re.match(r"^(?:[A-Z]\s){3,}[A-Z](?:\s{2,}(?:[A-Z]\s)+[A-Z])*$", s)
+        if m_ls:
+            s = " ".join(re.sub(r"\s+", "", wg) for wg in re.split(r"\s{2,}", s))
+        s = re.sub(r'^·\s+', '• ', s)
+        out_lines.append(re.sub(r'[\t ]+', ' ', s))
+    return "\n".join(out_lines)
+
+
+def _merge_wrapped_date_lines(lines: List[str]) -> List[str]:
+    """Join date ranges split across consecutive lines (e.g. 'Jan 2021 -\\nDec 2023')."""
+    merged: List[str] = []
+    k = 0
+    while k < len(lines):
+        curr = lines[k]
+        if (
+            k + 1 < len(lines)
+            and not _is_section_header(curr)
+            and not curr.startswith(_BULLET_PREFIXES)
+            and not _COMPLETE_DATE_RANGE_NO_TRAIL_RE.search(curr)
+        ):
+            nxt = lines[k + 1]
+            if not _is_section_header(nxt) and not nxt.startswith(_BULLET_PREFIXES):
+                if (
+                    re.search(rf'(?:{_DATE_TOKEN_RE})\s*(?:[-–—~→]|->|\b(?:to|until|up\s+to|thru|through|till?|hanggang)\b)\s*$', curr, re.I)
+                    and re.match(rf'^(?:{_DATE_TOKEN_RE}|{_PRESENT_RE})(?:$|\s|[\)·|,(\[])', nxt, re.I)
+                ):
+                    merged.append(f"{curr} {nxt}")
+                    k += 2
+                    continue
+                if re.fullmatch(rf'{_DATE_TOKEN_RE}', curr, re.I):
+                    if (
+                        k + 2 < len(lines)
+                        and re.fullmatch(r'(?:[-–—~→]|->|to|until|up\s+to|thru|through|till?|hanggang)', nxt, re.I)
+                        and re.match(rf'^(?:{_DATE_TOKEN_RE}|{_PRESENT_RE})(?:$|\s|[\)·|,(\[])', lines[k + 2], re.I)
+                    ):
+                        merged.append(f"{curr} {nxt} {lines[k + 2]}")
+                        k += 3
+                        continue
+                    if re.match(rf'^(?:[-–—~→]|->|\b(?:to|until|up\s+to|thru|through|till?|hanggang)\b)\s*(?:{_DATE_TOKEN_RE}|{_PRESENT_RE})', nxt, re.I):
+                        merged.append(f"{curr} {nxt}")
+                        k += 2
+                        continue
+        merged.append(curr)
+        k += 1
+    return merged
+
+
+def _split_semicolon_multi_roles(lines: List[str]) -> List[str]:
+    """Split semicolon-delimited multi-role lines when 2+ segments carry dates or durations."""
+    out: List[str] = []
+    for ln in lines:
+        if (
+            ';' in ln
+            and not ln.startswith(_BULLET_PREFIXES)
+            and not _RESPONSIBILITY_VERB_START_RE.match(ln)
+        ):
+            parts = [p.strip() for p in ln.split(';') if p.strip()]
+            dated_parts = sum(1 for p in parts if _DATE_RANGE_REGEX.search(p) or _INLINE_DURATION_OR_YEAR_RE.search(p))
+            if len(parts) >= 2 and dated_parts >= 2:
+                out.extend(parts)
+                continue
+        out.append(ln)
+    return out
+
+
+def _resolve_three_header_lines(l0: str, l1: str, l2: str) -> Tuple[str, str, Optional[str]]:
+    """Resolve 3 pre-date lines (title, company, location in any order) into (norm_title, company, location)."""
+    raw_lines = [l0.strip(), l1.strip(), l2.strip()]
+    loc_parts: List[str] = []
+    role_cands: List[str] = []
+    comp_cands: List[str] = []
+    other_cands: List[str] = []
+
+    for ln in raw_lines:
+        clean_ln, kv_kind = _strip_kv_prefix(ln)
+        if kv_kind == "LOCATION" or (_is_address_or_location(ln) and kv_kind not in ("ROLE", "COMPANY")):
+            loc_clean, _ = _strip_linkedin_metadata(clean_ln)
+            if loc_clean:
+                loc_parts.append(loc_clean)
+        elif kv_kind == "ROLE":
+            role_cands.append(ln)
+        elif kv_kind == "COMPANY":
+            comp_cands.append(ln)
+        else:
+            other_cands.append(ln)
+
+    if role_cands and comp_cands:
+        t_str, c_str = role_cands[0], comp_cands[0]
+    elif role_cands and other_cands:
+        t_str, c_str = role_cands[0], other_cands[0]
+    elif comp_cands and other_cands:
+        t_str, c_str = other_cands[0], comp_cands[0]
+    elif len(other_cands) >= 2:
+        t_str, c_str = other_cands[0], " - ".join(other_cands[1:])
+    elif len(other_cands) == 1:
+        t_str, c_str = other_cands[0], ""
+    else:
+        t_str, c_str = l0, f"{l1} - {l2}"
+
+    norm_title, company, loc = _extract_title_company_location(t_str, c_str)
+    if loc_parts:
+        joined_loc = ", ".join(loc_parts)
+        loc = f"{loc}, {joined_loc}" if (loc and joined_loc.lower() not in loc.lower()) else (loc or joined_loc)
+    return norm_title, company, loc
 
 
 def extract_structured_experience(text: str) -> Dict[str, Any]:
@@ -1545,14 +2143,29 @@ def extract_structured_experience(text: str) -> Dict[str, Any]:
     }
     """
     if not text:
-        return {"total_experience_months": 0, "work_experiences": []}
+        return {
+            "total_experience_months": 0,
+            "explicit_experience_months": 0,
+            "reconciled_experience_months": 0,
+            "years_experience_float": 0.0,
+            "work_experiences": [],
+        }
 
-    blocks = _extract_experience_blocks(text)
+    clean_text = _preprocess_experience_text(text)
+    blocks = _extract_experience_blocks(clean_text)
     combined_exp_text = "\n\n".join(blocks)
 
-    lines = [l.strip() for l in combined_exp_text.split('\n') if l.strip()]
+    raw_lines = [l.strip() for l in combined_exp_text.split('\n') if l.strip()]
+    lines = _split_semicolon_multi_roles(_merge_wrapped_date_lines(raw_lines))
     if not lines:
-        return {"total_experience_months": 0, "work_experiences": []}
+        explicit_months = _extract_explicit_experience_months(clean_text)
+        return {
+            "total_experience_months": 0,
+            "explicit_experience_months": explicit_months,
+            "reconciled_experience_months": explicit_months,
+            "years_experience_float": round(explicit_months / 12.0, 1) if explicit_months > 0 else 0.0,
+            "work_experiences": [],
+        }
 
     work_experiences = []
     current_company_context: Optional[Tuple[str, Optional[str]]] = None
@@ -1566,6 +2179,10 @@ def extract_structured_experience(text: str) -> Dict[str, Any]:
             i += 1
             continue
 
+        if _is_contact_or_identity_line(line):
+            i += 1
+            continue
+
         parent_comp = _is_parent_company_header(lines, i)
         if parent_comp:
             current_company_context = (parent_comp[0], parent_comp[1])
@@ -1576,6 +2193,7 @@ def extract_structured_experience(text: str) -> Dict[str, Any]:
         dm = _DATE_RANGE_REGEX.search(line)
         if dm:
             prose_m = _PROSE_ROLE_RE.match(line)
+            meta_extra = ""
             if prose_m:
                 raw_title = (prose_m.group("title") or "").strip()
                 comp_loc_str = (prose_m.group("company") or "").strip()
@@ -1585,35 +2203,72 @@ def extract_structured_experience(text: str) -> Dict[str, Any]:
             else:
                 before_date = re.sub(r'[\s\-–—,|(\[:]+$', '', line[:dm.start()]).strip()
                 before_date = re.sub(r'\s+(?:from|between|during)\s*$', '', before_date, flags=re.IGNORECASE).strip()
-                after_date = re.sub(r'^[\s\-–—,|)\]:]+|[\s\-–—,|(\[]+$', '', line[dm.end():]).strip()
+                before_clean, before_kv = _strip_kv_prefix(before_date)
+                if before_kv == "DATE" and not before_clean:
+                    before_date = ""
+                after_date = re.sub(r'^[\s\-–—,|)\]:·]+|[\s\-–—,|(\[]+$', '', line[dm.end():]).strip()
 
                 if not before_date:
                     # Standalone date or Date-First line (e.g. "2021 - Present" or "2021 - Present | Senior Developer | Tech Mahindra")
                     date_str = line[dm.start():dm.end()].strip()
-                    if after_date:
+                    if after_date and not _PURE_METADATA_SEG_RE.match(after_date):
                         if '|' in after_date or '•' in after_date:
                             sep = '|' if '|' in after_date else '•'
                             segs = [s.strip() for s in after_date.split(sep) if s.strip()]
-                            raw_title = segs[0] if segs else ""
-                            comp_loc_str = " | ".join(segs[1:]) if len(segs) > 1 else ""
+                            non_meta = []
+                            meta_list = []
+                            for seg in segs:
+                                cleaned_seg, seg_meta = _strip_linkedin_metadata(seg)
+                                if seg_meta:
+                                    meta_list.append(seg_meta)
+                                if cleaned_seg:
+                                    non_meta.append(cleaned_seg)
+                            meta_extra = " ".join(meta_list)
+                            raw_title = non_meta[0] if non_meta else ""
+                            comp_loc_str = " | ".join(non_meta[1:]) if len(non_meta) > 1 else ""
                         else:
                             raw_title = after_date
                             comp_loc_str = ""
                         consumed_header = 1
+                        norm_title, company, location = _extract_title_company_location(raw_title, comp_loc_str)
+                        if (
+                            not company
+                            and i + 1 < len(lines)
+                            and not _is_section_header(lines[i + 1])
+                            and not lines[i + 1].startswith(_BULLET_PREFIXES)
+                            and not _DATE_RANGE_REGEX.search(lines[i + 1])
+                            and not _is_likely_responsibility_or_sentence(lines[i + 1])
+                            and not _is_academic_degree_title(lines[i + 1])
+                            and len(lines[i + 1]) <= 70
+                            and (_has_company_signals(lines[i + 1]) or _spacy_looks_like_org(lines[i + 1]) or not _JOB_TITLE_KEYWORDS_RE.search(lines[i + 1]))
+                        ):
+                            norm_title, company, location = _extract_title_company_location(raw_title, lines[i + 1])
+                            consumed_header = 2
                     else:
+                        if after_date:
+                            meta_extra = after_date
                         consumed_header = 1
                         raw_title = ""
                         comp_loc_str = ""
                         if i + 1 < len(lines) and not _is_section_header(lines[i + 1]) and not lines[i + 1].startswith(_BULLET_PREFIXES) and not _DATE_RANGE_REGEX.search(lines[i + 1]):
                             raw_title = lines[i + 1]
                             consumed_header = 2
-                            if i + 2 < len(lines) and not _is_section_header(lines[i + 2]) and not lines[i + 2].startswith(_BULLET_PREFIXES) and not _DATE_RANGE_REGEX.search(lines[i + 2]):
+                            _, pre_comp_chk, _ = _extract_title_company_location(raw_title)
+                            if (
+                                not pre_comp_chk
+                                and i + 2 < len(lines)
+                                and not _is_section_header(lines[i + 2])
+                                and not lines[i + 2].startswith(_BULLET_PREFIXES)
+                                and not _DATE_RANGE_REGEX.search(lines[i + 2])
+                                and not _is_likely_responsibility_or_sentence(lines[i + 2])
+                                and not _is_academic_degree_title(lines[i + 2])
+                            ):
                                 comp_loc_str = lines[i + 2]
                                 consumed_header = 3
                                 if i + 3 < len(lines) and not _is_section_header(lines[i + 3]) and not lines[i + 3].startswith(_BULLET_PREFIXES) and not _DATE_RANGE_REGEX.search(lines[i + 3]) and _is_address_or_location(lines[i + 3]):
                                     comp_loc_str = f"{comp_loc_str} - {lines[i + 3]}"
                                     consumed_header = 4
-                    norm_title, company, location = _extract_title_company_location(raw_title, comp_loc_str)
+                        norm_title, company, location = _extract_title_company_location(raw_title, comp_loc_str)
                 elif '|' in line or ('•' in line and not line.lstrip().startswith('•') and line.count('•') >= 2):
                     sep = '|' if '|' in line else '•'
                     segments = [s.strip() for s in line.split(sep)]
@@ -1621,21 +2276,51 @@ def extract_structured_experience(text: str) -> Dict[str, Any]:
                     if date_idx >= 0:
                         date_str = segments[date_idx]
                         other_segs = [s for idx, s in enumerate(segments) if idx != date_idx]
-                        raw_title = other_segs[0] if other_segs else ""
-                        comp_loc_str = " | ".join(other_segs[1:]) if len(other_segs) > 1 else ""
                     else:
-                        raw_title = segments[0]
-                        comp_loc_str = segments[1] if len(segments) > 1 else ""
+                        other_segs = segments[:2]
                         date_str = segments[2] if len(segments) > 2 else ""
+
+                    non_meta = []
+                    meta_list = []
+                    for seg in other_segs:
+                        cleaned_seg, seg_meta = _strip_linkedin_metadata(seg)
+                        if seg_meta:
+                            meta_list.append(seg_meta)
+                        if cleaned_seg:
+                            non_meta.append(cleaned_seg)
+                    meta_extra = " ".join(meta_list)
+                    raw_title = non_meta[0] if non_meta else ""
+                    comp_loc_str = " | ".join(non_meta[1:]) if len(non_meta) > 1 else ""
                     norm_title, company, location = _extract_title_company_location(raw_title, comp_loc_str)
                     consumed_header = 1
+                    if (
+                        not company
+                        and i + 1 < len(lines)
+                        and not _is_section_header(lines[i + 1])
+                        and not lines[i + 1].startswith(_BULLET_PREFIXES)
+                        and not _DATE_RANGE_REGEX.search(lines[i + 1])
+                        and not _STANDALONE_DATE_OR_DUR_RE.match(lines[i + 1].strip())
+                        and not _INLINE_DURATION_OR_YEAR_RE.search(lines[i + 1])
+                        and not _is_likely_responsibility_or_sentence(lines[i + 1])
+                        and len(lines[i + 1]) <= 70
+                        and (
+                            _has_company_signals(lines[i + 1])
+                            or _spacy_looks_like_org(lines[i + 1])
+                            or not _JOB_TITLE_KEYWORDS_RE.search(lines[i + 1])
+                        )
+                    ):
+                        norm_title, company, location = _extract_title_company_location(raw_title, lines[i + 1])
+                        consumed_header = 2
                 else:
                     title_comp_str = before_date
                     date_str = line[dm.start():].strip(' ()')
                     raw_title = title_comp_str
                     norm_title, company, location = _extract_title_company_location(title_comp_str)
                     consumed_header = 1
-                    after_is_emp_marker = bool(after_date) and any(rx.search(after_date) for rx, _ in _EMPLOYMENT_TYPE_RULES)
+                    after_is_emp_marker = bool(after_date) and (
+                        any(rx.search(after_date) for rx, _ in _EMPLOYMENT_TYPE_RULES)
+                        or _PURE_METADATA_SEG_RE.match(after_date)
+                    )
                     if (
                         not company
                         and (not after_date or after_is_emp_marker)
@@ -1664,11 +2349,18 @@ def extract_structured_experience(text: str) -> Dict[str, Any]:
                 current_company_context = None
 
             start_iso, end_iso, duration, extra_status = _parse_date_and_duration(date_str)
-            responsibilities, curr_idx = _collect_responsibilities(lines, i + consumed_header)
+            responsibilities, curr_idx, cap_loc = _collect_responsibilities(lines, i + consumed_header)
+            if cap_loc and not location:
+                location = cap_loc
 
-            emp_type = _detect_employment_type(raw_title, company + (f" - {location}" if location else ""), date_str, responsibilities)
-            # Reject academic degrees / schooling mistaken as employment roles
-            if _is_academic_degree_title(raw_title, (company or "") + " " + (location or "")):
+            emp_type = _detect_employment_type(
+                raw_title,
+                f"{company} {location or ''} {meta_extra}".strip(),
+                f"{date_str} {extra_status}".strip(),
+                responsibilities,
+            )
+            # Reject academic degrees / schooling or certifications mistaken as employment roles
+            if _is_academic_degree_title(raw_title, (company or "") + " " + (location or "")) or _is_certification_or_award_entry(raw_title, company or ""):
                 i = curr_idx
                 continue
 
@@ -1694,10 +2386,10 @@ def extract_structured_experience(text: str) -> Dict[str, Any]:
         # ── Case B: Multi-line block format (Template 1 & Template 3) ─────────
         has_date_ahead = False
         date_offset = -1
-        if not _INLINE_DURATION_OR_YEAR_RE.search(line):
+        if not _INLINE_DURATION_OR_YEAR_RE.search(line) and not _is_likely_responsibility_or_sentence(line):
             for offset in range(1, min(5, len(lines) - i)):
                 cand_l = lines[i + offset]
-                if _is_section_header(cand_l):
+                if _is_section_header(cand_l) or _is_contact_or_identity_line(cand_l):
                     break
                 if cand_l.startswith(_BULLET_PREFIXES):
                     cand_clean = cand_l.lstrip('•-*▪►✓ ').strip()
@@ -1713,10 +2405,13 @@ def extract_structured_experience(text: str) -> Dict[str, Any]:
         if has_date_ahead:
             raw_title = line
             date_line = lines[i + date_offset]
+            comp_loc_str = ""
+            resolved_3 = None
             if date_offset == 4:
                 comp_loc_str = f"{lines[i + 1]} - {lines[i + 2]}"
                 consumed_header = 5
             elif date_offset == 3:
+                resolved_3 = _resolve_three_header_lines(lines[i], lines[i + 1], lines[i + 2])
                 comp_loc_str = f"{lines[i + 1]} - {lines[i + 2]}"
                 consumed_header = 4
             elif date_offset == 2:
@@ -1725,10 +2420,14 @@ def extract_structured_experience(text: str) -> Dict[str, Any]:
             elif date_offset == 1:
                 dm_b = _DATE_RANGE_REGEX.search(date_line)
                 before_dm = re.sub(r'[\s\-–—,|(\[:]+$', '', date_line[:dm_b.start()]).strip() if dm_b else ""
-                after_dm = re.sub(r'^[\s\-–—,|)\]:]+|[\s\-–—,|(\[]+$', '', date_line[dm_b.end():]).strip() if dm_b else ""
-                inline_comp_loc = before_dm or after_dm
+                after_dm = re.sub(r'^[\s\-–—,|)\]:·]+|[\s\-–—,|(\[]+$', '', date_line[dm_b.end():]).strip() if dm_b else ""
+                before_dm_clean, before_dm_kv = _strip_kv_prefix(before_dm)
+                if before_dm_kv == "DATE" and not before_dm_clean:
+                    before_dm = ""
+                after_dm_clean, _ = _strip_linkedin_metadata(after_dm)
+                inline_comp_loc = before_dm or after_dm_clean
                 next_after_date = lines[i + 2] if i + 2 < len(lines) else ""
-                if inline_comp_loc and not _is_likely_responsibility_or_sentence(inline_comp_loc):
+                if inline_comp_loc and not _PURE_METADATA_SEG_RE.match(inline_comp_loc) and not _is_likely_responsibility_or_sentence(inline_comp_loc):
                     comp_loc_str = inline_comp_loc
                     consumed_header = 2
                 elif (
@@ -1737,6 +2436,7 @@ def extract_structured_experience(text: str) -> Dict[str, Any]:
                     and not _is_section_header(next_after_date)
                     and not _DATE_RANGE_REGEX.search(next_after_date)
                     and not _is_likely_responsibility_or_sentence(next_after_date)
+                    and not _is_address_or_location(next_after_date)
                     and (
                         _has_company_signals(next_after_date)
                         or _spacy_looks_like_org(next_after_date)
@@ -1754,13 +2454,16 @@ def extract_structured_experience(text: str) -> Dict[str, Any]:
                     comp_loc_str = ""
                     consumed_header = 2
 
-            if '|' in raw_title:
-                parts = [p.strip() for p in raw_title.split('|', 1)]
-                raw_title = parts[0]
-                if not comp_loc_str and len(parts) > 1:
-                    comp_loc_str = parts[1]
+            if resolved_3 is not None:
+                norm_title, company, location = resolved_3
+            else:
+                if '|' in raw_title:
+                    parts = [p.strip() for p in raw_title.split('|', 1)]
+                    raw_title = parts[0]
+                    if not comp_loc_str and len(parts) > 1:
+                        comp_loc_str = parts[1]
+                norm_title, company, location = _extract_title_company_location(raw_title, comp_loc_str)
 
-            norm_title, company, location = _extract_title_company_location(raw_title, comp_loc_str)
             if not company and current_company_context:
                 company, ctx_loc = current_company_context
                 location = location or ctx_loc
@@ -1768,11 +2471,13 @@ def extract_structured_experience(text: str) -> Dict[str, Any]:
                 current_company_context = None
 
             start_iso, end_iso, duration, extra_status = _parse_date_and_duration(date_line)
-            responsibilities, curr_idx = _collect_responsibilities(lines, i + consumed_header)
+            responsibilities, curr_idx, cap_loc = _collect_responsibilities(lines, i + consumed_header)
+            if cap_loc and not location:
+                location = cap_loc
 
-            emp_type = _detect_employment_type(raw_title, comp_loc_str, date_line, responsibilities)
-            # Reject academic degrees / schooling mistaken as employment roles
-            if _is_academic_degree_title(raw_title, comp_loc_str or company or ""):
+            emp_type = _detect_employment_type(raw_title, f"{comp_loc_str} {company} {location or ''}", date_line, responsibilities)
+            # Reject academic degrees / schooling or certifications mistaken as employment roles
+            if _is_academic_degree_title(raw_title, comp_loc_str or company or "") or _is_certification_or_award_entry(raw_title, comp_loc_str or company or ""):
                 i = curr_idx
                 continue
 
@@ -1799,15 +2504,22 @@ def extract_structured_experience(text: str) -> Dict[str, Any]:
         # ── Case C: Inline duration/year on a single role line (no date range) ─
         dur_m = _INLINE_DURATION_OR_YEAR_RE.search(line)
         if dur_m and not line.startswith(_BULLET_PREFIXES) and not _is_likely_responsibility_or_sentence(line):
-            dur_str = (dur_m.group("paren_dur") or dur_m.group("pipe_dur") or "").strip()
+            dur_str = (dur_m.group("paren_dur") or dur_m.group("pipe_dur") or dur_m.group("dash_dur") or "").strip()
             dur_months = _parse_duration_text(dur_str)
             single_yr_m = re.fullmatch(r'(19|20)\d{2}', dur_str)
             if dur_months > 0 or single_yr_m:
                 before_dur = re.sub(r'[\s\-–—,|(\[]+$', '', line[:dur_m.start()]).strip()
+                date_seg = None
                 if '|' in before_dur:
                     segs = [s.strip() for s in before_dur.split('|') if s.strip()]
-                    raw_title = segs[0] if segs else ""
-                    comp_loc_str = " | ".join(segs[1:]) if len(segs) > 1 else ""
+                    kept_segs = []
+                    for s_idx_seg, s_val in enumerate(segs):
+                        if s_idx_seg > 0 and _STANDALONE_DATE_OR_DUR_RE.match(s_val) and _parse_single_date(s_val)[0] is not None and not date_seg:
+                            date_seg = s_val
+                        else:
+                            kept_segs.append(s_val)
+                    raw_title = kept_segs[0] if kept_segs else ""
+                    comp_loc_str = " | ".join(kept_segs[1:]) if len(kept_segs) > 1 else ""
                 else:
                     raw_title = before_dur
                     comp_loc_str = ""
@@ -1825,10 +2537,23 @@ def extract_structured_experience(text: str) -> Dict[str, Any]:
                     norm_title, company, location = _extract_title_company_location(raw_title, lines[i + 1])
                     consumed_header = 2
 
-                responsibilities, curr_idx = _collect_responsibilities(lines, i + consumed_header)
-                if norm_title and not _is_address_or_location(norm_title) and not _is_academic_degree_title(raw_title, company or ""):
-                    s_iso = f"{dur_str}-01" if single_yr_m else None
-                    e_iso = f"{dur_str}-12" if single_yr_m else None
+                responsibilities, curr_idx, cap_loc = _collect_responsibilities(lines, i + consumed_header)
+                if cap_loc and not location:
+                    location = cap_loc
+                if (
+                    norm_title
+                    and (company or _has_job_signals(raw_title))
+                    and not _is_address_or_location(norm_title)
+                    and not _is_academic_degree_title(raw_title, company or "")
+                    and not _is_certification_or_award_entry(raw_title, company or "")
+                ):
+                    if date_seg and not single_yr_m:
+                        s_iso, e_iso, eff_dur, _ = _parse_date_and_duration(f"{date_seg} ({dur_str})")
+                        if eff_dur > 0:
+                            dur_months = eff_dur
+                    else:
+                        s_iso = f"{dur_str}-01" if single_yr_m else None
+                        e_iso = f"{dur_str}-12" if single_yr_m else None
                     emp_type = _detect_employment_type(raw_title, company, dur_str, responsibilities)
                     work_experiences.append({
                         "job_title": norm_title,
@@ -1855,7 +2580,12 @@ def extract_structured_experience(text: str) -> Dict[str, Any]:
             comp_loc_str = (prose_m.group("company") or "").strip()
             norm_title, company, location = _extract_title_company_location(raw_title, comp_loc_str)
             dur_months = _parse_duration_text(line)
-            if norm_title and not _is_address_or_location(norm_title) and not _is_academic_degree_title(raw_title, company or ""):
+            if (
+                norm_title
+                and not _is_address_or_location(norm_title)
+                and not _is_academic_degree_title(raw_title, company or "")
+                and not _is_certification_or_award_entry(raw_title, company or "")
+            ):
                 emp_type = _detect_employment_type(raw_title, company, line, [])
                 work_experiences.append({
                     "job_title": norm_title,
@@ -1878,7 +2608,7 @@ def extract_structured_experience(text: str) -> Dict[str, Any]:
         i += 1
 
     # ── Undated fallback ONLY when an explicit EXPERIENCE section had roles without dates ──
-    if not work_experiences and blocks and not (len(blocks) == 1 and blocks[0] == text):
+    if not work_experiences and blocks and not (len(blocks) == 1 and blocks[0] == clean_text):
         j = 0
         while j < len(lines):
             l_curr = lines[j]
@@ -1902,8 +2632,10 @@ def extract_structured_experience(text: str) -> Dict[str, Any]:
                     comp_cand = lines[j + 1]
                     consumed = 2
                 norm_title, company, location = _extract_title_company_location(l_curr, comp_cand)
-                if norm_title and company and not _is_academic_degree_title(l_curr, company):
-                    resps, next_j = _collect_responsibilities(lines, j + consumed)
+                if norm_title and company and not _is_academic_degree_title(l_curr, company) and not _is_certification_or_award_entry(l_curr, company):
+                    resps, next_j, cap_loc = _collect_responsibilities(lines, j + consumed)
+                    if cap_loc and not location:
+                        location = cap_loc
                     emp_type = _detect_employment_type(l_curr, company, "", resps)
                     work_experiences.append({
                         "job_title": norm_title,
@@ -1924,21 +2656,49 @@ def extract_structured_experience(text: str) -> Dict[str, Any]:
                     continue
             j += 1
 
-    total_months = _compute_merged_experience_months(work_experiences)
+    # Deduplicate identical entries while preserving order
+    deduped: List[Dict[str, Any]] = []
+    seen_idx: Dict[Tuple[str, str, str, str], int] = {}
+    for exp in work_experiences:
+        key = (
+            (exp.get("job_title") or "").strip().lower(),
+            (exp.get("company_name") or "").strip().lower(),
+            exp.get("start_date") or "",
+            exp.get("end_date") or "",
+        )
+        if key not in seen_idx:
+            seen_idx[key] = len(deduped)
+            deduped.append(exp)
+        else:
+            existing = deduped[seen_idx[key]]
+            if len(exp.get("responsibilities") or []) > len(existing.get("responsibilities") or []):
+                existing["responsibilities"] = exp["responsibilities"]
+                existing["highlights"] = exp["highlights"]
+            if not existing.get("location") and exp.get("location"):
+                existing["location"] = exp["location"]
+
+    total_months = _compute_merged_experience_months(deduped)
+    explicit_months = _extract_explicit_experience_months(clean_text)
+    reconciled_months = max(total_months, explicit_months)
+    years_float = round(reconciled_months / 12.0, 1) if reconciled_months > 0 else 0.0
     return {
         "total_experience_months": total_months,
-        "work_experiences": work_experiences
+        "explicit_experience_months": explicit_months,
+        "reconciled_experience_months": reconciled_months,
+        "years_experience_float": years_float,
+        "work_experiences": deduped,
     }
 
 
 # ─── 7. Backward Compatibility Functions ─────────────────────────────────────
 
-def extract_experience_entries(text: str) -> list[dict]:
+def extract_experience_entries(text: str, structured: Optional[Dict[str, Any]] = None) -> list[dict]:
     """
     Parses structured experience entries from resume text.
     Provides backward compatibility with legacy dict format while including new structured fields.
     """
-    structured = extract_structured_experience(text)
+    if structured is None:
+        structured = extract_structured_experience(text)
     entries = []
     for exp in structured.get("work_experiences", []):
         dates_display = ""
@@ -1966,12 +2726,12 @@ def extract_experience_entries(text: str) -> list[dict]:
     return entries
 
 
-def extract_experience(text: str) -> str:
+def extract_experience(text: str, structured: Optional[Dict[str, Any]] = None) -> str:
     """
     Extracts work experience from resume text with structured parsing.
     Returns pipe-separated entries: "Role at Company (Dates) - Responsibilities: ..."
     """
-    entries = extract_experience_entries(text)
+    entries = extract_experience_entries(text, structured=structured)
     formatted_entries = []
 
     for entry in entries:
@@ -2000,14 +2760,22 @@ def extract_experience(text: str) -> str:
 _EXPLICIT_DISQUALIFIER_BEFORE_RE = re.compile(
     r'\b(?:company|firm|organization|enterprise|client|clients|customer|customers|'
     r'team|staff|associates|employees|candidates|applicants|workers|developers|engineers|'
-    r'minimum|must\s+have|required|requires|age|aged)\s*'
-    r'(?:has|with|of|having|at\s+least|over|more\s+than)?\s*$',
+    r'minimum|must\s+have|required|requires|age|aged|'
+    r'lived|living|resided|residing|born|graduated|ago|saved|reduced|data|logs|records|history|founded|established|'
+    r'mentored|supervised|managed|led|trained|coached|hired|recruited)\s*'
+    r'(?:a\s+team\s+of\s+\d+\s+\w+\s+|in\s+[A-Za-z\s]{2,25}\s+for\s+|for\s+|has|with|of|having|at\s+least|over|more\s+than)?\s*$',
     re.IGNORECASE,
 )
 _EXPLICIT_DISQUALIFIER_AFTER_RE = re.compile(
-    r'^\s*(?:old|of\s+age|warranty|heritage|history|in\s+business|established|founded|'
-    r'degree|diploma|course|study|college|university|high\s+school)\b',
+    r'^\s*(?:old|of\s+age|ago|warranty|heritage|history|in\s+business|established|founded|'
+    r'data|logs|records|degree|diploma|course|program|study|college|university|school|high\s+school)\b',
     re.IGNORECASE,
+)
+
+_MOD_WORD = (
+    r'(?!years?\b|yrs?\b|months?\b|mos?\b|old\b|ago\b|age\b|degree\b|diploma\b|'
+    r'school\b|college\b|university\b|heritage\b|history\b|data\b|logs?\b|records?\b|warranty\b|business\b)'
+    r'[A-Za-z0-9&/\-]+'
 )
 
 
@@ -2015,140 +2783,229 @@ def _extract_explicit_experience_months(text: str) -> int:
     """
     Extract explicit total experience duration (in months) from summary statements or
     explicit 'Experience:' / 'Years of Experience:' labels, ignoring false positives
-    such as age ('18 years old'), company heritage ('25 years in business'), or education length.
+    such as age ('18 years old'), residence duration, company heritage, or education length.
     """
     if not text:
         return 0
 
+    clean_text = _preprocess_experience_text(text)
     best_months = 0
-    sections = split_into_sections(text)
 
     # 1. Explicit label lines anywhere in raw text outside Education/Certifications/References
-    # (Scan raw lines before split_into_sections strips prefixes like 'Experience:')
     label_re = re.compile(
-        r'^(?:total\s+(?:work\s+|relevant\s+|professional\s+)?)?'
-        r'(?:years?\s+of\s+)?(?:work\s+|relevant\s+|professional\s+)?'
-        r'(?:experience|tenure|length\s+of\s+service)\s*(?:\(\s*years?\s*\))?\s*[:\-–=]\s*(.+)$',
+        r'^(?:total\s+(?:work\s+|relevant\s+|professional\s+|industry\s+)?)?'
+        r'(?:years?\s+of\s+)?(?:work\s+|relevant\s+|professional\s+|industry\s+)?'
+        r'(?:experience|exp\.?|tenure|length\s+of\s+service)\s*(?:\(\s*years?\s*\))?\s*[:\-–=|]\s*(.+)$',
         re.IGNORECASE,
     )
-    skip_lbls = {"EDUCATION", "CERTIFICATIONS", "REFERENCES", "INTERESTS"}
+    split_label_re = re.compile(
+        r'^(?:total\s+(?:work\s+|relevant\s+|professional\s+|industry\s+)?'
+        r'(?:years?\s+of\s+)?(?:experience|exp\.?|tenure|length\s+of\s+service)|'
+        r'years?\s+of\s+(?:work\s+|relevant\s+|professional\s+)?experience|length\s+of\s+service)\s*[:\-–=]?\s*$',
+        re.IGNORECASE,
+    )
+    skip_lbls = {"EDUCATION", "CERTIFICATIONS", "REFERENCES", "INTERESTS", "PUBLICATIONS"}
+    raw_lines = [ln.strip() for ln in clean_text.split('\n') if ln.strip()]
     curr_sec = "HEADER"
-    for raw_line in text.split('\n'):
-        stripped_line = raw_line.strip()
-        if not stripped_line:
-            continue
+    curr_raw_hdr = ""
+    narrative_lines: List[str] = []
+
+    for idx, stripped_line in enumerate(raw_lines):
+        # Check explicit single-line label
         m = label_re.match(stripped_line)
         if m and curr_sec not in skip_lbls:
             rhs = m.group(1).strip()
             dur_m = _parse_duration_text(rhs)
             if dur_m > 0:
                 best_months = max(best_months, dur_m)
-                continue
-            bare_num = re.match(r'^(\d+(?:\.\d+)?)\+?\s*$', rhs)
-            if bare_num:
-                yrs = float(bare_num.group(1))
-                if 0 < yrs < 50:
-                    best_months = max(best_months, max(1, round(yrs * 12.0)))
+            else:
+                bare_num = re.match(r'^(\d+(?:\.\d+)?)\+?\s*$', rhs)
+                if bare_num:
+                    yrs = float(bare_num.group(1))
+                    if 0 < yrs < 50:
+                        best_months = max(best_months, max(1, round(yrs * 12.0)))
+
+        # Check 2-line split explicit label (e.g. "Total Work Experience\n5 years 6 months")
+        elif split_label_re.match(stripped_line) and curr_sec not in skip_lbls and idx + 1 < len(raw_lines):
+            next_rhs = raw_lines[idx + 1]
+            if not _DATE_RANGE_REGEX.search(next_rhs) and not re.match(r'^(?:19|20)\d{2}\b', next_rhs):
+                dur_m = _parse_duration_text(next_rhs)
+                if dur_m > 0:
+                    best_months = max(best_months, dur_m)
+                else:
+                    bare_num = re.match(r'^(\d+(?:\.\d+)?)\+?\s*$', next_rhs)
+                    if bare_num:
+                        yrs = float(bare_num.group(1))
+                        if 0 < yrs < 50:
+                            best_months = max(best_months, max(1, round(yrs * 12.0)))
+
         lbl = detect_section_label(stripped_line)
         if lbl:
             curr_sec = lbl
+            curr_raw_hdr = stripped_line.upper()
+            # Keep inline text after colon if not skip section
+            if lbl not in skip_lbls and ':' in stripped_line:
+                after_col = stripped_line.split(':', 1)[1].strip()
+                if after_col:
+                    narrative_lines.append(after_col)
+            continue
 
-    # 2. Candidate narrative statements in HEADER, SUMMARY, or EXPERIENCE intro
-    narrative_parts = []
-    for lbl in ("HEADER", "SUMMARY", "EXPERIENCE"):
-        if sections.get(lbl):
-            narrative_parts.append(sections[lbl])
-    narrative_text = "\n".join(narrative_parts) if narrative_parts else text
+        include_for_narrative = (
+            curr_sec in ("HEADER", "SUMMARY", "EXPERIENCE")
+            or (
+                curr_sec not in skip_lbls
+                and any(k in curr_raw_hdr for k in ("QUALIFICATION", "HIGHLIGHT", "PROFILE", "ABOUT", "OBJECTIVE"))
+            )
+        )
+        if include_for_narrative:
+            narrative_lines.append(stripped_line)
+
+    raw_narrative = "\n".join(narrative_lines) if narrative_lines else clean_text
+    narrative_text = _normalize_written_numbers(raw_narrative)
 
     def _is_disqualified(src: str, start: int, end: int) -> bool:
-        before = src[max(0, start - 50):start]
-        after = src[end:min(len(src), end + 40)]
+        before = src[max(0, start - 65):start]
+        after = src[end:min(len(src), end + 45)]
         if _EXPLICIT_DISQUALIFIER_BEFORE_RE.search(before):
             return True
         if _EXPLICIT_DISQUALIFIER_AFTER_RE.search(after):
             return True
-        # Reject 'with 2 years of experience' when preceded by a plural/role noun ('mentored juniors with ...')
-        if re.search(r'\b(?:juniors?|freshers?|graduates?|interns?|trainees?|hires?|peers?)\s+with\s*$', before, re.IGNORECASE):
+        if re.search(
+            r'\b(?:juniors?|freshers?|graduates?|interns?|trainees?|hires?|peers?|students?|members?|subordinates?|colleagues?)\s+with\s*$',
+            before,
+            re.IGNORECASE,
+        ):
             return True
         return False
 
-    # Pattern A: Numeric years (+ optional range, + optional months) + experience keyword
-    pat_a = re.compile(
-        r'\b(\d+(?:\.\d+)?)\s*(?:[-–to]+\s*(\d+(?:\.\d+)?)\s*)?\+?\s*(?:years?|yrs?)'
-        r'(?:\s*(?:and|,)?\s*(\d+(?:\.\d+)?)\s*(?:months?|mos?))?\s+'
-        r'(?:of\s+)?(?:(?:proven|hands-on|solid|extensive|broad|strong|rich|combined|total|overall|professional|relevant|related|work|working|industry|practical|direct|field)\s+)*'
-        r'(?:experience|exp\.?|expertise|background|work|service)\b',
+    # Pattern 1: Numeric years (+ optional range, + optional months) + 0-6 domain words + experience keyword
+    pat_1 = re.compile(
+        rf'\b(\d+(?:\.\d+)?)\s*(?:[-–]\s*(\d+(?:\.\d+)?)\s*|\bto\b\s*(\d+(?:\.\d+)?)\s*)?\+?\s*(?:[-–]\s*year\b|(?:years?|yrs?\.?)[\'’]?)'
+        rf'(?:\s*(?:and|,|&)?\s*(\d+(?:\.\d+)?)\s*(?:months?|mos?\.?))?\s+'
+        rf'(?:of\s+)?(?:{_MOD_WORD}\s+){{0,6}}'
+        rf'(?:experience|exp\.?|expertise|background|service)\b',
         re.IGNORECASE,
     )
-    for m in pat_a.finditer(narrative_text):
+    for m in pat_1.finditer(narrative_text):
         if _is_disqualified(narrative_text, m.start(), m.end()):
             continue
         y1 = float(m.group(1))
-        y2 = float(m.group(2)) if m.group(2) else None
-        extra_mo = float(m.group(3)) if m.group(3) else 0.0
+        y2_str = m.group(2) or m.group(3)
+        y2 = float(y2_str) if y2_str else None
+        extra_mo = float(m.group(4)) if m.group(4) else 0.0
+        if y1 >= 50 or (y2 is not None and y2 >= 50):
+            continue
         yrs = ((y1 + y2) / 2.0) if (y2 is not None and y2 > y1 and (y2 - y1) <= 5) else y1
         if 0 <= yrs < 50:
             mos = round(yrs * 12.0 + extra_mo)
-            if mos > 0:
+            if 0 < mos < 600:
                 best_months = max(best_months, mos)
 
-    # Pattern B: Qualifier + years ('over 5 years', 'more than 3.5 years', 'at least 4 years')
-    pat_b = re.compile(
-        r'\b(?:over|more\s+than|at\s+least|nearly|almost|about|around|approx\.?|approximately)\s+'
-        r'(\d+(?:\.\d+)?)\+?\s*(?:years?|yrs?)'
-        r'(?:\s+(?:of\s+)?(?:(?:work|working|professional|relevant|related|industry|practical)\s+)?(?:experience|exp\.?|practice|service|career))?\b',
-        re.IGNORECASE,
-    )
-    for m in pat_b.finditer(narrative_text):
+    # Pattern 2: YoE shorthand ('6+ YoE', '4.5 YoE')
+    pat_2 = re.compile(r'\b(\d+(?:\.\d+)?)\+?\s*yoe\b', re.IGNORECASE)
+    for m in pat_2.finditer(narrative_text):
         if _is_disqualified(narrative_text, m.start(), m.end()):
             continue
         yrs = float(m.group(1))
         if 0 < yrs < 50:
             best_months = max(best_months, max(1, round(yrs * 12.0)))
 
-    # Pattern C: 'X years in <industry/field>' or 'X years as a <role>'
-    pat_c = re.compile(
-        r'\b(\d+(?:\.\d+)?)\+?\s*(?:years?|yrs?)\s+'
-        r'(?:in\s+(?:the\s+)?(?:industry|field|practice|IT|tech|software|manufacturing|construction|sales|retail|hospitality|healthcare|finance|accounting|engineering|customer\s+service|BPO)|as\s+(?:a|an)\s+[A-Za-z])',
+    # Pattern 3: Reversed phrasing ('experience of 7 years', 'experienced in QA for over 4 years')
+    pat_3a = re.compile(
+        r'\b(?:experience|exp\.?|career|tenure|background|service)\s+(?:of|spanning|totaling|totalling|exceeding)\s+'
+        r'(?:over|more\s+than|at\s+least|nearly|almost|about|around|approx\.?|approximately)?\s*'
+        r'(\d+(?:\.\d+)?)\+?\s*(?:years?|yrs?\.?)(?:\s*(?:and|,|&)?\s*(\d+(?:\.\d+)?)\s*(?:months?|mos?\.?))?\b',
         re.IGNORECASE,
     )
-    for m in pat_c.finditer(narrative_text):
+    for m in pat_3a.finditer(narrative_text):
+        if _is_disqualified(narrative_text, m.start(), m.end()):
+            continue
+        yrs = float(m.group(1))
+        extra_mo = float(m.group(2)) if m.group(2) else 0.0
+        if 0 < yrs < 50:
+            best_months = max(best_months, max(1, round(yrs * 12.0 + extra_mo)))
+
+    pat_3b = re.compile(
+        r'\b(?:experienced|working|employed|practicing|serving|operating)\s+'
+        r'(?:(?:as\s+(?:a|an)\s+|in\s+)[A-Za-z0-9&/\-,\s]{2,40}\s+)?for\s+'
+        r'(?:over|more\s+than|at\s+least|nearly|almost|about|around|approx\.?|approximately)?\s*'
+        r'(\d+(?:\.\d+)?)\+?\s*(?:years?|yrs?\.?)(?:\s*(?:and|,|&)?\s*(\d+(?:\.\d+)?)\s*(?:months?|mos?\.?))?\b',
+        re.IGNORECASE,
+    )
+    for m in pat_3b.finditer(narrative_text):
+        if _is_disqualified(narrative_text, m.start(), m.end()):
+            continue
+        yrs = float(m.group(1))
+        extra_mo = float(m.group(2)) if m.group(2) else 0.0
+        if 0 < yrs < 50:
+            best_months = max(best_months, max(1, round(yrs * 12.0 + extra_mo)))
+
+    # Pattern 4: 'X years in <industry/field>' or 'X years as a/an <role>'
+    pat_4 = re.compile(
+        r'\b(\d+(?:\.\d+)?)\+?\s*(?:years?|yrs?\.?)\s+'
+        r'(?:in\s+(?:the\s+)?(?:[A-Za-z0-9&/\-]+\s+){0,2}'
+        r'(?:industry|field|practice|sector|IT|tech|software|engineering|manufacturing|production|'
+        r'construction|sales|marketing|retail|hospitality|resort\s+operations|food\s+service|culinary|'
+        r'healthcare|nursing|clinical|finance|accounting|banking|audit|tax|customer\s+service|BPO|'
+        r'logistics|supply\s+chain|warehouse|operations|quality\s+control|quality\s+assurance|QA|QC|'
+        r'maintenance|administration|HR|human\s+resources|education|teaching|procurement|legal|'
+        r'design|media|data|cloud|cybersecurity|maritime|aviation|automotive|telecommunications|real\s+estate)'
+        r'|as\s+(?:a|an)\s+[A-Za-z])',
+        re.IGNORECASE,
+    )
+    for m in pat_4.finditer(narrative_text):
         if _is_disqualified(narrative_text, m.start(), m.end()):
             continue
         yrs = float(m.group(1))
         if 0 < yrs < 50:
             best_months = max(best_months, max(1, round(yrs * 12.0)))
 
-    # Pattern D: Months-only explicit experience ('18 months of experience', '6 mos work experience')
-    pat_d = re.compile(
-        r'\b(\d+(?:\.\d+)?)\s*(?:months?|mos?)\s+(?:of\s+)?(?:(?:work|working|relevant|related|professional|hands-on|practical)\s+)?(?:experience|exp\.?)\b',
+    # Pattern 5: Months-only explicit ('18 months of experience', '6-month internship experience', '22 months in resort operations')
+    pat_5 = re.compile(
+        r'\b(\d+(?:\.\d+)?)\s*(?:[-–]\s*month\s+(?:[A-Za-z0-9&/\-]+\s+){0,3}(?:experience|exp\.?|internship|ojt|practicum)'
+        r'|(?:months?|mos?\.?)\s+(?:of\s+(?:[A-Za-z0-9&/\-]+\s+){0,5}(?:experience|exp\.?)|in\s+(?:[A-Za-z0-9&/\-]+\s+){0,3}(?:operations|industry|field|manufacturing|retail|sales|IT|software|BPO|hospitality|resort\s+operations|nursing|teaching|accounting|finance|logistics|warehouse|customer\s+service)))\b',
         re.IGNORECASE,
     )
-    for m in pat_d.finditer(narrative_text):
+    for m in pat_5.finditer(narrative_text):
         if _is_disqualified(narrative_text, m.start(), m.end()):
             continue
         mos = float(m.group(1))
         if 0 < mos < 600:
             best_months = max(best_months, max(1, round(mos)))
 
-    # Pattern E: Word numbers ('five years of experience', 'two and a half years of experience', 'three (3) years')
-    word_pat = '|'.join(sorted(_WORD_NUM_MAP.keys(), key=len, reverse=True))
-    pat_e = re.compile(
-        rf'\b(?P<w>{word_pat})(?:\s*\(\s*\d+\s*\))?(?P<half>\s+and\s+a\s+half)?\+?\s*(?:years?|yrs?)\s+'
-        rf'(?:of\s+)?(?:(?:proven|hands-on|professional|relevant|related|work|industry|practical)\s+)*(?:experience|exp\.?|expertise|work)\b',
+    # Pattern 6: Career start in summary ('Working as a Software Engineer since January 2020')
+    pat_6 = re.compile(
+        rf'\b(?:working|employed|practicing|freelancing|developing|operating|serving|in\s+the\s+(?:industry|field))\s+'
+        rf'(?:(?:as\s+(?:a|an)\s+|in\s+)[A-Za-z0-9/&\-\s]{{2,40}}\s+)?since\s+'
+        rf'((?:{_MONTHS_NAMES}\.?\s*[,.]?\s*)?(?:19|20)\d{{2}})\b',
         re.IGNORECASE,
     )
-    for m in pat_e.finditer(narrative_text):
+    now = datetime.now()
+    for m in pat_6.finditer(narrative_text):
         if _is_disqualified(narrative_text, m.start(), m.end()):
             continue
-        yrs = _WORD_NUM_MAP.get(m.group("w").lower(), 0.0) + (0.5 if m.group("half") else 0.0)
+        _, s_yr, s_mo = _parse_single_date(m.group(1), is_end=False)
+        if s_yr and s_mo and (s_yr, s_mo) <= (now.year, now.month):
+            mos = max(1, (now.year - s_yr) * 12 + (now.month - s_mo) + 1)
+            if 0 < mos < 600:
+                best_months = max(best_months, mos)
+
+    # Pattern 7: Tagalog explicit ('5 taong karanasan sa trabaho')
+    pat_7 = re.compile(
+        r'\b(\d+(?:\.\d+)?)\+?\s*taon(?:g)?\s+(?:na\s+)?(?:karanasan|sa\s+trabaho)\b',
+        re.IGNORECASE,
+    )
+    for m in pat_7.finditer(narrative_text):
+        if _is_disqualified(narrative_text, m.start(), m.end()):
+            continue
+        yrs = float(m.group(1))
         if 0 < yrs < 50:
             best_months = max(best_months, max(1, round(yrs * 12.0)))
 
     return best_months
 
 
-def extract_experience_years_float(text: str) -> float:
+def extract_experience_years_float(text: str, structured: Optional[Dict[str, Any]] = None) -> float:
     """
     Return total years of work experience as a float rounded to 1 decimal place
     (e.g. 2.5 years for 30 months), reconciling structured timeline with explicit summary mentions.
@@ -2156,16 +3013,17 @@ def extract_experience_years_float(text: str) -> float:
     if not text:
         return 0.0
 
-    structured = extract_structured_experience(text)
+    if structured is None:
+        structured = extract_structured_experience(text)
     structured_months = int(structured.get("total_experience_months", 0) or 0)
-    explicit_months = _extract_explicit_experience_months(text)
+    explicit_months = int(structured.get("explicit_experience_months") or _extract_explicit_experience_months(text))
     total_months = max(structured_months, explicit_months)
     if total_months <= 0:
         return 0.0
     return round(total_months / 12.0, 1)
 
 
-def extract_years_experience(text: str) -> int:
+def extract_years_experience(text: str, structured: Optional[Dict[str, Any]] = None) -> int:
     """
     Calculates total years of experience by reconciling merged structured duration months
     from work history with validated explicit summary/label mentions.
@@ -2173,9 +3031,10 @@ def extract_years_experience(text: str) -> int:
     if not text:
         return 0
 
-    structured = extract_structured_experience(text)
+    if structured is None:
+        structured = extract_structured_experience(text)
     structured_months = int(structured.get("total_experience_months", 0) or 0)
-    explicit_months = _extract_explicit_experience_months(text)
+    explicit_months = int(structured.get("explicit_experience_months") or _extract_explicit_experience_months(text))
     total_months = max(structured_months, explicit_months)
     if total_months > 0:
         return max(1, (total_months + 6) // 12)
