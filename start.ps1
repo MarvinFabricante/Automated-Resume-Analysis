@@ -136,14 +136,16 @@ function Show-Help {
     Write-Host "Usage: .\start.ps1 [OPTION]" -ForegroundColor White
     Write-Host ""
     Write-Host "Options:" -ForegroundColor White
-    Write-Host "  (no flags)          Default: Check, build & start all services, setup Cloudflare tunnel, and sync .env" -ForegroundColor Green
+    Write-Host "  (no flags)          Default: Check, build & start all services, auto-seed missing data, setup Cloudflare tunnel" -ForegroundColor Green
     Write-Host "  -q, --quick, -Quick Fast start: Start existing containers without rebuilding images" -ForegroundColor Green
     Write-Host "  -b, --rebuild       Force clean rebuild of all container images (--no-cache)" -ForegroundColor Green
     Write-Host "  -r, --restart       Restart all containers and re-verify Cloudflare tunnel" -ForegroundColor Green
     Write-Host "  -s, --stop          Gracefully stop and take down all containers" -ForegroundColor Green
     Write-Host "  --status            Show current health of all containers, domain, and tunnel" -ForegroundColor Green
     Write-Host "  --logs [svc]        View logs (e.g. .\start.ps1 --logs backend or .\start.ps1 --logs frontend)" -ForegroundColor Green
-    Write-Host "  --seed              Run database seeds for jobs and HR accounts" -ForegroundColor Green
+    Write-Host "  --seed              Run idempotent database & ML seeds (jobs, HR/Admin accounts, templates, configs)" -ForegroundColor Green
+    Write-Host "  --no-seed           Skip automatic database seeding during startup" -ForegroundColor Green
+    Write-Host "  --no-tunnel         Start local services without Cloudflare tunnel" -ForegroundColor Green
     Write-Host "  -h, --help          Show this help menu" -ForegroundColor Green
     Write-Host ""
 }
@@ -185,8 +187,14 @@ function Invoke-PreflightChecks {
 
     $resumesDir = Join-Path $ProjectDir "uploads\resumes"
     $resumeImagesDir = Join-Path $ProjectDir "uploads\resume_images"
+    $physicalResumesDir = Join-Path $ProjectDir "uploads\physical_resumes"
+    $exportsDir = Join-Path $ProjectDir "exports"
+    $dataDir = Join-Path $ProjectDir "backend\data"
     New-Item -ItemType Directory -Force -Path $resumesDir | Out-Null
     New-Item -ItemType Directory -Force -Path $resumeImagesDir | Out-Null
+    New-Item -ItemType Directory -Force -Path $physicalResumesDir | Out-Null
+    New-Item -ItemType Directory -Force -Path $exportsDir | Out-Null
+    New-Item -ItemType Directory -Force -Path $dataDir | Out-Null
 
     $customDomain = Get-EnvValue -Key "CUSTOM_DOMAIN"
     if (-not [string]::IsNullOrWhiteSpace($customDomain)) {
@@ -489,36 +497,56 @@ function Apply-EnvironmentChanges {
     Write-Host ""
 }
 
-# --- Verify Database ---
+# --- Verify Database & Auto-Seed ---
 function Verify-Database {
-    Write-Host "[6/6] Verifying database integrity..." -ForegroundColor Blue
+    param([bool]$AutoSeed = $true)
+    Write-Host "[6/6] Verifying database integrity & seed data..." -ForegroundColor Blue
     $pyCode = @"
-import asyncio
+import asyncio, os
 from app.utils.database import AsyncSessionLocal
 from sqlalchemy import text
-async def count_jobs():
+async def check_counts():
     try:
         async with AsyncSessionLocal() as session:
-            res = await session.execute(text('SELECT count(*) FROM job_descriptions'))
-            return res.scalar() or 0
+            jobs = (await session.execute(text('SELECT count(*) FROM job_descriptions'))).scalar() or 0
+            staff = (await session.execute(text("SELECT count(*) FROM users WHERE role IN ('HR', 'ADMIN')"))).scalar() or 0
+            tpls = (await session.execute(text('SELECT count(*) FROM form_templates'))).scalar() or 0
+            cfgs = (await session.execute(text('SELECT count(*) FROM system_configs'))).scalar() or 0
+            has_ml = 1 if os.path.exists('data/production_model.pkl') else 0
+            return f'{jobs}|{staff}|{tpls}|{cfgs}|{has_ml}'
     except Exception:
-        return 0
-print(asyncio.run(count_jobs()))
+        return '0|0|0|0|0'
+print(asyncio.run(check_counts()))
 "@
     $prevEAP = $ErrorActionPreference
     $ErrorActionPreference = "Continue"
-    $rawCount = Invoke-Compose exec -T backend python -c $pyCode 2>$null
+    $rawCounts = Invoke-Compose exec -T backend python -c $pyCode 2>$null
     $ErrorActionPreference = $prevEAP
 
-    $jobCount = 0
-    [void][int]::TryParse(($rawCount | Out-String).Trim(), [ref]$jobCount)
+    $parts = (($rawCounts | Out-String).Trim()) -split '\|'
+    $jobCount = 0; $staffCount = 0; $tplCount = 0; $cfgCount = 0; $hasMl = 0
+    if ($parts.Length -ge 5) {
+        [void][int]::TryParse($parts[0], [ref]$jobCount)
+        [void][int]::TryParse($parts[1], [ref]$staffCount)
+        [void][int]::TryParse($parts[2], [ref]$tplCount)
+        [void][int]::TryParse($parts[3], [ref]$cfgCount)
+        [void][int]::TryParse($parts[4], [ref]$hasMl)
+    }
 
-    if ($jobCount -eq 0) {
-        Write-Host "  ! Database has no job descriptions yet." -ForegroundColor Yellow
-        Write-Host "  Tip: You can seed default Mariwasa jobs and HR accounts anytime with:" -ForegroundColor Cyan
-        Write-Host "       .\start.ps1 --seed" -ForegroundColor White
+    if ($jobCount -eq 0 -or $staffCount -eq 0 -or $tplCount -eq 0 -or $cfgCount -eq 0 -or $hasMl -eq 0) {
+        if ($AutoSeed) {
+            Write-Host "  ! Missing initial seed data (jobs=$jobCount, staff=$staffCount, templates=$tplCount, configs=$cfgCount, ml=$hasMl)." -ForegroundColor Yellow
+            Write-Host "  Automatically seeding jobs, HR/Admin accounts, templates, configs & ML model..." -ForegroundColor Cyan
+            Invoke-Compose exec -T backend python scripts/seed_defaults.py
+            if ($LASTEXITCODE -ne 0) {
+                Write-Host "  ! Warning: Seeding returned exit code $LASTEXITCODE" -ForegroundColor Yellow
+            }
+        } else {
+            Write-Host "  ! Initial seed data incomplete (jobs=$jobCount, staff=$staffCount). Skipped due to --no-seed." -ForegroundColor Yellow
+            Write-Host "  Tip: Run .\start.ps1 --seed anytime to populate jobs, accounts, and configs." -ForegroundColor Cyan
+        }
     } else {
-        Write-Host "  OK Database connected and populated ($jobCount active jobs)" -ForegroundColor Green
+        Write-Host "  OK Database verified ($jobCount jobs, $staffCount HR/Admin accounts, $tplCount form templates, $cfgCount configs, ML model ready)" -ForegroundColor Green
     }
     Write-Host ""
 }
@@ -527,13 +555,21 @@ print(asyncio.run(count_jobs()))
 function Invoke-Seeds {
     Show-Banner
     Invoke-PreflightChecks
-    Write-Host "Running Database Seeds (Jobs & HR Accounts)..." -ForegroundColor Blue
+    Write-Host "Running Unified Database & ML Seeds (Jobs, HR/Admin Accounts, Templates, Configs)..." -ForegroundColor Blue
     Write-Host ""
-    Write-Host "  [1/2] Seeding Mariwasa Job Descriptions..."
-    Invoke-Compose exec -T backend python seed_mariwasa_jobs.py
-    Write-Host ""
-    Write-Host "  [2/2] Seeding HR Staff Accounts..."
-    Invoke-Compose exec -T backend python seed_hr_accounts.py
+
+    Invoke-Compose up -d db redis backend | Out-Null
+    if (-not (Wait-ForDb)) {
+        Write-Host "  X PostgreSQL failed to become ready." -ForegroundColor Red
+        exit 1
+    }
+    if (-not (Wait-ForHttpEndpoint -Url "http://localhost:8000/" -MaxRetries 35)) {
+        Write-Host "  X Backend failed to become ready." -ForegroundColor Red
+        exit 1
+    }
+
+    Invoke-Compose exec -T backend python scripts/seed_defaults.py
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
     Write-Host ""
     Write-Host "OK Seeding complete!" -ForegroundColor Green
 }
@@ -639,21 +675,26 @@ function Show-Dashboard {
     if (-not [string]::IsNullOrWhiteSpace($customDomain)) {
         Write-Host "  PUBLIC DOMAIN:            https://$customDomain" -ForegroundColor Cyan
         Write-Host "  WWW DOMAIN:               https://www.$customDomain" -ForegroundColor Cyan
-    } else {
+    } elseif (-not [string]::IsNullOrWhiteSpace($TunnelUrl)) {
         Write-Host "  PUBLIC URL (Cloudflare):  $TunnelUrl" -ForegroundColor Cyan
+    } else {
+        Write-Host "  PUBLIC TUNNEL:            Disabled (--no-tunnel)" -ForegroundColor Yellow
     }
     Write-Host "  LOCAL FRONTEND:           http://localhost:$httpPort" -ForegroundColor White
     Write-Host "  FASTAPI DOCS (Swagger):   http://localhost:8000/docs" -ForegroundColor White
     Write-Host "  POSTGRESQL PORT:          localhost:5434" -ForegroundColor White
     Write-Host "  REDIS CACHE PORT:         localhost:6380" -ForegroundColor White
     Write-Host ""
-    Write-Host "  GOOGLE OAUTH CONFIGURATION:" -ForegroundColor Yellow
-    Write-Host "     If using Google Login, add this authorized redirect URI in"
-    Write-Host "     Google Cloud Console (Credentials > Authorized redirect URIs):"
-    Write-Host "     $TunnelUrl/api/auth/google/callback" -ForegroundColor White
-    Write-Host ""
+    if (-not [string]::IsNullOrWhiteSpace($TunnelUrl)) {
+        Write-Host "  GOOGLE OAUTH CONFIGURATION:" -ForegroundColor Yellow
+        Write-Host "     If using Google Login, add this authorized redirect URI in"
+        Write-Host "     Google Cloud Console (Credentials > Authorized redirect URIs):"
+        Write-Host "     $TunnelUrl/api/auth/google/callback" -ForegroundColor White
+        Write-Host ""
+    }
     Write-Host "  HELPFUL COMMANDS:" -ForegroundColor White
     Write-Host "     View status:   .\start.ps1 --status" -ForegroundColor Green
+    Write-Host "     Run seeds:     .\start.ps1 --seed" -ForegroundColor Green
     Write-Host "     Stream logs:   .\start.ps1 --logs (or .\start.ps1 --logs backend)" -ForegroundColor Green
     Write-Host "     Stop app:      .\start.ps1 --stop" -ForegroundColor Green
     Write-Host "     Restart app:   .\start.ps1 --restart" -ForegroundColor Green
@@ -665,6 +706,8 @@ function Show-Dashboard {
 # Main Argument Dispatcher
 # ==============================================================================
 $mode = "build"
+$autoSeed = $true
+$useTunnel = $true
 $i = 0
 while ($i -lt $args.Count) {
     $arg = [string]$args[$i]
@@ -684,6 +727,12 @@ while ($i -lt $args.Count) {
         "^(--seed|-seed|seed)$" {
             Invoke-Seeds
             exit 0
+        }
+        "^(--no-seed|-noseed)$" {
+            $autoSeed = $false
+        }
+        "^(--no-tunnel|-notunnel)$" {
+            $useTunnel = $false
         }
         "^(-l|--logs|-logs|logs)$" {
             $svc = ""
@@ -724,8 +773,16 @@ if ($mode -eq "restart") {
 }
 
 Start-AppContainers -Mode $mode
-Setup-CloudflareTunnel
-Sync-EnvFile -TunnelUrl $script:ActiveTunnelUrl
-Apply-EnvironmentChanges
-Verify-Database
+$httpPort = Get-EnvValue -Key "HTTP_PORT" -Default "8080"
+if ($useTunnel) {
+    Setup-CloudflareTunnel
+    Sync-EnvFile -TunnelUrl $script:ActiveTunnelUrl
+    Apply-EnvironmentChanges
+} else {
+    Write-Host "[3/6] Cloudflare Tunnel skipped (--no-tunnel)." -ForegroundColor Blue
+    Sync-EnvFile -TunnelUrl "http://localhost:$httpPort"
+    Apply-EnvironmentChanges
+    $script:ActiveTunnelUrl = ""
+}
+Verify-Database -AutoSeed $autoSeed
 Show-Dashboard -TunnelUrl $script:ActiveTunnelUrl

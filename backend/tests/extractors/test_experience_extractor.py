@@ -4,6 +4,7 @@ from app.extractors.content.experience_extractor import (
     extract_experience_entries,
     extract_experience,
     extract_years_experience,
+    extract_experience_years_float,
     extract_job_title,
     extract_company,
     extract_relevance,
@@ -414,5 +415,158 @@ Barangay Hall Laguna
     assert "Acme Tech Corp" in res5["work_experiences"][0]["company_name"]
     assert "Intern" in res5["work_experiences"][1]["job_title"]
     assert res5["work_experiences"][1]["duration_months"] == 3
+
+
+def test_extended_date_and_duration_formats():
+    # DD Month YYYY
+    s, e, dur, _ = _parse_date_and_duration("15 June 2020 - 20 August 2023")
+    assert s == "2020-06"
+    assert e == "2023-08"
+    assert dur == 39
+
+    # DD/MM/YYYY consistent disambiguation
+    s, e, dur, _ = _parse_date_and_duration("01/06/2020 - 20/12/2023")
+    assert s == "2020-06"
+    assert e == "2023-12"
+    assert dur == 43
+
+    # YYYY/MM and MM.YYYY
+    s, e, dur, _ = _parse_date_and_duration("2020/06 - 2023/12")
+    assert (s, e, dur) == ("2020-06", "2023-12", 43)
+    s, e, dur, _ = _parse_date_and_duration("06.2020 - 12.2023")
+    assert (s, e, dur) == ("2020-06", "2023-12", 43)
+
+    # Apostrophe short years and Quarters
+    s, e, dur, _ = _parse_date_and_duration("Jan '20 - Dec '23")
+    assert (s, e, dur) == ("2020-01", "2023-12", 48)
+    s, e, dur, _ = _parse_date_and_duration("Q1 2021 - Q4 2023")
+    assert (s, e, dur) == ("2021-01", "2023-12", 36)
+
+    # Combined years + months duration
+    s, e, dur, _ = _parse_date_and_duration("2 yrs 6 mos")
+    assert dur == 30
+
+    # Open-ended 'Since' and 'Currently'
+    s, e, dur, _ = _parse_date_and_duration("Since June 2023")
+    assert s == "2023-06"
+    assert e == "Present"
+    assert dur >= 1
+    s, e, dur, _ = _parse_date_and_duration("Jan 2022 - Currently")
+    assert s == "2022-01"
+    assert e == "Present"
+    assert dur >= 1
+
+    # Misspelled months
+    s, e, dur, _ = _parse_date_and_duration("Febuary 2020 - Septmber 2022")
+    assert (s, e, dur) == ("2020-02", "2022-09", 32)
+
+
+def test_overlapping_jobs_interval_merging():
+    resume_text = """
+    WORK EXPERIENCE
+    Senior Developer | Alpha Tech | Jan 2022 - Dec 2024
+    - Led backend platform.
+
+    Freelance Consultant | Beta Studio | Jan 2023 - Dec 2023
+    - Advised on architecture.
+
+    Junior Developer | Gamma Corp | Jan 2020 - Dec 2021
+    - Developed REST APIs.
+    """
+    res = extract_structured_experience(resume_text)
+    assert len(res["work_experiences"]) == 3
+    # Union of 2020-01..2021-12 (24m) and 2022-01..2024-12 (36m) with concurrent 2023-01..2023-12 inside = 60 months (5 years)
+    assert res["total_experience_months"] == 60
+    assert extract_years_experience(resume_text) == 5
+
+
+def test_diverse_cv_layouts_and_groupings():
+    # 1. LinkedIn grouped parent company + standalone summary duration
+    linkedin_text = """
+    WORK EXPERIENCE
+    Accenture Philippines
+    4 yrs 2 mos
+    Senior Developer
+    Jan 2022 - Dec 2024
+    - Built microservices
+    Junior Developer
+    Jan 2020 - Dec 2021
+    - Wrote APIs
+    """
+    res_li = extract_structured_experience(linkedin_text)
+    assert len(res_li["work_experiences"]) == 2
+    assert res_li["work_experiences"][0]["company_name"] == "Accenture Philippines"
+    assert res_li["work_experiences"][1]["company_name"] == "Accenture Philippines"
+    assert res_li["total_experience_months"] == 60
+
+    # 2. Company -> Date -> Title ordering
+    comp_first = """
+    WORK EXPERIENCE
+    Jollibee Foods Corporation
+    June 2022 - December 2023
+    Service Crew
+    - Served customers
+    """
+    res_cf = extract_structured_experience(comp_first)
+    assert len(res_cf["work_experiences"]) == 1
+    assert res_cf["work_experiences"][0]["job_title"] == "Service Crew"
+    assert "Jollibee" in res_cf["work_experiences"][0]["company_name"]
+    assert res_cf["total_experience_months"] == 19
+
+    # 3. Inline bullet separator, inline duration, prose entry, and modifier + engineering company
+    mixed_layouts = """
+    WORKING EXPERIENCE
+    Service Crew • Jollibee Foods Corp. • Jun 2022 - Dec 2023
+    Production Operator at ABC Corp (2 years)
+    Worked as Quality Control Inspector at Mariwasa Siam Ceramics Inc. from January 2019 to December 2020.
+    Site Civil Engineer (Jan 2021 - Dec 2021)
+    ABC Engineering Services Inc.
+    """
+    res_mix = extract_structured_experience(mixed_layouts)
+    assert len(res_mix["work_experiences"]) == 4
+    titles = [r["job_title"] for r in res_mix["work_experiences"]]
+    assert "Service Crew" in titles
+    assert "Production Operator" in titles
+    assert "Quality Control Inspector" in titles
+    assert "Site Civil Engineer" in titles
+    site_role = next(r for r in res_mix["work_experiences"] if r["job_title"] == "Site Civil Engineer")
+    assert site_role["company_name"] == "ABC Engineering Services Inc."
+    assert res_mix["total_experience_months"] == 79
+
+
+def test_explicit_years_accuracy_and_false_positive_rejection():
+    # Decimals must not parse fractional digit (2.5 -> 2.5f / 3 int, NOT 5!)
+    dec_cv = "SUMMARY\nSoftware Developer with 2.5 years of experience in Python."
+    assert extract_experience_years_float(dec_cv) == 2.5
+    assert extract_years_experience(dec_cv) == 3
+
+    # Word numbers
+    word_cv = "SUMMARY\nAccountant with five years of professional experience."
+    assert extract_years_experience(word_cv) == 5
+
+    # Months-only explicit statement
+    mo_cv = "SUMMARY\nQA Tester with 18 months of work experience."
+    assert extract_experience_years_float(mo_cv) == 1.5
+    assert extract_years_experience(mo_cv) == 2
+
+    # Explicit label formats
+    assert extract_years_experience("Years of Experience: 5\nEXPERIENCE\nCashier at Puregold") == 5
+    assert extract_years_experience("Total Work Experience: 3 yrs 6 mos") == 4
+
+    # False positives must be rejected (age, academic duration, company heritage, mentoring juniors)
+    fp_cv = """
+    OBJECTIVE
+    Hardworking applicant, 22 years old, seeking an entry-level role.
+    Mentored interns with 2 years of experience during capstone.
+    Our school has over 50 years of heritage in engineering.
+    EDUCATION
+    BS Computer Science (4 years)
+    University of Manila, 2020 - 2024
+    SKILLS
+    Python, SQL
+    """
+    assert extract_years_experience(fp_cv) == 0
+    assert extract_experience_years_float(fp_cv) == 0.0
+
 
 

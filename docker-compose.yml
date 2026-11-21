@@ -70,9 +70,8 @@ services:
       - ./backend/app:/app/app
       - ./backend/main.py:/app/main.py
       - ./backend/data:/app/data
+      - ./backend/scripts:/app/scripts
       - ./backend/tests:/app/tests
-      - ./backend/seed_hr_accounts.py:/app/seed_hr_accounts.py
-      - ./backend/seed_mariwasa_jobs.py:/app/seed_mariwasa_jobs.py
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:8000/ || exit 1"]
       interval: 10s

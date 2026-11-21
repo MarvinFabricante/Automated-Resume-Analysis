@@ -26,13 +26,26 @@ def _extract_page_text_layout_aware(page) -> str:
     page_w = float(page.rect.width or 600.0)
     page_h = float(page.rect.height or 800.0)
 
-    # Identify top header band (e.g. Name / Title banner at top of page 1)
-    header_cutoff = min(145.0, page_h * 0.18)
+    # Identify top header band (e.g. Name / Title banner at top of page 1),
+    # stopping before the first column-level section header so 2-column sections
+    # starting near the top (e.g. y=80) are never interleaved into top_blocks.
+    default_cutoff = min(145.0, page_h * 0.18)
+    first_section_y = default_cutoff
+    try:
+        from app.extractors.content.section_parser import detect_section_label
+        for b in text_blocks:
+            first_line = b[4].split("\n", 1)[0].strip()
+            if first_line and detect_section_label(first_line) is not None:
+                if b[1] < first_section_y:
+                    first_section_y = b[1]
+    except Exception:
+        pass
+    header_cutoff = first_section_y
 
     # Check if body blocks cleanly separate into two vertical columns
     best_split = None
     best_score = -1
-    for frac in (0.30, 0.33, 0.35, 0.38, 0.42, 0.48, 0.62, 0.67):
+    for frac in (0.30, 0.33, 0.35, 0.38, 0.40, 0.42, 0.48, 0.62, 0.67):
         split_x = page_w * frac
         body_blocks = [b for b in text_blocks if b[1] >= header_cutoff]
         if len(body_blocks) < 4:
