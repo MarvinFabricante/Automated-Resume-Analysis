@@ -474,6 +474,9 @@ const ViewCandidateDetailsModal: React.FC<ViewCandidateDetailsModalProps> = ({
   const missingSkills: string[] = candidate.missing_skills || [];
   const candidateSkills: string[] = (candidate.skills && candidate.skills.length > 0) ? candidate.skills : matchedSkills;
   const recommendations: string[] = candidate.recommendations || [];
+  const recommendedPositions: any[] = Array.isArray(candidate.recommended_positions)
+    ? candidate.recommended_positions
+    : [];
 
   const fitTier = getFitTier(matchScore);
 
@@ -619,7 +622,12 @@ const ViewCandidateDetailsModal: React.FC<ViewCandidateDetailsModalProps> = ({
     { id: 'skills', label: 'Skills Gap', count: missingSkills.length ? missingSkills.length : undefined, icon: Zap },
     { id: 'experience', label: 'Work History', count: candidate.work_experiences?.length || undefined, icon: Briefcase },
     { id: 'education', label: 'Education & Licenses', count: (candidate.education_entries?.length || 0) + extractedCertifications.length || undefined, icon: GraduationCap },
-    { id: 'recommendations', label: 'Recommendations', count: recommendations.length || undefined, icon: Lightbulb },
+    {
+      id: 'recommendations',
+      label: 'Recommendations',
+      count: (recommendations.length + recommendedPositions.length) || undefined,
+      icon: Lightbulb,
+    },
     { id: 'all', label: 'Full Report', icon: BookOpen },
   ];
 
@@ -640,6 +648,117 @@ const ViewCandidateDetailsModal: React.FC<ViewCandidateDetailsModalProps> = ({
       ? ''
       : end.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
     return endTime ? `${dateLabel} • ${startTime} – ${endTime}` : `${dateLabel} • ${startTime}`;
+  };
+
+  const renderRecommendedPositions = (compact: boolean) => {
+    const displayedPositions = compact ? recommendedPositions.slice(0, 3) : recommendedPositions;
+
+    return (
+      <div
+        data-testid={compact ? 'overview-recommended-positions' : 'recommendations-recommended-positions'}
+        className="bg-white border border-gray-200/80 rounded-2xl p-4 sm:p-5 space-y-3"
+      >
+        <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-gray-100">
+          <div className="flex items-center gap-2">
+            <div className="w-7 h-7 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600">
+              <TrendingUp size={14} />
+            </div>
+            <div>
+              <h4 className="text-xs font-black text-gray-900 uppercase tracking-wider">
+                Recommended Positions Based on Analysis ({recommendedPositions.length})
+              </h4>
+              <p className="text-[11px] text-gray-500 font-medium">
+                Other active roles ranked by candidate resume fit
+              </p>
+            </div>
+          </div>
+
+          {compact && recommendedPositions.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setActiveTab('recommendations')}
+              className="text-[11px] font-bold text-[#D60041] hover:underline cursor-pointer"
+            >
+              View All Details →
+            </button>
+          )}
+        </div>
+
+        {displayedPositions.length > 0 ? (
+          <div className="space-y-2.5">
+            {displayedPositions.map((pos: any) => {
+              const pct = Math.round(Number(pos.match_percentage ?? 0));
+              const tier = getFitTier(pct);
+              const matchedList: string[] = Array.isArray(pos.matched_skills) ? pos.matched_skills : [];
+              return (
+                <div
+                  key={pos.id ?? pos.job_id}
+                  className="p-3.5 rounded-xl border border-slate-200/80 bg-slate-50/60 hover:border-indigo-200 transition-colors space-y-2"
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h5 className="text-xs sm:text-sm font-black text-gray-900">{pos.job_title}</h5>
+                        {pos.already_applied && (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                            Already Applied{pos.existing_application_status ? ` • ${pos.existing_application_status}` : ''}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-[11px] text-gray-500 font-medium mt-0.5">
+                        {[pos.department, pos.location, pos.job_id].filter(Boolean).join(' • ')}
+                      </p>
+                    </div>
+
+                    <span className={`px-2.5 py-1 rounded-full text-xs font-black border shrink-0 ${tier.badgeBg} ${tier.badgeText} ${tier.badgeBorder}`}>
+                      {pct}% Match • {pos.match_level || tier.label}
+                    </span>
+                  </div>
+
+                  {!compact && (
+                    <div className="flex flex-wrap items-center gap-2 text-[11px] font-semibold">
+                      <span className="px-2 py-0.5 rounded-lg bg-blue-50 text-blue-700 border border-blue-100">
+                        Skills {Math.round(Number(pos.skills_score ?? 0))}%
+                      </span>
+                      <span className="px-2 py-0.5 rounded-lg bg-purple-50 text-purple-700 border border-purple-100">
+                        Experience {Math.round(Number(pos.experience_score ?? 0))}%
+                      </span>
+                      <span className="px-2 py-0.5 rounded-lg bg-amber-50 text-amber-700 border border-amber-100">
+                        Education {Math.round(Number(pos.education_score ?? 0))}%
+                      </span>
+                      <span className="px-2 py-0.5 rounded-lg bg-rose-50 text-rose-700 border border-rose-100">
+                        Certifications {Math.round(Number(pos.certifications_score ?? 0))}%
+                      </span>
+                    </div>
+                  )}
+
+                  {pos.reason && (
+                    <p className="text-xs text-gray-600 leading-relaxed">{pos.reason}</p>
+                  )}
+
+                  {matchedList.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5">
+                      {matchedList.slice(0, compact ? 4 : 6).map((sk: string, idx: number) => (
+                        <span
+                          key={idx}
+                          className="px-2 py-0.5 rounded-lg bg-white border border-gray-200 text-[10px] font-semibold text-gray-700"
+                        >
+                          {sk}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <p className="text-xs text-gray-500 italic">
+            No other active positions currently meet the match threshold based on this candidate&apos;s analysis.
+          </p>
+        )}
+      </div>
+    );
   };
 
   const renderScheduleAndCallHistory = (compact: boolean) => {
@@ -1536,6 +1655,7 @@ const ViewCandidateDetailsModal: React.FC<ViewCandidateDetailsModalProps> = ({
                     </div>
                   </div>
 
+                  {activeTab === 'overview' && renderRecommendedPositions(true)}
                   {activeTab === 'overview' && renderScheduleAndCallHistory(true)}
                 </div>
               )}
@@ -2027,6 +2147,8 @@ const ViewCandidateDetailsModal: React.FC<ViewCandidateDetailsModalProps> = ({
                       </div>
                     )}
                   </div>
+
+                  {renderRecommendedPositions(false)}
                 </div>
               )}
 

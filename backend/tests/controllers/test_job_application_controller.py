@@ -451,3 +451,102 @@ async def test_archived_job_rejects_new_applications_and_retains_existing(
     assert single_app_res.status_code == 200
     assert single_app_res.json()["status"] == "ACCEPTED"
 
+
+@pytest.mark.asyncio
+async def test_application_details_includes_recommended_positions(client, db_session, mock_celery_task):
+    """
+    Verify GET /applications/{id} evaluates the candidate against other active
+    open jobs and returns ranked recommended_positions based on the ATS analysis,
+    while excluding archived jobs, the current applied job, and unrelated low-fit roles.
+    """
+    applied_job = JobDescription(
+        job_id="JOB-REC-APPLIED",
+        job_title="Sales Officer",
+        department="Sales",
+        job_type=JobType.FULL_TIME,
+        location="Batangas",
+        description="Retail branch sales and client relationship management.",
+        skills_requirements="Sales, Negotiation, Client Handling",
+        experience_requirements="2 years",
+        is_active=True,
+    )
+    strong_fit_job = JobDescription(
+        job_id="JOB-REC-PYTHON",
+        job_title="Backend Software Developer",
+        department="IT",
+        job_type=JobType.FULL_TIME,
+        location="Metro Manila",
+        description="Builds Python FastAPI REST APIs and PostgreSQL services.",
+        skills_requirements="Python, FastAPI, PostgreSQL, Docker",
+        experience_requirements="2 years",
+        education_requirements="Bachelor's Degree in Computer Science",
+        is_active=True,
+    )
+    archived_fit_job = JobDescription(
+        job_id="JOB-REC-ARCHIVED",
+        job_title="Senior Python Developer",
+        department="IT",
+        job_type=JobType.FULL_TIME,
+        location="Remote",
+        description="Builds Python APIs.",
+        skills_requirements="Python, FastAPI",
+        is_active=False,
+    )
+    unrelated_job = JobDescription(
+        job_id="JOB-REC-CHEM",
+        job_title="R&D Ceramic Chemist",
+        department="R&D",
+        job_type=JobType.FULL_TIME,
+        location="Batangas",
+        description="Formulates ceramic glazes and conducts chemical laboratory material testing.",
+        skills_requirements="Chemical Analysis, Material Testing, Glaze Formulation",
+        experience_requirements="3 years",
+        education_requirements="Bachelor's Degree in Chemistry",
+        certifications_requirements="PRC Registered Chemist",
+        is_active=True,
+    )
+    db_session.add_all([applied_job, strong_fit_job, archived_fit_job, unrelated_job])
+    await db_session.commit()
+
+    create_res = await client.post(
+        "/applications/",
+        json={
+            "job_id": "JOB-REC-APPLIED",
+            "candidate_name": "Marco Developer",
+            "candidate_email": "marco.dev@example.com",
+            "phone": "+639171234567",
+            "skills": ["Python", "FastAPI", "PostgreSQL", "Docker"],
+            "degree": "Bachelor of Science in Computer Science",
+            "years_experience": 3,
+            "work_experiences": [
+                {
+                    "job_title": "Backend Software Developer",
+                    "company_name": "Tech Corp",
+                    "duration_months": 36,
+                    "responsibilities": ["Built Python FastAPI REST APIs and PostgreSQL schemas."],
+                }
+            ],
+        },
+    )
+    assert create_res.status_code == 201, create_res.text
+    app_id = create_res.json()["id"]
+
+    detail_res = await client.get(f"/applications/{app_id}")
+    assert detail_res.status_code == 200
+    body = detail_res.json()
+
+    recs = body.get("recommended_positions") or []
+    rec_job_ids = [r["job_id"] for r in recs]
+
+    assert "JOB-REC-PYTHON" in rec_job_ids
+    assert "JOB-REC-APPLIED" not in rec_job_ids
+    assert "JOB-REC-ARCHIVED" not in rec_job_ids
+    assert "JOB-REC-CHEM" not in rec_job_ids
+
+    python_rec = next(r for r in recs if r["job_id"] == "JOB-REC-PYTHON")
+    assert python_rec["match_percentage"] >= 70.0
+    assert python_rec["skills_score"] >= 80.0
+    assert python_rec["already_applied"] is False
+    assert "Python" in " ".join(python_rec.get("matched_skills") or [])
+
+

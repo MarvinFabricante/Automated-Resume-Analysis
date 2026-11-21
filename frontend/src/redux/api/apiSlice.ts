@@ -54,6 +54,8 @@ const normalizeApplicationItem = (app: any) => ({
   certifications_details: app.certifications_details || null,
   skills_details: app.skills_details || null,
   recommendations: app.recommendations || [],
+  recommended_positions: Array.isArray(app.recommended_positions) ? app.recommended_positions : [],
+  other_applications: Array.isArray(app.other_applications) ? app.other_applications : [],
   ai_summary: app.ai_summary || '',
   strengths: app.strengths || [],
   weaknesses: app.weaknesses || [],

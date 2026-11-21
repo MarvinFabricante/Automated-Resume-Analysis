@@ -535,6 +535,92 @@ def serialize_application_summary(app: JobApplication) -> dict:
     }
 
 
+async def _build_recommended_positions(
+    db: AsyncSession,
+    app: JobApplication,
+    other_apps: list[dict],
+    limit: int = 5,
+) -> list[dict]:
+    """
+    Evaluate the candidate's profile against other active job postings and return
+    top-matching positions based on the automated ATS analysis.
+    """
+    from app.repositories.job_description_repository import JobDescriptionRepository
+    from app.services.job_matching_service import calculate_match_score, get_current_matching_config
+
+    active_jobs = await JobDescriptionRepository.get_all_active(db, include_inactive=False)
+    if not active_jobs:
+        return []
+
+    matching_config = None
+    try:
+        from app.services.system_config_service import get_matching_parameters
+        matching_config = await get_matching_parameters(db)
+    except Exception:
+        matching_config = get_current_matching_config()
+
+    resume_data = _resume_data_from_application(app)
+    other_by_job_id = {oa["job_id"]: oa for oa in other_apps if oa.get("job_id") is not None}
+
+    recommendations: list[dict] = []
+    for job in active_jobs:
+        if job.id == app.job_id:
+            continue
+
+        match_res = calculate_match_score(
+            resume_data,
+            job,
+            use_ai=False,
+            matching_config=matching_config,
+            log_prediction=False,
+        )
+        match_pct = float(match_res.get("match_percentage") or 0.0)
+        skills_sc = float(match_res.get("skills_score") or 0.0)
+        exp_sc = float(match_res.get("experience_score") or 0.0)
+
+        if not match_res.get("meets_threshold") or (skills_sc <= 0 and exp_sc <= 10.0):
+            continue
+
+        matched_skills = match_res.get("matched_skills") or []
+        strengths = match_res.get("strengths") or []
+        rel_summary = match_res.get("experience_relevance_summary") or ""
+        reason_parts = []
+        if matched_skills:
+            reason_parts.append(f"Matched skills: {', '.join(matched_skills[:4])}")
+        if exp_sc >= 50.0 and rel_summary:
+            reason_parts.append(rel_summary)
+        elif strengths:
+            reason_parts.append(strengths[0])
+
+        existing = other_by_job_id.get(job.id)
+        recommendations.append({
+            "id": job.id,
+            "job_id": str(getattr(job, "job_id", None) or job.id),
+            "job_title": job.job_title,
+            "department": getattr(job, "department", "") or "",
+            "location": getattr(job, "location", "") or "",
+            "match_percentage": round(match_pct, 1),
+            "match_level": match_res.get("match_level"),
+            "skills_score": round(skills_sc, 1),
+            "experience_score": round(exp_sc, 1),
+            "education_score": round(float(match_res.get("education_score") or 0.0), 1),
+            "certifications_score": round(float(match_res.get("certifications_score") or 0.0), 1),
+            "matched_skills": matched_skills[:6],
+            "missing_skills": (match_res.get("missing_skills") or [])[:5],
+            "strengths": strengths[:3],
+            "reason": " • ".join(reason_parts) if reason_parts else (match_res.get("ai_summary") or ""),
+            "already_applied": existing is not None,
+            "existing_application_id": existing.get("id") if existing else None,
+            "existing_application_status": existing.get("status") if existing else None,
+        })
+
+    recommendations.sort(
+        key=lambda item: (item["match_percentage"], item["skills_score"] or 0.0, item["experience_score"] or 0.0),
+        reverse=True,
+    )
+    return recommendations[:limit]
+
+
 async def get_application_by_id(db: AsyncSession, application_id: int) -> Optional[JobApplication]:
     """Get a single job application by ID with full detail enrichment."""
     app = await JobApplicationRepository.get_by_id(db, application_id)
@@ -542,6 +628,7 @@ async def get_application_by_id(db: AsyncSession, application_id: int) -> Option
         return None
     _enrich_applications([app], bulk_mode=False)
 
+    other_apps: list[dict] = []
     # REQ083: Enrich with other active applications summary for this candidate
     try:
         if app.candidate_email:
@@ -550,7 +637,6 @@ async def get_application_by_id(db: AsyncSession, application_id: int) -> Option
                 "NOT SELECTED", "NOT_SELECTED", "REJECTED", "WITHDRAWN",
                 "HIRED", "ACCEPTED", "OFFER_ACCEPTED", "CLOSED"
             }
-            other_apps = []
             active_count = 0
             for ca in cand_apps:
                 is_act = (getattr(ca, "status", "") or "").upper() not in inactive_statuses
@@ -576,6 +662,13 @@ async def get_application_by_id(db: AsyncSession, application_id: int) -> Option
             setattr(app, "other_applications", other_apps)
     except Exception as multi_err:
         logger.warning(f"Error enriching multi-application summary: {multi_err}")
+
+    try:
+        recommended_positions = await _build_recommended_positions(db, app, other_apps)
+        setattr(app, "recommended_positions", recommended_positions)
+    except Exception as rec_err:
+        logger.warning(f"Error computing recommended positions for application {application_id}: {rec_err}")
+        setattr(app, "recommended_positions", [])
 
     return app
 
