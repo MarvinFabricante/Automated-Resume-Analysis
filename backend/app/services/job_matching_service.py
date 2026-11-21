@@ -1551,74 +1551,113 @@ def _format_years_word(val: int | float) -> str:
     return f"{num} year{'s' if num != 1 else ''}"
 
 
+_LEGACY_APPLICANT_REC_RE = re.compile(
+    r'(?:to your resume|tailor your resume|maximize ats|consider taking online courses|'
+    r'improve your candidacy|ensure your certifications section|so the ats can|'
+    r'to bridge the \d+(?:\.\d+)?-year gap|your resume reflects)',
+    re.IGNORECASE,
+)
+
+
+def is_legacy_applicant_recommendation(text: str) -> bool:
+    """Return True if a stored recommendation string is applicant-facing resume advice."""
+    return bool(text and _LEGACY_APPLICANT_REC_RE.search(str(text)))
+
+
 def _generate_recommendations(
     skills_result: dict,
     experience_result: dict,
     education_result: dict,
     job_title: str,
     certs_result: Optional[dict] = None,
+    relevance_result: Optional[dict] = None,
+    match_percentage: Optional[float] = None,
 ) -> list[str]:
     """
-    Generate actionable optimization recommendations based on gap analysis.
-    Returns a list of 2-3 bullet-point suggestions.
+    Generate actionable HR screening, interview probing, and placement recommendations
+    based on the candidate's gap analysis for the target role.
     """
-    recommendations = []
+    recommendations: list[str] = []
+    role_label = job_title or "this position"
 
-    # Skills gap recommendation
-    if skills_result["missing"] and len(skills_result["missing"]) > 0:
-        missing_list = ", ".join([s.title() for s in skills_result["missing"][:5]])
+    # 1. Overall screening & placement guidance
+    if match_percentage is not None:
+        if match_percentage >= 80:
+            recommendations.append(
+                f"Strong overall fit ({match_percentage:.0f}%) for {role_label} — prioritize for technical and behavioral interview and confirm start availability."
+            )
+        elif match_percentage < 50:
+            recommendations.append(
+                f"Low overall alignment ({match_percentage:.0f}%) for {role_label} — consider redirecting to better-matched open positions or evaluate trainability before advancing."
+            )
+
+    # 2. Skills probing for the interviewer
+    missing_skills = skills_result.get("missing") or []
+    matched_skills = skills_result.get("matched") or []
+    if missing_skills:
+        missing_list = ", ".join([str(s).title() for s in missing_skills[:5]])
         recommendations.append(
-            f"Add the following in-demand skills to your resume: {missing_list}. "
-            f"Consider taking online courses or certifications to demonstrate proficiency."
+            f"Probe practical familiarity and onboarding needs for missing required skills: {missing_list}."
+        )
+    elif matched_skills:
+        matched_sample = ", ".join([str(s).title() for s in matched_skills[:4]])
+        recommendations.append(
+            f"Validate hands-on depth and real-world scenarios across matched core skills: {matched_sample}."
         )
 
-    # Experience gap recommendation
+    # 3. Experience & role-relevance probing
     req_years = experience_result.get("required_years", 0) or 0
     cand_years = experience_result.get("candidate_years", 0) or 0
     total_years = experience_result.get("total_years", cand_years) or cand_years
-    if req_years > 0 and cand_years < req_years:
+    rel_count = (relevance_result or {}).get("relevant_count", 0) or 0
+    total_entries = (relevance_result or {}).get("total_entries", 0) or 0
+
+    if total_entries > 0 and rel_count == 0:
+        yr_ctx = _format_years_word(total_years) if total_years > 0 else "prior"
+        recommendations.append(
+            f"Candidate's {yr_ctx} work history is in an unrelated domain — ask how transferable skills apply to {role_label} and assess ramp-up time."
+        )
+    elif req_years > 0 and cand_years < req_years:
         gap = max(0, req_years - cand_years)
-        gap_num = int(gap) if float(gap).is_integer() else round(float(gap), 1)
-        if total_years > cand_years:
-            recommendations.append(
-                f"The role requires {_format_years_word(req_years)} of relevant experience, but only "
-                f"{_format_years_word(cand_years)} on your resume align with {job_title} "
-                f"({_format_years_word(total_years)} total in other roles). Highlight relevant projects, "
-                f"trainings, or domain experience to bridge the {gap_num}-year gap."
-            )
-        else:
-            recommendations.append(
-                f"The role requires {req_years} years of experience, but your resume reflects {cand_years}. "
-                f"Highlight freelance projects, internships, or open-source contributions to bridge the {gap_num}-year gap."
-            )
+        recommendations.append(
+            f"Relevant experience ({_format_years_word(cand_years)}) is {_format_years_word(gap)} below the {_format_years_word(req_years)} requirement — probe whether hands-on projects or domain training offset the tenure gap."
+        )
     elif cand_years == 0 and total_years == 0:
         recommendations.append(
-            f"Quantify your work experience with specific durations (e.g., 'Jan 2022 – Present') "
-            f"so the ATS can accurately calculate your tenure for the {job_title} role."
+            f"Work tenure was not explicitly quantified on the resume — verify exact employment dates and duration for {role_label} during initial screening."
+        )
+    elif rel_count > 0 and experience_result.get("score", 0) >= 0.8:
+        recommendations.append(
+            f"Confirm day-to-day scope, independent ownership, and measurable outcomes from the candidate's {_format_years_word(cand_years)} of relevant experience."
         )
 
-    # Certifications recommendation
-    cert_source = certs_result if certs_result is not None else education_result
-    req_certs = cert_source.get("required_certifications", "")
-    cand_certs = cert_source.get("candidate_certifications", "")
-    certs_relevant = cert_source.get("is_relevant", bool(cand_certs and cand_certs not in ("None", "Unrelated")))
+    # 4. Certifications / compliance & education verification
+    cert_source = certs_result if certs_result is not None else {}
+    req_certs = cert_source.get("required_certifications", "None")
+    cand_certs = cert_source.get("candidate_certifications", "None")
+    certs_relevant = bool(cert_source.get("is_relevant"))
     if req_certs and req_certs != "None" and not certs_relevant:
         recommendations.append(
-            f"The position requires {req_certs}. Consider pursuing these certifications to improve your candidacy."
+            f"Confirm whether the candidate holds, is renewing, or is willing to obtain required credentials ({req_certs})."
         )
-    elif not cand_certs or cand_certs == "None":
+    elif certs_relevant and cand_certs and cand_certs != "None":
         recommendations.append(
-            "Ensure your certifications section is clear and up-to-date so the ATS can evaluate your qualifications."
+            f"Verify authenticity and validity dates of relevant credentials ({cand_certs}) during pre-employment screening."
         )
 
-    # Generic improvement if we haven't found enough specific gaps
-    if len(recommendations) < 2:
+    if (education_result.get("score", 1.0) or 0.0) < 0.5:
+        req_edu = education_result.get("required_education", "required degree")
+        cand_edu = education_result.get("candidate_education", "listed background")
         recommendations.append(
-            f"Tailor your resume summary to mirror the language used in the {job_title} job description. "
-            f"Use exact keywords and phrases to maximize ATS compatibility."
+            f"Assess whether practical experience compensates for the education gap ({cand_edu} vs {req_edu})."
         )
 
-    return recommendations[:3]
+    if not recommendations:
+        recommendations.append(
+            f"Conduct structured behavioral and technical validation tailored to {role_label} responsibilities and team fit."
+        )
+
+    return recommendations[:4]
 
 
 def _blend_scores(rule_score: float, ai_score: float, ai_available: bool) -> float:
@@ -2310,7 +2349,15 @@ def calculate_match_score(
 
     all_matched = [s.title() for s in skills_result["matched"]]
     all_missing = [s.title() for s in skills_result["missing"]]
-    final_recommendations = _generate_recommendations(skills_result, experience_result, education_result, job.job_title, certs_result=certs_result)
+    final_recommendations = _generate_recommendations(
+        skills_result,
+        experience_result,
+        education_result,
+        job.job_title,
+        certs_result=certs_result,
+        relevance_result=relevance_result,
+        match_percentage=final_match_pct,
+    )
 
     pct_skills = round((w_skills / total_w) * 100)
     pct_exp = round((w_exp / total_w) * 100)

@@ -859,6 +859,43 @@ def test_nlp_analyze_match_exposes_completeness_and_consistent_weighted_sum():
     assert abs(recomputed - analysis["ai_match_score"]) <= 0.2
 
 
+def test_recommendations_are_hr_screening_focused_not_applicant_resume_tips():
+    """
+    Verify generated recommendations target HR recruiters/interviewers (probing
+    gaps, validating credentials, or alternative placement) rather than giving
+    applicant resume-editing advice.
+    """
+    job = {
+        "job_id": "J_HR_REC",
+        "job_title": "Production Supervisor",
+        "department": "Manufacturing",
+        "description": "Oversee tile manufacturing lines and quality assurance.",
+        "skills_requirements": "Lean Manufacturing, Six Sigma, Quality Control, Kiln Operation",
+        "experience_requirements": "3 years",
+        "certifications_requirements": "safety training (OSHA or BOSH)",
+    }
+    resume = {
+        "fullname": "Applicant Gap",
+        "skills": "Quality Control",
+        "experience": "Cashier at Retail Store (2 years)",
+        "years_experience": 2,
+        "education": "High School Diploma",
+        "certifications": "",
+    }
+    res = job_matching_service.calculate_match_score(resume, job, matching_config={"weights": {}, "thresholds": {}})
+    recs = res.get("recommendations") or []
+    assert len(recs) >= 2
+    joined = " ".join(recs).lower()
+    assert "to your resume" not in joined
+    assert "tailor your resume" not in joined
+    assert "maximize ats" not in joined
+    assert "consider taking online courses" not in joined
+    assert any(
+        kw in joined for kw in ("probe", "unrelated domain", "confirm", "redirecting", "required credentials")
+    )
+
+
+
 
 
 

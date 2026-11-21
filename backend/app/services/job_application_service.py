@@ -663,12 +663,54 @@ async def get_application_by_id(db: AsyncSession, application_id: int) -> Option
     except Exception as multi_err:
         logger.warning(f"Error enriching multi-application summary: {multi_err}")
 
+    recommended_positions: list[dict] = []
     try:
         recommended_positions = await _build_recommended_positions(db, app, other_apps)
         setattr(app, "recommended_positions", recommended_positions)
     except Exception as rec_err:
         logger.warning(f"Error computing recommended positions for application {application_id}: {rec_err}")
         setattr(app, "recommended_positions", [])
+
+    # Upgrade empty or legacy applicant-facing recommendations into HR screening & interview insights
+    try:
+        from app.services.job_matching_service import calculate_match_score, is_legacy_applicant_recommendation
+
+        existing_recs = getattr(app, "recommendations", None) or []
+        needs_hr_recs = (not existing_recs) or any(
+            is_legacy_applicant_recommendation(r) for r in existing_recs
+        )
+        if needs_hr_recs:
+            target_job = getattr(app, "job", None)
+            if target_job is None and getattr(app, "job_id", None) is not None:
+                from app.repositories.job_description_repository import JobDescriptionRepository
+                target_job = await JobDescriptionRepository.get_by_id(db, app.job_id)
+
+            if target_job is not None:
+                fresh = calculate_match_score(
+                    _resume_data_from_application(app),
+                    target_job,
+                    use_ai=False,
+                    log_prediction=False,
+                )
+                hr_recs = list(fresh.get("recommendations") or [])
+            else:
+                hr_recs = []
+
+            if recommended_positions:
+                top_alt = recommended_positions[0]
+                current_pct = float(getattr(app, "match_score", 0) or 0)
+                if top_alt.get("match_percentage", 0) >= max(50.0, current_pct + 10.0):
+                    alt_tip = (
+                        f"Alternative placement: candidate scored {round(top_alt['match_percentage'])}% for "
+                        f"{top_alt['job_title']} — consider routing to this role if {getattr(app, 'job_title', 'the applied role')} is not a fit."
+                    )
+                    if alt_tip not in hr_recs:
+                        hr_recs = [alt_tip, *hr_recs][:4]
+
+            if hr_recs:
+                setattr(app, "recommendations", hr_recs)
+    except Exception as hr_rec_err:
+        logger.warning(f"Error refreshing HR recommendations for application {application_id}: {hr_rec_err}")
 
     return app
 
