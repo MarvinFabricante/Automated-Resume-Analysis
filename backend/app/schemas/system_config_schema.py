@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Optional, Any, List
+from typing import Optional, Any, List, Dict
 from datetime import datetime
 
 
@@ -143,3 +143,19 @@ class SystemPerformanceResponse(BaseModel):
     applications_by_status: dict
     applications_trend: List[dict] = []
     top_jobs: List[dict] = []
+
+
+# ─── Notification Message Templates ──────────────────────────────────────────
+
+class NotificationTemplateItemUpdate(BaseModel):
+    email_subject: Optional[str] = None
+    email_message: Optional[str] = None
+    sms_message: Optional[str] = None
+
+
+class NotificationTemplatesUpdate(BaseModel):
+    templates: Dict[str, NotificationTemplateItemUpdate]
+
+
+class NotificationTemplatesResetRequest(BaseModel):
+    template_key: Optional[str] = None

@@ -204,6 +204,7 @@ async def ensure_interview_voice_columns(conn):
         "sms_backup_sent": "BOOLEAN DEFAULT FALSE",
         "is_combined": "BOOLEAN DEFAULT FALSE",
         "combined_application_ids": "JSON",
+        "location": "VARCHAR",
     }
     dialect = conn.dialect.name
     for column_name, column_type in columns.items():

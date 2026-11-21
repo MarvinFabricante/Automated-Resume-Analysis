@@ -1008,12 +1008,6 @@ const ViewCandidateDetailsModal: React.FC<ViewCandidateDetailsModalProps> = ({
               <span className="text-[11px] font-bold text-slate-800 uppercase tracking-wider">Application Details</span>
             </div>
 
-            {/* Fit Tier Badge */}
-            <span className={`hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-bold border ${fitTier.badgeBg} ${fitTier.badgeText} ${fitTier.badgeBorder}`}>
-              <Sparkles size={12} />
-              {fitTier.label} • {matchScore}%
-            </span>
-
             {/* Source Tag */}
             {(() => {
               const src = candidate.source || fullApplication?.source || 'Online';

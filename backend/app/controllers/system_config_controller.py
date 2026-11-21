@@ -10,9 +10,11 @@ from app.schemas.system_config_schema import (
     RecruitmentConfigResponse, RecruitmentConfigUpdate,
     UserRoleResponse, RoleUpdate,
     FormTemplateResponse, FormTemplateCreate, FormTemplateUpdate,
-    SystemPerformanceResponse
+    SystemPerformanceResponse,
+    NotificationTemplatesUpdate, NotificationTemplatesResetRequest
 )
 from app.services.system_config_service import system_config_service
+from app.services import message_template_service
 from app.services.audit_service import audit_service
 from app.services import admin_service
 from app.utils.cache import cache_response, clear_cache_pattern
@@ -257,6 +259,65 @@ async def delete_form_template(
         db=db, user_id=current_user.get("id"), action="DELETE_TEMPLATE", target=f"Template {template_id}", details="Deleted application form template"
     )
     await clear_cache_pattern("form_templates*")
+
+
+# ─── Notification Message Templates (Email & SMS) ────────────────────────────
+
+def _require_hr_or_admin(current_user: dict):
+    role = (current_user.get("role") or "").upper()
+    if role not in {"HR", "ADMIN", "SUPERADMIN"}:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
+
+
+@router.get("/notification-templates")
+async def get_notification_templates(
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    _require_hr_or_admin(current_user)
+    templates = await message_template_service.get_all_templates(db)
+    return {"templates": templates}
+
+
+@router.put("/notification-templates")
+async def update_notification_templates(
+    payload: NotificationTemplatesUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    _require_hr_or_admin(current_user)
+    updates = {k: v.model_dump(exclude_unset=True) for k, v in payload.templates.items()}
+    templates = await message_template_service.update_templates(
+        db, updates, user_id=current_user.get("id")
+    )
+    await audit_service.record_activity(
+        db=db,
+        user_id=current_user.get("id"),
+        action="UPDATE_NOTIFICATION_TEMPLATES",
+        target="Email & SMS Templates",
+        details="Updated customizable Email & SMS notification templates",
+    )
+    return {"templates": templates}
+
+
+@router.post("/notification-templates/reset")
+async def reset_notification_templates(
+    payload: NotificationTemplatesResetRequest = NotificationTemplatesResetRequest(),
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    _require_hr_or_admin(current_user)
+    templates = await message_template_service.reset_templates(
+        db, template_key=payload.template_key, user_id=current_user.get("id")
+    )
+    await audit_service.record_activity(
+        db=db,
+        user_id=current_user.get("id"),
+        action="RESET_NOTIFICATION_TEMPLATES",
+        target="Email & SMS Templates",
+        details=f"Reset notification templates ({payload.template_key or 'all'}) to defaults",
+    )
+    return {"templates": templates}
 
 
 # ─── System Performance ───────────────────────────────────────────────────────
