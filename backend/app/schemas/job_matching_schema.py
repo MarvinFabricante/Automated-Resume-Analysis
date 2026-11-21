@@ -13,6 +13,7 @@ class JobMatchResult(BaseModel):
     experience_score: float
     education_score: float
     certifications_score: Optional[float] = None
+    completeness_score: Optional[float] = None
     location_score: Optional[float] = None
     matched_skills: list[str]
     missing_skills: list[str]
@@ -69,5 +70,6 @@ class ResumeMatchRequest(BaseModel):
     institution: Optional[str] = ""
     college: Optional[str] = ""
     certifications: Optional[str] = ""
+    completeness_score: Optional[float] = None
     profile_image_url: Optional[str] = None
     ai_summary: Optional[str] = None

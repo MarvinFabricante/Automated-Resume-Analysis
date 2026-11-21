@@ -414,6 +414,8 @@ const handleFinalSubmit = async () => {
       experience_score: activeMatch?.experience_score || 0,
       education_score: activeMatch?.education_score || 0,
       certifications_score: activeMatch?.certifications_score || 0,
+      completeness_score: activeMatch?.completeness_score ?? data?.completeness_score ?? undefined,
+      applied_weights: activeMatch?.applied_weights ?? undefined,
       profile_image_url: extractedData.profile_image_url || null,
       resume_url: currentResumeUrl || state?.resumeUrl || data?.file_url || null,
       skills_reason: activeMatch?.skills_reason || "",

@@ -364,13 +364,19 @@ const ViewCandidateDetailsModal: React.FC<ViewCandidateDetailsModalProps> = ({
   const candidateCompany = candidate.company || 'Not provided';
   const currentStatus = candidate.status || 'Pending';
 
-  // Scoring Values
-  const matchScore = Math.round(candidate.matchScore ?? candidate.match_score ?? 0);
-  const skillsScore = Math.round(candidate.skillsScore ?? candidate.skills_score ?? 0);
-  const experienceScore = Math.round(candidate.experienceScore ?? candidate.experience_score ?? 0);
-  const educationScore = Math.round(candidate.educationScore ?? candidate.education_score ?? 0);
-  const certificationsScore = candidate.certificationsScore ?? candidate.certifications_score;
-  const completenessScore = Math.round(candidate.completenessScore ?? candidate.completeness_score ?? 100);
+  // Scoring Values (preserve raw precision for weighted formulation consistency)
+  const rawMatchScore = Number(candidate.matchScore ?? candidate.match_score ?? 0);
+  const rawSkillsScore = Number(candidate.skillsScore ?? candidate.skills_score ?? 0);
+  const rawExperienceScore = Number(candidate.experienceScore ?? candidate.experience_score ?? 0);
+  const rawEducationScore = Number(candidate.educationScore ?? candidate.education_score ?? 0);
+  const rawCertsScore = candidate.certificationsScore ?? candidate.certifications_score;
+  const rawCertsNumeric = Number(rawCertsScore ?? 0);
+
+  const matchScore = Math.round(rawMatchScore);
+  const skillsScore = Math.round(rawSkillsScore);
+  const experienceScore = Math.round(rawExperienceScore);
+  const educationScore = Math.round(rawEducationScore);
+  const certificationsScore = rawCertsScore;
 
   const appliedWeights = candidate.applied_weights || {
     skills: 40,
@@ -379,17 +385,84 @@ const ViewCandidateDetailsModal: React.FC<ViewCandidateDetailsModalProps> = ({
     certifications: 10,
     completeness: 5,
   };
-  const wSkillsPct = Number(appliedWeights.skills ?? 40);
-  const wExpPct = Number(appliedWeights.experience ?? 30);
-  const wEduPct = Number(appliedWeights.education ?? 15);
-  const wCertsPct = Number(appliedWeights.certifications ?? 10);
-  const wCompPct = Number(appliedWeights.completeness ?? 5);
+  const rawWSkills = Number(appliedWeights.skills ?? 40);
+  const rawWExp = Number(appliedWeights.experience ?? 30);
+  const rawWEdu = Number(appliedWeights.education ?? 15);
+  const rawWCerts = Number(appliedWeights.certifications ?? 10);
+  const rawWComp = Number(appliedWeights.completeness ?? 5);
+  const rawWeightSum = rawWSkills + rawWExp + rawWEdu + rawWCerts + rawWComp || 100;
 
-  const skillsContribution = Math.round(skillsScore * (wSkillsPct / 100));
-  const experienceContribution = Math.round(experienceScore * (wExpPct / 100));
-  const educationContribution = Math.round(educationScore * (wEduPct / 100));
-  const certsContribution = Math.round((certificationsScore ?? 0) * (wCertsPct / 100));
-  const compContribution = Math.round(completenessScore * (wCompPct / 100));
+  const wSkillsPct = Math.round((rawWSkills / rawWeightSum) * 100);
+  const wExpPct = Math.round((rawWExp / rawWeightSum) * 100);
+  const wEduPct = Math.round((rawWEdu / rawWeightSum) * 100);
+  const wCertsPct = Math.round((rawWCerts / rawWeightSum) * 100);
+  const wCompPct = Math.round((rawWComp / rawWeightSum) * 100);
+
+  const explicitCompleteness = candidate.completenessScore ?? candidate.completeness_score;
+  const nonCompWeighted =
+    (rawSkillsScore * rawWSkills +
+      rawExperienceScore * rawWExp +
+      rawEducationScore * rawWEdu +
+      rawCertsNumeric * rawWCerts) /
+    rawWeightSum;
+  let rawCompletenessScore: number;
+  if (explicitCompleteness !== null && explicitCompleteness !== undefined) {
+    rawCompletenessScore = Number(explicitCompleteness);
+  } else if (rawMatchScore > 0 && rawWComp > 0) {
+    // Legacy rows without stored completeness_score: infer implied completeness so formulation aligns with matchScore
+    const implied = ((rawMatchScore - nonCompWeighted) * rawWeightSum) / rawWComp;
+    rawCompletenessScore = implied >= -0.5 && implied <= 100.5 ? Math.max(0, Math.min(100, implied)) : 100;
+  } else {
+    rawCompletenessScore = 100;
+  }
+  const completenessScore = Math.round(rawCompletenessScore);
+
+  const exactContributions = [
+    (rawSkillsScore * rawWSkills) / rawWeightSum,
+    (rawExperienceScore * rawWExp) / rawWeightSum,
+    (rawEducationScore * rawWEdu) / rawWeightSum,
+    (rawCertsNumeric * rawWCerts) / rawWeightSum,
+    (rawCompletenessScore * rawWComp) / rawWeightSum,
+  ];
+  const exactTotal = exactContributions.reduce((acc, v) => acc + v, 0);
+
+  const allocateIntegerContributions = (exact: number[], targetTotal: number): number[] => {
+    const result = exact.map((v) => Math.floor(Math.max(0, v)));
+    let diff = targetTotal - result.reduce((a, b) => a + b, 0);
+    if (diff > 0) {
+      const rankedUp = exact
+        .map((v, idx) => ({ idx, rem: Math.max(0, v) - Math.floor(Math.max(0, v)) }))
+        .sort((a, b) => b.rem - a.rem);
+      for (let i = 0; i < rankedUp.length && diff > 0; i++) {
+        result[rankedUp[i].idx] += 1;
+        diff -= 1;
+      }
+    } else if (diff < 0) {
+      const rankedDown = exact
+        .map((v, idx) => ({ idx, rem: Math.max(0, v) - Math.floor(Math.max(0, v)) }))
+        .sort((a, b) => a.rem - b.rem);
+      for (let i = 0; i < rankedDown.length && diff < 0; i++) {
+        if (result[rankedDown[i].idx] > 0) {
+          result[rankedDown[i].idx] -= 1;
+          diff += 1;
+        }
+      }
+    }
+    return result;
+  };
+
+  const integerContributions =
+    Math.abs(exactTotal - rawMatchScore) <= 2.5
+      ? allocateIntegerContributions(exactContributions, matchScore)
+      : exactContributions.map((v) => Math.round(v));
+
+  const [
+    skillsContribution,
+    experienceContribution,
+    educationContribution,
+    certsContribution,
+    compContribution,
+  ] = integerContributions;
   const calculatedContributionTotal =
     skillsContribution + experienceContribution + educationContribution + certsContribution + compContribution;
 

@@ -813,6 +813,53 @@ def test_relevant_certification_scores_and_appears_as_strength():
     assert any("relevant certifications" in s.lower() for s in (res_cpa.get("strengths") or []))
 
 
+def test_nlp_analyze_match_exposes_completeness_and_consistent_weighted_sum():
+    """
+    Verify nlp_analyze_match includes completeness_score, applied_weights, and
+    certification metadata so downstream persistence & ATS Verdict Formulation
+    stay aligned with ai_match_score.
+    """
+    resume_data = {
+        "fullname": "Partial Resume",
+        "skills": "Python, SQL",
+        "experience": "Cashier at Retail Store (2 years)",
+        "years_experience": 2,
+        "education": "Bachelor of Science in Accountancy",
+        "completeness_score": 50.0,
+    }
+    job_data = {
+        "job_title": "Software Developer",
+        "description": "Builds backend REST APIs in Python and FastAPI.",
+        "skills_requirements": "Python, FastAPI, SQL, Docker, React",
+        "experience_requirements": "3 years",
+        "education_requirements": "Bachelor's Degree in Computer Science",
+        "certifications_requirements": "None required",
+    }
+
+    analysis = job_matching_service.nlp_analyze_match(resume_data, job_data, matching_config={"weights": {}, "thresholds": {}})
+    assert analysis["completeness_score"] == 50.0
+    assert analysis["applied_weights"] == {
+        "skills": 40,
+        "experience": 30,
+        "education": 15,
+        "certifications": 10,
+        "completeness": 5,
+    }
+    assert "certifications_reason" in analysis
+    assert analysis["required_certifications"] == "None"
+
+    weights = analysis["applied_weights"]
+    recomputed = (
+        analysis["ai_skills_score"] * (weights["skills"] / 100.0)
+        + analysis["ai_experience_score"] * (weights["experience"] / 100.0)
+        + analysis["ai_education_score"] * (weights["education"] / 100.0)
+        + analysis["ai_certifications_score"] * (weights["certifications"] / 100.0)
+        + analysis["completeness_score"] * (weights["completeness"] / 100.0)
+    )
+    assert abs(recomputed - analysis["ai_match_score"]) <= 0.2
+
+
+
 
 
 
