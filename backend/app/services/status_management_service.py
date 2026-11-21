@@ -139,7 +139,8 @@ async def apply_application_status_change(
                 job_title=job_title,
                 new_status=new_norm,
                 previous_status=old_norm,
-                notes=reason
+                notes=reason,
+                db=db,
             )
         except Exception as e:
             logger.warning(f"Could not send status email to {application.candidate_email}: {e}")

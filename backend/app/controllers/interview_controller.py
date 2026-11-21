@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, Body
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List, Optional, Union
 
@@ -7,6 +7,7 @@ from app.schemas.interview_schema import (
     AvailableSlotsRequest,
     AvailableSlotsResponseSchema,
     CandidateRescheduleSchema,
+    InterviewCancelSchema,
     InterviewCreateSchema,
     InterviewUpdateSchema,
     InterviewResponseSchema,
@@ -372,6 +373,7 @@ async def update_interview_status(
 async def cancel_interview(
     interview_id: int,
     reason: Optional[str] = Query(None),
+    payload: Optional[InterviewCancelSchema] = Body(None),
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
@@ -379,8 +381,16 @@ async def cancel_interview(
     Cancel an interview: removes the Google Calendar event, notifies participants, and updates status to CANCELED.
     """
     try:
+        effective_reason = (payload.reason if payload and payload.reason is not None else reason)
         result = await interview_service.cancel_interview(
-            db, interview_id, current_user.get("id"), user_role=current_user.get("role"), reason=reason
+            db,
+            interview_id,
+            current_user.get("id"),
+            user_role=current_user.get("role"),
+            reason=effective_reason,
+            custom_email_subject=payload.custom_email_subject if payload else None,
+            custom_email_message=payload.custom_email_message if payload else None,
+            custom_sms_message=payload.custom_sms_message if payload else None,
         )
         await clear_cache_pattern("app_interviews*")
         await clear_cache_pattern("cand_interviews*")

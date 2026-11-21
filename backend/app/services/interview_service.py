@@ -82,7 +82,10 @@ def _populate_candidate_info(interview, app_override=None, interviewer_override=
         setattr(interview, "interviewer_id", None)
         setattr(interview, "interviewer_name", None)
         setattr(interview, "interviewer_email", None)
-    setattr(interview, "meeting_link", None)
+    if not hasattr(interview, "meeting_link"):
+        setattr(interview, "meeting_link", None)
+    if not hasattr(interview, "location"):
+        setattr(interview, "location", None)
     # Ensure AI Voice notification fields are attached safely
     if not hasattr(interview, "call_status") or interview.call_status is None:
         setattr(interview, "call_status", "PENDING")
@@ -399,6 +402,52 @@ async def _dispatch_candidate_sms(
         logger.warning(f"Could not persist SMS log ({event_name}): {log_err}")
 
     return bool(sms_sent)
+
+
+async def _build_interview_sms_message(
+    db: AsyncSession,
+    template_key: str,
+    *,
+    custom_sms_message: Optional[str] = None,
+    candidate_name: str,
+    job_title: str,
+    interview_title: str,
+    start_time: datetime,
+    end_time: Optional[datetime] = None,
+    interviewer_name: Optional[str] = None,
+    interviewer_email: Optional[str] = None,
+    location: Optional[str] = None,
+    meeting_link: Optional[str] = None,
+    notes: Optional[str] = None,
+    reason: Optional[str] = None,
+    candidate_email: Optional[str] = None,
+) -> str:
+    """Render an SMS notification from custom text or saved template with complete interview details."""
+    if custom_sms_message and custom_sms_message.strip():
+        return custom_sms_message.strip()
+
+    from app.services.message_template_service import (
+        build_interview_template_context,
+        get_template,
+        render_template,
+    )
+
+    tmpl = await get_template(db, template_key)
+    ctx = build_interview_template_context(
+        candidate_name=candidate_name,
+        job_title=job_title,
+        interview_title=interview_title,
+        start_time=start_time,
+        end_time=end_time,
+        interviewer_name=interviewer_name,
+        interviewer_email=interviewer_email,
+        location=location,
+        meeting_link=meeting_link,
+        notes=notes,
+        reason=reason,
+        candidate_email=candidate_email,
+    )
+    return render_template(tmpl.get("sms_message") or "", ctx)
 
 
 
@@ -785,13 +834,19 @@ async def schedule_interview(db: AsyncSession, data: InterviewCreateSchema, user
         if conflicts:
             raise ValueError("The selected time slot conflicts with an existing interview for this HR panelist. Please choose another slot.")
 
+        interview_location = (getattr(data, "location", None) or "").strip() or None
+        interview_meeting_link = (getattr(data, "meeting_link", None) or "").strip() or None
+        interviewer_email = getattr(interviewer_user, "email", None) if interviewer_user else scheduler_email
+
         interview_data = {
             "job_application_id": data.job_application_id,
             "interviewer_id": interviewer_id,
             "title": data.title,
             "description": data.description,
             "start_time": start,
-            "end_time": end
+            "end_time": end,
+            "location": interview_location,
+            "meeting_link": interview_meeting_link,
         }
         if hasattr(data, "call_language") and data.call_language:
             interview_data["call_language"] = data.call_language
@@ -849,6 +904,9 @@ async def schedule_interview(db: AsyncSession, data: InterviewCreateSchema, user
 
         if credentials_json:
             try:
+                cal_desc = data.description or ''
+                if interview_meeting_link:
+                    cal_desc = f"{cal_desc}\n\nMeeting Link: {interview_meeting_link}".strip()
                 event = await asyncio.to_thread(
                     create_real_google_event,
                     credentials_json,
@@ -856,8 +914,8 @@ async def schedule_interview(db: AsyncSession, data: InterviewCreateSchema, user
                     summary=data.title,
                     start_dt=data.start_time.isoformat(),
                     end_dt=data.end_time.isoformat(),
-                    description=data.description or '',
-                    location='',
+                    description=cal_desc,
+                    location=interview_location or '',
                     is_all_day=False,
                     attendees=attendees,
                     create_meet_link=False,
@@ -866,10 +924,6 @@ async def schedule_interview(db: AsyncSession, data: InterviewCreateSchema, user
 
                 if event:
                     interview.google_event_id = event.get('id')
-                    interview.meeting_link = None
-                    await InterviewRepository.commit_changes(db)
-                else:
-                    interview.meeting_link = None
                     await InterviewRepository.commit_changes(db)
             except (GoogleCalendarRateLimitError, GoogleCalendarTimeoutError) as e_cal:
                 try:
@@ -898,11 +952,6 @@ async def schedule_interview(db: AsyncSession, data: InterviewCreateSchema, user
                     logger.error(f"{msg} Detail: {e}. Rolled back interview {interview.id} (no partial booking).")
                     raise ValueError(msg)
                 print(f"Warning: Could not create event on Google Calendar: {e}")
-                interview.meeting_link = None
-                await InterviewRepository.commit_changes(db)
-        else:
-            interview.meeting_link = None
-            await InterviewRepository.commit_changes(db)
 
         # 4. Email Invites: Candidate, HR, and Panel
         # (a) Candidate Invite
@@ -916,7 +965,13 @@ async def schedule_interview(db: AsyncSession, data: InterviewCreateSchema, user
                     start_time=data.start_time,
                     end_time=data.end_time,
                     interviewer_name=interviewer_name,
-                    notes=data.description or ""
+                    notes=data.description or "",
+                    location=interview_location,
+                    meeting_link=interview_meeting_link,
+                    interviewer_email=interviewer_email,
+                    custom_subject=getattr(data, "custom_email_subject", None),
+                    custom_message=getattr(data, "custom_email_message", None),
+                    db=db,
                 )
                 if email_sent:
                     try:
@@ -941,7 +996,10 @@ async def schedule_interview(db: AsyncSession, data: InterviewCreateSchema, user
                     start_time=data.start_time,
                     end_time=data.end_time,
                     interviewer_name=interviewer_name,
-                    notes=f"HR Copy - Scheduled interview for candidate {candidate_name} ({candidate_email or 'N/A'}). Assigned Panelist: {interviewer_name}. Notes: {data.description or 'N/A'}"
+                    notes=f"HR Copy - Scheduled interview for candidate {candidate_name} ({candidate_email or 'N/A'}). Assigned Panelist: {interviewer_name}. Notes: {data.description or 'N/A'}",
+                    location=interview_location,
+                    meeting_link=interview_meeting_link,
+                    interviewer_email=interviewer_email,
                 )
                 if email_sent:
                     try:
@@ -969,7 +1027,10 @@ async def schedule_interview(db: AsyncSession, data: InterviewCreateSchema, user
                         start_time=data.start_time,
                         end_time=data.end_time,
                         interviewer_name=p_name,
-                        notes=f"Panel Interview Assignment - Candidate: {candidate_name} ({candidate_email or 'N/A'}). Job: {job_name}. Notes: {data.description or 'N/A'}"
+                        notes=f"Panel Interview Assignment - Candidate: {candidate_name} ({candidate_email or 'N/A'}). Job: {job_name}. Notes: {data.description or 'N/A'}",
+                        location=interview_location,
+                        meeting_link=interview_meeting_link,
+                        interviewer_email=interviewer_email,
                     )
                     if email_sent:
                         try:
@@ -985,11 +1046,21 @@ async def schedule_interview(db: AsyncSession, data: InterviewCreateSchema, user
 
         # 5. Send SMS Notification (if phone configured)
         if candidate_phone:
-            sched_time_str = data.start_time.strftime('%A, %b %d, %Y at %I:%M %p')
-            message = (
-                f"Mariwasa HR: Magandang araw, {candidate_name}! Nais naming ipaalam na scheduled na ang "
-                f"iyong interview para sa posisyong {job_name} sa {sched_time_str}. Kindly check your email ({candidate_email}) "
-                f"para sa meeting link at complete interview details. Maraming salamat and see you!"
+            message = await _build_interview_sms_message(
+                db,
+                "interview_scheduled",
+                custom_sms_message=getattr(data, "custom_sms_message", None),
+                candidate_name=candidate_name,
+                job_title=job_name,
+                interview_title=data.title,
+                start_time=data.start_time,
+                end_time=data.end_time,
+                interviewer_name=interviewer_name,
+                interviewer_email=interviewer_email,
+                location=interview_location,
+                meeting_link=interview_meeting_link,
+                notes=data.description or "",
+                candidate_email=candidate_email,
             )
             await _dispatch_candidate_sms(
                 db,
@@ -1122,6 +1193,10 @@ async def update_interview(db: AsyncSession, interview_id: int, data: InterviewU
         interview.description = data.description
     if data.interviewer_id is not None:
         interview.interviewer_id = data.interviewer_id
+    if hasattr(data, "location") and data.location is not None:
+        interview.location = data.location.strip() or None
+    if hasattr(data, "meeting_link") and data.meeting_link is not None:
+        interview.meeting_link = data.meeting_link.strip() or None
     if hasattr(data, "call_language") and data.call_language is not None:
         interview.call_language = data.call_language
     if data.status is not None:
@@ -1133,7 +1208,16 @@ async def update_interview(db: AsyncSession, interview_id: int, data: InterviewU
     # If cancelling without rescheduling to a new slot, trigger full cancellation workflow
     if data.status == "CANCELED" and not time_changed:
         await InterviewRepository.update_interview(db, interview)
-        return await cancel_interview(db, interview.id, user_id=user_id, user_role=user_role, reason=data.description)
+        return await cancel_interview(
+            db,
+            interview.id,
+            user_id=user_id,
+            user_role=user_role,
+            reason=data.description,
+            custom_email_subject=getattr(data, "custom_email_subject", None),
+            custom_email_message=getattr(data, "custom_email_message", None),
+            custom_sms_message=getattr(data, "custom_sms_message", None),
+        )
 
     await InterviewRepository.add_interview_log(db, interview.id, "UPDATED", "Interview details modified")
     interview = await InterviewRepository.update_interview(db, interview)
@@ -1193,6 +1277,9 @@ async def update_interview(db: AsyncSession, interview_id: int, data: InterviewU
                     attendees.append({"email": p_user.email})
 
             try:
+                cal_desc = interview.description or ""
+                if getattr(interview, "meeting_link", None):
+                    cal_desc = f"{cal_desc}\n\nMeeting Link: {interview.meeting_link}".strip()
                 new_event = await asyncio.to_thread(
                     create_real_google_event,
                     credentials_json,
@@ -1200,8 +1287,8 @@ async def update_interview(db: AsyncSession, interview_id: int, data: InterviewU
                     summary=interview.title,
                     start_dt=interview.start_time.isoformat(),
                     end_dt=interview.end_time.isoformat(),
-                    description=interview.description or "",
-                    location="",
+                    description=cal_desc,
+                    location=getattr(interview, "location", None) or "",
                     is_all_day=False,
                     attendees=attendees,
                     create_meet_link=False,
@@ -1257,6 +1344,9 @@ async def update_interview(db: AsyncSession, interview_id: int, data: InterviewU
             job_name = getattr(application, "job_title", None) or "Job Position"
 
         interviewer_name = user.fullname if user and getattr(user, 'fullname', None) else "Mariwasa HR Panel"
+        interviewer_email = getattr(user, "email", None) if user else (getattr(scheduler_user, "email", None) if scheduler_user else None)
+        iv_location = getattr(interview, "location", None)
+        iv_meeting_link = getattr(interview, "meeting_link", None)
 
         # 1. HR Update / Confirmation Email
         if scheduler_user and getattr(scheduler_user, "email", None):
@@ -1269,7 +1359,10 @@ async def update_interview(db: AsyncSession, interview_id: int, data: InterviewU
                     start_time=interview.start_time,
                     end_time=interview.end_time,
                     interviewer_name=interviewer_name,
-                    notes=f"HR Copy - Rescheduled interview for candidate {application.candidate_name or 'Candidate'} ({application.candidate_email or 'N/A'}). Assigned Interviewer: {interviewer_name}. Notes: {interview.description or 'N/A'}"
+                    notes=f"HR Copy - Rescheduled interview for candidate {application.candidate_name or 'Candidate'} ({application.candidate_email or 'N/A'}). Assigned Interviewer: {interviewer_name}. Notes: {interview.description or 'N/A'}",
+                    location=iv_location,
+                    meeting_link=iv_meeting_link,
+                    interviewer_email=interviewer_email,
                 )
                 if email_sent:
                     await InterviewRepository.add_interview_log(
@@ -1290,7 +1383,10 @@ async def update_interview(db: AsyncSession, interview_id: int, data: InterviewU
                     start_time=interview.start_time,
                     end_time=interview.end_time,
                     interviewer_name=p_user.fullname or interviewer_name,
-                    notes=f"Panel Interview Rescheduled - Candidate: {application.candidate_name or 'Candidate'} ({application.candidate_email or 'N/A'}). Job: {job_name}. Notes: {interview.description or 'N/A'}"
+                    notes=f"Panel Interview Rescheduled - Candidate: {application.candidate_name or 'Candidate'} ({application.candidate_email or 'N/A'}). Job: {job_name}. Notes: {interview.description or 'N/A'}",
+                    location=iv_location,
+                    meeting_link=iv_meeting_link,
+                    interviewer_email=interviewer_email,
                 )
                 if email_sent:
                     await InterviewRepository.add_interview_log(
@@ -1311,7 +1407,13 @@ async def update_interview(db: AsyncSession, interview_id: int, data: InterviewU
                     start_time=interview.start_time,
                     end_time=interview.end_time,
                     interviewer_name=interviewer_name,
-                    notes=interview.description or ""
+                    notes=interview.description or "",
+                    location=iv_location,
+                    meeting_link=iv_meeting_link,
+                    interviewer_email=interviewer_email,
+                    custom_subject=getattr(data, "custom_email_subject", None),
+                    custom_message=getattr(data, "custom_email_message", None),
+                    db=db,
                 )
                 if email_sent:
                     await InterviewRepository.add_interview_log(
@@ -1324,11 +1426,21 @@ async def update_interview(db: AsyncSession, interview_id: int, data: InterviewU
         # 4. SMS Notification to Candidate
         candidate_phone = await _resolve_candidate_phone(db, application)
         if candidate_phone:
-            sched_time_str = interview.start_time.strftime('%A, %b %d, %Y at %I:%M %p')
-            message = (
-                f"Mariwasa HR Update: Magandang araw, {application.candidate_name}! Nais naming ipagbigay-alam na na-reschedule ang "
-                f"iyong interview para sa posisyong {job_name} sa {sched_time_str}. Pakitingnan ang iyong email ({application.candidate_email}) "
-                f"para sa updated calendar invite at complete details. Maraming salamat!"
+            message = await _build_interview_sms_message(
+                db,
+                "interview_rescheduled",
+                custom_sms_message=getattr(data, "custom_sms_message", None),
+                candidate_name=application.candidate_name or "Candidate",
+                job_title=job_name,
+                interview_title=interview.title,
+                start_time=interview.start_time,
+                end_time=interview.end_time,
+                interviewer_name=interviewer_name,
+                interviewer_email=interviewer_email,
+                location=iv_location,
+                meeting_link=iv_meeting_link,
+                notes=interview.description or "",
+                candidate_email=application.candidate_email,
             )
             await _dispatch_candidate_sms(
                 db,
@@ -1551,7 +1663,10 @@ async def cancel_interview(
     user_id: int,
     user_role: Optional[str] = None,
     reason: Optional[str] = None,
-    panelist_ids: Optional[List[int]] = None
+    panelist_ids: Optional[List[int]] = None,
+    custom_email_subject: Optional[str] = None,
+    custom_email_message: Optional[str] = None,
+    custom_sms_message: Optional[str] = None,
 ):
     """
     Cancel an interview:
@@ -1627,6 +1742,8 @@ async def cancel_interview(
             job_name = getattr(application, "job_title", None) or "Job Position"
 
         interviewer_name = user.fullname if user and getattr(user, "fullname", None) else "Mariwasa HR Panel"
+        interviewer_email = getattr(user, "email", None) if user else (getattr(scheduler_user, "email", None) if scheduler_user else None)
+        iv_location = getattr(interview, "location", None)
 
         panel_recipients = []
         for pid in (panelist_ids or []):
@@ -1722,7 +1839,13 @@ async def cancel_interview(
                     interview_title=interview.title,
                     start_time=interview.start_time,
                     interviewer_name=interviewer_name,
-                    reason=reason or "Interview has been cancelled."
+                    reason=reason or "Interview has been cancelled.",
+                    end_time=interview.end_time,
+                    location=iv_location,
+                    interviewer_email=interviewer_email,
+                    custom_subject=custom_email_subject,
+                    custom_message=custom_email_message,
+                    db=db,
                 )
                 if email_sent:
                     await InterviewRepository.add_interview_log(
@@ -1734,10 +1857,20 @@ async def cancel_interview(
 
         candidate_phone = await _resolve_candidate_phone(db, application)
         if candidate_phone:
-            message = (
-                f"Mariwasa HR Update: Magandang araw, {application.candidate_name}! Nais naming ipaalam na kinansela ang "
-                f"iyong interview para sa posisyong {job_name}. Pakitingnan ang iyong email ({application.candidate_email}) "
-                f"para sa karagdagang impormasyon. Maraming salamat."
+            message = await _build_interview_sms_message(
+                db,
+                "interview_canceled",
+                custom_sms_message=custom_sms_message,
+                candidate_name=application.candidate_name or "Candidate",
+                job_title=job_name,
+                interview_title=interview.title,
+                start_time=interview.start_time,
+                end_time=interview.end_time,
+                interviewer_name=interviewer_name,
+                interviewer_email=interviewer_email,
+                location=iv_location,
+                reason=reason or "",
+                candidate_email=application.candidate_email,
             )
             await _dispatch_candidate_sms(
                 db,
@@ -1907,6 +2040,10 @@ async def candidate_reschedule_interview(
     except Exception as notif_err:
         logger.warning(f"Could not create candidate reschedule notification: {notif_err}")
 
+    interviewer_email = getattr(interviewer_user, "email", None) if interviewer_user else None
+    iv_location = getattr(interview, "location", None)
+    iv_meeting_link = getattr(interview, "meeting_link", None)
+
     if interviewer_user and getattr(interviewer_user, "email", None):
         try:
             await email_service.send_interview_rescheduled_email(
@@ -1918,6 +2055,9 @@ async def candidate_reschedule_interview(
                 end_time=interview.end_time,
                 interviewer_name=interviewer_name,
                 notes=f"Candidate rescheduled from {old_time_str}.{reason_note}",
+                location=iv_location,
+                meeting_link=iv_meeting_link,
+                interviewer_email=interviewer_email,
             )
         except Exception as email_err:
             logger.warning(f"Could not send reschedule email to interviewer: {email_err}")
@@ -1933,17 +2073,31 @@ async def candidate_reschedule_interview(
                 end_time=interview.end_time,
                 interviewer_name=interviewer_name,
                 notes=f"Your interview reschedule from {old_time_str} is confirmed.{reason_note}",
+                location=iv_location,
+                meeting_link=iv_meeting_link,
+                interviewer_email=interviewer_email,
+                template_key="candidate_rescheduled",
+                db=db,
             )
         except Exception as email_err:
             logger.warning(f"Could not send reschedule confirmation email to candidate: {email_err}")
 
     candidate_phone = await _resolve_candidate_phone(db, application)
     if candidate_phone:
-        sched_time_str = interview.start_time.strftime('%A, %b %d, %Y at %I:%M %p')
-        message = (
-            f"Mariwasa HR Update: Magandang araw, {application.candidate_name or 'Candidate'}! "
-            f"Na-confirm ang iyong bagong interview schedule para sa posisyong {job_name} sa {sched_time_str}. "
-            f"Pakitingnan ang iyong email ({application.candidate_email}) para sa complete details. Maraming salamat!"
+        message = await _build_interview_sms_message(
+            db,
+            "candidate_rescheduled",
+            candidate_name=application.candidate_name or "Candidate",
+            job_title=job_name,
+            interview_title=interview.title,
+            start_time=interview.start_time,
+            end_time=interview.end_time,
+            interviewer_name=interviewer_name,
+            interviewer_email=interviewer_email,
+            location=iv_location,
+            meeting_link=iv_meeting_link,
+            notes=data.reason.strip() if data.reason and data.reason.strip() else "",
+            candidate_email=application.candidate_email,
         )
         await _dispatch_candidate_sms(
             db,

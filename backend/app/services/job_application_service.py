@@ -827,7 +827,9 @@ async def update_application_status(
     db: AsyncSession, 
     application_id: int, 
     new_status: str,
-    notes: Optional[str] = None
+    notes: Optional[str] = None,
+    custom_email_subject: Optional[str] = None,
+    custom_email_message: Optional[str] = None,
 ) -> Optional[JobApplication]:
     """Update application status, record in-app notifications, and dispatch professional email to candidate."""
     db_application = await JobApplicationRepository.get_by_id(db, application_id)
@@ -927,7 +929,10 @@ async def update_application_status(
                     job_title=job_title or "Position",
                     new_status=status_upper,
                     previous_status=previous_status,
-                    notes=notes
+                    notes=notes,
+                    custom_subject=custom_email_subject,
+                    custom_message=custom_email_message,
+                    db=db,
                 )
                 logger.info(f"Dispatched status update email ({status_upper}) to candidate {db_application.candidate_email}")
             except Exception as email_err:

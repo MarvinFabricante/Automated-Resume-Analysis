@@ -18,6 +18,7 @@ import {
 } from '../../../redux/api/apiSlice';
 import { getAssetUrl } from '../../../services/api';
 import { isInactiveInterviewStatus, isUpcomingInterview } from '../../../utils/interviewUtils';
+import CustomMessagePreviewSection, { CustomMessageValues } from '../../notifications/CustomMessagePreviewSection';
 
 interface NewScheduleModalProps {
   isOpen: boolean;
@@ -59,6 +60,18 @@ const NewScheduleModal: React.FC<NewScheduleModalProps> = ({
   const [callLanguage, setCallLanguage] = useState<string>('fil');
   const [customStartTime, setCustomStartTime] = useState<string>('09:00');
   const [customEndTime, setCustomEndTime] = useState<string>('10:00');
+  const [location, setLocation] = useState<string>('');
+  const [meetingLink, setMeetingLink] = useState<string>('');
+  const [customMsg, setCustomMsg] = useState<CustomMessageValues>({
+    customEmailSubject: '',
+    customEmailMessage: '',
+    customSmsMessage: '',
+    isCustomized: false,
+  });
+
+  const handleCustomMsgChange = React.useCallback((vals: CustomMessageValues) => {
+    setCustomMsg(vals);
+  }, []);
 
   const toLocalDateString = (d?: Date) => {
     const dateObj = d || new Date();
@@ -100,10 +113,19 @@ const NewScheduleModal: React.FC<NewScheduleModalProps> = ({
       if (initialCandidate) {
         setSelectedCandidate(initialCandidate);
         setTitle(`Interview with ${initialCandidate.candidate_name || initialCandidate.name || 'Candidate'}`);
+        setLocation(initialCandidate.job?.location || initialCandidate.job_location || '');
       } else {
         setSelectedCandidate(null);
         setTitle('Technical Interview');
+        setLocation('');
       }
+      setMeetingLink('');
+      setCustomMsg({
+        customEmailSubject: '',
+        customEmailMessage: '',
+        customSmsMessage: '',
+        isCustomized: false,
+      });
 
       if (initialTime) {
         setUseCustomTime(true);
@@ -277,7 +299,16 @@ const NewScheduleModal: React.FC<NewScheduleModalProps> = ({
         description: description.trim() || undefined,
         start_time: finalStart,
         end_time: finalEnd,
-        call_language: callLanguage
+        call_language: callLanguage,
+        location: location.trim() || undefined,
+        meeting_link: meetingLink.trim() || undefined,
+        ...(customMsg.isCustomized
+          ? {
+              custom_email_subject: customMsg.customEmailSubject || undefined,
+              custom_email_message: customMsg.customEmailMessage || undefined,
+              custom_sms_message: customMsg.customSmsMessage || undefined,
+            }
+          : {}),
       }).unwrap();
     } catch (err: any) {
       setErrorMsg(err?.data?.detail || 'Failed to schedule interview. Please check slot availability.');
@@ -786,6 +817,33 @@ const NewScheduleModal: React.FC<NewScheduleModalProps> = ({
             />
           </div>
 
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-black text-gray-700 uppercase tracking-wider mb-2">
+                Location / Venue (Optional)
+              </label>
+              <input
+                type="text"
+                value={location}
+                onChange={(e) => setLocation(e.target.value)}
+                placeholder="e.g., Mariwasa HR Office or Online"
+                className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-2xl text-xs font-semibold text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#D60041]/20 focus:border-[#D60041]"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-black text-gray-700 uppercase tracking-wider mb-2">
+                Meeting Link (Optional)
+              </label>
+              <input
+                type="url"
+                value={meetingLink}
+                onChange={(e) => setMeetingLink(e.target.value)}
+                placeholder="https://meet.google.com/..."
+                className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-2xl text-xs font-semibold text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#D60041]/20 focus:border-[#D60041]"
+              />
+            </div>
+          </div>
+
           <div>
             <label className="block text-xs font-black text-gray-700 uppercase tracking-wider mb-2">
               AI Voice Notification Language
@@ -800,6 +858,33 @@ const NewScheduleModal: React.FC<NewScheduleModalProps> = ({
               <option value="en">🇺🇸 English</option>
             </select>
           </div>
+
+          {/* Editable Email & SMS Message Preview */}
+          {(() => {
+            const previewStart = useCustomTime
+              ? (date && customStartTime ? `${date}T${customStartTime}:00` : undefined)
+              : selectedSlot?.start_time;
+            const previewEnd = useCustomTime
+              ? (date && customEndTime ? `${date}T${customEndTime}:00` : undefined)
+              : selectedSlot?.end_time;
+            return (
+              <CustomMessagePreviewSection
+                templateKey="interview_scheduled"
+                candidateName={selectedCandidate?.candidate_name || selectedCandidate?.name}
+                candidateEmail={selectedCandidate?.candidate_email || selectedCandidate?.email}
+                jobTitle={selectedCandidate?.job_title || selectedCandidate?.preferredJob}
+                interviewTitle={title}
+                startTime={previewStart}
+                endTime={previewEnd}
+                interviewerName={selectedInterviewer?.fullname}
+                interviewerEmail={selectedInterviewer?.email}
+                location={location}
+                meetingLink={meetingLink}
+                notes={description}
+                onChange={handleCustomMsgChange}
+              />
+            );
+          })()}
 
           {/* Auto Sync Banner */}
           <div className="p-4 bg-gradient-to-r from-pink-50/70 to-red-50/70 border border-pink-200 rounded-2xl flex items-center gap-3">

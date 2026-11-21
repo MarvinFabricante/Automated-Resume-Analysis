@@ -19,6 +19,7 @@ import {
 } from '../../../redux/api/apiSlice';
 import { getAssetUrl } from '../../../services/api';
 import { isInactiveInterviewStatus, isUpcomingInterview } from '../../../utils/interviewUtils';
+import CustomMessagePreviewSection, { CustomMessageValues } from '../../notifications/CustomMessagePreviewSection';
 
 interface ScheduleInterviewModalProps {
   isOpen: boolean;
@@ -72,8 +73,20 @@ const ScheduleInterviewModal: React.FC<ScheduleInterviewModalProps> = ({ isOpen,
   });
 
   const [callLanguage, setCallLanguage] = useState<string>('fil');
+  const [location, setLocation] = useState<string>('');
+  const [meetingLink, setMeetingLink] = useState<string>('');
+  const [customMsg, setCustomMsg] = useState<CustomMessageValues>({
+    customEmailSubject: '',
+    customEmailMessage: '',
+    customSmsMessage: '',
+    isCustomized: false,
+  });
   const [availableSlots, setAvailableSlots] = useState<any[]>([]);
   const [hasAttemptedFetch, setHasAttemptedFetch] = useState<boolean>(false);
+
+  const handleCustomMsgChange = React.useCallback((vals: CustomMessageValues) => {
+    setCustomMsg(vals);
+  }, []);
 
   // Set default interviewer to currently logged-in HR
   useEffect(() => {
@@ -104,6 +117,14 @@ const ScheduleInterviewModal: React.FC<ScheduleInterviewModalProps> = ({ isOpen,
         title: candidate ? `Interview with ${candidate.name || candidate.candidate_name}` : 'Initial Interview',
         description: '',
         selectedSlot: null
+      });
+      setLocation(candidate?.job?.location || candidate?.job_location || '');
+      setMeetingLink('');
+      setCustomMsg({
+        customEmailSubject: '',
+        customEmailMessage: '',
+        customSmsMessage: '',
+        isCustomized: false,
       });
     }
   }, [isOpen, candidate]);
@@ -220,7 +241,16 @@ const ScheduleInterviewModal: React.FC<ScheduleInterviewModalProps> = ({ isOpen,
         description: formData.description,
         start_time: finalStart,
         end_time: finalEnd,
-        call_language: callLanguage
+        call_language: callLanguage,
+        location: location.trim() || undefined,
+        meeting_link: meetingLink.trim() || undefined,
+        ...(customMsg.isCustomized
+          ? {
+              custom_email_subject: customMsg.customEmailSubject || undefined,
+              custom_email_message: customMsg.customEmailMessage || undefined,
+              custom_sms_message: customMsg.customSmsMessage || undefined,
+            }
+          : {}),
       }).unwrap();
     } catch (error: any) {
       setErrorMsg(error?.data?.detail || 'Failed to schedule interview. Please check slot availability.');
@@ -389,6 +419,28 @@ const ScheduleInterviewModal: React.FC<ScheduleInterviewModalProps> = ({ isOpen,
                       onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                     />
                   </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Location / Venue (Optional)</label>
+                      <input
+                        type="text"
+                        placeholder="e.g., Mariwasa HR Office or Online"
+                        value={location}
+                        onChange={(e) => setLocation(e.target.value)}
+                        className="w-full px-4 py-2.5 bg-gray-50 border border-gray-100 rounded-xl text-sm font-medium text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#d81159]/20 focus:border-[#d81159] transition-all"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Meeting Link (Optional)</label>
+                      <input
+                        type="url"
+                        placeholder="https://meet.google.com/..."
+                        value={meetingLink}
+                        onChange={(e) => setMeetingLink(e.target.value)}
+                        className="w-full px-4 py-2.5 bg-gray-50 border border-gray-100 rounded-xl text-sm font-medium text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#d81159]/20 focus:border-[#d81159] transition-all"
+                      />
+                    </div>
+                  </div>
                   <div className="space-y-2">
                     <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">AI Voice Notification Language</label>
                     <select
@@ -546,6 +598,35 @@ const ScheduleInterviewModal: React.FC<ScheduleInterviewModalProps> = ({ isOpen,
                 </div>
               </div>
 
+            </div>
+
+            <div className="mt-6">
+              {(() => {
+                const selectedHr = interviewers.find((i: any) => i.id === selectedInterviewerId);
+                const previewStart = useCustomTime
+                  ? (formData.date && customStartTime ? `${formData.date}T${customStartTime}:00` : undefined)
+                  : formData.selectedSlot?.start_time;
+                const previewEnd = useCustomTime
+                  ? (formData.date && customEndTime ? `${formData.date}T${customEndTime}:00` : undefined)
+                  : formData.selectedSlot?.end_time;
+                return (
+                  <CustomMessagePreviewSection
+                    templateKey="interview_scheduled"
+                    candidateName={candidate?.name || candidate?.candidate_name}
+                    candidateEmail={candidate?.candidate_email || candidate?.email}
+                    jobTitle={candidate?.preferredJob || candidate?.job_title}
+                    interviewTitle={formData.title}
+                    startTime={previewStart}
+                    endTime={previewEnd}
+                    interviewerName={selectedHr?.fullname}
+                    interviewerEmail={selectedHr?.email}
+                    location={location}
+                    meetingLink={meetingLink}
+                    notes={formData.description}
+                    onChange={handleCustomMsgChange}
+                  />
+                );
+              })()}
             </div>
 
             {/* Form Footer */}

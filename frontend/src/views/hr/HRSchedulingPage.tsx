@@ -16,7 +16,8 @@ import {
   Users,
   X,
   RotateCcw,
-  Lock
+  Lock,
+  MessageSquare
 } from 'lucide-react';
 import { useSelector } from 'react-redux';
 import { RootState } from '../../redux/store';
@@ -24,6 +25,7 @@ import Header from '../../components/layout/Header';
 import Sidebar from '../../components/layout/Sidebar';
 import InterviewDetailsModal from '../../components/modals/hr/InterviewDetailsModal';
 import NewScheduleModal from '../../components/modals/hr/NewScheduleModal';
+import NotificationTemplatesModal from '../../components/modals/shared/NotificationTemplatesModal';
 import {
   useGetCalendarFeedQuery,
   useSyncGoogleCalendarMutation,
@@ -68,6 +70,7 @@ export interface FormattedCalendarEvent {
   end: Date;
   start_time: string;
   end_time: string;
+  location?: string;
   meeting_link?: string;
   html_link?: string;
   google_event_id?: string;
@@ -103,6 +106,7 @@ const HRSchedulingPage: React.FC = () => {
   const [detailsModalOpen, setDetailsModalOpen] = useState<boolean>(false);
   const [selectedEvent, setSelectedEvent] = useState<FormattedCalendarEvent | null>(null);
   const [newScheduleModalOpen, setNewScheduleModalOpen] = useState<boolean>(false);
+  const [templatesModalOpen, setTemplatesModalOpen] = useState<boolean>(false);
   const [newScheduleDate, setNewScheduleDate] = useState<string>('');
   const [newScheduleInitialTime, setNewScheduleInitialTime] = useState<string>('');
   const [newSchedulePreselectedHr, setNewSchedulePreselectedHr] = useState<string | number | null>(null);
@@ -242,6 +246,7 @@ const HRSchedulingPage: React.FC = () => {
         end,
         start_time: iv.start_time,
         end_time: iv.end_time,
+        location: iv.location,
         meeting_link: iv.meeting_link,
         google_event_id: iv.google_event_id,
         description: iv.description,
@@ -596,6 +601,17 @@ const HRSchedulingPage: React.FC = () => {
                 >
                   <RefreshCw size={14} className={isSyncing ? 'animate-spin text-[#D60041]' : 'text-gray-400'} />
                   <span>{isSyncing ? 'Syncing...' : 'Sync Calendar'}</span>
+                </button>
+
+                {/* Notification Templates Button */}
+                <button
+                  type="button"
+                  onClick={() => setTemplatesModalOpen(true)}
+                  className="px-3 py-1.5 sm:px-3.5 sm:py-2 bg-white hover:bg-pink-50 border border-gray-200 hover:border-pink-200 text-gray-700 hover:text-[#D60041] rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-1.5 sm:gap-2 cursor-pointer"
+                  title="Edit default Email & SMS notification templates"
+                >
+                  <MessageSquare size={14} className="text-[#D60041]" />
+                  <span>Message Templates</span>
                 </button>
 
                 {/* New Schedule Button */}
@@ -1594,6 +1610,12 @@ const HRSchedulingPage: React.FC = () => {
         initialTime={newScheduleInitialTime}
         initialInterviewerId={newSchedulePreselectedHr}
         onScheduled={handleScheduled}
+      />
+
+      {/* Editable Email & SMS Templates Modal */}
+      <NotificationTemplatesModal
+        isOpen={templatesModalOpen}
+        onClose={() => setTemplatesModalOpen(false)}
       />
     </div>
   );

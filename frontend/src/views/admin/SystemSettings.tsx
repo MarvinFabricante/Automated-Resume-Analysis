@@ -16,11 +16,13 @@ import {
   SlidersHorizontal,
   Cpu,
   Zap,
-  Users
+  Users,
+  MessageSquare
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Header from '../../components/layout/Header';
 import Sidebar from '../../components/layout/Sidebar';
+import NotificationTemplatesEditor from '../../components/notifications/NotificationTemplatesEditor';
 import api from '../../services/api';
 import { 
   useGetMatchingConfigQuery,
@@ -654,6 +656,30 @@ const SystemSettings: React.FC = () => {
                   </div>
                 </div>
 
+              </div>
+
+              {/* Email & SMS Notification Templates */}
+              <div className="bg-white border border-gray-100 rounded-3xl p-6 sm:p-8 shadow-xs">
+                <div className="flex items-center justify-between pb-5 mb-6 border-b border-gray-100">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-2xl bg-rose-50 text-[#D10043] flex items-center justify-center shadow-xs">
+                      <MessageSquare size={20} />
+                    </div>
+                    <div>
+                      <h2 className="text-base font-extrabold text-gray-900 tracking-tight">
+                        Email & SMS Notification Templates
+                      </h2>
+                      <p className="text-xs text-gray-500 mt-0.5">
+                        Customize default Email subjects, Email bodies, and SMS messages with dynamic candidate and schedule details.
+                      </p>
+                    </div>
+                  </div>
+                  <span className="px-3 py-1 bg-rose-50 text-[#D10043] rounded-xl text-xs font-bold border border-rose-200">
+                    Email + IPROG SMS
+                  </span>
+                </div>
+
+                <NotificationTemplatesEditor />
               </div>
 
               {/* Bottom Sticky Action Bar */}

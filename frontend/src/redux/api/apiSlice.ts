@@ -78,7 +78,7 @@ export const apiSlice = createApi({
       return headers;
     },
   }),
-  tagTypes: ['Dashboard', 'Jobs', 'Candidates', 'Applications', 'AuditLogs', 'Users', 'SystemConfig', 'Templates', 'Interviews', 'CalendarEvents', 'HRInterviewers', 'PhysicalResumes', 'Shortlists', 'StatusHistory', 'ApplicantProfile'],
+  tagTypes: ['Dashboard', 'Jobs', 'Candidates', 'Applications', 'AuditLogs', 'Users', 'SystemConfig', 'Templates', 'NotificationTemplates', 'Interviews', 'CalendarEvents', 'HRInterviewers', 'PhysicalResumes', 'Shortlists', 'StatusHistory', 'ApplicantProfile'],
   endpoints: (builder) => ({
     // --- DASHBOARD STATS ---
     getDashboardStats: builder.query<any, void>({
@@ -304,11 +304,25 @@ export const apiSlice = createApi({
       ],
     }),
 
-    updateApplicationStatus: builder.mutation<any, { id: number | string; status: string }>({
-      query: ({ id, status }) => ({
+    updateApplicationStatus: builder.mutation<
+      any,
+      {
+        id: number | string;
+        status: string;
+        notes?: string;
+        custom_email_subject?: string;
+        custom_email_message?: string;
+      }
+    >({
+      query: ({ id, status, notes, custom_email_subject, custom_email_message }) => ({
         url: `/applications/${id}/status`,
         method: 'PATCH',
-        body: { status },
+        body: {
+          status,
+          ...(notes !== undefined ? { notes } : {}),
+          ...(custom_email_subject !== undefined ? { custom_email_subject } : {}),
+          ...(custom_email_message !== undefined ? { custom_email_message } : {}),
+        },
       }),
       async onQueryStarted({ id, status }, { dispatch, queryFulfilled }) {
         const patchResult = dispatch(
@@ -444,6 +458,24 @@ export const apiSlice = createApi({
       query: (interviewId) => ({
         url: `/interviews/${interviewId}`,
         method: 'DELETE',
+      }),
+      invalidatesTags: ['Interviews', 'CalendarEvents', 'Applications'],
+    }),
+
+    cancelInterview: builder.mutation<
+      any,
+      {
+        interviewId: number | string;
+        reason?: string;
+        custom_email_subject?: string;
+        custom_email_message?: string;
+        custom_sms_message?: string;
+      }
+    >({
+      query: ({ interviewId, ...body }) => ({
+        url: `/interviews/${interviewId}/cancel`,
+        method: 'POST',
+        body,
       }),
       invalidatesTags: ['Interviews', 'CalendarEvents', 'Applications'],
     }),
@@ -629,6 +661,38 @@ export const apiSlice = createApi({
         method: 'DELETE',
       }),
       invalidatesTags: ['Templates', 'AuditLogs'],
+    }),
+
+    getNotificationTemplates: builder.query<Record<string, any>, void>({
+      query: () => '/system-config/notification-templates',
+      transformResponse: (res: any) => res?.templates || res || {},
+      providesTags: ['NotificationTemplates'],
+    }),
+
+    updateNotificationTemplates: builder.mutation<
+      Record<string, any>,
+      Record<string, { email_subject?: string; email_message?: string; sms_message?: string }>
+    >({
+      query: (templates) => ({
+        url: '/system-config/notification-templates',
+        method: 'PUT',
+        body: { templates },
+      }),
+      transformResponse: (res: any) => res?.templates || res || {},
+      invalidatesTags: ['NotificationTemplates', 'AuditLogs'],
+    }),
+
+    resetNotificationTemplates: builder.mutation<
+      Record<string, any>,
+      { template_key?: string } | void
+    >({
+      query: (body) => ({
+        url: '/system-config/notification-templates/reset',
+        method: 'POST',
+        body: body || {},
+      }),
+      transformResponse: (res: any) => res?.templates || res || {},
+      invalidatesTags: ['NotificationTemplates', 'AuditLogs'],
     }),
 
     getSystemPerformance: builder.query<any, void>({
@@ -920,6 +984,7 @@ export const {
   useUpdateInterviewMutation,
   useCandidateRescheduleInterviewMutation,
   useDeleteInterviewMutation,
+  useCancelInterviewMutation,
   useGetApplicationInterviewsQuery,
   useGetCandidateInterviewsQuery,
   useGetUsersQuery,
@@ -939,6 +1004,9 @@ export const {
   useCreateFormTemplateMutation,
   useUpdateFormTemplateMutation,
   useDeleteFormTemplateMutation,
+  useGetNotificationTemplatesQuery,
+  useUpdateNotificationTemplatesMutation,
+  useResetNotificationTemplatesMutation,
   useGetSystemPerformanceQuery,
   useCreateDataBackupMutation,
   useRecoverDataMutation,

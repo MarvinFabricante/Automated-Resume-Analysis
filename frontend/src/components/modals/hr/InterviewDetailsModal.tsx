@@ -13,16 +13,20 @@ import {
   RefreshCw,
   Lock,
   MessageSquare,
-  Check
+  Check,
+  MapPin,
+  Video
 } from 'lucide-react';
 import { useSelector } from 'react-redux';
 import { RootState } from '../../../redux/store';
 import {
   useUpdateInterviewMutation,
+  useCancelInterviewMutation,
   useGetAvailableSlotsMutation,
   useGetHRInterviewersQuery,
 } from '../../../redux/api/apiSlice';
 import { formatUtcLogTimestamp, extractMessageLogs } from '../../../utils/interviewUtils';
+import CustomMessagePreviewSection, { CustomMessageValues } from '../../notifications/CustomMessagePreviewSection';
 
 interface InterviewDetailsModalProps {
   isOpen: boolean;
@@ -39,16 +43,31 @@ interface FormDataState {
   endTime: string;
   status: string;
   interviewerId: number | null;
+  location: string;
+  meetingLink: string;
 }
 
 const InterviewDetailsModal: React.FC<InterviewDetailsModalProps> = ({ isOpen, onClose, interview, onStatusChanged }) => {
   const reduxUserRole = useSelector((state: RootState) => state.auth?.role);
   const [updateInterview, { isLoading: isUpdating }] = useUpdateInterviewMutation();
+  const [cancelInterview, { isLoading: isCanceling }] = useCancelInterviewMutation();
   const [getSlots, { isLoading: isFetchingSlots }] = useGetAvailableSlotsMutation();
   const { data: interviewers = [] } = useGetHRInterviewersQuery();
 
   const [isEditing, setIsEditing] = useState<boolean>(false);
+  const [isCancelConfirmOpen, setIsCancelConfirmOpen] = useState<boolean>(false);
+  const [cancelReason, setCancelReason] = useState<string>('');
   const [errorMsg, setErrorMsg] = useState<string>('');
+  const [customMsg, setCustomMsg] = useState<CustomMessageValues>({
+    customEmailSubject: '',
+    customEmailMessage: '',
+    customSmsMessage: '',
+    isCustomized: false,
+  });
+
+  const handleCustomMsgChange = React.useCallback((vals: CustomMessageValues) => {
+    setCustomMsg(vals);
+  }, []);
 
   const [formData, setFormData] = useState<FormDataState>({
     title: '',
@@ -57,7 +76,9 @@ const InterviewDetailsModal: React.FC<InterviewDetailsModalProps> = ({ isOpen, o
     startTime: '',
     endTime: '',
     status: 'SCHEDULED',
-    interviewerId: null
+    interviewerId: null,
+    location: '',
+    meetingLink: '',
   });
 
   const [availableSlots, setAvailableSlots] = useState<any[]>([]);
@@ -75,7 +96,15 @@ const InterviewDetailsModal: React.FC<InterviewDetailsModalProps> = ({ isOpen, o
   useEffect(() => {
     if (interview) {
       setIsEditing(false);
+      setIsCancelConfirmOpen(false);
+      setCancelReason('');
       setErrorMsg('');
+      setCustomMsg({
+        customEmailSubject: '',
+        customEmailMessage: '',
+        customSmsMessage: '',
+        isCustomized: false,
+      });
 
       const rawStart = interview.start_time || interview.start || interview.start_datetime;
       const rawEnd = interview.end_time || interview.end || interview.end_datetime;
@@ -93,7 +122,9 @@ const InterviewDetailsModal: React.FC<InterviewDetailsModalProps> = ({ isOpen, o
         startTime: startStr,
         endTime: endStr,
         status: interview.status || 'SCHEDULED',
-        interviewerId: interview.interviewer_id || null
+        interviewerId: interview.interviewer_id || null,
+        location: interview.location || '',
+        meetingLink: interview.meeting_link || '',
       });
     }
   }, [interview, isOpen]);
@@ -183,13 +214,45 @@ const InterviewDetailsModal: React.FC<InterviewDetailsModalProps> = ({ isOpen, o
         start_time: startDateTime,
         end_time: endDateTime,
         status: formData.status,
-        interviewer_id: formData.interviewerId || undefined
+        interviewer_id: formData.interviewerId || undefined,
+        location: formData.location.trim(),
+        meeting_link: formData.meetingLink.trim(),
+        ...(customMsg.isCustomized
+          ? {
+              custom_email_subject: customMsg.customEmailSubject || undefined,
+              custom_email_message: customMsg.customEmailMessage || undefined,
+              custom_sms_message: customMsg.customSmsMessage || undefined,
+            }
+          : {}),
       }).unwrap();
 
       setIsEditing(false);
       if (onStatusChanged) onStatusChanged();
     } catch (err: any) {
       setErrorMsg(err?.data?.detail || 'Failed to update interview. Please check slot availability.');
+    }
+  };
+
+  const handleConfirmCancelSession = async () => {
+    if (!canModify) return;
+    setErrorMsg('');
+    try {
+      await cancelInterview({
+        interviewId: actualInterviewId,
+        reason: cancelReason.trim() || undefined,
+        ...(customMsg.isCustomized
+          ? {
+              custom_email_subject: customMsg.customEmailSubject || undefined,
+              custom_email_message: customMsg.customEmailMessage || undefined,
+              custom_sms_message: customMsg.customSmsMessage || undefined,
+            }
+          : {}),
+      }).unwrap();
+      setIsCancelConfirmOpen(false);
+      if (onStatusChanged) onStatusChanged();
+      onClose();
+    } catch (err: any) {
+      setErrorMsg(err?.data?.detail || 'Failed to cancel interview session.');
     }
   };
 
@@ -496,15 +559,47 @@ const InterviewDetailsModal: React.FC<InterviewDetailsModalProps> = ({ isOpen, o
                 </div>
               )}
 
-              {/* Description / Notes */}
-              {(interview.description || interview.notes) && (
-                <div>
-                  <p className="text-[10px] font-black uppercase text-gray-400 tracking-wider mb-2">
-                    Agenda & Notes
-                  </p>
-                  <p className="text-xs text-gray-700 font-medium bg-gray-50/60 p-4 rounded-2xl border border-gray-100 leading-relaxed">
-                    {interview.description || interview.notes}
-                  </p>
+              {/* Description / Notes & Venue / Meeting Link */}
+              {(interview.location || interview.meeting_link || interview.description || interview.notes) && (
+                <div className="space-y-3">
+                  {(interview.location || interview.meeting_link) && (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {interview.location && (
+                        <div className="bg-gray-50/80 border border-gray-100 rounded-2xl p-3.5">
+                          <p className="text-[10px] font-black uppercase text-gray-400 tracking-wider mb-1 flex items-center gap-1">
+                            <MapPin size={11} className="text-[#D60041]" /> Venue / Format
+                          </p>
+                          <p className="text-xs font-bold text-gray-800">{interview.location}</p>
+                        </div>
+                      )}
+                      {interview.meeting_link && (
+                        <div className="bg-gray-50/80 border border-gray-100 rounded-2xl p-3.5">
+                          <p className="text-[10px] font-black uppercase text-gray-400 tracking-wider mb-1 flex items-center gap-1">
+                            <Video size={11} className="text-[#D60041]" /> Meeting Link
+                          </p>
+                          <a
+                            href={interview.meeting_link}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-xs font-bold text-[#D60041] hover:underline break-all"
+                          >
+                            {interview.meeting_link}
+                          </a>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {(interview.description || interview.notes) && (
+                    <div>
+                      <p className="text-[10px] font-black uppercase text-gray-400 tracking-wider mb-2">
+                        Agenda & Notes
+                      </p>
+                      <p className="text-xs text-gray-700 font-medium bg-gray-50/60 p-4 rounded-2xl border border-gray-100 leading-relaxed">
+                        {interview.description || interview.notes}
+                      </p>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -546,9 +641,17 @@ const InterviewDetailsModal: React.FC<InterviewDetailsModalProps> = ({ isOpen, o
                         </button>
                       )}
 
-                      {interview.status !== 'CANCELED' && (
+                      {interview.status !== 'CANCELED' && !isCancelConfirmOpen && (
                         <button
-                          onClick={() => handleQuickStatusChange('CANCELED')}
+                          onClick={() => {
+                            setCustomMsg({
+                              customEmailSubject: '',
+                              customEmailMessage: '',
+                              customSmsMessage: '',
+                              isCustomized: false,
+                            });
+                            setIsCancelConfirmOpen(true);
+                          }}
                           className="px-3.5 py-2.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5"
                         >
                           Cancel Session
@@ -556,6 +659,57 @@ const InterviewDetailsModal: React.FC<InterviewDetailsModalProps> = ({ isOpen, o
                       )}
                     </div>
                   </div>
+
+                  {isCancelConfirmOpen && (
+                    <div className="p-4 bg-rose-50/60 border border-rose-200 rounded-2xl space-y-3">
+                      <p className="text-xs font-black text-rose-900">
+                        Cancel Interview & Notify Candidate
+                      </p>
+                      <div>
+                        <label className="block text-[10px] font-bold uppercase text-rose-800 mb-1">
+                          Cancellation Reason (Included in Email & SMS)
+                        </label>
+                        <input
+                          type="text"
+                          value={cancelReason}
+                          onChange={(e) => setCancelReason(e.target.value)}
+                          placeholder="e.g., Panelist unavailable; HR will reach out with new dates"
+                          className="w-full px-3 py-2 bg-white border border-rose-200 rounded-xl text-xs font-medium text-gray-900 focus:outline-none focus:ring-2 focus:ring-rose-500/20"
+                        />
+                      </div>
+                      <CustomMessagePreviewSection
+                        templateKey="interview_canceled"
+                        candidateName={interview.candidate_name}
+                        candidateEmail={interview.candidate_email}
+                        jobTitle={interview.job_title}
+                        interviewTitle={interview.title}
+                        startTime={interview.start_time || interview.start}
+                        endTime={interview.end_time || interview.end}
+                        interviewerName={interview.interviewer_name}
+                        interviewerEmail={interview.interviewer_email}
+                        location={interview.location}
+                        reason={cancelReason}
+                        onChange={handleCustomMsgChange}
+                      />
+                      <div className="flex justify-end gap-2 pt-1">
+                        <button
+                          type="button"
+                          onClick={() => setIsCancelConfirmOpen(false)}
+                          className="px-3.5 py-2 bg-white border border-gray-200 text-gray-700 rounded-xl text-xs font-bold hover:bg-gray-50"
+                        >
+                          Keep Schedule
+                        </button>
+                        <button
+                          type="button"
+                          disabled={isCanceling}
+                          onClick={handleConfirmCancelSession}
+                          className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold disabled:opacity-50"
+                        >
+                          {isCanceling ? 'Canceling & Notifying...' : 'Confirm Cancellation'}
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </>
@@ -695,6 +849,33 @@ const InterviewDetailsModal: React.FC<InterviewDetailsModalProps> = ({ isOpen, o
                 </select>
               </div>
 
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-black text-gray-700 uppercase tracking-wider mb-2">
+                    Location / Venue (Optional)
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.location}
+                    onChange={(e) => setFormData({ ...formData, location: e.target.value })}
+                    placeholder="e.g., Mariwasa HR Office or Online"
+                    className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-2xl text-xs font-semibold text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#D60041]/20 focus:border-[#D60041]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-black text-gray-700 uppercase tracking-wider mb-2">
+                    Meeting Link (Optional)
+                  </label>
+                  <input
+                    type="url"
+                    value={formData.meetingLink}
+                    onChange={(e) => setFormData({ ...formData, meetingLink: e.target.value })}
+                    placeholder="https://meet.google.com/..."
+                    className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-2xl text-xs font-semibold text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#D60041]/20 focus:border-[#D60041]"
+                  />
+                </div>
+              </div>
+
               <div>
                 <label className="block text-xs font-black text-gray-700 uppercase tracking-wider mb-2">
                   Description / Notes
@@ -707,6 +888,28 @@ const InterviewDetailsModal: React.FC<InterviewDetailsModalProps> = ({ isOpen, o
                   className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-2xl text-sm font-medium text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#D60041]/20 focus:border-[#D60041] resize-none"
                 />
               </div>
+
+              {(() => {
+                const selectedHr = interviewers.find((i: any) => i.id === formData.interviewerId);
+                return (
+                  <CustomMessagePreviewSection
+                    templateKey={formData.status === 'CANCELED' ? 'interview_canceled' : 'interview_rescheduled'}
+                    candidateName={interview.candidate_name}
+                    candidateEmail={interview.candidate_email}
+                    jobTitle={interview.job_title}
+                    interviewTitle={formData.title}
+                    startTime={formData.date && formData.startTime ? `${formData.date}T${formData.startTime}:00` : undefined}
+                    endTime={formData.date && formData.endTime ? `${formData.date}T${formData.endTime}:00` : undefined}
+                    interviewerName={selectedHr?.fullname || interview.interviewer_name}
+                    interviewerEmail={selectedHr?.email || interview.interviewer_email}
+                    location={formData.location}
+                    meetingLink={formData.meetingLink}
+                    notes={formData.description}
+                    reason={formData.status === 'CANCELED' ? formData.description : undefined}
+                    onChange={handleCustomMsgChange}
+                  />
+                );
+              })()}
 
               <div className="flex flex-wrap sm:flex-nowrap items-center justify-end gap-2.5 sm:gap-3 pt-4 border-t border-gray-100">
                 <button
