@@ -231,7 +231,7 @@ const ViewCandidateDetailsModal: React.FC<ViewCandidateDetailsModalProps> = ({
   onUpdateStatus
 }) => {
   const [copiedField, setCopiedField] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<TabType>('overview');
+  const [activeTab, setActiveTab] = useState<TabType>('all');
   const [hasEngaged, setHasEngaged] = useState<boolean>(false);
   const [showStatusHistory, setShowStatusHistory] = useState<boolean>(false);
   const hasTriggeredViewedRef = React.useRef<boolean>(false);
@@ -262,9 +262,10 @@ const ViewCandidateDetailsModal: React.FC<ViewCandidateDetailsModalProps> = ({
     statusRef.current = (fullApplication?.status || initialCandidate?.status || '').toUpperCase();
   }, [fullApplication?.status, initialCandidate?.status]);
 
-  // Reset engagement & auto-view trigger whenever modal opens for a new application
+  // Reset tab, engagement & auto-view trigger whenever modal opens for an application
   useEffect(() => {
     if (isOpen) {
+      setActiveTab('all');
       secondsElapsedRef.current = 0;
       hasEngagedRef.current = false;
       hasTriggeredViewedRef.current = false;
@@ -473,7 +474,12 @@ const ViewCandidateDetailsModal: React.FC<ViewCandidateDetailsModalProps> = ({
   const matchedSkills: string[] = candidate.matched_skills || [];
   const missingSkills: string[] = candidate.missing_skills || [];
   const candidateSkills: string[] = (candidate.skills && candidate.skills.length > 0) ? candidate.skills : matchedSkills;
-  const recommendations: string[] = candidate.recommendations || [];
+  const rawRecommendations: string[] = Array.isArray(candidate.recommendations) ? candidate.recommendations : [];
+  const legacyApplicantRecPattern =
+    /to your resume|tailor your resume|maximize ats|consider taking online courses|improve your candidacy|ensure your certifications section|so the ats can|to bridge the \d+(?:\.\d+)?-year gap|your resume reflects/i;
+  const recommendations: string[] = rawRecommendations.filter(
+    (rec) => typeof rec === 'string' && rec.trim().length > 0 && !legacyApplicantRecPattern.test(rec)
+  );
   const recommendedPositions: any[] = Array.isArray(candidate.recommended_positions)
     ? candidate.recommended_positions
     : [];
@@ -610,8 +616,9 @@ const ViewCandidateDetailsModal: React.FC<ViewCandidateDetailsModalProps> = ({
     candidate.education_reason
   ].filter(Boolean).join(' ');
 
-  // Tab definitions
+  // Tab definitions (Full Report first and defaulted)
   const tabs: { id: TabType; label: string; count?: number; icon: React.ComponentType<{ size?: number; className?: string }> }[] = [
+    { id: 'all', label: 'Full Report', icon: BookOpen },
     { id: 'overview', label: 'Executive Overview', icon: Target },
     {
       id: 'schedule_calls',
@@ -628,7 +635,6 @@ const ViewCandidateDetailsModal: React.FC<ViewCandidateDetailsModalProps> = ({
       count: (recommendations.length + recommendedPositions.length) || undefined,
       icon: Lightbulb,
     },
-    { id: 'all', label: 'Full Report', icon: BookOpen },
   ];
 
   const formatInterviewSlot = (startStr?: string, endStr?: string) => {
@@ -2128,22 +2134,46 @@ const ViewCandidateDetailsModal: React.FC<ViewCandidateDetailsModalProps> = ({
                       ))
                     ) : (
                       <div className="space-y-3">
-                        <div className="flex items-start gap-3 bg-slate-50 p-4 rounded-2xl border border-slate-200">
-                          <div className="flex items-center justify-center w-6 h-6 rounded-lg bg-[#D60041] text-white text-xs font-black shrink-0 mt-0.5">
-                            1
+                        {missingSkills.length > 0 && (
+                          <div className="flex items-start gap-3 bg-emerald-50/40 p-4 rounded-2xl border border-emerald-100">
+                            <div className="flex items-center justify-center w-6 h-6 rounded-lg bg-emerald-600 text-white text-xs font-black shrink-0 mt-0.5">
+                              1
+                            </div>
+                            <p className="text-xs sm:text-sm text-gray-800 font-medium leading-relaxed">
+                              Probe practical familiarity and onboarding needs for missing required skills: {missingSkills.slice(0, 5).join(', ')}.
+                            </p>
                           </div>
-                          <p className="text-xs text-gray-700 font-medium leading-relaxed">
-                            Cross-examine experience claims and verify proficiency in missing skills during technical interview questioning.
-                          </p>
-                        </div>
-                        <div className="flex items-start gap-3 bg-slate-50 p-4 rounded-2xl border border-slate-200">
-                          <div className="flex items-center justify-center w-6 h-6 rounded-lg bg-[#D60041] text-white text-xs font-black shrink-0 mt-0.5">
-                            2
+                        )}
+                        {candidate.experience_gaps && (
+                          <div className="flex items-start gap-3 bg-emerald-50/40 p-4 rounded-2xl border border-emerald-100">
+                            <div className="flex items-center justify-center w-6 h-6 rounded-lg bg-emerald-600 text-white text-xs font-black shrink-0 mt-0.5">
+                              {missingSkills.length > 0 ? 2 : 1}
+                            </div>
+                            <p className="text-xs sm:text-sm text-gray-800 font-medium leading-relaxed">
+                              Evaluate whether hands-on projects or transferable training offset the experience gap ({candidate.experience_gaps}).
+                            </p>
                           </div>
-                          <p className="text-xs text-gray-700 font-medium leading-relaxed">
-                            Verify original diplomas and certificates if candidate is invited to the final recruitment phase.
-                          </p>
-                        </div>
+                        )}
+                        {missingSkills.length === 0 && !candidate.experience_gaps && (
+                          <>
+                            <div className="flex items-start gap-3 bg-slate-50 p-4 rounded-2xl border border-slate-200">
+                              <div className="flex items-center justify-center w-6 h-6 rounded-lg bg-[#D60041] text-white text-xs font-black shrink-0 mt-0.5">
+                                1
+                              </div>
+                              <p className="text-xs text-gray-700 font-medium leading-relaxed">
+                                Cross-examine experience claims and validate hands-on proficiency in core role competencies during technical interviewing.
+                              </p>
+                            </div>
+                            <div className="flex items-start gap-3 bg-slate-50 p-4 rounded-2xl border border-slate-200">
+                              <div className="flex items-center justify-center w-6 h-6 rounded-lg bg-[#D60041] text-white text-xs font-black shrink-0 mt-0.5">
+                                2
+                              </div>
+                              <p className="text-xs text-gray-700 font-medium leading-relaxed">
+                                Verify employment dates, academic credentials, and required licenses if the candidate advances to final selection.
+                              </p>
+                            </div>
+                          </>
+                        )}
                       </div>
                     )}
                   </div>

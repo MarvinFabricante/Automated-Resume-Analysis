@@ -550,3 +550,71 @@ async def test_application_details_includes_recommended_positions(client, db_ses
     assert "Python" in " ".join(python_rec.get("matched_skills") or [])
 
 
+@pytest.mark.asyncio
+async def test_application_details_upgrades_legacy_applicant_recommendations_for_hr(client, db_session, mock_celery_task):
+    """
+    Verify legacy applicant-facing resume tips saved on an application are
+    upgraded into actionable HR screening & placement recommendations on fetch.
+    """
+    applied_job = JobDescription(
+        job_id="JOB-LEG-SALES",
+        job_title="Sales Officer",
+        department="Sales",
+        job_type=JobType.FULL_TIME,
+        location="Batangas",
+        description="Retail branch sales and account management.",
+        skills_requirements="Sales, Negotiation, Client Handling",
+        experience_requirements="2 years",
+        is_active=True,
+    )
+    alt_job = JobDescription(
+        job_id="JOB-LEG-DEV",
+        job_title="Python Backend Developer",
+        department="IT",
+        job_type=JobType.FULL_TIME,
+        location="Metro Manila",
+        description="Builds Python FastAPI services.",
+        skills_requirements="Python, FastAPI, PostgreSQL",
+        experience_requirements="2 years",
+        is_active=True,
+    )
+    db_session.add_all([applied_job, alt_job])
+    await db_session.commit()
+
+    create_res = await client.post(
+        "/applications/",
+        json={
+            "job_id": "JOB-LEG-SALES",
+            "candidate_name": "Dev Applying Sales",
+            "candidate_email": "dev.sales@example.com",
+            "skills": ["Python", "FastAPI", "PostgreSQL"],
+            "years_experience": 3,
+            "work_experiences": [
+                {
+                    "job_title": "Python Backend Developer",
+                    "company_name": "Tech Corp",
+                    "duration_months": 36,
+                    "responsibilities": ["Built Python FastAPI microservices."],
+                }
+            ],
+            "match_score": 25.0,
+            "recommendations": [
+                "Add the following in-demand skills to your resume: Sales, Negotiation.",
+                "Tailor your resume summary to mirror the language used in the Sales Officer job description.",
+            ],
+        },
+    )
+    assert create_res.status_code == 201
+    app_id = create_res.json()["id"]
+
+    detail_res = await client.get(f"/applications/{app_id}")
+    assert detail_res.status_code == 200
+    recs = detail_res.json().get("recommendations") or []
+    assert len(recs) >= 1
+    joined = " ".join(recs).lower()
+    assert "to your resume" not in joined
+    assert "tailor your resume" not in joined
+    assert "python backend developer" in joined or "probe" in joined
+
+
+
