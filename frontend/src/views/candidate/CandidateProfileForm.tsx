@@ -265,8 +265,11 @@ const CandidateProfileForm: React.FC = () => {
           skills_list: finalForm.skills,
           experience: finalForm.relevance,
           years_experience: clarifiedYears,
+          work_experiences: location.state?.extractedData?.work_experiences || [],
           education: [finalForm.degree, finalForm.college].filter(Boolean).join(' - '),
           highest_degree: finalForm.degree,
+          education_entries: location.state?.extractedData?.education_entries || [],
+          certifications: location.state?.extractedData?.certifications || undefined,
           fullname: finalForm.fullName,
           location: finalForm.location
         };

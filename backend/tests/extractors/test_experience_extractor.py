@@ -315,3 +315,104 @@ Some experience in factory work. Willing to learn and hardworking.
 
 def test_explicit_single_year_experience_label():
     assert extract_years_experience("Experience: 1 yr\nProduction Operator at Plant A") == 1
+
+
+def test_two_work_experiences_not_collapsed_to_one():
+    """
+    Regression tests ensuring resumes with 2 work experiences extract BOTH entries
+    across mixed layouts, 'Associate'/'Master' titles, same-year month ranges,
+    and bullet prefixes like 'Training:' or 'Projects:'.
+    """
+    # 1. Multi-line role 1 + inline role 2
+    mixed_multiline_then_inline = """
+WORK EXPERIENCE
+Production Supervisor
+Mariwasa Siam Ceramics Inc.
+January 2022 - Present
+• Managed kiln shift teams and daily production output.
+Training: Conducted operator safety onboarding for new hires.
+
+Quality Control Inspector at Rizal Packaging Corp. (March 2019 - December 2021)
+• Inspected finished tile batches and logged defect reports.
+"""
+    res1 = extract_structured_experience(mixed_multiline_then_inline)
+    assert len(res1["work_experiences"]) == 2
+    assert "Supervisor" in res1["work_experiences"][0]["job_title"]
+    assert "Quality Control" in res1["work_experiences"][1]["job_title"]
+
+    # 2. Inline role 1 + multi-line role 2 (including >15 char title)
+    mixed_inline_then_multiline = """
+WORK EXPERIENCE
+Software Developer | Tech Corp | Jan 2022 - Present
+- Built FastAPI REST services.
+
+Senior Quality Assurance Engineer
+Acme Manufacturing Inc.
+January 2020 - December 2021
+- Automated regression test suites.
+"""
+    res2 = extract_structured_experience(mixed_inline_then_multiline)
+    assert len(res2["work_experiences"]) == 2
+    assert "Developer" in res2["work_experiences"][0]["job_title"]
+    assert "Quality Assurance" in res2["work_experiences"][1]["job_title"]
+
+    # 3. Roles with 'Associate' or 'Master' in title + same-year month range
+    associate_and_same_year = """
+WORK EXPERIENCE
+Sales Associate
+SM Retail Inc.
+June 2023 - August 2024
+- Assisted customers and handled POS checkout.
+
+Marketing Intern
+ABC Media Group
+January - May 2023
+- Assisted with social media campaign scheduling.
+"""
+    res3 = extract_structured_experience(associate_and_same_year)
+    assert len(res3["work_experiences"]) == 2
+    assert "Sales Associate" in res3["work_experiences"][0]["job_title"]
+    assert "Intern" in res3["work_experiences"][1]["job_title"]
+    assert res3["work_experiences"][1]["start_date"] == "2023-01"
+    assert res3["work_experiences"][1]["end_date"] == "2023-05"
+    assert res3["work_experiences"][1]["duration_months"] == 5
+
+    # 4. Multi-line role 1 + date-first role 2
+    multiline_then_date_first = """
+WORK EXPERIENCE
+Cashier
+Puregold Supermarket
+2022 - 2024
+- Processed customer payments and balanced daily register.
+
+2020 - 2021
+Service Crew
+Jollibee Foods Corporation
+- Prepared food orders and maintained counter cleanliness.
+"""
+    res4 = extract_structured_experience(multiline_then_date_first)
+    assert len(res4["work_experiences"]) == 2
+    assert "Cashier" in res4["work_experiences"][0]["job_title"]
+    assert "Service Crew" in res4["work_experiences"][1]["job_title"]
+
+    # 5. Title (Date) + Company on next line + OJT Role 2 with hours/duration only
+    title_date_and_ojt_hours = """
+WORK EXPERIENCE
+Software Developer (Jan 2023 - Present)
+Acme Tech Corp - Makati City
+• Built backend APIs.
+
+ON-THE-JOB TRAINING (OJT)
+IT Support Intern
+Barangay Hall Laguna
+486 Hours
+• Assisted with workstation setup and network troubleshooting.
+"""
+    res5 = extract_structured_experience(title_date_and_ojt_hours)
+    assert len(res5["work_experiences"]) == 2
+    assert "Developer" in res5["work_experiences"][0]["job_title"]
+    assert "Acme Tech Corp" in res5["work_experiences"][0]["company_name"]
+    assert "Intern" in res5["work_experiences"][1]["job_title"]
+    assert res5["work_experiences"][1]["duration_months"] == 3
+
+
