@@ -121,6 +121,26 @@ class OtherApplicationSummary(BaseModel):
     class Config:
         from_attributes = True
 
+class RecommendedPositionSummary(BaseModel):
+    id: int
+    job_id: str
+    job_title: str
+    department: Optional[str] = ""
+    location: Optional[str] = ""
+    match_percentage: float
+    match_level: Optional[str] = None
+    skills_score: Optional[float] = None
+    experience_score: Optional[float] = None
+    education_score: Optional[float] = None
+    certifications_score: Optional[float] = None
+    matched_skills: Optional[List[str]] = None
+    missing_skills: Optional[List[str]] = None
+    strengths: Optional[List[str]] = None
+    reason: Optional[str] = None
+    already_applied: bool = False
+    existing_application_id: Optional[int] = None
+    existing_application_status: Optional[str] = None
+
 class JobApplicationResponse(JobApplicationBase):
     id: int
     job_id: int
@@ -131,6 +151,7 @@ class JobApplicationResponse(JobApplicationBase):
     active_applications_count: Optional[int] = 0
     has_other_active_applications: Optional[bool] = False
     other_applications: Optional[List[OtherApplicationSummary]] = None
+    recommended_positions: Optional[List[RecommendedPositionSummary]] = None
 
     class Config:
         from_attributes = True

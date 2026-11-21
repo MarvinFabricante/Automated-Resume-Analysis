@@ -2115,7 +2115,13 @@ def _resolve_experience_text(resume_data: dict) -> str:
     return " | ".join(parts)
 
 
-def calculate_match_score(resume_data: dict, job, use_ai: bool = False, matching_config: Optional[dict] = None) -> dict:
+def calculate_match_score(
+    resume_data: dict,
+    job,
+    use_ai: bool = False,
+    matching_config: Optional[dict] = None,
+    log_prediction: bool = True,
+) -> dict:
     """
     Calculate the overall match score between a parsed resume and a job.
 
@@ -2410,24 +2416,25 @@ def calculate_match_score(resume_data: dict, job, use_ai: bool = False, matching
         job_db_id = job.get("id") if isinstance(job, dict) else getattr(job, "id", None)
         job_ident = str(job_code or job_db_id or "unknown")
 
-        fb_db = get_feedback_db()
-        fb_db.log_live_prediction(
-            resume_id=str(resume_ident),
-            job_id=str(job_ident),
-            resume_skills=cand_skills,
-            job_skills=job_skills,
-            resume_titles=cand_title,
-            job_titles=target_title,
-            candidate_years=cand_years,
-            required_years=req_years,
-            candidate_edu=cand_edu,
-            required_edu=req_edu,
-            feature_vector=ml_eval["feature_vector"],
-            predicted_fit_score=ml_eval["fit_probability"],
-            candidate_email=cand_email,
-            candidate_name=cand_name,
-            job_code=job_code,
-        )
+        if log_prediction:
+            fb_db = get_feedback_db()
+            fb_db.log_live_prediction(
+                resume_id=str(resume_ident),
+                job_id=str(job_ident),
+                resume_skills=cand_skills,
+                job_skills=job_skills,
+                resume_titles=cand_title,
+                job_titles=target_title,
+                candidate_years=cand_years,
+                required_years=req_years,
+                candidate_edu=cand_edu,
+                required_edu=req_edu,
+                feature_vector=ml_eval["feature_vector"],
+                predicted_fit_score=ml_eval["fit_probability"],
+                candidate_email=cand_email,
+                candidate_name=cand_name,
+                job_code=job_code,
+            )
     except Exception as ml_err:
         logger.debug(f"Notice during ML scoring or live prediction logging: {ml_err}")
 
