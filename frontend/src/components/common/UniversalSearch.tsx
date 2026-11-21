@@ -52,11 +52,17 @@ const UniversalSearch: React.FC<UniversalSearchProps> = ({
   const navigate = useNavigate();
   const location = useLocation();
   const isOnCandidateFindJobs = location.pathname === '/candidate/findjobs';
+  const isOnAdminJobManagement = location.pathname === '/admin/jobmanagement';
+  const isOnLiveJobPage = isOnCandidateFindJobs || isOnAdminJobManagement;
   const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
   const [query, setQuery] = useState(() => {
-    if (typeof window !== 'undefined' && window.location.pathname === '/candidate/findjobs') {
+    if (
+      typeof window !== 'undefined' &&
+      (window.location.pathname === '/candidate/findjobs' ||
+        window.location.pathname === '/admin/jobmanagement')
+    ) {
       return new URLSearchParams(window.location.search).get('search') || '';
     }
     return '';
@@ -65,14 +71,14 @@ const UniversalSearch: React.FC<UniversalSearchProps> = ({
   const [isOpen, setIsOpen] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState<number>(-1);
 
-  // Sync navbar input with ?search= when landing on /candidate/findjobs, and when page Reset/Clear triggers
+  // Sync navbar input with ?search= when landing on /candidate/findjobs or /admin/jobmanagement
   useEffect(() => {
-    if (isOnCandidateFindJobs && typeof window !== 'undefined') {
+    if (isOnLiveJobPage && typeof window !== 'undefined') {
       const urlQ = new URLSearchParams(window.location.search).get('search') || '';
       setQuery(urlQ);
       setDebouncedQuery(urlQ.trim());
     }
-  }, [isOnCandidateFindJobs]);
+  }, [isOnLiveJobPage]);
 
   useEffect(() => {
     const handleSync = (e: Event) => {
@@ -84,18 +90,24 @@ const UniversalSearch: React.FC<UniversalSearchProps> = ({
       }
     };
     window.addEventListener('candidate-job-search', handleSync);
-    return () => window.removeEventListener('candidate-job-search', handleSync);
+    window.addEventListener('admin-job-search', handleSync);
+    return () => {
+      window.removeEventListener('candidate-job-search', handleSync);
+      window.removeEventListener('admin-job-search', handleSync);
+    };
   }, []);
 
-  const syncCandidatePageSearch = (val: string) => {
-    if (!isOnCandidateFindJobs || typeof window === 'undefined') return;
+  const syncPageJobSearch = (val: string) => {
+    if (!isOnLiveJobPage || typeof window === 'undefined') return;
     const trimmed = val.trim();
+    const basePath = isOnAdminJobManagement ? '/admin/jobmanagement' : '/candidate/findjobs';
+    const eventName = isOnAdminJobManagement ? 'admin-job-search' : 'candidate-job-search';
     const nextUrl = trimmed
-      ? `/candidate/findjobs?search=${encodeURIComponent(trimmed)}`
-      : '/candidate/findjobs';
+      ? `${basePath}?search=${encodeURIComponent(trimmed)}`
+      : basePath;
     window.history.replaceState(window.history.state, '', nextUrl);
     window.dispatchEvent(
-      new CustomEvent('candidate-job-search', {
+      new CustomEvent(eventName, {
         detail: { query: val, source: 'navbar' },
       })
     );
@@ -104,7 +116,8 @@ const UniversalSearch: React.FC<UniversalSearchProps> = ({
   const { user: userEmail, role: userRole } = useSelector((state: RootState) => state.auth);
   const normRole = (userRole || '').toUpperCase();
   const isCandidate = normRole === 'CANDIDATE';
-  const isHR = normRole === 'HR' || normRole === 'ADMIN';
+  const isHR = normRole === 'HR';
+  const isAdmin = normRole === 'ADMIN';
 
   // Fetch jobs (cached via RTK query)
   const { data: rawJobs = [], isLoading: isLoadingJobs } = useGetJobsQuery(undefined, {
@@ -173,7 +186,7 @@ const UniversalSearch: React.FC<UniversalSearchProps> = ({
     if (!debouncedQuery) return [];
     const q = debouncedQuery.toLowerCase();
 
-    // ─── HR & ADMIN UNIVERSAL SEARCH RESULTS ───
+    // ─── HR UNIVERSAL SEARCH RESULTS ───
     if (isHR && hrSearchData) {
       const items: SearchResultItem[] = [];
 
@@ -185,7 +198,7 @@ const UniversalSearch: React.FC<UniversalSearchProps> = ({
             type: 'hr-applicant',
             category: 'Applicants',
             title: app.name || 'Candidate',
-            subtitle: `${app.position || 'Applicant'} • ${app.email}`,
+            subtitle: `${app.position || app.job_title || 'Applicant'} • ${app.email}`,
             tag: app.status || 'Submitted',
             tagColor: app.status === 'Shortlisted' ? 'bg-purple-50 text-purple-700' : 'bg-rose-50 text-[#D60041]',
             url: `/hr/applicant/${encodeURIComponent(app.email)}`,
@@ -197,15 +210,16 @@ const UniversalSearch: React.FC<UniversalSearchProps> = ({
       // 2. Jobs
       if (Array.isArray(hrSearchData.jobs)) {
         for (const j of hrSearchData.jobs) {
+          const jobTitle = j.job_title || j.title || 'Position';
           items.push({
             id: `hr-job-${j.id}`,
             type: 'hr-job',
             category: 'Jobs',
-            title: j.job_title || 'Position',
+            title: jobTitle,
             subtitle: `${j.department || 'General'} • ${j.location || 'Mariwasa'}`,
             tag: `${j.applicant_count || 0} applicants`,
             tagColor: 'bg-blue-50 text-blue-700',
-            url: `/hr/screening?job=${encodeURIComponent(j.job_title)}`,
+            url: `/hr/screening?job=${encodeURIComponent(jobTitle)}`,
             data: j,
           });
         }
@@ -220,7 +234,7 @@ const UniversalSearch: React.FC<UniversalSearchProps> = ({
             category: 'Shortlists',
             title: s.name || 'Shortlist Roster',
             subtitle: `Position: ${s.job_title || 'General'}`,
-            tag: `${s.total_candidates || 0} candidates`,
+            tag: `${s.total_candidates ?? s.candidate_count ?? 0} candidates`,
             tagColor: 'bg-emerald-50 text-emerald-700',
             url: `/hr/screening?tab=shortlists&rosterId=${s.id}`,
             data: s,
@@ -229,6 +243,32 @@ const UniversalSearch: React.FC<UniversalSearchProps> = ({
       }
 
       return items;
+    }
+
+    // ─── ADMIN JOB SEARCH RESULTS (mirrors candidate job search, routed to /admin/jobmanagement) ───
+    if (isAdmin) {
+      const rankedAdminJobs = filterAndRankJobs(rawJobs, debouncedQuery);
+      return rankedAdminJobs.slice(0, 10).map((job: any) => {
+        const jobId = String(job.job_id || job.id || '');
+        const jobTitle = job.job_title || job.title || 'Untitled Role';
+        const appCount = Number(job.applicant_count ?? 0);
+        return {
+          id: `admin-job-${jobId}`,
+          type: 'job',
+          category: 'Jobs',
+          title: jobTitle,
+          subtitle: `${job.department || 'Mariwasa Siam Ceramics'} • ${job.location || 'Sto. Tomas, Batangas'}`,
+          location: job.location || 'Sto. Tomas, Batangas',
+          tag: job.is_active === false
+            ? 'Archived'
+            : `${appCount} ${appCount === 1 ? 'applicant' : 'applicants'}`,
+          tagColor: job.is_active === false
+            ? 'bg-slate-100 text-slate-500 border-slate-200'
+            : 'bg-blue-50 text-blue-700 border-blue-200',
+          url: `/admin/jobmanagement?search=${encodeURIComponent(jobTitle)}&jobId=${encodeURIComponent(jobId)}`,
+          data: job,
+        };
+      });
     }
 
     // ─── CANDIDATE SEARCH RESULTS ───
@@ -280,7 +320,7 @@ const UniversalSearch: React.FC<UniversalSearchProps> = ({
     }
 
     return [...matchedJobs, ...matchedApps];
-  }, [debouncedQuery, rawJobs, candidateApps, isCandidate, isHR, hrSearchData]);
+  }, [debouncedQuery, rawJobs, candidateApps, isCandidate, isHR, isAdmin, hrSearchData]);
 
   // Reset selected index when query changes
   useEffect(() => {
@@ -312,12 +352,14 @@ const UniversalSearch: React.FC<UniversalSearchProps> = ({
       }
 
       if (!isHR) {
-        if (isOnCandidateFindJobs) {
-          syncCandidatePageSearch(trimmed);
+        if (isOnLiveJobPage) {
+          syncPageJobSearch(trimmed);
           setIsOpen(false);
           return;
         }
-        const targetUrl = isCandidate
+        const targetUrl = isAdmin
+          ? `/admin/jobmanagement?search=${encodeURIComponent(trimmed)}`
+          : isCandidate
           ? `/candidate/findjobs?search=${encodeURIComponent(trimmed)}`
           : `/careerspage`;
         setIsOpen(false);
@@ -344,11 +386,11 @@ const UniversalSearch: React.FC<UniversalSearchProps> = ({
     }
   };
 
-  const totalCandidateJobMatches = useMemo(() => {
+  const totalJobMatches = useMemo(() => {
     if (!debouncedQuery || isHR) return 0;
-    const activeJobs = rawJobs.filter((job: any) => job.is_active !== false);
-    return filterAndRankJobs(activeJobs, debouncedQuery).length;
-  }, [debouncedQuery, isHR, rawJobs]);
+    const jobsPool = isAdmin ? rawJobs : rawJobs.filter((job: any) => job.is_active !== false);
+    return filterAndRankJobs(jobsPool, debouncedQuery).length;
+  }, [debouncedQuery, isHR, isAdmin, rawJobs]);
 
   // Group results by category
   const groupedResults = useMemo(() => {
@@ -379,7 +421,7 @@ const UniversalSearch: React.FC<UniversalSearchProps> = ({
             const nextVal = e.target.value;
             setQuery(nextVal);
             setIsOpen(true);
-            syncCandidatePageSearch(nextVal);
+            syncPageJobSearch(nextVal);
           }}
           onFocus={() => setIsOpen(true)}
           onKeyDown={handleKeyDown}
@@ -394,7 +436,7 @@ const UniversalSearch: React.FC<UniversalSearchProps> = ({
             onClick={() => {
               setQuery('');
               setDebouncedQuery('');
-              syncCandidatePageSearch('');
+              syncPageJobSearch('');
               inputRef.current?.focus();
             }}
             className="absolute right-3 p-1 text-slate-400 hover:text-slate-600 rounded-lg cursor-pointer"
@@ -409,8 +451,8 @@ const UniversalSearch: React.FC<UniversalSearchProps> = ({
         )}
       </div>
 
-      {/* Results Dropdown (suppressed on /candidate/findjobs where matching jobs live-render directly on the page) */}
-      {isOpen && debouncedQuery && !isOnCandidateFindJobs && (
+      {/* Results Dropdown (suppressed on /candidate/findjobs and /admin/jobmanagement where matching jobs live-render directly on the page) */}
+      {isOpen && debouncedQuery && !isOnLiveJobPage && (
         <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-2xl shadow-2xl border border-slate-200/90 overflow-hidden z-50 animate-in fade-in slide-in-from-top-2 duration-150 max-h-[460px] overflow-y-auto">
           {!isHR && isLoadingJobs && results.length === 0 ? (
             <div className="p-8 text-center flex flex-col items-center gap-2">
@@ -480,12 +522,14 @@ const UniversalSearch: React.FC<UniversalSearchProps> = ({
                   </div>
                 </div>
               ))}
-              {!isHR && totalCandidateJobMatches > 0 && (
+              {!isHR && totalJobMatches > 0 && (
                 <div className="p-2 bg-slate-50/70">
                   <button
                     type="button"
                     onClick={() => {
-                      const targetUrl = `/candidate/findjobs?search=${encodeURIComponent(debouncedQuery)}`;
+                      const targetUrl = isAdmin
+                        ? `/admin/jobmanagement?search=${encodeURIComponent(debouncedQuery)}`
+                        : `/candidate/findjobs?search=${encodeURIComponent(debouncedQuery)}`;
                       setIsOpen(false);
                       setQuery('');
                       if (onCloseMobile) onCloseMobile();
@@ -494,7 +538,7 @@ const UniversalSearch: React.FC<UniversalSearchProps> = ({
                     className="w-full py-2 px-3 rounded-xl text-xs font-bold text-[#D60041] hover:bg-rose-50 transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
                   >
                     <span>
-                      View all {totalCandidateJobMatches} matching job{totalCandidateJobMatches === 1 ? '' : 's'}
+                      View all {totalJobMatches} matching job{totalJobMatches === 1 ? '' : 's'}
                     </span>
                     <ArrowRight size={13} />
                   </button>

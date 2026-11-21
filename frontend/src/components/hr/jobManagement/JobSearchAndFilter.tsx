@@ -1,17 +1,25 @@
 import React from 'react';
 import {
   Search,
-  Filter,
   Building2,
   X,
   ArrowUpDown,
   LayoutGrid,
   List,
   RotateCcw,
+  Sliders,
+  ChevronDown,
 } from 'lucide-react';
 
 export type JobSortOption = 'newest' | 'applicants' | 'title';
 export type JobViewMode = 'cards' | 'table';
+
+interface StatusCounts {
+  all: number;
+  active: number;
+  archived: number;
+  customWeights: number;
+}
 
 interface JobSearchAndFilterProps {
   searchQuery: string;
@@ -32,8 +40,15 @@ interface JobSearchAndFilterProps {
   setCustomWeightsOnly?: (val: boolean) => void;
   totalFiltered?: number;
   totalCount?: number;
+  statusCounts?: StatusCounts;
   onResetFilters?: () => void;
 }
+
+const STATUS_TABS: Array<{ value: string; label: string; countKey: keyof StatusCounts }> = [
+  { value: 'All Status', label: 'All Positions', countKey: 'all' },
+  { value: 'Active', label: 'Active', countKey: 'active' },
+  { value: 'Inactive', label: 'Archived', countKey: 'archived' },
+];
 
 const JobSearchAndFilter: React.FC<JobSearchAndFilterProps> = ({
   searchQuery,
@@ -54,6 +69,7 @@ const JobSearchAndFilter: React.FC<JobSearchAndFilterProps> = ({
   setCustomWeightsOnly,
   totalFiltered,
   totalCount,
+  statusCounts,
   onResetFilters,
 }) => {
   const hasActiveFilters =
@@ -63,26 +79,128 @@ const JobSearchAndFilter: React.FC<JobSearchAndFilterProps> = ({
     customWeightsOnly;
 
   return (
-    <div className="bg-white/95 backdrop-blur-xs p-4 sm:p-5 rounded-2xl sm:rounded-3xl border border-gray-200/80 shadow-xs space-y-4">
-      <div className="flex flex-col xl:flex-row gap-3.5 xl:items-end">
+    <div className="bg-white rounded-2xl border border-slate-200/90 shadow-2xs overflow-visible">
+      {/* Top Bar: Status Segmented Tabs + Custom Weights + View Switcher */}
+      <div className="px-4 sm:px-5 py-3 border-b border-slate-100 flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+        {/* Status Tabs */}
+        <div
+          role="tablist"
+          aria-label="Filter jobs by status"
+          className="inline-flex items-center gap-1 bg-slate-100/80 p-1 rounded-xl border border-slate-200/60 self-start overflow-x-auto max-w-full"
+        >
+          {STATUS_TABS.map((tab) => {
+            const isActive = statusFilter === tab.value;
+            const count = statusCounts ? statusCounts[tab.countKey] : undefined;
+            return (
+              <button
+                key={tab.value}
+                type="button"
+                role="tab"
+                aria-selected={isActive}
+                onClick={() => setStatusFilter(tab.value)}
+                className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all whitespace-nowrap cursor-pointer ${
+                  isActive
+                    ? 'bg-white text-slate-900 shadow-2xs ring-1 ring-slate-200/70'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <span>{tab.label}</span>
+                {count !== undefined && (
+                  <span
+                    className={`px-1.5 py-0.5 rounded-md text-[11px] font-bold tabular-nums ${
+                      isActive
+                        ? 'bg-[#D10043]/10 text-[#D10043]'
+                        : 'bg-slate-200/70 text-slate-600'
+                    }`}
+                  >
+                    {count}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Right Quick Controls */}
+        <div className="flex flex-wrap items-center justify-between sm:justify-end gap-2.5">
+          {setCustomWeightsOnly && (
+            <button
+              type="button"
+              onClick={() => setCustomWeightsOnly(!customWeightsOnly)}
+              aria-pressed={customWeightsOnly}
+              className={`inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-xs font-semibold border transition-colors cursor-pointer ${
+                customWeightsOnly
+                  ? 'bg-[#D10043]/10 text-[#D10043] border-[#D10043]/30'
+                  : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50 hover:text-slate-900'
+              }`}
+            >
+              <Sliders size={13} />
+              <span>Custom Weights</span>
+              {statusCounts && statusCounts.customWeights > 0 && (
+                <span
+                  className={`px-1.5 py-0.2 rounded text-[10px] font-bold tabular-nums ${
+                    customWeightsOnly
+                      ? 'bg-[#D10043] text-white'
+                      : 'bg-slate-100 text-slate-600'
+                  }`}
+                >
+                  {statusCounts.customWeights}
+                </span>
+              )}
+            </button>
+          )}
+
+          {setViewMode && (
+            <div className="inline-flex items-center bg-slate-100/80 p-0.5 rounded-lg border border-slate-200/60">
+              <button
+                type="button"
+                onClick={() => setViewMode('cards')}
+                aria-label="Card view"
+                aria-pressed={viewMode === 'cards'}
+                className={`h-7 px-2.5 rounded-md text-xs font-semibold inline-flex items-center gap-1.5 transition-all cursor-pointer ${
+                  viewMode === 'cards'
+                    ? 'bg-white text-slate-900 shadow-2xs'
+                    : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                <LayoutGrid size={13} />
+                <span>Cards</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode('table')}
+                aria-label="Table view"
+                aria-pressed={viewMode === 'table'}
+                className={`h-7 px-2.5 rounded-md text-xs font-semibold inline-flex items-center gap-1.5 transition-all cursor-pointer ${
+                  viewMode === 'table'
+                    ? 'bg-white text-slate-900 shadow-2xs'
+                    : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                <List size={13} />
+                <span>Table</span>
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Bottom Bar: Search Input + Department + Sort */}
+      <div className="p-4 sm:px-5 sm:py-3.5 flex flex-col md:flex-row gap-3 items-stretch md:items-center">
         {/* Search Input */}
-        <div className="relative flex-grow min-w-0">
-          <label
-            htmlFor="job-search-input"
-            className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5 flex items-center gap-1.5"
-          >
-            <Search className="w-3.5 h-3.5 text-[#D10043]" />
-            <span>Search Positions</span>
+        <div className="relative flex-1 min-w-0">
+          <label htmlFor="job-search-input" className="sr-only">
+            Search Positions
           </label>
           <div className="relative">
             <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none z-10">
-              <Search className="h-4 w-4 text-gray-400" />
+              <Search className="h-4 w-4 text-slate-400" />
             </div>
             <input
               id="job-search-input"
               type="text"
-              placeholder="Search by title, job ID, department, or skill..."
-              className="w-full pl-10 pr-10 py-2.5 bg-gray-50/70 border border-gray-200 rounded-xl text-xs sm:text-sm font-medium text-gray-800 placeholder:text-gray-400 focus:outline-none focus:border-[#D10043] focus:bg-white focus:ring-4 focus:ring-pink-50 transition-all duration-200 relative z-10"
+              placeholder="Search by title, requisition ID, department, or skill..."
+              className="w-full h-10 pl-10 pr-9 bg-slate-50/70 border border-slate-200 rounded-xl text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-[#D10043] focus:bg-white focus:ring-3 focus:ring-[#D10043]/10 transition-all"
               value={searchQuery}
               onChange={(e) => {
                 setSearchQuery(e.target.value);
@@ -96,24 +214,24 @@ const JobSearchAndFilter: React.FC<JobSearchAndFilterProps> = ({
                 type="button"
                 aria-label="Clear search"
                 onClick={() => setSearchQuery('')}
-                className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-700 z-20 cursor-pointer"
+                className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-700 z-20 cursor-pointer"
               >
                 <X className="h-4 w-4" />
               </button>
             )}
 
             {showSuggestions && suggestions.length > 0 && (
-              <ul className="absolute top-full left-0 w-full mt-1.5 bg-white border border-gray-200 rounded-2xl shadow-xl z-50 overflow-hidden py-1.5">
+              <ul className="absolute top-full left-0 w-full mt-1.5 bg-white border border-slate-200 rounded-xl shadow-lg z-50 overflow-hidden py-1">
                 {suggestions.map((title, idx) => (
                   <li
                     key={idx}
-                    className="px-4 py-2 hover:bg-pink-50 hover:text-[#D10043] cursor-pointer text-xs sm:text-sm font-semibold transition-colors flex items-center gap-2.5 text-gray-700"
+                    className="px-3.5 py-2 hover:bg-slate-50 hover:text-[#D10043] cursor-pointer text-sm font-medium transition-colors flex items-center gap-2.5 text-slate-700"
                     onMouseDown={() => {
                       setSearchQuery(title);
                       setShowSuggestions(false);
                     }}
                   >
-                    <Search className="h-3.5 w-3.5 text-gray-300 shrink-0" />
+                    <Search className="h-3.5 w-3.5 text-slate-300 shrink-0" />
                     <span className="truncate">{title}</span>
                   </li>
                 ))}
@@ -122,157 +240,80 @@ const JobSearchAndFilter: React.FC<JobSearchAndFilterProps> = ({
           </div>
         </div>
 
-        {/* Filters & Controls */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:flex xl:items-end gap-3 shrink-0">
-          {/* Status Filter */}
-          <div className="w-full xl:w-40">
-            <label
-              htmlFor="job-status-filter"
-              className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5 flex items-center gap-1.5"
-            >
-              <Filter className="w-3.5 h-3.5 text-[#D10043]" />
-              <span>Status</span>
+        {/* Department & Sort Selects */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:flex items-center gap-2.5 shrink-0">
+          <div className="relative md:w-52">
+            <label htmlFor="job-dept-filter" className="sr-only">
+              Filter by Department
             </label>
-            <div className="relative">
-              <select
-                id="job-status-filter"
-                aria-label="Filter by Status"
-                className="w-full bg-gray-50/70 border border-gray-200 pl-3.5 pr-8 py-2.5 rounded-xl text-xs sm:text-sm font-semibold text-gray-700 focus:outline-none focus:border-[#D10043] focus:bg-white focus:ring-4 focus:ring-pink-50 transition-all cursor-pointer appearance-none truncate"
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
-              >
-                <option value="All Status">All Statuses</option>
-                <option value="Active">Active Only</option>
-                <option value="Inactive">Archived Only</option>
-              </select>
-              <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
-                <svg className="h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
-                </svg>
-              </div>
-            </div>
+            <Building2 className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <select
+              id="job-dept-filter"
+              aria-label="Filter by Department"
+              className="w-full h-10 bg-slate-50/70 border border-slate-200 pl-9 pr-8 rounded-xl text-xs sm:text-sm font-medium text-slate-700 focus:outline-none focus:border-[#D10043] focus:bg-white focus:ring-3 focus:ring-[#D10043]/10 transition-all cursor-pointer appearance-none truncate"
+              value={deptFilter}
+              onChange={(e) => setDeptFilter(e.target.value)}
+            >
+              {departments.map((d) => (
+                <option key={d} value={d}>
+                  {d}
+                </option>
+              ))}
+            </select>
+            <ChevronDown className="w-4 h-4 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
           </div>
 
-          {/* Department Filter */}
-          <div className="w-full xl:w-48">
-            <label
-              htmlFor="job-dept-filter"
-              className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5 flex items-center gap-1.5"
-            >
-              <Building2 className="w-3.5 h-3.5 text-[#D10043]" />
-              <span>Department</span>
-            </label>
-            <div className="relative">
-              <select
-                id="job-dept-filter"
-                aria-label="Filter by Department"
-                className="w-full bg-gray-50/70 border border-gray-200 pl-3.5 pr-8 py-2.5 rounded-xl text-xs sm:text-sm font-semibold text-gray-700 focus:outline-none focus:border-[#D10043] focus:bg-white focus:ring-4 focus:ring-pink-50 transition-all cursor-pointer appearance-none truncate"
-                value={deptFilter}
-                onChange={(e) => setDeptFilter(e.target.value)}
-              >
-                {departments.map((d) => (
-                  <option key={d} value={d}>
-                    {d}
-                  </option>
-                ))}
-              </select>
-              <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
-                <svg className="h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
-                </svg>
-              </div>
-            </div>
-          </div>
-
-          {/* Sort Dropdown */}
           {setSortBy && (
-            <div className="w-full xl:w-44">
-              <label
-                htmlFor="job-sort-select"
-                className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5 flex items-center gap-1.5"
-              >
-                <ArrowUpDown className="w-3.5 h-3.5 text-[#D10043]" />
-                <span>Sort By</span>
+            <div className="relative md:w-44">
+              <label htmlFor="job-sort-select" className="sr-only">
+                Sort positions
               </label>
-              <div className="relative">
-                <select
-                  id="job-sort-select"
-                  aria-label="Sort positions"
-                  className="w-full bg-gray-50/70 border border-gray-200 pl-3.5 pr-8 py-2.5 rounded-xl text-xs sm:text-sm font-semibold text-gray-700 focus:outline-none focus:border-[#D10043] focus:bg-white focus:ring-4 focus:ring-pink-50 transition-all cursor-pointer appearance-none truncate"
-                  value={sortBy}
-                  onChange={(e) => setSortBy(e.target.value as JobSortOption)}
-                >
-                  <option value="newest">Newest First</option>
-                  <option value="applicants">Most Applicants</option>
-                  <option value="title">Title (A–Z)</option>
-                </select>
-                <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
-                  <svg className="h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
-                  </svg>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* View Mode Toggle */}
-          {setViewMode && (
-            <div className="flex flex-col">
-              <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
-                View
-              </span>
-              <div className="inline-flex bg-gray-100 p-1 rounded-xl border border-gray-200/80 h-[42px]">
-                <button
-                  type="button"
-                  onClick={() => setViewMode('cards')}
-                  aria-label="Card view"
-                  aria-pressed={viewMode === 'cards'}
-                  className={`px-3 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
-                    viewMode === 'cards'
-                      ? 'bg-white text-gray-900 shadow-xs'
-                      : 'text-gray-500 hover:text-gray-800'
-                  }`}
-                >
-                  <LayoutGrid size={14} />
-                  <span>Cards</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setViewMode('table')}
-                  aria-label="Table view"
-                  aria-pressed={viewMode === 'table'}
-                  className={`px-3 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
-                    viewMode === 'table'
-                      ? 'bg-white text-gray-900 shadow-xs'
-                      : 'text-gray-500 hover:text-gray-800'
-                  }`}
-                >
-                  <List size={14} />
-                  <span>Table</span>
-                </button>
-              </div>
+              <ArrowUpDown className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <select
+                id="job-sort-select"
+                aria-label="Sort positions"
+                className="w-full h-10 bg-slate-50/70 border border-slate-200 pl-9 pr-8 rounded-xl text-xs sm:text-sm font-medium text-slate-700 focus:outline-none focus:border-[#D10043] focus:bg-white focus:ring-3 focus:ring-[#D10043]/10 transition-all cursor-pointer appearance-none truncate"
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value as JobSortOption)}
+              >
+                <option value="newest">Newest First</option>
+                <option value="applicants">Most Applicants</option>
+                <option value="title">Title (A–Z)</option>
+              </select>
+              <ChevronDown className="w-4 h-4 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
             </div>
           )}
         </div>
       </div>
 
-      {/* Results & Active Filters Strip */}
+      {/* Active Filters & Results Count Strip */}
       {(totalFiltered !== undefined || hasActiveFilters) && (
-        <div className="pt-3 border-t border-gray-100 flex flex-wrap items-center justify-between gap-2 text-xs">
+        <div className="px-4 sm:px-5 py-2.5 bg-slate-50/60 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2 text-xs rounded-b-2xl">
           <div className="flex flex-wrap items-center gap-2">
             {totalFiltered !== undefined && totalCount !== undefined && (
-              <span className="text-gray-500 font-medium">
-                Showing <strong className="text-gray-900">{totalFiltered}</strong> of{' '}
-                <strong className="text-gray-900">{totalCount}</strong> position{totalCount === 1 ? '' : 's'}
+              <span className="text-slate-500">
+                Showing <strong className="font-semibold text-slate-900 tabular-nums">{totalFiltered}</strong> of{' '}
+                <strong className="font-semibold text-slate-900 tabular-nums">{totalCount}</strong> position
+                {totalCount === 1 ? '' : 's'}
               </span>
+            )}
+            {deptFilter !== 'All Departments' && (
+              <button
+                type="button"
+                onClick={() => setDeptFilter('All Departments')}
+                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-white text-slate-700 border border-slate-200 font-medium hover:border-slate-300 transition-colors cursor-pointer"
+              >
+                <span>Dept: {deptFilter}</span>
+                <X size={12} className="text-slate-400" />
+              </button>
             )}
             {customWeightsOnly && setCustomWeightsOnly && (
               <button
                 type="button"
                 onClick={() => setCustomWeightsOnly(false)}
-                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-pink-50 text-[#D10043] border border-pink-200 font-bold hover:bg-pink-100 transition-colors cursor-pointer"
+                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-[#D10043]/10 text-[#D10043] border border-[#D10043]/20 font-medium hover:bg-[#D10043]/15 transition-colors cursor-pointer"
               >
-                <span>Custom Weights Only</span>
+                <span>Custom Weights</span>
                 <X size={12} />
               </button>
             )}
@@ -282,10 +323,10 @@ const JobSearchAndFilter: React.FC<JobSearchAndFilterProps> = ({
             <button
               type="button"
               onClick={onResetFilters}
-              className="inline-flex items-center gap-1.5 text-xs font-bold text-[#D10043] hover:text-[#B00038] transition-colors cursor-pointer"
+              className="inline-flex items-center gap-1 text-xs font-semibold text-[#D10043] hover:text-[#B00038] transition-colors cursor-pointer"
             >
-              <RotateCcw size={13} />
-              <span>Reset Filters</span>
+              <RotateCcw size={12} />
+              <span>Reset filters</span>
             </button>
           )}
         </div>

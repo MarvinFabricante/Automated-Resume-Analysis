@@ -16,13 +16,13 @@ interface DetailCardProps {
 }
 
 const DetailCard: React.FC<DetailCardProps> = ({ icon: Icon, label, value, colorClass = "text-gray-400" }) => (
-  <div className="group p-4 sm:p-6 rounded-2xl sm:rounded-[24px] bg-gray-50/50 border border-gray-100/50 hover:bg-white hover:border-pink-100 hover:shadow-xl hover:shadow-pink-50/50 transition-all duration-300 flex items-center gap-3.5 sm:gap-5">
-    <div className={`w-11 h-11 sm:w-14 sm:h-14 rounded-xl sm:rounded-2xl bg-white border border-gray-100 flex items-center justify-center shadow-sm group-hover:scale-110 transition-transform duration-500 shrink-0 ${colorClass}`}>
-      <Icon className="w-5 h-5 sm:w-6 sm:h-6" />
+  <div className="group p-4 rounded-2xl bg-slate-50/70 border border-slate-200/70 hover:bg-white hover:border-slate-300 hover:shadow-sm transition-all duration-200 flex items-center gap-3.5">
+    <div className={`w-11 h-11 rounded-xl bg-white border border-slate-200/80 flex items-center justify-center shadow-2xs shrink-0 ${colorClass}`}>
+      <Icon className="w-5 h-5" />
     </div>
     <div className="min-w-0">
-      <p className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">{label}</p>
-      <p className="text-sm sm:text-base font-black text-gray-900 truncate">{value || 'N/A'}</p>
+      <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 mb-0.5">{label}</p>
+      <p className="text-sm sm:text-base font-bold text-slate-900 truncate">{value || 'N/A'}</p>
     </div>
   </div>
 );
@@ -46,7 +46,7 @@ const ViewJobDetailsModal: React.FC<ViewJobDetailsModalProps> = ({ isOpen, onClo
       <Helmet>
         <title>{job.job_title || job.title} | Job Details</title>
       </Helmet>
-      <div className="bg-white w-full max-w-7xl rounded-2xl sm:rounded-3xl md:rounded-[40px] shadow-[0_20px_50px_rgba(0,0,0,0.1)] overflow-hidden animate-in fade-in zoom-in duration-300 max-h-[92vh] sm:max-h-[90vh] flex flex-col relative border border-white/20">
+      <div className="bg-white w-full max-w-6xl rounded-2xl sm:rounded-3xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200 max-h-[92vh] sm:max-h-[90vh] flex flex-col relative border border-slate-200/80">
 
         {/* Modal Header */}
         <div className="px-4 sm:px-8 md:px-10 py-4 sm:py-6 md:py-8 border-b border-gray-50 flex justify-between items-center bg-white/80 backdrop-blur-md sticky top-0 z-10">
