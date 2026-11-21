@@ -123,6 +123,29 @@ function buildFallbackJobQuestions(
   }
 
   const reqCerts = String(job?.certifications_requirements || '').trim();
+  const reqCertNorm = reqCerts.toLowerCase().replace(/[.\s]+$/, '');
+  const noCertReqValues = new Set([
+    '',
+    'none',
+    'none required',
+    'no',
+    'no certification',
+    'no certifications',
+    'no certification required',
+    'no certifications required',
+    'no specific certification required',
+    'no specific certifications required',
+    'n/a',
+    'na',
+    'nil',
+    'not required',
+    'not applicable',
+    'not specified',
+    'optional',
+    '-',
+    '--',
+  ]);
+  const hasCertRequirement = !noCertReqValues.has(reqCertNorm);
   const rawCandCerts = Array.isArray(extractedData?.certifications_list)
     ? extractedData.certifications_list.join(' ')
     : Array.isArray(extractedData?.certifications)
@@ -137,7 +160,7 @@ function buildFallbackJobQuestions(
   const hasAllCerts =
     Number(matchData?.certifications_score) >= 100 ||
     (reqCertTokens.length > 0 && reqCertTokens.every((tok) => candCertLower.includes(tok)));
-  if (reqCerts && reqCerts.toLowerCase() !== 'none' && !hasAllCerts) {
+  if (hasCertRequirement && !hasAllCerts) {
     questions.push({
       id: `clarify_${slug}_certifications`,
       field: 'certifications',

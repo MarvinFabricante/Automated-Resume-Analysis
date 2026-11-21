@@ -1152,43 +1152,391 @@ def _extract_education_requirement(text: str) -> str:
     return ""
 
 
-def calculate_certifications_match(resume_certs: str, job_description: str, certifications_req: str = None, fuzzy_threshold: Optional[float] = None) -> dict:
+_NO_CERT_REQUIREMENTS = {
+    "",
+    "none",
+    "none required",
+    "no",
+    "no certification",
+    "no certifications",
+    "no certification required",
+    "no certifications required",
+    "no specific certification",
+    "no specific certifications",
+    "no specific certification required",
+    "no specific certifications required",
+    "n/a",
+    "na",
+    "nil",
+    "not required",
+    "not applicable",
+    "not specified",
+    "optional",
+    "-",
+    "--",
+}
+
+_GENERIC_CERT_REQ_PHRASES = {
+    "relevant certification",
+    "relevant certifications",
+    "any relevant certification",
+    "any relevant certifications",
+    "certification",
+    "certifications",
+    "certified",
+    "certificate",
+    "certificates",
+}
+
+_GENERIC_CERT_WORDS = {
+    "certification", "certifications", "certified", "certificate", "certificates",
+    "credential", "credentials", "license", "licensed", "licenses", "licensure",
+    "eligibility", "eligible", "training", "trainings", "seminar", "seminars",
+    "workshop", "workshops", "bootcamp", "bootcamps", "course", "courses",
+    "program", "programs", "completion", "participation", "attendance",
+    "achievement", "excellence", "appreciation", "recognition", "merit",
+    "relevant", "required", "preferred", "plus", "advantage", "must", "have",
+    "holder", "passer", "registered", "professional", "national", "level",
+    "in", "of", "for", "and", "or", "the", "a", "an", "with", "to", "on", "at",
+}
+
+_AMBIGUOUS_SINGLE_CERT_TOKENS = {
+    "safety", "management", "operations", "control", "systems", "design",
+    "analysis", "support", "planning", "testing", "maintenance", "quality",
+    "service", "services", "security", "development", "engineering", "health",
+    "business", "technical", "digital", "data", "project", "office",
+}
+
+_CERT_ABBREVIATIONS = {
+    "cpa": "certified public accountant",
+    "chrp": "certified human resource professional",
+    "pmp": "project management professional",
+    "cka": "certified kubernetes administrator",
+    "bosh": "basic occupational safety and health",
+    "cosh": "construction occupational safety and health",
+    "bls": "basic life support",
+    "lpt": "licensed professional teacher",
+    "rce": "registered civil engineer",
+    "ree": "registered electrical engineer",
+    "rme": "registered mechanical engineer",
+    "rche": "registered chemical engineer",
+    "cse": "civil service eligibility",
+}
+
+
+def _is_no_cert_requirement(text: Any) -> bool:
+    """Return True when a certification requirement string represents 'none' / not required."""
+    if text is None:
+        return True
+    norm = re.sub(r'[.\s]+$', '', str(text).strip().lower())
+    return norm in _NO_CERT_REQUIREMENTS
+
+
+def _normalize_cert_text(text: str) -> str:
+    """Normalize a certification name for boundary-safe comparison."""
+    if not text:
+        return ""
+    s = re.sub(r'[-_/]+', ' ', str(text).lower().strip())
+    s = re.sub(r'[^a-z0-9+#.\s]', ' ', s)
+    return re.sub(r'\s+', ' ', s).strip()
+
+
+def _normalize_certifications_input(certs_input: Any) -> list[str]:
+    """Normalize a certifications string/list into clean individual certification names."""
+    if not certs_input:
+        return []
+
+    raw_items: list[str] = []
+    if isinstance(certs_input, (list, tuple, set)):
+        for item in certs_input:
+            if isinstance(item, dict):
+                val = item.get("canonical_name") or item.get("name") or ""
+                if val:
+                    raw_items.extend(re.split(r'[|,\n;•]', str(val)))
+            elif item:
+                raw_items.extend(re.split(r'[|,\n;•]', str(item)))
+    else:
+        raw_items = re.split(r'[|,\n;•]', str(certs_input))
+
+    cleaned: list[str] = []
+    seen: set[str] = set()
+    for item in raw_items:
+        label = re.sub(r'\s+', ' ', str(item)).strip()
+        if not label:
+            continue
+        low = re.sub(r'[.\s]+$', '', label.lower())
+        if low in _NO_CERT_REQUIREMENTS or low in {"unknown", "none specified"}:
+            continue
+        if low not in seen:
+            seen.add(low)
+            cleaned.append(label)
+    return cleaned
+
+
+def _extract_cert_alternatives(req_cert: str) -> list[str]:
+    """Expand 'A or B' / '(A or B)' requirement clauses into individual alternatives."""
+    raw = str(req_cert or "").strip()
+    if not raw:
+        return []
+
+    paren_match = re.search(r'\(([^)]+)\)', raw)
+    if paren_match:
+        inner = paren_match.group(1)
+        if re.search(r'\b(?:or)\b|/', inner, re.IGNORECASE):
+            opts = [p.strip() for p in re.split(r'\s+(?:or)\s+|/', inner, flags=re.IGNORECASE) if p.strip()]
+            if opts:
+                return opts
+
+    if re.search(r'\s+(?:or)\s+|/', raw, re.IGNORECASE):
+        opts = [p.strip() for p in re.split(r'\s+(?:or)\s+|/', raw, flags=re.IGNORECASE) if p.strip()]
+        if len(opts) > 1:
+            return opts
+
+    return [raw]
+
+
+def _cert_core_tokens(norm_text: str) -> list[str]:
+    """Extract meaningful domain/identifier tokens from a normalized certification string."""
+    tokens = re.findall(r'[a-z0-9+#]+', norm_text.lower())
+    return [t for t in tokens if (len(t) >= 2 or t.isdigit()) and t not in _GENERIC_CERT_WORDS]
+
+
+def _cert_item_matches(cand_cert: str, req_cert: str, fuzzy_threshold: Optional[float] = None) -> bool:
+    """Strictly determine whether a candidate certification satisfies a required certification item."""
+    cand_norm = _normalize_cert_text(cand_cert)
+    if not cand_norm:
+        return False
+
+    if fuzzy_threshold is None:
+        try:
+            cfg = get_current_matching_config()
+            fuzzy_threshold = float(cfg.get("thresholds", {}).get("fuzzy_match_threshold", 0.75))
+        except Exception:
+            fuzzy_threshold = 0.75
+
+    cand_core_tokens = _cert_core_tokens(cand_norm)
+    cand_core_str = " ".join(cand_core_tokens)
+    cand_variants = [cand_norm]
+    if cand_norm in _CERT_ABBREVIATIONS:
+        cand_variants.append(_CERT_ABBREVIATIONS[cand_norm])
+    for tok in cand_core_tokens:
+        if tok in _CERT_ABBREVIATIONS:
+            cand_variants.append(_CERT_ABBREVIATIONS[tok])
+
+    for alt in _extract_cert_alternatives(req_cert):
+        alt_norm = _normalize_cert_text(alt)
+        if not alt_norm:
+            continue
+
+        alt_variants = [alt_norm]
+        if alt_norm in _CERT_ABBREVIATIONS:
+            alt_variants.append(_CERT_ABBREVIATIONS[alt_norm])
+
+        for av in alt_variants:
+            for cv in cand_variants:
+                if av == cv:
+                    return True
+
+        alt_core = _cert_core_tokens(alt_norm)
+        if not alt_core:
+            continue
+
+        # All meaningful tokens (or their known expansion) must appear on word boundaries
+        if all(
+            any(_term_in_text(tok, cv) for cv in cand_variants)
+            or (tok in _CERT_ABBREVIATIONS and any(_term_in_text(_CERT_ABBREVIATIONS[tok], cv) for cv in cand_variants))
+            for tok in alt_core
+        ):
+            return True
+
+        # Fuzzy match only on stripped core strings of sufficient length to avoid short-acronym false positives
+        alt_core_str = " ".join(alt_core)
+        if len(alt_core_str) >= 5 and len(cand_core_str) >= 5:
+            if SequenceMatcher(None, cand_core_str, alt_core_str).ratio() >= fuzzy_threshold:
+                return True
+
+    return False
+
+
+def _filter_relevant_certifications(cand_certs: list[str], job_title: str, job_description: str) -> list[str]:
+    """Return only candidate certifications that have genuine domain/role relevance to the target job."""
+    if not cand_certs:
+        return []
+
+    job_text = f"{job_title or ''} {job_description or ''}".strip()
+    if not job_text:
+        return []
+
+    job_families = set(_detect_all_role_families(job_text).keys())
+    job_kw = _extract_domain_keywords(job_text) - _GENERIC_CERT_WORDS
+
+    relevant: list[str] = []
+    for cert in cand_certs:
+        cert_norm = _normalize_cert_text(cert)
+        core_tokens = _cert_core_tokens(cert_norm)
+        core_text = " ".join(core_tokens)
+        if not core_text:
+            continue
+
+        # Expand known certification abbreviations for family/keyword matching
+        expanded_parts = [cert, core_text]
+        for tok in core_tokens:
+            if tok in _CERT_ABBREVIATIONS:
+                expanded_parts.append(_CERT_ABBREVIATIONS[tok])
+        cert_eval_text = " ".join(expanded_parts)
+
+        cert_families = set(_detect_all_role_families(cert_eval_text).keys())
+        family_overlap = bool(cert_families & job_families)
+
+        cert_kw = (_extract_domain_keywords(cert_eval_text) - _GENERIC_CERT_WORDS) | set(core_tokens)
+        direct_overlap = cert_kw & job_kw
+        specific_overlap = [tok for tok in direct_overlap if tok not in _AMBIGUOUS_SINGLE_CERT_TOKENS]
+
+        if family_overlap or len(direct_overlap) >= 2 or len(specific_overlap) >= 1:
+            relevant.append(cert)
+
+    return relevant
+
+
+def calculate_certifications_match(
+    resume_certs: Any,
+    job_description: str,
+    certifications_req: str = None,
+    fuzzy_threshold: Optional[float] = None,
+    job_title: str = "",
+) -> dict:
     """
-    Compare resume certifications against job requirements.
-    Returns a dict with score and details.
+    Compare resume certifications against job requirements and role relevance.
+    Irrelevant or unverified certifications never earn a perfect score or strength.
     """
-    required_certs = certifications_req or ""
-    if not required_certs:
+    cand_certs = _normalize_certifications_input(resume_certs)
+    req_raw = str(certifications_req or "").strip()
+    req_norm = re.sub(r'[.\s]+$', '', req_raw.lower())
+    explicit_no_req = bool(certifications_req is not None and _is_no_cert_requirement(req_raw))
+
+    has_specific_req = False
+    has_generic_req = False
+    required_certs = "None"
+    req_items: list[str] = []
+
+    if req_raw and not explicit_no_req:
+        if req_norm in _GENERIC_CERT_REQ_PHRASES:
+            required_certs = req_raw
+            has_generic_req = True
+        else:
+            parsed = [p.strip() for p in re.split(r'[|,\n;•]', req_raw) if p.strip()]
+            meaningful = [p for p in parsed if _cert_core_tokens(_normalize_cert_text(p))]
+            if meaningful:
+                required_certs = req_raw
+                req_items = meaningful
+                has_specific_req = True
+            else:
+                required_certs = req_raw
+                has_generic_req = True
+    elif not explicit_no_req and job_description:
         if re.search(r'\b(certification|certified|certificate)\b', job_description, re.IGNORECASE):
             required_certs = "Relevant Certification"
-            
-    if not required_certs:
-        return {"score": 1.0, "required_certifications": "None", "candidate_certifications": resume_certs or "None", "reason": "No specific certification requirement found."}
-        
-    if not resume_certs:
-        return {"score": 0.3, "required_certifications": required_certs, "candidate_certifications": "None", "reason": f"Job requires {required_certs}, but no certifications were found."}
-        
-    req_tokens = _tokenize_skills(required_certs)
-    if not req_tokens:
-        return {"score": 1.0, "required_certifications": "None", "candidate_certifications": resume_certs, "reason": "No specific certification requirement found."}
-        
-    resume_tokens = _tokenize_skills(resume_certs)
-    matched = []
-    for req in req_tokens:
-        if req in ['certification', 'certified', 'certificate']:
-            continue
-        for res in resume_tokens:
-            if _fuzzy_match(res, req, threshold=fuzzy_threshold):
-                matched.append(req)
+            has_generic_req = True
+
+    cand_display = ", ".join(cand_certs) if cand_certs else "None"
+
+    if not has_specific_req and not has_generic_req:
+        if not cand_certs:
+            return {
+                "score": 0.0,
+                "required_certifications": "None",
+                "candidate_certifications": "None",
+                "matched_certifications": [],
+                "is_relevant": False,
+                "has_requirement": False,
+                "reason": "No specific certification requirement found; no certifications listed on resume.",
+            }
+        relevant_certs = _filter_relevant_certifications(cand_certs, job_title, job_description)
+        if relevant_certs:
+            return {
+                "score": 1.0,
+                "required_certifications": "None",
+                "candidate_certifications": cand_display,
+                "matched_certifications": relevant_certs,
+                "is_relevant": True,
+                "has_requirement": False,
+                "reason": f"No specific certification required; candidate holds relevant certification(s): {', '.join(relevant_certs)}.",
+            }
+        return {
+            "score": 0.0,
+            "required_certifications": "None",
+            "candidate_certifications": cand_display,
+            "matched_certifications": [],
+            "is_relevant": False,
+            "has_requirement": False,
+            "reason": f"No specific certification required; candidate certification(s) ({cand_display}) are not relevant to this role.",
+        }
+
+    if not cand_certs:
+        return {
+            "score": 0.0,
+            "required_certifications": required_certs,
+            "candidate_certifications": "None",
+            "matched_certifications": [],
+            "is_relevant": False,
+            "has_requirement": True,
+            "reason": f"Job requires {required_certs}, but no certifications were found.",
+        }
+
+    if has_generic_req:
+        relevant_certs = _filter_relevant_certifications(cand_certs, job_title, job_description)
+        if relevant_certs:
+            return {
+                "score": 1.0,
+                "required_certifications": required_certs,
+                "candidate_certifications": ", ".join(relevant_certs),
+                "matched_certifications": relevant_certs,
+                "is_relevant": True,
+                "has_requirement": True,
+                "reason": f"Candidate holds relevant certification(s) ({', '.join(relevant_certs)}) aligned with this role.",
+            }
+        return {
+            "score": 0.0,
+            "required_certifications": required_certs,
+            "candidate_certifications": cand_display,
+            "matched_certifications": [],
+            "is_relevant": False,
+            "has_requirement": True,
+            "reason": f"Candidate certifications ({cand_display}) are not relevant to this role.",
+        }
+
+    # Mode A: Specific required certifications
+    matched_reqs: list[str] = []
+    matched_cands: list[str] = []
+    for req_item in req_items:
+        for cand_item in cand_certs:
+            if _cert_item_matches(cand_item, req_item, fuzzy_threshold=fuzzy_threshold):
+                matched_reqs.append(req_item)
+                if cand_item not in matched_cands:
+                    matched_cands.append(cand_item)
                 break
-                
-    if not matched:
-        return {"score": 0.5, "required_certifications": required_certs, "candidate_certifications": "Unrelated", "reason": f"Your certifications do not match the required {required_certs}."}
-        
-    valid_reqs = [t for t in req_tokens if t not in ['certification', 'certified', 'certificate']]
-    score = len(matched) / len(valid_reqs) if valid_reqs else 1.0
-    score = min(1.0, score + 0.2)
-    return {"score": score, "required_certifications": required_certs, "candidate_certifications": ", ".join(matched), "reason": f"Your certifications match {int(score*100)}% of the requirement."}
+
+    if not matched_reqs:
+        return {
+            "score": 0.0,
+            "required_certifications": required_certs,
+            "candidate_certifications": cand_display,
+            "matched_certifications": [],
+            "is_relevant": False,
+            "has_requirement": True,
+            "reason": f"Candidate certifications ({cand_display}) do not match the required {required_certs}.",
+        }
+
+    score = round(len(matched_reqs) / len(req_items), 4)
+    return {
+        "score": score,
+        "required_certifications": required_certs,
+        "candidate_certifications": ", ".join(matched_cands),
+        "matched_certifications": matched_cands,
+        "is_relevant": True,
+        "has_requirement": True,
+        "reason": f"Matched {len(matched_reqs)} of {len(req_items)} required certification(s): {', '.join(matched_cands)}.",
+    }
 
 
 def _format_years_label(val: int | float) -> str:
@@ -1203,7 +1551,13 @@ def _format_years_word(val: int | float) -> str:
     return f"{num} year{'s' if num != 1 else ''}"
 
 
-def _generate_recommendations(skills_result: dict, experience_result: dict, education_result: dict, job_title: str) -> list[str]:
+def _generate_recommendations(
+    skills_result: dict,
+    experience_result: dict,
+    education_result: dict,
+    job_title: str,
+    certs_result: Optional[dict] = None,
+) -> list[str]:
     """
     Generate actionable optimization recommendations based on gap analysis.
     Returns a list of 2-3 bullet-point suggestions.
@@ -1244,9 +1598,11 @@ def _generate_recommendations(skills_result: dict, experience_result: dict, educ
         )
 
     # Certifications recommendation
-    req_certs = education_result.get("required_certifications", "")
-    cand_certs = education_result.get("candidate_certifications", "")
-    if req_certs and req_certs != "None" and not cand_certs:
+    cert_source = certs_result if certs_result is not None else education_result
+    req_certs = cert_source.get("required_certifications", "")
+    cand_certs = cert_source.get("candidate_certifications", "")
+    certs_relevant = cert_source.get("is_relevant", bool(cand_certs and cand_certs not in ("None", "Unrelated")))
+    if req_certs and req_certs != "None" and not certs_relevant:
         recommendations.append(
             f"The position requires {req_certs}. Consider pursuing these certifications to improve your candidacy."
         )
@@ -1352,8 +1708,19 @@ def _generate_nlp_strengths(skills_result: dict, experience_result: dict, educat
         strengths.append(f"Transferable skills: {', '.join(transferable[:4])}.")
     if education_result["score"] >= 0.8:
         strengths.append("Education background aligns well with job requirements.")
-    if certs_result["score"] >= 0.8:
-        strengths.append("Relevant certifications meet the job requirements.")
+    certs_is_relevant = certs_result.get("is_relevant")
+    if certs_is_relevant is None:
+        certs_is_relevant = (
+            certs_result.get("required_certifications", "None") != "None"
+            and certs_result.get("candidate_certifications", "None") not in ("None", "Unrelated", "")
+        )
+    if certs_is_relevant and certs_result["score"] >= 0.8:
+        if certs_result.get("required_certifications", "None") != "None":
+            strengths.append("Relevant certifications meet the job requirements.")
+        else:
+            rel_certs = certs_result.get("matched_certifications") or []
+            if rel_certs:
+                strengths.append(f"Holds relevant certifications for this role ({', '.join(rel_certs[:3])}).")
     if not strengths:
         strengths.append("Resume was successfully parsed and analyzed.")
     return strengths[:5]
@@ -1866,10 +2233,16 @@ def calculate_match_score(resume_data: dict, job, use_ai: bool = False, matching
         resume_education, job_desc, getattr(job, 'education_requirements', None)
     )
 
-    # Certifications matching
-    resume_certs = resume_data.get("certifications", "") or resume_data.get("skills", "")
+    # Certifications matching (never fall back to skills — only actual certifications)
+    raw_certs = resume_data.get("certifications")
+    if not raw_certs or (isinstance(raw_certs, str) and _is_no_cert_requirement(raw_certs)):
+        raw_certs = resume_data.get("candidate_certifications") or resume_data.get("certifications_list") or ""
     certs_result = calculate_certifications_match(
-        resume_certs, job_desc, getattr(job, 'certifications_requirements', None), fuzzy_threshold=fuzzy_th
+        raw_certs,
+        job_desc,
+        getattr(job, 'certifications_requirements', None),
+        fuzzy_threshold=fuzzy_th,
+        job_title=getattr(job, 'job_title', "") or "",
     )
 
     # Location matching
@@ -1931,7 +2304,7 @@ def calculate_match_score(resume_data: dict, job, use_ai: bool = False, matching
 
     all_matched = [s.title() for s in skills_result["matched"]]
     all_missing = [s.title() for s in skills_result["missing"]]
-    final_recommendations = _generate_recommendations(skills_result, experience_result, education_result, job.job_title)
+    final_recommendations = _generate_recommendations(skills_result, experience_result, education_result, job.job_title, certs_result=certs_result)
 
     pct_skills = round((w_skills / total_w) * 100)
     pct_exp = round((w_exp / total_w) * 100)
