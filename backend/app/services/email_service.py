@@ -1,16 +1,22 @@
 import os
 import sys
+import html
 import logging
 import smtplib
 import asyncio
 from datetime import datetime
-from typing import Optional
+from typing import Optional, Any
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.utils import formataddr
 from dotenv import load_dotenv
 
 from app.utils.redis_client import redis_tx_manager, push_to_queue
+from app.services.message_template_service import (
+    build_interview_template_context,
+    get_template,
+    render_template,
+)
 
 load_dotenv()
 
@@ -172,6 +178,62 @@ async def send_reset_password_email(email: str, token: str):
     return await _send_email_redis_first(email, subject, body, "password_reset")
 
 
+def _escape_html_multiline(value: Optional[str]) -> str:
+    """Escape HTML special characters and convert newlines to <br> for safe email rendering."""
+    if not value:
+        return ""
+    return html.escape(str(value)).replace("\n", "<br>")
+
+
+def _build_interview_venue_rows(
+    location: Optional[str] = None,
+    meeting_link: Optional[str] = None,
+    interviewer_email: Optional[str] = None,
+) -> tuple[str, str]:
+    """Build optional table rows (location, meeting link, interviewer contact) and CTA button HTML."""
+    rows: list[str] = []
+    if interviewer_email and interviewer_email.strip():
+        safe_email = html.escape(interviewer_email.strip())
+        rows.append(
+            f"""
+                        <tr>
+                            <td style="padding: 6px 0; color: #64748b; font-weight: 600;">HR Contact:</td>
+                            <td style="padding: 6px 0; color: #0f172a; font-weight: 600;"><a href="mailto:{safe_email}" style="color: #D60041; text-decoration: none;">{safe_email}</a></td>
+                        </tr>"""
+        )
+
+    clean_location = (location or "").strip()
+    if clean_location:
+        rows.append(
+            f"""
+                        <tr>
+                            <td style="padding: 6px 0; color: #64748b; font-weight: 600;">Venue / Format:</td>
+                            <td style="padding: 6px 0; color: #0f172a; font-weight: 700;">{html.escape(clean_location)}</td>
+                        </tr>"""
+        )
+
+    clean_link = (meeting_link or "").strip()
+    meeting_cta = ""
+    if clean_link:
+        safe_link = html.escape(clean_link, quote=True)
+        rows.append(
+            f"""
+                        <tr>
+                            <td style="padding: 6px 0; color: #64748b; font-weight: 600;">Meeting Link:</td>
+                            <td style="padding: 6px 0; word-break: break-all;"><a href="{safe_link}" style="color: #D60041; font-weight: 700; text-decoration: underline;">{safe_link}</a></td>
+                        </tr>"""
+        )
+        meeting_cta = f"""
+                <div style="text-align: center; margin: 20px 0 24px 0;">
+                    <a href="{safe_link}" style="background-color: #D60041; color: #ffffff; padding: 12px 28px; text-decoration: none; border-radius: 25px; font-weight: 700; font-size: 14px; display: inline-block;">
+                        Join Interview Meeting &rarr;
+                    </a>
+                </div>
+        """
+
+    return "".join(rows), meeting_cta
+
+
 async def send_interview_invitation_email(
     to_email: str,
     candidate_name: str,
@@ -181,21 +243,51 @@ async def send_interview_invitation_email(
     end_time: datetime,
     interviewer_name: Optional[str] = None,
     notes: Optional[str] = None,
+    location: Optional[str] = None,
+    meeting_link: Optional[str] = None,
+    interviewer_email: Optional[str] = None,
+    custom_subject: Optional[str] = None,
+    custom_message: Optional[str] = None,
+    db: Optional[Any] = None,
 ) -> bool:
-    """Send a detailed interview invitation email to the candidate's Gmail account."""
+    """Send a detailed interview invitation email to the candidate's email account."""
     formatted_date = start_time.strftime("%A, %B %d, %Y")
     start_str = start_time.strftime("%I:%M %p")
     end_str = end_time.strftime("%I:%M %p")
     interviewer_display = interviewer_name if interviewer_name else "Mariwasa HR Panel"
 
-    subject = f"Interview Scheduled: {interview_title} - {job_title} | Mariwasa Siam Ceramics"
+    ctx = build_interview_template_context(
+        candidate_name=candidate_name,
+        job_title=job_title,
+        interview_title=interview_title,
+        start_time=start_time,
+        end_time=end_time,
+        interviewer_name=interviewer_display,
+        interviewer_email=interviewer_email,
+        location=location,
+        meeting_link=meeting_link,
+        notes=notes,
+        candidate_email=to_email,
+    )
+    tmpl = await get_template(db, "interview_scheduled")
+    subject = (custom_subject or "").strip() or render_template(
+        tmpl.get("email_subject") or f"Interview Scheduled: {interview_title} - {job_title} | Mariwasa Siam Ceramics",
+        ctx,
+    )
+    intro_text = (custom_message or "").strip() or render_template(
+        tmpl.get("email_message")
+        or f"We are pleased to inform you that an interview has been scheduled for your application for the position of {job_title} at Mariwasa Siam Ceramics, Inc.",
+        ctx,
+    )
+    intro_html = _escape_html_multiline(intro_text)
+    extra_rows, meeting_cta = _build_interview_venue_rows(location, meeting_link, interviewer_email)
 
     notes_section = ""
     if notes and notes.strip():
         notes_section = f"""
         <div style="margin-top: 20px; padding: 16px; background-color: #f8fafc; border-left: 4px solid #D60041; border-radius: 4px;">
             <p style="margin: 0 0 6px 0; font-size: 12px; font-weight: bold; text-transform: uppercase; color: #475569; letter-spacing: 0.05em;">Interview Agenda / Notes</p>
-            <p style="margin: 0; font-size: 14px; color: #1e293b; white-space: pre-wrap;">{notes}</p>
+            <p style="margin: 0; font-size: 14px; color: #1e293b; white-space: pre-wrap;">{html.escape(notes)}</p>
         </div>
         """
 
@@ -223,10 +315,10 @@ async def send_interview_invitation_email(
 
             <!-- Main Content -->
             <div style="padding: 32px;">
-                <p style="font-size: 16px; margin: 0 0 16px 0;">Dear <strong>{candidate_name}</strong>,</p>
+                <p style="font-size: 16px; margin: 0 0 16px 0;">Dear <strong>{html.escape(candidate_name)}</strong>,</p>
 
                 <p style="font-size: 15px; color: #334155; margin: 0 0 24px 0; line-height: 1.6;">
-                    We are pleased to inform you that an interview has been scheduled for your application for the position of <strong>{job_title}</strong> at Mariwasa Siam Ceramics, Inc.
+                    {intro_html}
                 </p>
 
                 <!-- Interview Details Card -->
@@ -238,11 +330,11 @@ async def send_interview_invitation_email(
                     <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
                         <tr>
                             <td style="padding: 6px 0; color: #64748b; font-weight: 600; width: 140px;">Stage / Round:</td>
-                            <td style="padding: 6px 0; color: #0f172a; font-weight: 700;">{interview_title}</td>
+                            <td style="padding: 6px 0; color: #0f172a; font-weight: 700;">{html.escape(interview_title)}</td>
                         </tr>
                         <tr>
                             <td style="padding: 6px 0; color: #64748b; font-weight: 600;">Position:</td>
-                            <td style="padding: 6px 0; color: #0f172a; font-weight: 700;">{job_title}</td>
+                            <td style="padding: 6px 0; color: #0f172a; font-weight: 700;">{html.escape(job_title)}</td>
                         </tr>
                         <tr>
                             <td style="padding: 6px 0; color: #64748b; font-weight: 600;">Date:</td>
@@ -254,12 +346,14 @@ async def send_interview_invitation_email(
                         </tr>
                         <tr>
                             <td style="padding: 6px 0; color: #64748b; font-weight: 600;">Assigned Panelist:</td>
-                            <td style="padding: 6px 0; color: #0f172a; font-weight: 600;">{interviewer_display}</td>
-                        </tr>
+                            <td style="padding: 6px 0; color: #0f172a; font-weight: 600;">{html.escape(interviewer_display)}</td>
+                        </tr>{extra_rows}
                     </table>
 
                     {notes_section}
                 </div>
+
+                {meeting_cta}
 
                 <!-- Preparation and Instructions -->
                 <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 18px; margin-bottom: 24px;">
@@ -303,21 +397,52 @@ async def send_interview_rescheduled_email(
     end_time: datetime,
     interviewer_name: Optional[str] = None,
     notes: Optional[str] = None,
+    location: Optional[str] = None,
+    meeting_link: Optional[str] = None,
+    interviewer_email: Optional[str] = None,
+    custom_subject: Optional[str] = None,
+    custom_message: Optional[str] = None,
+    template_key: str = "interview_rescheduled",
+    db: Optional[Any] = None,
 ) -> bool:
-    """Send an interview rescheduled email to the candidate's Gmail account."""
+    """Send an interview rescheduled email to the candidate's email account."""
     formatted_date = start_time.strftime("%A, %B %d, %Y")
     start_str = start_time.strftime("%I:%M %p")
     end_str = end_time.strftime("%I:%M %p")
     interviewer_display = interviewer_name if interviewer_name else "Mariwasa HR Panel"
 
-    subject = f"Rescheduled: {interview_title} - {job_title} | Mariwasa Siam Ceramics"
+    ctx = build_interview_template_context(
+        candidate_name=candidate_name,
+        job_title=job_title,
+        interview_title=interview_title,
+        start_time=start_time,
+        end_time=end_time,
+        interviewer_name=interviewer_display,
+        interviewer_email=interviewer_email,
+        location=location,
+        meeting_link=meeting_link,
+        notes=notes,
+        candidate_email=to_email,
+    )
+    tmpl = await get_template(db, template_key)
+    subject = (custom_subject or "").strip() or render_template(
+        tmpl.get("email_subject") or f"Rescheduled: {interview_title} - {job_title} | Mariwasa Siam Ceramics",
+        ctx,
+    )
+    intro_text = (custom_message or "").strip() or render_template(
+        tmpl.get("email_message")
+        or f"Please be advised that your interview schedule for the position of {job_title} has been updated. Below are your new interview details:",
+        ctx,
+    )
+    intro_html = _escape_html_multiline(intro_text)
+    extra_rows, meeting_cta = _build_interview_venue_rows(location, meeting_link, interviewer_email)
 
     notes_section = ""
     if notes and notes.strip():
         notes_section = f"""
         <div style="margin-top: 20px; padding: 16px; background-color: #f8fafc; border-left: 4px solid #f59e0b; border-radius: 4px;">
             <p style="margin: 0 0 6px 0; font-size: 12px; font-weight: bold; text-transform: uppercase; color: #475569; letter-spacing: 0.05em;">Updated Notes / Agenda</p>
-            <p style="margin: 0; font-size: 14px; color: #1e293b; white-space: pre-wrap;">{notes}</p>
+            <p style="margin: 0; font-size: 14px; color: #1e293b; white-space: pre-wrap;">{html.escape(notes)}</p>
         </div>
         """
 
@@ -345,10 +470,10 @@ async def send_interview_rescheduled_email(
 
             <!-- Main Content -->
             <div style="padding: 32px;">
-                <p style="font-size: 16px; margin: 0 0 16px 0;">Dear <strong>{candidate_name}</strong>,</p>
+                <p style="font-size: 16px; margin: 0 0 16px 0;">Dear <strong>{html.escape(candidate_name)}</strong>,</p>
 
                 <p style="font-size: 15px; color: #334155; margin: 0 0 24px 0; line-height: 1.6;">
-                    Please be advised that your interview schedule for the position of <strong>{job_title}</strong> has been updated. Below are your new interview details:
+                    {intro_html}
                 </p>
 
                 <!-- Interview Details Card -->
@@ -360,11 +485,11 @@ async def send_interview_rescheduled_email(
                     <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
                         <tr>
                             <td style="padding: 6px 0; color: #64748b; font-weight: 600; width: 140px;">Stage / Round:</td>
-                            <td style="padding: 6px 0; color: #0f172a; font-weight: 700;">{interview_title}</td>
+                            <td style="padding: 6px 0; color: #0f172a; font-weight: 700;">{html.escape(interview_title)}</td>
                         </tr>
                         <tr>
                             <td style="padding: 6px 0; color: #64748b; font-weight: 600;">Position:</td>
-                            <td style="padding: 6px 0; color: #0f172a; font-weight: 700;">{job_title}</td>
+                            <td style="padding: 6px 0; color: #0f172a; font-weight: 700;">{html.escape(job_title)}</td>
                         </tr>
                         <tr>
                             <td style="padding: 6px 0; color: #64748b; font-weight: 600;">New Date:</td>
@@ -376,12 +501,14 @@ async def send_interview_rescheduled_email(
                         </tr>
                         <tr>
                             <td style="padding: 6px 0; color: #64748b; font-weight: 600;">Assigned Panelist:</td>
-                            <td style="padding: 6px 0; color: #0f172a; font-weight: 600;">{interviewer_display}</td>
-                        </tr>
+                            <td style="padding: 6px 0; color: #0f172a; font-weight: 600;">{html.escape(interviewer_display)}</td>
+                        </tr>{extra_rows}
                     </table>
 
                     {notes_section}
                 </div>
+
+                {meeting_cta}
 
                 <p style="font-size: 14px; color: #475569; margin: 0 0 4px 0;">
                     If you have any questions or need further clarification, please contact our HR recruitment team.
@@ -412,20 +539,51 @@ async def send_interview_cancellation_email(
     start_time: datetime,
     interviewer_name: Optional[str] = None,
     reason: Optional[str] = None,
+    end_time: Optional[datetime] = None,
+    location: Optional[str] = None,
+    interviewer_email: Optional[str] = None,
+    custom_subject: Optional[str] = None,
+    custom_message: Optional[str] = None,
+    db: Optional[Any] = None,
 ) -> bool:
     """Send an interview cancellation notification email to candidate, HR, or panelist."""
     formatted_date = start_time.strftime("%A, %B %d, %Y")
     start_str = start_time.strftime("%I:%M %p")
+    end_str = end_time.strftime("%I:%M %p") if end_time else ""
+    time_display = f"{start_str} – {end_str}" if end_str else start_str
     interviewer_display = interviewer_name if interviewer_name else "Mariwasa HR Panel"
 
-    subject = f"Canceled: {interview_title} - {job_title} | Mariwasa Siam Ceramics"
+    ctx = build_interview_template_context(
+        candidate_name=candidate_name,
+        job_title=job_title,
+        interview_title=interview_title,
+        start_time=start_time,
+        end_time=end_time,
+        interviewer_name=interviewer_display,
+        interviewer_email=interviewer_email,
+        location=location,
+        reason=reason,
+        candidate_email=to_email,
+    )
+    tmpl = await get_template(db, "interview_canceled")
+    subject = (custom_subject or "").strip() or render_template(
+        tmpl.get("email_subject") or f"Canceled: {interview_title} - {job_title} | Mariwasa Siam Ceramics",
+        ctx,
+    )
+    intro_text = (custom_message or "").strip() or render_template(
+        tmpl.get("email_message")
+        or f"Please be advised that the scheduled interview for the position of {job_title} has been canceled. The calendar event has been removed from all participant schedules.",
+        ctx,
+    )
+    intro_html = _escape_html_multiline(intro_text)
+    extra_rows, _ = _build_interview_venue_rows(location, None, interviewer_email)
 
     reason_section = ""
     if reason and reason.strip():
         reason_section = f"""
         <div style="margin-top: 20px; padding: 16px; background-color: #fef2f2; border-left: 4px solid #ef4444; border-radius: 4px;">
             <p style="margin: 0 0 6px 0; font-size: 12px; font-weight: bold; text-transform: uppercase; color: #991b1b; letter-spacing: 0.05em;">Cancellation Notes / Reason</p>
-            <p style="margin: 0; font-size: 14px; color: #1e293b; white-space: pre-wrap;">{reason}</p>
+            <p style="margin: 0; font-size: 14px; color: #1e293b; white-space: pre-wrap;">{html.escape(reason)}</p>
         </div>
         """
 
@@ -453,10 +611,10 @@ async def send_interview_cancellation_email(
 
             <!-- Main Content -->
             <div style="padding: 32px;">
-                <p style="font-size: 16px; margin: 0 0 16px 0;">Dear <strong>{candidate_name}</strong>,</p>
+                <p style="font-size: 16px; margin: 0 0 16px 0;">Dear <strong>{html.escape(candidate_name)}</strong>,</p>
 
                 <p style="font-size: 15px; color: #334155; margin: 0 0 24px 0; line-height: 1.6;">
-                    Please be advised that the scheduled interview for the position of <strong>{job_title}</strong> has been canceled. The calendar event has been removed from all participant schedules.
+                    {intro_html}
                 </p>
 
                 <!-- Interview Details Card -->
@@ -468,20 +626,20 @@ async def send_interview_cancellation_email(
                     <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
                         <tr>
                             <td style="padding: 6px 0; color: #64748b; font-weight: 600; width: 140px;">Stage / Round:</td>
-                            <td style="padding: 6px 0; color: #0f172a; font-weight: 700;">{interview_title}</td>
+                            <td style="padding: 6px 0; color: #0f172a; font-weight: 700;">{html.escape(interview_title)}</td>
                         </tr>
                         <tr>
                             <td style="padding: 6px 0; color: #64748b; font-weight: 600;">Position:</td>
-                            <td style="padding: 6px 0; color: #0f172a; font-weight: 700;">{job_title}</td>
+                            <td style="padding: 6px 0; color: #0f172a; font-weight: 700;">{html.escape(job_title)}</td>
                         </tr>
                         <tr>
                             <td style="padding: 6px 0; color: #64748b; font-weight: 600;">Originally Scheduled:</td>
-                            <td style="padding: 6px 0; color: #b91c1c; font-weight: 700;">{formatted_date} at {start_str}</td>
+                            <td style="padding: 6px 0; color: #b91c1c; font-weight: 700;">{formatted_date} at {time_display}</td>
                         </tr>
                         <tr>
                             <td style="padding: 6px 0; color: #64748b; font-weight: 600;">Assigned Panelist:</td>
-                            <td style="padding: 6px 0; color: #0f172a; font-weight: 600;">{interviewer_display}</td>
-                        </tr>
+                            <td style="padding: 6px 0; color: #0f172a; font-weight: 600;">{html.escape(interviewer_display)}</td>
+                        </tr>{extra_rows}
                     </table>
 
                     {reason_section}
@@ -515,6 +673,9 @@ async def send_application_status_update_email(
     new_status: str,
     previous_status: Optional[str] = None,
     notes: Optional[str] = None,
+    custom_subject: Optional[str] = None,
+    custom_message: Optional[str] = None,
+    db: Optional[Any] = None,
 ) -> bool:
     """
     Send a highly professional, branded status update email to the candidate when HR toggles their application status
@@ -530,8 +691,10 @@ async def send_application_status_update_email(
     ).rstrip("/")
     tracking_url = f"{base_url}/candidate/applicationtracking"
 
+    template_key: Optional[str] = None
     # Status-specific content configurations
-    if status_clean in ("REVIEWED", "SCREENED"):
+    if status_clean in ("REVIEWED", "SCREENED", "UNDER REVIEW"):
+        template_key = "application_status_reviewed"
         badge_text = "APPLICATION REVIEWED"
         badge_style = "background-color: #fdf2f8; color: #9d174d; border: 1px solid #fbcfe8;"
         header_gradient = "linear-gradient(135deg, #D60041 0%, #830027 100%)"
@@ -540,7 +703,7 @@ async def send_application_status_update_email(
         subject = f"Application Status Update: {job_title} | Mariwasa Siam Ceramics"
         status_pill_label = "Reviewed & Under Consideration"
         intro_paragraph = f"""
-        Thank you for applying for the position of <strong>{job_title}</strong> at <strong>Mariwasa Siam Ceramics, Inc.</strong> 
+        Thank you for applying for the position of <strong>{html.escape(job_title)}</strong> at <strong>Mariwasa Siam Ceramics, Inc.</strong> 
         We are pleased to inform you that our Talent Acquisition team has officially reviewed your resume and credentials.
         """
         body_content = f"""
@@ -560,6 +723,7 @@ async def send_application_status_update_email(
         cta_label = "Track Application Status &rarr;"
 
     elif status_clean in ("ACCEPTED", "SHORTLISTED"):
+        template_key = "application_status_shortlisted"
         badge_text = "APPLICATION ACCEPTED"
         badge_style = "background-color: #ecfdf5; color: #065f46; border: 1px solid #a7f3d0;"
         header_gradient = "linear-gradient(135deg, #059669 0%, #064e3b 100%)"
@@ -569,7 +733,7 @@ async def send_application_status_update_email(
         status_pill_label = "Accepted / Shortlisted"
         intro_paragraph = f"""
         We are thrilled to inform you that following a comprehensive evaluation of your background and credentials, 
-        your application for the position of <strong>{job_title}</strong> at <strong>Mariwasa Siam Ceramics, Inc.</strong> has been 
+        your application for the position of <strong>{html.escape(job_title)}</strong> at <strong>Mariwasa Siam Ceramics, Inc.</strong> has been 
         <strong style="color: #059669;">officially accepted and shortlisted</strong>!
         """
         body_content = f"""
@@ -583,12 +747,13 @@ async def send_application_status_update_email(
         next_steps_title = "Next Steps & Coordination"
         next_steps = [
             "Our recruitment coordinators will contact you shortly to coordinate interview availability.",
-            "You may receive a calendar invitation or an automated voice call from our AI notification system.",
+            "You may receive a calendar invitation, email, or SMS notification with complete schedule details.",
             "Please ensure your registered contact number and email remain active and accessible."
         ]
         cta_label = "View Application Portal &rarr;"
 
-    elif status_clean in ("REJECTED", "ARCHIVED", "PASSED_OVER"):
+    elif status_clean in ("REJECTED", "ARCHIVED", "PASSED_OVER", "NOT SELECTED"):
+        template_key = "application_status_rejected"
         badge_text = "APPLICATION STATUS UPDATE"
         badge_style = "background-color: #f8fafc; color: #334155; border: 1px solid #cbd5e1;"
         header_gradient = "linear-gradient(135deg, #334155 0%, #1e293b 100%)"
@@ -597,7 +762,7 @@ async def send_application_status_update_email(
         subject = f"Application Update: {job_title} | Mariwasa Siam Ceramics"
         status_pill_label = "Not Selected for Current Opening"
         intro_paragraph = f"""
-        Thank you for your interest in joining <strong>Mariwasa Siam Ceramics, Inc.</strong> and for the time, energy, and dedication you invested in applying for the position of <strong>{job_title}</strong>.
+        Thank you for your interest in joining <strong>Mariwasa Siam Ceramics, Inc.</strong> and for the time, energy, and dedication you invested in applying for the position of <strong>{html.escape(job_title)}</strong>.
         """
         body_content = f"""
         <p style="font-size: 15px; color: #334155; margin: 0 0 16px 0; line-height: 1.6;">
@@ -621,7 +786,7 @@ async def send_application_status_update_email(
         ]
         cta_label = "Explore Career Opportunities &rarr;"
 
-    elif status_clean in ("TECHNICAL INTERVIEW", "INTERVIEW"):
+    elif status_clean in ("TECHNICAL INTERVIEW", "INTERVIEW", "INTERVIEW SCHEDULED"):
         badge_text = "TECHNICAL INTERVIEW"
         badge_style = "background-color: #eef2ff; color: #3730a3; border: 1px solid #c7d2fe;"
         header_gradient = "linear-gradient(135deg, #4f46e5 0%, #312e81 100%)"
@@ -630,21 +795,21 @@ async def send_application_status_update_email(
         subject = f"Next Stage: Technical Interview for {job_title} | Mariwasa Siam Ceramics"
         status_pill_label = "Technical Interview Stage"
         intro_paragraph = f"""
-        Congratulations! You have successfully advanced to the <strong>Technical Interview</strong> stage for the position of <strong>{job_title}</strong> at <strong>Mariwasa Siam Ceramics, Inc.</strong>
+        Congratulations! You have successfully advanced to the <strong>Technical Interview</strong> stage for the position of <strong>{html.escape(job_title)}</strong> at <strong>Mariwasa Siam Ceramics, Inc.</strong>
         """
         body_content = f"""
         <p style="font-size: 15px; color: #334155; margin: 0 0 16px 0; line-height: 1.6;">
             Our technical evaluation panel would like to invite you for an in-depth discussion covering domain methodologies, practical problem solving, and relevant project achievements.
         </p>
         <p style="font-size: 15px; color: #334155; margin: 0 0 16px 0; line-height: 1.6;">
-            Detailed schedule coordinates and meeting link information will be delivered via calendar invitation and SMS shortly.
+            Detailed schedule coordinates (date, time, venue or meeting link) will be delivered via calendar invitation, email, and SMS shortly.
         </p>
         """
         next_steps_title = "Preparation Guidelines"
         next_steps = [
             "Review your past engineering or domain projects and key technical challenges.",
             "Prepare portfolio materials or code samples demonstrating your hands-on work.",
-            "Test your audio/video setup and Google Meet connection prior to the session."
+            "If your interview is online, test your audio/video setup ahead of time; if onsite, plan to arrive 10 minutes early."
         ]
         cta_label = "View Interview Details &rarr;"
 
@@ -723,12 +888,33 @@ async def send_application_status_update_email(
         ]
         cta_label = "Check Application Portal &rarr;"
 
+    if template_key and db is not None:
+        from app.services.message_template_service import DEFAULT_TEMPLATES
+        saved_tmpl = await get_template(db, template_key)
+        default_tmpl = DEFAULT_TEMPLATES.get(template_key, {})
+        status_ctx = {
+            "candidate_name": candidate_name or "Candidate",
+            "job_title": job_title or "Position",
+            "status": status_pill_label,
+            "notes": (notes or "").strip(),
+            "company_name": "Mariwasa Siam Ceramics, Inc.",
+        }
+        if saved_tmpl.get("email_subject") and saved_tmpl.get("email_subject") != default_tmpl.get("email_subject"):
+            subject = render_template(saved_tmpl["email_subject"], status_ctx)
+        if saved_tmpl.get("email_message") and saved_tmpl.get("email_message") != default_tmpl.get("email_message"):
+            intro_paragraph = _escape_html_multiline(render_template(saved_tmpl["email_message"], status_ctx))
+
+    if custom_subject and custom_subject.strip():
+        subject = custom_subject.strip()
+    if custom_message and custom_message.strip():
+        intro_paragraph = _escape_html_multiline(custom_message.strip())
+
     notes_section = ""
     if notes and notes.strip():
         notes_section = f"""
         <div style="margin-top: 18px; padding: 16px; background-color: #f8fafc; border-left: 4px solid #D60041; border-radius: 6px;">
             <p style="margin: 0 0 6px 0; font-size: 12px; font-weight: bold; text-transform: uppercase; color: #475569; letter-spacing: 0.05em;">HR Remarks / Notes</p>
-            <p style="margin: 0; font-size: 14px; color: #1e293b; white-space: pre-wrap;">{notes}</p>
+            <p style="margin: 0; font-size: 14px; color: #1e293b; white-space: pre-wrap;">{html.escape(notes)}</p>
         </div>
         """
 

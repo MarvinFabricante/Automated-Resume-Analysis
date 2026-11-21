@@ -21,6 +21,11 @@ class InterviewCreateSchema(BaseModel):
     interviewer_id: Optional[int] = None
     panelist_ids: Optional[List[int]] = None
     call_language: Optional[str] = "bilingual"
+    location: Optional[str] = None
+    meeting_link: Optional[str] = None
+    custom_email_subject: Optional[str] = None
+    custom_email_message: Optional[str] = None
+    custom_sms_message: Optional[str] = None
 
 class InterviewUpdateSchema(BaseModel):
     title: Optional[str] = None
@@ -31,6 +36,18 @@ class InterviewUpdateSchema(BaseModel):
     interviewer_id: Optional[int] = None
     call_language: Optional[str] = None
     panelist_ids: Optional[List[int]] = None
+    location: Optional[str] = None
+    meeting_link: Optional[str] = None
+    custom_email_subject: Optional[str] = None
+    custom_email_message: Optional[str] = None
+    custom_sms_message: Optional[str] = None
+
+
+class InterviewCancelSchema(BaseModel):
+    reason: Optional[str] = None
+    custom_email_subject: Optional[str] = None
+    custom_email_message: Optional[str] = None
+    custom_sms_message: Optional[str] = None
 
 
 class CandidateRescheduleSchema(BaseModel):
@@ -75,6 +92,7 @@ class InterviewResponseSchema(BaseModel):
     end_time: datetime
     google_event_id: Optional[str] = None
     meeting_link: Optional[str] = None
+    location: Optional[str] = None
     status: str
     is_missed: Optional[bool] = False
     created_at: datetime

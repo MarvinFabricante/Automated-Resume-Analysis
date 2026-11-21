@@ -86,6 +86,8 @@ class JobApplicationStatusUpdate(BaseModel):
     status: str
     notes: Optional[str] = None
     hr_shortlist_notes: Optional[str] = None
+    custom_email_subject: Optional[str] = None
+    custom_email_message: Optional[str] = None
 
 class JobApplicationNotesUpdate(BaseModel):
     hr_shortlist_notes: str
