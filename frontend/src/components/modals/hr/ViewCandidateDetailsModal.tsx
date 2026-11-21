@@ -146,6 +146,7 @@ interface PillarBarProps {
   label: string;
   score: number;
   weight: number;
+  contribution?: number;
   color: string;
   barColor: string;
   bgColor: string;
@@ -157,13 +158,14 @@ const PillarBar: React.FC<PillarBarProps> = ({
   label,
   score,
   weight,
+  contribution: explicitContribution,
   color,
   barColor,
   bgColor,
   borderColor,
   icon: Icon
 }) => {
-  const contribution = Math.round(score * (weight / 100));
+  const contribution = explicitContribution ?? Math.round(score * (weight / 100));
   const clampedScore = Math.max(0, Math.min(100, score));
 
   return (
@@ -1173,7 +1175,8 @@ const ViewCandidateDetailsModal: React.FC<ViewCandidateDetailsModalProps> = ({
               <PillarBar
                 label="Skills Match"
                 score={skillsScore}
-                weight={40}
+                weight={wSkillsPct}
+                contribution={skillsContribution}
                 color="text-blue-600"
                 barColor="bg-blue-500"
                 bgColor="bg-blue-50/50"
@@ -1183,7 +1186,8 @@ const ViewCandidateDetailsModal: React.FC<ViewCandidateDetailsModalProps> = ({
               <PillarBar
                 label="Experience Fit"
                 score={experienceScore}
-                weight={40}
+                weight={wExpPct}
+                contribution={experienceContribution}
                 color="text-purple-600"
                 barColor="bg-purple-500"
                 bgColor="bg-purple-50/50"
@@ -1193,25 +1197,36 @@ const ViewCandidateDetailsModal: React.FC<ViewCandidateDetailsModalProps> = ({
               <PillarBar
                 label="Education Level"
                 score={educationScore}
-                weight={20}
+                weight={wEduPct}
+                contribution={educationContribution}
                 color="text-amber-600"
                 barColor="bg-amber-500"
                 bgColor="bg-amber-50/50"
                 borderColor="border-amber-100"
                 icon={GraduationCap}
               />
-              {certificationsScore !== undefined && certificationsScore > 0 && (
-                <PillarBar
-                  label="Certifications"
-                  score={certificationsScore}
-                  weight={10}
-                  color="text-rose-600"
-                  barColor="bg-rose-500"
-                  bgColor="bg-rose-50/50"
-                  borderColor="border-rose-100"
-                  icon={Award}
-                />
-              )}
+              <PillarBar
+                label="Certifications"
+                score={Math.round(Number(certificationsScore ?? 0))}
+                weight={wCertsPct}
+                contribution={certsContribution}
+                color="text-rose-600"
+                barColor="bg-rose-500"
+                bgColor="bg-rose-50/50"
+                borderColor="border-rose-100"
+                icon={Award}
+              />
+              <PillarBar
+                label="Resume Completeness"
+                score={completenessScore}
+                weight={wCompPct}
+                contribution={compContribution}
+                color="text-emerald-600"
+                barColor="bg-emerald-500"
+                bgColor="bg-emerald-50/50"
+                borderColor="border-emerald-100"
+                icon={ShieldCheck}
+              />
             </div>
 
             {/* Candidate Contact Snapshot */}
