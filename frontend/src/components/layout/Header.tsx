@@ -501,10 +501,10 @@ const Header: React.FC = () => {
                   isGuest
                     ? '/'
                     : isAdminRole
-                    ? '/admin/dashboard'
-                    : isHRRole || isHRPage
-                    ? '/hr/dashboard'
-                    : '/candidate/dashboard'
+                      ? '/admin/dashboard'
+                      : isHRRole || isHRPage
+                        ? '/hr/dashboard'
+                        : '/candidate/dashboard'
                 )
               }
               onKeyDown={(e) => {
@@ -514,10 +514,10 @@ const Header: React.FC = () => {
                     isGuest
                       ? '/'
                       : isAdminRole
-                      ? '/admin/dashboard'
-                      : isHRRole || isHRPage
-                      ? '/hr/dashboard'
-                      : '/candidate/dashboard'
+                        ? '/admin/dashboard'
+                        : isHRRole || isHRPage
+                          ? '/hr/dashboard'
+                          : '/candidate/dashboard'
                   );
                 }
               }}

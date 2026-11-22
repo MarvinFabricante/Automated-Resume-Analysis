@@ -187,7 +187,8 @@ def _post_process(data: dict) -> dict:
     # Validate highest_degree
     valid_degrees = {
         "DOCTORATE", "MASTER", "BACHELOR", "ASSOCIATE",
-        "DIPLOMA/VOCATIONAL", "SENIOR HIGH SCHOOL", ""
+        "DIPLOMA/VOCATIONAL", "VOCATIONAL", "SENIOR HIGH SCHOOL",
+        "HIGH SCHOOL", "ELEMENTARY", ""
     }
     if data.get("highest_degree", "") not in valid_degrees:
         data["highest_degree"] = ""

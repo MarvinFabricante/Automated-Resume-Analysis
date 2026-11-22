@@ -33,8 +33,13 @@ import {
   Eye,
   Check,
   Building2,
-  FileCheck
+  FileCheck,
+  GraduationCap
 } from 'lucide-react';
+import {
+  resolveCriterionStatus,
+  getCriterionStatusBadgeStyle,
+} from '../../utils/criterionStatus';
 
 interface ApplicantProfileProps {
   emailProp?: string;
@@ -298,10 +303,28 @@ const ApplicantProfile: React.FC<ApplicantProfileProps> = ({
                     <h3 className="text-base font-bold text-slate-900">{app.job_title}</h3>
                     <p className="text-xs text-slate-500">{app.department} • Applied {new Date(app.created_at).toLocaleDateString()}</p>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <span className="px-2.5 py-1 text-xs font-bold rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
                       {Math.round(app.match_score || 0)}% Match
                     </span>
+                    {(() => {
+                      const hasEdu = Boolean(app.education_status || app.education_reason || app.education_score !== null && app.education_score !== undefined);
+                      if (!hasEdu) return null;
+                      const eduSt = resolveCriterionStatus({
+                        explicitStatus: app.education_status,
+                        reason: app.education_reason,
+                        score: app.education_score,
+                      });
+                      return (
+                        <span
+                          className={`inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold rounded-full border ${getCriterionStatusBadgeStyle(eduSt).badgeClass}`}
+                          title={app.education_reason || eduSt}
+                        >
+                          <GraduationCap size={11} />
+                          <span>{eduSt}</span>
+                        </span>
+                      );
+                    })()}
                     <span className="px-2.5 py-1 text-xs font-bold rounded-full bg-slate-100 text-slate-700">
                       {app.status}
                     </span>
@@ -419,6 +442,7 @@ const ApplicantProfile: React.FC<ApplicantProfileProps> = ({
                       <th className="pb-3">Department</th>
                       <th className="pb-3">Applied Date</th>
                       <th className="pb-3">Match Score</th>
+                      <th className="pb-3">Education</th>
                       <th className="pb-3">Status</th>
                       <th className="pb-3">Shortlists</th>
                     </tr>
@@ -437,6 +461,25 @@ const ApplicantProfile: React.FC<ApplicantProfileProps> = ({
                           <span className="font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
                             {app.match_score !== null && app.match_score !== undefined ? `${Math.round(app.match_score)}%` : '-'}
                           </span>
+                        </td>
+                        <td className="py-3">
+                          {(() => {
+                            const hasEdu = Boolean(app.education_status || app.education_reason || app.education_score !== null && app.education_score !== undefined);
+                            if (!hasEdu) return <span className="text-slate-400 italic">-</span>;
+                            const eduSt = resolveCriterionStatus({
+                              explicitStatus: app.education_status,
+                              reason: app.education_reason,
+                              score: app.education_score,
+                            });
+                            return (
+                              <span
+                                className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[10px] font-bold ${getCriterionStatusBadgeStyle(eduSt).badgeClass}`}
+                                title={app.education_reason || eduSt}
+                              >
+                                {eduSt}
+                              </span>
+                            );
+                          })()}
                         </td>
                         <td className="py-3">
                           <span className="font-semibold text-slate-700 bg-slate-100 px-2 py-0.5 rounded-full">

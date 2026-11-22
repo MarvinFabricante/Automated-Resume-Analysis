@@ -17,13 +17,18 @@ import {
   Trash2,
   Check,
   XCircle,
-  FileText
+  FileText,
+  GraduationCap
 } from 'lucide-react';
 import {
   useGetShortlistRosterByIdQuery,
   useUpdateRosterStageMutation,
   useRemoveCandidateFromRosterMutation,
 } from '../../../redux/api/apiSlice';
+import {
+  resolveCriterionStatus,
+  getCriterionStatusBadgeStyle,
+} from '../../../utils/criterionStatus';
 
 interface RosterPipelineModalProps {
   rosterId: number | string;
@@ -207,6 +212,24 @@ const RosterPipelineModal: React.FC<RosterPipelineModalProps> = ({
                         const candName = rawName || rawEmail || `Candidate #${item.application_id || item.id || 'N/A'}`;
                         const candEmail = rawEmail;
                         const candScore = item.match_score ?? item.application?.match_score;
+                        const eduScore = item.education_score ?? item.application?.education_score;
+                        const eduReason = item.education_reason || item.application?.education_reason;
+                        const eduExplicitStatus = item.education_status || item.application?.education_status;
+                        const eduDegree =
+                          item.candidate_degree ||
+                          item.application?.candidate_degree ||
+                          item.highest_educational_attainment ||
+                          item.application?.highest_educational_attainment ||
+                          item.degree ||
+                          item.application?.degree;
+                        const hasEduSignal = Boolean(eduExplicitStatus || eduReason || eduScore !== null && eduScore !== undefined);
+                        const eduStatus = hasEduSignal
+                          ? resolveCriterionStatus({
+                              explicitStatus: eduExplicitStatus,
+                              reason: eduReason,
+                              score: eduScore,
+                            })
+                          : null;
                         const isImported = (item.source && !item.source.toLowerCase().includes('online')) || (item.application?.source && !item.application.source.toLowerCase().includes('online'));
 
                         return (
@@ -232,6 +255,22 @@ const RosterPipelineModal: React.FC<RosterPipelineModalProps> = ({
                                 {candScore !== null && candScore !== undefined ? `${Math.round(candScore)}%` : '-'}
                               </span>
                             </div>
+
+                            {(eduDegree || eduStatus) && (
+                              <div className="flex items-center justify-between gap-1.5 flex-wrap pt-0.5" title={eduReason || undefined}>
+                                {eduDegree && (
+                                  <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-slate-600 truncate max-w-[140px]">
+                                    <GraduationCap size={11} className="text-amber-500 shrink-0" />
+                                    <span className="truncate">{eduDegree}</span>
+                                  </span>
+                                )}
+                                {eduStatus && (
+                                  <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full border shrink-0 ${getCriterionStatusBadgeStyle(eduStatus).badgeClass}`}>
+                                    {eduStatus === 'Needs manual review' ? 'Edu: Manual Review' : `Edu: ${eduStatus}`}
+                                  </span>
+                                )}
+                              </div>
+                            )}
 
                             {/* Outcome Badge if in Outcome stage */}
                             {(item.stage === 'Passed initial interview' || item.stage === 'Not selected' || item.stage === 'Not Selected') && (

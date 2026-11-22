@@ -5,6 +5,10 @@ import {
 } from 'lucide-react';
 import { getAssetUrl } from '../../../services/api';
 import { CandidateItem } from './CandidateCard';
+import {
+  resolveCriterionStatus,
+  getCriterionStatusBadgeStyle,
+} from '../../../utils/criterionStatus';
 
 interface TableStatusDropdownProps {
   status?: string;
@@ -272,9 +276,29 @@ const CandidateTableView: React.FC<CandidateTableViewProps> = ({
                   </td>
 
                   <td className="py-3 px-3 text-center">
-                    <span className={`inline-flex px-2 py-0.5 rounded-lg border text-xs font-black ${matchColor}`}>
-                      {match}%
-                    </span>
+                    <div className="flex flex-col items-center gap-1">
+                      <span className={`inline-flex px-2 py-0.5 rounded-lg border text-xs font-black ${matchColor}`}>
+                        {match}%
+                      </span>
+                      {(() => {
+                        const eduSt = (c.education_status || c.education_reason)
+                          ? resolveCriterionStatus({
+                              explicitStatus: c.education_status,
+                              reason: c.education_reason,
+                              score: c.educationScore ?? c.education_score,
+                            })
+                          : null;
+                        if (eduSt !== 'Needs manual review' && eduSt !== 'Exceeds requirement') return null;
+                        return (
+                          <span
+                            className={`inline-flex px-1.5 py-0.5 rounded-full border text-[9px] font-bold ${getCriterionStatusBadgeStyle(eduSt).badgeClass}`}
+                            title={c.education_reason || eduSt}
+                          >
+                            {eduSt === 'Needs manual review' ? 'Edu Review' : 'Edu Exceeds'}
+                          </span>
+                        );
+                      })()}
+                    </div>
                   </td>
 
                   <td className="py-3 px-3">

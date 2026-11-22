@@ -68,6 +68,8 @@ class ResumeMatchRequest(BaseModel):
     experience: Optional[str] = ""
     work_experiences: Optional[list[dict[str, Any]]] = None
     education: Optional[str] = ""
+    education_entries: Optional[list[dict[str, Any]]] = None
+    highest_educational_attainment: Optional[str] = ""
     job_title: Optional[str] = ""
     company: Optional[str] = ""
     relevance: Optional[str] = ""

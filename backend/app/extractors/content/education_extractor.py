@@ -695,7 +695,7 @@ def _normalize_degree_or_course(text: str, level: str) -> Tuple[Optional[str], O
         return canon, raw, None
 
     # 1c. Check TESDA National Certificate courses
-    nc_match = re.search(r'\b([A-Za-z0-9\s/&,()-]+?\s+NC\s+I{1,3}(?:\s*&\s*[A-Za-z0-9\s/&,()-]+?\s+NC\s+I{1,3})?)\b', clean, re.I)
+    nc_match = re.search(r'\b([A-Za-z0-9\s/&,()-]+?\s+NC\s+(?:IV|I{1,3}|[1-4])(?:\s*&\s*[A-Za-z0-9\s/&,()-]+?\s+NC\s+(?:IV|I{1,3}|[1-4]))?)\b', clean, re.I)
     if nc_match:
         raw = nc_match.group(1).strip()
         return raw, raw, None
@@ -957,7 +957,7 @@ def extract_structured_education(text: str) -> Dict[str, Any]:
             level = "Tertiary / College"
             if re.search(r'\b(?:Senior\s+High|STEM|ABM|HUMSS|GAS|TVL|SHS)\b', line, re.I):
                 level = "Senior High School (SHS)"
-            elif re.search(r'\b(?:TESDA|NC\s+I{1,3})\b', line, re.I):
+            elif re.search(r'\b(?:TESDA|NC\s+(?:IV|I{1,3}|[1-4]))\b', line, re.I):
                 level = "Vocational / Technical (TESDA)"
             elif re.search(r'\b(?:Master(?:\'s|al)?\s+(?:Degree|in|of)|MBA|MSIT|MIT|Doctor(?:ate)?|PhD)\b', line, re.I) and not re.search(r'\bMaster\s+Plumber\b', line, re.I):
                 level = "Postgraduate"
@@ -1045,7 +1045,7 @@ def extract_structured_education(text: str) -> Dict[str, Any]:
                     level = "Postgraduate"
                 elif re.search(r'\b(?:College\s+Level|Bachelor|BS|BA|Associate|ACT)\b', combined_text, re.I):
                     level = "Tertiary / College"
-                elif re.search(r'\b(?:TESDA|NC\s+I{1,3}|Vocational)\b', combined_text, re.I):
+                elif re.search(r'\b(?:TESDA|NC\s+(?:IV|I{1,3}|[1-4])|Vocational)\b', combined_text, re.I):
                     level = "Vocational / Technical (TESDA)"
                 elif re.search(r'\b(?:Senior\s+High\s*school|Senior\s+High|STEM|ABM|HUMSS|GAS|TVL|SHS)\b', combined_text, re.I):
                     level = "Senior High School (SHS)"
@@ -1276,20 +1276,33 @@ def extract_education_entries(text: str) -> list[dict]:
 
 def extract_highest_degree(text: str) -> str:
     """
-    Identifies the highest academic degree tier (POSTGRADUATE, TERTIARY / COLLEGE, etc.)
+    Identifies the highest academic degree tier (DOCTORATE, MASTER, BACHELOR, ASSOCIATE, etc.)
     """
     structured = extract_structured_education(text)
     highest = structured.get("highest_educational_attainment", "")
-    if highest == "Tertiary / College":
-        return "BACHELOR"
+    entries = structured.get("education_entries", [])
     if highest == "Postgraduate":
+        for entry in entries:
+            if entry.get("education_level") == "Postgraduate":
+                deg_text = f"{entry.get('degree_or_course', '')} {entry.get('raw_degree_or_course', '')}".lower()
+                if re.search(r"\b(?:phd|ph\.?d|doctor(?:ate)?|doctoral|edd|dba|dmd)\b", deg_text):
+                    return "DOCTORATE"
         return "MASTER"
+    if highest == "Tertiary / College":
+        for entry in entries:
+            if entry.get("education_level") == "Tertiary / College" and entry.get("status") not in ("Ongoing", "Undergraduate / College Level"):
+                deg_text = f"{entry.get('degree_or_course', '')} {entry.get('raw_degree_or_course', '')}".lower()
+                if re.search(r"\b(?:associate|2[-\s]?year)\b", deg_text) and not re.search(r"\b(?:bachelor|bs|ba|ab)\b", deg_text):
+                    return "ASSOCIATE"
+        return "BACHELOR"
     if highest == "Vocational / Technical (TESDA)":
         return "VOCATIONAL"
     if highest == "Senior High School (SHS)":
         return "SENIOR HIGH SCHOOL"
     if highest == "Secondary / High School":
         return "HIGH SCHOOL"
+    if highest == "Primary / Elementary":
+        return "ELEMENTARY"
     return highest.upper() if highest else ""
 
 

@@ -32,28 +32,28 @@ const LandingPage: React.FC = () => {
     activeRole === 'ADMIN'
       ? '/admin/dashboard'
       : activeRole === 'HR'
-      ? '/hr/dashboard'
-      : activeRole === 'CANDIDATE'
-      ? '/candidate/dashboard'
-      : '/login';
+        ? '/hr/dashboard'
+        : activeRole === 'CANDIDATE'
+          ? '/candidate/dashboard'
+          : '/login';
 
   const positionsHref =
     activeRole === 'ADMIN'
       ? '/admin/jobmanagement'
       : activeRole === 'HR'
-      ? '/hr/screeningportal'
-      : activeRole === 'CANDIDATE'
-      ? '/candidate/findjobs'
-      : '/careerspage';
+        ? '/hr/screeningportal'
+        : activeRole === 'CANDIDATE'
+          ? '/candidate/findjobs'
+          : '/careerspage';
 
   const uploadHref =
     activeRole === 'CANDIDATE'
       ? '/candidate/smart-upload'
       : activeRole === 'HR'
-      ? '/hr/physical-resumes'
-      : activeRole === 'ADMIN'
-      ? '/admin/dashboard'
-      : '/smart-upload';
+        ? '/hr/physical-resumes'
+        : activeRole === 'ADMIN'
+          ? '/admin/dashboard'
+          : '/smart-upload';
 
   useGSAP(
     () => {

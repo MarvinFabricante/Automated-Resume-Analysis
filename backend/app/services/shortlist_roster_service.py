@@ -11,6 +11,14 @@ from app.services.status_management_service import (
     apply_application_status_change,
     record_status_history
 )
+from app.services.requirement_rules import (
+    extract_criterion_status,
+    STATUS_MANUAL_REVIEW,
+)
+from app.services.job_matching_service import (
+    calculate_education_match,
+    _resolve_education_text,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -128,7 +136,50 @@ async def get_shortlist_roster_by_id(
         app = app_res.scalar_one_or_none()
 
         app_info = None
+        edu_score = None
+        edu_reason = None
+        edu_status = None
+        edu_needs_manual_review = False
+        req_deg = getattr(job, "education_requirements", None) if job else None
+        cand_deg = None
+        highest_att = None
+        deg = None
+
         if app:
+            edu_score = app.education_score
+            edu_reason = app.education_reason
+            req_deg = app.required_degree or req_deg
+            cand_deg = app.candidate_degree
+            highest_att = getattr(app, "highest_educational_attainment", None)
+            deg = getattr(app, "degree", None)
+            edu_status = extract_criterion_status(edu_reason)
+
+            # Fallback to shared requirement_rules evaluation if legacy app has no parsed status yet
+            if edu_status is None and job is not None:
+                cand_edu_text = _resolve_education_text({
+                    "education": deg or highest_att,
+                    "degree": deg,
+                    "highest_degree": highest_att,
+                    "highest_educational_attainment": highest_att,
+                })
+                edu_eval = calculate_education_match(
+                    cand_edu_text,
+                    job.description or "",
+                    education_req=getattr(job, "education_requirements", None),
+                    education_entries=getattr(app, "education_entries", None),
+                )
+                edu_status = edu_eval.get("status")
+                edu_reason = edu_reason or edu_eval.get("reason")
+                req_deg = req_deg or edu_eval.get("required_education")
+                cand_deg = cand_deg or edu_eval.get("candidate_education")
+                if edu_score is None:
+                    edu_score = round(float(edu_eval.get("score", 0.0)) * 100, 1)
+
+            edu_needs_manual_review = edu_status == STATUS_MANUAL_REVIEW
+            skills_status = extract_criterion_status(app.skills_reason)
+            exp_status = extract_criterion_status(app.experience_reason)
+            certs_status = extract_criterion_status(getattr(app, "certifications_reason", None))
+
             app_info = {
                 "id": app.id,
                 "candidate_name": app.candidate_name or app.candidate_email or "Applicant",
@@ -137,10 +188,26 @@ async def get_shortlist_roster_by_id(
                 "job_title": app.job_title or (job.job_title if job else "Position"),
                 "status": app.status,
                 "match_score": app.match_score,
+                "skills_score": app.skills_score,
+                "experience_score": app.experience_score,
+                "education_score": edu_score,
+                "certifications_score": app.certifications_score,
+                "skills_status": skills_status,
+                "experience_status": exp_status,
+                "education_status": edu_status,
+                "certifications_status": certs_status,
+                "education_needs_manual_review": edu_needs_manual_review,
                 "source": getattr(app, "source", "Online") or "Online",
                 "import_origin": getattr(app, "import_origin", None),
                 "imported_by": getattr(app, "imported_by", None),
                 "skills_reason": app.skills_reason,
+                "experience_reason": app.experience_reason,
+                "education_reason": edu_reason,
+                "certifications_reason": getattr(app, "certifications_reason", None),
+                "required_degree": req_deg,
+                "candidate_degree": cand_deg,
+                "highest_educational_attainment": highest_att,
+                "degree": deg,
                 "matched_skills": app.matched_skills or [],
                 "missing_skills": app.missing_skills or [],
                 "strengths": app.strengths or [],
@@ -163,6 +230,14 @@ async def get_shortlist_roster_by_id(
             "candidate_name": candidate_name,
             "candidate_email": candidate_email,
             "match_score": match_score,
+            "education_score": edu_score,
+            "education_reason": edu_reason,
+            "education_status": edu_status,
+            "education_needs_manual_review": edu_needs_manual_review,
+            "required_degree": req_deg,
+            "candidate_degree": cand_deg,
+            "highest_educational_attainment": highest_att,
+            "degree": deg,
             "source": getattr(app, "source", "Online") if app else "Online",
             "import_origin": getattr(app, "import_origin", None) if app else None,
             "imported_by": getattr(app, "imported_by", None) if app else None,

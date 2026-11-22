@@ -30,29 +30,6 @@ FEATURE_NAMES = [
     "education_match",
 ]
 
-# Educational hierarchy ranks
-EDUCATION_LEVEL_RANKS = {
-    "doctorate": 4,
-    "phd": 4,
-    "doctoral": 4,
-    "master": 3,
-    "ms": 3,
-    "ma": 3,
-    "mba": 3,
-    "postgraduate": 3,
-    "bachelor": 2,
-    "bs": 2,
-    "ba": 2,
-    "college": 2,
-    "undergraduate": 2,
-    "associate": 1,
-    "diploma": 1,
-    "vocational": 1,
-    "high school": 0,
-    "secondary": 0,
-    "none": 0,
-}
-
 
 def parse_education_rank(edu_text: Optional[str]) -> int:
     """

@@ -27,6 +27,7 @@ from app.services.requirement_rules import (
     EDUCATION_FIELD_SYNONYMS,
     RELATED_EDUCATION_FIELDS,
     parse_education_level,
+    compute_education_partial_score,
     compare_graded_certifications,
 )
 
@@ -175,22 +176,16 @@ def get_current_matching_config() -> dict:
 AI_SCORE_WEIGHT = 0.0
 RULE_SCORE_WEIGHT = 1.0 - AI_SCORE_WEIGHT
 
-# Shared 1-8 education level hierarchy (canonical single source of truth in requirement_rules.py)
-DEGREE_HIERARCHY = {
-    "ELEMENTARY": 1,
-    "HIGH SCHOOL": 2,
+# Shared 1-8 education level hierarchy (derived from canonical config in requirement_rules.py)
+DEGREE_HIERARCHY: dict[str, int] = {
+    **{label.upper(): lvl for lvl, label in EDUCATION_LEVELS.items()},
+    **{label.upper(): lvl for lvl, label in EDUCATION_SHORT_LABELS.items()},
     "JUNIOR HIGH SCHOOL": 2,
-    "SENIOR HIGH SCHOOL": 3,
     "SHS": 3,
-    "VOCATIONAL / TESDA": 4,
     "DIPLOMA/VOCATIONAL": 4,
     "ASSOCIATE": 5,
-    "ASSOCIATE DEGREE": 5,
     "BACHELOR": 6,
-    "BACHELOR'S DEGREE": 6,
     "MASTER": 7,
-    "MASTER'S DEGREE": 7,
-    "DOCTORATE": 8,
     "PHD": 8,
 }
 
@@ -880,6 +875,11 @@ def _resolve_education_text(resume_data: dict) -> str:
     return fallback or ""
 
 
+_UMBRELLA_GENERIC_FIELD_WORDS: frozenset[str] = frozenset({
+    "science", "arts", "applied", "general", "studies", "course", "program",
+})
+
+
 def _evaluate_education_field_alignment(req_fields: list[str], cand_fields: list[str]) -> tuple[str, str, str]:
     """
     Compare candidate's fields against job's required field options.
@@ -889,26 +889,27 @@ def _evaluate_education_field_alignment(req_fields: list[str], cand_fields: list
     if not cand_fields:
         return "unspecified", req_fields[0], ""
 
-    # 1. Exact / canonical synonym match
+    # 1. Exact / canonical synonym match, including broad umbrella requirements
+    #    (e.g. "engineering" <= "civil engineering", "supply chain" <= "supply chain management")
     for rf in req_fields:
         rf_canon = EDUCATION_FIELD_SYNONYMS.get(rf, rf)
         rf_tokens = set(rf_canon.split())
+        rf_specific = rf_tokens - _UMBRELLA_GENERIC_FIELD_WORDS
         for cf in cand_fields:
             cf_canon = EDUCATION_FIELD_SYNONYMS.get(cf, cf)
             cf_tokens = set(cf_canon.split())
             if rf_canon == cf_canon or (rf_tokens and rf_tokens == cf_tokens):
                 return "exact", rf, cf
+            if rf_specific and rf_tokens and rf_tokens <= cf_tokens:
+                return "exact", rf, cf
 
-    # 2. Related major table (checked symmetrically, plus broad umbrella fields like "engineering")
+    # 2. Related major table (checked symmetrically)
     for rf in req_fields:
         rf_canon = EDUCATION_FIELD_SYNONYMS.get(rf, rf)
         rf_words = set(rf_canon.split())
         for cf in cand_fields:
             cf_canon = EDUCATION_FIELD_SYNONYMS.get(cf, cf)
             cf_words = set(cf_canon.split())
-            # Broad requirement like "engineering" satisfied closely by "industrial engineering"
-            if rf_words and rf_words <= cf_words:
-                return "related", rf, cf
             for table_key, rel_list in RELATED_EDUCATION_FIELDS.items():
                 tk_words = set(table_key.split())
                 if tk_words <= rf_words:
@@ -1094,7 +1095,7 @@ def calculate_education_match(
             }
 
         # cand_level < req_level
-        proportional_score = round(cand_level / float(req_level), 2)
+        proportional_score = compute_education_partial_score(cand_level, req_level)
         if is_ongoing and pursuing_level >= req_level:
             return {
                 "score": proportional_score,
@@ -1205,7 +1206,7 @@ def calculate_education_match(
         }
 
     # cand_level < req_level with specific required field
-    level_ratio = cand_level / float(req_level)
+    level_ratio = compute_education_partial_score(cand_level, req_level)
     field_factor = 0.85 if field_match in ("exact", "related", "partial") else 0.40
     partial_score = round(level_ratio * field_factor, 2)
 
@@ -3271,7 +3272,16 @@ def nlp_compare_candidates(job_data: dict, candidates_data: list[dict]) -> dict:
             "match_level": match_info["match_level"],
             "skills_score": match_info["ai_skills_score"],
             "experience_score": match_info["ai_experience_score"],
-            "education_score": match_info["ai_education_score"]
+            "education_score": match_info["ai_education_score"],
+            "certifications_score": match_info.get("ai_certifications_score"),
+            "skills_status": match_info.get("skills_status"),
+            "experience_status": match_info.get("experience_status"),
+            "education_status": match_info.get("education_status"),
+            "certifications_status": match_info.get("certifications_status"),
+            "education_needs_manual_review": match_info.get("education_status") == STATUS_MANUAL_REVIEW,
+            "education_reason": match_info.get("education_reason"),
+            "required_degree": match_info.get("required_degree"),
+            "candidate_degree": match_info.get("candidate_degree"),
         })
     
     # Sort candidates by match_score descending

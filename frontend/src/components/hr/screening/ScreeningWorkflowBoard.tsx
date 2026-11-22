@@ -19,6 +19,10 @@ import {
   FileText
 } from 'lucide-react';
 import { getAssetUrl } from '../../../services/api';
+import {
+  resolveCriterionStatus,
+  getCriterionStatusBadgeStyle,
+} from '../../../utils/criterionStatus';
 
 interface ScreeningWorkflowBoardProps {
   jobTitle: string;
@@ -340,6 +344,24 @@ const ScreeningWorkflowBoard: React.FC<ScreeningWorkflowBoardProps> = ({
                             <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">
                               {candidate.status || 'Submitted'}
                             </span>
+                            {(() => {
+                              const eduSt = (candidate.education_status || candidate.education_reason)
+                                ? resolveCriterionStatus({
+                                    explicitStatus: candidate.education_status,
+                                    reason: candidate.education_reason,
+                                    score: candidate.educationScore ?? candidate.education_score,
+                                  })
+                                : null;
+                              if (eduSt !== 'Needs manual review' && eduSt !== 'Exceeds requirement') return null;
+                              return (
+                                <span
+                                  className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full border ${getCriterionStatusBadgeStyle(eduSt).badgeClass}`}
+                                  title={candidate.education_reason || eduSt}
+                                >
+                                  {eduSt === 'Needs manual review' ? 'HR Edu Review' : 'Edu: Exceeds'}
+                                </span>
+                              );
+                            })()}
                           </div>
                         </div>
                       </div>
@@ -470,6 +492,24 @@ const ScreeningWorkflowBoard: React.FC<ScreeningWorkflowBoardProps> = ({
                             <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">
                               {candidate.status || 'Submitted'}
                             </span>
+                            {(() => {
+                              const eduSt = (candidate.education_status || candidate.education_reason)
+                                ? resolveCriterionStatus({
+                                    explicitStatus: candidate.education_status,
+                                    reason: candidate.education_reason,
+                                    score: candidate.educationScore ?? candidate.education_score,
+                                  })
+                                : null;
+                              if (eduSt !== 'Needs manual review' && eduSt !== 'Exceeds requirement') return null;
+                              return (
+                                <span
+                                  className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full border ${getCriterionStatusBadgeStyle(eduSt).badgeClass}`}
+                                  title={candidate.education_reason || eduSt}
+                                >
+                                  {eduSt === 'Needs manual review' ? 'HR Edu Review' : 'Edu: Exceeds'}
+                                </span>
+                              );
+                            })()}
                           </div>
                         </div>
                       </div>

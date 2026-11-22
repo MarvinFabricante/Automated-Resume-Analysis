@@ -219,12 +219,36 @@ EDUCATION_SHORT_LABELS: dict[int, str] = {
 }
 
 # Configurable education scoring parameters
-EDUCATION_PARTIAL_SCORE_MODE = "proportional"  # candidate_level / required_level
+EDUCATION_PARTIAL_SCORE_MODE = "proportional"  # "proportional" | "step" | "strict_zero"
 EDUCATION_MANUAL_REVIEW_SCORE = 0.5
 EDUCATION_LEVEL_MET_WRONG_FIELD_SCORE = 0.4
 EDUCATION_LEVEL_MET_UNSPECIFIED_FIELD_SCORE = 0.5
 EDUCATION_RELATED_FIELD_SCORE = 0.8
 EDUCATION_PARTIAL_FIELD_SCORE = 0.65
+
+
+def compute_education_partial_score(
+    candidate_level: int,
+    required_level: int,
+    mode: str = EDUCATION_PARTIAL_SCORE_MODE,
+) -> float:
+    """
+    Compute configurable partial score when candidate's completed education level
+    is below the required level.
+    """
+    if required_level <= 0:
+        return 1.0
+    if candidate_level <= 0:
+        return 0.0
+    if candidate_level >= required_level:
+        return 1.0
+
+    normalized_mode = (mode or EDUCATION_PARTIAL_SCORE_MODE or "proportional").strip().lower()
+    if normalized_mode == "strict_zero":
+        return 0.0
+    if normalized_mode == "step":
+        return round(max(0.0, 1.0 - 0.25 * (required_level - candidate_level)), 2)
+    return round(candidate_level / float(required_level), 2)
 
 # Highest level fully completed when a candidate is currently enrolled / undergraduate
 ONGOING_COMPLETED_LEVEL_MAP: dict[int, int] = {
@@ -302,45 +326,45 @@ DEGREE_ACRONYM_FIELDS: dict[str, tuple[int, Optional[str]]] = {
 }
 
 _DOT_ABBR_PATTERNS: list[tuple[re.Pattern[str], str]] = [
-    (re.compile(r"\bph\.?\s*d\.?", re.I), "phd"),
-    (re.compile(r"\bed\.?\s*d\.?", re.I), "edd"),
-    (re.compile(r"\bd\.?\s*b\.?\s*a\.?", re.I), "dba"),
-    (re.compile(r"\bm\.?\s*b\.?\s*a\.?", re.I), "mba"),
-    (re.compile(r"\bm\.?\s*p\.?\s*a\.?", re.I), "mpa"),
-    (re.compile(r"\bm\.?\s*i\.?\s*t\.?", re.I), "mit"),
-    (re.compile(r"\bm\.?\s*s\.?\s*i\.?\s*t\.?", re.I), "msit"),
-    (re.compile(r"\bm\.?\s*s\.?\s*c\.?\s*s\.?", re.I), "mscs"),
-    (re.compile(r"\bm\.?\s*a\.?\s*ed\.?", re.I), "maed"),
-    (re.compile(r"\bm\.?\s*sc\.?", re.I), "msc"),
-    (re.compile(r"\bm\.?\s*s\.?", re.I), "ms"),
-    (re.compile(r"\bm\.?\s*a\.?", re.I), "ma"),
-    (re.compile(r"\bm\.?\s*d\.?", re.I), "md"),
-    (re.compile(r"\bj\.?\s*d\.?", re.I), "jd"),
-    (re.compile(r"\bll\.?\s*b\.?", re.I), "llb"),
-    (re.compile(r"\bb\.?\s*s\.?\s*b\.?\s*a\.?", re.I), "bsba"),
-    (re.compile(r"\bb\.?\s*s\.?\s*i\.?\s*t\.?", re.I), "bsit"),
-    (re.compile(r"\bb\.?\s*s\.?\s*c\.?\s*s\.?", re.I), "bscs"),
-    (re.compile(r"\bb\.?\s*s\.?\s*i\.?\s*s\.?", re.I), "bsis"),
-    (re.compile(r"\bb\.?\s*s\.?\s*c\.?\s*p\.?\s*e\.?", re.I), "bscpe"),
-    (re.compile(r"\bb\.?\s*s\.?\s*e\.?\s*c\.?\s*e\.?", re.I), "bsece"),
-    (re.compile(r"\bb\.?\s*s\.?\s*c\.?\s*h\.?\s*e\.?", re.I), "bsche"),
-    (re.compile(r"\bb\.?\s*s\.?\s*c\.?\s*e\.?", re.I), "bsce"),
-    (re.compile(r"\bb\.?\s*s\.?\s*m\.?\s*e\.?", re.I), "bsme"),
-    (re.compile(r"\bb\.?\s*s\.?\s*e\.?\s*e\.?", re.I), "bsee"),
-    (re.compile(r"\bb\.?\s*s\.?\s*i\.?\s*e\.?", re.I), "bsie"),
-    (re.compile(r"\bb\.?\s*s\.?\s*h\.?\s*r\.?\s*m\.?", re.I), "bshrm"),
-    (re.compile(r"\bb\.?\s*s\.?\s*h\.?\s*m\.?", re.I), "bshm"),
-    (re.compile(r"\bb\.?\s*s\.?\s*t\.?\s*m\.?", re.I), "bstm"),
-    (re.compile(r"\bb\.?\s*s\.?\s*c\.?\s*a\.?", re.I), "bsca"),
-    (re.compile(r"\bb\.?\s*s\.?\s*c\.?\s*r\.?\s*i\.?\s*m\.?", re.I), "bscrim"),
-    (re.compile(r"\bb\.?\s*s\.?\s*e\.?\s*d\.?", re.I), "bsed"),
-    (re.compile(r"\bb\.?\s*e\.?\s*e\.?\s*d\.?", re.I), "beed"),
-    (re.compile(r"\bb\.?\s*s\.?\s*a\.?", re.I), "bsa"),
-    (re.compile(r"\bb\.?\s*s\.?\s*n\.?", re.I), "bsn"),
-    (re.compile(r"\bb\.?\s*sc\.?", re.I), "bsc"),
-    (re.compile(r"\bb\.?\s*s\.?", re.I), "bs"),
-    (re.compile(r"\bb\.?\s*a\.?", re.I), "ba"),
-    (re.compile(r"\ba\.?\s*b\.?", re.I), "ab"),
+    (re.compile(r"\bph\.?\s*d\.?(?![a-z0-9])", re.I), "phd"),
+    (re.compile(r"\bed\.?\s*d\.?(?![a-z0-9])", re.I), "edd"),
+    (re.compile(r"\bd\.?\s*b\.?\s*a\.?(?![a-z0-9])", re.I), "dba"),
+    (re.compile(r"\bm\.?\s*b\.?\s*a\.?(?![a-z0-9])", re.I), "mba"),
+    (re.compile(r"\bm\.?\s*p\.?\s*a\.?(?![a-z0-9])", re.I), "mpa"),
+    (re.compile(r"\bm\.?\s*i\.?\s*t\.?(?![a-z0-9])", re.I), "mit"),
+    (re.compile(r"\bm\.?\s*s\.?\s*i\.?\s*t\.?(?![a-z0-9])", re.I), "msit"),
+    (re.compile(r"\bm\.?\s*s\.?\s*c\.?\s*s\.?(?![a-z0-9])", re.I), "mscs"),
+    (re.compile(r"\bm\.?\s*a\.?\s*ed\.?(?![a-z0-9])", re.I), "maed"),
+    (re.compile(r"\bm\.?\s*sc\.?(?![a-z0-9])", re.I), "msc"),
+    (re.compile(r"\bm\.?\s*s\.?(?![a-z0-9])", re.I), "ms"),
+    (re.compile(r"\bm\.?\s*a\.?(?![a-z0-9])", re.I), "ma"),
+    (re.compile(r"\bm\.?\s*d\.?(?![a-z0-9])", re.I), "md"),
+    (re.compile(r"\bj\.?\s*d\.?(?![a-z0-9])", re.I), "jd"),
+    (re.compile(r"\bll\.?\s*b\.?(?![a-z0-9])", re.I), "llb"),
+    (re.compile(r"\bb\.?\s*s\.?\s*b\.?\s*a\.?(?![a-z0-9])", re.I), "bsba"),
+    (re.compile(r"\bb\.?\s*s\.?\s*i\.?\s*t\.?(?![a-z0-9])", re.I), "bsit"),
+    (re.compile(r"\bb\.?\s*s\.?\s*c\.?\s*s\.?(?![a-z0-9])", re.I), "bscs"),
+    (re.compile(r"\bb\.?\s*s\.?\s*i\.?\s*s\.?(?![a-z0-9])", re.I), "bsis"),
+    (re.compile(r"\bb\.?\s*s\.?\s*c\.?\s*p\.?\s*e\.?(?![a-z0-9])", re.I), "bscpe"),
+    (re.compile(r"\bb\.?\s*s\.?\s*e\.?\s*c\.?\s*e\.?(?![a-z0-9])", re.I), "bsece"),
+    (re.compile(r"\bb\.?\s*s\.?\s*c\.?\s*h\.?\s*e\.?(?![a-z0-9])", re.I), "bsche"),
+    (re.compile(r"\bb\.?\s*s\.?\s*c\.?\s*e\.?(?![a-z0-9])", re.I), "bsce"),
+    (re.compile(r"\bb\.?\s*s\.?\s*m\.?\s*e\.?(?![a-z0-9])", re.I), "bsme"),
+    (re.compile(r"\bb\.?\s*s\.?\s*e\.?\s*e\.?(?![a-z0-9])", re.I), "bsee"),
+    (re.compile(r"\bb\.?\s*s\.?\s*i\.?\s*e\.?(?![a-z0-9])", re.I), "bsie"),
+    (re.compile(r"\bb\.?\s*s\.?\s*h\.?\s*r\.?\s*m\.?(?![a-z0-9])", re.I), "bshrm"),
+    (re.compile(r"\bb\.?\s*s\.?\s*h\.?\s*m\.?(?![a-z0-9])", re.I), "bshm"),
+    (re.compile(r"\bb\.?\s*s\.?\s*t\.?\s*m\.?(?![a-z0-9])", re.I), "bstm"),
+    (re.compile(r"\bb\.?\s*s\.?\s*c\.?\s*a\.?(?![a-z0-9])", re.I), "bsca"),
+    (re.compile(r"\bb\.?\s*s\.?\s*c\.?\s*r\.?\s*i\.?\s*m\.?(?![a-z0-9])", re.I), "bscrim"),
+    (re.compile(r"\bb\.?\s*s\.?\s*e\.?\s*d\.?(?![a-z0-9])", re.I), "bsed"),
+    (re.compile(r"\bb\.?\s*e\.?\s*e\.?\s*d\.?(?![a-z0-9])", re.I), "beed"),
+    (re.compile(r"\bb\.?\s*s\.?\s*a\.?(?![a-z0-9])", re.I), "bsa"),
+    (re.compile(r"\bb\.?\s*s\.?\s*n\.?(?![a-z0-9])", re.I), "bsn"),
+    (re.compile(r"\bb\.?\s*sc\.?(?![a-z0-9])", re.I), "bsc"),
+    (re.compile(r"\bb\.?\s*s\.?(?![a-z0-9])", re.I), "bs"),
+    (re.compile(r"\bb\.?\s*a\.?(?![a-z0-9])", re.I), "ba"),
+    (re.compile(r"\ba\.?\s*b\.?(?![a-z0-9])", re.I), "ab"),
 ]
 
 # Non-education phrases that start with "MS" (Microsoft software tools)
@@ -478,6 +502,12 @@ EDUCATION_FIELD_SYNONYMS: dict[str, str] = {
     "architecture": "architecture",
     "crim": "criminology",
     "criminology": "criminology",
+    "juris": "law",
+    "juris doctor": "law",
+    "laws": "law",
+    "bachelor of laws": "law",
+    "financial management": "financial management",
+    "legal management": "legal management",
 }
 
 RELATED_EDUCATION_FIELDS: dict[str, list[str]] = {
@@ -502,6 +532,9 @@ RELATED_EDUCATION_FIELDS: dict[str, list[str]] = {
         "finance", "financial management", "business administration",
         "commerce", "banking", "economics", "auditing",
     ],
+    "financial management": [
+        "accounting", "finance", "business administration", "economics", "commerce",
+    ],
     "engineering": [
         "mechanical", "electrical", "electronics", "civil", "chemical",
         "industrial", "ceramic", "materials", "metallurgical", "computer engineering",
@@ -513,7 +546,9 @@ RELATED_EDUCATION_FIELDS: dict[str, list[str]] = {
     "industrial engineering": ["mechanical engineering", "manufacturing", "operations management", "chemical engineering"],
     "chemistry": ["chemical engineering", "chemical", "biochemistry", "materials", "ceramic", "industrial technology"],
     "human resource": ["psychology", "business administration", "management", "behavioral science", "organizational"],
-    "psychology": ["human resource", "business administration", "behavioral science", "guidance"],
+    "psychology": ["human resource", "business administration", "behavioral science", "guidance", "education"],
+    "education": ["psychology", "elementary education", "secondary education", "human resource", "communication"],
+    "law": ["legal management", "political science", "criminology", "public administration"],
     "marketing": ["business administration", "commerce", "management", "communication", "advertising", "entrepreneurship"],
     "supply chain": ["logistics", "business administration", "industrial engineering", "operations management", "procurement"],
     "statistics": ["mathematics", "economics", "computer science", "data science", "data analysis"],
@@ -526,6 +561,7 @@ _GENERIC_FIELD_STOPWORDS: frozenset[str] = frozenset({
     "bachelor", "bachelors", "master", "masters", "masteral", "doctorate", "doctor",
     "associate", "associates", "diploma", "vocational", "technical", "tech", "tesda",
     "senior", "junior", "high", "school", "shs", "jhs", "secondary", "elementary", "primary",
+    "tertiary", "collegiate", "postsecondary", "tvet", "baccalaureate",
     "college", "university", "colleges", "institute", "academy", "polytechnic", "campus",
     "degree", "course", "program", "curriculum", "strand", "track", "certificate", "certification",
     "nc", "i", "ii", "iii", "iv", "k12", "phd", "edd", "dba", "dmd", "bs", "ba", "ab", "ms", "ma", "msc",
@@ -543,6 +579,47 @@ _GENERIC_FIELD_STOPWORDS: frozenset[str] = frozenset({
     "1st", "2nd", "3rd", "4th", "5th", "first", "second", "third", "fourth", "fifth",
     "none", "na", "wala", "nil", "null",
 } | set(DEGREE_ACRONYM_FIELDS.keys()))
+
+_HEAD_NOUN_MODIFIERS: dict[str, frozenset[str]] = {
+    "engineering": frozenset({
+        "chemical", "mechanical", "electrical", "electronics", "industrial", "civil",
+        "computer", "materials", "materials science", "ceramic", "metallurgical",
+        "software", "mining", "geodetic", "sanitary", "agricultural", "manufacturing",
+        "mechatronics", "environmental", "structural", "communications",
+    }),
+    "technology": frozenset({
+        "information", "industrial", "mechanical", "electrical", "electronics",
+        "automotive", "computer", "medical", "food", "accounting",
+    }),
+    "management": frozenset({
+        "financial", "marketing", "operations", "supply chain", "human resource",
+        "business", "hospitality", "tourism", "hotel", "restaurant", "office",
+        "project", "construction", "quality", "records", "legal", "public", "customs",
+    }),
+    "administration": frozenset({
+        "business", "public", "office", "customs", "hospital", "health",
+    }),
+    "science": frozenset({
+        "computer", "data", "environmental", "political", "behavioral", "social",
+        "library", "medical laboratory", "materials", "food", "actuarial", "marine",
+        "forensic", "natural",
+    }),
+    "education": frozenset({
+        "elementary", "secondary", "special", "physical", "early childhood",
+        "technical", "vocational",
+    }),
+    "arts": frozenset({
+        "fine", "multimedia", "communication", "liberal", "industrial", "culinary",
+        "performing", "visual", "digital", "graphic",
+    }),
+}
+
+_STANDALONE_DISCIPLINE_NOUNS: frozenset[str] = frozenset({
+    "engineering", "technology", "management", "science", "administration",
+    "education", "arts", "accounting", "accountancy", "chemistry",
+    "mathematics", "statistics", "economics", "psychology", "law",
+    "nursing", "architecture", "biology", "physics",
+})
 
 _INSTITUTION_STRIP_RE = re.compile(
     r"(?:\s+[-–—|,]\s*|\s+(?:at|from)\s+)"
@@ -622,14 +699,37 @@ def _strip_non_mandatory_advantage_clauses(text: str) -> str:
     return " ".join(mandatory).strip() if mandatory else text
 
 
-def _canonicalize_field_phrase(phrase: str) -> str:
+def _canonicalize_field_phrase(phrase: str, allow_education_field: bool = False) -> str:
     """Normalize a course/major phrase and apply canonical field synonyms."""
     cleaned = _normalize_edu_text_for_matching(phrase)
     # Remove trailing "or equivalent experience"
     cleaned = re.sub(r"\bor\s+equivalent(?:\s+experience)?\b.*$", "", cleaned, flags=re.I).strip()
+    raw_tokens = re.findall(r"[a-z0-9]+", cleaned.lower())
+    disqualifies_edu_field = bool(
+        set(raw_tokens)
+        & {
+            "background",
+            "attainment",
+            "level",
+            "higher",
+            "tertiary",
+            "college",
+            "collegiate",
+            "vocational",
+            "high",
+            "senior",
+            "junior",
+            "primary",
+            "educational",
+        }
+    )
+    allowed_set = _GENERIC_FIELD_STOPWORDS
+    if allow_education_field and not disqualifies_edu_field:
+        allowed_set = _GENERIC_FIELD_STOPWORDS - {"education"}
+
     tokens = [
-        t for t in re.findall(r"[a-z0-9]+", cleaned.lower())
-        if len(t) >= 2 and not t.isdigit() and t not in _GENERIC_FIELD_STOPWORDS
+        t for t in raw_tokens
+        if len(t) >= 2 and not t.isdigit() and t not in allowed_set
     ]
     joined = " ".join(tokens).strip()
     if not joined:
@@ -656,15 +756,22 @@ def extract_education_fields(text: str) -> list[str]:
     work = _INSTITUTION_STRIP_RE.sub(" ", work)
     work = _MS_SOFTWARE_RE.sub(" ", work)
     work = _strip_non_mandatory_advantage_clauses(work)
+    # Strip dotted degree prefixes (e.g. "B.S. in Accounting" -> "bs in Accounting") while preserving list punctuation
+    work_acr = work
+    for pat, repl in _DOT_ABBR_PATTERNS:
+        work_acr = pat.sub(repl, work_acr)
 
     # Check degree acronyms that inherently encode a field (e.g. BSBA, BSIT, MBA)
-    norm_for_acr = _normalize_edu_text_for_matching(work)
+    norm_for_acr = _normalize_edu_text_for_matching(work_acr)
     fields: list[str] = []
     seen: set[str] = set()
 
     def _add_field(candidate: str) -> None:
         canon = EDUCATION_FIELD_SYNONYMS.get(candidate.strip().lower(), candidate.strip().lower())
         if canon and canon not in _GENERIC_FIELD_STOPWORDS and canon not in seen:
+            seen.add(canon)
+            fields.append(canon)
+        elif canon == "education" and canon not in seen:
             seen.add(canon)
             fields.append(canon)
 
@@ -674,33 +781,45 @@ def extract_education_fields(text: str) -> list[str]:
             if implied:
                 _add_field(implied)
 
-    # Extract explicit "in <field(s)>" or "major in <field(s)>" clauses
+    # Extract explicit "in <field(s)>" or "major in <field(s)>" clauses against sanitized work_acr
     m_in = re.search(
         r"\b(?:major\s+in|specializing\s+in|bachelor(?:'?s)?(?:\s+of\s+(?:science|arts|secondary|elementary))?\s+in|"
         r"master(?:'?s)?(?:\s+of\s+(?:science|arts))?\s+in|associate(?:'?s)?\s+in|diploma\s+in|"
-        r"vocational\s+(?:course|program|training)\s+in|bs|ba|ab|ms|ma|in)\s+([^.|;\n]+)",
-        norm_raw,
+        r"vocational\s+(?:course|program|training)\s+in|(?:bs|ba|ab|ms|ma)(?:\s+in)?|in)\s+([^.|;\n]+)",
+        work_acr,
         re.I,
     )
-    clause = m_in.group(1).strip() if m_in else work
+    has_explicit_clause = bool(m_in)
+    clause = m_in.group(1).strip() if m_in else work_acr
 
-    # Split comma / "or" / "/" alternatives while preserving trailing shared head noun
+    # Split comma / "or" / "/" alternatives while expanding ONLY genuine adjectival modifiers
     # e.g. "Chemical, Mechanical, or Industrial Engineering" -> each gets "engineering"
+    # whereas "Chemistry or Chemical Engineering" stays ["chemistry", "chemical engineering"]
     alt_parts = [
         p.strip()
         for p in re.split(r"\s*,\s*(?:or\s+)?|\s+(?:or|and/or)\s+|/", clause, flags=re.I)
         if p.strip()
     ]
-    cleaned_alts = [_canonicalize_field_phrase(p) for p in alt_parts]
+    cleaned_alts = [
+        _canonicalize_field_phrase(p, allow_education_field=has_explicit_clause)
+        for p in alt_parts
+    ]
     cleaned_alts = [p for p in cleaned_alts if p]
 
     if len(cleaned_alts) > 1:
         last_words = cleaned_alts[-1].split()
         head_noun = last_words[-1] if len(last_words) >= 2 else ""
-        if head_noun in {"engineering", "technology", "management", "science", "administration", "education", "arts"}:
+        allowed_modifiers = _HEAD_NOUN_MODIFIERS.get(head_noun, frozenset())
+        if allowed_modifiers:
             expanded_alts: list[str] = []
             for idx, alt in enumerate(cleaned_alts):
-                if idx < len(cleaned_alts) - 1 and head_noun not in alt.split():
+                alt_words = alt.split()
+                if (
+                    idx < len(cleaned_alts) - 1
+                    and alt in allowed_modifiers
+                    and head_noun not in alt_words
+                    and alt_words[-1] not in _STANDALONE_DISCIPLINE_NOUNS
+                ):
                     expanded_alts.append(f"{alt} {head_noun}")
                 else:
                     expanded_alts.append(alt)
@@ -711,7 +830,7 @@ def extract_education_fields(text: str) -> list[str]:
 
     # If still empty, try stripping generic words from whole text
     if not fields:
-        whole = _canonicalize_field_phrase(work)
+        whole = _canonicalize_field_phrase(work_acr, allow_education_field=False)
         if whole:
             _add_field(whole)
 
@@ -1024,10 +1143,14 @@ CERTIFICATION_HIERARCHIES: dict[str, dict[str, Any]] = {
 }
 
 _GENERIC_CERT_SUBJECT_WORDS: frozenset[str] = frozenset({
-    "tesda", "national", "certificate", "certification", "certified", "level",
+    "tesda", "national", "certificate", "certification", "certified", "level", "levels",
     "dole", "osh", "bosh", "cosh", "lean", "six", "sigma", "sixsigma",
     "scrum", "professional", "master", "civil", "career", "service", "eligibility",
-    "holder", "passer", "training", "in", "of", "for", "and", "or", "the", "a", "an",
+    "holder", "holders", "passer", "passers", "practitioner", "training",
+    "preferred", "required", "plus", "advantage", "desirable", "highly", "recommended",
+    "optional", "minimum", "min", "least", "at", "higher", "above", "equivalent",
+    "similar", "valid", "active", "current", "accredited", "agency", "from", "with",
+    "must", "have", "is", "be", "in", "of", "for", "and", "or", "the", "a", "an",
 })
 
 

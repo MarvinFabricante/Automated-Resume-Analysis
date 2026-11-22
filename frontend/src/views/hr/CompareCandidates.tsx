@@ -5,7 +5,7 @@ import {
   Search, CheckCircle2, XCircle, Users, ArrowLeft, Award, TrendingUp, AlertTriangle,
   Mail, Phone, MapPin, Briefcase, Star, Zap, BarChart3, Trophy, Sparkles,
   Check, Plus, Trash2, User, Table, LayoutGrid, SlidersHorizontal,
-  Download, Printer, Save, FileText
+  Download, Printer, Save, FileText, GraduationCap
 } from 'lucide-react';
 import Header from '../../components/layout/Header';
 import Sidebar from '../../components/layout/Sidebar';
@@ -17,6 +17,8 @@ import {
   isNoValueRequirement,
   resolveCriterionStatus,
   getCriterionStatusBadgeStyle,
+  evaluateEducationClient,
+  compareGradedCertificationClient,
 } from '../../utils/criterionStatus';
 import {
   EvaluationFilters,
@@ -60,7 +62,9 @@ interface CandidateComparisonData extends Partial<Application> {
   recommendations?: string[];
   skillsScore?: number;
   experienceScore?: number;
+  educationScore?: number;
   education_score?: number;
+  education_needs_manual_review?: boolean;
   highest_educational_attainment?: string;
   degree?: string;
   certificationsScore?: number;
@@ -93,7 +97,9 @@ const calculateRuleBasedScore = (
 ): CandidateComparisonData => {
   let skillsScore = 0;
   let expScore = 0;
+  let eduScore = candidate.education_score ?? candidate.educationScore ?? 0;
   let certScore = 0;
+  let eduEval: ReturnType<typeof evaluateEducationClient> | null = null;
   let matchedSkills = candidate.matched_skills || [];
   let missingSkills = candidate.missing_skills || [];
 
@@ -150,7 +156,7 @@ const calculateRuleBasedScore = (
       skillsScore = 100;
     }
 
-    // 2. Experience Matching
+    // 2. Experience Matching (>= hierarchy: more experience never penalizes)
     const jobExp = req.jobExp;
     const candExpParts = [
       candidate.relevance,
@@ -186,7 +192,7 @@ const calculateRuleBasedScore = (
       }
 
       if (reqYears > 0 && candYears > 0) {
-        const yearsScore = Math.min(100, Math.round((candYears / reqYears) * 100));
+        const yearsScore = candYears >= reqYears ? 100 : Math.min(100, Math.round((candYears / reqYears) * 100));
         expScore = expKeywords.length > 0 ? Math.round((yearsScore * 0.5) + (keywordScore * 0.5)) : yearsScore;
       } else if (reqYears > 0 && candYears === 0) {
         expScore = keywordScore > 0 ? keywordScore : (candidate.experienceScore || candidate.experience_score || 0);
@@ -194,24 +200,50 @@ const calculateRuleBasedScore = (
         expScore = keywordScore > 0 ? keywordScore : (candidate.experienceScore || candidate.experience_score || (candExpParts.length > 10 ? 75 : 0));
       }
     } else {
-      expScore = candidate.experienceScore ?? candidate.experience_score ?? (candExpParts.length > 10 ? 80 : 50);
+      expScore = 100;
     }
 
-    // 3. Certifications Matching
+    // 3. Education Matching (shared 1-8 hierarchy + ongoing + manual review rules)
+    const candEduText = [
+      candidate.candidate_degree,
+      candidate.degree,
+      candidate.highest_educational_attainment,
+    ]
+      .filter((v) => !isNoValueRequirement(v))
+      .join(' | ');
+    eduEval = evaluateEducationClient(candEduText, req.jobEdu, candidate.education_entries);
+    eduScore = eduEval.score;
+
+    // 4. Certifications Matching (including graded certs like NC I-IV, SO1-4, Six Sigma belts)
     const hasCertReq = req.hasCertReq;
     const jobCert = req.jobCert;
-    const candCert = ([
+    const rawCandCert = [
       candidate.candidate_certifications,
       candidate.certifications,
-    ]).filter((v) => !isNoValueRequirement(v)).join(' ').toLowerCase();
+    ]
+      .filter((v) => !isNoValueRequirement(v))
+      .join(', ');
+    const candCert = rawCandCert.toLowerCase();
 
     if (hasCertReq) {
-      const certKeywords = req.certKeywords;
-      if (certKeywords.length > 0) {
-        const matchCount = certKeywords.filter(kw => candCert.includes(kw)).length;
-        certScore = Math.round((matchCount / certKeywords.length) * 100);
+      const candItems = rawCandCert.split(/[|,\n;•]+/).map((s) => s.trim()).filter(Boolean);
+      let gradedScore: number | null = null;
+      for (const item of candItems) {
+        const graded = compareGradedCertificationClient(item, jobCert);
+        if (graded !== null) {
+          gradedScore = gradedScore === null ? graded.score : Math.max(gradedScore, graded.score);
+        }
+      }
+      if (gradedScore !== null) {
+        certScore = gradedScore;
       } else {
-        certScore = jobCert.split(/[\s,]+/).some(w => w.length > 3 && candCert.includes(w)) ? 100 : 0;
+        const certKeywords = req.certKeywords;
+        if (certKeywords.length > 0) {
+          const matchCount = certKeywords.filter(kw => candCert.includes(kw)).length;
+          certScore = Math.round((matchCount / certKeywords.length) * 100);
+        } else {
+          certScore = jobCert.split(/[\s,]+/).some(w => w.length > 3 && candCert.includes(w)) ? 100 : 0;
+        }
       }
     } else {
       // Certification not required for this job — automatic full credit at normal weight
@@ -221,6 +253,7 @@ const calculateRuleBasedScore = (
     // Original AI Scores
     skillsScore = candidate.skillsScore ?? candidate.skills_score ?? 0;
     expScore = candidate.experienceScore ?? candidate.experience_score ?? 0;
+    eduScore = candidate.education_score ?? candidate.educationScore ?? 0;
     certScore = candidate.certifications_score ?? candidate.certificationsScore ?? 0;
   }
 
@@ -239,7 +272,6 @@ const calculateRuleBasedScore = (
     totalWeight += 10;
     rawScore += certScore * 10;
   }
-  const eduScore = candidate.education_score ?? 100;
   const compScore = candidate.completeness_score ?? 100;
   if (job) {
     totalWeight += 20;
@@ -267,6 +299,17 @@ const calculateRuleBasedScore = (
     matchScore,
     skillsScore,
     experienceScore: expScore,
+    educationScore: eduScore,
+    education_score: eduScore,
+    ...(eduEval
+      ? {
+          education_status: eduEval.status,
+          education_reason: eduEval.reason,
+          required_degree: eduEval.requiredEducation,
+          candidate_degree: eduEval.candidateEducation,
+          education_needs_manual_review: eduEval.status === 'Needs manual review',
+        }
+      : {}),
     certificationsScore: certScore,
     matched_skills: matchedSkills.length > 0 ? matchedSkills : candidate.matched_skills,
     missing_skills: missingSkills.length > 0 ? missingSkills : candidate.missing_skills,
@@ -494,12 +537,14 @@ const CompareCandidates: React.FC = () => {
           matchScore: sc.match_score,
           skillsScore: sc.skills_score,
           experienceScore: sc.experience_score,
+          educationScore: sc.education_score,
           education_score: sc.education_score,
           certificationsScore: sc.certifications_score,
           completeness_score: sc.completeness_score,
           skills_status: sc.skills_status || localApp?.skills_status,
           experience_status: sc.experience_status || localApp?.experience_status,
           education_status: sc.education_status || localApp?.education_status,
+          education_needs_manual_review: Boolean(sc.education_needs_manual_review ?? localApp?.education_needs_manual_review),
           certifications_status: sc.certifications_status || localApp?.certifications_status,
           skills_reason: sc.skills_reason || localApp?.skills_reason,
           experience_reason: sc.experience_reason || localApp?.experience_reason,
@@ -895,8 +940,8 @@ const CompareCandidates: React.FC = () => {
         )}
 
         {/* Category Winners Filter Display */}
-        {(categoryWinners.skills || categoryWinners.experience || categoryWinners.certifications) && (
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 sm:gap-4 mb-5 sm:mb-7">
+        {(categoryWinners.skills || categoryWinners.experience || categoryWinners.education || categoryWinners.certifications) && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4 mb-5 sm:mb-7">
             {evaluationFilters.skills && categoryWinners.skills && (
               <div className="bg-blue-50/60 border border-blue-100 rounded-2xl p-3 sm:p-4 flex items-center justify-between shadow-2xs">
                 <div className="flex items-center gap-2.5 min-w-0">
@@ -926,6 +971,22 @@ const CompareCandidates: React.FC = () => {
                 </div>
                 <span className="px-2 py-1 bg-purple-100/80 text-purple-700 rounded-lg text-xs font-black shrink-0">
                   {categoryWinners.experience.experienceScore}%
+                </span>
+              </div>
+            )}
+            {categoryWinners.education && (
+              <div className="bg-emerald-50/60 border border-emerald-100 rounded-2xl p-3 sm:p-4 flex items-center justify-between shadow-2xs">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="p-2 bg-emerald-100 text-emerald-600 rounded-xl shrink-0">
+                    <GraduationCap className="w-4 h-4" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-[9px] sm:text-[10px] font-black text-slate-400 uppercase tracking-wider">Top Education</p>
+                    <p className="text-xs sm:text-sm font-bold text-slate-800 truncate">{categoryWinners.education.name}</p>
+                  </div>
+                </div>
+                <span className="px-2 py-1 bg-emerald-100/80 text-emerald-700 rounded-lg text-xs font-black shrink-0">
+                  {categoryWinners.education.education_score ?? categoryWinners.education.educationScore ?? 0}%
                 </span>
               </div>
             )}
@@ -1141,6 +1202,15 @@ const CompareCandidates: React.FC = () => {
                             </div>
                             <div>
                               <div className="flex justify-between text-[10px] sm:text-[11px] font-bold mb-0.5">
+                                <span className="text-slate-600">Education</span>
+                                <span className="text-emerald-600">{candidate.education_score ?? candidate.educationScore ?? 0}%</span>
+                              </div>
+                              <div className="w-full bg-slate-100 rounded-full h-1.5">
+                                <div className="h-1.5 rounded-full bg-emerald-500" style={{ width: `${candidate.education_score ?? candidate.educationScore ?? 0}%` }} />
+                              </div>
+                            </div>
+                            <div>
+                              <div className="flex justify-between text-[10px] sm:text-[11px] font-bold mb-0.5">
                                 <span className={evaluationFilters.certifications ? 'text-slate-600' : 'text-slate-300 line-through'}>Certifications</span>
                                 <span className="text-amber-600">{candidate.certificationsScore || 0}%</span>
                               </div>
@@ -1294,6 +1364,45 @@ const CompareCandidates: React.FC = () => {
                             </div>
                             <span className="text-[10px] uppercase font-bold text-slate-400 block mb-0.5">{!isNoValueRequirement(candidate.relevance) ? candidate.relevance : "Role unspecified"}</span>
                             <p className="line-clamp-3 text-slate-500 text-[10px] sm:text-[11px]">{candidate.experience_reason || "No details provided"}</p>
+                          </td>
+                        );
+                      })}
+                    </tr>
+
+                    {/* Row 7b: Education & Attainment */}
+                    <tr className="hover:bg-slate-50/40 transition-colors">
+                      <td className="sticky left-0 z-20 bg-slate-50/95 backdrop-blur-md p-3 sm:p-5 text-[11px] sm:text-xs font-black text-slate-700 uppercase tracking-wider w-[125px] min-w-[125px] max-w-[125px] sm:w-56 sm:min-w-[220px] sm:max-w-[220px] shrink-0 border-r-2 border-slate-200 shadow-[3px_0_8px_rgba(0,0,0,0.05)]">
+                        <div className="flex items-center gap-1.5 sm:gap-2">
+                          <GraduationCap size={13} className="text-emerald-600 shrink-0" />
+                          <span>Education</span>
+                        </div>
+                      </td>
+                      {selectedCandidatesData.map((candidate, idx) => {
+                        const eduScore = candidate.education_score ?? candidate.educationScore ?? 0;
+                        const eduStatus = resolveCriterionStatus({
+                          explicitStatus: candidate.education_status,
+                          reason: candidate.education_reason,
+                          score: eduScore,
+                        });
+                        const rawCandEdu = candidate.candidate_degree || candidate.degree || candidate.highest_educational_attainment;
+                        const candEduDisplay = !isNoValueRequirement(rawCandEdu) ? rawCandEdu : "None provided";
+                        const reqEduDisplay = candidate.required_degree || serverComparison?.reference_job?.education_requirements || selectedJob?.education_requirements;
+                        return (
+                          <td key={candidate.id} className={`p-3 sm:p-5 text-[11px] sm:text-xs text-slate-700 leading-relaxed ${idx === 0 ? 'bg-rose-50/15' : ''}`}>
+                            <div className="flex items-center justify-between gap-2 mb-1">
+                              <span className="font-bold text-slate-900">{candEduDisplay}</span>
+                              <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold border shrink-0 ${getCriterionStatusBadgeStyle(eduStatus).badgeClass}`}>
+                                {eduStatus}
+                              </span>
+                            </div>
+                            {!isNoValueRequirement(reqEduDisplay) && (
+                              <span className="text-[10px] font-semibold text-slate-400 block mb-0.5">
+                                Required: {reqEduDisplay}
+                              </span>
+                            )}
+                            <p className="line-clamp-3 text-slate-500 text-[10px] sm:text-[11px]">
+                              {candidate.education_reason || "No education evaluation details provided"}
+                            </p>
                           </td>
                         );
                       })}
@@ -1520,10 +1629,10 @@ const CompareCandidates: React.FC = () => {
                         </div>
                       </div>
 
-                      {/* 3 Pillar Breakdown Cards */}
+                      {/* 4 Pillar Breakdown Cards */}
                       <div>
                         <p className="text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1.5">Pillar Scores</p>
-                        <div className="grid grid-cols-3 gap-1.5 sm:gap-2">
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 sm:gap-2">
                           <div className="bg-blue-50/60 border border-blue-100/80 rounded-xl p-2 text-center">
                             <p className="text-xs font-black text-blue-700">{candidate.skillsScore}%</p>
                             <p className="text-[9px] font-bold text-slate-400 uppercase mt-0.5">Skills</p>
@@ -1536,6 +1645,13 @@ const CompareCandidates: React.FC = () => {
                             <p className="text-[9px] font-bold text-slate-400 uppercase mt-0.5">Exp</p>
                             <div className="w-full bg-purple-100 rounded-full h-1 mt-1">
                               <div className="h-1 rounded-full bg-purple-500" style={{ width: `${candidate.experienceScore}%` }} />
+                            </div>
+                          </div>
+                          <div className="bg-emerald-50/60 border border-emerald-100/80 rounded-xl p-2 text-center">
+                            <p className="text-xs font-black text-emerald-700">{candidate.education_score ?? candidate.educationScore ?? 0}%</p>
+                            <p className="text-[9px] font-bold text-slate-400 uppercase mt-0.5">Edu</p>
+                            <div className="w-full bg-emerald-100 rounded-full h-1 mt-1">
+                              <div className="h-1 rounded-full bg-emerald-500" style={{ width: `${candidate.education_score ?? candidate.educationScore ?? 0}%` }} />
                             </div>
                           </div>
                           <div className="bg-amber-50/60 border border-amber-100/80 rounded-xl p-2 text-center">
@@ -1647,6 +1763,38 @@ const CompareCandidates: React.FC = () => {
                           <p className="text-[10px] uppercase font-bold text-slate-400">{!isNoValueRequirement(candidate.relevance) ? candidate.relevance : "Role unspecified"}</p>
                           {candidate.experience_reason && (
                             <p className="text-[11px] text-slate-500 mt-1 line-clamp-2 leading-relaxed">{candidate.experience_reason}</p>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Education Summary */}
+                      <div>
+                        <div className="flex items-center justify-between mb-1">
+                          <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">Education</p>
+                          {(() => {
+                            const eduSt = resolveCriterionStatus({
+                              explicitStatus: candidate.education_status,
+                              reason: candidate.education_reason,
+                              score: candidate.education_score ?? candidate.educationScore ?? 0,
+                            });
+                            return (
+                              <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-bold border ${getCriterionStatusBadgeStyle(eduSt).badgeClass}`}>
+                                {eduSt}
+                              </span>
+                            );
+                          })()}
+                        </div>
+                        <div className="bg-slate-50/70 border border-slate-100 rounded-xl p-2.5 text-xs text-slate-700">
+                          <p className="font-bold text-slate-900">
+                            {!isNoValueRequirement(candidate.candidate_degree || candidate.degree || candidate.highest_educational_attainment)
+                              ? (candidate.candidate_degree || candidate.degree || candidate.highest_educational_attainment)
+                              : "None provided"}
+                          </p>
+                          {!isNoValueRequirement(candidate.required_degree) && (
+                            <p className="text-[10px] font-semibold text-slate-400 mt-0.5">Required: {candidate.required_degree}</p>
+                          )}
+                          {candidate.education_reason && (
+                            <p className="text-[10px] text-slate-500 mt-0.5 line-clamp-2 leading-relaxed">{candidate.education_reason}</p>
                           )}
                         </div>
                       </div>
@@ -2176,10 +2324,10 @@ const CompareCandidates: React.FC = () => {
 
               {/* Scrollable Detail Body */}
               <div className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-7 space-y-5 sm:space-y-6 custom-scrollbar">
-                {/* 3 Pillar Score Breakdown Cards */}
+                {/* 4 Pillar Score Breakdown Cards */}
                 <div>
                   <h4 className="text-[10px] sm:text-xs font-black uppercase tracking-wider text-slate-400 mb-2 sm:mb-3">Score Breakdown</h4>
-                  <div className="grid grid-cols-3 gap-2 sm:gap-4">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-4">
                     <div className={`p-2.5 sm:p-4 border rounded-xl sm:rounded-2xl text-center transition-all ${evaluationFilters.skills ? 'bg-blue-50/50 border-blue-100' : 'bg-slate-50/50 border-slate-100 opacity-60'
                       }`}>
                       <div className="flex justify-center mb-1">
@@ -2200,6 +2348,16 @@ const CompareCandidates: React.FC = () => {
                         {activeCandidateEvaluated?.experienceScore || 0}%
                       </p>
                       <p className="text-[9px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-wider mt-0.5">Experience</p>
+                    </div>
+
+                    <div className="p-2.5 sm:p-4 border rounded-xl sm:rounded-2xl text-center transition-all bg-emerald-50/50 border-emerald-100">
+                      <div className="flex justify-center mb-1">
+                        <GraduationCap className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-500" />
+                      </div>
+                      <p className="text-base sm:text-xl font-black text-emerald-700">
+                        {activeCandidateEvaluated?.education_score ?? activeCandidateEvaluated?.educationScore ?? 0}%
+                      </p>
+                      <p className="text-[9px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-wider mt-0.5">Education</p>
                     </div>
 
                     <div className={`p-2.5 sm:p-4 border rounded-xl sm:rounded-2xl text-center transition-all ${evaluationFilters.certifications ? 'bg-amber-50/50 border-amber-100' : 'bg-slate-50/50 border-slate-100 opacity-60'
@@ -2225,6 +2383,37 @@ const CompareCandidates: React.FC = () => {
                     <p className="text-xs sm:text-sm text-slate-700 leading-relaxed font-medium italic">
                       "{activeCandidate.ai_summary}"
                     </p>
+                  </div>
+                )}
+
+                {/* Education Attainment Preview */}
+                {activeCandidateEvaluated && (
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <h4 className="text-[10px] sm:text-xs font-black uppercase tracking-wider text-slate-400">Education Alignment</h4>
+                      {(() => {
+                        const eduSt = resolveCriterionStatus({
+                          explicitStatus: activeCandidateEvaluated.education_status,
+                          reason: activeCandidateEvaluated.education_reason,
+                          score: activeCandidateEvaluated.education_score ?? activeCandidateEvaluated.educationScore ?? 0,
+                        });
+                        return (
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${getCriterionStatusBadgeStyle(eduSt).badgeClass}`}>
+                            {eduSt}
+                          </span>
+                        );
+                      })()}
+                    </div>
+                    <div className="bg-slate-50/60 border border-slate-100 rounded-2xl p-4 space-y-2">
+                      <p className="text-xs sm:text-sm font-bold text-slate-800">
+                        {!isNoValueRequirement(activeCandidateEvaluated.candidate_degree || activeCandidate.degree || activeCandidate.highest_educational_attainment)
+                          ? (activeCandidateEvaluated.candidate_degree || activeCandidate.degree || activeCandidate.highest_educational_attainment)
+                          : "None Specified"}
+                      </p>
+                      {activeCandidateEvaluated.education_reason && (
+                        <p className="text-xs text-slate-600 leading-relaxed">{activeCandidateEvaluated.education_reason}</p>
+                      )}
+                    </div>
                   </div>
                 )}
 
