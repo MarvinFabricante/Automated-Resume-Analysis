@@ -11,6 +11,7 @@ import { logout as logoutAction } from '../../redux/slices/authSlice';
 import { RootState } from '../../redux/store';
 import { clearAllAuthSessions, performUserLogout } from '../../utils/token';
 import { useGetJobsQuery } from '../../redux/api/apiSlice';
+import styles from './Sidebar.module.css';
 
 export interface NavItem {
   label: string;
@@ -197,8 +198,10 @@ const Sidebar: React.FC = () => {
 
       <aside
         data-sidebar="true"
+        data-hr-theme={isHR ? 'true' : undefined}
         className={`
           desktop-sidebar flex flex-col bg-white border-r border-slate-200/90
+          ${isHR ? styles.hrSidebar : ''}
           transition-all duration-200 ease-in-out shadow-[1px_0_12px_rgba(0,0,0,0.03)]
           /* Mobile Drawer */
           fixed top-0 bottom-0 left-0 z-[60]
@@ -210,22 +213,22 @@ const Sidebar: React.FC = () => {
         `}
       >
         {/* WORKSPACE HEADER */}
-        <div className={`p-4 border-b border-slate-100 flex items-center shrink-0 ${isSidebarOpen ? 'justify-between' : 'justify-center'}`}>
+        <div data-slot="workspace-header" className={`p-4 border-b border-slate-100 flex items-center shrink-0 ${isSidebarOpen ? 'justify-between' : 'justify-center'}`}>
           {isSidebarOpen ? (
             <>
               {/* Workspace Identity */}
               <div className="flex items-center space-x-3 min-w-0">
-                <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#D60041] to-[#B50037] text-white flex items-center justify-center shadow-xs shadow-[#D60041]/25 shrink-0">
+                <div data-slot="brand-icon" className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#D60041] to-[#B50037] text-white flex items-center justify-center shadow-xs shadow-[#D60041]/25 shrink-0">
                   {isHR ? <Building2 size={18} /> : isAdminRole ? <Sliders size={18} /> : <Sparkles size={18} />}
                 </div>
                 <div className="min-w-0">
-                  <h3 className="text-sm font-black text-slate-900 tracking-tight leading-tight truncate">
+                  <h3 data-slot="brand-title" className="text-sm font-black text-slate-900 tracking-tight leading-tight truncate">
                     {getWorkspaceTitle()}
                   </h3>
                   <div className="flex items-center space-x-1.5 mt-0.5">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse shadow-xs" />
-                    <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider truncate">
-                      {getWorkspaceSubtitle()} • Online
+                    <span data-slot="brand-dot" className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse shadow-xs" />
+                    <span data-slot="brand-subtitle" className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider truncate">
+                      {getWorkspaceSubtitle()}{isHR ? '' : ' • Online'}
                     </span>
                   </div>
                 </div>
@@ -237,6 +240,7 @@ const Sidebar: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => dispatch(closeSidebar())}
+                  data-slot="sidebar-control"
                   className="md:hidden p-1.5 rounded-lg text-slate-400 hover:text-slate-800 hover:bg-slate-100 active:scale-95 transition-colors cursor-pointer"
                   title="Close sidebar"
                   aria-label="Close sidebar"
@@ -248,6 +252,7 @@ const Sidebar: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => dispatch(toggleSidebar())}
+                  data-slot="sidebar-control"
                   className="hidden md:flex p-1.5 rounded-lg text-slate-400 hover:text-slate-800 hover:bg-slate-100 active:scale-95 transition-colors cursor-pointer"
                   title="Collapse sidebar (Ctrl+B)"
                   aria-label="Collapse sidebar"
@@ -262,6 +267,7 @@ const Sidebar: React.FC = () => {
               <button
                 type="button"
                 onClick={() => dispatch(toggleSidebar())}
+                data-slot="sidebar-control"
                 className="w-10 h-10 rounded-xl bg-slate-50 hover:bg-rose-50 text-slate-600 hover:text-[#D60041] border border-slate-200/80 hover:border-rose-200 flex items-center justify-center transition-all cursor-pointer active:scale-95 shadow-2xs group"
                 title="Expand sidebar (Ctrl+B)"
                 aria-label="Expand sidebar"
@@ -278,18 +284,18 @@ const Sidebar: React.FC = () => {
         </div>
 
         {/* NAVIGATION ITEMS */}
-        <div className="flex-grow overflow-y-auto overflow-x-hidden custom-scrollbar px-3 py-3 space-y-4">
+        <div data-slot="nav-body" className="flex-grow overflow-y-auto overflow-x-hidden custom-scrollbar px-3 py-3 space-y-4">
           {navSections.map((section, sIdx) => (
             <div key={sIdx} className="space-y-1">
               {isSidebarOpen ? (
                 <div className="px-3 pt-1 pb-1">
-                  <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">
+                  <p data-slot="section-label" className="text-[10px] font-black uppercase tracking-wider text-slate-400">
                     {section.title}
                   </p>
                 </div>
               ) : (
                 <div className="w-full flex justify-center py-1">
-                  <div className="w-5 border-t border-slate-200" />
+                  <div data-slot="section-divider" className="w-5 border-t border-slate-200" />
                 </div>
               )}
 
@@ -305,6 +311,9 @@ const Sidebar: React.FC = () => {
                           navigate(item.path);
                           if (window.innerWidth < 768) dispatch(closeSidebar());
                         }}
+                        data-slot="nav-item"
+                        data-active={isActive ? 'true' : undefined}
+                        aria-current={isActive ? 'page' : undefined}
                         className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl transition-all duration-150 group relative cursor-pointer ${isActive
                           ? 'bg-rose-50/90 text-[#D60041] font-bold border border-rose-100 shadow-2xs'
                           : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50 font-medium'
@@ -312,9 +321,10 @@ const Sidebar: React.FC = () => {
                       >
                         <div className="flex items-center space-x-3 min-w-0">
                           {isActive && (
-                            <span className="w-1 h-4 bg-[#D60041] rounded-full shrink-0 -ml-1 mr-0.5" />
+                            <span data-slot="active-marker" className="w-1 h-4 bg-[#D60041] rounded-full shrink-0 -ml-1 mr-0.5" />
                           )}
                           <span
+                            data-slot="nav-icon"
                             className={`transition-colors shrink-0 ${isActive
                               ? 'text-[#D60041]'
                               : 'text-slate-400 group-hover:text-slate-700'
@@ -322,17 +332,18 @@ const Sidebar: React.FC = () => {
                           >
                             {item.icon}
                           </span>
-                          <span className="text-[13px] tracking-tight truncate leading-tight">
+                          <span data-slot="nav-label" className="text-[13px] tracking-tight truncate leading-tight">
                             {item.label}
                           </span>
                         </div>
                         {(item.badge || item.hasUnreadDot) && (
                           <div className="flex items-center gap-1.5 shrink-0">
                             {item.hasUnreadDot && (
-                              <span className="w-2 h-2 rounded-full bg-[#D60041] animate-pulse" aria-label="Unread messages" />
+                              <span data-slot="unread-dot" className="w-2 h-2 rounded-full bg-[#D60041] animate-pulse" aria-label="Unread messages" />
                             )}
                             {item.badge && (
                               <span
+                                data-slot="nav-badge"
                                 className={`text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-md shadow-2xs ${item.badgeColor || 'bg-[#D60041] text-white'
                                   }`}
                               >
@@ -353,20 +364,25 @@ const Sidebar: React.FC = () => {
                           navigate(item.path);
                           if (window.innerWidth < 768) dispatch(closeSidebar());
                         }}
+                        data-slot="nav-item"
+                        data-active={isActive ? 'true' : undefined}
+                        aria-current={isActive ? 'page' : undefined}
                         className={`w-10 h-10 flex items-center justify-center rounded-xl transition-all duration-150 relative cursor-pointer ${isActive
                           ? 'bg-rose-50 text-[#D60041] shadow-2xs border border-rose-200/80 font-bold'
                           : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100/80'
                           }`}
                         aria-label={item.label}
+                        title={item.label}
                       >
                         <span
+                          data-slot="nav-icon"
                           className={`transition-colors ${isActive ? 'text-[#D60041]' : 'text-slate-400 group-hover:text-slate-800'
                             }`}
                         >
                           {item.icon}
                         </span>
                         {item.badge && (
-                          <span className="absolute top-1 right-1 w-2 h-2 bg-[#D60041] rounded-full border-2 border-white animate-pulse" />
+                          <span data-slot="unread-dot" className="absolute top-1 right-1 w-2 h-2 bg-[#D60041] rounded-full border-2 border-white animate-pulse" />
                         )}
                       </button>
 
@@ -389,26 +405,27 @@ const Sidebar: React.FC = () => {
         </div>
 
         {/* FOOTER SECTION */}
-        <div className="p-3 border-t border-slate-100 bg-slate-50/50 shrink-0">
+        <div data-slot="sidebar-footer" className="p-3 border-t border-slate-100 bg-slate-50/50 shrink-0">
           {isSidebarOpen ? (
-            <div className="bg-white border border-slate-200/80 rounded-2xl p-3 shadow-2xs space-y-2.5">
+            <div data-slot="footer-card" className="bg-white border border-slate-200/80 rounded-2xl p-3 shadow-2xs space-y-2.5">
               <div className="flex items-center justify-between px-0.5">
                 <div className="flex items-center space-x-1.5">
-                  <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shadow-xs" />
-                  <span className="text-[11px] font-bold text-slate-800">
-                    {isCandidateRole ? 'Recruitment Portal' : 'Recruitment System'}
+                  <div data-slot="footer-dot" className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shadow-xs" />
+                  <span data-slot="footer-title" className="text-[11px] font-bold text-slate-800">
+                    {isHR ? 'Recruitment workspace' : isCandidateRole ? 'Recruitment Portal' : 'Recruitment System'}
                   </span>
                 </div>
-                <span className="text-[9px] font-black uppercase tracking-wider text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200/80">
-                  Online
+                <span data-slot="footer-badge" className="text-[9px] font-black uppercase tracking-wider text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200/80">
+                  {isHR ? 'HR' : 'Online'}
                 </span>
               </div>
-              <div className="pt-2 border-t border-slate-100">
+              <div data-slot="footer-separator" className="pt-2 border-t border-slate-100">
                 <button
                   onClick={() => {
                     navigate(settingsPath);
                     if (window.innerWidth < 768) dispatch(closeSidebar());
                   }}
+                  data-slot="footer-action"
                   className="w-full flex items-center space-x-2 text-xs font-bold text-slate-600 hover:text-[#D60041] hover:bg-slate-50 transition-colors py-1.5 px-2 rounded-xl cursor-pointer"
                   title="Account Settings"
                 >
@@ -418,10 +435,11 @@ const Sidebar: React.FC = () => {
               </div>
 
               {/* Sign Out Action */}
-              <div className="pt-2 border-t border-slate-100">
+              <div data-slot="footer-separator" className="pt-2 border-t border-slate-100">
                 <button
                   type="button"
                   onClick={handleLogout}
+                  data-slot="sign-out"
                   className="w-full flex items-center justify-center space-x-2 py-2 px-3 rounded-xl text-xs font-bold text-rose-600 bg-rose-50/70 hover:bg-rose-100 hover:text-rose-700 transition-colors border border-rose-100 cursor-pointer active:scale-95"
                   title="Secure Sign Out"
                 >
@@ -436,6 +454,7 @@ const Sidebar: React.FC = () => {
               <div className="relative group">
                 <button
                   onClick={() => navigate(settingsPath)}
+                  data-slot="footer-action"
                   className="p-2 text-slate-400 hover:text-[#D60041] hover:bg-rose-50 rounded-xl transition-all cursor-pointer"
                   aria-label="Settings"
                 >
@@ -453,6 +472,7 @@ const Sidebar: React.FC = () => {
                 <button
                   type="button"
                   onClick={handleLogout}
+                  data-slot="sign-out"
                   className="p-2 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-xl transition-all cursor-pointer"
                   aria-label="Sign Out"
                 >
