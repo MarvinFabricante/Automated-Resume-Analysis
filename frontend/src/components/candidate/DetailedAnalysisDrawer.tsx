@@ -55,10 +55,21 @@ export function formatSecondPersonText(text: string | undefined | null, candidat
     formatted = formatted.replace(nameRegex, 'You');
   }
 
-  // Replace generic third-person references
+  // Replace generic third-person references (phrase-specific before standalone noun)
   formatted = formatted.replace(/\bthe candidate['’]s\b/gi, 'your');
   formatted = formatted.replace(/\bcandidate['’]s\b/gi, 'your');
   formatted = formatted.replace(/\bthe applicant['’]s\b/gi, 'your');
+  formatted = formatted.replace(/\bcandidate\s+education\b/gi, 'your education');
+  formatted = formatted.replace(/\bcandidate\s+certifications?\b/gi, (m) =>
+    m.toLowerCase().endsWith('s') ? 'your certifications' : 'your certification'
+  );
+  formatted = formatted.replace(/\bcandidate\s+experience\b/gi, 'your experience');
+  formatted = formatted.replace(/\bcandidate\s+skills?\b/gi, (m) =>
+    m.toLowerCase().endsWith('s') ? 'your skills' : 'your skill'
+  );
+  formatted = formatted.replace(/\bcandidate\s+holds\b/gi, 'you hold');
+  formatted = formatted.replace(/\bcandidate\s+listed\b/gi, 'you listed');
+  formatted = formatted.replace(/\bcandidate\s+has\b/gi, 'you have');
   formatted = formatted.replace(/\bthe candidate\b/gi, 'you');
   formatted = formatted.replace(/\bcandidate\b/gi, 'you');
   formatted = formatted.replace(/\bthe applicant\b/gi, 'you');
@@ -74,6 +85,12 @@ export function formatSecondPersonText(text: string | undefined | null, candidat
   formatted = formatted.replace(/\byou requires\b/g, 'you require');
   formatted = formatted.replace(/\bYou shows\b/g, 'You show');
   formatted = formatted.replace(/\byou shows\b/g, 'you show');
+  formatted = formatted.replace(/\bYou holds\b/g, 'You hold');
+  formatted = formatted.replace(/\byou holds\b/g, 'you hold');
+  formatted = formatted.replace(/\bYou exceeds\b/g, 'You exceed');
+  formatted = formatted.replace(/\byou exceeds\b/g, 'you exceed');
+  formatted = formatted.replace(/\bYou meets\b/g, 'You meet');
+  formatted = formatted.replace(/\byou meets\b/g, 'you meet');
   formatted = formatted.replace(/\bYou is\b/g, 'You are');
   formatted = formatted.replace(/\byou is\b/g, 'you are');
   formatted = formatted.replace(/\bYou has\b/g, 'You have');

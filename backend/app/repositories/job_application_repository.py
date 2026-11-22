@@ -6,6 +6,7 @@ import logging
 
 from app.models.job_application import JobApplication
 from app.models.job_description import JobDescription
+from app.services.requirement_rules import extract_criterion_status, STATUS_MANUAL_REVIEW
 from app.utils.redis_client import redis_tx_manager
 from app.utils.cache import (
     get_cache,
@@ -121,7 +122,7 @@ async def get_all(db: AsyncSession) -> List[JobApplication]:
 
 async def get_all_summaries(db: AsyncSession) -> List[Dict[str, Any]]:
     """Get lightweight dashboard summary rows via SQL column projection (checks Redis cache first)."""
-    cache_key = "all_apps:summaries:list:v2"
+    cache_key = "all_apps:summaries:list:v3"
     cached = await get_cache(cache_key)
     if cached is not None:
         return cached
@@ -143,6 +144,12 @@ async def get_all_summaries(db: AsyncSession) -> List[Dict[str, Any]]:
             JobApplication.education_score,
             JobApplication.certifications_score,
             JobApplication.completeness_score,
+            JobApplication.skills_reason,
+            JobApplication.experience_reason,
+            JobApplication.education_reason,
+            JobApplication.certifications_reason,
+            JobApplication.required_degree,
+            JobApplication.candidate_degree,
             JobApplication.applied_weights,
             JobApplication.profile_image_url,
             JobApplication.resume_url,
@@ -169,6 +176,10 @@ async def get_all_summaries(db: AsyncSession) -> List[Dict[str, Any]]:
     )
     summaries: List[Dict[str, Any]] = []
     for row in result.all():
+        skills_status = extract_criterion_status(row.skills_reason)
+        experience_status = extract_criterion_status(row.experience_reason)
+        education_status = extract_criterion_status(row.education_reason)
+        certifications_status = extract_criterion_status(row.certifications_reason)
         summaries.append({
             "id": row.id,
             "job_id": row.job_id,
@@ -185,6 +196,17 @@ async def get_all_summaries(db: AsyncSession) -> List[Dict[str, Any]]:
             "education_score": row.education_score,
             "certifications_score": row.certifications_score,
             "completeness_score": row.completeness_score,
+            "skills_reason": row.skills_reason,
+            "experience_reason": row.experience_reason,
+            "education_reason": row.education_reason,
+            "certifications_reason": row.certifications_reason,
+            "skills_status": skills_status,
+            "experience_status": experience_status,
+            "education_status": education_status,
+            "certifications_status": certifications_status,
+            "education_needs_manual_review": education_status == STATUS_MANUAL_REVIEW,
+            "required_degree": row.required_degree,
+            "candidate_degree": row.candidate_degree,
             "applied_weights": row.applied_weights,
             "profile_image_url": row.profile_image_url,
             "resume_url": row.resume_url,

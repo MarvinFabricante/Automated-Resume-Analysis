@@ -12,6 +12,8 @@ export interface ParsedJobRequirements {
   jobExp: string;
   reqYears: number;
   expKeywords: string[];
+  hasEduReq: boolean;
+  jobEdu: string;
   hasCertReq: boolean;
   jobCert: string;
   certKeywords: string[];
@@ -33,6 +35,8 @@ export interface ComparableApplicationLike {
   skills_score?: number;
   experienceScore?: number;
   experience_score?: number;
+  educationScore?: number;
+  education_score?: number;
   certificationsScore?: number;
   certifications_score?: number;
 }
@@ -161,12 +165,22 @@ export function preparseJobRequirements(job: Job): ParsedJobRequirements {
     jobSkills = (job.title || job.job_title || '').toLowerCase().split(/[\s,]+/).filter(w => w.length > 2);
   }
 
-  const jobExp = (job.experience_requirements || '').toLowerCase();
-  const reqYearsMatch = jobExp.match(/(\d+)(?:\s*-\s*(\d+))?\+?\s*(?:years?|yrs?)/i);
-  const reqYears = reqYearsMatch ? parseInt(reqYearsMatch[1], 10) : 0;
+  const rawExp = job.experience_requirements || '';
+  const jobExp = isNoValueRequirement(rawExp) ? '' : rawExp.toLowerCase();
+  const minPhraseMatch = jobExp.match(/(?:minimum|at\s+least|min)\s*(?:of\s+)?(\d+)\s*\+?\s*(?:years?|yrs?)/i);
+  const reqYearsMatch = jobExp.match(/(\d+)(?:\s*[-–—to]+\s*\d+)?\+?\s*(?:years?|yrs?)/i);
+  const reqYears = minPhraseMatch
+    ? parseInt(minPhraseMatch[1], 10)
+    : reqYearsMatch
+      ? parseInt(reqYearsMatch[1], 10)
+      : 0;
   const expKeywords = jobExp
     ? jobExp.split(/[\s,.;:]+/).filter(w => w.length > 3 && !EXP_STOP_WORDS.has(w))
     : [];
+
+  const jobEduRaw = job.education_requirements || '';
+  const hasEduReq = !isNoValueRequirement(jobEduRaw);
+  const jobEdu = hasEduReq ? String(jobEduRaw).trim() : '';
 
   const jobCertRaw = job.certifications_requirements || '';
   const hasCertReq = !isNoValueRequirement(jobCertRaw);
@@ -180,6 +194,8 @@ export function preparseJobRequirements(job: Job): ParsedJobRequirements {
     jobExp,
     reqYears,
     expKeywords,
+    hasEduReq,
+    jobEdu,
     hasCertReq,
     jobCert,
     certKeywords,

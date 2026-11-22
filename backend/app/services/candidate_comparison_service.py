@@ -8,6 +8,7 @@ from fastapi import HTTPException
 from app.models.job_application import JobApplication
 from app.models.job_description import JobDescription
 from app.services.job_matching_service import calculate_match_score
+from app.services.requirement_rules import STATUS_MANUAL_REVIEW
 
 
 def normalize_email(email: Optional[str]) -> str:
@@ -168,6 +169,7 @@ async def compare_candidates_service(
             "skills_status": score_res.get("skills_status"),
             "experience_status": score_res.get("experience_status"),
             "education_status": score_res.get("education_status"),
+            "education_needs_manual_review": score_res.get("education_status") == STATUS_MANUAL_REVIEW,
             "certifications_status": score_res.get("certifications_status"),
             "skills_reason": score_res.get("skills_reason"),
             "experience_reason": score_res.get("experience_reason"),
@@ -176,6 +178,7 @@ async def compare_candidates_service(
             "criteria_evaluations": score_res.get("criteria_evaluations"),
             "required_degree": score_res.get("required_degree"),
             "candidate_degree": score_res.get("candidate_degree"),
+            "highest_educational_attainment": app.highest_educational_attainment,
             "required_certifications": score_res.get("required_certifications"),
             "applied_weights": score_res.get("applied_weights"),
             "matched_skills": score_res.get("matched_skills", []),

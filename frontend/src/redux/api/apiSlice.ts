@@ -53,6 +53,7 @@ const normalizeApplicationItem = (app: any) => ({
   experience_status: app.experience_status || null,
   education_status: app.education_status || null,
   certifications_status: app.certifications_status || null,
+  education_needs_manual_review: Boolean(app.education_needs_manual_review),
   skills_reason: app.skills_reason,
   experience_reason: app.experience_reason,
   education_reason: app.education_reason,

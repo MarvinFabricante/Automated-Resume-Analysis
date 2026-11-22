@@ -1,6 +1,7 @@
-from pydantic import BaseModel, EmailStr, field_validator
+from pydantic import BaseModel, EmailStr, field_validator, computed_field
 from typing import Optional, List, Dict, Any
 from datetime import datetime
+from app.services.requirement_rules import extract_criterion_status, STATUS_MANUAL_REVIEW
 
 class JobInfo(BaseModel):
     id: int
@@ -154,6 +155,31 @@ class JobApplicationResponse(JobApplicationBase):
     has_other_active_applications: Optional[bool] = False
     other_applications: Optional[List[OtherApplicationSummary]] = None
     recommended_positions: Optional[List[RecommendedPositionSummary]] = None
+
+    @computed_field
+    @property
+    def skills_status(self) -> Optional[str]:
+        return extract_criterion_status(self.skills_reason)
+
+    @computed_field
+    @property
+    def experience_status(self) -> Optional[str]:
+        return extract_criterion_status(self.experience_reason)
+
+    @computed_field
+    @property
+    def education_status(self) -> Optional[str]:
+        return extract_criterion_status(self.education_reason)
+
+    @computed_field
+    @property
+    def certifications_status(self) -> Optional[str]:
+        return extract_criterion_status(self.certifications_reason)
+
+    @computed_field
+    @property
+    def education_needs_manual_review(self) -> bool:
+        return extract_criterion_status(self.education_reason) == STATUS_MANUAL_REVIEW
 
     class Config:
         from_attributes = True

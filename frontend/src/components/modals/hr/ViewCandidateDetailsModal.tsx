@@ -617,7 +617,7 @@ const ViewCandidateDetailsModal: React.FC<ViewCandidateDetailsModalProps> = ({
       if (lower.includes("prc") || lower.includes("registered engineer") || lower.includes("cpa") || lower.includes("lpt") || lower.includes("master plumber") || lower.includes("registered")) {
         category = "PRC / Government License";
         issuer = "PRC";
-      } else if (lower.includes("tesda") || lower.includes("nc i") || lower.includes("nc ii") || lower.includes("nc iii")) {
+      } else if (lower.includes("tesda") || lower.includes("nc iv") || lower.includes("nc iii") || lower.includes("nc ii") || lower.includes("nc i")) {
         category = "TESDA National Certificate";
         issuer = "TESDA";
       } else if (lower.includes("bosh") || lower.includes("cosh") || lower.includes("dole") || lower.includes("first aid") || lower.includes("bls")) {
@@ -1631,9 +1631,10 @@ const ViewCandidateDetailsModal: React.FC<ViewCandidateDetailsModalProps> = ({
                       </div>
                       <div className="space-y-2.5">
                         {(strengths.length > 0 ? strengths : [
-                          candidate.skills_reason,
-                          candidate.experienceScore >= 60 ? candidate.experience_reason : "",
-                          candidate.educationScore >= 60 ? candidate.education_reason : ""
+                          (skillsStatus === 'Meets requirement' || skillsStatus === 'Exceeds requirement') ? candidate.skills_reason : "",
+                          (expStatus === 'Meets requirement' || expStatus === 'Exceeds requirement') ? candidate.experience_reason : "",
+                          (eduStatus === 'Meets requirement' || eduStatus === 'Exceeds requirement') ? candidate.education_reason : "",
+                          (certsStatus === 'Meets requirement' || certsStatus === 'Exceeds requirement') ? candidate.certifications_reason : ""
                         ].filter(Boolean).slice(0, 4)).map((item, i) => (
                           <div key={i} className="flex items-start gap-2 text-xs text-gray-700 leading-relaxed bg-white/80 p-2.5 rounded-xl border border-emerald-100">
                             <CheckCircle size={14} className="text-emerald-500 shrink-0 mt-0.5" />
@@ -1986,6 +1987,19 @@ const ViewCandidateDetailsModal: React.FC<ViewCandidateDetailsModalProps> = ({
                       </span>
                     )}
                   </div>
+
+                  {/* Manual Review Notice for Unrecognized Education Text */}
+                  {eduStatus === 'Needs manual review' && (
+                    <div className="bg-indigo-50/80 border border-indigo-200 rounded-2xl p-4 flex items-start gap-3">
+                      <AlertTriangle size={16} className="text-indigo-600 shrink-0 mt-0.5" />
+                      <div>
+                        <h4 className="text-xs font-bold text-indigo-900 uppercase tracking-wider">Education Needs Manual Review</h4>
+                        <p className="text-xs text-indigo-800 font-medium mt-0.5 leading-relaxed">
+                          {candidate.education_reason || "Automated scoring assigned a neutral score because this education credential could not be normalized automatically. Please verify the candidate's educational background manually."}
+                        </p>
+                      </div>
+                    </div>
+                  )}
 
                   {/* Qualification Comparison Card */}
                   <div className="grid sm:grid-cols-2 gap-3 bg-slate-50 border border-slate-200 p-4 rounded-2xl">

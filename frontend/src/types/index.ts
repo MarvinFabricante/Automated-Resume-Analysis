@@ -99,6 +99,12 @@ export interface Application {
   skills_reason?: string;
   experience_reason?: string;
   education_reason?: string;
+  certifications_reason?: string;
+  skills_status?: string;
+  experience_status?: string;
+  education_status?: string;
+  certifications_status?: string;
+  education_needs_manual_review?: boolean;
   relevant_experience?: string | null;
   experience_gaps?: string | null;
   work_experiences?: WorkExperienceItem[];

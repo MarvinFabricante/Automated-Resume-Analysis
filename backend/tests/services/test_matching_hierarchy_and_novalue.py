@@ -523,3 +523,288 @@ async def test_cleanup_script_and_recalculation_preserve_statuses_and_rosters():
         assert second["certifications_score"] == app.certifications_score
 
     await engine.dispose()
+
+
+# ─── Regression Tests: Acronym Boundaries, Mariwasa Jobs, Umbrella Fields & Propagation ───
+
+def test_degree_acronym_word_boundaries_do_not_corrupt_fields():
+    cases = [
+        ("BS Accounting", 6, ["accounting"]),
+        ("B.S. in Accounting", 6, ["accounting"]),
+        ("BS Chemical Engineering", 6, ["chemical engineering"]),
+        ("BS Computer Science", 6, ["computer science"]),
+        ("BS Architecture", 6, ["architecture"]),
+        ("BS Nursing", 6, ["nursing"]),
+        ("MS Engineering", 7, ["engineering"]),
+        ("MA Economics", 7, ["economics"]),
+        ("M.S. in Chemistry", 7, ["chemistry"]),
+        ("Ph.D. in Chemistry", 8, ["chemistry"]),
+    ]
+    for raw_text, expected_lvl, expected_fields in cases:
+        parsed = requirement_rules.parse_education_level(raw_text, is_job_requirement=True)
+        assert parsed["recognized"] is True, f"Failed to recognize {raw_text!r}: {parsed}"
+        assert parsed["level"] == expected_lvl, f"Level mismatch for {raw_text!r}: {parsed}"
+        for ef in expected_fields:
+            assert ef in parsed["field_options"], f"Expected field {ef!r} in {parsed['field_options']} for {raw_text!r}"
+
+    # Verify end-to-end scoring does NOT fall through to Manual Review
+    acc_match = job_matching_service.calculate_education_match("BS Accounting", "", "B.S. in Accounting")
+    assert acc_match["score"] == 1.0
+    assert acc_match["status"] == requirement_rules.STATUS_MEETS
+    assert acc_match["needs_manual_review"] is False
+
+
+def test_all_seeded_mariwasa_jobs_parse_without_corrupted_fields():
+    from seed_mariwasa_jobs import JOBS
+
+    forbidden_corruptions = {
+        "chemistry engineering",
+        "accounting management",
+        "information technology science",
+        "supply chain management administration",
+        "statistics science",
+        "mathematics science",
+        "economics science",
+        "environmental science engineering",
+    }
+
+    for job in JOBS:
+        edu_req = job.get("education_requirements")
+        parsed = requirement_rules.parse_education_level(edu_req, is_job_requirement=True)
+        assert parsed["recognized"] is True, f"Unrecognized seeded job edu for {job['job_title']}: {edu_req!r}"
+        assert parsed["level"] is not None
+        assert not (set(parsed["field_options"]) & forbidden_corruptions), (
+            f"Corrupted fields {parsed['field_options']} for {job['job_title']}"
+        )
+
+    # Specific multi-field & law cases
+    training_officer = next(j for j in JOBS if j["job_title"] == "Training Officer")
+    to_parsed = requirement_rules.parse_education_level(training_officer["education_requirements"], is_job_requirement=True)
+    assert "psychology" in to_parsed["field_options"]
+    assert "education" in to_parsed["field_options"]
+
+    lawyer = next(j for j in JOBS if j["job_title"] == "Corporate Lawyer")
+    law_parsed = requirement_rules.parse_education_level(lawyer["education_requirements"], is_job_requirement=True)
+    assert "law" in law_parsed["field_options"]
+
+
+def test_umbrella_field_exact_matching():
+    res_meet = job_matching_service.calculate_education_match(
+        "BS Civil Engineering",
+        "",
+        "Bachelor's degree in Engineering",
+    )
+    assert res_meet["score"] == 1.0
+    assert res_meet["status"] == requirement_rules.STATUS_MEETS
+
+    res_exceeds = job_matching_service.calculate_education_match(
+        "Master of Science in Mechanical Engineering",
+        "",
+        "Bachelor's degree in Engineering",
+    )
+    assert res_exceeds["score"] == 1.0
+    assert res_exceeds["status"] == requirement_rules.STATUS_EXCEEDS
+
+    res_sc = job_matching_service.calculate_education_match(
+        "BS Supply Chain Management",
+        "",
+        "Bachelor's degree in Business or Supply Chain",
+    )
+    assert res_sc["score"] == 1.0
+    assert res_sc["status"] == requirement_rules.STATUS_MEETS
+
+
+def test_configurable_education_partial_score_modes():
+    assert requirement_rules.compute_education_partial_score(3, 6, mode="proportional") == 0.5
+    assert requirement_rules.compute_education_partial_score(3, 6, mode="step") == 0.25
+    assert requirement_rules.compute_education_partial_score(3, 6, mode="strict_zero") == 0.0
+    assert requirement_rules.compute_education_partial_score(6, 6, mode="step") == 1.0
+
+
+def test_graded_certifications_strip_qualifiers():
+    bb_vs_gb = job_matching_service.calculate_certifications_match(
+        "Lean Six Sigma Black Belt",
+        "",
+        "Lean Six Sigma Green Belt preferred",
+    )
+    assert bb_vs_gb["score"] == 1.0
+    assert bb_vs_gb["status"] == requirement_rules.STATUS_EXCEEDS
+
+    smaw_ok = job_matching_service.calculate_certifications_match(
+        "SMAW NC IV",
+        "",
+        "SMAW NC II required",
+    )
+    assert smaw_ok["score"] == 1.0
+    assert smaw_ok["status"] == requirement_rules.STATUS_EXCEEDS
+
+    trade_mismatch = job_matching_service.calculate_certifications_match(
+        "SMAW NC IV",
+        "",
+        "Electrical Installation NC II",
+    )
+    assert trade_mismatch["score"] == 0.0
+    assert trade_mismatch["status"] == requirement_rules.STATUS_DOES_NOT_MEET
+
+
+def test_schemas_preserve_education_entries_and_compute_statuses():
+    from app.schemas.job_matching_schema import ResumeMatchRequest
+    from app.schemas.job_application_schema import JobApplicationResponse
+    from datetime import datetime
+
+    req = ResumeMatchRequest(
+        degree="BSIT",
+        education_entries=[
+            {"education_level": "Tertiary / College", "degree_or_course": "BSIT", "status": "Undergraduate / College Level"}
+        ],
+        highest_educational_attainment="Senior High School (SHS)",
+    )
+    dumped = req.model_dump()
+    assert dumped["highest_educational_attainment"] == "Senior High School (SHS)"
+    assert isinstance(dumped["education_entries"], list) and len(dumped["education_entries"]) == 1
+
+    now = datetime.utcnow()
+    app_resp = JobApplicationResponse(
+        id=1,
+        job_id=2,
+        candidate_name="Test User",
+        candidate_email="test@example.com",
+        status="Submitted",
+        created_at=now,
+        updated_at=now,
+        education_reason="Needs manual review: Candidate education ('xyz') could not be automatically verified.",
+        skills_reason="Meets requirement: Matched all required skills.",
+    )
+    assert app_resp.education_status == requirement_rules.STATUS_MANUAL_REVIEW
+    assert app_resp.education_needs_manual_review is True
+    assert app_resp.skills_status == requirement_rules.STATUS_MEETS
+
+
+def test_extractor_recognizes_nc_iv_and_preserves_high_school_degree():
+    from app.extractors.content.education_extractor import extract_structured_education
+    from app.extractors.content.content_extractor import extract_content
+
+    nc4_resume = """
+    EDUCATION
+    SMAW NC IV | TESDA Regional Training Center | 2023
+    """
+    structured = extract_structured_education(nc4_resume)
+    entries = structured.get("education_entries", [])
+    assert any(
+        e.get("education_level") == "Vocational / Technical (TESDA)"
+        and "NC IV" in (e.get("degree_or_course") or "")
+        for e in entries
+    )
+
+    hs_resume = """
+    JUAN DELA CRUZ
+    juan@example.com | 09171234567
+
+    EDUCATION
+    High School Graduate
+    Batangas National High School
+    2016 - 2020
+    """
+    content = extract_content(hs_resume)
+    assert content.get("highest_degree") == "HIGH SCHOOL"
+
+
+@pytest.mark.asyncio
+async def test_shortlist_roster_and_comparison_expose_shared_education_statuses():
+    from app.services.shortlist_roster_service import get_shortlist_roster_by_id
+    from app.services.candidate_comparison_service import compare_candidates_service
+
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    Session = async_sessionmaker(engine, expire_on_commit=False)
+
+    async with Session() as db:
+        job = JobDescription(
+            job_id="JOB-PROP-1",
+            job_title="Warehouse Staff",
+            department="Logistics",
+            job_type=JobType.FULL_TIME,
+            location="Bulacan",
+            description="Warehouse operations.",
+            skills_requirements="inventory",
+            education_requirements="Senior High School graduate",
+            experience_requirements="1 year",
+            certifications_requirements=None,
+        )
+        db.add(job)
+        await db.flush()
+
+        # Candidate 1 has higher degree (Exceeds); legacy row with None education_reason to test fallback
+        app1 = JobApplication(
+            job_id=job.id,
+            candidate_name="Maria Clara",
+            candidate_email="maria@example.com",
+            skills=["inventory"],
+            job_title="Warehouse Staff",
+            company="Co A",
+            total_experience_months=24,
+            degree="BS Business Administration",
+            highest_educational_attainment="Tertiary / College",
+            match_score=95.0,
+            status="Shortlisted",
+        )
+        # Candidate 2 has unrecognized education -> Needs manual review
+        app2 = JobApplication(
+            job_id=job.id,
+            candidate_name="Pedro Penduko",
+            candidate_email="pedro@example.com",
+            skills=["inventory"],
+            job_title="Warehouse Staff",
+            company="Co B",
+            total_experience_months=24,
+            degree="xyz-unknown-cred",
+            education_reason="Needs manual review: Candidate education ('xyz-unknown-cred') could not be automatically verified.",
+            match_score=80.0,
+            status="Shortlisted",
+        )
+        db.add_all([app1, app2])
+        await db.flush()
+
+        roster = ShortlistRoster(name="Warehouse Shortlist", job_id=job.id, created_by="hr@mariwasa.com")
+        db.add(roster)
+        await db.flush()
+        db.add_all([
+            ShortlistRosterItem(roster_id=roster.id, application_id=app1.id, stage="Shortlisted", added_by="hr@mariwasa.com"),
+            ShortlistRosterItem(roster_id=roster.id, application_id=app2.id, stage="Shortlisted", added_by="hr@mariwasa.com"),
+        ])
+        await db.commit()
+
+        roster_data = await get_shortlist_roster_by_id(db, roster.id)
+        assert roster_data is not None
+        by_name = {it["candidate_name"]: it for it in roster_data["items"]}
+        assert by_name["Maria Clara"]["education_status"] == requirement_rules.STATUS_EXCEEDS
+        assert by_name["Maria Clara"]["education_needs_manual_review"] is False
+        assert by_name["Pedro Penduko"]["education_status"] == requirement_rules.STATUS_MANUAL_REVIEW
+        assert by_name["Pedro Penduko"]["education_needs_manual_review"] is True
+
+        cmp_data = await compare_candidates_service(db, [app1.id, app2.id], reference_job_id=job.id)
+        cmp_by_name = {c["name"]: c for c in cmp_data["candidates"]}
+        assert cmp_by_name["Maria Clara"]["education_status"] == requirement_rules.STATUS_EXCEEDS
+        assert cmp_by_name["Maria Clara"]["education_needs_manual_review"] is False
+        assert cmp_by_name["Pedro Penduko"]["education_status"] == requirement_rules.STATUS_MANUAL_REVIEW
+        assert cmp_by_name["Pedro Penduko"]["education_needs_manual_review"] is True
+
+        nlp_cmp = job_matching_service.nlp_compare_candidates(
+            {
+                "job_title": job.job_title,
+                "skills_requirements": job.skills_requirements,
+                "education_requirements": job.education_requirements,
+                "experience_requirements": job.experience_requirements,
+            },
+            [
+                {"candidate_name": "Maria Clara", "resume_data": _resume_data_from_application(app1)},
+                {"candidate_name": "Pedro Penduko", "resume_data": _resume_data_from_application(app2)},
+            ],
+        )
+        nlp_by_name = {c["candidate_name"]: c for c in nlp_cmp["ranked_candidates"]}
+        assert nlp_by_name["Maria Clara"]["education_status"] == requirement_rules.STATUS_EXCEEDS
+        assert nlp_by_name["Pedro Penduko"]["education_status"] == requirement_rules.STATUS_MANUAL_REVIEW
+        assert nlp_by_name["Pedro Penduko"]["education_needs_manual_review"] is True
+
+    await engine.dispose()

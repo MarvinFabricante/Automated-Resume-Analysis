@@ -11,6 +11,7 @@ from app.models.candidate_note import HRCandidateNote
 from app.models.profile_access_log import ApplicantProfileAccessLog
 from app.models.status_history import ApplicationStatusHistory
 from app.services.status_management_service import normalize_status
+from app.services.requirement_rules import extract_criterion_status, STATUS_MANUAL_REVIEW
 
 logger = logging.getLogger(__name__)
 
@@ -160,6 +161,11 @@ async def get_applicant_comprehensive_profile(
             "experience_reason": app.experience_reason,
             "education_reason": app.education_reason,
             "certifications_reason": getattr(app, "certifications_reason", None),
+            "skills_status": extract_criterion_status(app.skills_reason),
+            "experience_status": extract_criterion_status(app.experience_reason),
+            "education_status": extract_criterion_status(app.education_reason),
+            "certifications_status": extract_criterion_status(getattr(app, "certifications_reason", None)),
+            "education_needs_manual_review": extract_criterion_status(app.education_reason) == STATUS_MANUAL_REVIEW,
             "required_degree": getattr(app, "required_degree", None),
             "candidate_degree": getattr(app, "candidate_degree", None),
             "required_certifications": getattr(app, "required_certifications", None),

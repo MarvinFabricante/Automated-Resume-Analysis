@@ -5,6 +5,10 @@ import {
   Zap, Briefcase, GraduationCap, Sparkles
 } from 'lucide-react';
 import { getAssetUrl } from '../../../services/api';
+import {
+  resolveCriterionStatus,
+  getCriterionStatusBadgeStyle,
+} from '../../../utils/criterionStatus';
 
 export interface CandidateItem {
   id: string | number;
@@ -260,12 +264,30 @@ const CandidateCard: React.FC<CandidateCardProps> = ({
               <span className="hidden sm:inline text-gray-300 text-xs">|</span>
               <div
                 className="flex items-center justify-center sm:justify-start gap-1 text-[10px] font-bold text-amber-700"
-                title={`Education score (${candidate.applied_weights?.education ?? 15}% weight)`}
+                title={candidate.education_reason || `Education score (${candidate.applied_weights?.education ?? 15}% weight)`}
               >
                 <GraduationCap size={11} className="text-amber-500 shrink-0" />
                 <span className="text-[9px] uppercase tracking-wider text-gray-400 font-semibold sm:hidden">Edu</span>
                 <span>{Math.round(candidate.educationScore || 0)}%</span>
               </div>
+              {(() => {
+                const eduStatus = (candidate.education_status || candidate.education_reason)
+                  ? resolveCriterionStatus({
+                      explicitStatus: candidate.education_status,
+                      reason: candidate.education_reason,
+                      score: candidate.educationScore,
+                    })
+                  : null;
+                if (eduStatus !== 'Needs manual review' && eduStatus !== 'Exceeds requirement') return null;
+                return (
+                  <span
+                    className={`hidden md:inline-flex items-center px-1.5 py-0.5 text-[9px] font-bold rounded-full border ${getCriterionStatusBadgeStyle(eduStatus).badgeClass}`}
+                    title={candidate.education_reason || eduStatus}
+                  >
+                    {eduStatus === 'Needs manual review' ? 'Edu Review' : 'Edu Exceeds'}
+                  </span>
+                );
+              })()}
             </div>
           </div>
 
