@@ -51,7 +51,7 @@ const UpcomingInterviews: React.FC<UpcomingInterviewsProps> = ({ onScheduleClick
   return (
     <div
       data-testid="upcoming-interviews-card"
-      className="bg-white border border-slate-200/80 rounded-2xl sm:rounded-3xl p-4 sm:p-5 lg:p-6 shadow-xs flex flex-col justify-between"
+      className="bg-white border border-slate-200/80 rounded-2xl p-4 sm:p-5 lg:p-6 shadow-xs flex flex-col justify-between"
     >
       {/* Header */}
       <div>
@@ -61,21 +61,21 @@ const UpcomingInterviews: React.FC<UpcomingInterviewsProps> = ({ onScheduleClick
               <Calendar size={16} />
             </div>
             <div>
-              <h3 className="text-sm sm:text-base font-extrabold text-slate-900 tracking-tight flex items-center gap-1.5 sm:gap-2">
+              <h3 className="text-sm sm:text-base font-semibold text-slate-900 tracking-tight flex items-center gap-1.5 sm:gap-2">
                 <span>Upcoming Interviews</span>
                 {upcomingInterviews.length > 0 && (
-                  <span className="text-[9px] sm:text-[10px] font-black px-2 py-0.5 rounded-full bg-pink-50 text-[#D60041] border border-pink-100">
+                  <span className="text-xs sm:text-xs font-semibold px-2 py-0.5 rounded-full bg-pink-50 text-[#D60041] border border-pink-100">
                     {upcomingInterviews.length}
                   </span>
                 )}
               </h3>
-              <p className="text-[10px] sm:text-[11px] text-slate-500 font-medium">Candidate evaluation schedule</p>
+              <p className="text-xs sm:text-xs text-slate-500 font-medium">Candidate evaluation schedule</p>
             </div>
           </div>
 
           <button
             onClick={() => navigate('/hr/scheduling')}
-            className="text-[11px] font-bold text-[#D60041] hover:text-[#b50037] flex items-center gap-1 transition-colors"
+            className="text-xs font-bold text-[#D60041] hover:text-[#b50037] flex items-center gap-1 transition-colors"
           >
             <span>Calendar</span>
             <ChevronRight size={14} />
@@ -91,10 +91,10 @@ const UpcomingInterviews: React.FC<UpcomingInterviewsProps> = ({ onScheduleClick
           </div>
         ) : upcomingInterviews.length === 0 ? (
           <div className="py-8 px-4 text-center flex flex-col items-center justify-center">
-            <div className="w-12 h-12 rounded-2xl bg-slate-50 border border-slate-100 flex items-center justify-center text-slate-400 mb-3 shadow-inner">
+            <div className="w-12 h-12 rounded-2xl bg-slate-50 border border-slate-100 flex items-center justify-center text-slate-500 mb-3 shadow-inner">
               <Clock size={22} />
             </div>
-            <h4 className="text-sm font-bold text-slate-800">No Interviews Today</h4>
+            <h4 className="text-sm font-bold text-slate-800">No upcoming interviews</h4>
             <p className="text-xs text-slate-500 mt-1 max-w-[240px]">
               No upcoming interview sessions found in the queue.
             </p>
@@ -124,13 +124,13 @@ const UpcomingInterviews: React.FC<UpcomingInterviewsProps> = ({ onScheduleClick
                         ? 'bg-gradient-to-br from-rose-500 to-[#D60041] text-white shadow-xs' 
                         : 'bg-white border border-slate-200/90 text-slate-700'
                     }`}>
-                      <span className={`text-[9px] font-black uppercase tracking-wider ${isToday ? 'text-rose-100' : 'text-slate-400'}`}>
+                      <span className={`text-xs font-semibold uppercase tracking-wider ${isToday ? 'text-rose-100' : 'text-slate-500'}`}>
                         {dateStr}
                       </span>
-                      <span className="text-[11px] font-black leading-tight">
+                      <span className="text-xs font-semibold leading-tight">
                         {timeStr.split(' ')[0]}
                       </span>
-                      <span className={`text-[8px] font-bold ${isToday ? 'text-rose-100' : 'text-slate-400'}`}>
+                      <span className={`text-xs font-bold ${isToday ? 'text-rose-100' : 'text-slate-500'}`}>
                         {timeStr.split(' ')[1] || ''}
                       </span>
                     </div>
@@ -142,11 +142,11 @@ const UpcomingInterviews: React.FC<UpcomingInterviewsProps> = ({ onScheduleClick
                           {item.candidate_name || item.title || 'Applicant'}
                         </h4>
                       </div>
-                      <p className="text-[11px] text-slate-500 truncate mt-0.5">
+                      <p className="text-xs text-slate-500 truncate mt-0.5">
                         {item.job_title || 'Position Interview'}
                       </p>
                       {item.interviewer_name && (
-                        <p className="text-[10px] text-slate-400 font-medium truncate flex items-center gap-1 mt-0.5">
+                        <p className="text-xs text-slate-500 font-medium truncate flex items-center gap-1 mt-0.5">
                           <User size={10} />
                           <span>Panel: {item.interviewer_name}</span>
                         </p>
@@ -162,7 +162,7 @@ const UpcomingInterviews: React.FC<UpcomingInterviewsProps> = ({ onScheduleClick
                         target="_blank"
                         rel="noopener noreferrer"
                         onClick={(e) => e.stopPropagation()}
-                        className="px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200/80 rounded-xl text-[11px] font-black flex items-center gap-1 transition-colors"
+                        className="px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200/80 rounded-xl text-xs font-semibold flex items-center gap-1 transition-colors"
                         title="Join Virtual Room"
                       >
                         <Video size={13} />
@@ -175,7 +175,7 @@ const UpcomingInterviews: React.FC<UpcomingInterviewsProps> = ({ onScheduleClick
                           e.stopPropagation();
                           navigate('/hr/scheduling');
                         }}
-                        className="p-1.5 text-slate-400 hover:text-[#D60041] hover:bg-pink-50 rounded-lg transition-colors"
+                        className="p-1.5 text-slate-500 hover:text-[#D60041] hover:bg-pink-50 rounded-lg transition-colors"
                         title="View Interview in Calendar"
                       >
                         <ArrowUpRight size={15} />
@@ -191,10 +191,10 @@ const UpcomingInterviews: React.FC<UpcomingInterviewsProps> = ({ onScheduleClick
 
       {/* Footer link */}
       <div className="pt-4 mt-3 border-t border-slate-100 flex items-center justify-between text-xs">
-        <span className="text-slate-400 font-medium text-[11px]">Syncs with Google Calendar</span>
+        <span className="text-slate-500 font-medium text-xs">Syncs with Google Calendar</span>
         <button
           onClick={() => navigate('/hr/scheduling')}
-          className="font-bold text-[#D60041] hover:underline flex items-center gap-1 text-[11px]"
+          className="font-bold text-[#D60041] hover:underline flex items-center gap-1 text-xs"
         >
           <span>Open Calendar</span>
           <ChevronRight size={13} />
