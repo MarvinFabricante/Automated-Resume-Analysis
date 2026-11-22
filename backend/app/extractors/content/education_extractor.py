@@ -1306,46 +1306,67 @@ def extract_highest_degree(text: str) -> str:
     return highest.upper() if highest else ""
 
 
+def _clean_extracted_label_value(value: str, label_pattern: str) -> str:
+    cleaned = re.sub(
+        label_pattern,
+        "",
+        str(value or "").strip(),
+        flags=re.IGNORECASE,
+    ).strip()
+    from app.services.requirement_rules import is_no_value
+    if not cleaned or is_no_value(cleaned):
+        return ""
+    return cleaned
+
+
 def extract_degree_title(text: str, entries: Optional[list[dict]] = None) -> str:
     """
     Extracts the full normalized degree title (e.g. 'Bachelor of Science in Information Technology')
     """
+    label_pattern = r"^(?:degree(?:\s*/\s*course)?|course|major|program|attainment|education|field(?:\s+of\s+study)?|qualification)\s*[:\-]\s*"
     if entries is not None and entries:
         for e in entries:
-            deg = e.get("degree", "").strip()
+            deg = _clean_extracted_label_value(e.get("degree", ""), label_pattern)
             if deg and len(deg) > 3:
                 return deg
 
     structured = extract_structured_education(text)
     for entry in structured.get("education_entries", []):
         if entry.get("education_level") in ["Tertiary / College", "Postgraduate"]:
-            if entry.get("degree_or_course"):
-                return entry["degree_or_course"]
-            if entry.get("raw_degree_or_course"):
-                return entry["raw_degree_or_course"]
+            deg_val = _clean_extracted_label_value(entry.get("degree_or_course", ""), label_pattern)
+            if deg_val:
+                return deg_val
+            raw_deg_val = _clean_extracted_label_value(entry.get("raw_degree_or_course", ""), label_pattern)
+            if raw_deg_val:
+                return raw_deg_val
 
     # Fallback to any non-empty degree
     for entry in structured.get("education_entries", []):
-        if entry.get("degree_or_course"):
-            return entry["degree_or_course"]
-        if entry.get("raw_degree_or_course"):
-            return entry["raw_degree_or_course"]
+        deg_val = _clean_extracted_label_value(entry.get("degree_or_course", ""), label_pattern)
+        if deg_val:
+            return deg_val
+        raw_deg_val = _clean_extracted_label_value(entry.get("raw_degree_or_course", ""), label_pattern)
+        if raw_deg_val:
+            return raw_deg_val
 
     # Fallback to scanning text / EDUCATION section directly
     sec = split_into_sections(text).get("EDUCATION", text)
     deg_norm, raw, _ = _normalize_degree_or_course(sec, "Tertiary / College")
-    if deg_norm:
-        return deg_norm
+    cleaned_norm = _clean_extracted_label_value(deg_norm, label_pattern) if deg_norm else ""
+    if cleaned_norm:
+        return cleaned_norm
 
     for line in sec.split('\n'):
-        l = line.strip()
+        l = _clean_extracted_label_value(line, label_pattern)
         if not l or _is_invalid_institution(l):
             continue
         d, rd, _ = _normalize_degree_or_course(l, "Tertiary / College")
-        if d:
-            return d
-        if rd and len(rd) > 3 and not _is_invalid_institution(rd):
-            return rd
+        cleaned_d = _clean_extracted_label_value(d, label_pattern) if d else ""
+        if cleaned_d:
+            return cleaned_d
+        cleaned_rd = _clean_extracted_label_value(rd, label_pattern) if rd else ""
+        if cleaned_rd and len(cleaned_rd) > 3 and not _is_invalid_institution(cleaned_rd):
+            return cleaned_rd
 
     return ""
 
@@ -1355,23 +1376,24 @@ def extract_institution(text: str, entries: Optional[list[dict]] = None) -> str:
     Extracts the candidate's university / college / institution name cleanly.
     Prioritizes tertiary institutions over secondary.
     """
+    inst_label_pattern = r"^(?:school|university|college|institution|academy)\s*[:\-]\s*"
     if entries is not None and entries:
         for e in entries:
-            inst = e.get("institution", "").strip()
+            inst = _clean_extracted_label_value(e.get("institution", ""), inst_label_pattern)
             level = e.get("education_level", "")
             if inst and inst.lower() != "not specified" and not _is_invalid_institution(inst) and level in ["Tertiary / College", "Postgraduate"]:
                 return inst
 
     structured = extract_structured_education(text)
     for entry in structured.get("education_entries", []):
-        inst_name = (entry.get("institution_name") or "").strip()
+        inst_name = _clean_extracted_label_value(entry.get("institution_name") or "", inst_label_pattern)
         if entry.get("education_level") in ["Tertiary / College", "Postgraduate"]:
             if inst_name and inst_name.lower() != "not specified" and not _is_invalid_institution(inst_name):
                 return inst_name
 
     # Fallback to any institution
     for entry in structured.get("education_entries", []):
-        inst_name = (entry.get("institution_name") or "").strip()
+        inst_name = _clean_extracted_label_value(entry.get("institution_name") or "", inst_label_pattern)
         if inst_name and inst_name.lower() != "not specified" and not _is_invalid_institution(inst_name):
             return inst_name
 

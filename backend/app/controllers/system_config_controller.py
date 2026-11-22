@@ -17,7 +17,7 @@ from app.services.system_config_service import system_config_service
 from app.services import message_template_service
 from app.services.audit_service import audit_service
 from app.services import admin_service
-from app.utils.cache import cache_response, clear_cache_pattern
+from app.utils.cache import cache_response, clear_cache_pattern, invalidate_application_dashboard_caches
 
 
 router = APIRouter(prefix="/system-config", tags=["System Configuration"])
@@ -149,11 +149,9 @@ async def recalculate_matching_scores(
         import logging
         logging.getLogger(__name__).warning(f"Celery dispatch failed ({celery_err}). Executing synchronously.")
         result = await system_config_service.recalculate_all_applications(db)
-        await clear_cache_pattern("ai_analysis:*")
+        await invalidate_application_dashboard_caches()
         await clear_cache_pattern("job_matches:*")
         await clear_cache_pattern("job_comparison:*")
-        await clear_cache_pattern("app_stats:*")
-        await clear_cache_pattern("screening:*")
         return result
 
 

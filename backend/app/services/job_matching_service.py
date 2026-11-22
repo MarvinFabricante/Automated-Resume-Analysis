@@ -343,6 +343,7 @@ _GENERIC_SIM_TOKENS = {
     "specialist", "executive", "lead", "public", "english", "process", "company",
     "work", "experience", "responsibilities", "duties", "role", "position",
     "team", "staff", "general", "service", "customer", "support", "communication",
+    "none", "na", "wala", "nil", "null",
 }
 
 
@@ -1378,7 +1379,6 @@ def calculate_experience_match(resume_years: int, job_description: str, experien
     """
     explicit_non_empty_no_value = (
         experience_req is not None
-        and str(experience_req).strip() != ""
         and is_no_value(experience_req)
     )
     has_non_no_value_explicit_text = (
@@ -1572,6 +1572,7 @@ _GENERIC_CERT_WORDS = {
     "relevant", "required", "preferred", "plus", "advantage", "must", "have",
     "holder", "passer", "registered", "professional", "national", "level",
     "in", "of", "for", "and", "or", "the", "a", "an", "with", "to", "on", "at",
+    "none", "na", "wala", "nil", "null",
 }
 
 _AMBIGUOUS_SINGLE_CERT_TOKENS = {
@@ -2734,8 +2735,10 @@ def calculate_match_score(
         if (total_exp_entries > 0 and (relevance_result.get("relevant_count", 0) == 0 or duration_verified))
         else resume_years
     )
+    raw_exp_req = getattr(job, 'experience_requirements', None)
+    exp_req_arg = "" if (raw_exp_req is None or is_no_value(raw_exp_req)) else str(raw_exp_req)
     experience_result = calculate_experience_match(
-        effective_exp_years, job_desc, getattr(job, 'experience_requirements', None)
+        effective_exp_years, job_desc, exp_req_arg
     )
     experience_result["total_years"] = resume_years
     experience_result["duration_verified"] = duration_verified
@@ -2790,10 +2793,12 @@ def calculate_match_score(
 
     # Education matching (shared 1-8 hierarchy + ongoing rules + separate field check + manual review)
     resume_education = _resolve_education_text(resume_data)
+    raw_edu_req = getattr(job, 'education_requirements', None)
+    edu_req_arg = "" if (raw_edu_req is None or is_no_value(raw_edu_req)) else str(raw_edu_req)
     education_result = calculate_education_match(
         resume_education,
         job_desc,
-        getattr(job, 'education_requirements', None),
+        edu_req_arg,
         education_entries=resume_data.get("education_entries"),
     )
     edu_status = education_result.get("status", STATUS_MEETS)

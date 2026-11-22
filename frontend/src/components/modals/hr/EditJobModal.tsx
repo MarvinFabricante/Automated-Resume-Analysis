@@ -204,6 +204,13 @@ const EditJobModal: React.FC<EditJobModalProps> = ({ isOpen, onClose, onSuccess,
                 label: `Updating ${taskData.progress.current} of ${taskData.progress.total} applications...`,
               });
             }
+            if (taskData?.status === 'FAILURE' || (taskData?.ready && taskData?.successful === false)) {
+              const errDetail =
+                typeof taskData?.result === 'string' && taskData.result
+                  ? taskData.result
+                  : 'Score recalculation failed in background worker.';
+              throw new Error(errDetail);
+            }
             if (taskData?.ready) {
               setRescoreProgress({ percent: 100, label: 'All application scores updated!' });
               break;

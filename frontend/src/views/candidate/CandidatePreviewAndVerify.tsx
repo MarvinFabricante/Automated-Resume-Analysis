@@ -17,7 +17,14 @@ import ResumePreviewModal from '../../components/modals/shared/ResumePreviewModa
 import ExperienceGapAlert from '../../components/common/ExperienceGapAlert';
 import { useSubmitApplicationMutation } from '../../redux/api/apiSlice';
 import { formatApiErrorDetail, formatUploadOrParseError, toPositiveIntOrUndefined, toStringArray } from '../../utils/errorUtils';
-import { cleanRequirementInput, cleanRequirementList, resolveCriterionStatus } from '../../utils/criterionStatus';
+import {
+  cleanRequirementInput,
+  cleanRequirementList,
+  resolveCriterionStatus,
+  getCriterionStatusBadgeStyle,
+  stripStatusPrefix,
+} from '../../utils/criterionStatus';
+import { formatSecondPersonText } from '../../components/candidate/DetailedAnalysisDrawer';
 
 
 const CandidatePreviewAndVerify: React.FC = () => {
@@ -608,6 +615,7 @@ const CandidatePreviewAndVerify: React.FC = () => {
                         reason: activeMatch.skills_reason,
                         score: activeMatch.skills_score,
                       }),
+                      reason: activeMatch.skills_reason,
                       icon: <Cpu size={16} />,
                     },
                     {
@@ -618,6 +626,7 @@ const CandidatePreviewAndVerify: React.FC = () => {
                         score: activeMatch.experience_score,
                         isBelowMinimum: Boolean(activeMatch.experience_below_minimum),
                       }),
+                      reason: activeMatch.experience_reason,
                       icon: <Briefcase size={16} />,
                     },
                     {
@@ -627,6 +636,7 @@ const CandidatePreviewAndVerify: React.FC = () => {
                         reason: activeMatch.education_reason,
                         score: activeMatch.education_score,
                       }),
+                      reason: activeMatch.education_reason,
                       icon: <GraduationCap size={16} />,
                     },
                     {
@@ -636,17 +646,30 @@ const CandidatePreviewAndVerify: React.FC = () => {
                         reason: activeMatch.certifications_reason,
                         score: activeMatch.certifications_score,
                       }),
+                      reason: activeMatch.certifications_reason,
                       icon: <Award size={16} />,
                     },
-                  ].map((item, idx) => (
-                    <div key={idx} className="bg-slate-50/50 p-5 rounded-[24px] border border-slate-100/50 flex flex-col items-center text-center">
-                      <div className="text-slate-400 mb-2">{item.icon}</div>
-                      <p className="text-sm font-black tracking-wide text-slate-900 mb-0.5">
-                        {item.status}
-                      </p>
-                      <span className="text-[9px] font-black uppercase tracking-widest text-slate-400">{item.label}</span>
-                    </div>
-                  ))}
+                  ].map((item, idx) => {
+                    const style = getCriterionStatusBadgeStyle(item.status);
+                    const cleanReason = formatSecondPersonText(
+                      stripStatusPrefix(item.reason),
+                      state?.formData?.fullName || data?.fullname
+                    );
+                    return (
+                      <div key={idx} className="bg-slate-50/50 p-5 rounded-[24px] border border-slate-100/50 flex flex-col items-center text-center">
+                        <div className={`${style.textClass} mb-2`}>{item.icon}</div>
+                        <span className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1">{item.label}</span>
+                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${style.badgeClass}`}>
+                          {item.status}
+                        </span>
+                        {cleanReason && (
+                          <p className="text-[11px] text-slate-600 font-medium mt-2 leading-snug">
+                            {cleanReason}
+                          </p>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
 
                 <ExperienceGapAlert

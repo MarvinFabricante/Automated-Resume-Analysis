@@ -17,7 +17,14 @@ import ApplicationProgressBar from '../../../components/common/ApplicationProgre
 import ExperienceGapAlert from '../../../components/common/ExperienceGapAlert';
 import { broadcastAtsUpdate } from '../../../utils/realtimeSync';
 import { formatApiErrorDetail, formatUploadOrParseError, toPositiveIntOrUndefined, toStringArray } from '../../../utils/errorUtils';
-import { cleanRequirementInput, cleanRequirementList, resolveCriterionStatus } from '../../../utils/criterionStatus';
+import {
+  cleanRequirementInput,
+  cleanRequirementList,
+  resolveCriterionStatus,
+  getCriterionStatusBadgeStyle,
+  stripStatusPrefix,
+} from '../../../utils/criterionStatus';
+import { formatSecondPersonText } from '../../../components/candidate/DetailedAnalysisDrawer';
 
 
 interface InfoItemProps {
@@ -629,6 +636,7 @@ return (
                     reason: activeMatch.skills_reason,
                     score: activeMatch.skills_score,
                   }),
+                  reason: activeMatch.skills_reason,
                   icon: <Cpu size={16} />,
                 },
                 {
@@ -639,6 +647,7 @@ return (
                     score: activeMatch.experience_score,
                     isBelowMinimum: Boolean(activeMatch.experience_below_minimum),
                   }),
+                  reason: activeMatch.experience_reason,
                   icon: <Briefcase size={16} />,
                 },
                 {
@@ -648,6 +657,7 @@ return (
                     reason: activeMatch.education_reason,
                     score: activeMatch.education_score,
                   }),
+                  reason: activeMatch.education_reason,
                   icon: <GraduationCap size={16} />,
                 },
                 {
@@ -657,17 +667,30 @@ return (
                     reason: activeMatch.certifications_reason,
                     score: activeMatch.certifications_score,
                   }),
+                  reason: activeMatch.certifications_reason,
                   icon: <Award size={16} />,
                 },
-              ].map((item, idx) => (
-                <div key={idx} className="bg-slate-50/70 p-4 rounded-2xl border border-slate-100/70 flex flex-col items-center text-center">
-                  <div className="text-[#D60041] mb-1.5">{item.icon}</div>
-                  <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 mb-0.5">{item.label}</span>
-                  <p className="text-sm font-black text-slate-900">
-                    {item.status}
-                  </p>
-                </div>
-              ))}
+              ].map((item, idx) => {
+                const style = getCriterionStatusBadgeStyle(item.status);
+                const cleanReason = formatSecondPersonText(
+                  stripStatusPrefix(item.reason),
+                  state?.formData?.fullName || data?.fullname
+                );
+                return (
+                  <div key={idx} className="bg-slate-50/70 p-4 rounded-2xl border border-slate-100/70 flex flex-col items-center text-center">
+                    <div className={`${style.textClass} mb-1.5`}>{item.icon}</div>
+                    <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1">{item.label}</span>
+                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${style.badgeClass}`}>
+                      {item.status}
+                    </span>
+                    {cleanReason && (
+                      <p className="text-[11px] text-slate-600 font-medium mt-1.5 leading-snug">
+                        {cleanReason}
+                      </p>
+                    )}
+                  </div>
+                );
+              })}
             </div>
 
             <ExperienceGapAlert

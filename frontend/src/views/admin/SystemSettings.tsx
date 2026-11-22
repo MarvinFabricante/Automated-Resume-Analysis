@@ -24,7 +24,9 @@ import Header from '../../components/layout/Header';
 import Sidebar from '../../components/layout/Sidebar';
 import NotificationTemplatesEditor from '../../components/notifications/NotificationTemplatesEditor';
 import api from '../../services/api';
-import { 
+import { useDispatch } from 'react-redux';
+import {
+  apiSlice,
   useGetMatchingConfigQuery,
   useUpdateMatchingWeightsMutation,
   useUpdateMatchingThresholdsMutation,
@@ -78,6 +80,7 @@ const SystemSettings: React.FC = () => {
 
   const [updateWeights] = useUpdateMatchingWeightsMutation();
   const [updateThresholds] = useUpdateMatchingThresholdsMutation();
+  const dispatch = useDispatch();
   const [recalculateScores, { isLoading: isRecalculating }] = useRecalculateMatchingScoresMutation();
   const [triggerMLRetrain, { isLoading: isRetraining }] = useTriggerMLRetrainMutation();
 
@@ -252,6 +255,15 @@ const SystemSettings: React.FC = () => {
           await new Promise((r) => setTimeout(r, 1000));
           const taskRes = await api.get(`/admins/tasks/${res.task_id}`);
           const taskData = taskRes.data;
+          if (taskData?.status === 'FAILURE' || (taskData?.ready && taskData?.successful === false)) {
+            const errDetail =
+              typeof taskData?.result === 'string' && taskData.result
+                ? taskData.result
+                : 'Background score recalculation failed.';
+            setRecalcProgress(null);
+            toast.error(errDetail);
+            return;
+          }
           if (taskData?.progress?.percent !== undefined) {
             setRecalcProgress({
               percent: taskData.progress.percent,
@@ -261,14 +273,17 @@ const SystemSettings: React.FC = () => {
           if (taskData?.ready) {
             const count = taskData?.result?.updated_applications ?? 0;
             setRecalcProgress(null);
+            dispatch(apiSlice.util.invalidateTags(['Applications', 'Dashboard', 'Candidates', 'Shortlists']));
             toast.success(`Recalculated scores for ${count} applications across all jobs.`);
             return;
           }
         }
         setRecalcProgress(null);
+        dispatch(apiSlice.util.invalidateTags(['Applications', 'Dashboard', 'Candidates', 'Shortlists']));
         toast.success(res?.message || "Recalculation is running in the background.");
       } else {
         const updatedCount = res?.updated_applications ?? 0;
+        dispatch(apiSlice.util.invalidateTags(['Applications', 'Dashboard', 'Candidates', 'Shortlists']));
         toast.success(`Successfully re-evaluated ${updatedCount} candidate applications with active parameters!`);
       }
     } catch (err: any) {
