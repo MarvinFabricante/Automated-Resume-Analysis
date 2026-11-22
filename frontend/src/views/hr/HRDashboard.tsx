@@ -247,17 +247,10 @@ const HRDashboard: React.FC = () => {
               appStats={appStats}
             />
 
-            {/* 4. Split Operations Grid: Recent Submissions (2/3) + Upcoming Interviews (1/3) */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 sm:gap-8 mb-8">
-              {/* Left 2 Cols: Interactive Recent Submissions Queue */}
-              <div className="lg:col-span-2">
-                <RecentSubmissions candidates={applications} />
-              </div>
-
-              {/* Right 1 Col: Live Upcoming Interviews Widget */}
-              <div className="lg:col-span-1">
-                <UpcomingInterviews onScheduleClick={() => navigate('/hr/scheduling')} />
-              </div>
+            {/* 4. Operations Stack: Recent Submissions & Upcoming Interviews as Full-Width Rows */}
+            <div className="space-y-6 sm:space-y-8 mb-8">
+              <RecentSubmissions candidates={applications} />
+              <UpcomingInterviews onScheduleClick={() => setIsScheduleModalOpen(true)} />
             </div>
 
             <section className={styles.tools} aria-labelledby="recruitment-tools-heading">
