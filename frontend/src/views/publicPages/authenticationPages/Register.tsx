@@ -201,14 +201,13 @@ const Register: React.FC = () => {
         <title>Create Account - Mariwasa Portal</title>
       </Helmet>
 
-      <button
-        type="button"
-        onClick={() => window.location.href = '/'}
-        className="fixed top-3 left-3 sm:top-6 sm:left-6 min-h-[44px] min-w-[44px] flex items-center gap-1.5 sm:gap-2 text-gray-600 hover:text-[#D60041] transition-all group font-bold text-[11px] sm:text-xs uppercase tracking-widest bg-white/85 backdrop-blur-sm py-2.5 px-3.5 sm:py-3 sm:px-5 rounded-xl sm:rounded-2xl border border-gray-200 hover:border-pink-100 hover:shadow-lg active:scale-95 z-50 shadow-sm cursor-pointer touch-manipulation"
+      <a
+        href="/"
+        className="absolute top-3 left-3 sm:top-6 sm:left-6 min-h-[44px] min-w-[44px] flex items-center gap-1.5 sm:gap-2 text-gray-600 hover:text-[#D60041] transition-all group font-bold text-[11px] sm:text-xs uppercase tracking-widest bg-white/85 backdrop-blur-sm py-2.5 px-3.5 sm:py-3 sm:px-5 rounded-xl sm:rounded-2xl border border-gray-200 hover:border-pink-100 hover:shadow-lg active:scale-95 z-20 shadow-sm cursor-pointer touch-manipulation"
       >
         <ArrowLeft size={14} className="group-hover:-translate-x-1 transition-transform sm:w-4 sm:h-4" />
         Back to Home
-      </button>
+      </a>
 
       {modalState.isOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/40 backdrop-blur-sm animate-in fade-in duration-200">
@@ -384,7 +383,7 @@ const Register: React.FC = () => {
                       required
                       value={formData.password}
                       onChange={handleChange}
-                      className="peer w-full pl-4 pr-10 py-3.5 border border-gray-400 rounded-[4px] text-base text-gray-900 focus:outline-none focus:border-[#D60041] focus:border-2 focus:py-[13px] focus:pl-[15px] transition-all placeholder-transparent bg-transparent"
+                      className="peer w-full pl-4 pr-12 py-3.5 border border-gray-400 rounded-[4px] text-base text-gray-900 focus:outline-none focus:border-[#D60041] focus:border-2 focus:py-[13px] focus:pl-[15px] transition-all placeholder-transparent bg-transparent"
                       placeholder="Password"
                     />
                     <label htmlFor="password" className="absolute left-3.5 -top-2.5 bg-white px-1 text-xs font-normal text-gray-600 peer-placeholder-shown:text-base peer-placeholder-shown:text-gray-600 peer-placeholder-shown:top-3.5 peer-focus:-top-2.5 peer-focus:text-xs peer-focus:text-[#D60041] transition-all cursor-text pointer-events-none z-10">
@@ -408,7 +407,7 @@ const Register: React.FC = () => {
                       required
                       value={formData.confirmPassword}
                       onChange={handleChange}
-                      className="peer w-full pl-4 pr-10 py-3.5 border border-gray-400 rounded-[4px] text-base text-gray-900 focus:outline-none focus:border-[#D60041] focus:border-2 focus:py-[13px] focus:pl-[15px] transition-all placeholder-transparent bg-transparent"
+                      className="peer w-full pl-4 pr-12 py-3.5 border border-gray-400 rounded-[4px] text-base text-gray-900 focus:outline-none focus:border-[#D60041] focus:border-2 focus:py-[13px] focus:pl-[15px] transition-all placeholder-transparent bg-transparent"
                       placeholder="Confirm"
                     />
                     <label htmlFor="confirmPassword" className="absolute left-3.5 -top-2.5 bg-white px-1 text-xs font-normal text-gray-600 peer-placeholder-shown:text-base peer-placeholder-shown:text-gray-600 peer-placeholder-shown:top-3.5 peer-focus:-top-2.5 peer-focus:text-xs peer-focus:text-[#D60041] transition-all cursor-text pointer-events-none z-10">
@@ -473,16 +472,16 @@ const Register: React.FC = () => {
       </div>
 
       <div className="w-full max-w-[1040px] mt-4 flex flex-col sm:flex-row justify-between items-center text-xs text-gray-600 px-2">
-        <div className="mb-4 sm:mb-0">
-          <select className="bg-transparent border-none focus:ring-0 cursor-pointer outline-none hover:bg-gray-200 py-1 px-2 rounded-md transition-colors">
+        <div className="mb-2 sm:mb-0">
+          <select className="min-h-[44px] bg-transparent border-none focus:ring-0 cursor-pointer touch-manipulation outline-none hover:bg-gray-200 py-2 px-3 rounded-md transition-colors">
             <option>English (United States)</option>
             <option>Filipino</option>
           </select>
         </div>
-        <div className="flex space-x-6">
-          <a href="#" className="hover:bg-gray-200 px-2 py-1 rounded-md transition-colors">Help</a>
-          <a href="#" className="hover:bg-gray-200 px-2 py-1 rounded-md transition-colors">Privacy</a>
-          <a href="#" className="hover:bg-gray-200 px-2 py-1 rounded-md transition-colors">Terms</a>
+        <div className="flex gap-2">
+          <a href="#" className="inline-flex items-center justify-center min-w-[44px] min-h-[44px] hover:bg-gray-200 px-3 py-2 rounded-md transition-colors cursor-pointer touch-manipulation">Help</a>
+          <a href="#" className="inline-flex items-center justify-center min-w-[44px] min-h-[44px] hover:bg-gray-200 px-3 py-2 rounded-md transition-colors cursor-pointer touch-manipulation">Privacy</a>
+          <a href="#" className="inline-flex items-center justify-center min-w-[44px] min-h-[44px] hover:bg-gray-200 px-3 py-2 rounded-md transition-colors cursor-pointer touch-manipulation">Terms</a>
         </div>
       </div>
     </div>

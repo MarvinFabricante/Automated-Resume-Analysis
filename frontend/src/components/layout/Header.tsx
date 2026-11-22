@@ -67,6 +67,8 @@ const Header: React.FC = () => {
 
   const [pulse, setPulse] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const accessPortalBtnRef = useRef<HTMLButtonElement>(null);
+  const accessPortalMenuRef = useRef<HTMLDivElement>(null);
   const notificationsRef = useRef<HTMLDivElement>(null);
   const mobileMenuRef = useRef<HTMLDivElement>(null);
   const hamburgerBtnRef = useRef<HTMLButtonElement>(null);
@@ -368,12 +370,16 @@ const Header: React.FC = () => {
       }
 
       if (e.key === 'Escape') {
+        const wasAccessPortalOpen = Boolean(accessPortalMenuRef.current);
         setIsMobileMenuOpen(false);
         setIsProfileOpen(false);
         setIsAccessPortalOpen(false);
         setIsNotificationsOpen(false);
         setIsMobileNotifsOpen(false);
         setIsMobileSearchOpen(false);
+        if (wasAccessPortalOpen) {
+          accessPortalBtnRef.current?.focus();
+        }
         if (window.innerWidth < 768) {
           dispatch(closeSidebar());
         }
@@ -452,9 +458,9 @@ const Header: React.FC = () => {
   return (
     <>
       <header className="main-header w-full bg-white border-b border-gray-100 px-4 sm:px-6 md:px-10 h-[73px] flex items-center sticky top-0 z-50 font-sans shadow-sm transition-colors duration-200">
-        <div className={`w-full ${hasSidebar ? 'max-w-none' : 'max-w-[1400px] mx-auto'} flex items-center justify-between`}>
+        <div className={`w-full ${hasSidebar ? 'max-w-none' : 'max-w-[1400px] mx-auto'} flex items-center justify-between gap-2`}>
 
-          <div className="flex items-center space-x-2 sm:space-x-3 shrink-0">
+          <div className="flex items-center space-x-2 sm:space-x-3 min-w-0 flex-1 lg:flex-initial">
             {/* Mobile Drawer Trigger (Mobile & Tablet only < 1024px) */}
             {hasSidebar ? (
               <button
@@ -492,10 +498,9 @@ const Header: React.FC = () => {
               </button>
             )}
 
-            <div
-              role="button"
-              tabIndex={0}
-              className="flex items-center space-x-2 sm:space-x-4 cursor-pointer group shrink-0 touch-manipulation"
+            <button
+              type="button"
+              className="flex items-center space-x-2 sm:space-x-4 min-h-[44px] min-w-0 max-w-full overflow-hidden py-1 text-left bg-transparent border-0 cursor-pointer group touch-manipulation"
               onClick={() =>
                 navigate(
                   isGuest
@@ -507,20 +512,6 @@ const Header: React.FC = () => {
                         : '/candidate/dashboard'
                 )
               }
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                  e.preventDefault();
-                  navigate(
-                    isGuest
-                      ? '/'
-                      : isAdminRole
-                        ? '/admin/dashboard'
-                        : isHRRole || isHRPage
-                          ? '/hr/dashboard'
-                          : '/candidate/dashboard'
-                  );
-                }
-              }}
             >
               <div className={`w-8 h-8 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center overflow-hidden transition-all duration-300 shrink-0 ${!isGuest && 'group-hover:shadow-[0_0_15px_rgba(209,0,67,0.3)]'}`}>
                 <img src={(logo as any)?.src || logo} alt="logo" className="w-full h-full object-contain" />
@@ -545,7 +536,7 @@ const Header: React.FC = () => {
                         : "Careers"}
                 </p>
               </div>
-            </div>
+            </button>
           </div>
 
           <div className={`hidden lg:flex flex-1 items-center ${(isGuest || isPublicSitePage) || isApplicationPage ? 'justify-end pr-8' : 'justify-center'}`}>
@@ -583,6 +574,7 @@ const Header: React.FC = () => {
             {isGuest ? (
               <div className="hidden sm:block relative">
                 <button
+                  ref={accessPortalBtnRef}
                   type="button"
                   onClick={() => {
                     setIsMobileMenuOpen(false);
@@ -593,6 +585,10 @@ const Header: React.FC = () => {
                       e.preventDefault();
                       setIsMobileMenuOpen(false);
                       setIsAccessPortalOpen(true);
+                      requestAnimationFrame(() => {
+                        const firstItem = accessPortalMenuRef.current?.querySelector<HTMLElement>('[role="menuitem"]');
+                        firstItem?.focus();
+                      });
                     }
                   }}
                   aria-haspopup="menu"
@@ -605,9 +601,30 @@ const Header: React.FC = () => {
                 </button>
                 {isAccessPortalOpen && (
                   <div
+                    ref={accessPortalMenuRef}
                     id="access-portal-menu"
                     role="menu"
-                    className="desktop-dropdown absolute right-0 top-[calc(100%+10px)] w-64 bg-white border border-gray-100 rounded-[24px] shadow-2xl py-3 z-[60] animate-in fade-in slide-in-from-top-2 duration-150"
+                    onKeyDown={(e) => {
+                      const items = Array.from(
+                        accessPortalMenuRef.current?.querySelectorAll<HTMLElement>('[role="menuitem"]') || []
+                      );
+                      if (items.length === 0) return;
+                      const idx = items.indexOf(document.activeElement as HTMLElement);
+                      if (e.key === 'ArrowDown') {
+                        e.preventDefault();
+                        items[(idx + 1) % items.length]?.focus();
+                      } else if (e.key === 'ArrowUp') {
+                        e.preventDefault();
+                        items[(idx - 1 + items.length) % items.length]?.focus();
+                      } else if (e.key === 'Home') {
+                        e.preventDefault();
+                        items[0]?.focus();
+                      } else if (e.key === 'End') {
+                        e.preventDefault();
+                        items[items.length - 1]?.focus();
+                      }
+                    }}
+                    className="desktop-dropdown pointer-events-auto absolute right-0 top-[calc(100%+10px)] w-64 bg-white border border-gray-100 rounded-[24px] shadow-2xl py-3 z-[60] animate-in fade-in slide-in-from-top-2 duration-150"
                   >
                     <div className="px-5 py-2 mb-2 border-b border-gray-50">
                       <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">Select Portal</p>
@@ -646,7 +663,7 @@ const Header: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => setIsMobileSearchOpen(!isMobileSearchOpen)}
-                    className={`lg:hidden w-9 h-9 sm:w-11 sm:h-11 rounded-xl sm:rounded-2xl flex items-center justify-center transition-all duration-300 border cursor-pointer ${isMobileSearchOpen
+                    className={`lg:hidden w-11 h-11 min-w-[44px] min-h-[44px] rounded-xl sm:rounded-2xl flex items-center justify-center transition-all duration-300 border cursor-pointer touch-manipulation ${isMobileSearchOpen
                       ? 'bg-slate-900 border-slate-900 text-white shadow-xl'
                       : 'bg-white border-gray-200/80 text-gray-600 hover:bg-gray-50 hover:border-pink-200'
                       }`}
@@ -662,7 +679,7 @@ const Header: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => navigate(getMessagesPathForRole(userRole, location.pathname))}
-                    className={`relative desktop-icon-btn w-9 h-9 sm:w-11 sm:h-11 rounded-xl sm:rounded-2xl flex items-center justify-center transition-all duration-300 border cursor-pointer ${location.pathname.endsWith('/messages')
+                    className={`relative desktop-icon-btn w-11 h-11 min-w-[44px] min-h-[44px] rounded-xl sm:rounded-2xl flex items-center justify-center transition-all duration-300 border cursor-pointer touch-manipulation ${location.pathname.endsWith('/messages')
                       ? 'bg-slate-900 border-slate-900 text-white shadow-xl'
                       : 'bg-white border-gray-200/80 text-gray-600 hover:bg-gray-50 hover:border-pink-200 hover:shadow-md hover:scale-105 active:scale-95'
                       }`}
@@ -685,7 +702,7 @@ const Header: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => setIsNotificationsOpen(!isNotificationsOpen)}
-                    className={`desktop-icon-btn w-9 h-9 sm:w-11 sm:h-11 rounded-xl sm:rounded-2xl flex items-center justify-center transition-all duration-300 border cursor-pointer ${pulse ? 'ring-4 ring-pink-100 scale-110' : ''} ${isNotificationsOpen
+                    className={`desktop-icon-btn w-11 h-11 min-w-[44px] min-h-[44px] rounded-xl sm:rounded-2xl flex items-center justify-center transition-all duration-300 border cursor-pointer touch-manipulation ${pulse ? 'ring-4 ring-pink-100 scale-110' : ''} ${isNotificationsOpen
                       ? 'bg-slate-900 border-slate-900 shadow-xl'
                       : 'bg-white border-gray-200/80 hover:bg-gray-50 hover:border-pink-200 hover:shadow-md hover:scale-105 active:scale-95'
                       }`}
@@ -710,18 +727,13 @@ const Header: React.FC = () => {
                     />
                   )}
                 </div>
-                <div
+                <button
+                  type="button"
                   onClick={() => setIsProfileOpen(!isProfileOpen)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' || e.key === ' ') {
-                      e.preventDefault();
-                      setIsProfileOpen(!isProfileOpen);
-                    }
-                  }}
-                  tabIndex={0}
-                  className={`desktop-profile-pill flex items-center sm:space-x-3 border p-1 sm:px-2 sm:py-2 sm:pr-4 rounded-full cursor-pointer touch-manipulation transition-all duration-300 group ${isProfileOpen ? 'bg-gray-50 border-gray-200 shadow-inner' : 'hover:border-pink-200 border-gray-200/80 hover:shadow-md hover:bg-gray-50 bg-white'}`}
+                  aria-haspopup="menu"
+                  aria-expanded={isProfileOpen}
+                  className={`desktop-profile-pill min-h-[44px] min-w-[44px] flex items-center sm:space-x-3 border p-1 sm:px-2 sm:py-2 sm:pr-4 rounded-full cursor-pointer touch-manipulation transition-all duration-300 group ${isProfileOpen ? 'bg-gray-50 border-gray-200 shadow-inner' : 'hover:border-pink-200 border-gray-200/80 hover:shadow-md hover:bg-gray-50 bg-white'}`}
                   title="Account menu"
-                  role="button"
                   aria-label="Account menu"
                 >
                   <div className={`w-8 h-8 sm:w-9 sm:h-9 rounded-full flex items-center justify-center border transition-all duration-300 overflow-hidden shrink-0 ${isProfileOpen ? 'bg-[#D60041] border-[#D60041] shadow-md shadow-pink-200' : 'bg-white border-gray-200 group-hover:border-pink-200'}`}>
@@ -748,12 +760,12 @@ const Header: React.FC = () => {
                     <span className="text-xs font-bold text-gray-900 truncate max-w-[100px] md:max-w-[130px]">{userEmail}</span>
                   </div>
                   <ChevronDown size={14} className={`hidden sm:block text-gray-400 transition-transform duration-300 ml-1 ${isProfileOpen ? 'rotate-180 text-[#D60041]' : 'group-hover:text-gray-600'}`} />
-                </div>
+                </button>
               </>
             )}
 
             {isProfileOpen && !isGuest && (
-              <div className="desktop-dropdown absolute right-0 top-[calc(100%+12px)] w-[calc(100vw-2rem)] sm:w-72 max-w-[288px] bg-white border border-gray-100 rounded-[24px] shadow-2xl py-3 z-[60] animate-in fade-in slide-in-from-top-4 duration-200">
+              <div className="desktop-dropdown pointer-events-auto absolute right-0 top-[calc(100%+12px)] w-[calc(100vw-2rem)] sm:w-72 max-w-[288px] bg-white border border-gray-100 rounded-[24px] shadow-2xl py-3 z-[60] animate-in fade-in slide-in-from-top-4 duration-200">
                 <div className="px-4 sm:px-6 py-4 sm:py-5 border-b border-gray-50 mb-2 flex items-center gap-3 sm:gap-4">
                   <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-2xl overflow-hidden border border-gray-100 shrink-0 bg-gray-50 flex items-center justify-center">
                     {profileImageUrl ? (
@@ -767,13 +779,13 @@ const Header: React.FC = () => {
                     <p className="text-xs sm:text-sm font-bold text-gray-900 truncate">{userEmail}</p>
                   </div>
                 </div>
-                <button onClick={() => { navigate(isAdminRole ? '/admin/profile' : isHRRole ? '/hr/profile' : '/candidate/profile'); setIsProfileOpen(false); }} className="w-full text-left px-4 sm:px-6 py-3 sm:py-3.5 text-sm font-bold text-gray-600 hover:bg-gray-50 hover:text-gray-900 flex items-center space-x-4 transition-all group cursor-pointer">
+                <button type="button" onClick={() => { navigate(isAdminRole ? '/admin/profile' : isHRRole ? '/hr/profile' : '/candidate/profile'); setIsProfileOpen(false); }} className="w-full min-h-[44px] text-left px-4 sm:px-6 py-3 sm:py-3.5 text-sm font-bold text-gray-600 hover:bg-gray-50 hover:text-gray-900 flex items-center space-x-4 transition-all group cursor-pointer touch-manipulation">
                   <User size={18} className="text-gray-400 group-hover:text-gray-600" /> <span>View Profile</span>
                 </button>
-                <button onClick={() => { navigate(isAdminRole ? '/admin/settings' : isHRRole ? '/hr/settings' : '/candidate/settings'); setIsProfileOpen(false); }} className="w-full text-left px-4 sm:px-6 py-3 sm:py-3.5 text-sm font-bold text-gray-600 hover:bg-gray-50 hover:text-gray-900 flex items-center space-x-4 transition-all group cursor-pointer">
+                <button type="button" onClick={() => { navigate(isAdminRole ? '/admin/settings' : isHRRole ? '/hr/settings' : '/candidate/settings'); setIsProfileOpen(false); }} className="w-full min-h-[44px] text-left px-4 sm:px-6 py-3 sm:py-3.5 text-sm font-bold text-gray-600 hover:bg-gray-50 hover:text-gray-900 flex items-center space-x-4 transition-all group cursor-pointer touch-manipulation">
                   <Settings size={18} className="text-gray-400 group-hover:text-gray-600" /> <span>Account Settings</span>
                 </button>
-                <button onClick={handleLogout} className="w-full text-left px-4 sm:px-6 py-3 sm:py-3.5 text-sm font-bold text-red-600 hover:bg-red-50 flex items-center space-x-4 transition-all cursor-pointer">
+                <button type="button" onClick={handleLogout} className="w-full min-h-[44px] text-left px-4 sm:px-6 py-3 sm:py-3.5 text-sm font-bold text-red-600 hover:bg-red-50 flex items-center space-x-4 transition-all cursor-pointer touch-manipulation">
                   <LogOut size={18} /> <span>Secure Sign Out</span>
                 </button>
               </div>
@@ -837,57 +849,58 @@ const Header: React.FC = () => {
               {/* 2. Notifications Section (Mobile) */}
               {!isGuest && (
                 <div className="px-4 py-3">
-                  <div
-                    onClick={() => setIsMobileNotifsOpen(!isMobileNotifsOpen)}
-                    className="flex items-center justify-between cursor-pointer py-1 group select-none"
-                  >
-                    <div className="flex items-center space-x-2.5">
-                      <div className="relative">
-                        <div className="w-8 h-8 rounded-xl bg-gray-100 flex items-center justify-center text-gray-600 group-hover:text-[#D60041] transition-colors">
-                          <Bell size={16} />
-                        </div>
-                        {unreadCount > 0 && (
-                          <span className="absolute -top-1 -right-1 w-4 h-4 bg-[#D60041] text-white text-[8px] font-black rounded-full flex items-center justify-center shadow-xs">
-                            {unreadCount}
-                          </span>
-                        )}
-                      </div>
-                      <div>
-                        <p className="text-xs font-bold text-gray-900 flex items-center gap-2 flex-wrap">
-                          <span>{userRole === 'HR' ? 'Recruitment Alerts' : 'Notifications'}</span>
-                          {unreadCount > 0 ? (
-                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-red-100 text-[#D60041]">
-                              {unreadCount} new
-                            </span>
-                          ) : (
-                            <span className="text-[10px] font-medium text-gray-400">
-                              Up to date
+                  <div className="flex items-center justify-between gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setIsMobileNotifsOpen(!isMobileNotifsOpen)}
+                      aria-expanded={isMobileNotifsOpen}
+                      className="flex-1 min-h-[44px] flex items-center justify-between text-left cursor-pointer touch-manipulation py-1 group select-none"
+                    >
+                      <div className="flex items-center space-x-2.5">
+                        <div className="relative">
+                          <div className="w-8 h-8 rounded-xl bg-gray-100 flex items-center justify-center text-gray-600 group-hover:text-[#D60041] transition-colors">
+                            <Bell size={16} />
+                          </div>
+                          {unreadCount > 0 && (
+                            <span className="absolute -top-1 -right-1 w-4 h-4 bg-[#D60041] text-white text-[8px] font-black rounded-full flex items-center justify-center shadow-xs">
+                              {unreadCount}
                             </span>
                           )}
-                        </p>
-                        <p className="text-[10px] text-gray-400 font-medium">
-                          {notifications.length} {notifications.length === 1 ? 'alert' : 'alerts'}
-                        </p>
+                        </div>
+                        <div>
+                          <p className="text-xs font-bold text-gray-900 flex items-center gap-2 flex-wrap">
+                            <span>{userRole === 'HR' ? 'Recruitment Alerts' : 'Notifications'}</span>
+                            {unreadCount > 0 ? (
+                              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-red-100 text-[#D60041]">
+                                {unreadCount} new
+                              </span>
+                            ) : (
+                              <span className="text-[10px] font-medium text-gray-400">
+                                Up to date
+                              </span>
+                            )}
+                          </p>
+                          <p className="text-[10px] text-gray-400 font-medium">
+                            {notifications.length} {notifications.length === 1 ? 'alert' : 'alerts'}
+                          </p>
+                        </div>
                       </div>
-                    </div>
 
-                    <div className="flex items-center space-x-2">
-                      {unreadCount > 0 && (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleMarkAllRead();
-                          }}
-                          className="text-[10px] font-bold text-[#D60041] hover:underline px-1 py-0.5"
-                        >
-                          Mark all read
-                        </button>
-                      )}
                       <ChevronDown
                         size={16}
-                        className={`text-gray-400 transition-transform duration-200 ${isMobileNotifsOpen ? 'rotate-180 text-[#D60041]' : ''}`}
+                        className={`text-gray-400 transition-transform duration-200 shrink-0 ${isMobileNotifsOpen ? 'rotate-180 text-[#D60041]' : ''}`}
                       />
-                    </div>
+                    </button>
+
+                    {unreadCount > 0 && (
+                      <button
+                        type="button"
+                        onClick={handleMarkAllRead}
+                        className="min-h-[44px] text-[10px] font-bold text-[#D60041] hover:underline px-2 py-1 cursor-pointer touch-manipulation shrink-0"
+                      >
+                        Mark all read
+                      </button>
+                    )}
                   </div>
 
                   {isMobileNotifsOpen && (

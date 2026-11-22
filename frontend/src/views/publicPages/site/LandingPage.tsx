@@ -288,10 +288,10 @@ const LandingPage: React.FC = () => {
           </p>
 
           {/* Primary & Secondary Action Buttons */}
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-3.5 sm:gap-4 max-w-md mx-auto mb-10 sm:mb-12">
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-3.5 sm:gap-4 max-w-xl mx-auto mb-10 sm:mb-12">
             <a
               href={positionsHref}
-              className="w-full sm:w-auto min-h-[44px] px-8 py-3.5 rounded-2xl bg-[#D60041] hover:bg-slate-900 text-white font-black text-sm uppercase tracking-wider flex items-center justify-center gap-2.5 transition-all shadow-md shadow-[#D60041]/20 active:scale-[0.98] cursor-pointer touch-manipulation"
+              className="w-full sm:w-auto min-h-[44px] px-8 py-3.5 rounded-2xl bg-[#D60041] hover:bg-slate-900 text-white font-black text-sm uppercase tracking-wider flex items-center justify-center gap-2.5 whitespace-nowrap transition-all shadow-md shadow-[#D60041]/20 active:scale-[0.98] cursor-pointer touch-manipulation"
             >
               <Briefcase size={18} />
               <span>View Open Positions</span>
@@ -300,7 +300,7 @@ const LandingPage: React.FC = () => {
 
             <a
               href={dashboardHref}
-              className="w-full sm:w-auto min-h-[44px] px-7 py-3.5 rounded-2xl bg-white hover:bg-slate-50 text-slate-700 hover:text-slate-900 border border-slate-200 font-bold text-sm uppercase tracking-wider flex items-center justify-center gap-2 transition-all shadow-2xs active:scale-[0.98] cursor-pointer touch-manipulation"
+              className="w-full sm:w-auto min-h-[44px] px-7 py-3.5 rounded-2xl bg-white hover:bg-slate-50 text-slate-700 hover:text-slate-900 border border-slate-200 font-bold text-sm uppercase tracking-wider flex items-center justify-center gap-2 whitespace-nowrap transition-all shadow-2xs active:scale-[0.98] cursor-pointer touch-manipulation"
             >
               {activeRole ? (
                 <>
@@ -381,7 +381,7 @@ const LandingPage: React.FC = () => {
 
         {/* Action Cards */}
         <div className="action-cards-container grid md:grid-cols-2 gap-6 mb-24 max-w-6xl mx-auto px-6">
-          <div className="action-card bg-white p-8 md:p-12 rounded-[32px] border border-gray-100 shadow-sm hover:shadow-xl transition-all duration-300 group relative overflow-hidden flex flex-col will-change-transform">
+          <div className="action-card bg-white p-8 md:p-12 rounded-[32px] border border-gray-100 shadow-sm hover:shadow-xl transition-all duration-300 group relative overflow-hidden flex flex-col">
             <div className="absolute top-0 right-0 w-32 h-32 bg-pink-50 rounded-bl-[100px] z-0 opacity-50 group-hover:scale-110 transition-transform pointer-events-none" aria-hidden="true"></div>
             <div className="relative z-10 flex-grow">
               <div className="action-card-icon w-16 h-16 bg-red-50 text-[#D60041] rounded-2xl mb-8 flex items-center justify-center group-hover:scale-110 transition-transform">
@@ -398,7 +398,7 @@ const LandingPage: React.FC = () => {
             </a>
           </div>
 
-          <div className="action-card bg-[#1A1A1A] p-8 md:p-12 rounded-[32px] shadow-sm hover:shadow-xl hover:shadow-gray-900/20 transition-all duration-300 group relative overflow-hidden flex flex-col will-change-transform">
+          <div className="action-card bg-[#1A1A1A] p-8 md:p-12 rounded-[32px] shadow-sm hover:shadow-xl hover:shadow-gray-900/20 transition-all duration-300 group relative overflow-hidden flex flex-col">
             <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-bl-[100px] z-0 opacity-50 group-hover:scale-110 transition-transform pointer-events-none" aria-hidden="true"></div>
             <div className="relative z-10 flex-grow">
               <div className="action-card-icon w-16 h-16 bg-white/10 text-white rounded-2xl mb-8 flex items-center justify-center group-hover:scale-110 transition-transform">
@@ -437,10 +437,10 @@ const LandingPage: React.FC = () => {
 
         {/* About Preview Section */}
         <section className="about-preview-section max-w-6xl mx-auto px-6 mb-24">
-          <div className="about-preview-card bg-white rounded-[32px] border border-gray-100 shadow-sm p-8 md:p-16 flex flex-col md:flex-row items-center gap-12 relative overflow-hidden will-change-transform">
+          <div className="about-preview-card bg-white rounded-[32px] border border-gray-100 shadow-sm p-8 md:p-16 flex flex-col md:flex-row items-center gap-12 relative overflow-hidden">
             <div className="about-blur-orb absolute top-0 right-0 w-64 h-64 bg-pink-100/60 rounded-full blur-3xl pointer-events-none -translate-y-1/2 translate-x-1/2"></div>
 
-            <div className="about-preview-left flex-1 relative z-10 will-change-transform">
+            <div className="about-preview-left flex-1 relative z-10">
               <h2 className="text-3xl font-semibold mb-6 text-gray-900 tracking-tight">About Mariwasa Siam Ceramics</h2>
               <p className="text-gray-600 text-base mb-8 leading-relaxed">
                 The Philippines' leading ceramic manufacturer. We combine traditional craftsmanship with Siam-standard technology to build the homes of tomorrow. Discover how we're modernizing the talent experience.

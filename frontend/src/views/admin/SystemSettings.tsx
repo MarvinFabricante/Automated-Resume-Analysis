@@ -355,7 +355,7 @@ const SystemSettings: React.FC = () => {
       <div className="flex flex-1">
         <Sidebar />
         
-        <main className="flex-1 min-w-0 max-w-[1400px] w-full mx-auto px-4 sm:px-6 lg:px-10 py-6 sm:py-10">
+        <main className="flex-1 min-w-0 max-w-[1400px] w-full mx-auto px-4 sm:px-6 lg:px-10 pt-6 pb-10 sm:py-10">
           
           {/* Header section */}
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
@@ -389,7 +389,7 @@ const SystemSettings: React.FC = () => {
               <p className="text-sm font-semibold text-gray-500">Loading system configuration...</p>
             </div>
           ) : (
-            <div className="space-y-8 animate-in fade-in duration-300">
+            <div className="@container space-y-8 animate-in fade-in duration-300">
               
               {/* Weight balance status notice */}
               {!isBalanced && (
@@ -597,16 +597,17 @@ const SystemSettings: React.FC = () => {
                         <p className="text-[11px] text-gray-500 mb-3 leading-relaxed">
                           Maximum points awarded for cross-domain soft or transferable skills when candidate lacks direct technical alignment.
                         </p>
-                        <div className="flex items-center gap-1.5 sm:gap-2">
+                        <div className="grid grid-cols-6 gap-1.5 sm:gap-2">
                           {[0, 1, 2, 3, 4, 5].map(cap => (
                             <button
                               key={cap}
                               type="button"
+                              aria-pressed={thresholds.transferable_skills_cap === cap}
                               onClick={() => handleThresholdChange('transferable_skills_cap', cap.toString())}
-                              className={`flex-1 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                              className={`h-9 w-full rounded-xl border text-xs font-bold transition-all cursor-pointer touch-manipulation flex items-center justify-center ${
                                 thresholds.transferable_skills_cap === cap
-                                  ? 'bg-[#D10043] text-white shadow-xs'
-                                  : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-100'
+                                  ? 'bg-[#D10043] border-[#D10043] text-white shadow-xs'
+                                  : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-100'
                               }`}
                             >
                               {cap}
@@ -688,44 +689,45 @@ const SystemSettings: React.FC = () => {
               </div>
 
               {/* Recruitment Policy & Application Limit (REQ081 & REQ082) */}
-              <div className="bg-white border border-gray-100 rounded-3xl p-5 sm:p-6 lg:p-8 shadow-xs">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-5 mb-6 border-b border-gray-100">
+              <section aria-labelledby="recruitment-limits-heading" className="bg-white border border-gray-100 rounded-3xl p-5 sm:p-6 lg:p-8 shadow-xs">
+                <div className="flex flex-col @[520px]:flex-row @[520px]:items-center justify-between gap-3 pb-4 mb-6 border-b border-gray-100">
                   <div className="flex items-center gap-3 min-w-0">
-                    <div className="w-10 h-10 rounded-2xl bg-amber-50 text-amber-700 flex items-center justify-center shadow-xs shrink-0">
-                      <Users size={20} />
+                    <div className="w-8 h-8 rounded-xl bg-red-50 text-[#D10043] flex items-center justify-center shrink-0">
+                      <Users size={18} />
                     </div>
                     <div className="min-w-0">
-                      <h2 className="text-base font-extrabold text-gray-900 tracking-tight">
+                      <h2 id="recruitment-limits-heading" className="text-base font-bold text-gray-900 tracking-tight">
                         Recruitment & Multi-Application Limits
                       </h2>
-                      <p className="text-xs text-gray-500 mt-0.5">
+                      <p className="text-xs text-gray-400 mt-0.5">
                         Configure applicant multi-application quotas and submission policies (REQ081 & REQ082).
                       </p>
                     </div>
                   </div>
-                  <span className="self-start sm:self-center shrink-0 whitespace-nowrap px-3 py-1 bg-amber-50 text-amber-700 rounded-xl text-xs font-bold border border-amber-200">
+                  <span className="self-start @[520px]:self-center shrink-0 whitespace-nowrap px-3 py-1 bg-rose-50 text-[#D10043] rounded-full text-xs font-bold border border-rose-200">
                     Multi-App Policy
                   </span>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-5 lg:gap-6 items-stretch">
-                  <div className="p-4 sm:p-5 rounded-2xl bg-gray-50/70 border border-gray-100 flex flex-col justify-between">
-                    <div>
-                      <div className="flex items-center justify-between gap-2 mb-1.5">
-                        <label htmlFor="max-active-apps" className="text-xs font-bold text-gray-900">
-                          Maximum Active Applications per Applicant
+                <div className="grid grid-cols-1 @[620px]:grid-cols-2 gap-4 lg:gap-5 items-stretch">
+                  <div className="min-w-0 h-full p-4 sm:p-5 rounded-2xl bg-gray-50/70 border border-gray-100 flex flex-col justify-between gap-4">
+                    <div className="min-w-0">
+                      <div className="flex items-start sm:items-center justify-between gap-2 mb-1.5">
+                        <label htmlFor="max-active-apps" className="flex items-center gap-2 text-xs font-bold text-gray-900 min-w-0">
+                          <Users size={14} className="text-[#D10043] shrink-0" />
+                          <span>Maximum Active Applications per Applicant</span>
                         </label>
-                        <span className="text-xs font-extrabold text-gray-800 bg-white px-2 py-0.5 rounded-md border border-gray-200 shrink-0">
+                        <span className="text-xs font-extrabold text-gray-800 bg-white px-2 py-0.5 rounded-md border border-gray-200 shrink-0 whitespace-nowrap">
                           {maxActiveApps} max
                         </span>
                       </div>
-                      <p className="text-[11px] text-gray-500 mb-4 leading-relaxed">
+                      <p className="text-[11px] text-gray-500 leading-relaxed">
                         Enforces an active application ceiling across different job openings for a single applicant account (Default: 3). Prevents candidate overloading while allowing cross-department applications.
                       </p>
                     </div>
 
-                    <div>
-                      <div className="flex flex-wrap items-center gap-3">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-3">
                         <input
                           id="max-active-apps"
                           type="number"
@@ -737,20 +739,20 @@ const SystemSettings: React.FC = () => {
                           onChange={(e) => handleMaxActiveAppsChange(e.target.value)}
                           aria-invalid={Boolean(maxActiveAppsError)}
                           aria-describedby="max-active-apps-feedback"
-                          className={`w-24 shrink-0 px-3.5 py-2 bg-white rounded-xl border text-sm font-bold text-gray-900 focus:outline-none focus:ring-2 transition-colors ${
+                          className={`h-10 w-24 shrink-0 px-3.5 bg-white rounded-xl border text-sm font-bold text-gray-900 focus:outline-none focus:ring-2 transition-colors ${
                             maxActiveAppsError
                               ? 'border-rose-400 focus:ring-rose-500/20 focus:border-rose-500'
                               : 'border-gray-200 focus:ring-[#D10043]/20 focus:border-[#D10043]'
                           }`}
                         />
-                        <span className="text-xs text-gray-600 font-medium">
-                          concurrent active applications allowed
+                        <span className="text-xs text-gray-600 font-medium leading-tight min-w-0">
+                          active applications per applicant
                         </span>
                       </div>
                       <p
                         id="max-active-apps-feedback"
                         aria-live="polite"
-                        className={`min-h-[20px] mt-2 text-[11px] leading-snug ${
+                        className={`min-h-[32px] mt-2 text-[11px] leading-4 ${
                           maxActiveAppsError ? 'font-semibold text-rose-600' : 'text-gray-400'
                         }`}
                       >
@@ -759,80 +761,84 @@ const SystemSettings: React.FC = () => {
                     </div>
                   </div>
 
-                  <div className="p-4 sm:p-5 rounded-2xl bg-gray-50/70 border border-gray-100 flex flex-col justify-between">
-                    <div>
-                      <div className="flex items-center justify-between gap-2 mb-1.5">
-                        <span className="text-xs font-bold text-gray-900">Quick Limit Presets</span>
-                        <span className="text-xs font-extrabold text-gray-800 bg-white px-2 py-0.5 rounded-md border border-gray-200 shrink-0">
+                  <div className="min-w-0 h-full p-4 sm:p-5 rounded-2xl bg-gray-50/70 border border-gray-100 flex flex-col justify-between gap-4">
+                    <div className="min-w-0">
+                      <div className="flex items-start sm:items-center justify-between gap-2 mb-1.5">
+                        <span className="flex items-center gap-2 text-xs font-bold text-gray-900 min-w-0">
+                          <SlidersHorizontal size={14} className="text-[#D10043] shrink-0" />
+                          <span>Quick Limit Presets</span>
+                        </span>
+                        <span className="text-xs font-extrabold text-gray-800 bg-white px-2 py-0.5 rounded-md border border-gray-200 shrink-0 whitespace-nowrap">
                           Default: 3
                         </span>
                       </div>
-                      <p className="text-[11px] text-gray-500 mb-4 leading-relaxed">
+                      <p className="text-[11px] text-gray-500 leading-relaxed">
                         Pending/Submitted, Under Review, Shortlisted, and Scheduled applications count toward the active limit; Rejected, Withdrawn, and Hired applications are excluded.
                       </p>
                     </div>
 
-                    <div>
-                      <div className="flex flex-wrap items-center gap-2">
+                    <div className="min-w-0">
+                      <div className="grid grid-cols-5 gap-1.5 sm:gap-2">
                         {[1, 2, 3, 5, 10].map((preset) => (
                           <button
                             key={preset}
                             type="button"
+                            aria-pressed={!maxActiveAppsError && maxActiveApps === preset}
                             onClick={() => handleMaxActiveAppsSelect(preset)}
-                            className={`flex-1 min-w-[40px] py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                            className={`h-10 w-full rounded-xl border text-xs font-bold transition-all cursor-pointer touch-manipulation flex items-center justify-center ${
                               !maxActiveAppsError && maxActiveApps === preset
-                                ? 'bg-[#D10043] text-white shadow-xs'
-                                : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-100'
+                                ? 'bg-[#D10043] border-[#D10043] text-white shadow-xs'
+                                : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-100'
                             }`}
                           >
                             {preset}
                           </button>
                         ))}
                       </div>
-                      <p className="min-h-[20px] mt-2 text-[11px] text-gray-400 leading-snug">
+                      <p className="min-h-[32px] mt-2 text-[11px] text-gray-400 leading-4">
                         Applies to new submissions immediately after saving.
                       </p>
                     </div>
                   </div>
                 </div>
-              </div>
+              </section>
 
               {/* Email & SMS Notification Templates */}
-              <div className="bg-white border border-gray-100 rounded-3xl p-5 sm:p-6 lg:p-8 shadow-xs">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-5 mb-6 border-b border-gray-100">
+              <section aria-labelledby="notification-templates-heading" className="bg-white border border-gray-100 rounded-3xl p-5 sm:p-6 lg:p-8 shadow-xs">
+                <div className="flex flex-col @[520px]:flex-row @[520px]:items-center justify-between gap-3 pb-4 mb-6 border-b border-gray-100">
                   <div className="flex items-center gap-3 min-w-0">
-                    <div className="w-10 h-10 rounded-2xl bg-rose-50 text-[#D10043] flex items-center justify-center shadow-xs shrink-0">
-                      <MessageSquare size={20} />
+                    <div className="w-8 h-8 rounded-xl bg-red-50 text-[#D10043] flex items-center justify-center shrink-0">
+                      <MessageSquare size={18} />
                     </div>
                     <div className="min-w-0">
-                      <h2 className="text-base font-extrabold text-gray-900 tracking-tight">
+                      <h2 id="notification-templates-heading" className="text-base font-bold text-gray-900 tracking-tight">
                         Email & SMS Notification Templates
                       </h2>
-                      <p className="text-xs text-gray-500 mt-0.5">
+                      <p className="text-xs text-gray-400 mt-0.5">
                         Customize default Email subjects, Email bodies, and SMS messages with dynamic candidate and schedule details.
                       </p>
                     </div>
                   </div>
-                  <span className="self-start sm:self-center shrink-0 whitespace-nowrap px-3 py-1 bg-rose-50 text-[#D10043] rounded-xl text-xs font-bold border border-rose-200">
+                  <span className="self-start @[520px]:self-center shrink-0 whitespace-nowrap px-3 py-1 bg-rose-50 text-[#D10043] rounded-full text-xs font-bold border border-rose-200">
                     Email + IPROG SMS
                   </span>
                 </div>
 
                 <NotificationTemplatesEditor />
-              </div>
+              </section>
 
               {/* Bottom Sticky Action Bar */}
-              <div className="sticky bottom-4 z-30 bg-white/95 backdrop-blur-sm border border-gray-200/80 rounded-2xl p-4 shadow-md flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
+              <div className="sticky bottom-4 z-30 bg-white/95 backdrop-blur-sm border border-gray-200/80 rounded-2xl p-4 shadow-md flex flex-col @[680px]:flex-row @[680px]:items-center justify-between gap-3 @[680px]:gap-4">
                 <div className="flex items-center gap-2 text-xs text-gray-500 min-w-0">
                   <CheckCircle2 size={16} className="text-emerald-500 shrink-0" />
                   <span>Changes take effect immediately across all candidate matching workflows and Celery background workers.</span>
                 </div>
 
-                <div className="flex items-center gap-3 w-full sm:w-auto justify-end shrink-0">
+                <div className="flex flex-wrap sm:flex-nowrap items-center gap-2.5 sm:gap-3 w-full @[680px]:w-auto justify-end shrink-0">
                   <button 
                     type="button"
                     onClick={handleDiscard}
-                    className="flex-1 sm:flex-initial justify-center min-h-[42px] px-4 py-2.5 rounded-xl border border-gray-200 text-gray-700 font-bold text-xs hover:bg-gray-50 flex items-center gap-1.5 transition-all cursor-pointer"
+                    className="flex-1 @[680px]:flex-initial justify-center h-11 min-h-[44px] px-4 rounded-xl border border-gray-200 text-gray-700 font-bold text-xs hover:bg-gray-50 flex items-center gap-1.5 transition-all cursor-pointer touch-manipulation whitespace-nowrap"
                   >
                     <RotateCcw size={14} /> Discard Changes
                   </button>
@@ -841,7 +847,7 @@ const SystemSettings: React.FC = () => {
                     type="button"
                     onClick={handleSave}
                     disabled={isSaving || Boolean(maxActiveAppsError)}
-                    className="flex-1 sm:flex-initial justify-center min-h-[42px] bg-[#D10043] text-white px-6 py-2.5 rounded-xl font-bold text-xs hover:bg-[#b00038] flex items-center gap-2 transition-all disabled:opacity-60 disabled:cursor-not-allowed shadow-md shadow-red-200 cursor-pointer"
+                    className="flex-1 @[680px]:flex-initial justify-center h-11 min-h-[44px] bg-[#D10043] border border-[#D10043] text-white px-5 rounded-xl font-bold text-xs hover:bg-[#b00038] hover:border-[#b00038] flex items-center gap-2 transition-all disabled:opacity-60 disabled:cursor-not-allowed shadow-md shadow-red-200 cursor-pointer touch-manipulation whitespace-nowrap"
                   >
                     <Save size={14} />
                     {isSaving ? 'Saving Changes...' : 'Save Configuration'}

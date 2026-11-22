@@ -23,6 +23,8 @@ export const HelpTooltip: React.FC<HelpTooltipProps> = ({
 
   const showTimerRef = useRef<NodeJS.Timeout | null>(null);
   const hideTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const lastInteractionRef = useRef<'mouse' | 'touch' | 'pen' | 'keyboard'>('mouse');
+  const lastTouchAtRef = useRef<number>(0);
 
   // Floating coordinates for portal rendering
   const [coords, setCoords] = useState<{
@@ -123,7 +125,7 @@ export const HelpTooltip: React.FC<HelpTooltipProps> = ({
       }
     };
 
-    const handleClickOutside = (e: MouseEvent | TouchEvent) => {
+    const handleClickOutside = (e: PointerEvent) => {
       if (
         triggerRef.current &&
         !triggerRef.current.contains(e.target as Node) &&
@@ -140,16 +142,14 @@ export const HelpTooltip: React.FC<HelpTooltipProps> = ({
     };
 
     document.addEventListener('keydown', handleKeyDown);
-    document.addEventListener('mousedown', handleClickOutside);
-    document.addEventListener('touchstart', handleClickOutside);
+    document.addEventListener('pointerdown', handleClickOutside);
     window.addEventListener('scroll', handleScrollOrResize, true);
     window.addEventListener('resize', handleScrollOrResize);
 
     return () => {
       cancelAnimationFrame(frameId);
       document.removeEventListener('keydown', handleKeyDown);
-      document.removeEventListener('mousedown', handleClickOutside);
-      document.removeEventListener('touchstart', handleClickOutside);
+      document.removeEventListener('pointerdown', handleClickOutside);
       window.removeEventListener('scroll', handleScrollOrResize, true);
       window.removeEventListener('resize', handleScrollOrResize);
     };
@@ -171,21 +171,41 @@ export const HelpTooltip: React.FC<HelpTooltipProps> = ({
         type="button"
         aria-label={label}
         aria-describedby={isOpen ? tooltipId : undefined}
+        onPointerDown={(e) => {
+          const pType = (e.pointerType as 'mouse' | 'touch' | 'pen') || 'mouse';
+          lastInteractionRef.current = pType;
+          if (pType === 'touch') {
+            lastTouchAtRef.current = Date.now();
+          }
+        }}
+        onKeyDown={() => {
+          lastInteractionRef.current = 'keyboard';
+        }}
         onClick={(e) => {
           e.stopPropagation();
           clearTimers();
           setIsOpen((prev) => !prev);
         }}
-        onMouseEnter={scheduleOpen}
-        onMouseLeave={scheduleClose}
-        onFocus={() => {
-          clearTimers();
-          setIsOpen(true);
+        onMouseEnter={() => {
+          if (lastInteractionRef.current === 'touch' || Date.now() - lastTouchAtRef.current < 500) return;
+          scheduleOpen();
         }}
-        onBlur={() => {
+        onMouseLeave={() => {
+          if (lastInteractionRef.current === 'touch' || Date.now() - lastTouchAtRef.current < 500) return;
           scheduleClose();
         }}
-        className="text-slate-400 hover:text-slate-600 focus:text-slate-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#D10043]/40 rounded-full p-0.5 transition-colors cursor-pointer inline-flex items-center justify-center"
+        onFocus={(e) => {
+          if (lastInteractionRef.current === 'touch' || Date.now() - lastTouchAtRef.current < 500) return;
+          if (lastInteractionRef.current === 'keyboard' || e.currentTarget.matches(':focus-visible')) {
+            clearTimers();
+            setIsOpen(true);
+          }
+        }}
+        onBlur={() => {
+          if (lastInteractionRef.current === 'touch' || Date.now() - lastTouchAtRef.current < 500) return;
+          scheduleClose();
+        }}
+        className="text-slate-400 hover:text-slate-600 focus:text-slate-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#D10043]/40 rounded-full min-w-[44px] min-h-[44px] -m-2.5 p-2.5 transition-colors cursor-pointer touch-manipulation inline-flex items-center justify-center"
       >
         <HelpCircle size={14} className="shrink-0" aria-hidden="true" />
       </button>

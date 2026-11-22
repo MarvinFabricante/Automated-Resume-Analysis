@@ -92,7 +92,7 @@ const ResetPassword: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center px-4 py-8 bg-[#F0F4F9] font-sans antialiased text-gray-800">
+    <div className="min-h-screen supports-[min-height:100dvh]:min-h-[100dvh] flex flex-col items-center justify-center px-4 py-8 bg-[#F0F4F9] font-sans antialiased text-gray-800">
       <Helmet>
         <title>Reset Password - Mariwasa Portal</title>
       </Helmet>
@@ -115,6 +115,7 @@ const ResetPassword: React.FC = () => {
                 {modalState.message}
               </p>
               <button
+                type="button"
                 onClick={() => {
                   if (modalState.type === 'success' || modalState.title === 'Invalid Link') {
                     navigate('/login');
@@ -122,7 +123,7 @@ const ResetPassword: React.FC = () => {
                     setModalState({ ...modalState, isOpen: false });
                   }
                 }}
-                className={`w-full font-medium py-2.5 px-4 rounded-full transition-all duration-200 text-sm ${modalState.type === 'success'
+                className={`w-full min-h-[44px] font-medium py-2.5 px-4 rounded-full transition-all duration-200 text-sm cursor-pointer touch-manipulation ${modalState.type === 'success'
                   ? 'bg-[#D60041] hover:bg-[#b50037] text-white'
                   : 'bg-gray-100 hover:bg-gray-200 text-gray-800'
                   }`}
@@ -170,7 +171,8 @@ const ResetPassword: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-600 hover:text-gray-900 p-1 rounded-full hover:bg-gray-100 transition-colors"
+                  aria-label={showPassword ? "Hide password" : "Show password"}
+                  className="absolute right-1 top-1/2 -translate-y-1/2 min-w-[44px] min-h-[44px] flex items-center justify-center text-gray-600 hover:text-gray-900 rounded-full hover:bg-gray-100 transition-colors cursor-pointer touch-manipulation"
                 >
                   {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
                 </button>
@@ -199,14 +201,14 @@ const ResetPassword: React.FC = () => {
               <button
                 type="button"
                 onClick={() => navigate('/login')}
-                className="flex items-center gap-2 text-sm font-medium text-gray-600 hover:bg-gray-100 px-3 py-2 rounded-md transition-colors w-full sm:w-auto justify-center sm:justify-start"
+                className="min-h-[44px] flex items-center gap-2 text-sm font-medium text-gray-600 hover:bg-gray-100 px-3 py-2 rounded-md transition-colors w-full sm:w-auto justify-center sm:justify-start cursor-pointer touch-manipulation"
               >
                 Cancel
               </button>
               <button
                 type="submit"
                 disabled={loading || !token}
-                className="w-full sm:w-auto bg-[#D60041] hover:bg-[#b50037] text-white text-sm font-medium px-10 py-2.5 rounded-full transition-colors disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center min-w-[140px]"
+                className="w-full sm:w-auto min-h-[44px] bg-[#D60041] hover:bg-[#b50037] text-white text-sm font-medium px-10 py-2.5 rounded-full transition-colors disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center min-w-[140px] cursor-pointer touch-manipulation"
               >
                 {loading ? <Loader2 className="animate-spin h-5 w-5" /> : "Reset password"}
               </button>
