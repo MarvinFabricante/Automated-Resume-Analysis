@@ -52,32 +52,32 @@ const MetricBreakdownCard: React.FC<MetricBreakdownCardProps> = ({
   return (
     <div
       data-testid={testId}
-      className="bg-white border border-slate-200/80 rounded-2xl sm:rounded-3xl p-5 sm:p-6 shadow-xs flex flex-col justify-between"
+      className="bg-white border border-slate-200/80 rounded-2xl p-5 sm:p-6 shadow-xs flex flex-col justify-between"
     >
       <div className="flex items-center justify-between gap-2 pb-4 mb-4 border-b border-slate-100">
         <div>
-          <h3 className="text-base sm:text-lg font-black text-slate-900 tracking-tight flex items-center gap-2">
+          <h3 className="text-base sm:text-lg font-semibold text-slate-900 tracking-tight flex items-center gap-2">
             {icon}
             <span>{title}</span>
           </h3>
-          <p className="text-[11px] text-slate-500 font-medium mt-0.5">{subtitle}</p>
+          <p className="text-xs text-slate-500 font-medium mt-0.5">{subtitle}</p>
         </div>
         <span
-          className={`text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-full border shrink-0 ${badgeClassName}`}
+          className={`text-xs font-semibold uppercase tracking-wider px-2.5 py-1 rounded-full border shrink-0 ${badgeClassName}`}
         >
           {badgeText}
         </span>
       </div>
 
       {items.length === 0 ? (
-        <p className="text-xs text-slate-400 font-medium py-6 text-center">{emptyText}</p>
+        <p className="text-xs text-slate-500 font-medium py-6 text-center">{emptyText}</p>
       ) : (
         <div className="space-y-3 max-h-72 overflow-y-auto pr-1">
           {visibleItems.map((item: any, idx: number) => (
             <div key={idx} className="space-y-1">
               <div className="flex items-center justify-between text-xs gap-2">
                 <span className="font-bold text-slate-800 truncate">{item.label}</span>
-                <span className="font-black text-slate-900 shrink-0">{renderValue(item)}</span>
+                <span className="font-semibold text-slate-900 shrink-0">{renderValue(item)}</span>
               </div>
               <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
                 <div
@@ -91,7 +91,7 @@ const MetricBreakdownCard: React.FC<MetricBreakdownCardProps> = ({
             <button
               type="button"
               onClick={() => setExpanded((prev) => !prev)}
-              className="w-full pt-2 text-[11px] font-bold text-[#D60041] hover:underline text-center cursor-pointer"
+              className="w-full pt-2 text-xs font-bold text-[#D60041] hover:underline text-center cursor-pointer"
             >
               {expanded ? `Show top ${initialLimit}` : `Show all ${items.length} items`}
             </button>
@@ -550,7 +550,7 @@ const ApplicationTrends: React.FC<ApplicationTrendsProps> = ({ applications = []
       )}
 
       {/* 1. Main Trends Chart Card */}
-      <div className="bg-white border border-slate-200/80 rounded-2xl sm:rounded-3xl p-4 sm:p-6 lg:p-8 shadow-xs relative overflow-hidden group/container">
+      <div className="bg-white border border-slate-200/80 rounded-2xl p-4 sm:p-6 lg:p-8 shadow-xs relative overflow-hidden group/container">
         {/* Subtle Ambient Glow */}
         <div className="absolute top-0 right-0 -mr-20 -mt-20 w-80 h-80 bg-pink-50/40 rounded-full blur-3xl pointer-events-none group-hover/container:bg-pink-100/40 transition-colors duration-700" />
 
@@ -558,13 +558,13 @@ const ApplicationTrends: React.FC<ApplicationTrendsProps> = ({ applications = []
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 sm:mb-8 gap-4 sm:gap-6 relative z-20">
           <div>
             <div className="flex items-center gap-2 mb-1 flex-wrap">
-              <h3 className="text-lg sm:text-xl md:text-2xl font-black tracking-tight text-slate-900">Application Trends</h3>
-              <span className="bg-emerald-50 text-emerald-700 text-[9px] sm:text-[10px] font-black px-2 sm:px-2.5 py-0.5 rounded-full flex items-center gap-1 border border-emerald-200/80 shadow-xs uppercase tracking-wider">
+              <h3 className="text-lg sm:text-xl md:text-2xl font-semibold tracking-tight text-slate-900">Application Trends</h3>
+              <span className="bg-emerald-50 text-emerald-700 text-xs sm:text-xs font-semibold px-2 sm:px-2.5 py-0.5 rounded-full flex items-center gap-1 border border-emerald-200/80 shadow-xs uppercase tracking-wider">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                 Live Sync
               </span>
             </div>
-            <p className="text-[11px] sm:text-xs md:text-sm text-slate-500 font-semibold tracking-tight">
+            <p className="text-xs sm:text-xs md:text-sm text-slate-500 font-semibold tracking-tight">
               Submission volume analysis • <span className="font-bold text-slate-700">{startDateLabel} — {endDateLabel}</span>
             </p>
           </div>
@@ -583,7 +583,7 @@ const ApplicationTrends: React.FC<ApplicationTrendsProps> = ({ applications = []
                     setTimeRange(tab.id);
                     setSelectedDay(null);
                   }}
-                  className={`px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-xl text-[11px] sm:text-xs font-black transition-all cursor-pointer ${timeRange === tab.id
+                  className={`px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-xl text-xs sm:text-xs font-semibold transition-all cursor-pointer ${timeRange === tab.id
                       ? 'bg-slate-900 text-white shadow-xs'
                       : 'text-slate-500 hover:text-slate-900 hover:bg-white/80'
                     }`}
@@ -634,8 +634,8 @@ const ApplicationTrends: React.FC<ApplicationTrendsProps> = ({ applications = []
               {isCalendarOpen && (
                 <div className="absolute right-0 top-full mt-2 w-64 bg-white border border-gray-100 rounded-3xl shadow-2xl p-4 z-40 animate-in fade-in zoom-in-95 duration-200">
                   <div className="flex items-center justify-between pb-3 border-b border-gray-50 mb-3">
-                    <span className="text-xs font-black text-gray-900 uppercase tracking-wider">Date Window</span>
-                    <span className="text-[10px] font-bold text-gray-400">{timeRange}</span>
+                    <span className="text-xs font-semibold text-gray-900 uppercase tracking-wider">Date Window</span>
+                    <span className="text-xs font-bold text-gray-400">{timeRange}</span>
                   </div>
                   <div className="space-y-1">
                     {[
@@ -657,7 +657,7 @@ const ApplicationTrends: React.FC<ApplicationTrendsProps> = ({ applications = []
                       >
                         <div>
                           <div className="font-bold">{opt.label}</div>
-                          <div className="text-[10px] text-gray-400">{opt.desc}</div>
+                          <div className="text-xs text-gray-400">{opt.desc}</div>
                         </div>
                         {timeRange === opt.id && <Check size={14} className="text-[#D60041]" />}
                       </button>
@@ -712,7 +712,7 @@ const ApplicationTrends: React.FC<ApplicationTrendsProps> = ({ applications = []
                       <Layers size={14} className="text-gray-400" />
                       Gridlines
                     </span>
-                    <span className="text-[10px] font-black text-gray-400 uppercase">{showGrid ? 'On' : 'Off'}</span>
+                    <span className="text-xs font-semibold text-gray-400 uppercase">{showGrid ? 'On' : 'Off'}</span>
                   </button>
 
                   <button
@@ -732,15 +732,15 @@ const ApplicationTrends: React.FC<ApplicationTrendsProps> = ({ applications = []
         </div>
 
         {/* Detailed Metrics Overview Ribbon */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-4 p-3.5 sm:p-5 bg-gradient-to-br from-slate-50/80 to-pink-50/20 rounded-2xl sm:rounded-3xl border border-slate-200/70 mb-6 sm:mb-8 relative z-10">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-4 p-3.5 sm:p-5 bg-gradient-to-br from-slate-50/80 to-pink-50/20 rounded-2xl border border-slate-200/70 mb-6 sm:mb-8 relative z-10">
           <div className="flex items-center gap-2 sm:gap-3 min-w-0">
             <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-pink-100/70 text-[#D60041] flex items-center justify-center shrink-0">
               <Zap size={16} />
             </div>
             <div className="min-w-0">
-              <p className="text-[9px] sm:text-[10px] font-black text-slate-400 uppercase tracking-wider truncate">Period Peak</p>
-              <p className="text-xs sm:text-base font-black text-slate-900 truncate">
-                {maxApps} <span className="text-[10px] sm:text-xs text-slate-500 font-bold">{maxApps === 1 ? 'App' : 'Apps'}</span>
+              <p className="text-xs sm:text-xs font-semibold text-slate-500 uppercase tracking-wider truncate">Period Peak</p>
+              <p className="text-xs sm:text-base font-semibold text-slate-900 truncate">
+                {maxApps} <span className="text-xs sm:text-xs text-slate-500 font-bold">{maxApps === 1 ? 'App' : 'Apps'}</span>
               </p>
             </div>
           </div>
@@ -750,9 +750,9 @@ const ApplicationTrends: React.FC<ApplicationTrendsProps> = ({ applications = []
               <TrendingUp size={16} />
             </div>
             <div className="min-w-0">
-              <p className="text-[9px] sm:text-[10px] font-black text-slate-400 uppercase tracking-wider truncate">Daily Average</p>
-              <p className="text-xs sm:text-base font-black text-slate-900 truncate">
-                {dailyAverage} <span className="text-[10px] sm:text-xs text-slate-500 font-bold">/ day</span>
+              <p className="text-xs sm:text-xs font-semibold text-slate-500 uppercase tracking-wider truncate">Daily Average</p>
+              <p className="text-xs sm:text-base font-semibold text-slate-900 truncate">
+                {dailyAverage} <span className="text-xs sm:text-xs text-slate-500 font-bold">/ day</span>
               </p>
             </div>
           </div>
@@ -762,9 +762,9 @@ const ApplicationTrends: React.FC<ApplicationTrendsProps> = ({ applications = []
               <Briefcase size={16} />
             </div>
             <div className="min-w-0">
-              <p className="text-[9px] sm:text-[10px] font-black text-slate-400 uppercase tracking-wider truncate">Window Total</p>
-              <p className="text-xs sm:text-base font-black text-slate-900 truncate">
-                {totalAppsInPeriod} <span className="text-[10px] sm:text-xs text-slate-500 font-bold">Total</span>
+              <p className="text-xs sm:text-xs font-semibold text-slate-500 uppercase tracking-wider truncate">Window Total</p>
+              <p className="text-xs sm:text-base font-semibold text-slate-900 truncate">
+                {totalAppsInPeriod} <span className="text-xs sm:text-xs text-slate-500 font-bold">Total</span>
               </p>
             </div>
           </div>
@@ -774,8 +774,8 @@ const ApplicationTrends: React.FC<ApplicationTrendsProps> = ({ applications = []
               <Activity size={16} />
             </div>
             <div className="min-w-0">
-              <p className="text-[9px] sm:text-[10px] font-black text-slate-400 uppercase tracking-wider truncate">Best Day</p>
-              <p className="text-xs sm:text-base font-black text-slate-900 truncate">
+              <p className="text-xs sm:text-xs font-semibold text-slate-500 uppercase tracking-wider truncate">Best Day</p>
+              <p className="text-xs sm:text-base font-semibold text-slate-900 truncate">
                 {peakDay ? peakDay.date : 'N/A'}
               </p>
             </div>
@@ -791,18 +791,18 @@ const ApplicationTrends: React.FC<ApplicationTrendsProps> = ({ applications = []
               </div>
               <div>
                 <div className="flex items-center gap-2">
-                  <span className="text-sm font-black text-white">{selectedDay.fullDate || selectedDay.date}</span>
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-white/10 text-gray-300">
+                  <span className="text-sm font-semibold text-white">{selectedDay.fullDate || selectedDay.date}</span>
+                  <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-white/10 text-gray-300">
                     {selectedDay.day}
                   </span>
                   {selectedDay.isPeak && (
-                    <span className="text-[9px] font-black px-2 py-0.5 rounded-full bg-[#D60041] text-white uppercase tracking-wider">
+                    <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-[#D60041] text-white uppercase tracking-wider">
                       Peak Day
                     </span>
                   )}
                 </div>
                 <p className="text-xs text-gray-300 mt-0.5">
-                  <strong className="text-white font-black">{selectedDay.applications}</strong> application{selectedDay.applications === 1 ? '' : 's'} recorded ({selectedDay.percentageOfTotal}% of window)
+                  <strong className="text-white font-semibold">{selectedDay.applications}</strong> application{selectedDay.applications === 1 ? '' : 's'} recorded ({selectedDay.percentageOfTotal}% of window)
                 </p>
               </div>
             </div>
@@ -810,7 +810,7 @@ const ApplicationTrends: React.FC<ApplicationTrendsProps> = ({ applications = []
             <div className="flex items-center gap-2 self-end sm:self-center">
               <button
                 onClick={() => navigate('/hr/screeningportal')}
-                className="px-4 py-2 bg-[#D60041] hover:bg-[#b50037] text-white text-xs font-black rounded-xl transition-all flex items-center gap-1.5 shadow-md shadow-pink-900/30 cursor-pointer"
+                className="px-4 py-2 bg-[#D60041] hover:bg-[#b50037] text-white text-xs font-semibold rounded-xl transition-all flex items-center gap-1.5 shadow-md shadow-pink-900/30 cursor-pointer"
               >
                 <span>Filter Candidates</span>
                 <ChevronRight size={14} />
@@ -829,7 +829,7 @@ const ApplicationTrends: React.FC<ApplicationTrendsProps> = ({ applications = []
         {/* 2. Interactive Chart Canvas */}
         <div className="overflow-x-auto scrollbar-hide pb-2 -mx-2 px-2 relative z-10">
           {timeRange !== '7D' && (
-            <div className="sm:hidden flex items-center justify-between text-[10px] text-slate-400 font-bold mb-1 px-1">
+            <div className="sm:hidden flex items-center justify-between text-xs text-slate-500 font-bold mb-1 px-1">
               <span>Volume Trend ({timeRange})</span>
               <span>Scroll chart →</span>
             </div>
@@ -843,7 +843,7 @@ const ApplicationTrends: React.FC<ApplicationTrendsProps> = ({ applications = []
             } h-[260px] sm:h-[300px] relative mt-2 sm:mt-4 flex`}>
 
             {/* Sticky Y-Axis Labels (Always pinned on left even when scrolling) */}
-            <div className="w-8 sm:w-10 h-full flex flex-col justify-between text-[10px] sm:text-[11px] text-slate-400 font-black tracking-widest py-1 pr-2 shrink-0 sticky left-0 bg-white/95 backdrop-blur-xs z-20 pb-9 border-r border-slate-100">
+            <div className="w-8 sm:w-10 h-full flex flex-col justify-between text-xs sm:text-xs text-slate-500 font-semibold tracking-widest py-1 pr-2 shrink-0 sticky left-0 bg-white/95 backdrop-blur-xs z-20 pb-9 border-r border-slate-100">
               <span>{displayMax}</span>
               <span>{label75}</span>
               <span>{label50}</span>
@@ -886,14 +886,14 @@ const ApplicationTrends: React.FC<ApplicationTrendsProps> = ({ applications = []
                               }`}
                           >
                             <div className="flex justify-between items-center mb-1">
-                              <span className="text-[10px] text-gray-400 font-bold uppercase">{item.day}, {item.date}</span>
-                              <span className={`text-[9px] font-black px-1.5 py-0.5 rounded ${item.growth.startsWith('+') ? 'text-emerald-400 bg-emerald-500/20' : 'text-red-400 bg-red-500/20'
+                              <span className="text-xs text-gray-400 font-bold uppercase">{item.day}, {item.date}</span>
+                              <span className={`text-xs font-semibold px-1.5 py-0.5 rounded ${item.growth.startsWith('+') ? 'text-emerald-400 bg-emerald-500/20' : 'text-red-400 bg-red-500/20'
                                 }`}>
                                 {item.growth}
                               </span>
                             </div>
-                            <div className="text-sm font-black text-white">{item.applications} Applications</div>
-                            <div className="text-[10px] text-gray-400 mt-0.5 font-medium">
+                            <div className="text-sm font-semibold text-white">{item.applications} Applications</div>
+                            <div className="text-xs text-gray-400 mt-0.5 font-medium">
                               {item.percentageOfTotal}% of window
                             </div>
                             <div className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-3 h-3 bg-slate-900 rotate-45" />
@@ -903,7 +903,7 @@ const ApplicationTrends: React.FC<ApplicationTrendsProps> = ({ applications = []
                           <div className="w-full flex flex-col items-center h-full justify-end cursor-pointer">
                             {item.isPeak && (
                               <div className="absolute top-0 flex flex-col items-center">
-                                <span className="text-[8.5px] font-black text-[#D60041] uppercase tracking-tighter bg-pink-50 px-1.5 py-0.5 rounded-full mb-1 border border-pink-100 shadow-2xs">
+                                <span className="text-xs font-semibold text-[#D60041] uppercase tracking-tighter bg-pink-50 px-1.5 py-0.5 rounded-full mb-1 border border-pink-100 shadow-2xs">
                                   Peak
                                 </span>
                                 <div className="w-px h-full bg-gradient-to-b from-[#D60041] to-transparent border-dashed border-l border-pink-300 opacity-60" />
@@ -945,11 +945,11 @@ const ApplicationTrends: React.FC<ApplicationTrendsProps> = ({ applications = []
                             }`}
                           style={{ width: `${Math.max(100 / chartData.length - (timeRange === '7D' ? 3 : 1.5), 2)}%` }}
                         >
-                          <span className={`text-[10px] sm:text-[11px] font-black tracking-tight leading-none ${isSelected ? 'text-[#D60041]' : 'text-slate-900 group-hover:text-[#D60041]'
+                          <span className={`text-xs sm:text-xs font-semibold tracking-tight leading-none ${isSelected ? 'text-[#D60041]' : 'text-slate-900 group-hover:text-[#D60041]'
                             }`}>
                             {item.day}
                           </span>
-                          <span className="text-[8px] sm:text-[9px] text-slate-400 font-bold leading-none mt-0.5 whitespace-nowrap">
+                          <span className="text-xs sm:text-xs text-slate-500 font-bold leading-none mt-0.5 whitespace-nowrap">
                             {item.date.split(' ')[1] || item.date}
                           </span>
                         </div>
@@ -1063,16 +1063,16 @@ const ApplicationTrends: React.FC<ApplicationTrendsProps> = ({ applications = []
                       >
                         <div className="bg-slate-900 text-white p-3 rounded-2xl shadow-2xl min-w-[140px] relative">
                           <div className="flex justify-between items-center gap-2 mb-1">
-                            <span className="text-[10px] text-gray-400 font-bold uppercase whitespace-nowrap">
+                            <span className="text-xs text-gray-400 font-bold uppercase whitespace-nowrap">
                               {hoveredAreaPt.data.day}, {hoveredAreaPt.data.date}
                             </span>
-                            <span className={`text-[9px] font-black px-1.5 py-0.5 rounded ${hoveredAreaPt.data.growth.startsWith('+') ? 'text-emerald-400 bg-emerald-500/20' : 'text-red-400 bg-red-500/20'
+                            <span className={`text-xs font-semibold px-1.5 py-0.5 rounded ${hoveredAreaPt.data.growth.startsWith('+') ? 'text-emerald-400 bg-emerald-500/20' : 'text-red-400 bg-red-500/20'
                               }`}>
                               {hoveredAreaPt.data.growth}
                             </span>
                           </div>
-                          <div className="text-sm font-black text-white">{hoveredAreaPt.data.applications} Applications</div>
-                          <div className="text-[10px] text-gray-400 mt-0.5 font-medium">
+                          <div className="text-sm font-semibold text-white">{hoveredAreaPt.data.applications} Applications</div>
+                          <div className="text-xs text-gray-400 mt-0.5 font-medium">
                             {hoveredAreaPt.data.percentageOfTotal}% of window
                           </div>
                           {/* Tooltip triangle arrow */}
@@ -1108,11 +1108,11 @@ const ApplicationTrends: React.FC<ApplicationTrendsProps> = ({ applications = []
                           className={`flex flex-col items-center justify-center text-center cursor-pointer transition-colors ${showLabel ? 'visible' : 'invisible'
                             }`}
                         >
-                          <span className={`text-[10px] sm:text-[11px] font-black leading-none ${isSelected || isHovered ? 'text-[#D60041]' : 'text-slate-900 hover:text-[#D60041]'
+                          <span className={`text-xs sm:text-xs font-semibold leading-none ${isSelected || isHovered ? 'text-[#D60041]' : 'text-slate-900 hover:text-[#D60041]'
                             }`}>
                             {item.day}
                           </span>
-                          <span className="text-[8px] sm:text-[9px] text-slate-400 font-bold leading-none mt-0.5 whitespace-nowrap">
+                          <span className="text-xs sm:text-xs text-slate-500 font-bold leading-none mt-0.5 whitespace-nowrap">
                             {item.date.split(' ')[1] || item.date}
                           </span>
                         </div>
@@ -1130,16 +1130,16 @@ const ApplicationTrends: React.FC<ApplicationTrendsProps> = ({ applications = []
           <div className="flex items-center gap-3 sm:gap-4 flex-wrap">
             <div className="flex items-center gap-1.5 sm:gap-2">
               <div className="w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-full bg-gradient-to-br from-pink-400 to-[#D60041]" />
-              <span className="text-slate-600 font-bold text-[11px] sm:text-xs">Submissions</span>
+              <span className="text-slate-600 font-bold text-xs sm:text-xs">Submissions</span>
             </div>
             <div className="flex items-center gap-1.5 sm:gap-2">
               <div className="w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-full bg-slate-900" />
-              <span className="text-slate-500 font-semibold text-[11px] sm:text-xs">Selected Node</span>
+              <span className="text-slate-500 font-semibold text-xs sm:text-xs">Selected Node</span>
             </div>
           </div>
 
-          <div className="flex items-center gap-1.5 text-slate-400 font-semibold text-[10px] sm:text-xs">
-            <Calendar size={13} className="text-slate-400" />
+          <div className="flex items-center gap-1.5 text-slate-500 font-semibold text-xs sm:text-xs">
+            <Calendar size={13} className="text-slate-500" />
             <span>Updated: Live sync</span>
           </div>
         </div>
@@ -1148,17 +1148,17 @@ const ApplicationTrends: React.FC<ApplicationTrendsProps> = ({ applications = []
       {/* 3. Distribution Breakdown & Dynamic Hiring Insights Section */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Left 2 Cols: Distribution Card (Switchable by Dept / by Status) */}
-        <div className="lg:col-span-2 bg-white border border-slate-200/80 rounded-2xl sm:rounded-3xl p-4 sm:p-6 lg:p-8 shadow-xs group/pie relative overflow-hidden flex flex-col justify-between">
+        <div className="lg:col-span-2 bg-white border border-slate-200/80 rounded-2xl p-4 sm:p-6 lg:p-8 shadow-xs group/pie relative overflow-hidden flex flex-col justify-between">
           <div className="absolute bottom-0 left-0 -ml-16 -mb-16 w-56 h-56 bg-blue-50/40 rounded-full blur-3xl pointer-events-none" />
 
           {/* Distribution Header & Tab Toggle */}
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 sm:mb-8 gap-3 sm:gap-4 relative z-10">
             <div>
-              <h3 className="text-lg sm:text-xl font-black tracking-tight text-slate-900 flex items-center gap-2">
+              <h3 className="text-lg sm:text-xl font-semibold tracking-tight text-slate-900 flex items-center gap-2">
                 <PieIcon size={18} className="text-[#D60041]" />
                 Application Distribution
               </h3>
-              <p className="text-[10px] sm:text-xs text-slate-400 font-bold uppercase tracking-wider mt-0.5 sm:mt-1">
+              <p className="text-xs sm:text-xs text-slate-500 font-bold uppercase tracking-wider mt-0.5 sm:mt-1">
                 {distributionTab === 'position'
                   ? 'Applicants per Position'
                   : distributionTab === 'skills'
@@ -1182,9 +1182,9 @@ const ApplicationTrends: React.FC<ApplicationTrendsProps> = ({ applications = []
                 <button
                   key={tab.id}
                   onClick={() => setDistributionTab(tab.id)}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all cursor-pointer ${distributionTab === tab.id
+                  className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${distributionTab === tab.id
                       ? 'bg-white text-slate-900 shadow-xs'
-                      : 'text-slate-400 hover:text-slate-700'
+                      : 'text-slate-500 hover:text-slate-700'
                     }`}
                 >
                   {tab.label}
@@ -1211,10 +1211,10 @@ const ApplicationTrends: React.FC<ApplicationTrendsProps> = ({ applications = []
                 }}
               />
               <div className="absolute inset-0 flex flex-col items-center justify-center">
-                <span className="text-2xl sm:text-3xl font-black text-slate-900 leading-none">
+                <span className="text-2xl sm:text-3xl font-semibold text-slate-900 leading-none">
                   {totalBackendApps}
                 </span>
-                <span className="text-[9px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-wider mt-1">
+                <span className="text-xs sm:text-xs font-bold text-slate-500 uppercase tracking-wider mt-1">
                   Total Apps
                 </span>
               </div>
@@ -1246,8 +1246,8 @@ const ApplicationTrends: React.FC<ApplicationTrendsProps> = ({ applications = []
                         {item.label}
                       </span>
                     </div>
-                    <span className="text-xs sm:text-sm font-black text-slate-900 shrink-0">
-                      {item.percentage} <span className="text-slate-400 font-bold">({item.value})</span>
+                    <span className="text-xs sm:text-sm font-semibold text-slate-900 shrink-0">
+                      {item.percentage} <span className="text-slate-500 font-bold">({item.value})</span>
                     </span>
                   </div>
                   <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
@@ -1261,7 +1261,7 @@ const ApplicationTrends: React.FC<ApplicationTrendsProps> = ({ applications = []
             </div>
           </div>
 
-          <div className="mt-5 pt-3.5 border-t border-slate-100 flex items-center justify-between text-[11px] sm:text-xs text-slate-400 relative z-10">
+          <div className="mt-5 pt-3.5 border-t border-slate-100 flex items-center justify-between text-xs sm:text-xs text-slate-500 relative z-10">
             <span className="font-medium truncate mr-2">Tap any category to filter applicants</span>
             <button
               onClick={() => navigate('/hr/screeningportal')}
@@ -1274,7 +1274,7 @@ const ApplicationTrends: React.FC<ApplicationTrendsProps> = ({ applications = []
         </div>
 
         {/* Right Col: Intelligent Recruitment Action Card */}
-        <div className="bg-gradient-to-br from-[#D60041] via-[#c2003b] to-[#8f0029] rounded-2xl sm:rounded-3xl p-4 sm:p-6 lg:p-8 text-white shadow-xl shadow-pink-900/15 relative overflow-hidden flex flex-col justify-between">
+        <div className="bg-gradient-to-br from-[#D60041] via-[#c2003b] to-[#8f0029] rounded-2xl p-4 sm:p-6 lg:p-8 text-white shadow-xl shadow-pink-900/15 relative overflow-hidden flex flex-col justify-between">
           <div className="absolute top-0 right-0 p-8 opacity-15 pointer-events-none">
             <Briefcase size={100} />
           </div>
@@ -1284,12 +1284,12 @@ const ApplicationTrends: React.FC<ApplicationTrendsProps> = ({ applications = []
               <div className="bg-white/20 backdrop-blur-md w-9 h-9 sm:w-11 sm:h-11 rounded-xl sm:rounded-2xl flex items-center justify-center shadow-inner">
                 <Sparkles size={16} className="text-pink-100" />
               </div>
-              <span className="text-[8.5px] sm:text-[10px] font-black uppercase tracking-widest px-2 sm:px-3 py-0.5 sm:py-1 rounded-full bg-white/15 border border-white/20 backdrop-blur-md">
+              <span className="text-xs sm:text-xs font-semibold uppercase tracking-widest px-2 sm:px-3 py-0.5 sm:py-1 rounded-full bg-white/15 border border-white/20 backdrop-blur-md">
                 {recommendation.badge}
               </span>
             </div>
 
-            <h4 className="text-lg sm:text-2xl font-black tracking-tight mb-2 sm:mb-2.5 leading-tight">
+            <h4 className="text-lg sm:text-2xl font-semibold tracking-tight mb-2 sm:mb-2.5 leading-tight">
               {recommendation.title}
             </h4>
 
@@ -1300,16 +1300,16 @@ const ApplicationTrends: React.FC<ApplicationTrendsProps> = ({ applications = []
             {/* Quick KPI Chips */}
             <div className="grid grid-cols-3 gap-2 mb-4 sm:mb-5">
               <div className="bg-black/15 backdrop-blur-md border border-white/10 rounded-xl sm:rounded-2xl p-2 sm:p-2.5 text-center min-w-0">
-                <span className="text-[8px] sm:text-[9px] uppercase font-black tracking-wider text-pink-200/90 block mb-0.5 truncate">Queue</span>
-                <span className="text-sm sm:text-base font-black text-white">{pendingCount}</span>
+                <span className="text-xs sm:text-xs uppercase font-semibold tracking-wider text-pink-200/90 block mb-0.5 truncate">Queue</span>
+                <span className="text-sm sm:text-base font-semibold text-white">{pendingCount}</span>
               </div>
               <div className="bg-black/15 backdrop-blur-md border border-white/10 rounded-xl sm:rounded-2xl p-2 sm:p-2.5 text-center min-w-0">
-                <span className="text-[8px] sm:text-[9px] uppercase font-black tracking-wider text-pink-200/90 block mb-0.5 truncate">Avg Score</span>
-                <span className="text-sm sm:text-base font-black text-white">{totalBackendApps > 0 ? `${averageScore}%` : 'N/A'}</span>
+                <span className="text-xs sm:text-xs uppercase font-semibold tracking-wider text-pink-200/90 block mb-0.5 truncate">Avg Score</span>
+                <span className="text-sm sm:text-base font-semibold text-white">{totalBackendApps > 0 ? `${averageScore}%` : 'N/A'}</span>
               </div>
               <div className="bg-black/15 backdrop-blur-md border border-white/10 rounded-xl sm:rounded-2xl p-2 sm:p-2.5 text-center min-w-0">
-                <span className="text-[8px] sm:text-[9px] uppercase font-black tracking-wider text-pink-200/90 block mb-0.5 truncate">Top Match</span>
-                <span className="text-sm sm:text-base font-black text-white">{topMatchScore > 0 ? `${topMatchScore}%` : 'N/A'}</span>
+                <span className="text-xs sm:text-xs uppercase font-semibold tracking-wider text-pink-200/90 block mb-0.5 truncate">Top Match</span>
+                <span className="text-sm sm:text-base font-semibold text-white">{topMatchScore > 0 ? `${topMatchScore}%` : 'N/A'}</span>
               </div>
             </div>
           </div>
@@ -1318,7 +1318,7 @@ const ApplicationTrends: React.FC<ApplicationTrendsProps> = ({ applications = []
           <div className="relative z-10 pt-1">
             <button
               onClick={() => navigate(recommendation.targetUrl)}
-              className="w-full bg-white hover:bg-pink-50 text-[#D60041] py-3 sm:py-3.5 px-4 sm:px-5 rounded-2xl font-black text-[11px] sm:text-xs uppercase tracking-wider flex items-center justify-center gap-1.5 sm:gap-2 transition-all shadow-lg shadow-black/15 active:scale-95 group text-center leading-tight cursor-pointer"
+              className="w-full bg-white hover:bg-pink-50 text-[#D60041] py-3 sm:py-3.5 px-4 sm:px-5 rounded-2xl font-semibold text-xs sm:text-xs uppercase tracking-wider flex items-center justify-center gap-1.5 sm:gap-2 transition-all shadow-lg shadow-black/15 active:scale-95 group text-center leading-tight cursor-pointer"
             >
               <span className="truncate">{recommendation.buttonLabel}</span>
               <ChevronRight size={16} className="group-hover:translate-x-1 transition-transform shrink-0" />
@@ -1346,7 +1346,7 @@ const ApplicationTrends: React.FC<ApplicationTrendsProps> = ({ applications = []
           renderValue={(pos) => (
             <>
               {pos.value} applicant{pos.value === 1 ? '' : 's'}{' '}
-              <span className="text-slate-400 font-bold">
+              <span className="text-slate-500 font-bold">
                 ({pos.percentage}
                 {pos.avg_score !== undefined ? ` • Avg ${pos.avg_score}%` : ''})
               </span>
@@ -1366,7 +1366,7 @@ const ApplicationTrends: React.FC<ApplicationTrendsProps> = ({ applications = []
           initialLimit={25}
           renderValue={(skill) => (
             <>
-              {skill.value} <span className="text-slate-400 font-bold">({skill.percentage})</span>
+              {skill.value} <span className="text-slate-500 font-bold">({skill.percentage})</span>
             </>
           )}
         />

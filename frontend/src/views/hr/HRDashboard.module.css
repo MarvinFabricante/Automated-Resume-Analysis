@@ -1,0 +1,76 @@
+.dashboard {
+  width: 100%;
+  max-width: 1680px;
+  margin-inline: auto;
+  padding: 36px clamp(18px, 3vw, 48px) 48px;
+  color: #172238;
+}
+.dashboard :is(button, a, input, select):focus-visible {
+  outline: 3px solid #d60041;
+  outline-offset: 4px;
+}
+.pageHeader { display: flex; align-items: center; justify-content: space-between; gap: 24px; margin-bottom: 28px; }
+.eyebrow { color: #9b2346; font-size: .75rem; font-weight: 700; letter-spacing: .16em; margin-bottom: 10px; }
+.pageHeader h1 { font-size: clamp(1.75rem, 2.7vw, 2.5rem); line-height: 1.2; letter-spacing: -.045em; font-weight: 650; }
+.intro { color: #647084; font-size: 1rem; margin-top: 8px; }
+.reportActions { display: flex; flex-wrap: wrap; gap: 8px; flex-shrink: 0; }
+.secondaryButton, .primaryButton, .lightButton { display: inline-flex; align-items: center; justify-content: center; gap: 9px; min-height: 44px; padding: 11px 16px; border-radius: 10px; font-size: .875rem; font-weight: 600; cursor: pointer; transition: background .2s, box-shadow .2s; }
+.secondaryButton { border: 1px solid #dce1e9; background: white; color: #465267; }
+.secondaryButton:hover { background: #f1f4f8; }
+.secondaryButton:disabled { opacity: .6; cursor: wait; }
+.welcome { isolation: isolate; position: relative; overflow: hidden; display: flex; align-items: center; justify-content: space-between; gap: 32px; padding: clamp(24px, 3vw, 42px); border-radius: 24px; background: #182439; color: white; box-shadow: 0 12px 32px #18243912; }
+.welcomeContent { z-index: 1; min-width: 0; }
+.welcomeDate { display: flex; align-items: center; gap: 9px; font-size: .8125rem; color: #c4cddd; margin-bottom: 22px; }
+.welcome h2 { font-size: clamp(1.8rem, 3vw, 2.65rem); font-weight: 500; line-height: 1.2; letter-spacing: -.04em; overflow-wrap: anywhere; }
+.welcome h2 span { color: #ffbbcd; }
+.welcomeContent > p:last-of-type { font-size: 1rem; line-height: 1.65; color: #ccd3e0; margin-top: 16px; }
+.welcomeActions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 28px; }
+.primaryButton { background: #d60041; color: white; border: 1px solid #ef477a; }
+.primaryButton:hover { background: #b90038; }
+.lightButton { color: white; background: #ffffff0d; border: 1px solid #ffffff40; }
+.lightButton:hover { background: #ffffff20; }
+.artwork { position: absolute; inset: 0; overflow: hidden; pointer-events: none; z-index: -1; background: radial-gradient(ellipse at 85% 20%, #903c5a66, transparent 60%); }
+.artwork span { position: absolute; width: 360px; height: 360px; border: 1px solid #f2bdce26; border-radius: 80px; transform: rotate(-35deg); right: 12%; top: -160px; }
+.artwork span:nth-child(2) { right: 7%; top: -115px; }
+.artwork span:nth-child(3) { right: 2%; top: -70px; }
+.artwork span:nth-child(4) { right: -3%; top: -25px; background: linear-gradient(130deg, #eb75920c, #ffffff05); }
+.focusCard { position: relative; z-index: 1; width: 265px; flex-shrink: 0; padding: 24px; border: 1px solid #ffffff26; border-radius: 18px; background: #152035b8; backdrop-filter: blur(12px); }
+.focusLabel { font-size: .75rem; letter-spacing: .14em; color: #e5b6c6; font-weight: 600; }
+.focusValue { font-size: 3.5rem; font-weight: 500; letter-spacing: -.06em; line-height: 1.2; margin: 18px 0 4px; font-variant-numeric: tabular-nums; }
+.focusCard h3 { font-size: .875rem; font-weight: 600; }
+.focusCard p { font-size: .8125rem; line-height: 1.6; margin-top: 8px; color: #b8c3d4; }
+.focusCard button { margin-top: 20px; padding-top: 16px; border-top: 1px solid #ffffff26; width: 100%; text-align: left; font-size: .875rem; font-weight: 600; cursor: pointer; color: #ffc0d2; }
+.focusCard button:hover { color: white; }
+.workspaceBar { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin: 20px 0 32px; color: #647084; font-size: .875rem; }
+.workspaceBar > span, .workspaceBar button { display: inline-flex; align-items: center; gap: 9px; }
+.statusDot { width: 7px; height: 7px; border-radius: 50%; background: #8794a8; }
+.workspaceBar button { color: #9b2346; font-weight: 600; cursor: pointer; min-height: 44px; }
+.workspaceBar button:hover { text-decoration: underline; }
+.sectionHeading { margin-bottom: 20px; }
+.sectionHeading h2 { font-size: 1.25rem; font-weight: 600; letter-spacing: -.025em; }
+.sectionHeading p { margin-top: 5px; font-size: .875rem; color: #647084; }
+.toolGrid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }
+.toolCard { display: flex; flex-direction: column; align-items: flex-start; text-align: left; padding: 24px; border: 1px solid #dfe4ec; border-radius: 16px; background: white; cursor: pointer; transition: border-color .2s, box-shadow .2s; }
+.toolCard:hover { border-color: #d797ab; box-shadow: 0 8px 24px #17223808; }
+.toolIcon { display: grid; place-items: center; width: 42px; height: 42px; border-radius: 12px; background: #f8edf1; color: #ac2a51; margin-bottom: 22px; }
+.toolCard h3 { font-size: 1rem; font-weight: 600; letter-spacing: -.02em; }
+.toolCard p { font-size: .875rem; color: #647084; line-height: 1.6; margin: 8px 0 20px; }
+.toolDetail { font-size: .8125rem; color: #9b2346; font-weight: 600; margin-top: auto; }
+@media (max-width: 1100px) {
+  .pageHeader { align-items: flex-start; flex-direction: column; gap: 16px; }
+  .toolGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .focusCard { width: 220px; padding: 20px; }
+}
+@media (max-width: 700px) {
+  .dashboard { padding-top: 24px; }
+  .welcome { align-items: stretch; flex-direction: column; gap: 24px; border-radius: 18px; }
+  .focusCard { width: 100%; }
+  .focusValue { font-size: 2.5rem; margin-top: 10px; }
+  .welcomeActions > button { flex: 1 1 190px; }
+  .workspaceBar { align-items: flex-start; flex-wrap: wrap; gap: 4px; margin-bottom: 24px; }
+  .workspaceBar > span { min-height: 44px; }
+  .toolGrid { grid-template-columns: 1fr; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .dashboard *, .dashboard *::before, .dashboard *::after { animation: none !important; transition: none !important; }
+}

@@ -161,7 +161,7 @@ const CandidateCard: React.FC<CandidateCardProps> = ({
               {profileImage ? (
                 <img src={getAssetUrl(profileImage)} alt={name} className="w-full h-full object-cover" />
               ) : (
-                <span className="text-base font-black text-[#D60041]">
+                <span className="text-base font-semibold text-[#D60041]">
                   {name.charAt(0).toUpperCase()}
                 </span>
               )}
@@ -175,11 +175,11 @@ const CandidateCard: React.FC<CandidateCardProps> = ({
           <div className="min-w-0 flex-1">
             {/* Name & Time row */}
             <div className="flex items-center gap-2 flex-wrap min-w-0">
-              <h4 className="font-extrabold text-sm sm:text-base text-slate-900 truncate group-hover:text-[#D60041] transition-colors">
+              <h4 className="font-semibold text-sm sm:text-base text-slate-900 truncate group-hover:text-[#D60041] transition-colors">
                 {name}
               </h4>
-              <span className="inline-flex items-center gap-1 text-[10px] font-bold text-slate-500 bg-slate-50 border border-slate-200/70 px-2 py-0.5 rounded-md shrink-0">
-                <Clock size={10} className="text-slate-400" />
+              <span className="inline-flex items-center gap-1 text-xs font-bold text-slate-500 bg-slate-50 border border-slate-200/70 px-2 py-0.5 rounded-md shrink-0">
+                <Clock size={10} className="text-slate-500" />
                 <span>{getRelativeTime(dateStr)}</span>
               </span>
             </div>
@@ -187,16 +187,16 @@ const CandidateCard: React.FC<CandidateCardProps> = ({
             {/* Role & Context Row */}
             <div className="flex items-center gap-2 text-xs text-slate-600 font-semibold mt-1 flex-wrap">
               <span className="text-slate-800 font-bold flex items-center gap-1.5 truncate max-w-[240px]">
-                <Briefcase size={12} className="text-slate-400 shrink-0" />
+                <Briefcase size={12} className="text-slate-500 shrink-0" />
                 <span className="truncate">{preferredJob}</span>
               </span>
               {department && department !== 'N/A' && (
-                <span className="text-slate-400 text-[11px] font-medium hidden sm:inline">
+                <span className="text-slate-500 text-xs font-medium hidden sm:inline">
                   • {department}
                 </span>
               )}
               {location && location !== 'N/A' && (
-                <span className="inline-flex items-center gap-1 text-[11px] text-slate-400 font-normal">
+                <span className="inline-flex items-center gap-1 text-xs text-slate-500 font-normal">
                   <MapPin size={11} className="shrink-0" />
                   <span className="truncate max-w-[150px]">{location}</span>
                 </span>
@@ -209,13 +209,13 @@ const CandidateCard: React.FC<CandidateCardProps> = ({
                 {skillsList.slice(0, 4).map((skill: string, i: number) => (
                   <span
                     key={i}
-                    className="px-2 py-0.5 bg-slate-50 hover:bg-slate-100 rounded-md text-[10px] font-bold text-slate-600 border border-slate-200/60 truncate max-w-[140px] transition-colors"
+                    className="px-2 py-0.5 bg-slate-50 hover:bg-slate-100 rounded-md text-xs font-bold text-slate-600 border border-slate-200/60 truncate max-w-[140px] transition-colors"
                   >
                     {skill}
                   </span>
                 ))}
                 {skillsList.length > 4 && (
-                  <span className="px-1.5 py-0.5 bg-slate-100 rounded-md text-[10px] font-black text-slate-400">
+                  <span className="px-1.5 py-0.5 bg-slate-100 rounded-md text-xs font-semibold text-slate-500">
                     +{skillsList.length - 4}
                   </span>
                 )}
@@ -225,7 +225,7 @@ const CandidateCard: React.FC<CandidateCardProps> = ({
         </div>
 
         {/* Status Badge */}
-        <span className={`inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1 rounded-xl text-[10.5px] font-black uppercase tracking-wider border shrink-0 ${statusInfo.badgeClass}`}>
+        <span className={`inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1 rounded-xl text-[10.5px] font-semibold uppercase tracking-wider border shrink-0 ${statusInfo.badgeClass}`}>
           <span className={`w-1.5 h-1.5 rounded-full ${statusInfo.dotClass}`} />
           <span>{statusInfo.label}</span>
         </span>
@@ -235,16 +235,16 @@ const CandidateCard: React.FC<CandidateCardProps> = ({
       <div className="flex items-center justify-between gap-3 pt-3 border-t border-slate-100 w-full flex-wrap sm:flex-nowrap">
         {/* ATS Score & Match Label */}
         <div className="flex items-center gap-2.5 shrink-0">
-          <div className={`px-2.5 py-1.5 rounded-xl border flex items-center gap-1.5 shadow-2xs font-black text-xs sm:text-sm shrink-0 ${scoreStyles}`}>
+          <div className={`px-2.5 py-1.5 rounded-xl border flex items-center gap-1.5 shadow-2xs font-semibold text-xs sm:text-sm shrink-0 ${scoreStyles}`}>
             {score >= 80 ? (
               <Sparkles size={13} className="text-emerald-500 shrink-0" />
             ) : (
-              <Award size={13} className="text-slate-400 shrink-0" />
+              <Award size={13} className="text-slate-500 shrink-0" />
             )}
             <span>{score}%</span>
           </div>
           <div className="flex flex-col">
-            <span className="text-[9px] font-black uppercase tracking-wider text-slate-400 leading-none">ATS Match</span>
+            <span className="text-xs font-semibold uppercase tracking-wider text-slate-500 leading-none">ATS Match</span>
             <span className="text-[10.5px] font-bold text-slate-700 mt-0.5 whitespace-nowrap">
               {scoreTierText}
             </span>
@@ -279,7 +279,7 @@ const CandidateCard: React.FC<CandidateCardProps> = ({
           <button
             type="button"
             onClick={() => onScreen(candidate)}
-            className="inline-flex items-center justify-center gap-1 px-3.5 sm:px-4 py-2 bg-slate-900 hover:bg-[#D60041] text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all shadow-xs active:scale-95 cursor-pointer"
+            className="inline-flex items-center justify-center gap-1 px-3.5 sm:px-4 py-2 bg-slate-900 hover:bg-[#D60041] text-white rounded-xl text-xs font-semibold uppercase tracking-wider transition-all shadow-xs active:scale-95 cursor-pointer"
             title="Open candidate in Screening Portal"
           >
             <span>Screen</span>
@@ -394,7 +394,7 @@ const RecentSubmissions: React.FC<RecentSubmissionsProps> = ({ candidates = [] }
       : filteredCandidates.slice(0, 6);
 
   return (
-    <div className="bg-white border border-slate-200/80 rounded-2xl sm:rounded-3xl shadow-xs p-4 sm:p-6 lg:p-7 mb-6 sm:mb-8 relative">
+    <div className="bg-white border border-slate-200/80 rounded-2xl shadow-xs p-4 sm:p-6 lg:p-7 mb-6 sm:mb-8 relative">
       {/* Toast Notification */}
       {toastMessage && (
         <div className="fixed bottom-8 right-8 bg-slate-900 text-white px-5 py-3.5 rounded-2xl shadow-2xl flex items-center gap-3 text-xs font-bold z-50 border border-slate-800 animate-in fade-in slide-in-from-bottom-4 duration-300">
@@ -407,14 +407,14 @@ const RecentSubmissions: React.FC<RecentSubmissionsProps> = ({ candidates = [] }
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center pb-4 mb-4 sm:pb-5 sm:mb-5 border-b border-slate-100 gap-3 sm:gap-4">
         <div>
           <div className="flex items-center gap-2.5 flex-wrap">
-            <h3 className="text-base sm:text-lg md:text-xl font-extrabold text-slate-900 tracking-tight">
+            <h3 className="text-base sm:text-lg md:text-xl font-semibold text-slate-900 tracking-tight">
               Recent Submissions
             </h3>
-            <span className="text-[10px] font-black px-2.5 py-0.5 rounded-full bg-rose-50 text-[#D60041] border border-rose-100/90">
+            <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-rose-50 text-[#D60041] border border-rose-100/90">
               {candidates.length} Total
             </span>
           </div>
-          <p className="text-[11px] sm:text-xs text-slate-500 font-medium mt-0.5">
+          <p className="text-xs sm:text-xs text-slate-500 font-medium mt-0.5">
             Incoming candidate applications evaluated by Mariwasa automated ATS matching
           </p>
         </div>
@@ -433,7 +433,7 @@ const RecentSubmissions: React.FC<RecentSubmissionsProps> = ({ candidates = [] }
         <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-2.5">
           {/* Search Input */}
           <div className="relative w-full lg:w-72">
-            <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+            <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500" />
             <input
               type="text"
               value={searchTerm}
@@ -444,7 +444,7 @@ const RecentSubmissions: React.FC<RecentSubmissionsProps> = ({ candidates = [] }
             {searchTerm && (
               <button
                 onClick={() => setSearchTerm('')}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1"
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-600 p-1"
               >
                 <X size={13} />
               </button>
@@ -454,7 +454,7 @@ const RecentSubmissions: React.FC<RecentSubmissionsProps> = ({ candidates = [] }
           {/* Position Filter & Score/Date Sort Dropdowns */}
           <div className="flex flex-wrap items-center gap-2">
             <div className="relative flex-1 sm:flex-none min-w-[175px]">
-              <Filter size={13} className={`absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none ${positionFilter !== 'ALL' ? 'text-[#D60041]' : 'text-slate-400'}`} />
+              <Filter size={13} className={`absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none ${positionFilter !== 'ALL' ? 'text-[#D60041]' : 'text-slate-500'}`} />
               <select
                 data-testid="dashboard-position-filter"
                 aria-label="Filter by position"
@@ -475,7 +475,7 @@ const RecentSubmissions: React.FC<RecentSubmissionsProps> = ({ candidates = [] }
             </div>
 
             <div className="relative flex-1 sm:flex-none min-w-[180px]">
-              <ArrowUpDown size={13} className={`absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none ${sortBy !== 'date_desc' ? 'text-purple-600' : 'text-slate-400'}`} />
+              <ArrowUpDown size={13} className={`absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none ${sortBy !== 'date_desc' ? 'text-purple-600' : 'text-slate-500'}`} />
               <select
                 data-testid="dashboard-sort-select"
                 aria-label="Sort submissions"
@@ -532,7 +532,7 @@ const RecentSubmissions: React.FC<RecentSubmissionsProps> = ({ candidates = [] }
                   }`}
               >
                 <span>{tab.label}</span>
-                <span className={`text-[10px] font-black px-1.5 py-0.2 rounded-md ${isActive ? 'bg-slate-800 text-rose-300' : 'bg-slate-200/80 text-slate-600'
+                <span className={`text-xs font-semibold px-1.5 py-0.2 rounded-md ${isActive ? 'bg-slate-800 text-rose-300' : 'bg-slate-200/80 text-slate-600'
                   }`}>
                   {tab.count}
                 </span>
@@ -545,7 +545,7 @@ const RecentSubmissions: React.FC<RecentSubmissionsProps> = ({ candidates = [] }
       {/* Candidate List */}
       {displayedList.length === 0 ? (
         <div className="py-12 text-center flex flex-col items-center justify-center bg-slate-50/50 rounded-2xl border border-slate-100">
-          <div className="w-12 h-12 rounded-2xl bg-white border border-slate-200 flex items-center justify-center text-slate-400 mb-3 shadow-inner">
+          <div className="w-12 h-12 rounded-2xl bg-white border border-slate-200 flex items-center justify-center text-slate-500 mb-3 shadow-inner">
             <Users size={22} />
           </div>
           <h4 className="text-sm font-bold text-slate-800">No applicants found</h4>

@@ -1,8 +1,9 @@
+import styles from './HRDashboard.module.css';
 import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from '@/utils/navigation';
 import {
   Download, FileText, AlertCircle, Briefcase, BarChart3, Calendar,
-  Sparkles, CheckCircle2, ChevronRight, Zap, Radio, FolderArchive
+  Sparkles, CheckCircle2, FolderArchive, Plus
 } from 'lucide-react';
 import { Helmet } from 'react-helmet-async';
 import KeyMetrics from '../../components/hr/dashboard/KeyMetrics';
@@ -178,108 +179,57 @@ const HRDashboard: React.FC = () => {
         <div className="flex-1 min-w-0 flex flex-col">
           {/* Toast Notification */}
           {toastMessage && (
-            <div className="fixed bottom-8 right-8 bg-slate-900 text-white px-5 py-3.5 rounded-2xl shadow-2xl flex items-center gap-3 text-xs font-bold z-50 border border-slate-800 animate-in fade-in slide-in-from-bottom-4 duration-300">
+            <div role="status" className="fixed bottom-8 right-8 bg-slate-900 text-white px-5 py-3.5 rounded-2xl shadow-2xl flex items-center gap-3 text-xs font-bold z-50 border border-slate-800 animate-in fade-in slide-in-from-bottom-4 duration-300">
               <CheckCircle2 size={16} className="text-emerald-400" />
               <span>{toastMessage}</span>
             </div>
           )}
 
-          <main className="w-full max-w-full px-3.5 sm:px-6 md:px-8 lg:px-10 py-4 sm:py-6 md:py-8">
+          <main className={styles.dashboard}>
 
-            {/* 1. Executive Command Banner */}
-            <div className="relative mb-6 sm:mb-8 p-4 sm:p-6 md:p-8 bg-white border border-slate-200/80 rounded-2xl sm:rounded-3xl shadow-xs overflow-hidden">
-              {/* Subtle ambient brand mesh background */}
-              <div className="absolute top-0 right-0 w-96 h-96 bg-gradient-to-bl from-rose-50/70 via-pink-50/30 to-transparent rounded-full blur-3xl pointer-events-none" />
+            <header className={styles.pageHeader}>
+              <div>
+                <p className={styles.eyebrow}>MARIWASA / TALENT ACQUISITION</p>
+                <h1>Recruitment overview</h1>
+                <p className={styles.intro}>A clear view of your people, pipeline, and next steps.</p>
+              </div>
+              <div className={styles.reportActions} aria-label="Export reports">
+                <button type="button" data-testid="btn-export-csv" onClick={handleExportFullReport} className={styles.secondaryButton}>
+                  <Download size={16} /> Export CSV
+                </button>
+                <button type="button" data-testid="btn-export-pdf" onClick={handleExportPdfReport} disabled={isExportingPdf} className={styles.secondaryButton}>
+                  <FileText size={16} /> {isExportingPdf ? 'Exporting…' : 'Export PDF'}
+                </button>
+              </div>
+            </header>
 
-              <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-5 sm:gap-6 relative z-10">
-                <div className="min-w-0 max-w-2xl">
-                  <div className="flex items-center gap-2 sm:gap-3 mb-1.5 sm:mb-2 flex-wrap">
-                    <span className="px-2.5 sm:px-3 py-1 rounded-full text-[10px] sm:text-[11px] font-black uppercase tracking-wider bg-rose-50 text-[#D60041] border border-rose-100/90 flex items-center gap-1.5 shadow-2xs shrink-0">
-                      <Radio size={12} className="text-[#D60041] animate-pulse" />
-                      <span className="sm:hidden">Live Real-Time Stream</span>
-                      <span className="hidden sm:inline">Live Real-Time ATS Stream</span>
-                    </span>
-                    <span className="text-[11px] sm:text-xs text-slate-500 font-semibold flex items-center gap-1.5">
-                      <span className="text-slate-300 font-bold">•</span>
-                      <span>{currentDateFormatted}</span>
-                    </span>
-                  </div>
-
-                  <h1 className="text-xl sm:text-2xl md:text-3xl lg:text-4xl font-extrabold tracking-tight text-slate-900 leading-tight">
-                    Welcome back, <span className="text-[#D60041]">{userName}</span>
-                  </h1>
-                  <p className="text-[11px] sm:text-xs md:text-sm text-slate-500 font-medium mt-1 leading-relaxed">
-                    Live recruitment analytics, automated resume parsing, and candidate evaluation pipeline.
-                  </p>
-                </div>
-
-                {/* Command Actions Bar - Fully responsive flex-wrap layout */}
-                <div className="flex flex-wrap items-center gap-2 sm:gap-2.5 w-full xl:w-auto xl:justify-end">
-                  {/* Primary Screening Action */}
-                  <button
-                    onClick={() => navigate('/hr/screeningportal')}
-                    className="w-full sm:w-auto px-4 py-2.5 bg-gradient-to-r from-rose-600 to-[#D60041] hover:from-rose-700 hover:to-[#b50037] text-white rounded-2xl text-xs font-black uppercase tracking-wider transition-all shadow-md shadow-pink-900/20 flex items-center justify-center gap-2 active:scale-95 min-h-[42px] cursor-pointer"
-                  >
-                    <Sparkles size={15} />
-                    <span>Screen Applicants</span>
+            <section className={styles.welcome} aria-label="Recruitment workspace">
+              <div className={styles.artwork} aria-hidden="true"><span /><span /><span /><span /></div>
+              <div className={styles.welcomeContent}>
+                <p className={styles.welcomeDate}><Calendar size={15} /> {currentDateFormatted}</p>
+                <h2>Welcome back,<br /><span>{userName}.</span></h2>
+                <p>Great teams start with the right connections.<br className="hidden sm:block" /> Find your next great hire, right here.</p>
+                <div className={styles.welcomeActions}>
+                  <button type="button" onClick={() => navigate('/hr/screeningportal')} className={styles.primaryButton}>
+                    <Sparkles size={17} /> Screen applicants
                   </button>
-
-                  {/* Track Talent Pipeline Action */}
-                  <button
-                    onClick={() => navigate('/hr/screeningportal')}
-                    className="flex-1 sm:flex-none px-3.5 sm:px-4 py-2.5 bg-rose-50 hover:bg-rose-100/80 text-[#D60041] border border-rose-200/80 rounded-2xl text-xs font-black uppercase tracking-wider transition-all shadow-2xs flex items-center justify-center gap-1.5 sm:gap-2 active:scale-95 min-h-[42px] truncate cursor-pointer"
-                    title="Track Talent Recruitment Pipeline"
-                  >
-                    <Zap size={15} className="shrink-0" />
-                    <span className="truncate">Track Pipeline</span>
-                  </button>
-
-                  {/* Quick Schedule Interview */}
-                  <button
-                    onClick={() => setIsScheduleModalOpen(true)}
-                    className="flex-1 sm:flex-none px-3.5 sm:px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-2xl text-xs font-bold transition-all shadow-xs flex items-center justify-center gap-1.5 sm:gap-2 active:scale-95 min-h-[42px] truncate cursor-pointer"
-                    title="Schedule New Interview Session"
-                  >
-                    <Calendar size={15} className="shrink-0 text-rose-300" />
-                    <span className="truncate">Schedule</span>
-                  </button>
-
-                  {/* Import Resumes Module */}
-                  <button
-                    onClick={() => navigate('/hr/physical-resumes')}
-                    className="flex-1 sm:flex-none px-3.5 sm:px-4 py-2.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-2xl text-xs font-black uppercase tracking-wider transition-all shadow-2xs flex items-center justify-center gap-1.5 active:scale-95 min-h-[42px] truncate cursor-pointer"
-                    title="Import external, walk-in, and emailed resumes"
-                  >
-                    <FolderArchive size={15} className="shrink-0 text-emerald-600" />
-                    <span className="truncate">Import Resumes</span>
-                  </button>
-
-                  {/* Export CSV Report */}
-                  <button
-                    type="button"
-                    data-testid="btn-export-csv"
-                    onClick={handleExportFullReport}
-                    className="flex-1 sm:flex-none px-3.5 sm:px-4 py-2.5 bg-white hover:bg-slate-50 text-slate-700 hover:text-slate-900 border border-slate-200/90 rounded-2xl text-xs font-bold transition-all shadow-2xs flex items-center justify-center gap-1.5 sm:gap-2 group active:scale-95 min-h-[42px] truncate cursor-pointer"
-                    title="Export applicant data and analytics to CSV"
-                  >
-                    <Download size={15} className="text-slate-400 group-hover:text-[#D60041] transition-colors shrink-0" />
-                    <span className="truncate">Export CSV</span>
-                  </button>
-
-                  {/* Export PDF Report */}
-                  <button
-                    type="button"
-                    data-testid="btn-export-pdf"
-                    onClick={handleExportPdfReport}
-                    disabled={isExportingPdf}
-                    className="flex-1 sm:flex-none px-3.5 sm:px-4 py-2.5 bg-white hover:bg-slate-50 disabled:opacity-60 text-slate-700 hover:text-slate-900 border border-slate-200/90 rounded-2xl text-xs font-bold transition-all shadow-2xs flex items-center justify-center gap-1.5 sm:gap-2 group active:scale-95 min-h-[42px] truncate cursor-pointer disabled:cursor-wait"
-                    title="Export applicant data and analytics to PDF"
-                  >
-                    <FileText size={15} className="text-slate-400 group-hover:text-[#D60041] transition-colors shrink-0" />
-                    <span className="truncate">{isExportingPdf ? 'Exporting PDF...' : 'Export PDF'}</span>
+                  <button type="button" onClick={() => setIsScheduleModalOpen(true)} className={styles.lightButton}>
+                    <Plus size={17} /> Schedule interview
                   </button>
                 </div>
               </div>
+              <div className={styles.focusCard}>
+                <span className={styles.focusLabel}>YOUR NEXT STEP</span>
+                <div className={styles.focusValue}>{(appStats.pending ?? 0).toLocaleString()}</div>
+                <h3>applications awaiting review</h3>
+                <p>Give every new possibility a closer look.</p>
+                <button type="button" onClick={() => navigate('/hr/screeningportal?status=SUBMITTED')}>Open review queue</button>
+              </div>
+            </section>
+
+            <div className={styles.workspaceBar}>
+              <span><span className={styles.statusDot} /> Recruitment workspace</span>
+              <button type="button" onClick={() => navigate('/hr/physical-resumes')}><FolderArchive size={16} /> Import resumes</button>
             </div>
 
             {/* 2. Key Metrics Section */}
@@ -310,119 +260,27 @@ const HRDashboard: React.FC = () => {
               </div>
             </div>
 
-            {/* 5. Executive Module Navigation Hub (Bento Grid) */}
-            <div className="mb-8">
-              <div className="mb-4">
-                <h3 className="text-lg font-extrabold text-slate-900 tracking-tight">
-                  Recruitment Operations & Tools
-                </h3>
-                <p className="text-xs text-slate-500 font-medium">
-                  Direct shortcuts to candidate evaluation workflows and management modules
-                </p>
+            <section className={styles.tools} aria-labelledby="recruitment-tools-heading">
+              <div className={styles.sectionHeading}>
+                <h2 id="recruitment-tools-heading">Your recruitment toolkit</h2>
+                <p>Everything you need to keep hiring moving.</p>
               </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 sm:gap-5">
-                {/* 1. Submitted Reviews */}
-                <div
-                  onClick={() => navigate('/hr/screeningportal?status=SUBMITTED')}
-                  className="bg-white border border-slate-200/80 rounded-2xl sm:rounded-3xl p-4.5 sm:p-5 lg:p-6 shadow-xs hover:-translate-y-1 hover:shadow-xl hover:border-amber-200 transition-all duration-300 cursor-pointer flex flex-col justify-between group"
-                >
-                  <div className="flex justify-between items-start mb-3 sm:mb-4">
-                    <div className="w-10 h-10 sm:w-12 sm:h-12 bg-amber-50 rounded-xl sm:rounded-2xl flex items-center justify-center group-hover:scale-110 transition-transform duration-300 shadow-inner">
-                      <AlertCircle className="text-amber-500 h-5 w-5 sm:h-6 sm:w-6" />
-                    </div>
-                    <span className="text-[9px] sm:text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200/60">
-                      {appStats.pending} Waiting
-                    </span>
-                  </div>
-
-                  <div>
-                    <h4 className="text-sm sm:text-base lg:text-lg font-extrabold tracking-tight text-slate-900 group-hover:text-amber-600 transition-colors flex items-center justify-between">
-                      <span>Submitted Reviews</span>
-                      <ChevronRight size={16} className="text-slate-400 group-hover:translate-x-1 group-hover:text-amber-600 transition-all" />
-                    </h4>
-                    <p className="text-[11px] sm:text-xs text-slate-500 font-medium mt-1 leading-relaxed">
-                      Evaluate newly submitted resumes with automated ATS match analysis.
-                    </p>
-                  </div>
-                </div>
-
-                {/* 2. Interview Scheduling */}
-                <div
-                  onClick={() => navigate('/hr/scheduling')}
-                  className="bg-white border border-slate-200/80 rounded-2xl sm:rounded-3xl p-4.5 sm:p-5 lg:p-6 shadow-xs hover:-translate-y-1 hover:shadow-xl hover:border-pink-200 transition-all duration-300 cursor-pointer flex flex-col justify-between group"
-                >
-                  <div className="flex justify-between items-start mb-3 sm:mb-4">
-                    <div className="w-10 h-10 sm:w-12 sm:h-12 bg-rose-50 rounded-xl sm:rounded-2xl flex items-center justify-center group-hover:scale-110 transition-transform duration-300 shadow-inner">
-                      <Calendar className="text-[#D60041] h-5 w-5 sm:h-6 sm:w-6" />
-                    </div>
-                    <span className="text-[9px] sm:text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-rose-50 text-[#D60041] border border-rose-200/60">
-                      Calendar Sync
-                    </span>
-                  </div>
-
-                  <div>
-                    <h4 className="text-sm sm:text-base lg:text-lg font-extrabold tracking-tight text-slate-900 group-hover:text-[#D60041] transition-colors flex items-center justify-between">
-                      <span>Interview Scheduling</span>
-                      <ChevronRight size={16} className="text-slate-400 group-hover:translate-x-1 group-hover:text-[#D60041] transition-all" />
-                    </h4>
-                    <p className="text-[11px] sm:text-xs text-slate-500 font-medium mt-1 leading-relaxed">
-                      Google Calendar synchronized slots, panel interviewers, and invitations.
-                    </p>
-                  </div>
-                </div>
-
-                {/* 3. Active Positions */}
-                <div
-                  onClick={() => navigate('/admin/jobmanagement')}
-                  className="bg-white border border-slate-200/80 rounded-2xl sm:rounded-3xl p-4.5 sm:p-5 lg:p-6 shadow-xs hover:-translate-y-1 hover:shadow-xl hover:border-blue-200 transition-all duration-300 cursor-pointer flex flex-col justify-between group"
-                >
-                  <div className="flex justify-between items-start mb-3 sm:mb-4">
-                    <div className="w-10 h-10 sm:w-12 sm:h-12 bg-blue-50 rounded-xl sm:rounded-2xl flex items-center justify-center group-hover:scale-110 transition-transform duration-300 shadow-inner">
-                      <Briefcase className="text-blue-600 h-5 w-5 sm:h-6 sm:w-6" />
-                    </div>
-                    <span className="text-[9px] sm:text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200/60">
-                      {activeJobsCount} Open
-                    </span>
-                  </div>
-
-                  <div>
-                    <h4 className="text-sm sm:text-base lg:text-lg font-extrabold tracking-tight text-slate-900 group-hover:text-blue-600 transition-colors flex items-center justify-between">
-                      <span>Active Positions</span>
-                      <ChevronRight size={16} className="text-slate-400 group-hover:translate-x-1 group-hover:text-blue-600 transition-all" />
-                    </h4>
-                    <p className="text-[11px] sm:text-xs text-slate-500 font-medium mt-1 leading-relaxed">
-                      Manage job requisitions, requirements, and active hiring openings.
-                    </p>
-                  </div>
-                </div>
-
-                {/* 4. Compare Candidates */}
-                <div
-                  onClick={() => navigate('/hr/comparecandidates')}
-                  className="bg-white border border-slate-200/80 rounded-2xl sm:rounded-3xl p-4.5 sm:p-5 lg:p-6 shadow-xs hover:-translate-y-1 hover:shadow-xl hover:border-purple-200 transition-all duration-300 cursor-pointer flex flex-col justify-between group"
-                >
-                  <div className="flex justify-between items-start mb-3 sm:mb-4">
-                    <div className="w-10 h-10 sm:w-12 sm:h-12 bg-purple-50 rounded-xl sm:rounded-2xl flex items-center justify-center group-hover:scale-110 transition-transform duration-300 shadow-inner">
-                      <BarChart3 className="text-purple-600 h-5 w-5 sm:h-6 sm:w-6" />
-                    </div>
-                    <span className="text-[9px] sm:text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-purple-50 text-purple-700 border border-purple-200/60">
-                      Matrix
-                    </span>
-                  </div>
-
-                  <div>
-                    <h4 className="text-sm sm:text-base lg:text-lg font-extrabold tracking-tight text-slate-900 group-hover:text-purple-600 transition-colors flex items-center justify-between">
-                      <span>Compare Candidates</span>
-                      <ChevronRight size={16} className="text-slate-400 group-hover:translate-x-1 group-hover:text-purple-600 transition-all" />
-                    </h4>
-                    <p className="text-[11px] sm:text-xs text-slate-500 font-medium mt-1 leading-relaxed">
-                      Side-by-side comparative analysis of skills, experience, and ATS matches.
-                    </p>
-                  </div>
-                </div>
+              <div className={styles.toolGrid}>
+                {[
+                  { icon: AlertCircle, title: 'Review applications', description: 'Explore new submissions and candidate matches.', detail: `${appStats.pending} awaiting review`, path: '/hr/screeningportal?status=SUBMITTED' },
+                  { icon: Calendar, title: 'Interview calendar', description: 'Coordinate conversations with your next great hire.', detail: 'Manage your schedule', path: '/hr/scheduling' },
+                  { icon: Briefcase, title: 'Active positions', description: 'Keep your open roles and requirements up to date.', detail: `${activeJobsCount} open positions`, path: '/admin/jobmanagement' },
+                  { icon: BarChart3, title: 'Compare candidates', description: 'Review skills and experience side by side.', detail: 'Explore candidate matches', path: '/hr/comparecandidates' },
+                ].map(({ icon: Icon, title, description, detail, path }) => (
+                  <button key={title} type="button" onClick={() => navigate(path)} className={styles.toolCard}>
+                    <span className={styles.toolIcon}><Icon size={21} /></span>
+                    <h3>{title}</h3>
+                    <p>{description}</p>
+                    <span className={styles.toolDetail}>{detail}</span>
+                  </button>
+                ))}
               </div>
-            </div>
+            </section>
 
             {/* Floating Chat Widget */}
             <ChatWidget />
