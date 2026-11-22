@@ -23,6 +23,11 @@ import {
   formatUtcLogTimestamp,
   isUpcomingInterview,
 } from '../../../utils/interviewUtils';
+import {
+  isNoValueRequirement,
+  resolveCriterionStatus,
+  getCriterionStatusBadgeStyle,
+} from '../../../utils/criterionStatus';
 
 /* ─── Types & Interfaces ─── */
 export interface ViewCandidateDetailsModalProps {
@@ -381,6 +386,28 @@ const ViewCandidateDetailsModal: React.FC<ViewCandidateDetailsModalProps> = ({
   const educationScore = Math.round(rawEducationScore);
   const certificationsScore = rawCertsScore;
 
+  const skillsStatus = resolveCriterionStatus({
+    explicitStatus: candidate.skills_status,
+    reason: candidate.skills_reason,
+    score: skillsScore,
+  });
+  const expStatus = resolveCriterionStatus({
+    explicitStatus: candidate.experience_status,
+    reason: candidate.experience_reason,
+    score: experienceScore,
+    isBelowMinimum: Boolean(candidate.experience_below_minimum || candidate.experience_gaps),
+  });
+  const eduStatus = resolveCriterionStatus({
+    explicitStatus: candidate.education_status,
+    reason: candidate.education_reason,
+    score: educationScore,
+  });
+  const certsStatus = resolveCriterionStatus({
+    explicitStatus: candidate.certifications_status,
+    reason: candidate.certifications_reason,
+    score: rawCertsNumeric,
+  });
+
   const appliedWeights = candidate.applied_weights || {
     skills: 40,
     experience: 30,
@@ -569,13 +596,16 @@ const ViewCandidateDetailsModal: React.FC<ViewCandidateDetailsModalProps> = ({
 
   const extractedCertifications = (() => {
     if (candidate.certifications_details?.certifications && candidate.certifications_details.certifications.length > 0) {
-      return candidate.certifications_details.certifications;
+      return candidate.certifications_details.certifications.filter((c: any) => {
+        const label = typeof c === 'object' && c !== null ? (c.canonical_name || c.name || '') : c;
+        return !isNoValueRequirement(label);
+      });
     }
     const raw = candidate.certifications || candidate.candidate_certifications || "";
-    if (!raw) return [];
+    if (!raw || isNoValueRequirement(raw)) return [];
     const list = typeof raw === 'string'
-      ? raw.split('|').map((s: string) => s.trim()).filter(Boolean)
-      : (Array.isArray(raw) ? raw : []);
+      ? raw.split(/[|,\n;•]/).map((s: string) => s.trim()).filter((s: string) => !isNoValueRequirement(s))
+      : (Array.isArray(raw) ? raw.filter((item: any) => !isNoValueRequirement(typeof item === 'object' && item !== null ? (item.canonical_name || item.name) : item)) : []);
 
     return list.map((item: any) => {
       if (typeof item === 'object' && item !== null) return item;
@@ -1535,9 +1565,9 @@ const ViewCandidateDetailsModal: React.FC<ViewCandidateDetailsModalProps> = ({
                         <Zap size={14} />
                       </div>
                       <p className="text-xl font-black text-blue-900">{skillsScore}%</p>
-                      <p className="text-[10px] text-blue-600 font-medium mt-0.5">
-                        {matchedSkills.length} Matched • {missingSkills.length} Missing
-                      </p>
+                      <span className={`inline-block mt-1 px-2 py-0.5 rounded-full text-[10px] font-bold border ${getCriterionStatusBadgeStyle(skillsStatus).badgeClass}`}>
+                        {skillsStatus}
+                      </span>
                     </div>
 
                     <div className="bg-purple-50/60 border border-purple-100 p-3.5 rounded-2xl">
@@ -1546,9 +1576,9 @@ const ViewCandidateDetailsModal: React.FC<ViewCandidateDetailsModalProps> = ({
                         <Briefcase size={14} />
                       </div>
                       <p className="text-xl font-black text-purple-900">{experienceScore}%</p>
-                      <p className="text-[10px] text-purple-600 font-medium mt-0.5">
-                        {formatMonths(candidate.total_experience_months) || `${candidate.work_experiences?.length || 0} Roles`}
-                      </p>
+                      <span className={`inline-block mt-1 px-2 py-0.5 rounded-full text-[10px] font-bold border ${getCriterionStatusBadgeStyle(expStatus).badgeClass}`}>
+                        {expStatus}
+                      </span>
                     </div>
 
                     <div className="bg-amber-50/60 border border-amber-100 p-3.5 rounded-2xl">
@@ -1557,22 +1587,22 @@ const ViewCandidateDetailsModal: React.FC<ViewCandidateDetailsModalProps> = ({
                         <GraduationCap size={14} />
                       </div>
                       <p className="text-xl font-black text-amber-900">{educationScore}%</p>
-                      <p className="text-[10px] text-amber-600 font-medium mt-0.5 truncate">
-                        {candidate.highest_educational_attainment || "Degree Assessment"}
-                      </p>
+                      <span className={`inline-block mt-1 px-2 py-0.5 rounded-full text-[10px] font-bold border ${getCriterionStatusBadgeStyle(eduStatus).badgeClass}`}>
+                        {eduStatus}
+                      </span>
                     </div>
 
                     <div className="bg-rose-50/60 border border-rose-100 p-3.5 rounded-2xl">
                       <div className="flex items-center justify-between text-rose-700 mb-1">
-                        <span className="text-[10px] font-bold uppercase tracking-wider">Credentials</span>
+                        <span className="text-[10px] font-bold uppercase tracking-wider">Certifications</span>
                         <Award size={14} />
                       </div>
                       <p className="text-xl font-black text-rose-900">
-                        {extractedCertifications.length}
+                        {Math.round(rawCertsNumeric)}%
                       </p>
-                      <p className="text-[10px] text-rose-600 font-medium mt-0.5">
-                        PRC / TESDA / Licenses
-                      </p>
+                      <span className={`inline-block mt-1 px-2 py-0.5 rounded-full text-[10px] font-bold border ${getCriterionStatusBadgeStyle(certsStatus).badgeClass}`}>
+                        {certsStatus}
+                      </span>
                     </div>
                   </div>
 
@@ -1623,9 +1653,10 @@ const ViewCandidateDetailsModal: React.FC<ViewCandidateDetailsModalProps> = ({
                       </div>
                       <div className="space-y-2.5">
                         {(weaknesses.length > 0 ? weaknesses : [
-                          missingSkills.length ? `Missing required skills: ${missingSkills.slice(0, 3).join(', ')}.` : "",
-                          candidate.experience_gaps ? `Experience gap: ${candidate.experience_gaps}` : "",
-                          candidate.educationScore < 70 ? candidate.education_reason : ""
+                          (skillsStatus === 'Does not meet' || skillsStatus === 'Partially meets') && missingSkills.length ? `Missing required skills: ${missingSkills.slice(0, 3).join(', ')}.` : "",
+                          (expStatus === 'Does not meet' || expStatus === 'Partially meets') && candidate.experience_gaps ? `Experience gap: ${candidate.experience_gaps}` : "",
+                          (eduStatus === 'Does not meet' || eduStatus === 'Partially meets') && candidate.education_reason ? candidate.education_reason : "",
+                          (certsStatus === 'Does not meet' || certsStatus === 'Partially meets') && candidate.certifications_reason ? candidate.certifications_reason : ""
                         ].filter(Boolean).slice(0, 4)).map((item, i) => (
                           <div key={i} className="flex items-start gap-2 text-xs text-gray-700 leading-relaxed bg-white/80 p-2.5 rounded-xl border border-rose-100">
                             <AlertTriangle size={14} className="text-rose-500 shrink-0 mt-0.5" />
@@ -1799,8 +1830,13 @@ const ViewCandidateDetailsModal: React.FC<ViewCandidateDetailsModalProps> = ({
                         <Briefcase size={16} />
                       </div>
                       <div>
-                        <h3 className="text-sm font-black text-gray-900 uppercase tracking-tight">Work Experience & Role History</h3>
-                        <p className="text-xs text-purple-600 font-semibold">{experienceScore}% Score — Contributes 40% to overall match</p>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <h3 className="text-sm font-black text-gray-900 uppercase tracking-tight">Work Experience & Role History</h3>
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${getCriterionStatusBadgeStyle(expStatus).badgeClass}`}>
+                            {expStatus}
+                          </span>
+                        </div>
+                        <p className="text-xs text-purple-600 font-semibold">{experienceScore}% Score — Contributes {wExpPct}% to overall match</p>
                       </div>
                     </div>
 
@@ -1932,8 +1968,15 @@ const ViewCandidateDetailsModal: React.FC<ViewCandidateDetailsModalProps> = ({
                         <GraduationCap size={16} />
                       </div>
                       <div>
-                        <h3 className="text-sm font-black text-gray-900 uppercase tracking-tight">Academic Background & Professional Licenses</h3>
-                        <p className="text-xs text-amber-600 font-semibold">{educationScore}% Score — Contributes 20% to overall match</p>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <h3 className="text-sm font-black text-gray-900 uppercase tracking-tight">Academic Background & Professional Licenses</h3>
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${getCriterionStatusBadgeStyle(eduStatus).badgeClass}`}>
+                            {eduStatus}
+                          </span>
+                        </div>
+                        <p className="text-xs text-amber-600 font-semibold">
+                          Education {educationScore}% ({wEduPct}% weight) • Certifications {Math.round(rawCertsNumeric)}% ({wCertsPct}% weight)
+                        </p>
                       </div>
                     </div>
 
@@ -2090,11 +2133,30 @@ const ViewCandidateDetailsModal: React.FC<ViewCandidateDetailsModalProps> = ({
                   </div>
 
                   {/* Justification */}
-                  <div className="p-4 bg-white rounded-xl border border-gray-200 text-xs text-gray-600">
-                    <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1">Education Assessment Rationale</p>
-                    <p className="font-medium leading-relaxed">
-                      {candidate.education_reason || "Academic attainment was evaluated against the specified degree requirement and educational discipline."}
-                    </p>
+                  <div className="grid sm:grid-cols-2 gap-3">
+                    <div className="p-4 bg-white rounded-xl border border-gray-200 text-xs text-gray-600">
+                      <div className="flex items-center justify-between gap-2 mb-1.5">
+                        <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Education Assessment Rationale</p>
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${getCriterionStatusBadgeStyle(eduStatus).badgeClass}`}>
+                          {eduStatus}
+                        </span>
+                      </div>
+                      <p className="font-medium leading-relaxed">
+                        {candidate.education_reason || "Academic attainment was evaluated against the specified degree requirement and educational discipline."}
+                      </p>
+                    </div>
+
+                    <div className="p-4 bg-white rounded-xl border border-gray-200 text-xs text-gray-600">
+                      <div className="flex items-center justify-between gap-2 mb-1.5">
+                        <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Certifications Assessment Rationale</p>
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${getCriterionStatusBadgeStyle(certsStatus).badgeClass}`}>
+                          {certsStatus}
+                        </span>
+                      </div>
+                      <p className="font-medium leading-relaxed">
+                        {candidate.certifications_reason || "Certifications were evaluated against the job's license and accreditation requirements."}
+                      </p>
+                    </div>
                   </div>
                 </div>
               )}

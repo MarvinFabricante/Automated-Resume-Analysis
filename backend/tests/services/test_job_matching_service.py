@@ -601,17 +601,20 @@ def test_unrelated_years_experience_not_shown_as_strength():
         "education": "High School Diploma",
     }
 
-    for job in (target_job, target_job_no_req):
-        res = job_matching_service.calculate_match_score(unrelated_resume, job, matching_config=cfg)
-        strengths_lower = " ".join(res.get("strengths") or []).lower()
-        assert "meets or exceeds" not in strengths_lower, f"False experience strength for {job['job_id']}: {res['strengths']}"
-        assert "3 years" not in strengths_lower, f"Unrelated 3 years shown as strength: {res['strengths']}"
-        assert "relevant work experience" not in strengths_lower
-        assert res["experience_score"] <= 10.0
-
     res_req = job_matching_service.calculate_match_score(unrelated_resume, target_job, matching_config=cfg)
+    assert "meets or exceeds" not in " ".join(res_req.get("strengths") or []).lower()
+    assert "3 years" not in " ".join(res_req.get("strengths") or []).lower()
+    assert res_req["experience_score"] <= 10.0
     assert res_req["experience_below_minimum"] is True
     assert res_req["experience_gap_years"] == 3
+
+    res_no_req = job_matching_service.calculate_match_score(unrelated_resume, target_job_no_req, matching_config=cfg)
+    no_req_strengths = " ".join(res_no_req.get("strengths") or []).lower()
+    assert "meets or exceeds" not in no_req_strengths
+    assert "3 years" not in no_req_strengths
+    assert "relevant work experience" not in no_req_strengths
+    assert res_no_req["experience_score"] == 100.0
+    assert res_no_req["experience_status"] == "Not required"
 
     # 2. Mixed resume: 3 years unrelated + 1 year relevant for a 3-year requirement
     mixed_short_resume = {
@@ -672,7 +675,7 @@ def test_unrelated_certification_not_perfect_score_or_strength():
     """
     cfg = {"weights": {}, "thresholds": {}}
 
-    # 1. Job has no certification requirement (empty and "None required") + unrelated cert on resume
+    # 1. Job has no certification requirement ("", "None", "None required") -> Not required (full credit, no failure)
     for cert_req in ("", "None", "None required"):
         job_no_cert_req = {
             "job_id": "J_DEV_CERT",
@@ -694,20 +697,21 @@ def test_unrelated_certification_not_perfect_score_or_strength():
         }
         res = job_matching_service.calculate_match_score(resume_unrelated_cert, job_no_cert_req, matching_config=cfg)
         strengths_lower = " ".join(res.get("strengths") or []).lower()
-        assert res["certifications_score"] == 0.0, f"Unrelated cert got non-zero score for req={cert_req!r}: {res}"
+        assert res["certifications_score"] == 100.0, f"Not-required cert should earn full credit for req={cert_req!r}: {res}"
+        assert res["certifications_status"] == "Not required"
         assert "certification" not in strengths_lower, f"False cert strength for req={cert_req!r}: {res['strengths']}"
         assert res["required_certifications"] == "None"
         assert not any("required certifications are missing" in w.lower() for w in (res.get("weaknesses") or []))
 
-    # 2. Job description mentions generic "certification" -> must not fuzzy-match "<X> Certification"
+    # 2. Job explicitly asks for a "Relevant Certification" -> must not fuzzy-match unrelated "<X> Certification"
     job_generic_cert = {
         "job_id": "J_DEV_GENERIC",
         "job_title": "Software Developer",
         "department": "IT",
-        "description": "Builds backend APIs. Relevant certification is an advantage.",
+        "description": "Builds backend APIs.",
         "skills_requirements": "Python, FastAPI, PostgreSQL",
         "experience_requirements": "2 years",
-        "certifications_requirements": "",
+        "certifications_requirements": "Relevant Certification",
     }
     resume_event_cert = {
         "fullname": "Event Cert Applicant",
@@ -761,7 +765,8 @@ def test_unrelated_certification_not_perfect_score_or_strength():
     }
     res_no_cert = job_matching_service.calculate_match_score(resume_skills_only, job_iso, matching_config=cfg)
     assert res_no_cert["certifications_score"] == 0.0
-    assert res_no_cert["candidate_certifications"] == "None"
+    assert res_no_cert["candidate_certifications"] in ("None", "None provided")
+    assert "no certification found" in res_no_cert["certifications_reason"].lower()
     assert "certification" not in " ".join(res_no_cert.get("strengths") or []).lower()
 
 

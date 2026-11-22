@@ -188,24 +188,31 @@ async def store_physical_resume(
             existing_app = app_res.scalar_one_or_none()
 
             if not existing_app:
+                from app.services.requirement_rules import clean_list_items, normalize_requirement_text
+
                 extracted = parsed_data or {}
-                # Merge user-reviewed and edited fields over raw extraction
+                # Merge user-reviewed and edited fields over raw extraction, stripping no-value markers
                 user_skills = data.get("skills")
                 if isinstance(user_skills, str):
-                    skills_val = [s.strip() for s in user_skills.split(",") if s.strip()]
+                    skills_val = clean_list_items(user_skills)
                 elif isinstance(user_skills, list):
-                    skills_val = user_skills
+                    skills_val = clean_list_items(user_skills)
                 else:
-                    skills_val = extracted.get("skills_list") or extracted.get("skills") or []
+                    skills_val = clean_list_items(extracted.get("skills_list") or extracted.get("skills") or [])
+
+                clean_degree = normalize_requirement_text(data.get("degree")) or normalize_requirement_text(extracted.get("degree")) or normalize_requirement_text(extracted.get("highest_degree"))
+                clean_experience = normalize_requirement_text(data.get("experience")) or normalize_requirement_text(extracted.get("experience"))
+                clean_certs_list = clean_list_items(extracted.get("certifications_list") or extracted.get("certifications") or [])
+                clean_certs_str = ", ".join(clean_certs_list) if clean_certs_list else normalize_requirement_text(extracted.get("certifications"))
 
                 match_profile = dict(extracted)
-                if skills_val:
-                    match_profile["skills_list"] = skills_val
-                    match_profile["skills"] = ", ".join(skills_val) if isinstance(skills_val, list) else str(skills_val)
-                if data.get("degree"):
-                    match_profile["degree"] = data.get("degree")
-                if data.get("experience"):
-                    match_profile["experience"] = data.get("experience")
+                match_profile["skills_list"] = skills_val
+                match_profile["skills"] = ", ".join(skills_val) if isinstance(skills_val, list) else str(skills_val or "")
+                match_profile["degree"] = clean_degree or ""
+                if not normalize_requirement_text(match_profile.get("highest_degree")):
+                    match_profile["highest_degree"] = clean_degree or ""
+                match_profile["experience"] = clean_experience or ""
+                match_profile["certifications"] = clean_certs_str or ""
 
                 match_res = None
                 try:
@@ -225,18 +232,18 @@ async def store_physical_resume(
                     candidate_email=cand_email,
                     phone=physical_resume.candidate_phone,
                     location=data.get("location") or extracted.get("location"),
-                    job_title=extracted.get("job_title") or target_job_title,
-                    company=extracted.get("company"),
-                    relevance=data.get("experience") or extracted.get("relevance"),
+                    job_title=normalize_requirement_text(extracted.get("job_title")) or target_job_title,
+                    company=normalize_requirement_text(extracted.get("company")),
+                    relevance=clean_experience or normalize_requirement_text(extracted.get("relevance")),
                     work_experiences=extracted.get("work_experiences") or [],
                     total_experience_months=extracted.get("total_experience_months") or 0,
                     years_experience=extracted.get("years_experience"),
-                    degree=data.get("degree") or extracted.get("degree") or extracted.get("highest_degree"),
-                    college=extracted.get("college") or extracted.get("institution"),
+                    degree=clean_degree,
+                    college=normalize_requirement_text(extracted.get("college") or extracted.get("institution")),
                     education_entries=extracted.get("education_entries") or [],
-                    highest_educational_attainment=extracted.get("highest_educational_attainment"),
-                    certifications=extracted.get("certifications"),
-                    candidate_certifications=extracted.get("candidate_certifications") or extracted.get("certifications"),
+                    highest_educational_attainment=normalize_requirement_text(extracted.get("highest_educational_attainment")) or clean_degree,
+                    certifications=clean_certs_str,
+                    candidate_certifications=(match_res.get("candidate_certifications") if match_res else None) or clean_certs_str,
                     skills=skills_val,
                     relevant_experience=match_res.get("relevant_experience") if match_res else None,
                     experience_gaps=match_res.get("experience_gaps") if match_res else None,
@@ -247,6 +254,13 @@ async def store_physical_resume(
                     certifications_score=match_res.get("certifications_score") if match_res else None,
                     completeness_score=match_res.get("completeness_score") if match_res else None,
                     applied_weights=match_res.get("applied_weights") if match_res else None,
+                    skills_reason=match_res.get("skills_reason") if match_res else None,
+                    experience_reason=match_res.get("experience_reason") if match_res else None,
+                    education_reason=match_res.get("education_reason") if match_res else None,
+                    certifications_reason=match_res.get("certifications_reason") if match_res else None,
+                    required_degree=match_res.get("required_degree") if match_res else None,
+                    candidate_degree=match_res.get("candidate_degree") if match_res else None,
+                    required_certifications=match_res.get("required_certifications") if match_res else None,
                     resume_url=physical_resume.file_url,
                     matched_skills=match_res.get("matched_skills") if match_res else [],
                     missing_skills=match_res.get("missing_skills") if match_res else [],

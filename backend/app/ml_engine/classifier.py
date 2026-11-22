@@ -56,50 +56,55 @@ EDUCATION_LEVEL_RANKS = {
 
 def parse_education_rank(edu_text: Optional[str]) -> int:
     """
-    Map an education string to an ordinal hierarchy level (0 to 4).
+    Map an education string to the ML ordinal hierarchy level (0 to 4),
+    backed by the shared 1-8 Philippine education hierarchy in requirement_rules.
     4 = Doctorate / PhD
     3 = Master's / MBA
     2 = Bachelor's / BS / BA
-    1 = Associate's / Diploma / Vocational
-    0 = High School / None / Not specified
+    1 = Vocational / TESDA / Associate / Diploma
+    0 = High School / Senior High / Elementary / None / Not specified
     """
     if not edu_text:
         return 0
-    t = edu_text.lower().strip()
-    # Check high school / secondary first so "High School Diploma" is rank 0
-    if re.search(r"\b(high\s*school|secondary)\b", t):
+    from app.services.requirement_rules import (
+        map_education_level_to_ml_rank,
+        parse_education_level,
+    )
+
+    parsed = parse_education_level(edu_text, is_job_requirement=False)
+    if parsed.get("is_no_value") or not parsed.get("recognized") or not parsed.get("level"):
         return 0
-    if re.search(r"\b(ph\.?d|doctorate|doctoral|post[-\s]?doc)\b", t):
-        return 4
-    if re.search(r"\b(master|m\.?s\.?|m\.?a\.?|mba|post[-\s]?grad)\b", t):
-        return 3
-    if re.search(r"\b(bachelor|b\.?s\.?|b\.?a\.?|college degree|undergrad)\b", t):
-        return 2
-    if re.search(r"\b(associate|diploma|vocational|certificate)\b", t):
-        return 1
-    return 0
+    return map_education_level_to_ml_rank(parsed["level"])
 
 
 def evaluate_education_match(candidate_edu: Optional[str], required_edu: Optional[str]) -> int:
     """
-    Ordinal comparison between candidate's educational attainment and job requirements:
+    Ordinal comparison between candidate's educational attainment and job requirements
+    using the shared 1-8 hierarchy:
     2 = Exceeds requirement
-    1 = Meets requirement
+    1 = Meets requirement (or no requirement specified)
     0 = Below requirement
     """
-    cand_rank = parse_education_rank(candidate_edu)
-    req_rank = parse_education_rank(required_edu)
+    from app.services.requirement_rules import is_no_value, parse_education_level
 
-    # If no requirement specified, any tertiary degree meets or exceeds
-    if req_rank == 0 and cand_rank >= 2:
+    if is_no_value(required_edu):
         return 1
 
-    if cand_rank > req_rank:
-        return 2
-    elif cand_rank == req_rank:
+    req_parsed = parse_education_level(required_edu, is_job_requirement=True)
+    req_level = req_parsed.get("level")
+    if not req_level:
         return 1
-    else:
+
+    cand_parsed = parse_education_level(candidate_edu, is_job_requirement=False)
+    cand_level = cand_parsed.get("level")
+    if not cand_level:
         return 0
+
+    if cand_level > req_level:
+        return 2
+    if cand_level == req_level:
+        return 1
+    return 0
 
 
 def build_feature_vector(

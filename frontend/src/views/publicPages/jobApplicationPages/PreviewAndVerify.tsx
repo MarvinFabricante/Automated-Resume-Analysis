@@ -17,6 +17,7 @@ import ApplicationProgressBar from '../../../components/common/ApplicationProgre
 import ExperienceGapAlert from '../../../components/common/ExperienceGapAlert';
 import { broadcastAtsUpdate } from '../../../utils/realtimeSync';
 import { formatApiErrorDetail, formatUploadOrParseError, toPositiveIntOrUndefined, toStringArray } from '../../../utils/errorUtils';
+import { cleanRequirementInput, cleanRequirementList, resolveCriterionStatus } from '../../../utils/criterionStatus';
 
 
 interface InfoItemProps {
@@ -390,6 +391,8 @@ const handleFinalSubmit = async () => {
       ? extractedData.experience.title
       : "";
 
+    const cleanedCerts = cleanRequirementInput(certString) || cleanRequirementInput(String(data?.candidate_certifications || ""));
+
     const payload = {
       job_id: String(effectiveJobId),
       candidate_name: candidateName,
@@ -397,18 +400,18 @@ const handleFinalSubmit = async () => {
       phone: extractedData.personal.phone,
       location: extractedData.personal.location,
       job_title: validCandidateJobTitle || validStateJobTitle || "Applicant",
-      company: (extractedData.experience.company && extractedData.experience.company !== "Not specified") ? extractedData.experience.company : "",
-      relevance: extractedData.experience.relevance || "",
-      degree: extractedData.education.degree || "",
-      college: extractedData.education.college || "",
-      skills: toStringArray(extractedData.skills),
+      company: cleanRequirementInput((extractedData.experience.company && extractedData.experience.company !== "Not specified") ? extractedData.experience.company : ""),
+      relevance: cleanRequirementInput(extractedData.experience.relevance),
+      degree: cleanRequirementInput(extractedData.education.degree),
+      college: cleanRequirementInput(extractedData.education.college),
+      skills: cleanRequirementList(toStringArray(extractedData.skills)),
       work_experiences: extractedData.work_experiences || data?.work_experiences || undefined,
       total_experience_months: toPositiveIntOrUndefined(activeData?.total_experience_months ?? data?.total_experience_months),
       years_experience: toPositiveIntOrUndefined(extractedData.years_experience),
       education_entries: extractedData.education_entries || data?.education_entries || undefined,
-      highest_educational_attainment: data?.highest_educational_attainment || undefined,
-      certifications: certString || undefined,
-      candidate_certifications: certString || String(data?.candidate_certifications || "").trim() || undefined,
+      highest_educational_attainment: cleanRequirementInput(data?.highest_educational_attainment) || undefined,
+      certifications: cleanedCerts || undefined,
+      candidate_certifications: cleanedCerts || undefined,
       match_score: activeMatch?.match_percentage || state?.matchScore || 0,
       skills_score: activeMatch?.skills_score || 0,
       experience_score: activeMatch?.experience_score || 0,
@@ -617,23 +620,51 @@ return (
               </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
               {[
-                { label: 'Skills Alignment', score: activeMatch.skills_score, icon: <Cpu size={16} /> },
-                { label: 'Experience Level', score: activeMatch.experience_score, icon: <Briefcase size={16} /> },
-                { label: 'Education Match', score: activeMatch.education_score, icon: <GraduationCap size={16} /> }
+                {
+                  label: 'Skills Alignment',
+                  status: resolveCriterionStatus({
+                    explicitStatus: activeMatch.skills_status,
+                    reason: activeMatch.skills_reason,
+                    score: activeMatch.skills_score,
+                  }),
+                  icon: <Cpu size={16} />,
+                },
+                {
+                  label: 'Experience Level',
+                  status: resolveCriterionStatus({
+                    explicitStatus: activeMatch.experience_status,
+                    reason: activeMatch.experience_reason,
+                    score: activeMatch.experience_score,
+                    isBelowMinimum: Boolean(activeMatch.experience_below_minimum),
+                  }),
+                  icon: <Briefcase size={16} />,
+                },
+                {
+                  label: 'Education Match',
+                  status: resolveCriterionStatus({
+                    explicitStatus: activeMatch.education_status,
+                    reason: activeMatch.education_reason,
+                    score: activeMatch.education_score,
+                  }),
+                  icon: <GraduationCap size={16} />,
+                },
+                {
+                  label: 'Certifications',
+                  status: resolveCriterionStatus({
+                    explicitStatus: activeMatch.certifications_status,
+                    reason: activeMatch.certifications_reason,
+                    score: activeMatch.certifications_score,
+                  }),
+                  icon: <Award size={16} />,
+                },
               ].map((item, idx) => (
                 <div key={idx} className="bg-slate-50/70 p-4 rounded-2xl border border-slate-100/70 flex flex-col items-center text-center">
                   <div className="text-[#D60041] mb-1.5">{item.icon}</div>
                   <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 mb-0.5">{item.label}</span>
-                  <p className="text-base font-black uppercase text-slate-900">
-                    {item.label === 'Experience Level' && activeMatch.experience_below_minimum
-                      ? 'Below Minimum'
-                      : item.score >= 70
-                        ? 'High Match'
-                        : item.score >= 40
-                          ? 'Moderate'
-                          : 'Basic Match'}
+                  <p className="text-sm font-black text-slate-900">
+                    {item.status}
                   </p>
                 </div>
               ))}

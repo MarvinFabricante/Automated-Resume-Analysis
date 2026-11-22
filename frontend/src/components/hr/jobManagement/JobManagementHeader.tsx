@@ -13,30 +13,34 @@ const JobManagementHeader: React.FC<JobManagementHeaderProps> = ({
   canExport = false,
 }) => {
   return (
-    <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-5">
-      <div>
-        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white border border-gray-200/80 shadow-xs text-[11px] font-black text-gray-500 mb-2.5 tracking-wider uppercase">
-          <Briefcase size={13} className="text-[#D10043]" />
-          Careers & Requisitions
+    <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 pb-2 border-b border-slate-200/70">
+      <div className="space-y-1">
+        <div className="inline-flex items-center gap-2 text-xs font-semibold text-slate-500">
+          <span className="inline-flex items-center gap-1.5 text-[#D10043] font-bold">
+            <Briefcase size={14} />
+            Talent Acquisition
+          </span>
+          <span className="text-slate-300">/</span>
+          <span>Job Requisitions</span>
         </div>
-        <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-gray-900">
+        <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900">
           Job Management
         </h1>
-        <p className="text-sm text-gray-500 font-medium mt-1.5 max-w-2xl leading-relaxed">
-          Publish open positions, track applicant volume, and fine-tune per-job AI scoring priorities across departments.
+        <p className="text-sm text-slate-500 max-w-2xl">
+          Publish open positions, monitor applicant volume, and configure per-role AI scoring weights.
         </p>
       </div>
 
-      <div className="flex items-center gap-3 w-full md:w-auto shrink-0">
+      <div className="flex items-center gap-2.5 w-full md:w-auto shrink-0">
         {onExportCsv && (
           <button
             type="button"
             onClick={onExportCsv}
             disabled={!canExport}
-            className="flex-1 md:flex-none inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-2xl bg-white hover:bg-gray-50 text-gray-700 border border-gray-200/90 shadow-xs hover:border-gray-300 text-sm font-semibold transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex-1 md:flex-none inline-flex items-center justify-center gap-2 h-10 px-4 rounded-xl bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 hover:border-slate-300 shadow-2xs text-sm font-semibold transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
             title="Export filtered positions to CSV"
           >
-            <Download size={16} className="text-gray-500" />
+            <Download size={15} className="text-slate-500" />
             <span>Export CSV</span>
           </button>
         )}
@@ -44,9 +48,9 @@ const JobManagementHeader: React.FC<JobManagementHeaderProps> = ({
         <button
           type="button"
           onClick={onCreateJob}
-          className="flex-1 md:flex-none inline-flex items-center justify-center gap-2 bg-gradient-to-r from-[#D10043] to-[#B00038] hover:from-[#c2003e] hover:to-[#9e0032] text-white px-5 py-2.5 rounded-2xl text-sm font-bold shadow-md shadow-red-500/20 hover:scale-[1.01] active:scale-[0.99] transition-all cursor-pointer"
+          className="flex-1 md:flex-none inline-flex items-center justify-center gap-2 h-10 px-4.5 rounded-xl bg-[#D10043] hover:bg-[#B00038] text-white text-sm font-semibold shadow-sm shadow-[#D10043]/20 transition-colors cursor-pointer"
         >
-          <Plus size={17} />
+          <Plus size={16} />
           <span>Create Position</span>
         </button>
       </div>

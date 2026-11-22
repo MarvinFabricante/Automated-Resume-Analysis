@@ -59,15 +59,22 @@ def normalize_token(token: str) -> str:
     Normalize individual skill or job title token.
     Preserves specialized programming characters (e.g. c++, c#, .net)
     and maps common framework aliases to standard canonical forms.
+    Strips no-value markers (e.g. 'none', 'n/a', 'wala').
     """
     if not token:
         return ""
+    from app.services.requirement_rules import is_no_value
+
+    if is_no_value(token):
+        return ""
     t = token.strip().lower()
     t = CANONICAL_REPLACEMENTS.get(t, t)
+    if is_no_value(t):
+        return ""
     # Replace separators with underscore if multi-word
     t = re.sub(r"[\s\-\/\.]+", "_", t)
     t = t.strip("_")
-    return t
+    return "" if is_no_value(t) else t
 
 
 def normalize_token_list(tokens: Sequence[str]) -> List[str]:

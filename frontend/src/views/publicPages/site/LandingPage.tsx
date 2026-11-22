@@ -239,7 +239,7 @@ const LandingPage: React.FC = () => {
   );
 
   return (
-    <div ref={containerRef} className="relative bg-[#FAFAFC] text-gray-800 antialiased font-sans min-h-screen flex flex-col overflow-x-hidden">
+    <div ref={containerRef} className="relative bg-[#FAFAFC] text-gray-800 antialiased font-sans min-h-screen supports-[min-height:100dvh]:min-h-[100dvh] flex flex-col overflow-x-clip">
       <Helmet>
         <title>Mariwasa Recruitment | Careers</title>
       </Helmet>
@@ -291,7 +291,7 @@ const LandingPage: React.FC = () => {
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3.5 sm:gap-4 max-w-md mx-auto mb-10 sm:mb-12">
             <a
               href={positionsHref}
-              className="w-full sm:w-auto px-8 py-3.5 rounded-2xl bg-[#D60041] hover:bg-slate-900 text-white font-black text-sm uppercase tracking-wider flex items-center justify-center gap-2.5 transition-all shadow-md shadow-[#D60041]/20 active:scale-[0.98] cursor-pointer"
+              className="w-full sm:w-auto min-h-[44px] px-8 py-3.5 rounded-2xl bg-[#D60041] hover:bg-slate-900 text-white font-black text-sm uppercase tracking-wider flex items-center justify-center gap-2.5 transition-all shadow-md shadow-[#D60041]/20 active:scale-[0.98] cursor-pointer touch-manipulation"
             >
               <Briefcase size={18} />
               <span>View Open Positions</span>
@@ -300,7 +300,7 @@ const LandingPage: React.FC = () => {
 
             <a
               href={dashboardHref}
-              className="w-full sm:w-auto px-7 py-3.5 rounded-2xl bg-white hover:bg-slate-50 text-slate-700 hover:text-slate-900 border border-slate-200 font-bold text-sm uppercase tracking-wider flex items-center justify-center gap-2 transition-all shadow-2xs active:scale-[0.98] cursor-pointer"
+              className="w-full sm:w-auto min-h-[44px] px-7 py-3.5 rounded-2xl bg-white hover:bg-slate-50 text-slate-700 hover:text-slate-900 border border-slate-200 font-bold text-sm uppercase tracking-wider flex items-center justify-center gap-2 transition-all shadow-2xs active:scale-[0.98] cursor-pointer touch-manipulation"
             >
               {activeRole ? (
                 <>
@@ -382,7 +382,7 @@ const LandingPage: React.FC = () => {
         {/* Action Cards */}
         <div className="action-cards-container grid md:grid-cols-2 gap-6 mb-24 max-w-6xl mx-auto px-6">
           <div className="action-card bg-white p-8 md:p-12 rounded-[32px] border border-gray-100 shadow-sm hover:shadow-xl transition-all duration-300 group relative overflow-hidden flex flex-col will-change-transform">
-            <div className="absolute top-0 right-0 w-32 h-32 bg-pink-50 rounded-bl-[100px] z-0 opacity-50 group-hover:scale-110 transition-transform"></div>
+            <div className="absolute top-0 right-0 w-32 h-32 bg-pink-50 rounded-bl-[100px] z-0 opacity-50 group-hover:scale-110 transition-transform pointer-events-none" aria-hidden="true"></div>
             <div className="relative z-10 flex-grow">
               <div className="action-card-icon w-16 h-16 bg-red-50 text-[#D60041] rounded-2xl mb-8 flex items-center justify-center group-hover:scale-110 transition-transform">
                 <Briefcase size={32} />
@@ -392,14 +392,14 @@ const LandingPage: React.FC = () => {
                 Explore our current job openings across plant operations, maintenance, quality assurance, and supply chain.
               </p>
             </div>
-            <a href={positionsHref} className="w-full bg-white border border-gray-200 hover:border-[#D60041] hover:text-[#D60041] text-gray-800 py-3.5 rounded-full font-medium flex items-center justify-center space-x-2 transition-all relative z-10 cursor-pointer">
+            <a href={positionsHref} className="w-full min-h-[44px] bg-white border border-gray-200 hover:border-[#D60041] hover:text-[#D60041] text-gray-800 py-3.5 rounded-full font-medium flex items-center justify-center space-x-2 transition-all relative z-10 cursor-pointer touch-manipulation">
               <span>View Positions</span>
               <ArrowRight size={18} />
             </a>
           </div>
 
           <div className="action-card bg-[#1A1A1A] p-8 md:p-12 rounded-[32px] shadow-sm hover:shadow-xl hover:shadow-gray-900/20 transition-all duration-300 group relative overflow-hidden flex flex-col will-change-transform">
-            <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-bl-[100px] z-0 opacity-50 group-hover:scale-110 transition-transform"></div>
+            <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-bl-[100px] z-0 opacity-50 group-hover:scale-110 transition-transform pointer-events-none" aria-hidden="true"></div>
             <div className="relative z-10 flex-grow">
               <div className="action-card-icon w-16 h-16 bg-white/10 text-white rounded-2xl mb-8 flex items-center justify-center group-hover:scale-110 transition-transform">
                 <FileUp size={32} />
@@ -409,7 +409,7 @@ const LandingPage: React.FC = () => {
                 Upload your resume and we'll compare your background with our open positions to show you your best fit.
               </p>
             </div>
-            <a href={uploadHref} className="w-full bg-[#D60041] hover:bg-[#b50037] text-white py-3.5 rounded-full font-medium flex items-center justify-center space-x-2 transition-all relative z-10 cursor-pointer">
+            <a href={uploadHref} className="w-full min-h-[44px] bg-[#D60041] hover:bg-[#b50037] text-white py-3.5 rounded-full font-medium flex items-center justify-center space-x-2 transition-all relative z-10 cursor-pointer touch-manipulation">
               <span>Upload Resume</span>
               <ArrowRight size={18} />
             </a>
@@ -445,7 +445,7 @@ const LandingPage: React.FC = () => {
               <p className="text-gray-600 text-base mb-8 leading-relaxed">
                 The Philippines' leading ceramic manufacturer. We combine traditional craftsmanship with Siam-standard technology to build the homes of tomorrow. Discover how we're modernizing the talent experience.
               </p>
-              <a href="/aboutpage" className="inline-flex items-center space-x-2 text-[#D60041] font-medium hover:underline group">
+              <a href="/aboutpage" className="inline-flex items-center space-x-2 min-h-[44px] py-2 text-[#D60041] font-medium hover:underline group cursor-pointer touch-manipulation">
                 <span>Learn more about our legacy</span>
                 <ArrowRight size={16} className="group-hover:translate-x-1 transition-transform" />
               </a>

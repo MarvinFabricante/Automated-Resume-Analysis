@@ -10,6 +10,7 @@ import {
 import { useCreateJobMutation, useGetMatchingConfigQuery } from '../../../redux/api/apiSlice';
 import { useAppSelector } from '../../../redux/store';
 import { JobScoringWeights, DEFAULT_JOB_SCORING_WEIGHTS } from '../../../types';
+import { cleanRequirementInput } from '../../../utils/criterionStatus';
 import JobScoringWeightsEditor, { isWeightsBalanced } from './JobScoringWeightsEditor';
 
 interface CreateJobModalProps {
@@ -162,9 +163,16 @@ const CreateJobModal: React.FC<CreateJobModalProps> = ({ isOpen, onClose, onSucc
     setStatus({ type: null, message: '' });
 
     try {
+      const normalizedForm = {
+        ...formData,
+        skills_requirements: cleanRequirementInput(formData.skills_requirements),
+        education_requirements: cleanRequirementInput(formData.education_requirements),
+        experience_requirements: cleanRequirementInput(formData.experience_requirements),
+        certifications_requirements: cleanRequirementInput(formData.certifications_requirements),
+      };
       const payload = isAdmin
-        ? { ...formData, scoring_weights: effectiveWeights }
-        : (({ scoring_weights: _ignored, ...rest }) => rest)(formData);
+        ? { ...normalizedForm, scoring_weights: effectiveWeights }
+        : (({ scoring_weights: _ignored, ...rest }) => rest)(normalizedForm);
       const result = await createJob(payload).unwrap();
       
       setStatus({ type: 'success', message: 'Job posting has been created successfully!' });
@@ -510,6 +518,7 @@ const CreateJobModal: React.FC<CreateJobModalProps> = ({ isOpen, onClose, onSucc
                         setFormData(prev => ({ ...prev, education_requirements: val }));
                       }}
                     />
+                    <p className="mt-1.5 ml-1 text-[11px] text-slate-500">Leave blank or type &apos;None&apos; if nothing is required.</p>
                   </div>
 
                   <div>
@@ -524,6 +533,7 @@ const CreateJobModal: React.FC<CreateJobModalProps> = ({ isOpen, onClose, onSucc
                         setFormData(prev => ({ ...prev, experience_requirements: val }));
                       }}
                     />
+                    <p className="mt-1.5 ml-1 text-[11px] text-slate-500">Leave blank or type &apos;None&apos; if nothing is required.</p>
                   </div>
 
                   <div className="sm:col-span-2 md:col-span-1">
@@ -538,6 +548,7 @@ const CreateJobModal: React.FC<CreateJobModalProps> = ({ isOpen, onClose, onSucc
                         setFormData(prev => ({ ...prev, certifications_requirements: val }));
                       }}
                     />
+                    <p className="mt-1.5 ml-1 text-[11px] text-slate-500">Leave blank or type &apos;None&apos; if nothing is required.</p>
                   </div>
                 </div>
 

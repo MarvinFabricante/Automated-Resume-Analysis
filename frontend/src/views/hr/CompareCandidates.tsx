@@ -13,6 +13,19 @@ import { useGetApplicationsQuery, useGetJobsQuery, useCompareCandidatesMutation 
 import HelpTooltip from '../../components/common/HelpTooltip';
 import api, { getAssetUrl } from '../../services/api';
 import { Job, Application } from '../../types';
+import {
+  isNoValueRequirement,
+  resolveCriterionStatus,
+  getCriterionStatusBadgeStyle,
+} from '../../utils/criterionStatus';
+import {
+  EvaluationFilters,
+  ParsedJobRequirements,
+  RankedPersonItem,
+  doesApplicationMatchJob,
+  partitionAndSortPersonGroups,
+  preparseJobRequirements,
+} from '../../utils/compareSorting';
 
 interface CandidateComparisonData extends Partial<Application> {
   id: number;
@@ -27,7 +40,17 @@ interface CandidateComparisonData extends Partial<Application> {
   company?: string;
   job_title?: string;
   relevance?: string;
+  skills_reason?: string;
   experience_reason?: string;
+  education_reason?: string;
+  certifications_reason?: string;
+  skills_status?: string;
+  experience_status?: string;
+  education_status?: string;
+  certifications_status?: string;
+  required_degree?: string;
+  candidate_degree?: string;
+  required_certifications?: string;
   skills?: string[];
   matched_skills?: string[];
   missing_skills?: string[];
@@ -44,7 +67,6 @@ interface CandidateComparisonData extends Partial<Application> {
   certifications_score?: number;
   candidate_certifications?: string;
   certifications?: string;
-  certifications_reason?: string;
   completeness_score?: number;
   completeness_status?: string;
   missing_sections?: string[];
@@ -53,12 +75,6 @@ interface CandidateComparisonData extends Partial<Application> {
   ai_summary?: string;
   profileImage?: string;
   isRuleBased?: boolean;
-}
-
-interface EvaluationFilters {
-  skills: boolean;
-  experience: boolean;
-  certifications: boolean;
 }
 
 const getAvatarUrl = (candidate: CandidateComparisonData | null): string => {
@@ -72,7 +88,8 @@ const getAvatarUrl = (candidate: CandidateComparisonData | null): string => {
 const calculateRuleBasedScore = (
   candidate: CandidateComparisonData,
   job: Job | undefined,
-  filters: EvaluationFilters
+  filters: EvaluationFilters,
+  parsedJob?: ParsedJobRequirements
 ): CandidateComparisonData => {
   let skillsScore = 0;
   let expScore = 0;
@@ -81,20 +98,10 @@ const calculateRuleBasedScore = (
   let missingSkills = candidate.missing_skills || [];
 
   if (job) {
+    const req = parsedJob || preparseJobRequirements(job);
+
     // 1. Skills Matching
-    let jobSkills: string[] = [];
-    if (job.skills_requirements) {
-      const raw = Array.isArray(job.skills_requirements)
-        ? job.skills_requirements
-        : String(job.skills_requirements).split(/[,;\n•|]+/);
-      jobSkills = raw
-        .map(s => String(s).trim().replace(/^[-*•\s]+/, '').replace(/[.,;:]+$/, '').toLowerCase())
-        .filter(s => s.length > 0);
-    } else if (job.description) {
-      jobSkills = job.description.toLowerCase().split(/[\s,;]+/).filter(w => w.length > 3);
-    } else {
-      jobSkills = (job.title || '').toLowerCase().split(/[\s,]+/).filter(w => w.length > 2);
-    }
+    const jobSkills = req.jobSkills;
 
     const rawCandSkills = Array.isArray(candidate.skills)
       ? candidate.skills
@@ -144,7 +151,7 @@ const calculateRuleBasedScore = (
     }
 
     // 2. Experience Matching
-    const jobExp = (job.experience_requirements || '').toLowerCase();
+    const jobExp = req.jobExp;
     const candExpParts = [
       candidate.relevance,
       candidate.relevant_experience,
@@ -158,8 +165,7 @@ const calculateRuleBasedScore = (
     ].filter(Boolean).join(' ').toLowerCase();
 
     if (jobExp) {
-      const reqYearsMatch = jobExp.match(/(\d+)(?:\s*-\s*(\d+))?\+?\s*(?:years?|yrs?)/i);
-      const reqYears = reqYearsMatch ? parseInt(reqYearsMatch[1], 10) : 0;
+      const reqYears = req.reqYears;
 
       let candYears = 0;
       if (candidate.total_experience_months && candidate.total_experience_months > 0) {
@@ -169,8 +175,7 @@ const calculateRuleBasedScore = (
         if (candYearsMatch) candYears = parseInt(candYearsMatch[1], 10);
       }
 
-      const stopWords = new Set(['years', 'year', 'experience', 'preferably', 'preferred', 'plus', 'with', 'have', 'from', 'role', 'work', 'least', 'must', 'should', 'about', 'minimum', 'candidate']);
-      const expKeywords = jobExp.split(/[\s,.;:]+/).filter(w => w.length > 3 && !stopWords.has(w));
+      const expKeywords = req.expKeywords;
 
       let keywordScore = 0;
       if (expKeywords.length > 0) {
@@ -193,18 +198,15 @@ const calculateRuleBasedScore = (
     }
 
     // 3. Certifications Matching
-    const jobCert = (job.certifications_requirements || '').toLowerCase().trim();
+    const hasCertReq = req.hasCertReq;
+    const jobCert = req.jobCert;
     const candCert = ([
       candidate.candidate_certifications,
       candidate.certifications,
-      Array.isArray(candidate.skills) ? candidate.skills.join(' ') : (candidate.skills || '')
-    ]).filter(Boolean).join(' ').toLowerCase();
-
-    const hasCertReq = jobCert.length > 0 && !jobCert.includes('none') && !jobCert.includes('not required') && !jobCert.includes('n/a');
+    ]).filter((v) => !isNoValueRequirement(v)).join(' ').toLowerCase();
 
     if (hasCertReq) {
-      const stopWords = new Set(['certification', 'certified', 'license', 'licensed', 'preferred', 'plus', 'with', 'have', 'must', 'required']);
-      const certKeywords = jobCert.split(/[\s,.;:]+/).filter(w => w.length > 2 && !stopWords.has(w));
+      const certKeywords = req.certKeywords;
       if (certKeywords.length > 0) {
         const matchCount = certKeywords.filter(kw => candCert.includes(kw)).length;
         certScore = Math.round((matchCount / certKeywords.length) * 100);
@@ -212,8 +214,8 @@ const calculateRuleBasedScore = (
         certScore = jobCert.split(/[\s,]+/).some(w => w.length > 3 && candCert.includes(w)) ? 100 : 0;
       }
     } else {
-      // Certification not required for this job — preserve backend relevance score without forcing 100%
-      certScore = candidate.certifications_score ?? candidate.certificationsScore ?? 0;
+      // Certification not required for this job — automatic full credit at normal weight
+      certScore = 100;
     }
   } else {
     // Original AI Scores
@@ -226,16 +228,22 @@ const calculateRuleBasedScore = (
   let rawScore = 0;
 
   if (filters?.skills) {
-    totalWeight += 50;
-    rawScore += skillsScore * 50;
+    totalWeight += 40;
+    rawScore += skillsScore * 40;
   }
   if (filters?.experience) {
     totalWeight += 30;
     rawScore += expScore * 30;
   }
   if (filters?.certifications) {
+    totalWeight += 10;
+    rawScore += certScore * 10;
+  }
+  const eduScore = candidate.education_score ?? 100;
+  const compScore = candidate.completeness_score ?? 100;
+  if (job) {
     totalWeight += 20;
-    rawScore += certScore * 20;
+    rawScore += (eduScore * 15) + (compScore * 5);
   }
 
   let matchScore = 0;
@@ -308,17 +316,29 @@ const CompareCandidates: React.FC = () => {
     if (serverComparison?.reference_job?.id && !selectedRefJobId) {
       setSelectedRefJobId(String(serverComparison.reference_job.id));
     }
-  }, [serverComparison]);
+  }, [serverComparison, selectedRefJobId]);
 
   // Trigger server-side cross-job re-scoring when comparing
   useEffect(() => {
     if (isComparing && selectedCandidateIds.length >= 2) {
+      const refJobIdValue = selectedRefJobId || selectedJobId;
       compareCandidatesMutation({
         application_ids: selectedCandidateIds,
-        reference_job_id: selectedRefJobId ? parseInt(selectedRefJobId) : undefined,
+        reference_job_id: refJobIdValue ? parseInt(refJobIdValue, 10) : undefined,
       });
     }
-  }, [isComparing, selectedCandidateIds, selectedRefJobId, compareCandidatesMutation]);
+  }, [isComparing, selectedCandidateIds, selectedRefJobId, selectedJobId, compareCandidatesMutation]);
+
+  const handleSelectedJobChange = (nextJobId: string) => {
+    setSelectedJobId(nextJobId);
+    setSelectedRefJobId(nextJobId);
+    setPersonSelectedAppMap({});
+  };
+
+  const selectedJob = useMemo(
+    () => (jobs as Job[]).find(j => String(j.id) === String(selectedJobId)),
+    [jobs, selectedJobId]
+  );
 
   // Filter candidates based on search
   const filteredCandidates = useMemo(() => {
@@ -368,16 +388,43 @@ const CompareCandidates: React.FC = () => {
     return Object.values(groups);
   }, [filteredCandidates]);
 
+  // Partition into applicants for the selected job (sorted by score desc) and other applicants
+  const { appliedToJob, otherApplicants } = useMemo(
+    () =>
+      partitionAndSortPersonGroups<CandidateComparisonData, PersonGroup>({
+        personGroups,
+        selectedJob,
+        evaluationFilters,
+        personSelectedAppMap,
+        scoreAgainstJob: (app, job, filters, parsedJob) =>
+          calculateRuleBasedScore(app, job, filters, parsedJob).matchScore || 0,
+      }),
+    [personGroups, selectedJob, evaluationFilters, personSelectedAppMap]
+  );
+
   // Set the first candidate as active by default if not set
   useEffect(() => {
     if (filteredCandidates.length > 0 && !activeCandidateId) {
-      setActiveCandidateId(filteredCandidates[0].id);
+      const firstItem = appliedToJob[0] || otherApplicants[0];
+      setActiveCandidateId(firstItem ? firstItem.effectiveApp.id : filteredCandidates[0].id);
     }
-  }, [filteredCandidates, activeCandidateId]);
+  }, [filteredCandidates, activeCandidateId, appliedToJob, otherApplicants]);
 
   const activeCandidate = useMemo(() => {
     return (candidates as CandidateComparisonData[]).find(c => c.id === activeCandidateId) || filteredCandidates[0] || null;
   }, [candidates, activeCandidateId, filteredCandidates]);
+
+  const activeCandidateAppliedToSelectedJob = useMemo(() => {
+    return Boolean(activeCandidate && selectedJob && doesApplicationMatchJob(activeCandidate, selectedJob));
+  }, [activeCandidate, selectedJob]);
+
+  const activeCandidateEvaluated = useMemo(() => {
+    if (!activeCandidate) return null;
+    if (selectedJob && !activeCandidateAppliedToSelectedJob) {
+      return calculateRuleBasedScore(activeCandidate, selectedJob, evaluationFilters);
+    }
+    return calculateRuleBasedScore(activeCandidate, undefined, evaluationFilters);
+  }, [activeCandidate, selectedJob, activeCandidateAppliedToSelectedJob, evaluationFilters]);
 
   const isSamePerson = (c1: CandidateComparisonData, c2: CandidateComparisonData): boolean => {
     if (c1.id === c2.id) return true;
@@ -413,13 +460,13 @@ const CompareCandidates: React.FC = () => {
     setSelectedCandidateIds(prev => [...prev, id]);
   };
 
-  const togglePersonSelection = (person: PersonGroup) => {
+  const togglePersonSelection = (person: PersonGroup, preferredAppId?: number) => {
     const isSel = person.applications.some(a => selectedCandidateIds.includes(a.id));
     if (isSel) {
       const personAppIds = new Set(person.applications.map(a => a.id));
       setSelectedCandidateIds(prev => prev.filter(id => !personAppIds.has(id)));
     } else {
-      const chosenId = personSelectedAppMap[person.personKey] || person.applications[0].id;
+      const chosenId = preferredAppId || personSelectedAppMap[person.personKey] || person.applications[0].id;
       const personAppIds = new Set(person.applications.map(a => a.id));
       setSelectedCandidateIds(prev => [...prev.filter(id => !personAppIds.has(id)), chosenId]);
     }
@@ -450,6 +497,17 @@ const CompareCandidates: React.FC = () => {
           education_score: sc.education_score,
           certificationsScore: sc.certifications_score,
           completeness_score: sc.completeness_score,
+          skills_status: sc.skills_status || localApp?.skills_status,
+          experience_status: sc.experience_status || localApp?.experience_status,
+          education_status: sc.education_status || localApp?.education_status,
+          certifications_status: sc.certifications_status || localApp?.certifications_status,
+          skills_reason: sc.skills_reason || localApp?.skills_reason,
+          experience_reason: sc.experience_reason || localApp?.experience_reason,
+          education_reason: sc.education_reason || localApp?.education_reason,
+          certifications_reason: sc.certifications_reason || localApp?.certifications_reason,
+          required_degree: sc.required_degree || localApp?.required_degree,
+          candidate_degree: sc.candidate_degree || localApp?.candidate_degree,
+          required_certifications: sc.required_certifications || localApp?.required_certifications,
           matched_skills: sc.matched_skills || [],
           missing_skills: sc.missing_skills || [],
           transferable_skills: sc.transferable_skills || [],
@@ -457,8 +515,8 @@ const CompareCandidates: React.FC = () => {
           strengths: sc.strengths,
           weaknesses: sc.weaknesses,
           status: sc.status,
-          highest_educational_attainment: sc.degree || localApp?.highest_educational_attainment,
-          candidate_certifications: sc.certifications || localApp?.candidate_certifications,
+          highest_educational_attainment: sc.degree || sc.candidate_degree || localApp?.highest_educational_attainment,
+          candidate_certifications: !isNoValueRequirement(sc.certifications) ? sc.certifications : (!isNoValueRequirement(localApp?.candidate_certifications) ? localApp?.candidate_certifications : undefined),
           relevance: sc.relevance || localApp?.relevance,
         };
       });
@@ -466,10 +524,10 @@ const CompareCandidates: React.FC = () => {
     }
 
     const selected = (candidates as CandidateComparisonData[]).filter(c => selectedCandidateIds.includes(c.id));
-    const selectedJob = (jobs as Job[]).find(j => j.id === parseInt(selectedRefJobId || selectedJobId) || String(j.id) === (selectedRefJobId || selectedJobId));
+    const fallbackRefJob = (jobs as Job[]).find(j => j.id === parseInt(selectedRefJobId || selectedJobId) || String(j.id) === (selectedRefJobId || selectedJobId));
 
     // Calculate score to reflect filter preferences even if job isn't selected
-    const scoredCandidates = selected.map(c => calculateRuleBasedScore(c, selectedJob, evaluationFilters));
+    const scoredCandidates = selected.map(c => calculateRuleBasedScore(c, fallbackRefJob, evaluationFilters));
 
     // Sort by match score descending to automatically rank them
     return [...scoredCandidates].sort((a, b) => (b.matchScore || 0) - (a.matchScore || 0));
@@ -1220,13 +1278,25 @@ const CompareCandidates: React.FC = () => {
                           <span>Experience</span>
                         </div>
                       </td>
-                      {selectedCandidatesData.map((candidate, idx) => (
-                        <td key={candidate.id} className={`p-3 sm:p-5 text-[11px] sm:text-xs text-slate-700 leading-relaxed ${idx === 0 ? 'bg-rose-50/15' : ''}`}>
-                          <span className="font-bold text-slate-900 block">{candidate.company || "Company Unspecified"}</span>
-                          <span className="text-[10px] uppercase font-bold text-slate-400 block mb-0.5">{candidate.relevance || "Role unspecified"}</span>
-                          <p className="line-clamp-3 text-slate-500 text-[10px] sm:text-[11px]">{candidate.experience_reason || "No details provided"}</p>
-                        </td>
-                      ))}
+                      {selectedCandidatesData.map((candidate, idx) => {
+                        const expStatus = resolveCriterionStatus({
+                          explicitStatus: candidate.experience_status,
+                          reason: candidate.experience_reason,
+                          score: candidate.experienceScore ?? 0,
+                        });
+                        return (
+                          <td key={candidate.id} className={`p-3 sm:p-5 text-[11px] sm:text-xs text-slate-700 leading-relaxed ${idx === 0 ? 'bg-rose-50/15' : ''}`}>
+                            <div className="flex items-center justify-between gap-2 mb-1">
+                              <span className="font-bold text-slate-900">{!isNoValueRequirement(candidate.company) ? candidate.company : "Company Unspecified"}</span>
+                              <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold border shrink-0 ${getCriterionStatusBadgeStyle(expStatus).badgeClass}`}>
+                                {expStatus}
+                              </span>
+                            </div>
+                            <span className="text-[10px] uppercase font-bold text-slate-400 block mb-0.5">{!isNoValueRequirement(candidate.relevance) ? candidate.relevance : "Role unspecified"}</span>
+                            <p className="line-clamp-3 text-slate-500 text-[10px] sm:text-[11px]">{candidate.experience_reason || "No details provided"}</p>
+                          </td>
+                        );
+                      })}
                     </tr>
 
                     {/* Row 8: Certifications */}
@@ -1237,12 +1307,26 @@ const CompareCandidates: React.FC = () => {
                           <span>Certifications</span>
                         </div>
                       </td>
-                      {selectedCandidatesData.map((candidate, idx) => (
-                        <td key={candidate.id} className={`p-3 sm:p-5 text-[11px] sm:text-xs text-slate-700 ${idx === 0 ? 'bg-rose-50/15' : ''}`}>
-                          <p className="font-bold text-slate-900">{candidate.candidate_certifications || candidate.certifications || "None specified"}</p>
-                          <p className="text-[10px] text-slate-400 mt-0.5 italic">{candidate.certifications_reason}</p>
-                        </td>
-                      ))}
+                      {selectedCandidatesData.map((candidate, idx) => {
+                        const rawCert = candidate.candidate_certifications || candidate.certifications;
+                        const displayCert = !isNoValueRequirement(rawCert) ? rawCert : "None provided";
+                        const certStatus = resolveCriterionStatus({
+                          explicitStatus: candidate.certifications_status,
+                          reason: candidate.certifications_reason,
+                          score: candidate.certificationsScore ?? candidate.certifications_score ?? 0,
+                        });
+                        return (
+                          <td key={candidate.id} className={`p-3 sm:p-5 text-[11px] sm:text-xs text-slate-700 ${idx === 0 ? 'bg-rose-50/15' : ''}`}>
+                            <div className="flex items-center justify-between gap-2 mb-1">
+                              <p className="font-bold text-slate-900">{displayCert}</p>
+                              <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold border shrink-0 ${getCriterionStatusBadgeStyle(certStatus).badgeClass}`}>
+                                {certStatus}
+                              </span>
+                            </div>
+                            <p className="text-[10px] text-slate-500 mt-0.5">{candidate.certifications_reason}</p>
+                          </td>
+                        );
+                      })}
                     </tr>
 
                     {/* Row 9: Contact Details */}
@@ -1559,8 +1643,8 @@ const CompareCandidates: React.FC = () => {
                       <div>
                         <p className="text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1">Experience</p>
                         <div className="bg-slate-50/70 border border-slate-100 rounded-xl p-2.5 text-xs text-slate-700">
-                          <p className="font-bold text-slate-900">{candidate.company || "Company Unspecified"}</p>
-                          <p className="text-[10px] uppercase font-bold text-slate-400">{candidate.relevance || "Role unspecified"}</p>
+                          <p className="font-bold text-slate-900">{!isNoValueRequirement(candidate.company) ? candidate.company : "Company Unspecified"}</p>
+                          <p className="text-[10px] uppercase font-bold text-slate-400">{!isNoValueRequirement(candidate.relevance) ? candidate.relevance : "Role unspecified"}</p>
                           {candidate.experience_reason && (
                             <p className="text-[11px] text-slate-500 mt-1 line-clamp-2 leading-relaxed">{candidate.experience_reason}</p>
                           )}
@@ -1571,9 +1655,13 @@ const CompareCandidates: React.FC = () => {
                       <div>
                         <p className="text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1">Certifications</p>
                         <div className="bg-slate-50/70 border border-slate-100 rounded-xl p-2.5 text-xs text-slate-700">
-                          <p className="font-bold text-slate-900">{candidate.candidate_certifications || candidate.certifications || "None specified"}</p>
+                          <p className="font-bold text-slate-900">
+                            {!isNoValueRequirement(candidate.candidate_certifications || candidate.certifications)
+                              ? (candidate.candidate_certifications || candidate.certifications)
+                              : "None provided"}
+                          </p>
                           {candidate.certifications_reason && (
-                            <p className="text-[10px] text-slate-400 mt-0.5 italic">{candidate.certifications_reason}</p>
+                            <p className="text-[10px] text-slate-500 mt-0.5">{candidate.certifications_reason}</p>
                           )}
                         </div>
                       </div>
@@ -1615,6 +1703,120 @@ const CompareCandidates: React.FC = () => {
             Comparing {selectedCandidatesData.length} selected candidates
           </p>
         </div>
+      </div>
+    );
+  };
+
+  const renderPersonRow = (item: RankedPersonItem<CandidateComparisonData, PersonGroup>) => {
+    const { person, effectiveApp, appliedToSelectedJob, displayScore } = item;
+    const isSelected = person.applications.some(a => selectedCandidateIds.includes(a.id));
+    const isActive = person.applications.some(a => activeCandidateId === a.id);
+    const hasMultiple = person.applications.length > 1;
+
+    return (
+      <div
+        key={person.personKey}
+        onClick={() => {
+          setActiveCandidateId(effectiveApp.id);
+          if (window.innerWidth < 1024) setMobileTab('profile');
+        }}
+        className={`p-3 rounded-xl border transition-all duration-200 cursor-pointer flex flex-col gap-2 relative group ${isActive
+          ? 'bg-rose-50/30 border-[#D60041]/30 shadow-2xs'
+          : 'bg-white border-transparent hover:bg-slate-50'
+          }`}
+      >
+        <div className="flex items-center gap-2.5 sm:gap-3">
+          {/* Checkbox for Selection */}
+          <div
+            className="shrink-0 cursor-pointer"
+            onClick={(e) => {
+              e.stopPropagation();
+              togglePersonSelection(person, effectiveApp.id);
+            }}
+          >
+            <div className={`w-5 h-5 sm:w-6 sm:h-6 rounded-lg border-2 flex items-center justify-center transition-all ${isSelected
+              ? 'bg-[#D60041] border-[#D60041] shadow-xs'
+              : 'border-slate-300 bg-white group-hover:border-[#D60041]'
+              }`}>
+              {isSelected && <Check className="w-3 h-3 text-white stroke-[3.5px]" />}
+            </div>
+          </div>
+
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <h4 className="text-xs sm:text-sm font-bold text-slate-900 truncate tracking-tight">{person.name}</h4>
+              {appliedToSelectedJob && (
+                <span className="px-1.5 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 text-[9px] font-black uppercase tracking-wider shrink-0">
+                  Applied
+                </span>
+              )}
+              {hasMultiple && (
+                <span className="text-[9px] font-bold px-1.5 py-0.2 rounded-md bg-blue-50 text-blue-700 border border-blue-200">
+                  {person.applications.length} applications
+                </span>
+              )}
+            </div>
+
+            {!hasMultiple ? (
+              <p className="text-[11px] text-slate-500 font-semibold truncate mt-0.5">
+                {effectiveApp.applied_job_title || effectiveApp.preferredJob}
+              </p>
+            ) : null}
+
+            {effectiveApp.skills && effectiveApp.skills.length > 0 && (
+              <div className="flex gap-1 overflow-hidden mt-1">
+                {effectiveApp.skills.slice(0, 3).map((skill, idx) => (
+                  <span key={idx} className="px-1.5 py-0.2 bg-slate-50 text-slate-500 border border-slate-100 rounded text-[9px] font-bold truncate">
+                    {skill}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="text-right shrink-0">
+            <span className={`text-xs font-black px-2 py-0.5 rounded-lg ${displayScore >= 85
+              ? 'bg-emerald-50 text-emerald-700 border border-emerald-100'
+              : displayScore >= 70
+                ? 'bg-amber-50 text-amber-700 border border-amber-100'
+                : displayScore > 0
+                  ? 'bg-slate-50 text-slate-600 border border-slate-100'
+                  : 'bg-slate-100 text-slate-400 border border-slate-200'
+              }`}>
+              {displayScore}%
+            </span>
+          </div>
+
+          {isActive && (
+            <div className="absolute right-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-[#D60041] rounded-l-full" />
+          )}
+        </div>
+
+        {/* Position selector when person applied for multiple roles */}
+        {hasMultiple && (
+          <div className="pl-8 pt-1 flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+            <span className="text-[10px] font-bold text-slate-400 whitespace-nowrap">Compare for:</span>
+            <select
+              value={effectiveApp.id}
+              onChange={(e) => {
+                const newId = parseInt(e.target.value, 10);
+                setPersonSelectedAppMap(prev => ({ ...prev, [person.personKey]: newId }));
+                if (isSelected) {
+                  const personAppIds = new Set(person.applications.map(a => a.id));
+                  setSelectedCandidateIds(prev => [...prev.filter(id => !personAppIds.has(id)), newId]);
+                }
+                setActiveCandidateId(newId);
+              }}
+              className="w-full text-[11px] font-semibold bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg px-2 py-0.5 text-slate-800 cursor-pointer focus:outline-none focus:ring-1 focus:ring-rose-500/30 truncate"
+            >
+              {person.applications.map((app) => (
+                <option key={app.id} value={app.id}>
+                  {app.preferredJob || app.applied_job_title || app.job_title || 'Position'} (Application #{app.id})
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
       </div>
     );
   };
@@ -1709,17 +1911,29 @@ const CompareCandidates: React.FC = () => {
           <div className="p-3.5 sm:p-4 border-b border-slate-100 bg-slate-50/50 shrink-0 space-y-3">
             {/* Job Profile Filter */}
             <div>
-              <label className="text-[10px] sm:text-xs font-black uppercase tracking-wider text-slate-500 mb-1.5 block">
-                Compare Against Job Profile
-              </label>
+              <div className="flex items-center justify-between gap-2 mb-1.5">
+                <label htmlFor="compare-against-job-select" className="text-[10px] sm:text-xs font-black uppercase tracking-wider text-slate-500 block">
+                  Compare Against Job Profile
+                </label>
+                {selectedJobId && (
+                  <button
+                    type="button"
+                    onClick={() => handleSelectedJobChange("")}
+                    className="text-[10px] font-bold text-[#D60041] hover:underline cursor-pointer"
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
               <select
+                id="compare-against-job-select"
                 value={selectedJobId}
-                onChange={(e) => setSelectedJobId(e.target.value)}
+                onChange={(e) => handleSelectedJobChange(e.target.value)}
                 className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-rose-500/20 focus:border-[#D60041] transition-all font-semibold text-xs sm:text-sm text-slate-800 cursor-pointer"
               >
                 <option value="">-- Use Original AI Match Scores --</option>
                 {(jobs as Job[]).map(job => (
-                  <option key={job.id} value={job.id}>{job.title}</option>
+                  <option key={job.id} value={job.id}>{job.title || job.job_title}</option>
                 ))}
               </select>
             </div>
@@ -1791,7 +2005,7 @@ const CompareCandidates: React.FC = () => {
           </div>
 
           {/* Scrollable Candidate Items List */}
-          <div className="flex-1 overflow-y-auto divide-y divide-slate-100 p-2 space-y-1 custom-scrollbar">
+          <div className="flex-1 overflow-y-auto p-2 space-y-1 custom-scrollbar">
             {isLoading ? (
               <div className="flex flex-col items-center justify-center py-16">
                 <div className="w-8 h-8 border-3 border-rose-100 border-t-[#D60041] rounded-full animate-spin mb-2"></div>
@@ -1805,120 +2019,44 @@ const CompareCandidates: React.FC = () => {
                 <h4 className="text-xs sm:text-sm font-bold text-slate-800">No candidates found</h4>
                 <p className="text-[11px] text-slate-400 mt-0.5">Try searching another name or skill.</p>
               </div>
-            ) : (
-              personGroups.map(person => {
-                const chosenAppId = personSelectedAppMap[person.personKey] || person.applications[0].id;
-                const chosenCandidate = person.applications.find(a => a.id === chosenAppId) || person.applications[0];
-                const isSelected = person.applications.some(a => selectedCandidateIds.includes(a.id));
-                const isActive = person.applications.some(a => activeCandidateId === a.id);
-                const hasMultiple = person.applications.length > 1;
+            ) : selectedJob ? (
+              <>
+                <div className="px-2.5 py-1.5 bg-emerald-50/70 border border-emerald-100 rounded-xl flex items-center justify-between">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-emerald-800">
+                    Applied to this job ({appliedToJob.length})
+                  </span>
+                </div>
 
-                return (
-                  <div
-                    key={person.personKey}
-                    onClick={() => {
-                      setActiveCandidateId(chosenAppId);
-                      if (window.innerWidth < 1024) setMobileTab('profile');
-                    }}
-                    className={`p-3 rounded-xl border transition-all duration-200 cursor-pointer flex flex-col gap-2 relative group ${isActive
-                      ? 'bg-rose-50/30 border-[#D60041]/30 shadow-2xs'
-                      : 'bg-white border-transparent hover:bg-slate-50'
-                      }`}
-                  >
-                    <div className="flex items-center gap-2.5 sm:gap-3">
-                      {/* Checkbox for Selection */}
-                      <div
-                        className="shrink-0 cursor-pointer"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          togglePersonSelection(person);
-                        }}
-                      >
-                        <div className={`w-5 h-5 sm:w-6 sm:h-6 rounded-lg border-2 flex items-center justify-center transition-all ${isSelected
-                          ? 'bg-[#D60041] border-[#D60041] shadow-xs'
-                          : 'border-slate-300 bg-white group-hover:border-[#D60041]'
-                          }`}>
-                          {isSelected && <Check className="w-3 h-3 text-white stroke-[3.5px]" />}
-                        </div>
-                      </div>
-
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <h4 className="text-xs sm:text-sm font-bold text-slate-900 truncate tracking-tight">{person.name}</h4>
-                          {hasMultiple && (
-                            <span className="text-[9px] font-bold px-1.5 py-0.2 rounded-md bg-blue-50 text-blue-700 border border-blue-200">
-                              {person.applications.length} applications
-                            </span>
-                          )}
-                        </div>
-
-                        {!hasMultiple ? (
-                          <p className="text-[11px] text-slate-500 font-semibold truncate mt-0.5">{chosenCandidate.preferredJob}</p>
-                        ) : null}
-
-                        {chosenCandidate.skills && chosenCandidate.skills.length > 0 && (
-                          <div className="flex gap-1 overflow-hidden mt-1">
-                            {chosenCandidate.skills.slice(0, 3).map((skill, idx) => (
-                              <span key={idx} className="px-1.5 py-0.2 bg-slate-50 text-slate-500 border border-slate-100 rounded text-[9px] font-bold truncate">
-                                {skill}
-                              </span>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-
-                      {(() => {
-                        const candJob = (jobs as Job[]).find(j => j.id === parseInt(selectedRefJobId || selectedJobId) || String(j.id) === (selectedRefJobId || selectedJobId));
-                        const computedScore = calculateRuleBasedScore(chosenCandidate, candJob, evaluationFilters).matchScore || 0;
-                        return (
-                          <div className="text-right shrink-0">
-                            <span className={`text-xs font-black px-2 py-0.5 rounded-lg ${computedScore >= 85
-                              ? 'bg-emerald-50 text-emerald-700 border border-emerald-100'
-                              : computedScore >= 70
-                                ? 'bg-amber-50 text-amber-700 border border-amber-100'
-                                : computedScore > 0
-                                  ? 'bg-slate-50 text-slate-600 border border-slate-100'
-                                  : 'bg-slate-100 text-slate-400 border border-slate-200'
-                              }`}>
-                              {computedScore}%
-                            </span>
-                          </div>
-                        );
-                      })()}
-
-                      {isActive && (
-                        <div className="absolute right-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-[#D60041] rounded-l-full" />
-                      )}
-                    </div>
-
-                    {/* Position selector when person applied for multiple roles */}
-                    {hasMultiple && (
-                      <div className="pl-8 pt-1 flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
-                        <span className="text-[10px] font-bold text-slate-400 whitespace-nowrap">Compare for:</span>
-                        <select
-                          value={chosenAppId}
-                          onChange={(e) => {
-                            const newId = parseInt(e.target.value);
-                            setPersonSelectedAppMap(prev => ({ ...prev, [person.personKey]: newId }));
-                            if (isSelected) {
-                              const personAppIds = new Set(person.applications.map(a => a.id));
-                              setSelectedCandidateIds(prev => [...prev.filter(id => !personAppIds.has(id)), newId]);
-                            }
-                            setActiveCandidateId(newId);
-                          }}
-                          className="w-full text-[11px] font-semibold bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg px-2 py-0.5 text-slate-800 cursor-pointer focus:outline-none focus:ring-1 focus:ring-rose-500/30 truncate"
-                        >
-                          {person.applications.map((app) => (
-                            <option key={app.id} value={app.id}>
-                              {app.preferredJob || app.job_title || 'Position'} (Application #{app.id})
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                    )}
+                {appliedToJob.length > 0 ? (
+                  <div className="divide-y divide-slate-100 space-y-1">
+                    {appliedToJob.map(renderPersonRow)}
                   </div>
-                );
-              })
+                ) : (
+                  <p className="px-3 py-3 text-[11px] font-medium text-slate-400 italic">
+                    No applicants applied to this job yet.
+                  </p>
+                )}
+
+                {otherApplicants.length > 0 && (
+                  <>
+                    <div className="pt-2 pb-1">
+                      <div className="border-t border-slate-200 mb-2" />
+                      <div className="px-2.5 py-1.5 bg-slate-100/80 border border-slate-200/70 rounded-xl flex items-center justify-between">
+                        <span className="text-[10px] font-black uppercase tracking-wider text-slate-600">
+                          Other applicants ({otherApplicants.length})
+                        </span>
+                      </div>
+                    </div>
+                    <div className="divide-y divide-slate-100 space-y-1">
+                      {otherApplicants.map(renderPersonRow)}
+                    </div>
+                  </>
+                )}
+              </>
+            ) : (
+              <div className="divide-y divide-slate-100 space-y-1">
+                {otherApplicants.map(renderPersonRow)}
+              </div>
             )}
           </div>
         </div>
@@ -1957,10 +2095,17 @@ const CompareCandidates: React.FC = () => {
                     />
                   </div>
                   <div className="min-w-0">
-                    <h2 className="text-base sm:text-2xl font-black text-slate-900 tracking-tight leading-tight truncate">
-                      {activeCandidate.name}
-                    </h2>
-                    <p className="text-xs sm:text-sm text-slate-500 font-semibold mt-0.5 truncate">{activeCandidate.preferredJob}</p>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h2 className="text-base sm:text-2xl font-black text-slate-900 tracking-tight leading-tight truncate">
+                        {activeCandidate.name}
+                      </h2>
+                      {activeCandidateAppliedToSelectedJob && (
+                        <span className="px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-black uppercase tracking-wider shrink-0">
+                          Applied
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs sm:text-sm text-slate-500 font-semibold mt-0.5 truncate">{activeCandidate.applied_job_title || activeCandidate.preferredJob}</p>
                     <div className="flex flex-wrap items-center gap-2 mt-1 sm:mt-1.5">
                       <div className="flex items-center gap-1 text-[10px] sm:text-[11px] text-slate-400 font-bold uppercase truncate">
                         <MapPin className="w-3.5 h-3.5 shrink-0" />
@@ -1980,8 +2125,7 @@ const CompareCandidates: React.FC = () => {
                   <div className="text-left sm:text-right">
                     <p className="text-[9px] sm:text-[10px] font-black text-slate-400 uppercase tracking-wider">Suitability</p>
                     {(() => {
-                      const candJob = (jobs as Job[]).find(j => j.id === parseInt(selectedJobId) || String(j.id) === selectedJobId);
-                      const activeScore = calculateRuleBasedScore(activeCandidate, candJob, evaluationFilters).matchScore || 0;
+                      const activeScore = activeCandidateEvaluated?.matchScore || 0;
                       return (
                         <p className={`text-xl sm:text-2xl font-black leading-none mt-0.5 ${activeScore > 0 ? 'text-[#D60041]' : 'text-slate-400'}`}>
                           {activeScore}%
@@ -2042,7 +2186,7 @@ const CompareCandidates: React.FC = () => {
                         <Zap className={`w-3.5 h-3.5 sm:w-4 sm:h-4 ${evaluationFilters.skills ? 'text-blue-500' : 'text-slate-400'}`} />
                       </div>
                       <p className={`text-base sm:text-xl font-black ${evaluationFilters.skills ? 'text-blue-700' : 'text-slate-500'}`}>
-                        {activeCandidate.skillsScore || 0}%
+                        {activeCandidateEvaluated?.skillsScore || 0}%
                       </p>
                       <p className="text-[9px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-wider mt-0.5">Skills</p>
                     </div>
@@ -2053,7 +2197,7 @@ const CompareCandidates: React.FC = () => {
                         <Briefcase className={`w-3.5 h-3.5 sm:w-4 sm:h-4 ${evaluationFilters.experience ? 'text-purple-500' : 'text-slate-400'}`} />
                       </div>
                       <p className={`text-base sm:text-xl font-black ${evaluationFilters.experience ? 'text-purple-700' : 'text-slate-500'}`}>
-                        {activeCandidate.experienceScore || 0}%
+                        {activeCandidateEvaluated?.experienceScore || 0}%
                       </p>
                       <p className="text-[9px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-wider mt-0.5">Experience</p>
                     </div>
@@ -2064,7 +2208,7 @@ const CompareCandidates: React.FC = () => {
                         <Award className={`w-3.5 h-3.5 sm:w-4 sm:h-4 ${evaluationFilters.certifications ? 'text-amber-500' : 'text-slate-400'}`} />
                       </div>
                       <p className={`text-base sm:text-xl font-black ${evaluationFilters.certifications ? 'text-amber-700' : 'text-slate-500'}`}>
-                        {activeCandidate.certificationsScore || 0}%
+                        {activeCandidateEvaluated?.certificationsScore || 0}%
                       </p>
                       <p className="text-[9px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-wider mt-0.5">Certs</p>
                     </div>

@@ -15,6 +15,11 @@ class JobMatchResult(BaseModel):
     certifications_score: Optional[float] = None
     completeness_score: Optional[float] = None
     location_score: Optional[float] = None
+    skills_status: Optional[str] = None
+    experience_status: Optional[str] = None
+    education_status: Optional[str] = None
+    certifications_status: Optional[str] = None
+    criteria_evaluations: Optional[dict[str, Any]] = None
     matched_skills: list[str]
     missing_skills: list[str]
     skills_reason: Optional[str] = None

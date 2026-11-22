@@ -20,6 +20,18 @@ def _sanitize_for_applicant(match: dict) -> dict:
     weights = cleaned.pop("applied_weights", None) or {}
     cleaned.pop("weights_source", None)
 
+    if isinstance(cleaned.get("criteria_evaluations"), dict):
+        sanitized_evals = {}
+        for k, v in cleaned["criteria_evaluations"].items():
+            if isinstance(v, dict):
+                sanitized_evals[k] = {
+                    "status": v.get("status"),
+                    "has_requirement": v.get("has_requirement"),
+                    "needs_manual_review": v.get("needs_manual_review", False),
+                    "reason": v.get("reason"),
+                }
+        cleaned["criteria_evaluations"] = sanitized_evals
+
     focus_parts = []
     if weights.get("certifications", 10) >= 20:
         focus_parts.append("certifications and trainings")

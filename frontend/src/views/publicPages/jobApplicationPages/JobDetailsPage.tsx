@@ -25,6 +25,7 @@ import {
 import Header from '../../../components/layout/Header';
 import Footer from '../../../components/layout/Footer';
 import { Job } from '../../../types';
+import { isNoValueRequirement } from '../../../utils/criterionStatus';
 
 const STATIC_JOBS = [
   { id: 1, title: "Production Supervisor", department: "Manufacturing" },
@@ -363,7 +364,7 @@ const JobDetailsPage: React.FC = () => {
                     <span className="text-xs font-black uppercase tracking-widest">Required Education</span>
                   </div>
                   <p className="text-sm text-slate-700 font-bold leading-relaxed bg-slate-50 p-4 rounded-xl border border-slate-100">
-                    {job.education_requirements || "Bachelor's degree or equivalent experience"}
+                    {isNoValueRequirement(job.education_requirements) ? 'Not required' : job.education_requirements}
                   </p>
                 </div>
 
@@ -373,21 +374,21 @@ const JobDetailsPage: React.FC = () => {
                     <span className="text-xs font-black uppercase tracking-widest">Required Experience</span>
                   </div>
                   <p className="text-sm text-slate-700 font-bold leading-relaxed bg-slate-50 p-4 rounded-xl border border-slate-100">
-                    {job.experience_requirements || "Relevant professional experience in a similar role."}
+                    {isNoValueRequirement(job.experience_requirements) ? 'Not required' : job.experience_requirements}
                   </p>
                 </div>
 
-                {(job.certifications_requirements || job.preferred_qualifications) && (
-                  <div className="bg-white p-6 rounded-[24px] border border-slate-100 shadow-sm">
-                    <div className="flex items-center gap-3 mb-4 text-purple-600">
-                      <div className="p-2 bg-purple-50 rounded-lg"><Award size={20} /></div>
-                      <span className="text-xs font-black uppercase tracking-widest">Certifications / Preferred</span>
-                    </div>
-                    <p className="text-sm text-slate-700 font-bold leading-relaxed bg-slate-50 p-4 rounded-xl border border-slate-100 whitespace-pre-line">
-                      {job.certifications_requirements || "No specific certifications required."}
-                    </p>
+                <div className="bg-white p-6 rounded-[24px] border border-slate-100 shadow-sm">
+                  <div className="flex items-center gap-3 mb-4 text-purple-600">
+                    <div className="p-2 bg-purple-50 rounded-lg"><Award size={20} /></div>
+                    <span className="text-xs font-black uppercase tracking-widest">Certifications / Preferred</span>
                   </div>
-                )}
+                  <p className="text-sm text-slate-700 font-bold leading-relaxed bg-slate-50 p-4 rounded-xl border border-slate-100 whitespace-pre-line">
+                    {isNoValueRequirement(job.certifications_requirements)
+                      ? 'Not required'
+                      : job.certifications_requirements}
+                  </p>
+                </div>
 
                 <div className="bg-slate-900 text-white p-6 sm:p-8 rounded-2xl sm:rounded-[40px] shadow-xl overflow-hidden relative mt-6 sm:mt-8">
                   <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full -mr-16 -mt-16 pointer-events-none"></div>

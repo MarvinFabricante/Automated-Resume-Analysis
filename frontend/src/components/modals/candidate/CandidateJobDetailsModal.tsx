@@ -17,6 +17,7 @@ import {
   Coins
 } from 'lucide-react';
 import { Job } from '../../../types';
+import { isNoValueRequirement } from '../../../utils/criterionStatus';
 
 interface DetailCardProps {
   icon: React.ComponentType<{ size?: number; className?: string }>;
@@ -321,7 +322,7 @@ const CandidateJobDetailsModal: React.FC<CandidateJobDetailsModalProps> = ({
                 <h4 className="text-xs font-black uppercase tracking-wider">Experience Level</h4>
               </div>
               <p className="text-sm sm:text-base font-bold text-slate-900">
-                {job.experience_requirements || 'Open to all experience levels (Entry to Experienced)'}
+                {isNoValueRequirement(job.experience_requirements) ? 'Not required' : job.experience_requirements}
               </p>
             </div>
 
@@ -332,14 +333,16 @@ const CandidateJobDetailsModal: React.FC<CandidateJobDetailsModalProps> = ({
                 <h4 className="text-xs font-black uppercase tracking-wider">Education & Credentials</h4>
               </div>
               <p className="text-sm sm:text-base font-bold text-slate-900">
-                {job.education_requirements || 'Degree or vocational qualification in related discipline'}
+                {isNoValueRequirement(job.education_requirements) ? 'Not required' : job.education_requirements}
               </p>
-              {job.certifications_requirements && (
-                <div className="pt-2 border-t border-blue-100 flex items-start gap-2 text-xs text-blue-700 font-semibold">
-                  <Award size={14} className="shrink-0 mt-0.5" />
-                  <span>{job.certifications_requirements}</span>
-                </div>
-              )}
+              <div className="pt-2 border-t border-blue-100 flex items-start gap-2 text-xs text-blue-700 font-semibold">
+                <Award size={14} className="shrink-0 mt-0.5" />
+                <span>
+                  {isNoValueRequirement(job.certifications_requirements)
+                    ? 'Certifications: Not required'
+                    : job.certifications_requirements}
+                </span>
+              </div>
             </div>
           </div>
 

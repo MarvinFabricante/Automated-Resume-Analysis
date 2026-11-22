@@ -541,7 +541,8 @@ def _is_invalid_institution(name: str) -> bool:
     if alpha_count < 3 or (alpha_count / max(1, len(clean))) < 0.35:
         return True
     lower = clean.lower()
-    if lower in {"not specified", "none", "n/a", "na", "not applicable"}:
+    from app.services.requirement_rules import is_no_value
+    if is_no_value(clean) or lower in {"not specified", "none", "n/a", "na", "not applicable"}:
         return True
     if clean.startswith(('•', '-', '*', '▪', '►', '✓')):
         return True

@@ -84,6 +84,9 @@ const SystemSettings: React.FC = () => {
   const [weights, setWeights] = useState<MatchingWeights>(DEFAULT_WEIGHTS);
   const [thresholds, setThresholds] = useState<MatchingThresholds>(DEFAULT_THRESHOLDS);
   const [maxActiveApps, setMaxActiveApps] = useState<number>(3);
+  const [savedMaxActiveApps, setSavedMaxActiveApps] = useState<number>(3);
+  const [maxActiveAppsInput, setMaxActiveAppsInput] = useState<string>('3');
+  const [maxActiveAppsError, setMaxActiveAppsError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [showRecalcConfirm, setShowRecalcConfirm] = useState<boolean>(false);
   const [recalcProgress, setRecalcProgress] = useState<{ percent: number; label: string } | null>(null);
@@ -93,7 +96,11 @@ const SystemSettings: React.FC = () => {
       try {
         const res = await api.get('/system-config/recruitment');
         if (res.data && res.data.max_active_applications !== undefined) {
-          setMaxActiveApps(res.data.max_active_applications);
+          const serverVal = Number(res.data.max_active_applications) || 3;
+          setMaxActiveApps(serverVal);
+          setSavedMaxActiveApps(serverVal);
+          setMaxActiveAppsInput(String(serverVal));
+          setMaxActiveAppsError(null);
         }
       } catch (err) {
         console.error("Failed to load recruitment config:", err);
@@ -154,14 +161,50 @@ const SystemSettings: React.FC = () => {
     toast.success("Weights automatically balanced to sum to 100%.");
   };
 
+  const validateMaxActiveApps = (rawValue: string): { valid: boolean; num: number; error: string | null } => {
+    const trimmed = rawValue.trim();
+    if (!trimmed) {
+      return { valid: false, num: maxActiveApps, error: 'Please enter a limit between 1 and 20.' };
+    }
+    if (!/^\d+$/.test(trimmed)) {
+      return { valid: false, num: maxActiveApps, error: 'Enter a whole number between 1 and 20.' };
+    }
+    const parsed = Number(trimmed);
+    if (parsed < 1 || parsed > 20) {
+      return { valid: false, num: parsed, error: 'Limit must be between 1 and 20 active applications.' };
+    }
+    return { valid: true, num: parsed, error: null };
+  };
+
+  const handleMaxActiveAppsChange = (rawValue: string) => {
+    setMaxActiveAppsInput(rawValue);
+    const check = validateMaxActiveApps(rawValue);
+    setMaxActiveAppsError(check.error);
+    if (check.valid) {
+      setMaxActiveApps(check.num);
+    }
+  };
+
+  const handleMaxActiveAppsSelect = (val: number) => {
+    const clamped = Math.max(1, Math.min(20, Math.round(val)));
+    setMaxActiveApps(clamped);
+    setMaxActiveAppsInput(String(clamped));
+    setMaxActiveAppsError(null);
+  };
+
   const handleResetDefaults = () => {
     setWeights(DEFAULT_WEIGHTS);
     setThresholds(DEFAULT_THRESHOLDS);
     setMaxActiveApps(3);
+    setMaxActiveAppsInput('3');
+    setMaxActiveAppsError(null);
     toast.success("Restored system settings to recommended defaults.");
   };
 
   const handleDiscard = () => {
+    setMaxActiveApps(savedMaxActiveApps);
+    setMaxActiveAppsInput(String(savedMaxActiveApps));
+    setMaxActiveAppsError(null);
     if (config) {
       if (config.weights) setWeights(config.weights);
       if (config.thresholds) setThresholds(config.thresholds);
@@ -173,11 +216,22 @@ const SystemSettings: React.FC = () => {
   };
 
   const handleSave = async () => {
+    const check = validateMaxActiveApps(maxActiveAppsInput);
+    if (!check.valid) {
+      setMaxActiveAppsError(check.error);
+      toast.error(check.error || 'Please fix the multi-application limit before saving.');
+      return;
+    }
+
     setIsSaving(true);
     try {
       await updateWeights(weights).unwrap();
       await updateThresholds(thresholds).unwrap();
-      await api.put('/system-config/recruitment', { max_active_applications: maxActiveApps });
+      await api.put('/system-config/recruitment', { max_active_applications: check.num });
+      setSavedMaxActiveApps(check.num);
+      setMaxActiveApps(check.num);
+      setMaxActiveAppsInput(String(check.num));
+      setMaxActiveAppsError(null);
       toast.success("System configuration and application limits saved successfully!");
       refetch();
     } catch (err: any) {
@@ -286,7 +340,7 @@ const SystemSettings: React.FC = () => {
       <div className="flex flex-1">
         <Sidebar />
         
-        <main className="flex-1 min-w-0 max-w-[1400px] mx-auto px-6 lg:px-10 py-10">
+        <main className="flex-1 min-w-0 max-w-[1400px] w-full mx-auto px-4 sm:px-6 lg:px-10 py-6 sm:py-10">
           
           {/* Header section */}
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
@@ -347,20 +401,20 @@ const SystemSettings: React.FC = () => {
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
                 
                 {/* Left Column: Algorithm Weights (7 cols) */}
-                <div className="lg:col-span-7 bg-white border border-gray-100 rounded-3xl p-6 lg:p-8 shadow-xs">
-                  <div className="flex items-center justify-between mb-6 pb-4 border-b border-gray-100">
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-8 h-8 rounded-xl bg-red-50 text-[#D10043] flex items-center justify-center">
+                <div className="lg:col-span-7 bg-white border border-gray-100 rounded-3xl p-5 sm:p-6 lg:p-8 shadow-xs">
+                  <div className="flex flex-wrap items-center justify-between gap-3 mb-6 pb-4 border-b border-gray-100">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className="w-8 h-8 rounded-xl bg-red-50 text-[#D10043] flex items-center justify-center shrink-0">
                         <Sliders size={18} />
                       </div>
-                      <div>
+                      <div className="min-w-0">
                         <h2 className="text-base font-bold text-gray-900">Base Algorithm Component Weights</h2>
                         <p className="text-xs text-gray-400">Relative contribution of each dimension to candidate composite scores</p>
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-2">
-                      <span className={`text-xs font-bold px-2.5 py-1 rounded-full border ${
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className={`text-xs font-bold px-2.5 py-1 rounded-full border whitespace-nowrap ${
                         isBalanced 
                           ? 'bg-emerald-50 text-emerald-700 border-emerald-200' 
                           : 'bg-amber-50 text-amber-700 border-amber-200'
@@ -444,12 +498,12 @@ const SystemSettings: React.FC = () => {
                 <div className="lg:col-span-5 space-y-6">
                   
                   {/* Thresholds Card */}
-                  <div className="bg-white border border-gray-100 rounded-3xl p-6 lg:p-8 shadow-xs">
+                  <div className="bg-white border border-gray-100 rounded-3xl p-5 sm:p-6 lg:p-8 shadow-xs">
                     <div className="flex items-center gap-2.5 mb-6 pb-4 border-b border-gray-100">
-                      <div className="w-8 h-8 rounded-xl bg-red-50 text-[#D10043] flex items-center justify-center">
+                      <div className="w-8 h-8 rounded-xl bg-red-50 text-[#D10043] flex items-center justify-center shrink-0">
                         <SlidersHorizontal size={18} />
                       </div>
-                      <div>
+                      <div className="min-w-0">
                         <h2 className="text-base font-bold text-gray-900">Algorithm Sensitivity & Limits</h2>
                         <p className="text-xs text-gray-400">Similarity cutoffs and qualification rules</p>
                       </div>
@@ -528,7 +582,7 @@ const SystemSettings: React.FC = () => {
                         <p className="text-[11px] text-gray-500 mb-3 leading-relaxed">
                           Maximum points awarded for cross-domain soft or transferable skills when candidate lacks direct technical alignment.
                         </p>
-                        <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-1.5 sm:gap-2">
                           {[0, 1, 2, 3, 4, 5].map(cap => (
                             <button
                               key={cap}
@@ -616,56 +670,126 @@ const SystemSettings: React.FC = () => {
 
                 </div>
 
-                {/* Recruitment Policy & Application Limit (REQ081 & REQ082) */}
-                <div className="bg-white border border-gray-100 rounded-3xl p-6 sm:p-7 shadow-xs">
-                  <div className="flex items-center justify-between pb-5 border-b border-gray-100">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-2xl bg-amber-50 text-amber-700 flex items-center justify-center shadow-xs">
-                        <Users size={20} />
-                      </div>
-                      <div>
-                        <h2 className="text-base font-extrabold text-gray-900 tracking-tight">Recruitment & Multi-Application Limits</h2>
-                        <p className="text-xs text-gray-500 mt-0.5">Configure applicant multi-application quotas and submission policies (REQ081 & REQ082).</p>
-                      </div>
-                    </div>
-                    <span className="px-3 py-1 bg-amber-50 text-amber-700 rounded-xl text-xs font-bold border border-amber-200">
-                      Multi-App Policy
-                    </span>
-                  </div>
+              </div>
 
-                  <div className="pt-6">
-                    <div className="max-w-md">
-                      <label className="block text-xs font-bold text-gray-700 mb-1">
-                        Maximum Active Applications per Applicant
-                      </label>
-                      <p className="text-[11px] text-gray-500 mb-3 leading-relaxed">
+              {/* Recruitment Policy & Application Limit (REQ081 & REQ082) */}
+              <div className="bg-white border border-gray-100 rounded-3xl p-5 sm:p-6 lg:p-8 shadow-xs">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-5 mb-6 border-b border-gray-100">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-10 h-10 rounded-2xl bg-amber-50 text-amber-700 flex items-center justify-center shadow-xs shrink-0">
+                      <Users size={20} />
+                    </div>
+                    <div className="min-w-0">
+                      <h2 className="text-base font-extrabold text-gray-900 tracking-tight">
+                        Recruitment & Multi-Application Limits
+                      </h2>
+                      <p className="text-xs text-gray-500 mt-0.5">
+                        Configure applicant multi-application quotas and submission policies (REQ081 & REQ082).
+                      </p>
+                    </div>
+                  </div>
+                  <span className="self-start sm:self-center shrink-0 whitespace-nowrap px-3 py-1 bg-amber-50 text-amber-700 rounded-xl text-xs font-bold border border-amber-200">
+                    Multi-App Policy
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-5 lg:gap-6 items-stretch">
+                  <div className="p-4 sm:p-5 rounded-2xl bg-gray-50/70 border border-gray-100 flex flex-col justify-between">
+                    <div>
+                      <div className="flex items-center justify-between gap-2 mb-1.5">
+                        <label htmlFor="max-active-apps" className="text-xs font-bold text-gray-900">
+                          Maximum Active Applications per Applicant
+                        </label>
+                        <span className="text-xs font-extrabold text-gray-800 bg-white px-2 py-0.5 rounded-md border border-gray-200 shrink-0">
+                          {maxActiveApps} max
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-gray-500 mb-4 leading-relaxed">
                         Enforces an active application ceiling across different job openings for a single applicant account (Default: 3). Prevents candidate overloading while allowing cross-department applications.
                       </p>
-                      <div className="flex items-center gap-3">
+                    </div>
+
+                    <div>
+                      <div className="flex flex-wrap items-center gap-3">
                         <input
+                          id="max-active-apps"
                           type="number"
+                          inputMode="numeric"
                           min={1}
                           max={20}
-                          value={maxActiveApps}
-                          onChange={(e) => setMaxActiveApps(Math.max(1, parseInt(e.target.value) || 1))}
-                          className="w-24 px-3 py-2 rounded-xl border border-gray-200 text-sm font-bold text-gray-800 focus:outline-none focus:ring-2 focus:ring-[#D10043]/20 focus:border-[#D10043]"
+                          step={1}
+                          value={maxActiveAppsInput}
+                          onChange={(e) => handleMaxActiveAppsChange(e.target.value)}
+                          aria-invalid={Boolean(maxActiveAppsError)}
+                          aria-describedby="max-active-apps-feedback"
+                          className={`w-24 shrink-0 px-3.5 py-2 bg-white rounded-xl border text-sm font-bold text-gray-900 focus:outline-none focus:ring-2 transition-colors ${
+                            maxActiveAppsError
+                              ? 'border-rose-400 focus:ring-rose-500/20 focus:border-rose-500'
+                              : 'border-gray-200 focus:ring-[#D10043]/20 focus:border-[#D10043]'
+                          }`}
                         />
-                        <span className="text-xs text-gray-500 font-medium">concurrent active applications allowed</span>
+                        <span className="text-xs text-gray-600 font-medium">
+                          concurrent active applications allowed
+                        </span>
                       </div>
+                      <p
+                        id="max-active-apps-feedback"
+                        aria-live="polite"
+                        className={`min-h-[20px] mt-2 text-[11px] leading-snug ${
+                          maxActiveAppsError ? 'font-semibold text-rose-600' : 'text-gray-400'
+                        }`}
+                      >
+                        {maxActiveAppsError || 'Allowed range: 1 to 20 (Default: 3)'}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="p-4 sm:p-5 rounded-2xl bg-gray-50/70 border border-gray-100 flex flex-col justify-between">
+                    <div>
+                      <div className="flex items-center justify-between gap-2 mb-1.5">
+                        <span className="text-xs font-bold text-gray-900">Quick Limit Presets</span>
+                        <span className="text-xs font-extrabold text-gray-800 bg-white px-2 py-0.5 rounded-md border border-gray-200 shrink-0">
+                          Default: 3
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-gray-500 mb-4 leading-relaxed">
+                        Pending/Submitted, Under Review, Shortlisted, and Scheduled applications count toward the active limit; Rejected, Withdrawn, and Hired applications are excluded.
+                      </p>
+                    </div>
+
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        {[1, 2, 3, 5, 10].map((preset) => (
+                          <button
+                            key={preset}
+                            type="button"
+                            onClick={() => handleMaxActiveAppsSelect(preset)}
+                            className={`flex-1 min-w-[40px] py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                              !maxActiveAppsError && maxActiveApps === preset
+                                ? 'bg-[#D10043] text-white shadow-xs'
+                                : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-100'
+                            }`}
+                          >
+                            {preset}
+                          </button>
+                        ))}
+                      </div>
+                      <p className="min-h-[20px] mt-2 text-[11px] text-gray-400 leading-snug">
+                        Applies to new submissions immediately after saving.
+                      </p>
                     </div>
                   </div>
                 </div>
-
               </div>
 
               {/* Email & SMS Notification Templates */}
-              <div className="bg-white border border-gray-100 rounded-3xl p-6 sm:p-8 shadow-xs">
-                <div className="flex items-center justify-between pb-5 mb-6 border-b border-gray-100">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-2xl bg-rose-50 text-[#D10043] flex items-center justify-center shadow-xs">
+              <div className="bg-white border border-gray-100 rounded-3xl p-5 sm:p-6 lg:p-8 shadow-xs">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-5 mb-6 border-b border-gray-100">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-10 h-10 rounded-2xl bg-rose-50 text-[#D10043] flex items-center justify-center shadow-xs shrink-0">
                       <MessageSquare size={20} />
                     </div>
-                    <div>
+                    <div className="min-w-0">
                       <h2 className="text-base font-extrabold text-gray-900 tracking-tight">
                         Email & SMS Notification Templates
                       </h2>
@@ -674,7 +798,7 @@ const SystemSettings: React.FC = () => {
                       </p>
                     </div>
                   </div>
-                  <span className="px-3 py-1 bg-rose-50 text-[#D10043] rounded-xl text-xs font-bold border border-rose-200">
+                  <span className="self-start sm:self-center shrink-0 whitespace-nowrap px-3 py-1 bg-rose-50 text-[#D10043] rounded-xl text-xs font-bold border border-rose-200">
                     Email + IPROG SMS
                   </span>
                 </div>
@@ -683,17 +807,17 @@ const SystemSettings: React.FC = () => {
               </div>
 
               {/* Bottom Sticky Action Bar */}
-              <div className="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-4">
-                <div className="flex items-center gap-2 text-xs text-gray-500">
-                  <CheckCircle2 size={16} className="text-emerald-500" />
+              <div className="sticky bottom-4 z-30 bg-white/95 backdrop-blur-sm border border-gray-200/80 rounded-2xl p-4 shadow-md flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
+                <div className="flex items-center gap-2 text-xs text-gray-500 min-w-0">
+                  <CheckCircle2 size={16} className="text-emerald-500 shrink-0" />
                   <span>Changes take effect immediately across all candidate matching workflows and Celery background workers.</span>
                 </div>
 
-                <div className="flex items-center gap-3 w-full sm:w-auto justify-end">
+                <div className="flex items-center gap-3 w-full sm:w-auto justify-end shrink-0">
                   <button 
                     type="button"
                     onClick={handleDiscard}
-                    className="px-4 py-2.5 rounded-xl border border-gray-200 text-gray-700 font-bold text-xs hover:bg-gray-50 flex items-center gap-1.5 transition-all cursor-pointer"
+                    className="flex-1 sm:flex-initial justify-center min-h-[42px] px-4 py-2.5 rounded-xl border border-gray-200 text-gray-700 font-bold text-xs hover:bg-gray-50 flex items-center gap-1.5 transition-all cursor-pointer"
                   >
                     <RotateCcw size={14} /> Discard Changes
                   </button>
@@ -701,8 +825,8 @@ const SystemSettings: React.FC = () => {
                   <button 
                     type="button"
                     onClick={handleSave}
-                    disabled={isSaving}
-                    className="bg-[#D10043] text-white px-6 py-2.5 rounded-xl font-bold text-xs hover:bg-[#b00038] flex items-center gap-2 transition-all disabled:opacity-70 shadow-md shadow-red-200 cursor-pointer"
+                    disabled={isSaving || Boolean(maxActiveAppsError)}
+                    className="flex-1 sm:flex-initial justify-center min-h-[42px] bg-[#D10043] text-white px-6 py-2.5 rounded-xl font-bold text-xs hover:bg-[#b00038] flex items-center gap-2 transition-all disabled:opacity-60 disabled:cursor-not-allowed shadow-md shadow-red-200 cursor-pointer"
                   >
                     <Save size={14} />
                     {isSaving ? 'Saving Changes...' : 'Save Configuration'}
@@ -725,7 +849,7 @@ const SystemSettings: React.FC = () => {
             </div>
             <h3 className="text-lg font-extrabold text-gray-900">Re-evaluate Candidate Scores?</h3>
             <p className="text-xs text-gray-500 mt-2 leading-relaxed">
-              This will recompute the ATS match percentage, skill breakdowns, and explanations for all existing job applications using your currently active configuration.
+              This will recompute the ATS match percentage, skill breakdowns, and explanations for all existing job applications using your currently active configuration. Application statuses and shortlist rosters will not be modified.
             </p>
             <p className="text-xs font-semibold text-gray-700 mt-2 bg-gray-50 p-2.5 rounded-xl">
               Make sure you have saved your desired weights before proceeding.

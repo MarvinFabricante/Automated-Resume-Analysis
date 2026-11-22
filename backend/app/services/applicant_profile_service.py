@@ -152,9 +152,18 @@ async def get_applicant_comprehensive_profile(
             "missing_skills": app.missing_skills or [],
             "strengths": app.strengths or [],
             "weaknesses": app.weaknesses or [],
+            "skills_score": app.skills_score,
+            "experience_score": app.experience_score,
+            "education_score": app.education_score,
+            "certifications_score": app.certifications_score,
             "skills_reason": app.skills_reason,
             "experience_reason": app.experience_reason,
             "education_reason": app.education_reason,
+            "certifications_reason": getattr(app, "certifications_reason", None),
+            "required_degree": getattr(app, "required_degree", None),
+            "candidate_degree": getattr(app, "candidate_degree", None),
+            "required_certifications": getattr(app, "required_certifications", None),
+            "candidate_certifications": getattr(app, "candidate_certifications", None),
             "source": getattr(app, "source", "Online") or "Online",
             "import_origin": getattr(app, "import_origin", None),
             "imported_by": getattr(app, "imported_by", None),
@@ -187,12 +196,19 @@ async def get_applicant_comprehensive_profile(
             time_formatted = item.start_time.strftime("%b %d, %Y at %I:%M %p")
             upcoming_interview_str = f"{item.title} on {time_formatted}"
 
+        interviewer_obj = getattr(item, "interviewer", None)
+        interviewer_name = (
+            (interviewer_obj.fullname or interviewer_obj.email)
+            if interviewer_obj
+            else None
+        )
+
         interviews_data.append({
             "id": item.id,
             "title": item.title,
             "start_time": item.start_time.isoformat() if item.start_time else None,
             "end_time": item.end_time.isoformat() if item.end_time else None,
-            "interviewer_name": item.interviewer_name,
+            "interviewer_name": interviewer_name,
             "meeting_link": item.meeting_link,
             "location": item.location,
             "status": item.status,

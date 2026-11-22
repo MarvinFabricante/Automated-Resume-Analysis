@@ -133,41 +133,19 @@ async def compare_candidates_service(
     jobs_by_id = {j.id: j for j in jobs_res.scalars().all()}
 
     # 6. Score each candidate against the reference job
+    from app.services.job_application_service import _resume_data_from_application
+
     candidates_result = []
     for app in ordered_apps:
         applied_job = jobs_by_id.get(app.job_id)
         applied_job_title = applied_job.job_title if applied_job else (app.job_title or "Position")
 
-        # Convert app into resume_data dict for calculate_match_score
-        years_exp = 0.0
+        resume_data = _resume_data_from_application(app)
         if app.total_experience_months:
             years_exp = round(app.total_experience_months / 12.0, 1)
-
-        skills_str = ""
-        skills_list = []
-        if isinstance(app.skills, list):
-            skills_list = [str(s) for s in app.skills]
-            skills_str = ", ".join(skills_list)
-        elif isinstance(app.skills, str):
-            skills_str = app.skills
-            skills_list = [s.strip() for s in app.skills.split(",") if s.strip()]
-
-        resume_data = {
-            "fullname": app.candidate_name,
-            "email": app.candidate_email,
-            "phone": app.phone,
-            "location": app.location or "",
-            "skills": skills_str,
-            "skills_list": skills_list,
-            "experience": app.relevance or f"{app.job_title or ''} at {app.company or ''}",
-            "years_experience": years_exp,
-            "highest_degree": app.highest_educational_attainment or app.degree or app.candidate_degree or "",
-            "degree": app.degree or app.candidate_degree or "",
-            "college": app.college or "",
-            "certifications": app.certifications or app.candidate_certifications or "",
-            "work_experiences": app.work_experiences or [],
-            "education_entries": app.education_entries or [],
-        }
+            resume_data["years_experience"] = years_exp
+        else:
+            years_exp = float(resume_data.get("years_experience") or 0)
 
         # Calculate scores against reference job
         score_res = calculate_match_score(resume_data, ref_job)
@@ -187,15 +165,27 @@ async def compare_candidates_service(
             "education_score": round(score_res.get("education_score", 0)),
             "certifications_score": round(score_res.get("certifications_score", 0)),
             "completeness_score": round(score_res.get("completeness_score", 100)),
+            "skills_status": score_res.get("skills_status"),
+            "experience_status": score_res.get("experience_status"),
+            "education_status": score_res.get("education_status"),
+            "certifications_status": score_res.get("certifications_status"),
+            "skills_reason": score_res.get("skills_reason"),
+            "experience_reason": score_res.get("experience_reason"),
+            "education_reason": score_res.get("education_reason"),
+            "certifications_reason": score_res.get("certifications_reason"),
+            "criteria_evaluations": score_res.get("criteria_evaluations"),
+            "required_degree": score_res.get("required_degree"),
+            "candidate_degree": score_res.get("candidate_degree"),
+            "required_certifications": score_res.get("required_certifications"),
             "applied_weights": score_res.get("applied_weights"),
             "matched_skills": score_res.get("matched_skills", []),
             "missing_skills": score_res.get("missing_skills", []),
             "transferable_skills": score_res.get("transferable_skills", []),
             "relevance": app.relevance,
             "experience_years": years_exp,
-            "degree": app.degree or app.highest_educational_attainment,
-            "college": app.college,
-            "certifications": app.certifications or app.candidate_certifications,
+            "degree": resume_data.get("degree") or app.degree or app.highest_educational_attainment,
+            "college": resume_data.get("college") or app.college,
+            "certifications": resume_data.get("certifications") or None,
             "ai_summary": score_res.get("ai_summary", app.ai_summary),
             "strengths": score_res.get("strengths", app.strengths or []),
             "weaknesses": score_res.get("weaknesses", app.weaknesses or []),
@@ -213,6 +203,8 @@ async def compare_candidates_service(
             "location": getattr(ref_job, "location", "Sto. Tomas, Batangas"),
             "skills_requirements": getattr(ref_job, "skills_requirements", ""),
             "experience_requirements": getattr(ref_job, "experience_requirements", ""),
+            "education_requirements": getattr(ref_job, "education_requirements", ""),
+            "certifications_requirements": getattr(ref_job, "certifications_requirements", ""),
             "applied_weights": candidates_result[0].get("applied_weights") if candidates_result else None,
         },
         "is_cross_job": is_cross_job,

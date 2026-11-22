@@ -4,6 +4,12 @@ import { broadcastAtsUpdate } from '../../utils/realtimeSync';
 
 const normalizeApplicationItem = (app: any) => ({
   id: app.id,
+  job_id: app.job_id ?? app.job?.id ?? undefined,
+  applied_job_id: app.job_id ?? app.job?.id ?? undefined,
+  applied_job_title: app.job?.job_title || app.job_title || 'Unknown',
+  job_title: app.job_title || '',
+  job: app.job || undefined,
+  applicant_id: app.applicant_id ?? undefined,
   name: app.candidate_name,
   status: app.status,
   preferredJob: app.job?.job_title || app.job_title || 'Unknown',
@@ -18,22 +24,35 @@ const normalizeApplicationItem = (app: any) => ({
   degree: app.degree || '',
   college: app.college || '',
   relevance: app.relevance || '',
+  match_score: app.match_score ?? null,
   matchScore:
     app.match_score !== null && app.match_score !== undefined
       ? Number(app.match_score)
       : Math.round(
-        (app.skills_score || 0) * 0.4 +
-        (app.experience_score || 0) * 0.4 +
-        (app.certifications_score || app.education_score || 0) * 0.2
+        (app.skills_score || 0) * 0.40 +
+        (app.experience_score || 0) * 0.30 +
+        (app.education_score || 0) * 0.15 +
+        (app.certifications_score || 0) * 0.10 +
+        (app.completeness_score ?? 100) * 0.05
       ) || 0,
   skillsScore: app.skills_score || 0,
+  skills_score: app.skills_score || 0,
   experienceScore: app.experience_score || 0,
+  experience_score: app.experience_score || 0,
   educationScore: app.education_score || 0,
+  education_score: app.education_score || 0,
   certificationsScore: app.certifications_score || 0,
   certifications_score: app.certifications_score || 0,
   completenessScore: app.completeness_score ?? null,
   completeness_score: app.completeness_score ?? null,
+  completeness_status: app.completeness_status ?? undefined,
+  missing_sections: app.missing_sections || [],
+  hr_shortlist_notes: app.hr_shortlist_notes ?? undefined,
   applied_weights: app.applied_weights ?? null,
+  skills_status: app.skills_status || null,
+  experience_status: app.experience_status || null,
+  education_status: app.education_status || null,
+  certifications_status: app.certifications_status || null,
   skills_reason: app.skills_reason,
   experience_reason: app.experience_reason,
   education_reason: app.education_reason,

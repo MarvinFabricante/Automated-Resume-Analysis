@@ -196,14 +196,15 @@ const Register: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center px-4 pt-16 pb-8 sm:py-8 bg-[#F0F4F9] font-sans antialiased text-gray-800 relative">
+    <div className="min-h-screen supports-[min-height:100dvh]:min-h-[100dvh] flex flex-col items-center justify-center px-4 pt-20 sm:pt-24 pb-8 bg-[#F0F4F9] font-sans antialiased text-gray-800 relative">
       <Helmet>
         <title>Create Account - Mariwasa Portal</title>
       </Helmet>
 
       <button
+        type="button"
         onClick={() => window.location.href = '/'}
-        className="fixed top-3 left-3 sm:top-8 sm:left-8 flex items-center gap-1.5 sm:gap-2 text-gray-600 hover:text-[#D60041] transition-all group font-bold text-[11px] sm:text-xs uppercase tracking-widest bg-white/70 backdrop-blur-sm py-2 px-3 sm:py-3 sm:px-5 rounded-xl sm:rounded-2xl border border-gray-200 hover:border-pink-100 hover:shadow-lg active:scale-95 z-50 shadow-sm"
+        className="fixed top-3 left-3 sm:top-6 sm:left-6 min-h-[44px] min-w-[44px] flex items-center gap-1.5 sm:gap-2 text-gray-600 hover:text-[#D60041] transition-all group font-bold text-[11px] sm:text-xs uppercase tracking-widest bg-white/85 backdrop-blur-sm py-2.5 px-3.5 sm:py-3 sm:px-5 rounded-xl sm:rounded-2xl border border-gray-200 hover:border-pink-100 hover:shadow-lg active:scale-95 z-50 shadow-sm cursor-pointer touch-manipulation"
       >
         <ArrowLeft size={14} className="group-hover:-translate-x-1 transition-transform sm:w-4 sm:h-4" />
         Back to Home
@@ -231,6 +232,7 @@ const Register: React.FC = () => {
                 {modalState.message}
               </p>
               <button
+                type="button"
                 onClick={() => {
                   if (modalState.type === 'success' || modalState.type === 'exists') {
                     window.location.href = '/login';
@@ -238,7 +240,7 @@ const Register: React.FC = () => {
                     setModalState({ ...modalState, isOpen: false });
                   }
                 }}
-                className={`w-full font-medium py-2.5 px-4 rounded-full transition-all duration-200 text-xs sm:text-sm ${modalState.type === 'success' ? 'bg-[#D60041] hover:bg-[#b50037] text-white' :
+                className={`w-full min-h-[44px] font-medium py-2.5 px-4 rounded-full transition-all duration-200 text-xs sm:text-sm cursor-pointer touch-manipulation ${modalState.type === 'success' ? 'bg-[#D60041] hover:bg-[#b50037] text-white' :
                   modalState.type === 'exists' ? 'bg-blue-600 hover:bg-blue-700 text-white' :
                     'bg-gray-100 hover:bg-gray-200 text-gray-800'
                   }`}
@@ -256,7 +258,12 @@ const Register: React.FC = () => {
           <div className="bg-white rounded-2xl sm:rounded-[28px] shadow-2xl w-full max-w-lg p-5 sm:p-8 transform transition-all animate-in zoom-in-95 duration-200 relative overflow-hidden flex flex-col max-h-[85vh]">
             <div className="flex justify-between items-center mb-4 sm:mb-6 shrink-0">
               <h3 className="text-xl sm:text-2xl font-normal tracking-tight text-gray-900">Terms and Conditions</h3>
-              <button onClick={() => setShowTermsModal(false)} className="text-gray-400 hover:bg-gray-100 p-1.5 sm:p-2 rounded-full transition">
+              <button
+                type="button"
+                aria-label="Close terms"
+                onClick={() => setShowTermsModal(false)}
+                className="min-w-[44px] min-h-[44px] flex items-center justify-center text-gray-400 hover:bg-gray-100 p-1.5 sm:p-2 rounded-full transition cursor-pointer touch-manipulation"
+              >
                 <XCircle className="w-5 h-5 sm:w-6 sm:h-6" />
               </button>
             </div>
@@ -271,17 +278,19 @@ const Register: React.FC = () => {
             </div>
             <div className="mt-auto shrink-0 pt-4 sm:pt-6 border-t border-gray-100 flex justify-end gap-3">
               <button
+                type="button"
                 onClick={() => setShowTermsModal(false)}
-                className="px-5 sm:px-6 py-2.5 rounded-full font-medium text-xs sm:text-sm text-gray-700 hover:bg-gray-100 transition"
+                className="min-h-[44px] px-5 sm:px-6 py-2.5 rounded-full font-medium text-xs sm:text-sm text-gray-700 hover:bg-gray-100 transition cursor-pointer touch-manipulation"
               >
                 Close
               </button>
               <button
+                type="button"
                 onClick={() => {
                   setAgreedToTerms(true);
                   setShowTermsModal(false);
                 }}
-                className="px-5 sm:px-6 py-2.5 rounded-full font-medium text-xs sm:text-sm bg-[#D60041] hover:bg-[#b50037] text-white transition shadow-sm"
+                className="min-h-[44px] px-5 sm:px-6 py-2.5 rounded-full font-medium text-xs sm:text-sm bg-[#D60041] hover:bg-[#b50037] text-white transition shadow-sm cursor-pointer touch-manipulation"
               >
                 I agree
               </button>
@@ -314,7 +323,7 @@ const Register: React.FC = () => {
               <button
                 type="button"
                 onClick={handleGoogleRegister}
-                className="w-full flex items-center justify-center gap-3 bg-white border border-gray-300 hover:bg-gray-50 hover:border-gray-400 text-gray-700 text-sm font-semibold px-6 py-3 rounded-full transition-all shadow-sm hover:shadow active:scale-[0.99] group"
+                className="w-full min-h-[44px] flex items-center justify-center gap-3 bg-white border border-gray-300 hover:bg-gray-50 hover:border-gray-400 text-gray-700 text-sm font-semibold px-6 py-3 rounded-full transition-all shadow-sm hover:shadow active:scale-[0.99] group cursor-pointer touch-manipulation"
               >
                 <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google Logo" className="w-5 h-5 group-hover:scale-105 transition-transform" />
                 <span>Register with Google (Candidate)</span>
@@ -381,7 +390,12 @@ const Register: React.FC = () => {
                     <label htmlFor="password" className="absolute left-3.5 -top-2.5 bg-white px-1 text-xs font-normal text-gray-600 peer-placeholder-shown:text-base peer-placeholder-shown:text-gray-600 peer-placeholder-shown:top-3.5 peer-focus:-top-2.5 peer-focus:text-xs peer-focus:text-[#D60041] transition-all cursor-text pointer-events-none z-10">
                       Password
                     </label>
-                    <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-900 p-1 rounded-full hover:bg-gray-100 transition-colors z-20">
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      aria-label={showPassword ? "Hide password" : "Show password"}
+                      className="absolute right-1 top-1/2 -translate-y-1/2 min-w-[44px] min-h-[44px] flex items-center justify-center text-gray-500 hover:text-gray-900 rounded-full hover:bg-gray-100 transition-colors z-20 cursor-pointer touch-manipulation"
+                    >
                       {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                     </button>
                   </div>
@@ -400,7 +414,12 @@ const Register: React.FC = () => {
                     <label htmlFor="confirmPassword" className="absolute left-3.5 -top-2.5 bg-white px-1 text-xs font-normal text-gray-600 peer-placeholder-shown:text-base peer-placeholder-shown:text-gray-600 peer-placeholder-shown:top-3.5 peer-focus:-top-2.5 peer-focus:text-xs peer-focus:text-[#D60041] transition-all cursor-text pointer-events-none z-10">
                       Confirm
                     </label>
-                    <button type="button" onClick={() => setShowConfirmPassword(!showConfirmPassword)} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-900 p-1 rounded-full hover:bg-gray-100 transition-colors z-20">
+                    <button
+                      type="button"
+                      onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                      aria-label={showConfirmPassword ? "Hide confirm password" : "Show confirm password"}
+                      className="absolute right-1 top-1/2 -translate-y-1/2 min-w-[44px] min-h-[44px] flex items-center justify-center text-gray-500 hover:text-gray-900 rounded-full hover:bg-gray-100 transition-colors z-20 cursor-pointer touch-manipulation"
+                    >
                       {showConfirmPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                     </button>
                   </div>
@@ -425,7 +444,7 @@ const Register: React.FC = () => {
                     <button
                       type="button"
                       onClick={(e) => { e.preventDefault(); setShowTermsModal(true); }}
-                      className="text-[#D60041] font-medium hover:underline focus:outline-none inline-block"
+                      className="text-[#D60041] font-medium hover:underline focus:outline-none inline-block py-1 cursor-pointer touch-manipulation"
                     >
                       Terms and Conditions
                     </button>
@@ -436,14 +455,14 @@ const Register: React.FC = () => {
               <div className="flex flex-col-reverse sm:flex-row justify-between items-center gap-4 sm:gap-0 mt-8">
                 <a
                   href="/login"
-                  className="text-sm font-medium text-[#D60041] hover:bg-red-50 px-3 py-2 rounded-md transition-colors w-full sm:w-auto text-center"
+                  className="inline-flex items-center justify-center min-h-[44px] text-sm font-medium text-[#D60041] hover:bg-red-50 px-3 py-2 rounded-md transition-colors w-full sm:w-auto text-center cursor-pointer touch-manipulation"
                 >
                   Sign in instead
                 </a>
                 <button
                   type="submit"
                   disabled={loading}
-                  className="w-full sm:w-auto bg-[#D60041] hover:bg-[#b50037] text-white text-sm font-medium px-6 py-2.5 rounded-full transition-colors disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center min-w-[100px]"
+                  className="w-full sm:w-auto min-h-[44px] bg-[#D60041] hover:bg-[#b50037] text-white text-sm font-medium px-6 py-2.5 rounded-full transition-colors disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center min-w-[100px] cursor-pointer touch-manipulation"
                 >
                   {loading ? <Loader2 className="animate-spin h-5 w-5" /> : "Next"}
                 </button>
