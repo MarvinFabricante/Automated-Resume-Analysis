@@ -21,6 +21,7 @@ import {
   finalizeFormWithClarifications,
   resolveClarifiedYears,
 } from '../../../utils/clarificationQuestions';
+import { isNoValueRequirement } from '../../../utils/criterionStatus';
 
 interface InputFieldProps {
   icon: React.ReactNode;
@@ -202,11 +203,14 @@ const ApplicationForm: React.FC = () => {
 
   const handleAddSkill = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    if (currentSkill.trim() && !formData.skills.includes(currentSkill.trim())) {
+    const trimmed = currentSkill.trim();
+    if (trimmed && !isNoValueRequirement(trimmed) && !formData.skills.includes(trimmed)) {
       setFormData(prev => ({
         ...prev,
-        skills: [...prev.skills, currentSkill.trim()]
+        skills: [...prev.skills, trimmed]
       }));
+      setCurrentSkill("");
+    } else if (trimmed && isNoValueRequirement(trimmed)) {
       setCurrentSkill("");
     }
   };

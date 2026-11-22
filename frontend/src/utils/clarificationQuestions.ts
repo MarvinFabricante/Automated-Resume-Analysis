@@ -1,4 +1,4 @@
-import { isNoValueRequirement } from './criterionStatus';
+import { isNoValueRequirement, cleanRequirementInput, cleanRequirementList } from './criterionStatus';
 
 export interface ClarificationQuestion {
   id: string;
@@ -280,19 +280,25 @@ export function buildCandidateMatchPayload(
     formData.relevance
   );
 
+  const cleanedSkills = cleanRequirementList(formData.skills);
+  const cleanedDegree = cleanRequirementInput(formData.degree);
+  const cleanedCollege = cleanRequirementInput(formData.college);
+  const cleanedCerts = cleanRequirementInput(extractedData?.certifications || '');
+
   return {
-    skills: formData.skills.join(', '),
-    skills_list: formData.skills,
-    job_title: formData.jobTitle,
-    company: formData.company,
+    skills: cleanedSkills.join(', '),
+    skills_list: cleanedSkills,
+    job_title: cleanRequirementInput(formData.jobTitle),
+    company: cleanRequirementInput(formData.company),
     experience: experienceText,
-    relevance: formData.relevance,
+    relevance: cleanRequirementInput(formData.relevance),
     years_experience: yearsExp,
     work_experiences: extractedData?.work_experiences || [],
-    education: [formData.degree, formData.college].filter(Boolean).join(' - '),
-    highest_degree: formData.degree,
+    education: [cleanedDegree, cleanedCollege].filter(Boolean).join(' - '),
+    highest_degree: cleanedDegree,
+    highest_educational_attainment: cleanRequirementInput(extractedData?.highest_educational_attainment || ''),
     education_entries: extractedData?.education_entries || [],
-    certifications: extractedData?.certifications || undefined,
+    certifications: cleanedCerts || undefined,
     fullname: formData.fullName,
     location: formData.location,
   };
@@ -515,13 +521,13 @@ export function finalizeFormWithClarifications<
   let updated = { ...formData };
   for (const q of questions) {
     const ans = (answers[q.id] || '').trim();
-    if (!ans) continue;
+    if (!ans || isNoValueRequirement(ans)) continue;
     updated = applyClarificationAnswerToFormData(q, ans, updated);
     if (q.field === 'skills') {
       const newSkills = ans
         .split(/[,;\n|]+/)
         .map((s) => s.trim())
-        .filter(Boolean);
+        .filter((s) => Boolean(s) && !isNoValueRequirement(s));
       const existingLower = new Set(updated.skills.map((s) => s.toLowerCase()));
       const merged = [...updated.skills];
       for (const sk of newSkills) {
@@ -577,10 +583,13 @@ export interface ExperienceGapStatus {
 }
 
 export function parseRequiredYearsFromJob(job?: any): number {
+  if (job && 'experience_requirements' in job && isNoValueRequirement(job.experience_requirements)) {
+    return 0;
+  }
   const reqText = String(
     job?.experience_requirements || job?.description || ''
   ).trim();
-  if (!reqText) return 0;
+  if (!reqText || isNoValueRequirement(reqText)) return 0;
 
   if (/^\d+$/.test(reqText)) {
     const val = Number(reqText);
@@ -610,6 +619,12 @@ export function getExperienceGapStatus(
   job?: any,
   candidateYearsOverride?: number | string | null
 ): ExperienceGapStatus | null {
+  if (
+    String(matchData?.experience_status || '').trim().toLowerCase() === 'not required' ||
+    (job && 'experience_requirements' in job && isNoValueRequirement(job.experience_requirements))
+  ) {
+    return null;
+  }
   const reqFromJob = parseRequiredYearsFromJob(job);
   const gapStr = String(matchData?.experience_gaps || '').trim();
   const parsedGap = gapStr.match(/Required:\s*(\d+)\s*yrs?\s*\|\s*Candidate:\s*(\d+)/i);

@@ -26,29 +26,29 @@ const Footer: React.FC = () => {
           {/* Links Column */}
           <div className="flex flex-col sm:flex-row gap-12 text-center md:text-left">
             <div>
-              <h4 className="text-gray-900 font-bold mb-4 tracking-tight">Careers Center</h4>
-              <ul className="space-y-3 text-sm text-gray-500 font-medium">
-                <li><a href="#" className="hover:text-[#D60041] transition-colors">Open Positions</a></li>
-                <li><a href="#" className="hover:text-[#D60041] transition-colors">Life at Mariwasa</a></li>
-                <li><a href="#" className="hover:text-[#D60041] transition-colors">Internship Programs</a></li>
-                <li><a href="#" className="hover:text-[#D60041] transition-colors">Applicant Login</a></li>
+              <h4 className="text-gray-900 font-bold mb-2 tracking-tight">Careers Center</h4>
+              <ul className="space-y-0.5 text-sm text-gray-500 font-medium">
+                <li><a href="/careerspage" className="inline-flex items-center min-h-[44px] px-1 hover:text-[#D60041] transition-colors cursor-pointer touch-manipulation">Open Positions</a></li>
+                <li><a href="/aboutpage" className="inline-flex items-center min-h-[44px] px-1 hover:text-[#D60041] transition-colors cursor-pointer touch-manipulation">Life at Mariwasa</a></li>
+                <li><a href="/careerspage" className="inline-flex items-center min-h-[44px] px-1 hover:text-[#D60041] transition-colors cursor-pointer touch-manipulation">Internship Programs</a></li>
+                <li><a href="/login" className="inline-flex items-center min-h-[44px] px-1 hover:text-[#D60041] transition-colors cursor-pointer touch-manipulation">Applicant Login</a></li>
               </ul>
             </div>
 
             {/* Contact Column */}
             <div className="hidden sm:block">
-              <h4 className="text-gray-900 font-bold mb-4 tracking-tight">Contact HR</h4>
-              <ul className="space-y-3 text-sm text-gray-500 font-medium">
+              <h4 className="text-gray-900 font-bold mb-2 tracking-tight">Contact HR</h4>
+              <ul className="space-y-0.5 text-sm text-gray-500 font-medium">
                 <li className="flex items-center justify-center md:justify-start gap-3">
-                  <Mail className="w-4 h-4 text-gray-400" /> 
-                  <span className="hover:text-[#D60041] transition-colors cursor-pointer">careers@mariwasa.com</span>
+                  <Mail className="w-4 h-4 text-gray-400 shrink-0" />
+                  <a href="mailto:careers@mariwasa.com" className="inline-flex items-center min-h-[44px] hover:text-[#D60041] transition-colors cursor-pointer touch-manipulation">careers@mariwasa.com</a>
                 </li>
-                <li className="flex items-center justify-center md:justify-start gap-3">
-                  <Phone className="w-4 h-4 text-gray-400" /> 
+                <li className="flex items-center justify-center md:justify-start gap-3 min-h-[44px]">
+                  <Phone className="w-4 h-4 text-gray-400 shrink-0" />
                   <span>(02) 8123-4567</span>
                 </li>
-                <li className="flex items-center justify-center md:justify-start gap-3">
-                  <MapPin className="w-4 h-4 text-gray-400" /> 
+                <li className="flex items-center justify-center md:justify-start gap-3 min-h-[44px]">
+                  <MapPin className="w-4 h-4 text-gray-400 shrink-0" />
                   <span>Sto. Tomas, Batangas</span>
                 </li>
               </ul>
@@ -61,9 +61,9 @@ const Footer: React.FC = () => {
           <p className="text-gray-400 text-[11px] font-bold tracking-widest uppercase">
             © {new Date().getFullYear()} Mariwasa Siam Ceramics Inc.
           </p>
-          <div className="flex gap-6 text-[11px] text-gray-400 font-bold tracking-widest uppercase">
-            <a href="#" className="hover:text-[#D60041] transition-colors">Privacy Policy</a>
-            <a href="#" className="hover:text-[#D60041] transition-colors">Terms of Use</a>
+          <div className="flex gap-4 text-[11px] text-gray-400 font-bold tracking-widest uppercase">
+            <a href="#" className="inline-flex items-center min-h-[44px] px-2 hover:text-[#D60041] transition-colors cursor-pointer touch-manipulation">Privacy Policy</a>
+            <a href="#" className="inline-flex items-center min-h-[44px] px-2 hover:text-[#D60041] transition-colors cursor-pointer touch-manipulation">Terms of Use</a>
           </div>
         </div>
       </div>

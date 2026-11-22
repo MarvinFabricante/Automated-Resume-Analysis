@@ -24,6 +24,7 @@ import {
   finalizeFormWithClarifications,
   resolveClarifiedYears,
 } from '../../utils/clarificationQuestions';
+import { isNoValueRequirement } from '../../utils/criterionStatus';
 import { useSubmitApplicationMutation } from '../../redux/api/apiSlice';
 
 interface ProfileFormData {
@@ -207,11 +208,14 @@ const CandidateProfileForm: React.FC = () => {
 
   const handleAddSkill = (e: React.FormEvent | React.KeyboardEvent) => {
     e.preventDefault();
-    if (currentSkill.trim() && !formData.skills.includes(currentSkill.trim())) {
+    const trimmed = currentSkill.trim();
+    if (trimmed && !isNoValueRequirement(trimmed) && !formData.skills.includes(trimmed)) {
       setFormData(prev => ({
         ...prev,
-        skills: [...prev.skills, currentSkill.trim()]
+        skills: [...prev.skills, trimmed]
       }));
+      setCurrentSkill("");
+    } else if (trimmed && isNoValueRequirement(trimmed)) {
       setCurrentSkill("");
     }
   };

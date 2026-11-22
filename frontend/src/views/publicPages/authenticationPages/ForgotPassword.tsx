@@ -54,7 +54,7 @@ const ForgotPassword: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center px-4 py-8 bg-[#F0F4F9] font-sans antialiased text-gray-800">
+    <div className="min-h-screen supports-[min-height:100dvh]:min-h-[100dvh] flex flex-col items-center justify-center px-4 py-8 bg-[#F0F4F9] font-sans antialiased text-gray-800">
       <Helmet>
         <title>Account Recovery - Mariwasa Portal</title>
       </Helmet>
@@ -77,6 +77,7 @@ const ForgotPassword: React.FC = () => {
                 {modalState.message}
               </p>
               <button
+                type="button"
                 onClick={() => {
                   if (modalState.type === 'success') {
                     navigate('/login');
@@ -84,7 +85,7 @@ const ForgotPassword: React.FC = () => {
                     setModalState({ ...modalState, isOpen: false });
                   }
                 }}
-                className={`w-full font-medium py-2.5 px-4 rounded-full transition-all duration-200 text-sm ${modalState.type === 'success'
+                className={`w-full min-h-[44px] font-medium py-2.5 px-4 rounded-full transition-all duration-200 text-sm cursor-pointer touch-manipulation ${modalState.type === 'success'
                   ? 'bg-[#D60041] hover:bg-[#b50037] text-white'
                   : 'bg-gray-100 hover:bg-gray-200 text-gray-800'
                   }`}
@@ -140,7 +141,7 @@ const ForgotPassword: React.FC = () => {
               <button
                 type="button"
                 onClick={() => navigate('/login')}
-                className="flex items-center gap-2 text-sm font-medium text-[#D60041] hover:bg-red-50 px-3 py-2 rounded-md transition-colors w-full sm:w-auto justify-center sm:justify-start"
+                className="min-h-[44px] flex items-center gap-2 text-sm font-medium text-[#D60041] hover:bg-red-50 px-3 py-2 rounded-md transition-colors w-full sm:w-auto justify-center sm:justify-start cursor-pointer touch-manipulation"
               >
                 <ArrowLeft size={16} />
                 Back to sign in
@@ -148,7 +149,7 @@ const ForgotPassword: React.FC = () => {
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full sm:w-auto bg-[#D60041] hover:bg-[#b50037] text-white text-sm font-medium px-8 py-2.5 rounded-full transition-colors disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center min-w-[120px]"
+                className="w-full sm:w-auto min-h-[44px] bg-[#D60041] hover:bg-[#b50037] text-white text-sm font-medium px-8 py-2.5 rounded-full transition-colors disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center min-w-[120px] cursor-pointer touch-manipulation"
               >
                 {loading ? <Loader2 className="animate-spin h-5 w-5" /> : "Send link"}
               </button>
@@ -158,16 +159,16 @@ const ForgotPassword: React.FC = () => {
       </div>
 
       <div className="w-full max-w-[1040px] mt-4 flex flex-col sm:flex-row justify-between items-center text-xs text-gray-600 px-2">
-        <div className="mb-4 sm:mb-0">
-          <select className="bg-transparent border-none focus:ring-0 cursor-pointer outline-none hover:bg-gray-200 py-1 px-2 rounded-md transition-colors">
+        <div className="mb-2 sm:mb-0">
+          <select className="min-h-[44px] bg-transparent border-none focus:ring-0 cursor-pointer touch-manipulation outline-none hover:bg-gray-200 py-2 px-3 rounded-md transition-colors">
             <option>English (United States)</option>
             <option>Filipino</option>
           </select>
         </div>
-        <div className="flex space-x-6">
-          <a href="#" className="hover:bg-gray-200 px-2 py-1 rounded-md transition-colors">Help</a>
-          <a href="#" className="hover:bg-gray-200 px-2 py-1 rounded-md transition-colors">Privacy</a>
-          <a href="#" className="hover:bg-gray-200 px-2 py-1 rounded-md transition-colors">Terms</a>
+        <div className="flex gap-2">
+          <a href="#" className="inline-flex items-center justify-center min-w-[44px] min-h-[44px] hover:bg-gray-200 px-3 py-2 rounded-md transition-colors cursor-pointer touch-manipulation">Help</a>
+          <a href="#" className="inline-flex items-center justify-center min-w-[44px] min-h-[44px] hover:bg-gray-200 px-3 py-2 rounded-md transition-colors cursor-pointer touch-manipulation">Privacy</a>
+          <a href="#" className="inline-flex items-center justify-center min-w-[44px] min-h-[44px] hover:bg-gray-200 px-3 py-2 rounded-md transition-colors cursor-pointer touch-manipulation">Terms</a>
         </div>
       </div>
     </div>

@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useSearchParams } from '@/utils/navigation';
 import { Helmet } from 'react-helmet-async';
 import {
@@ -27,6 +27,8 @@ import {
   doesApplicationMatchJob,
   partitionAndSortPersonGroups,
   preparseJobRequirements,
+  syncSelectedApplicationIdsForJob,
+  syncActiveApplicationIdForJob,
 } from '../../utils/compareSorting';
 
 interface CandidateComparisonData extends Partial<Application> {
@@ -138,8 +140,9 @@ const calculateRuleBasedScore = (
 
     if (jobSkills.length > 0) {
       let matchCount = 0;
+      const candSkillList = Array.from(candSkillTokens);
       jobSkills.forEach(reqSkill => {
-        const hasSkill = Array.from(candSkillTokens).some(cs => {
+        const hasSkill = candSkillList.some(cs => {
           if (cs === reqSkill) return true;
           if (reqSkill.length > 2 && (cs.includes(reqSkill) || reqSkill.includes(cs))) return true;
           return false;
@@ -317,9 +320,25 @@ const calculateRuleBasedScore = (
   };
 };
 
+const EMPTY_CANDIDATES: CandidateComparisonData[] = [];
+const EMPTY_JOBS: Job[] = [];
+
+const isSamePerson = (c1: CandidateComparisonData, c2: CandidateComparisonData): boolean => {
+  if (c1.id === c2.id) return true;
+  if (c1.applicant_id && c2.applicant_id && c1.applicant_id === c2.applicant_id) return true;
+  const email1 = (c1.email || (c1 as any).candidate_email || '').trim().toLowerCase();
+  const email2 = (c2.email || (c2 as any).candidate_email || '').trim().toLowerCase();
+  if (email1 && email2 && email1 === email2) return true;
+  const phone1 = (c1.phone || '').replace(/[^0-9]/g, '');
+  const phone2 = (c2.phone || '').replace(/[^0-9]/g, '');
+  if (phone1 && phone2 && phone1.length >= 7 && phone1 === phone2) return true;
+  return false;
+};
+
 const CompareCandidates: React.FC = () => {
-  const { data: candidates = [], isLoading } = useGetApplicationsQuery();
-  const { data: jobs = [] } = useGetJobsQuery();
+  const { data: candidates = EMPTY_CANDIDATES, isLoading } = useGetApplicationsQuery();
+  const { data: jobs = EMPTY_JOBS } = useGetJobsQuery();
+  const listScrollRef = useRef<HTMLDivElement | null>(null);
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [searchParams] = useSearchParams();
   const [selectedCandidateIds, setSelectedCandidateIds] = useState<number[]>([]);
@@ -356,10 +375,10 @@ const CompareCandidates: React.FC = () => {
 
   // Synchronize reference position from server comparison
   useEffect(() => {
-    if (serverComparison?.reference_job?.id && !selectedRefJobId) {
+    if (isComparing && serverComparison?.reference_job?.id && !selectedRefJobId) {
       setSelectedRefJobId(String(serverComparison.reference_job.id));
     }
-  }, [serverComparison, selectedRefJobId]);
+  }, [isComparing, serverComparison, selectedRefJobId]);
 
   // Trigger server-side cross-job re-scoring when comparing
   useEffect(() => {
@@ -373,9 +392,34 @@ const CompareCandidates: React.FC = () => {
   }, [isComparing, selectedCandidateIds, selectedRefJobId, selectedJobId, compareCandidatesMutation]);
 
   const handleSelectedJobChange = (nextJobId: string) => {
+    const nextJob = nextJobId
+      ? (jobs as Job[]).find(j => String(j.id) === String(nextJobId))
+      : undefined;
+
     setSelectedJobId(nextJobId);
     setSelectedRefJobId(nextJobId);
     setPersonSelectedAppMap({});
+    setSelectedCandidateIds(prev =>
+      syncSelectedApplicationIdsForJob({
+        selectedIds: prev,
+        candidates: candidates as CandidateComparisonData[],
+        nextJob,
+        evaluationFilters,
+        isSamePerson,
+      })
+    );
+    setActiveCandidateId(prev =>
+      syncActiveApplicationIdForJob({
+        activeId: prev,
+        candidates: candidates as CandidateComparisonData[],
+        nextJob,
+        evaluationFilters,
+        isSamePerson,
+      })
+    );
+    if (listScrollRef.current) {
+      listScrollRef.current.scrollTop = 0;
+    }
   };
 
   const selectedJob = useMemo(
@@ -383,14 +427,21 @@ const CompareCandidates: React.FC = () => {
     [jobs, selectedJobId]
   );
 
+  const parsedSelectedJob = useMemo(
+    () => (selectedJob ? preparseJobRequirements(selectedJob) : undefined),
+    [selectedJob]
+  );
+
   // Filter candidates based on search
   const filteredCandidates = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return candidates as CandidateComparisonData[];
     return (candidates as CandidateComparisonData[]).filter(c => {
-      const q = searchQuery.toLowerCase();
-      const skillsMatch = c.skills && c.skills.some(s => s.toLowerCase().includes(q));
+      const skillsMatch = Array.isArray(c.skills) && c.skills.some(s => String(s || '').toLowerCase().includes(q));
+      const roleText = (c.preferredJob || c.applied_job_title || '').toLowerCase();
       return (
-        c.name.toLowerCase().includes(q) ||
-        (c.preferredJob && c.preferredJob.toLowerCase().includes(q)) ||
+        (c.name || '').toLowerCase().includes(q) ||
+        roleText.includes(q) ||
         skillsMatch
       );
     });
@@ -437,12 +488,13 @@ const CompareCandidates: React.FC = () => {
       partitionAndSortPersonGroups<CandidateComparisonData, PersonGroup>({
         personGroups,
         selectedJob,
+        parsedJob: parsedSelectedJob,
         evaluationFilters,
         personSelectedAppMap,
         scoreAgainstJob: (app, job, filters, parsedJob) =>
           calculateRuleBasedScore(app, job, filters, parsedJob).matchScore || 0,
       }),
-    [personGroups, selectedJob, evaluationFilters, personSelectedAppMap]
+    [personGroups, selectedJob, parsedSelectedJob, evaluationFilters, personSelectedAppMap]
   );
 
   // Set the first candidate as active by default if not set
@@ -464,22 +516,10 @@ const CompareCandidates: React.FC = () => {
   const activeCandidateEvaluated = useMemo(() => {
     if (!activeCandidate) return null;
     if (selectedJob && !activeCandidateAppliedToSelectedJob) {
-      return calculateRuleBasedScore(activeCandidate, selectedJob, evaluationFilters);
+      return calculateRuleBasedScore(activeCandidate, selectedJob, evaluationFilters, parsedSelectedJob);
     }
     return calculateRuleBasedScore(activeCandidate, undefined, evaluationFilters);
-  }, [activeCandidate, selectedJob, activeCandidateAppliedToSelectedJob, evaluationFilters]);
-
-  const isSamePerson = (c1: CandidateComparisonData, c2: CandidateComparisonData): boolean => {
-    if (c1.id === c2.id) return true;
-    if (c1.applicant_id && c2.applicant_id && c1.applicant_id === c2.applicant_id) return true;
-    const email1 = (c1.email || (c1 as any).candidate_email || '').trim().toLowerCase();
-    const email2 = (c2.email || (c2 as any).candidate_email || '').trim().toLowerCase();
-    if (email1 && email2 && email1 === email2) return true;
-    const phone1 = (c1.phone || '').replace(/[^0-9]/g, '');
-    const phone2 = (c2.phone || '').replace(/[^0-9]/g, '');
-    if (phone1 && phone2 && phone1.length >= 7 && phone1 === phone2) return true;
-    return false;
-  };
+  }, [activeCandidate, selectedJob, parsedSelectedJob, activeCandidateAppliedToSelectedJob, evaluationFilters]);
 
   const toggleSelection = (id: number) => {
     const candidateToToggle = (candidates as CandidateComparisonData[]).find(c => c.id === id);
@@ -2033,7 +2073,7 @@ const CompareCandidates: React.FC = () => {
             }`}
         >
           <Users size={14} className={mobileTab === 'list' ? 'text-[#D60041]' : ''} />
-          <span>Candidate List ({filteredCandidates.length})</span>
+          <span>Candidate List ({personGroups.length})</span>
         </button>
         <button
           type="button"
@@ -2153,7 +2193,7 @@ const CompareCandidates: React.FC = () => {
           </div>
 
           {/* Scrollable Candidate Items List */}
-          <div className="flex-1 overflow-y-auto p-2 space-y-1 custom-scrollbar">
+          <div ref={listScrollRef} className="flex-1 overflow-y-auto p-2 space-y-1 custom-scrollbar">
             {isLoading ? (
               <div className="flex flex-col items-center justify-center py-16">
                 <div className="w-8 h-8 border-3 border-rose-100 border-t-[#D60041] rounded-full animate-spin mb-2"></div>
@@ -2283,22 +2323,27 @@ const CompareCandidates: React.FC = () => {
                   </div>
 
                   {(() => {
-                    const isSelected = selectedCandidateIds.includes(activeCandidate.id);
-                    const isConflict = !isSelected && (candidates as CandidateComparisonData[]).some(c =>
-                      selectedCandidateIds.includes(c.id) && c.id !== activeCandidate.id && isSamePerson(activeCandidate, c)
+                    const personAppIds = new Set(
+                      (candidates as CandidateComparisonData[])
+                        .filter(c => isSamePerson(activeCandidate, c))
+                        .map(c => c.id)
                     );
+                    const isSelected = selectedCandidateIds.some(id => personAppIds.has(id));
 
                     return (
                       <div className="flex items-center gap-1.5">
                         <button
                           type="button"
-                          disabled={isConflict}
-                          onClick={() => toggleSelection(activeCandidate.id)}
-                          className={`flex items-center gap-1.5 sm:gap-2 px-3.5 sm:px-5 py-2 sm:py-2.5 rounded-xl text-xs font-bold transition-all border ${isSelected
-                              ? 'bg-rose-50 text-rose-600 border-rose-200 hover:bg-rose-100/70 cursor-pointer'
-                              : isConflict
-                                ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed'
-                                : 'bg-[#D60041] text-white border-[#D60041] hover:bg-rose-700 shadow-2xs hover:shadow-rose-100 cursor-pointer'
+                          onClick={() => {
+                            if (isSelected) {
+                              setSelectedCandidateIds(prev => prev.filter(id => !personAppIds.has(id)));
+                            } else {
+                              toggleSelection(activeCandidate.id);
+                            }
+                          }}
+                          className={`flex items-center gap-1.5 sm:gap-2 px-3.5 sm:px-5 py-2 sm:py-2.5 rounded-xl text-xs font-bold transition-all border cursor-pointer ${isSelected
+                              ? 'bg-rose-50 text-rose-600 border-rose-200 hover:bg-rose-100/70'
+                              : 'bg-[#D60041] text-white border-[#D60041] hover:bg-rose-700 shadow-2xs hover:shadow-rose-100'
                             }`}
                         >
                           {isSelected ? (
@@ -2313,9 +2358,6 @@ const CompareCandidates: React.FC = () => {
                             </>
                           )}
                         </button>
-                        {isConflict && (
-                          <HelpTooltip text="This applicant is already in the comparison." />
-                        )}
                       </div>
                     );
                   })()}

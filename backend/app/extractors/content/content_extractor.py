@@ -199,6 +199,57 @@ def _post_process(data: dict) -> dict:
     elif not data.get("institution") and data.get("college"):
         data["institution"] = data["college"]
 
+    # Strip placeholder no-value tokens (e.g. "None", "N/A", "Wala", "Degree: N/A") from extracted fields
+    from app.services.requirement_rules import is_no_value
+
+    def _is_placeholder_value(val: str) -> bool:
+        stripped = re.sub(
+            r"^(?:company|employer|organization|job\s*title|position|role|"
+            r"degree(?:\s*/\s*course)?|course|major|program|college|institution|"
+            r"school|university|certifications?|licenses?|education|experience|skills?)"
+            r"\s*[:\-]\s*",
+            "",
+            val.strip(),
+            flags=re.IGNORECASE,
+        ).strip()
+        return not stripped or is_no_value(stripped)
+
+    for key in (
+        "company",
+        "job_title",
+        "degree",
+        "highest_educational_attainment",
+        "college",
+        "institution",
+        "certifications",
+        "education",
+        "experience",
+        "skills",
+    ):
+        val = data.get(key)
+        if isinstance(val, str):
+            if _is_placeholder_value(val):
+                data[key] = ""
+            elif key == "skills" and "|" in val:
+                segs = [s.strip() for s in val.split("|") if s.strip() and not _is_placeholder_value(s)]
+                data[key] = " | ".join(segs)
+
+    for list_key in ("skills_list", "certifications_list"):
+        items = data.get(list_key)
+        if isinstance(items, list):
+            cleaned_items = []
+            for item in items:
+                if isinstance(item, str):
+                    if not _is_placeholder_value(item):
+                        cleaned_items.append(item)
+                elif isinstance(item, dict):
+                    label = item.get("name") or item.get("title") or item.get("certification") or ""
+                    if not (isinstance(label, str) and label.strip() and _is_placeholder_value(label)):
+                        cleaned_items.append(item)
+                elif item:
+                    cleaned_items.append(item)
+            data[list_key] = cleaned_items
+
     return data
 
 
@@ -280,40 +331,42 @@ def _cross_validate(data: dict, sections: dict) -> dict:
                 names_list.insert(0, fallback_name)
             data["all_names"] = names_list
 
+    from app.services.requirement_rules import is_no_value
+
     # If company is empty, check work_experiences / experience_details / EXPERIENCE section
     if not data.get("company"):
         for exp in data.get("work_experiences", []):
             c = exp.get("company_name") or exp.get("company")
-            if c and len(c) > 2:
+            if c and len(c) > 2 and not is_no_value(c):
                 data["company"] = c
                 break
         if not data.get("company"):
             for exp in data.get("experience_details", []):
                 c = exp.get("company_name") or exp.get("company")
-                if c and len(c) > 2:
+                if c and len(c) > 2 and not is_no_value(c):
                     data["company"] = c
                     break
         if not data.get("company") and sections.get("EXPERIENCE"):
             c = extract_company(sections["EXPERIENCE"])
-            if c:
+            if c and not is_no_value(c):
                 data["company"] = c
 
     # If degree is empty, check education_entries / education_details / EDUCATION section
     if not data.get("degree"):
         for edu in data.get("education_entries", []):
             d = edu.get("degree_or_course") or edu.get("degree") or edu.get("raw_degree_or_course")
-            if d and len(d) > 3:
+            if d and len(d) > 3 and not is_no_value(d):
                 data["degree"] = d
                 break
         if not data.get("degree"):
             for edu in data.get("education_details", []):
                 d = edu.get("degree")
-                if d and len(d) > 3:
+                if d and len(d) > 3 and not is_no_value(d):
                     data["degree"] = d
                     break
         if not data.get("degree") and sections.get("EDUCATION"):
             d = extract_degree_title(sections["EDUCATION"])
-            if d:
+            if d and not is_no_value(d):
                 data["degree"] = d
 
     return data
@@ -461,6 +514,9 @@ def _supplement_skills_from_section(skills_section_text: str, skills_details: di
                 continue
             item_lower = item_clean.lower()
             if item_lower in ignore_labels or item_lower in existing_lower:
+                continue
+            from app.services.requirement_rules import is_no_value
+            if is_no_value(item_clean):
                 continue
             # Filter out section headers, emails, phones, dates, credential IDs, and template instructions
             from .section_parser import detect_section_label

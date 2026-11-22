@@ -808,3 +808,257 @@ async def test_shortlist_roster_and_comparison_expose_shared_education_statuses(
         assert nlp_by_name["Pedro Penduko"]["education_needs_manual_review"] is True
 
     await engine.dispose()
+
+
+def test_content_extractor_drops_no_value_placeholders():
+    from app.extractors.content.content_extractor import extract_content
+
+    resume_text = (
+        "Juan Dela Cruz\n"
+        "Email: juan@example.com\n"
+        "Phone: +63 917 555 0101\n\n"
+        "WORK EXPERIENCE\n"
+        "Company: None\n"
+        "Position: N/A\n\n"
+        "EDUCATION\n"
+        "Degree: N/A\n"
+        "School: Wala\n\n"
+        "SKILLS\n"
+        "Excel, None, N/A, Wala, Python\n\n"
+        "CERTIFICATIONS\n"
+        "Wala\n"
+    )
+    extracted = extract_content(resume_text)
+
+    skills_str = str(extracted.get("skills") or "")
+    skills_list = [str(s).strip().lower() for s in (extracted.get("skills_list") or [])]
+    certs_list = [str(c).strip().lower() for c in (extracted.get("certifications_list") or [])]
+
+    assert "wala" not in skills_str.lower()
+    assert "none" not in [s.strip().lower() for s in skills_str.split("|")]
+    for bad in ("none", "n/a", "wala"):
+        assert bad not in skills_list
+        assert bad not in certs_list
+
+    assert extracted.get("company", "") == ""
+    assert extracted.get("degree", "") == ""
+    assert extracted.get("certifications", "") == ""
+
+
+def test_structured_job_no_value_does_not_scrape_job_description():
+    from types import SimpleNamespace
+
+    # Standalone call with explicit empty string must not scrape job description
+    exp_res = job_matching_service.calculate_experience_match(
+        0, "Requires 3 years experience in plant.", ""
+    )
+    assert exp_res["score"] == 1.0
+    assert exp_res["status"] == requirement_rules.STATUS_NOT_REQUIRED
+    assert exp_res["required_years"] == 0
+
+    # Structured job with None / "None" / "" must stay Not required even if description mentions years/degrees
+    job = SimpleNamespace(
+        job_id="JOB-NOVAL-DESC",
+        job_title="Office Clerk",
+        description="Ideal candidate has 5 years experience and a Bachelor's degree in Accounting.",
+        skills_required="Microsoft Excel",
+        skills_requirements="Microsoft Excel",
+        experience_requirements="None",
+        education_requirements=None,
+        certifications_requirements="",
+    )
+    resume = {
+        "skills": "Microsoft Excel",
+        "skills_list": ["Microsoft Excel"],
+        "years_experience": 0,
+        "experience": "",
+        "education": "",
+        "degree": "",
+        "certifications": "",
+        "fullname": "Ana Reyes",
+        "location": "Laguna",
+    }
+    res = job_matching_service.calculate_match_score(resume, job)
+    assert res["experience_status"] == requirement_rules.STATUS_NOT_REQUIRED
+    assert res["experience_score"] == 100.0
+    assert res["education_status"] == requirement_rules.STATUS_NOT_REQUIRED
+    assert res["education_score"] == 100.0
+    assert res["certifications_status"] == requirement_rules.STATUS_NOT_REQUIRED
+    assert res["certifications_score"] == 100.0
+
+
+def test_phrase_containing_none_is_not_treated_as_empty_and_tfidf_excludes_none():
+    from types import SimpleNamespace
+    from app.ml_engine.embeddings import FastTextEmbeddingEngine, normalize_token
+
+    phrase = "None of the above, but must know Excel"
+    assert requirement_rules.is_no_value(phrase) is False
+
+    # TF-IDF / embedding token normalization never indexes "none", "na", "wala", "nil", "null"
+    for marker in ("none", "None", "N/A", "na", "wala", "nil", "null"):
+        assert normalize_token(marker) == ""
+
+    emb_engine = FastTextEmbeddingEngine()
+    emb_engine.train([
+        ["none", "na", "wala", "nil", "null", "excel", "python"],
+        ["excel", "accounting", "none", "sql"],
+        ["python", "data", "analysis"],
+    ])
+    vocab = emb_engine.tfidf_vectorizer.vocabulary_ if emb_engine.tfidf_vectorizer else {}
+    for bad in ("none", "na", "wala", "nil", "null"):
+        assert bad not in vocab
+
+    job = SimpleNamespace(
+        job_id="JOB-PHRASE-NONE",
+        job_title="Operations Support",
+        description="Operations support role.",
+        skills_required="Communication",
+        skills_requirements="Communication",
+        experience_requirements="None",
+        education_requirements="Senior High School",
+        certifications_requirements=phrase,
+    )
+    resume_without_excel = {
+        "skills": "Communication",
+        "skills_list": ["Communication"],
+        "years_experience": 0,
+        "education": "Senior High School",
+        "degree": "Senior High School",
+        "certifications": "",
+        "fullname": "Carlos Santos",
+        "location": "Laguna",
+    }
+    res = job_matching_service.calculate_match_score(resume_without_excel, job)
+    assert res["certifications_status"] != requirement_rules.STATUS_NOT_REQUIRED
+    assert res["certifications_score"] < 100.0
+
+
+def test_arbitrary_certification_text_gets_zero_credit_and_scoring_is_deterministic():
+    from types import SimpleNamespace
+
+    job = SimpleNamespace(
+        job_id="JOB-CERT-STRICT",
+        job_title="Electrical Engineer",
+        description="Need Registered Electrical Engineer license.",
+        skills_required="Electrical Design",
+        skills_requirements="Electrical Design",
+        experience_requirements="2 years",
+        education_requirements="Bachelor's degree in Electrical Engineering",
+        certifications_requirements="Registered Electrical Engineer (REE) / PRC License",
+    )
+    resume = {
+        "skills": "Electrical Design",
+        "skills_list": ["Electrical Design"],
+        "years_experience": 3,
+        "education": "BS Electrical Engineering",
+        "degree": "BS Electrical Engineering",
+        "certifications": "I worked hard in school and love problem solving",
+        "fullname": "Marco Diaz",
+        "location": "Batangas",
+    }
+
+    r1 = job_matching_service.calculate_match_score(resume, job)
+    r2 = job_matching_service.calculate_match_score(resume, job)
+
+    assert r1["certifications_score"] == 0.0
+    assert r1["certifications_status"] == requirement_rules.STATUS_DOES_NOT_MEET
+    assert r1["match_percentage"] == r2["match_percentage"]
+    assert r1["skills_score"] == r2["skills_score"]
+    assert r1["experience_score"] == r2["experience_score"]
+    assert r1["education_score"] == r2["education_score"]
+    assert r1["certifications_score"] == r2["certifications_score"]
+
+
+@pytest.mark.asyncio
+async def test_recalculate_safety_preserves_application_status_and_shortlist_rosters():
+    from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
+    from sqlalchemy import select
+    from app.utils.database import Base
+    from app.models.job_description import JobDescription, JobType
+    from app.models.job_application import JobApplication
+    from app.models.shortlist_roster import ShortlistRoster, ShortlistRosterItem
+    import app.models.system_config  # noqa: F401
+    from app.services import system_config_service
+
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    SessionLocal = async_sessionmaker(engine, expire_on_commit=False)
+    async with SessionLocal() as db:
+        job = JobDescription(
+            job_id="JOB-SAFE-RECALC",
+            job_title="Production Assistant",
+            department="Production",
+            job_type=JobType.FULL_TIME,
+            location="Laguna",
+            description="Assembly operations",
+            skills_requirements="Assembly",
+            education_requirements="Senior High School graduate",
+            experience_requirements="None",
+            certifications_requirements="None",
+            is_active=True,
+        )
+        db.add(job)
+        await db.flush()
+
+        # Deliberately store stale/wrong legacy scores & statuses that MUST NOT be overwritten
+        app = JobApplication(
+            job_id=job.id,
+            candidate_name="Liza Soberano",
+            candidate_email="liza@example.com",
+            skills=["Assembly"],
+            degree="BS Industrial Engineering",
+            highest_educational_attainment="Bachelor",
+            certifications="",
+            total_experience_months=0,
+            match_score=45.0,
+            skills_score=100.0,
+            experience_score=0.0,
+            education_score=0.0,
+            certifications_score=0.0,
+            status="INTERVIEW_SCHEDULED",
+        )
+        db.add(app)
+        await db.flush()
+
+        roster = ShortlistRoster(
+            job_id=job.id,
+            name="Wave 1",
+            created_by="hr@example.com",
+        )
+        db.add(roster)
+        await db.flush()
+
+        roster_item = ShortlistRosterItem(
+            roster_id=roster.id,
+            application_id=app.id,
+            stage="Interview Scheduled",
+            added_by="hr@example.com",
+        )
+        db.add(roster_item)
+        await db.commit()
+
+        # Before recalculation, score remains as stored
+        before_app = (await db.execute(select(JobApplication).where(JobApplication.id == app.id))).scalar_one()
+        assert before_app.match_score == 45.0
+
+        # Run explicit admin recalculation action
+        summary = await system_config_service.recalculate_all_applications(db)
+        assert summary["updated_applications"] == 1
+
+        after_app = (await db.execute(select(JobApplication).where(JobApplication.id == app.id))).scalar_one()
+        after_roster_item = (await db.execute(select(ShortlistRosterItem).where(ShortlistRosterItem.id == roster_item.id))).scalar_one()
+
+        # Scores fixed to full credit (100% across overqualified edu + Not required exp/certs)
+        assert after_app.education_score == 100.0
+        assert after_app.experience_score == 100.0
+        assert after_app.certifications_score == 100.0
+        assert after_app.match_score > 90.0
+
+        # Application status and Shortlist Roster membership MUST remain untouched
+        assert after_app.status == "INTERVIEW_SCHEDULED"
+        assert after_roster_item.stage == "Interview Scheduled"
+
+    await engine.dispose()
+

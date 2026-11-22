@@ -54,6 +54,7 @@ export interface RankedPersonItem<
   effectiveApp: TApp;
   appliedToSelectedJob: boolean;
   displayScore: number;
+  sortScore: number;
   originalIndex: number;
 }
 
@@ -101,10 +102,10 @@ export function doesApplicationMatchJob(
 }
 
 /**
- * Return an application's authoritative score for the job it actually applied to,
- * respecting active evaluation pillar filters.
+ * Return an application's unrounded score for the job it actually applied to,
+ * respecting active evaluation pillar filters (used for tie-breaking decimal scores).
  */
-export function getAppliedJobScore(
+export function getAppliedJobRawScore(
   app: ComparableApplicationLike,
   filters: EvaluationFilters
 ): number {
@@ -135,15 +136,50 @@ export function getAppliedJobScore(
       (filters?.skills && filters?.experience && filters?.certifications) ||
       (skillsScore === 0 && expScore === 0 && certScore === 0)
     ) {
-      return Math.round(originalScore);
+      return originalScore;
     }
     if (totalWeight > 0 && (skillsScore > 0 || expScore > 0 || certScore > 0)) {
-      return Math.round(rawScore / totalWeight);
+      return rawScore / totalWeight;
     }
-    return Math.round(originalScore);
+    return originalScore;
   }
 
-  return totalWeight > 0 ? Math.round(rawScore / totalWeight) : 0;
+  return totalWeight > 0 ? rawScore / totalWeight : 0;
+}
+
+/**
+ * Return an application's authoritative rounded score for the job it actually applied to,
+ * respecting active evaluation pillar filters.
+ */
+export function getAppliedJobScore(
+  app: ComparableApplicationLike,
+  filters: EvaluationFilters
+): number {
+  return Math.round(getAppliedJobRawScore(app, filters));
+}
+
+/**
+ * Return the application targeting `job` with the highest score (ties broken by
+ * earliest occurrence in `applications`), or `undefined` if none match.
+ */
+export function pickBestMatchingApplication<TApp extends ComparableApplicationLike>(
+  applications: TApp[],
+  job: Job,
+  filters: EvaluationFilters
+): TApp | undefined {
+  let bestApp: TApp | undefined;
+  let bestScore = -Infinity;
+
+  for (const app of applications) {
+    if (!doesApplicationMatchJob(app, job)) continue;
+    const score = getAppliedJobRawScore(app, filters);
+    if (!bestApp || score > bestScore) {
+      bestApp = app;
+      bestScore = score;
+    }
+  }
+
+  return bestApp;
 }
 
 /**
@@ -212,12 +248,14 @@ export function partitionAndSortPersonGroups<
 >({
   personGroups,
   selectedJob,
+  parsedJob,
   evaluationFilters,
   personSelectedAppMap,
   scoreAgainstJob,
 }: {
   personGroups: TGroup[];
   selectedJob: Job | undefined;
+  parsedJob?: ParsedJobRequirements;
   evaluationFilters: EvaluationFilters;
   personSelectedAppMap: Record<string, number>;
   scoreAgainstJob: (
@@ -236,18 +274,20 @@ export function partitionAndSortPersonGroups<
       const effectiveApp =
         (manualId !== undefined ? person.applications.find(a => a.id === manualId) : undefined) ||
         person.applications[0];
+      const rawScore = getAppliedJobRawScore(effectiveApp, evaluationFilters);
       return {
         person,
         effectiveApp,
         appliedToSelectedJob: false,
-        displayScore: getAppliedJobScore(effectiveApp, evaluationFilters),
+        displayScore: Math.round(rawScore),
+        sortScore: rawScore,
         originalIndex,
       };
     });
     return { appliedToJob: [], otherApplicants };
   }
 
-  const parsedJob = preparseJobRequirements(selectedJob);
+  const resolvedParsedJob = parsedJob || preparseJobRequirements(selectedJob);
   const appliedToJob: RankedPersonItem<TApp, TGroup>[] = [];
   const otherApplicants: RankedPersonItem<TApp, TGroup>[] = [];
 
@@ -256,48 +296,130 @@ export function partitionAndSortPersonGroups<
     const manualApp =
       manualId !== undefined ? person.applications.find(a => a.id === manualId) : undefined;
 
-    const matchingApps = person.applications.filter(app =>
-      doesApplicationMatchJob(app, selectedJob)
+    const bestMatchingApp = pickBestMatchingApplication(
+      person.applications,
+      selectedJob,
+      evaluationFilters
     );
 
-    if (matchingApps.length > 0) {
-      let bestMatchingApp = matchingApps[0];
-      let bestMatchingScore = getAppliedJobScore(bestMatchingApp, evaluationFilters);
-      for (let i = 1; i < matchingApps.length; i++) {
-        const candidateScore = getAppliedJobScore(matchingApps[i], evaluationFilters);
-        if (candidateScore > bestMatchingScore) {
-          bestMatchingScore = candidateScore;
-          bestMatchingApp = matchingApps[i];
-        }
-      }
-
+    if (bestMatchingApp) {
+      const bestRawScore = getAppliedJobRawScore(bestMatchingApp, evaluationFilters);
       const effectiveApp = manualApp || bestMatchingApp;
-      const displayScore = doesApplicationMatchJob(effectiveApp, selectedJob)
+      const effectiveMatchesJob = doesApplicationMatchJob(effectiveApp, selectedJob);
+      const displayScore = effectiveMatchesJob
         ? getAppliedJobScore(effectiveApp, evaluationFilters)
-        : scoreAgainstJob(effectiveApp, selectedJob, evaluationFilters, parsedJob);
+        : scoreAgainstJob(effectiveApp, selectedJob, evaluationFilters, resolvedParsedJob);
+      const sortScore = effectiveMatchesJob
+        ? getAppliedJobRawScore(effectiveApp, evaluationFilters)
+        : bestRawScore;
 
       appliedToJob.push({
         person,
         effectiveApp,
         appliedToSelectedJob: true,
         displayScore,
+        sortScore,
         originalIndex,
       });
     } else {
       const effectiveApp = manualApp || person.applications[0];
-      const displayScore = scoreAgainstJob(effectiveApp, selectedJob, evaluationFilters, parsedJob);
+      const displayScore = scoreAgainstJob(effectiveApp, selectedJob, evaluationFilters, resolvedParsedJob);
 
       otherApplicants.push({
         person,
         effectiveApp,
         appliedToSelectedJob: false,
         displayScore,
+        sortScore: displayScore,
         originalIndex,
       });
     }
   });
 
-  appliedToJob.sort((a, b) => (b.displayScore - a.displayScore) || (a.originalIndex - b.originalIndex));
+  appliedToJob.sort((a, b) => (b.sortScore - a.sortScore) || (a.originalIndex - b.originalIndex));
 
   return { appliedToJob, otherApplicants };
+}
+
+/**
+ * Keep every selected person selected when switching jobs, swapping a multi-application
+ * candidate's selected ID to their matching application for `nextJob` when one exists.
+ */
+export function syncSelectedApplicationIdsForJob<TApp extends ComparableApplicationLike>({
+  selectedIds,
+  candidates,
+  nextJob,
+  evaluationFilters,
+  isSamePerson,
+}: {
+  selectedIds: number[];
+  candidates: TApp[];
+  nextJob: Job | undefined;
+  evaluationFilters: EvaluationFilters;
+  isSamePerson: (a: TApp, b: TApp) => boolean;
+}): number[] {
+  if (!nextJob || selectedIds.length === 0) {
+    return selectedIds;
+  }
+
+  const byId = new Map<number, TApp>();
+  for (const cand of candidates) {
+    byId.set(cand.id, cand);
+  }
+
+  const updated: number[] = [];
+  const seen = new Set<number>();
+
+  for (const id of selectedIds) {
+    const currentApp = byId.get(id);
+    let nextId = id;
+    if (currentApp) {
+      const personApps = candidates.filter((c) => isSamePerson(currentApp, c));
+      const bestMatch = pickBestMatchingApplication(personApps, nextJob, evaluationFilters);
+      if (bestMatch) {
+        nextId = bestMatch.id;
+      }
+    }
+    if (!seen.has(nextId)) {
+      seen.add(nextId);
+      updated.push(nextId);
+    }
+  }
+
+  return updated;
+}
+
+/**
+ * Sync the previewed application ID when selecting, changing, or clearing the target job:
+ * picks the matching application for `nextJob` when present, or resets to the person's
+ * default application when cleared.
+ */
+export function syncActiveApplicationIdForJob<TApp extends ComparableApplicationLike>({
+  activeId,
+  candidates,
+  nextJob,
+  evaluationFilters,
+  isSamePerson,
+}: {
+  activeId: number | null;
+  candidates: TApp[];
+  nextJob: Job | undefined;
+  evaluationFilters: EvaluationFilters;
+  isSamePerson: (a: TApp, b: TApp) => boolean;
+}): number | null {
+  if (activeId === null) {
+    return null;
+  }
+
+  const currentApp = candidates.find((c) => c.id === activeId);
+  if (!currentApp) {
+    return activeId;
+  }
+
+  const personApps = candidates.filter((c) => isSamePerson(currentApp, c));
+  if (nextJob) {
+    return pickBestMatchingApplication(personApps, nextJob, evaluationFilters)?.id ?? activeId;
+  }
+
+  return personApps[0]?.id ?? activeId;
 }

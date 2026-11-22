@@ -25,7 +25,13 @@ import {
 import Header from '../../../components/layout/Header';
 import Footer from '../../../components/layout/Footer';
 import { Job } from '../../../types';
-import { isNoValueRequirement } from '../../../utils/criterionStatus';
+import {
+  isNoValueRequirement,
+  resolveCriterionStatus,
+  getCriterionStatusBadgeStyle,
+  stripStatusPrefix,
+} from '../../../utils/criterionStatus';
+import { formatSecondPersonText } from '../../../components/candidate/DetailedAnalysisDrawer';
 
 const STATIC_JOBS = [
   { id: 1, title: "Production Supervisor", department: "Manufacturing" },
@@ -250,18 +256,67 @@ const JobDetailsPage: React.FC = () => {
                       {matchData.ai_summary || "We analyzed your qualifications against this job description. Here is the detailed breakdown of your fit."}
                     </p>
                     
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
                       {[
-                        { label: 'Skills Match', score: matchData.skills_score, icon: <Cpu size={16} />, color: 'text-blue-600', bg: 'bg-blue-50' },
-                        { label: 'Experience Match', score: matchData.experience_score, icon: <Briefcase size={16} />, color: 'text-purple-600', bg: 'bg-purple-50' },
-                        { label: 'Education Match', score: matchData.education_score, icon: <GraduationCap size={16} />, color: 'text-amber-600', bg: 'bg-amber-50' }
-                      ].map((item, idx) => (
-                        <div key={idx} className={`${item.bg} p-3.5 sm:p-4 rounded-xl sm:rounded-2xl flex flex-col text-center`}>
-                          <div className={`mx-auto ${item.color} mb-1.5 sm:mb-2`}>{item.icon}</div>
-                          <p className="text-base sm:text-lg font-black text-slate-900">{Math.round(item.score)}%</p>
-                          <span className="text-[9px] font-black uppercase tracking-widest text-slate-500">{item.label}</span>
-                        </div>
-                      ))}
+                        {
+                          label: 'Skills',
+                          status: resolveCriterionStatus({
+                            explicitStatus: matchData.skills_status,
+                            reason: matchData.skills_reason,
+                            score: matchData.skills_score,
+                          }),
+                          reason: matchData.skills_reason,
+                          icon: <Cpu size={16} />,
+                        },
+                        {
+                          label: 'Experience',
+                          status: resolveCriterionStatus({
+                            explicitStatus: matchData.experience_status,
+                            reason: matchData.experience_reason,
+                            score: matchData.experience_score,
+                            isBelowMinimum: Boolean(matchData.experience_below_minimum),
+                          }),
+                          reason: matchData.experience_reason,
+                          icon: <Briefcase size={16} />,
+                        },
+                        {
+                          label: 'Education',
+                          status: resolveCriterionStatus({
+                            explicitStatus: matchData.education_status,
+                            reason: matchData.education_reason,
+                            score: matchData.education_score,
+                          }),
+                          reason: matchData.education_reason,
+                          icon: <GraduationCap size={16} />,
+                        },
+                        {
+                          label: 'Certifications',
+                          status: resolveCriterionStatus({
+                            explicitStatus: matchData.certifications_status,
+                            reason: matchData.certifications_reason,
+                            score: matchData.certifications_score,
+                          }),
+                          reason: matchData.certifications_reason,
+                          icon: <Award size={16} />,
+                        },
+                      ].map((item, idx) => {
+                        const style = getCriterionStatusBadgeStyle(item.status);
+                        const cleanReason = formatSecondPersonText(stripStatusPrefix(item.reason));
+                        return (
+                          <div key={idx} className="bg-slate-50/80 border border-slate-100 p-3.5 sm:p-4 rounded-xl sm:rounded-2xl flex flex-col items-center text-center">
+                            <div className={`mx-auto ${style.textClass} mb-1.5 sm:mb-2`}>{item.icon}</div>
+                            <span className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1">{item.label}</span>
+                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${style.badgeClass}`}>
+                              {item.status}
+                            </span>
+                            {cleanReason && (
+                              <p className="text-[11px] text-slate-600 font-medium mt-1.5 leading-snug">
+                                {cleanReason}
+                              </p>
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
                 </div>
