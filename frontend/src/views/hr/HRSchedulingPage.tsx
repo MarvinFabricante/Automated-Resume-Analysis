@@ -87,6 +87,8 @@ export interface FormattedCalendarEvent {
   verbal_notes?: string;
   last_call_at?: string;
   next_retry_at?: string;
+  created_at?: string;
+  logs?: any[];
 }
 
 const HRSchedulingPage: React.FC = () => {
@@ -261,7 +263,9 @@ const HRSchedulingPage: React.FC = () => {
         call_language: iv.call_language,
         verbal_notes: iv.verbal_notes,
         last_call_at: iv.last_call_at,
-        next_retry_at: iv.next_retry_at
+        next_retry_at: iv.next_retry_at,
+        created_at: iv.created_at,
+        logs: iv.logs || []
       });
     });
 

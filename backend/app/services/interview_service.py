@@ -110,8 +110,18 @@ def _populate_candidate_info(interview, app_override=None, interviewer_override=
     return interview
 
 IPROG_SMS_DEFAULT_URL = "https://www.iprogsms.com/api/v1/sms_messages"
+IPROG_SMS_DEFAULT_BASE_URL = "https://www.iprogsms.com/api/v1"
+IPROG_SMS_ALLOWED_PROVIDERS = {0, 1, 2}
 _PLACEHOLDER_PHONES = {"", "n/a", "na", "none", "null", "not specified", "not provided", "unknown", "-"}
 _sms_thread_state = threading.local()
+
+
+def _get_iprogsms_base_url() -> str:
+    """Resolve the IPROG SMS API v1 base URL from IPROG_SMS_API_URL."""
+    api_url = (os.getenv("IPROG_SMS_API_URL") or IPROG_SMS_DEFAULT_URL).strip().rstrip("/")
+    if api_url.endswith("/sms_messages"):
+        return api_url[: -len("/sms_messages")]
+    return api_url or IPROG_SMS_DEFAULT_BASE_URL
 
 
 def _clean_phone_candidate(raw_phone: Optional[str]) -> Optional[str]:
@@ -161,6 +171,16 @@ def format_phone_for_iprogsms(phone: str) -> str:
     return _normalize_ph_digits(digits)
 
 
+def format_phone_for_iprogsms_detect(phone: str) -> str:
+    """Normalize PH phone number into 09XXXXXXXXX format required by /api/v1/phone_numbers/detect."""
+    digits = format_phone_for_iprogsms(phone)
+    if not digits:
+        return ""
+    if digits.startswith("639") and len(digits) == 12:
+        return "0" + digits[2:]
+    return digits
+
+
 def _extract_iprogsms_error(data: dict, status_code: int, raw_text: str) -> str:
     msg = data.get("message")
     if isinstance(msg, list):
@@ -172,9 +192,24 @@ def _extract_iprogsms_error(data: dict, status_code: int, raw_text: str) -> str:
     return msg_str or f"HTTP {status_code}"
 
 
+def _resolve_iprogsms_provider_id() -> int:
+    """Parse and validate IPROG_SMS_PROVIDER against documented values (0, 1, or 2)."""
+    raw = (os.getenv("IPROG_SMS_PROVIDER") or "0").strip()
+    try:
+        provider_id = int(raw)
+    except ValueError:
+        logger.warning(f"Invalid IPROG_SMS_PROVIDER={raw!r}; defaulting to 0.")
+        return 0
+    if provider_id not in IPROG_SMS_ALLOWED_PROVIDERS:
+        logger.warning(f"Unsupported IPROG_SMS_PROVIDER={provider_id}; defaulting to 0.")
+        return 0
+    return provider_id
+
+
 def send_iprogsms_sync(to_phone: str, message: str) -> bool:
-    """Send an SMS via the IPROG SMS REST API."""
+    """Send an SMS via the IPROG SMS REST API (POST /api/v1/sms_messages)."""
     _sms_thread_state.last_error = None
+    _sms_thread_state.last_message_id = None
     api_token = (os.getenv("IPROG_SMS_API_TOKEN") or "").strip()
     api_url = (os.getenv("IPROG_SMS_API_URL") or IPROG_SMS_DEFAULT_URL).strip()
     recipient = format_phone_for_iprogsms(to_phone)
@@ -184,10 +219,7 @@ def send_iprogsms_sync(to_phone: str, message: str) -> bool:
         logger.warning("IPROG SMS skipped: missing api_token, phone_number, or message.")
         return False
 
-    try:
-        sms_provider_id = int(os.getenv("IPROG_SMS_PROVIDER", "0"))
-    except ValueError:
-        sms_provider_id = 0
+    sms_provider_id = _resolve_iprogsms_provider_id()
 
     payload = {
         "api_token": api_token,
@@ -213,6 +245,7 @@ def send_iprogsms_sync(to_phone: str, message: str) -> bool:
             or ("message_id" in data and api_status is None)
         )
         if accepted:
+            _sms_thread_state.last_message_id = data.get("message_id")
             logger.info(
                 f"IPROG SMS queued for {recipient} (message_id={data.get('message_id')})"
             )
@@ -228,6 +261,180 @@ def send_iprogsms_sync(to_phone: str, message: str) -> bool:
         _sms_thread_state.last_error = str(exc)
         logger.error(f"IPROG SMS request failed for {recipient}: {exc}")
         return False
+
+
+def detect_phone_network_iprogsms(phone: str) -> dict:
+    """Check Philippine mobile carrier via IPROG SMS POST /api/v1/phone_numbers/detect."""
+    api_token = (os.getenv("IPROG_SMS_API_TOKEN") or "").strip()
+    detect_phone = format_phone_for_iprogsms_detect(phone)
+    if not api_token or not detect_phone:
+        return {
+            "ok": False,
+            "phone_number": detect_phone,
+            "network": None,
+            "is_smart_tnt": None,
+            "error": "Missing API token or valid Philippine mobile phone number.",
+        }
+    url = f"{_get_iprogsms_base_url()}/phone_numbers/detect"
+    try:
+        resp = requests.post(
+            url,
+            json={"api_token": api_token, "phone_number": detect_phone},
+            timeout=15,
+        )
+        try:
+            data = resp.json()
+        except ValueError:
+            data = {}
+        payload_data = data.get("data") if isinstance(data.get("data"), dict) else {}
+        if resp.status_code == 200 and str(data.get("status", "")).lower() in {"success", "ok", "200"}:
+            return {
+                "ok": True,
+                "phone_number": payload_data.get("phone_number") or detect_phone,
+                "network": payload_data.get("network"),
+                "is_smart_tnt": bool(payload_data.get("is_smart_tnt")),
+                "error": None,
+            }
+        return {
+            "ok": False,
+            "phone_number": detect_phone,
+            "network": None,
+            "is_smart_tnt": None,
+            "error": _extract_iprogsms_error(data, resp.status_code, resp.text or ""),
+        }
+    except Exception as exc:
+        return {
+            "ok": False,
+            "phone_number": detect_phone,
+            "network": None,
+            "is_smart_tnt": None,
+            "error": str(exc),
+        }
+
+
+def check_iprogsms_credits() -> dict:
+    """Fetch remaining SMS credit balance via IPROG SMS GET /api/v1/account/sms_credits."""
+    api_token = (os.getenv("IPROG_SMS_API_TOKEN") or "").strip()
+    if not api_token:
+        return {"ok": False, "load_balance": None, "error": "Missing IPROG_SMS_API_TOKEN."}
+    url = f"{_get_iprogsms_base_url()}/account/sms_credits"
+    try:
+        resp = requests.get(url, params={"api_token": api_token}, timeout=15)
+        try:
+            data = resp.json()
+        except ValueError:
+            data = {}
+        payload_data = data.get("data") if isinstance(data.get("data"), dict) else {}
+        if resp.status_code == 200 and str(data.get("status", "")).lower() in {"success", "ok", "200"}:
+            return {
+                "ok": True,
+                "load_balance": payload_data.get("load_balance"),
+                "error": None,
+            }
+        return {
+            "ok": False,
+            "load_balance": None,
+            "error": _extract_iprogsms_error(data, resp.status_code, resp.text or ""),
+        }
+    except Exception as exc:
+        return {"ok": False, "load_balance": None, "error": str(exc)}
+
+
+def check_iprogsms_message_status(message_id: str) -> dict:
+    """Query SMS delivery status via IPROG SMS GET /api/v1/sms_messages/status."""
+    api_token = (os.getenv("IPROG_SMS_API_TOKEN") or "").strip()
+    clean_id = (message_id or "").strip()
+    if not api_token or not clean_id:
+        return {
+            "ok": False,
+            "message_id": clean_id,
+            "message_status": None,
+            "error": "Missing API token or message_id.",
+        }
+    url = f"{_get_iprogsms_base_url()}/sms_messages/status"
+    try:
+        resp = requests.get(
+            url,
+            params={"api_token": api_token, "message_id": clean_id},
+            timeout=15,
+        )
+        try:
+            data = resp.json()
+        except ValueError:
+            data = {}
+        api_status = data.get("status")
+        if resp.status_code == 200 and (
+            (isinstance(api_status, int) and 200 <= api_status < 300)
+            or (isinstance(api_status, str) and api_status.lower() in {"success", "ok", "200"})
+        ):
+            return {
+                "ok": True,
+                "message_id": clean_id,
+                "message_status": data.get("message_status"),
+                "error": None,
+            }
+        return {
+            "ok": False,
+            "message_id": clean_id,
+            "message_status": None,
+            "error": _extract_iprogsms_error(data, resp.status_code, resp.text or ""),
+        }
+    except Exception as exc:
+        return {
+            "ok": False,
+            "message_id": clean_id,
+            "message_status": None,
+            "error": str(exc),
+        }
+
+
+def validate_iprogsms_content(message: str) -> dict:
+    """Validate SMS copy against spam filters via IPROG SMS GET /api/v1/sms_messages/validate_content."""
+    api_token = (os.getenv("IPROG_SMS_API_TOKEN") or "").strip()
+    clean_message = (message or "").strip()
+    if not api_token or not clean_message:
+        return {
+            "ok": False,
+            "passed": False,
+            "warnings": [],
+            "message": None,
+            "error": "Missing API token or message content.",
+        }
+    url = f"{_get_iprogsms_base_url()}/sms_messages/validate_content"
+    try:
+        resp = requests.get(
+            url,
+            params={"api_token": api_token, "message": clean_message},
+            timeout=15,
+        )
+        try:
+            data = resp.json()
+        except ValueError:
+            data = {}
+        payload_data = data.get("data") if isinstance(data.get("data"), dict) else {}
+        if resp.status_code == 200 and str(data.get("status", "")).lower() in {"success", "ok", "200"}:
+            return {
+                "ok": True,
+                "passed": bool(payload_data.get("passed", True)),
+                "warnings": payload_data.get("warnings") or [],
+                "message": data.get("message"),
+                "error": None,
+            }
+        return {
+            "ok": False,
+            "passed": False,
+            "warnings": payload_data.get("warnings") or [],
+            "message": data.get("message"),
+            "error": _extract_iprogsms_error(data, resp.status_code, resp.text or ""),
+        }
+    except Exception as exc:
+        return {
+            "ok": False,
+            "passed": False,
+            "warnings": [],
+            "message": None,
+            "error": str(exc),
+        }
 
 
 def format_to_e164(phone: Optional[str]) -> Optional[str]:
@@ -361,10 +568,15 @@ async def _resolve_candidate_phone(db: AsyncSession, application) -> Optional[st
     return resolved_phone
 
 
-def _send_sms_with_reason_sync(to_phone: str, message: str) -> tuple[bool, Optional[str]]:
+def _send_sms_with_reason_sync(to_phone: str, message: str) -> tuple[bool, Optional[str], Optional[str]]:
     _sms_thread_state.last_error = None
+    _sms_thread_state.last_message_id = None
     sent = bool(send_sms_notification_sync(to_phone, message))
-    return sent, getattr(_sms_thread_state, "last_error", None)
+    return (
+        sent,
+        getattr(_sms_thread_state, "last_error", None),
+        getattr(_sms_thread_state, "last_message_id", None),
+    )
 
 
 async def _dispatch_candidate_sms(
@@ -381,11 +593,12 @@ async def _dispatch_candidate_sms(
         return False
 
     formatted_phone = format_to_e164(clean_phone) or clean_phone
-    sms_sent, failure_reason = await asyncio.to_thread(_send_sms_with_reason_sync, formatted_phone, message)
+    sms_sent, failure_reason, message_id = await asyncio.to_thread(_send_sms_with_reason_sync, formatted_phone, message)
 
     event_name = success_event if sms_sent else "SMS_FAILED"
     if sms_sent:
-        log_desc = f"{success_desc_prefix} to {formatted_phone}: {message}"
+        id_suffix = f" [message_id={message_id}]" if message_id else ""
+        log_desc = f"{success_desc_prefix} to {formatted_phone}{id_suffix}: {message}"
     elif failure_reason:
         log_desc = f"Failed to deliver SMS notification to {formatted_phone} ({failure_reason}): {message}"
     else:
@@ -1490,6 +1703,9 @@ async def update_interview(db: AsyncSession, interview_id: int, data: InterviewU
         except Exception as e_notif:
             print(f"Warning: Could not create interview reschedule notification: {e_notif}")
 
+    fresh_interview = await InterviewRepository.get_interview_by_id(db, interview.id)
+    if fresh_interview:
+        interview = fresh_interview
     _populate_candidate_info(interview, app_override=application, interviewer_override=user)
     return interview
 
@@ -1920,6 +2136,9 @@ async def cancel_interview(
         except Exception as e_notif:
             print(f"Warning: Could not create interview cancellation notification: {e_notif}")
 
+    fresh_interview = await InterviewRepository.get_interview_by_id(db, interview.id)
+    if fresh_interview:
+        interview = fresh_interview
     return _populate_candidate_info(interview, app_override=application, interviewer_override=user)
 
 
@@ -2108,6 +2327,9 @@ async def candidate_reschedule_interview(
             "Candidate reschedule confirmation SMS delivered",
         )
 
+    fresh_interview = await InterviewRepository.get_interview_by_id(db, interview.id)
+    if fresh_interview:
+        interview = fresh_interview
     _populate_candidate_info(interview, app_override=application, interviewer_override=interviewer_user)
     return interview
 
