@@ -626,7 +626,7 @@ display_dashboard() {
 # ==============================================================================
 main() {
     local mode="build"
-    local auto_seed="true"
+    local auto_seed="false"
     local use_tunnel="true"
 
     while [ $# -gt 0 ]; do
