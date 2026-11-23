@@ -942,7 +942,13 @@ def extract_structured_education(text: str) -> Dict[str, Any]:
             if (
                 not nxt_l.startswith(('•', '-', '*', '▪', '►', '✓'))
                 and re.search(r'\b(?:bachelor|master|doctor|associate|diploma)\b', curr_l, re.I)
-                and nxt_clean in _DEGREE_CONT_WORDS
+                and len(nxt_clean.split()) <= 4
+                and not _has_school_keyword(nxt_l)
+                and not any(_extract_years(nxt_l))
+                and (
+                    nxt_clean in _DEGREE_CONT_WORDS
+                    or any(nxt_clean.endswith(" " + w) for w in _DEGREE_CONT_WORDS)
+                )
             ):
                 connector = " in " if re.search(r"\b(?:Bachelor|Master) of (?:Science|Arts)$", curr_l, re.I) else " "
                 merged_edu_lines.append(f"{curr_l}{connector}{nxt_l}")
@@ -1214,6 +1220,11 @@ def extract_structured_education(text: str) -> Dict[str, Any]:
             return False
 
         for line in edu_lines:
+            if not line.strip():
+                if current_block:
+                    process_block(current_tier, current_block)
+                    current_block = []
+                continue
             matched_tier = None
             curr_t = " \n ".join(current_block) if current_block else ""
             s_y, e_y = _extract_years(curr_t)

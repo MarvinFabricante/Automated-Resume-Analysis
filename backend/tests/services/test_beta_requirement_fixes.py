@@ -153,3 +153,43 @@ def test_persisted_answers_survive_background_rescoring():
     assert result["skills_score"] == 50
     assert result["requirement_evaluations"][0]["source"] == "Confirmed by applicant"
     assert application.status == "SHORTLISTED"
+
+
+def test_matched_resume_certification_not_downgraded_to_not_confirmed():
+    target = job(skills="Communication", certifications="safety training (OSHA or BOSH)")
+    res = score({"skills": "Communication", "certifications": "BOSH Certified"}, target)
+    assert res["certifications_score"] == 100.0
+    assert res["certifications_status"] == "Meets requirement"
+    cert_eval = next(r for r in res["requirement_evaluations"] if r["field"] == "certifications")
+    assert cert_eval["status"] == "Meets requirement"
+    assert cert_eval["source"] == "Resume"
+    assert not any(q.get("field") == "certifications" for q in res["followup_questions"])
+
+
+def test_comma_rich_experience_not_split_by_confirmation_pipeline():
+    target = job(skills="Python", experience="2 years")
+    resume = {
+        "skills": "Python",
+        "experience": "Cashier at Jollibee (2022 - 2024) - Handled payments, operated POS, maintained cleanliness",
+        "years_experience": 2,
+    }
+    resolved = apply_confirmations(resume, evaluate_requirements(resume, target))
+    assert resolved["experience"] == resume["experience"]
+    res = score(resume, target)
+    assert "none of the 1 work experience(s) are relevant" in (res.get("experience_reason") or "").lower()
+
+
+def test_multiline_and_duplicated_education_labels_cleaned_without_entries():
+    assert education_display_label("Bachelor of Science\nComputer Science") == "Bachelor's degree in Computer Science"
+    assert education_display_label("Bachelor's degree in computer science science computer science") == "Bachelor's degree in Computer Science"
+    assert education_display_label("Bachelor of Science in Computer Science (4th year, expected 2027)") == "Bachelor's degree in Computer Science (4th year, expected 2027)"
+
+
+def test_extract_content_preserves_hyphenated_skills_without_fragments():
+    from app.extractors.content.content_extractor import extract_content
+    sample = "SKILLS\nCore Skills: Communication, attention to detail, time management, problem-\nsolving, adaptability\n"
+    extracted = extract_content(sample)
+    keys = _tokenize_skills(extracted["skills_list"])
+    assert "problem solving" in keys
+    assert "problem" not in keys
+    assert "solving" not in keys

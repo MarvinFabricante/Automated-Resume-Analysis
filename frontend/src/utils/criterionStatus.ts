@@ -387,10 +387,14 @@ export function parseEducationLevelClient(
   if (!isJobReq && Array.isArray(entries) && entries.length > 0) {
     for (const e of entries) {
       if (!e || typeof e !== 'object') continue;
-      const combined = [e.degree_or_course, e.raw_degree_or_course, e.education_level, e.major_or_specialization]
-        .filter((p) => !isNoValueRequirement(p))
-        .map((p) => String(p).trim())
-        .join(' ');
+      const degree = [e.degree_or_course, e.raw_degree_or_course, e.degree, e.education_level]
+        .find((p) => !isNoValueRequirement(p));
+      const major = !isNoValueRequirement(e.major_or_specialization) ? String(e.major_or_specialization).trim() : '';
+      const pieces = degree ? [String(degree).trim()] : [];
+      if (major && !pieces.some((p) => p.toLowerCase().includes(major.toLowerCase()))) {
+        pieces.push(major);
+      }
+      const combined = pieces.join(' ');
       if (combined) segs.push({ text: combined, status: e.status });
     }
   }

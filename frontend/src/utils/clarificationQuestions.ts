@@ -42,9 +42,13 @@ export function collectClarificationResponses(questions: ClarificationQuestion[]
 }
 
 const skillKey = (value: string) => value.toLowerCase().replace(/[-–—]/g, ' ').replace(/\s+/g, ' ').trim();
-const requirementItems = (value: any): string[] => cleanRequirementList(
-  (Array.isArray(value) ? value.join('|') : String(value || '')).split(/[,;|•▪►✓\n]+|\s+\/\s+/)
+const requirementItems = (value: any, splitSlash = true): string[] => cleanRequirementList(
+  (Array.isArray(value) ? value.join('|') : String(value || '')).split(
+    splitSlash ? /[,;|•●◦‣▪►✓\n]+|\s+\/\s+/ : /[,;|•●◦‣▪►✓\n]+/
+  )
 );
+const PURE_DURATION_REQ_RE =
+  /^(?:(?:minimum|min\.?|at\s+least)\s+(?:of\s+)?)?\d+(?:\.\d+)?(?:\s*(?:-|–|—|to)\s*\d+(?:\.\d+)?)?\s*\+?\s*(?:years?|yrs?|months?|mos?)(?:\s+(?:of\s+)?(?:relevant|related|direct|professional|work|industry|hands[- ]on|practical|prior)?\s*(?:work\s+)?(?:experience|exp\.?))?(?:\s+(?:preferred|required|minimum))?\.?$/i;
 
 
 const MFG_JOB_RE =
@@ -126,8 +130,11 @@ function buildFallbackJobQuestions(
     ['certifications', job?.certifications_requirements, extractedData?.certifications_list || extractedData?.certifications],
     ['experience', job?.experience_requirements, extractedData?.experience || relevanceStr],
   ] as const) {
-    const existing = new Set(requirementItems(candidate).map(skillKey));
-    const items = requirementItems(requirement).filter(item => !existing.has(skillKey(item)))
+    const splitSlash = field !== 'certifications';
+    const existing = new Set(requirementItems(candidate, splitSlash).map(skillKey));
+    const items = requirementItems(requirement, splitSlash)
+      .filter(item => !(field === 'experience' && hasYears && PURE_DURATION_REQ_RE.test(item.trim())))
+      .filter(item => !existing.has(skillKey(item)))
       .map(requirement => ({ field, requirement, status: 'Not confirmed' }));
     if (items.length) questions.push({
       id: `clarify_${slug}_${field}`, field, job_id: jobId, job_title: jobTitle,

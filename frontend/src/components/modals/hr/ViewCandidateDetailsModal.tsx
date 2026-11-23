@@ -1760,10 +1760,19 @@ const ViewCandidateDetailsModal: React.FC<ViewCandidateDetailsModalProps> = ({
                         <p className="text-xs text-blue-600 font-semibold">{skillsScore}% Score — Contributes {wSkillsPct}% to overall match</p>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <span className="px-2.5 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg text-xs font-bold">
-                        {matchedSkills.length} Matched
+                        {matchedSkills.length} Confirmed
                       </span>
+                      {(candidate.requirement_evaluations || []).filter(
+                        (r: any) => r.field === 'skills' && (r.status === 'Not confirmed' || r.status === 'Possible match')
+                      ).length > 0 && (
+                        <span className="px-2.5 py-1 bg-slate-100 text-slate-700 border border-slate-200 rounded-lg text-xs font-bold">
+                          {(candidate.requirement_evaluations || []).filter(
+                            (r: any) => r.field === 'skills' && (r.status === 'Not confirmed' || r.status === 'Possible match')
+                          ).length} Not confirmed
+                        </span>
+                      )}
                       <span className="px-2.5 py-1 bg-rose-50 text-rose-700 border border-rose-200 rounded-lg text-xs font-bold">
                         {missingSkills.length} Missing
                       </span>
@@ -1815,6 +1824,12 @@ const ViewCandidateDetailsModal: React.FC<ViewCandidateDetailsModalProps> = ({
                         <p className="text-[11px] text-rose-700 font-medium">
                           These technical competencies were specified in the job posting but were not identified in the candidate's resume.
                         </p>
+                      </div>
+                    ) : (candidate.requirement_evaluations || []).some(
+                        (r: any) => r.field === 'skills' && (r.status === 'Not confirmed' || r.status === 'Possible match')
+                      ) ? (
+                      <div className="flex items-center gap-2 bg-white/80 p-3 rounded-xl border border-slate-200 text-xs text-slate-600 font-semibold">
+                        <span>No skills marked as failed. Unconfirmed skills remain neutral until the applicant confirms them.</span>
                       </div>
                     ) : (
                       <div className="flex items-center gap-2 bg-white/80 p-3 rounded-xl border border-emerald-200 text-xs text-emerald-700 font-semibold">

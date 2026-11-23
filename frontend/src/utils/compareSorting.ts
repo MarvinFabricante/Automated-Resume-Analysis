@@ -191,7 +191,7 @@ export function preparseJobRequirements(job: Job): ParsedJobRequirements {
   if (job.skills_requirements) {
     const raw = Array.isArray(job.skills_requirements)
       ? job.skills_requirements
-      : String(job.skills_requirements).split(/[,;\n•|]+/);
+      : String(job.skills_requirements).split(/[,;\n•●◦‣|]+|\s+\/\s+/);
     jobSkills = raw
       .map(s => String(s).trim().replace(/^[-*•\s]+/, '').replace(/[.,;:]+$/, '').toLowerCase())
       .filter(s => s.length > 0);
