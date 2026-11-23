@@ -198,11 +198,11 @@ const Sidebar: React.FC = () => {
 
       <aside
         data-sidebar="true"
-        data-hr-theme={isHR ? 'true' : undefined}
+        data-hr-theme="true"
+        data-role-theme={isAdminRole ? 'admin' : isHR ? 'hr' : isCandidateRole ? 'candidate' : 'guest'}
         className={`
-          desktop-sidebar flex flex-col bg-white border-r border-slate-200/90
-          ${isHR ? styles.hrSidebar : ''}
-          transition-all duration-200 ease-in-out shadow-[1px_0_12px_rgba(0,0,0,0.03)]
+          desktop-sidebar flex flex-col ${styles.sidebarRoot}
+          transition-all duration-200 ease-in-out
           /* Mobile Drawer */
           fixed top-0 bottom-0 left-0 z-[60]
           w-72 max-w-[85vw] h-full ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}
@@ -228,7 +228,7 @@ const Sidebar: React.FC = () => {
                   <div className="flex items-center space-x-1.5 mt-0.5">
                     <span data-slot="brand-dot" className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse shadow-xs" />
                     <span data-slot="brand-subtitle" className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider truncate">
-                      {getWorkspaceSubtitle()}{isHR ? '' : ' • Online'}
+                      {getWorkspaceSubtitle()}
                     </span>
                   </div>
                 </div>
@@ -241,11 +241,11 @@ const Sidebar: React.FC = () => {
                   type="button"
                   onClick={() => dispatch(closeSidebar())}
                   data-slot="sidebar-control"
-                  className="md:hidden p-1.5 rounded-lg text-slate-400 hover:text-slate-800 hover:bg-slate-100 active:scale-95 transition-colors cursor-pointer"
+                  className="md:hidden w-8 h-8 rounded-xl flex items-center justify-center transition-all cursor-pointer"
                   title="Close sidebar"
                   aria-label="Close sidebar"
                 >
-                  <X size={18} />
+                  <X size={17} />
                 </button>
 
                 {/* Tablet and Desktop: Collapse Sidebar Button */}
@@ -253,11 +253,11 @@ const Sidebar: React.FC = () => {
                   type="button"
                   onClick={() => dispatch(toggleSidebar())}
                   data-slot="sidebar-control"
-                  className="hidden md:flex p-1.5 rounded-lg text-slate-400 hover:text-slate-800 hover:bg-slate-100 active:scale-95 transition-colors cursor-pointer"
+                  className="hidden md:flex w-8 h-8 rounded-xl items-center justify-center transition-all cursor-pointer"
                   title="Collapse sidebar (Ctrl+B)"
                   aria-label="Collapse sidebar"
                 >
-                  <PanelLeftClose size={18} />
+                  <PanelLeftClose size={17} />
                 </button>
               </div>
             </>
@@ -268,7 +268,7 @@ const Sidebar: React.FC = () => {
                 type="button"
                 onClick={() => dispatch(toggleSidebar())}
                 data-slot="sidebar-control"
-                className="w-10 h-10 rounded-xl bg-slate-50 hover:bg-rose-50 text-slate-600 hover:text-[#D60041] border border-slate-200/80 hover:border-rose-200 flex items-center justify-center transition-all cursor-pointer active:scale-95 shadow-2xs group"
+                className="w-10 h-10 rounded-xl flex items-center justify-center transition-all cursor-pointer group"
                 title="Expand sidebar (Ctrl+B)"
                 aria-label="Expand sidebar"
               >
@@ -284,22 +284,22 @@ const Sidebar: React.FC = () => {
         </div>
 
         {/* NAVIGATION ITEMS */}
-        <div data-slot="nav-body" className="flex-grow overflow-y-auto overflow-x-hidden custom-scrollbar px-3 py-3 space-y-4">
+        <div data-slot="nav-body" className="flex-grow overflow-y-auto overflow-x-hidden custom-scrollbar px-3 py-3 space-y-5">
           {navSections.map((section, sIdx) => (
-            <div key={sIdx} className="space-y-1">
+            <div key={sIdx} className="space-y-1.5">
               {isSidebarOpen ? (
-                <div className="px-3 pt-1 pb-1">
+                <div className="px-2.5 pt-1 pb-1">
                   <p data-slot="section-label" className="text-[10px] font-black uppercase tracking-wider text-slate-400">
                     {section.title}
                   </p>
                 </div>
               ) : (
                 <div className="w-full flex justify-center py-1">
-                  <div data-slot="section-divider" className="w-5 border-t border-slate-200" />
+                  <div data-slot="section-divider" className="w-6 border-t border-slate-200" />
                 </div>
               )}
 
-              <nav className="space-y-1">
+              <nav className="space-y-1.5">
                 {section.items.map((item, index) => {
                   const isActive = location.pathname === item.path;
 
@@ -307,6 +307,7 @@ const Sidebar: React.FC = () => {
                     return (
                       <button
                         key={index}
+                        type="button"
                         onClick={() => {
                           navigate(item.path);
                           if (window.innerWidth < 768) dispatch(closeSidebar());
@@ -314,44 +315,35 @@ const Sidebar: React.FC = () => {
                         data-slot="nav-item"
                         data-active={isActive ? 'true' : undefined}
                         aria-current={isActive ? 'page' : undefined}
-                        className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl transition-all duration-150 group relative cursor-pointer ${isActive
-                          ? 'bg-rose-50/90 text-[#D60041] font-bold border border-rose-100 shadow-2xs'
-                          : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50 font-medium'
-                          }`}
+                        className="w-full flex items-center justify-between px-2.5 py-2 rounded-xl transition-all duration-150 group relative cursor-pointer"
                       >
-                        <div className="flex items-center space-x-3 min-w-0">
-                          {isActive && (
-                            <span data-slot="active-marker" className="w-1 h-4 bg-[#D60041] rounded-full shrink-0 -ml-1 mr-0.5" />
-                          )}
+                        <div className="flex items-center space-x-2.5 min-w-0">
                           <span
                             data-slot="nav-icon"
-                            className={`transition-colors shrink-0 ${isActive
-                              ? 'text-[#D60041]'
-                              : 'text-slate-400 group-hover:text-slate-700'
-                              }`}
+                            className="shrink-0"
                           >
                             {item.icon}
                           </span>
-                          <span data-slot="nav-label" className="text-[13px] tracking-tight truncate leading-tight">
+                          <span data-slot="nav-label" className="text-[13.5px] tracking-tight truncate leading-tight">
                             {item.label}
                           </span>
                         </div>
-                        {(item.badge || item.hasUnreadDot) && (
-                          <div className="flex items-center gap-1.5 shrink-0">
-                            {item.hasUnreadDot && (
-                              <span data-slot="unread-dot" className="w-2 h-2 rounded-full bg-[#D60041] animate-pulse" aria-label="Unread messages" />
-                            )}
-                            {item.badge && (
-                              <span
-                                data-slot="nav-badge"
-                                className={`text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-md shadow-2xs ${item.badgeColor || 'bg-[#D60041] text-white'
-                                  }`}
-                              >
-                                {item.badge}
-                              </span>
-                            )}
-                          </div>
-                        )}
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          {item.hasUnreadDot && (
+                            <span data-slot="unread-dot" className="w-2 h-2 rounded-full animate-pulse" aria-label="Unread messages" />
+                          )}
+                          {item.badge && (
+                            <span
+                              data-slot="nav-badge"
+                              className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full"
+                            >
+                              {item.badge}
+                            </span>
+                          )}
+                          {isActive && !item.badge && (
+                            <span data-slot="active-marker" className="w-1.5 h-1.5 rounded-full shrink-0 mr-1" />
+                          )}
+                        </div>
                       </button>
                     );
                   }
@@ -360,6 +352,7 @@ const Sidebar: React.FC = () => {
                   return (
                     <div key={index} className="relative group flex justify-center w-full py-0.5">
                       <button
+                        type="button"
                         onClick={() => {
                           navigate(item.path);
                           if (window.innerWidth < 768) dispatch(closeSidebar());
@@ -367,30 +360,26 @@ const Sidebar: React.FC = () => {
                         data-slot="nav-item"
                         data-active={isActive ? 'true' : undefined}
                         aria-current={isActive ? 'page' : undefined}
-                        className={`w-10 h-10 flex items-center justify-center rounded-xl transition-all duration-150 relative cursor-pointer ${isActive
-                          ? 'bg-rose-50 text-[#D60041] shadow-2xs border border-rose-200/80 font-bold'
-                          : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100/80'
-                          }`}
+                        className="w-11 h-11 flex items-center justify-center rounded-xl transition-all duration-150 relative cursor-pointer"
                         aria-label={item.label}
                         title={item.label}
                       >
                         <span
                           data-slot="nav-icon"
-                          className={`transition-colors ${isActive ? 'text-[#D60041]' : 'text-slate-400 group-hover:text-slate-800'
-                            }`}
+                          className="!w-auto !h-auto !bg-transparent !border-0 !shadow-none"
                         >
                           {item.icon}
                         </span>
                         {item.badge && (
-                          <span data-slot="unread-dot" className="absolute top-1 right-1 w-2 h-2 bg-[#D60041] rounded-full border-2 border-white animate-pulse" />
+                          <span data-slot="unread-dot" className="absolute top-1.5 right-1.5 w-2 h-2 bg-[#D60041] rounded-full border-2 border-[#162134] animate-pulse" />
                         )}
                       </button>
 
                       {/* Tooltip */}
-                      <div className="absolute left-[calc(100%+12px)] top-1/2 -translate-y-1/2 px-2.5 py-1.5 bg-slate-900 text-white text-xs font-semibold rounded-lg shadow-xl whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity duration-150 pointer-events-none z-50 flex items-center gap-2 border border-slate-800">
+                      <div className="absolute left-[calc(100%+12px)] top-1/2 -translate-y-1/2 px-3 py-1.5 bg-slate-900 text-white text-xs font-semibold rounded-xl shadow-xl whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity duration-150 pointer-events-none z-50 flex items-center gap-2 border border-slate-700/80">
                         <span>{item.label}</span>
                         {item.badge && (
-                          <span className="bg-[#D60041] text-white text-[9px] px-1 py-0.5 rounded font-black uppercase tracking-wider">
+                          <span className="bg-[#D60041] text-white text-[9px] px-1.5 py-0.5 rounded-full font-black uppercase tracking-wider">
                             {item.badge}
                           </span>
                         )}
@@ -405,42 +394,42 @@ const Sidebar: React.FC = () => {
         </div>
 
         {/* FOOTER SECTION */}
-        <div data-slot="sidebar-footer" className="p-3 border-t border-slate-100 bg-slate-50/50 shrink-0">
+        <div data-slot="sidebar-footer" className="p-3 border-t border-slate-100 shrink-0">
           {isSidebarOpen ? (
-            <div data-slot="footer-card" className="bg-white border border-slate-200/80 rounded-2xl p-3 shadow-2xs space-y-2.5">
-              <div className="flex items-center justify-between px-0.5">
-                <div className="flex items-center space-x-1.5">
-                  <div data-slot="footer-dot" className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shadow-xs" />
-                  <span data-slot="footer-title" className="text-[11px] font-bold text-slate-800">
-                    {isHR ? 'Recruitment workspace' : isCandidateRole ? 'Recruitment Portal' : 'Recruitment System'}
+            <div data-slot="footer-card" className="rounded-2xl p-3 space-y-2.5">
+              <div className="flex items-center justify-between px-1">
+                <div className="flex items-center space-x-2 min-w-0">
+                  <div data-slot="footer-dot" className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0" />
+                  <span data-slot="footer-title" className="text-[11px] font-bold truncate">
+                    {isHR ? 'Recruitment Workspace' : isAdminRole ? 'Admin Control Center' : isCandidateRole ? 'Candidate Portal' : 'Recruitment System'}
                   </span>
                 </div>
-                <span data-slot="footer-badge" className="text-[9px] font-black uppercase tracking-wider text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200/80">
-                  {isHR ? 'HR' : 'Online'}
+                <span data-slot="footer-badge" className="text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md border shrink-0">
+                  {isHR ? 'HR' : isAdminRole ? 'ADMIN' : isCandidateRole ? 'CAREERS' : 'ONLINE'}
                 </span>
               </div>
-              <div data-slot="footer-separator" className="pt-2 border-t border-slate-100">
+              <div data-slot="footer-separator" className="pt-2 border-t space-y-1.5">
                 <button
+                  type="button"
                   onClick={() => {
                     navigate(settingsPath);
                     if (window.innerWidth < 768) dispatch(closeSidebar());
                   }}
                   data-slot="footer-action"
-                  className="w-full flex items-center space-x-2 text-xs font-bold text-slate-600 hover:text-[#D60041] hover:bg-slate-50 transition-colors py-1.5 px-2 rounded-xl cursor-pointer"
+                  className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold cursor-pointer group"
                   title="Account Settings"
                 >
-                  <Settings size={14} />
-                  <span>Account Settings</span>
+                  <span className="flex items-center space-x-2.5">
+                    <Settings size={14} className="opacity-80 group-hover:rotate-45 transition-transform duration-300" />
+                    <span>Account Settings</span>
+                  </span>
                 </button>
-              </div>
 
-              {/* Sign Out Action */}
-              <div data-slot="footer-separator" className="pt-2 border-t border-slate-100">
                 <button
                   type="button"
                   onClick={handleLogout}
                   data-slot="sign-out"
-                  className="w-full flex items-center justify-center space-x-2 py-2 px-3 rounded-xl text-xs font-bold text-rose-600 bg-rose-50/70 hover:bg-rose-100 hover:text-rose-700 transition-colors border border-rose-100 cursor-pointer active:scale-95"
+                  className="w-full flex items-center justify-center space-x-2 py-2 px-3 rounded-xl text-xs font-bold cursor-pointer active:scale-98"
                   title="Secure Sign Out"
                 >
                   <LogOut size={14} />
@@ -453,19 +442,19 @@ const Sidebar: React.FC = () => {
               {/* Collapsed Settings Shortcut */}
               <div className="relative group">
                 <button
+                  type="button"
                   onClick={() => navigate(settingsPath)}
                   data-slot="footer-action"
-                  className="p-2 text-slate-400 hover:text-[#D60041] hover:bg-rose-50 rounded-xl transition-all cursor-pointer"
+                  className="w-10 h-10 flex items-center justify-center rounded-xl transition-all cursor-pointer"
                   aria-label="Settings"
                 >
-                  <Settings size={18} />
+                  <Settings size={17} />
                 </button>
-                <div className="absolute left-[calc(100%+12px)] top-1/2 -translate-y-1/2 px-2.5 py-1.5 bg-slate-900 text-white text-xs font-semibold rounded-lg shadow-xl whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity duration-150 pointer-events-none z-50 border border-slate-800">
-                  Settings
+                <div className="absolute left-[calc(100%+12px)] top-1/2 -translate-y-1/2 px-2.5 py-1.5 bg-slate-900 text-white text-xs font-semibold rounded-lg shadow-xl whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity duration-150 pointer-events-none z-50 border border-slate-700/80">
+                  Account Settings
                   <div className="absolute right-full top-1/2 -translate-y-1/2 border-4 border-transparent border-r-slate-900" />
                 </div>
               </div>
-
 
               {/* Collapsed Sign Out Shortcut */}
               <div className="relative group">
@@ -473,12 +462,12 @@ const Sidebar: React.FC = () => {
                   type="button"
                   onClick={handleLogout}
                   data-slot="sign-out"
-                  className="p-2 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-xl transition-all cursor-pointer"
+                  className="w-10 h-10 flex items-center justify-center rounded-xl transition-all cursor-pointer"
                   aria-label="Sign Out"
                 >
-                  <LogOut size={18} />
+                  <LogOut size={17} />
                 </button>
-                <div className="absolute left-[calc(100%+12px)] top-1/2 -translate-y-1/2 px-2.5 py-1.5 bg-slate-900 text-white text-xs font-semibold rounded-lg shadow-xl whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity duration-150 pointer-events-none z-50 border border-slate-800">
+                <div className="absolute left-[calc(100%+12px)] top-1/2 -translate-y-1/2 px-2.5 py-1.5 bg-slate-900 text-white text-xs font-semibold rounded-lg shadow-xl whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity duration-150 pointer-events-none z-50 border border-slate-700/80">
                   Sign Out
                   <div className="absolute right-full top-1/2 -translate-y-1/2 border-4 border-transparent border-r-slate-900" />
                 </div>
