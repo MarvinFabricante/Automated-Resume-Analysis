@@ -118,9 +118,16 @@ const HRSchedulingPage: React.FC = () => {
   const [syncToast, setSyncToast] = useState<string>('');
 
   // API queries
+  const loggedInUserId = parseInt(localStorage.getItem('user_id') || '0', 10);
+  const loggedInEmail = localStorage.getItem('saved_email') || '';
+  const userRole = useSelector((state: RootState) => state.auth?.role) || localStorage.getItem('role');
   const { data: interviewers = [] } = useGetHRInterviewersQuery();
+  const isAdmin = userRole === 'ADMIN' || userRole === 'SUPERADMIN';
+  const currentUserId = useSelector((state: RootState) => state.auth?.user) || loggedInEmail || String(loggedInUserId);
+
+  // Scope calendar feed and Google status queries by currentUserId so switching accounts never shows a cached calendar from a previous user
   const { data: calendarFeed, isLoading, refetch } = useGetCalendarFeedQuery(
-    hrFilter !== 'ALL' ? { hr_id: hrFilter } : undefined,
+    hrFilter !== 'ALL' ? { hr_id: hrFilter, _uid: currentUserId } : { _uid: currentUserId },
     {
       pollingInterval: 10000,
       refetchOnFocus: true,
@@ -128,18 +135,15 @@ const HRSchedulingPage: React.FC = () => {
       refetchOnReconnect: true,
     }
   );
-  const { data: googleStatus } = useGetGoogleCalendarStatusQuery();
+  const { data: googleStatus } = useGetGoogleCalendarStatusQuery(currentUserId as any, {
+    refetchOnMountOrArgChange: true,
+  });
   const [syncGoogleCalendar, { isLoading: isSyncing }] = useSyncGoogleCalendarMutation();
 
   const interviews: any[] = calendarFeed?.interviews || [];
   const googleEvents: any[] = calendarFeed?.google_events || [];
   const isGoogleConnected: boolean = calendarFeed?.google_connected ?? googleStatus?.connected ?? false;
   const googleAccount: string | undefined = calendarFeed?.google_account || googleStatus?.email;
-
-  const loggedInUserId = parseInt(localStorage.getItem('user_id') || '0', 10);
-  const loggedInEmail = localStorage.getItem('saved_email') || '';
-  const userRole = useSelector((state: RootState) => state.auth?.role) || localStorage.getItem('role');
-  const isAdmin = userRole === 'ADMIN' || userRole === 'SUPERADMIN';
 
   React.useEffect(() => {
     if (typeof window !== 'undefined' && window.location.search.includes('google_linked=success')) {
@@ -363,13 +367,14 @@ const HRSchedulingPage: React.FC = () => {
   // Filter events based on search and filters
   const filteredEvents = useMemo(() => {
     return allEvents.filter((ev) => {
-      // HR Panelist Filter
+      // HR Panelist Filter & Per-User Google Calendar Event Ownership
       if (hrFilter !== 'ALL') {
-        if (!ev.isGoogleEvent) {
-          if (!ev.interviewer_id || String(ev.interviewer_id) !== String(hrFilter)) {
-            return false;
-          }
+        if (!ev.interviewer_id || String(ev.interviewer_id) !== String(hrFilter)) {
+          return false;
         }
+      } else if (ev.isGoogleEvent && loggedInUserId && ev.interviewer_id && ev.interviewer_id !== loggedInUserId) {
+        // Strictly display only the logged-in HR user's own Google Calendar events
+        return false;
       }
 
       // Source filter

@@ -1085,8 +1085,6 @@ async def schedule_interview(db: AsyncSession, data: InterviewCreateSchema, user
         candidate_name = getattr(application, "candidate_name", None) or "Candidate"
         candidate_phone = await _resolve_candidate_phone(db, application)
         credentials_json = _get_valid_credentials(user) or _get_valid_credentials(scheduler_user)
-        if not credentials_json:
-            credentials_json, _ = await _get_fallback_real_hr_credentials(db, exclude_ids=[user_id, interviewer_id])
 
         # Collect distinct panel recipients (assigned interviewer / additional panelists)
         panel_recipients = []
@@ -1852,13 +1850,14 @@ async def get_calendar_feed(
     """
     Unified calendar feed:
       1. Returns all database interviews with candidate information.
-      2. If Google Calendar is linked, pushes any unsynced active interviews to Google Calendar,
-         retrieves events across the HR's Google calendars, and syncs modifications back to DB.
-      3. Returns non-interview external Google Calendar events so HR has unified real-time visibility.
+      2. Google Calendar events are strictly per-user: ONLY the currently authenticated user's own
+         linked Google Calendar events (or the explicitly selected hr_id's linked Google Calendar)
+         are fetched and displayed—never shared or leaked from other users' Google accounts.
+      3. Pushes any unsynced active interviews belonging to this user to their own Google Calendar.
     """
     from app.repositories.auth_repository import AuthRepository
     sync_user_id = hr_id if hr_id else user_id
-    user = await AuthRepository.get_user_by_id_fresh(db, sync_user_id)
+    user = await AuthRepository.get_user_by_id_fresh(db, sync_user_id) if sync_user_id else None
     credentials_json = _get_valid_credentials(user)
     if user:
         try:
@@ -1872,19 +1871,15 @@ async def get_calendar_feed(
     if hr_id:
         db_interviews = [iv for iv in db_interviews if iv.interviewer_id == hr_id]
 
-    sync_creds = credentials_json
-    sync_cred_user = user
-    if not sync_creds:
-        sync_creds, sync_cred_user = await _get_fallback_real_hr_credentials(db, exclude_ids=[sync_user_id] if sync_user_id else None)
+    is_real_oauth_creds = bool(credentials_json and '"client_id"' in credentials_json)
 
-    is_real_oauth_creds = bool(sync_creds and '"client_id"' in sync_creds)
-
-    # Auto-push any active DB interviews that do not have a google_event_id yet
-    # so the application schedule and Google Calendar are always synchronized.
-    if is_real_oauth_creds:
+    # Auto-push any active DB interviews assigned to this user (or unassigned) that do not have a google_event_id yet
+    # strictly using THIS user's own Google Calendar credentials (never another user's credentials).
+    if is_real_oauth_creds and user:
         for iv in db_interviews:
             iv_status = (getattr(iv, "status", "") or "").upper()
-            if not getattr(iv, "google_event_id", None) and iv_status not in INACTIVE_INTERVIEW_STATUSES:
+            is_users_interview = (not getattr(iv, "interviewer_id", None)) or (iv.interviewer_id == user.id)
+            if is_users_interview and not getattr(iv, "google_event_id", None) and iv_status not in INACTIVE_INTERVIEW_STATUSES:
                 try:
                     _populate_candidate_info(iv)
                     attendees = []
@@ -1894,9 +1889,9 @@ async def get_calendar_feed(
                     iv_em = getattr(iv, "interviewer_email", None)
                     if iv_em and iv_em not in [a["email"] for a in attendees]:
                         attendees.append({"email": iv_em})
-                    if user and getattr(user, "email", None) and user.email not in [a["email"] for a in attendees]:
+                    if getattr(user, "email", None) and user.email not in [a["email"] for a in attendees]:
                         attendees.append({"email": user.email})
-                    user_em = _extract_google_account_email(sync_cred_user, sync_creds) or getattr(sync_cred_user, "email", None)
+                    user_em = _extract_google_account_email(user, credentials_json) or getattr(user, "email", None)
                     if user_em and user_em not in [a["email"] for a in attendees]:
                         attendees.append({"email": user_em})
 
@@ -1906,7 +1901,7 @@ async def get_calendar_feed(
 
                     created_ev = await asyncio.to_thread(
                         create_real_google_event,
-                        sync_creds,
+                        credentials_json,
                         calendar_id="primary",
                         summary=iv.title,
                         start_dt=iv.start_time.isoformat(),
@@ -1932,34 +1927,13 @@ async def get_calendar_feed(
     google_events = []
     seen_google_event_keys = set()
 
-    # Collect credentials to fetch Google Calendar events from:
-    # 1. If the target HR user has valid credentials, fetch all of their calendars.
-    # 2. When viewing all HR panelists (hr_id is None), also merge events from other connected HR accounts
-    #    so every HR session sees real-time Google Calendar schedules across the HR team.
+    # Strictly per-user Google Calendar events: ONLY fetch from the current user's (or selected hr_id's)
+    # own Google credentials. Never pull events from other HR users' Google Calendars.
     creds_sources = []
-    if credentials_json:
+    if credentials_json and user:
         creds_sources.append((credentials_json, user, True))
 
-    if not hr_id:
-        try:
-            from sqlalchemy import select
-            from app.models.user import User as UserModel
-            stmt = select(UserModel).where(UserModel.role == "HR", UserModel.google_credentials.isnot(None))
-            res = await db.execute(stmt)
-            for other_hr in res.scalars().all():
-                if user and other_hr.id == user.id:
-                    continue
-                raw_c = getattr(other_hr, "google_credentials", None) or ""
-                if '"client_id"' not in raw_c:
-                    continue
-                valid_c = _get_valid_credentials(other_hr)
-                if valid_c:
-                    creds_sources.append((valid_c, other_hr, False))
-            await db.commit()
-        except Exception as e:
-            logger.debug(f"Could not load peer HR Google calendars: {e}")
-
-    for source_creds, source_user, is_primary_source in creds_sources:
+    for source_creds, source_user, _is_primary_source in creds_sources:
         try:
             source_is_real = '"client_id"' in source_creds
             if source_is_real:

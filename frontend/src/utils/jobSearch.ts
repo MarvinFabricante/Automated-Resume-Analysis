@@ -1,11 +1,15 @@
 export interface SearchableJob {
+  id?: number | string;
+  job_id?: number | string;
   job_title?: string;
   title?: string;
   department?: string;
   location?: string;
+  applicant_count?: number;
   skills_requirements?: string | string[];
   description?: string;
   is_active?: boolean;
+  [key: string]: any;
 }
 
 export interface SearchableCandidate {
@@ -22,6 +26,7 @@ export interface SearchableCandidate {
   status?: string;
   matchScore?: number | null;
   match_score?: number | null;
+  [key: string]: any;
 }
 
 function normalizeSkills(skills: string | string[] | undefined): string {

@@ -332,13 +332,12 @@ async def delete_interview(
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/calendar-events")
-@cache_response("calendar_events", ttl=300)
 async def get_calendar_events(
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
     """
-    Fetch and display the HR's Google Calendar schedules.
+    Fetch and display the currently authenticated HR user's own Google Calendar schedules.
     """
     try:
         events = await interview_service.get_calendar_events(db, current_user.get("id"))
