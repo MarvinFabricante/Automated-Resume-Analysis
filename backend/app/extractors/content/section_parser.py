@@ -230,9 +230,13 @@ _SECTION_DEFINITIONS: dict[str, list[str]] = {
 }
 
 # Build reverse lookup
+_COLLAPSED_HEADER_MAP: dict[str, str] = {}
 for label, headers in _SECTION_DEFINITIONS.items():
     for h in headers:
         _HEADER_MAP[h] = label
+        collapsed = h.replace(" ", "")
+        if len(collapsed) >= 8 and " " in h:
+            _COLLAPSED_HEADER_MAP.setdefault(collapsed, label)
 
 
 # ─── Header Detection ────────────────────────────────────────────────────────
@@ -264,7 +268,9 @@ def _normalise_header(line: str) -> str:
     clean = _LEADING_NUM_RE.sub('', clean).strip()
     clean = _DECORATION_RE.sub('', clean).strip()
     clean = clean.rstrip(':').strip()
-    if re.match(r"^(?:[A-Z]\s){3,}[A-Z](?:\s{2,}(?:[A-Z]\s)+[A-Z])*$", clean):
+    if re.match(r"^(?:[A-Z]\s){2,}[A-Z](?:\s{2,}(?:[A-Z]\s)+[A-Z])*$", clean) or re.match(
+        r"^[A-Z]\s[A-Z]\s{2,}(?:[A-Z]\s)+[A-Z](?:\s{2,}(?:[A-Z]\s)+[A-Z])*$", clean
+    ):
         word_groups = re.split(r"\s{2,}", clean)
         clean = " ".join(re.sub(r"\s+", "", wg) for wg in word_groups)
     clean = re.sub(r'\s+', ' ', clean)
@@ -279,6 +285,12 @@ def _match_header_text(normalised: str, allow_fuzzy: bool = True) -> Optional[st
     res = _HEADER_MAP.get(normalised)
     if res:
         return res
+
+    # Support letter-spaced multi-word headers whose spaces collapsed (e.g. 'W O R K P R O J E C T S' -> 'WORKPROJECTS')
+    if " " not in normalised and len(normalised) >= 8:
+        collapsed_res = _COLLAPSED_HEADER_MAP.get(normalised)
+        if collapsed_res:
+            return collapsed_res
 
     without_annot = _TRAILING_DATE_OR_YRS_ANNOT_RE.sub('', normalised).strip()
     if without_annot and without_annot != normalised:
@@ -603,13 +615,23 @@ def split_into_sections(text: str) -> dict[str, str]:
                 if split_idx > 0:
                     inline_after = cleaned_line[split_idx + 1:].strip()
                     is_colon_split = (split_idx == colon_idx)
-                    # Inside PROJECTS or EXPERIENCE, inline colon lines ("Technologies: ...", "Skills: ...")
-                    # should enrich SKILLS without hijacking subsequent project/job lines
+                    is_bullet_prefixed = cleaned_line.startswith(('•', '-', '*', '▪', '►', '✓', '·'))
+                    prefix_norm = _normalise_header(cleaned_line[:split_idx]) if is_colon_split else ""
+                    is_tech_sublabel = prefix_norm in {
+                        "TECHNOLOGIES", "TECHNOLOGIES USED", "TECH STACK", "TECHNOLOGY STACK",
+                        "TOOLS USED", "SKILLS USED",
+                    }
+                    # Inline project/job metadata lines ("• Technologies: React JS", "Technologies: MongoDB, ...",
+                    # "Tech Stack: ...") should enrich SKILLS without hijacking subsequent lines into SKILLS.
                     if (
                         is_colon_split
                         and inline_after
                         and label == "SKILLS"
-                        and current_label in ("PROJECTS", "EXPERIENCE")
+                        and (
+                            current_label in ("PROJECTS", "EXPERIENCE")
+                            or (is_bullet_prefixed and current_label != "SKILLS")
+                            or (is_tech_sublabel and current_label not in ("SKILLS", "LANGUAGES"))
+                        )
                     ):
                         sections.setdefault("SKILLS", []).append(inline_after)
                         sections[current_label].append(line)

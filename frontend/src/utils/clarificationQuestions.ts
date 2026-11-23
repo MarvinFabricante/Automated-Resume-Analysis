@@ -262,36 +262,41 @@ export function buildCandidateMatchPayload(
   clarificationAnswers: Record<string, string>,
   extractedData: any
 ) {
+  const resolvedForm = finalizeFormWithClarifications(
+    clarificationQuestions,
+    clarificationAnswers,
+    formData
+  );
   const expParts: string[] = [];
-  if (formData.jobTitle || formData.company) {
-    expParts.push(`${formData.jobTitle || ''}${formData.company ? ` at ${formData.company}` : ''}`.trim());
+  if (resolvedForm.jobTitle || resolvedForm.company) {
+    expParts.push(`${resolvedForm.jobTitle || ''}${resolvedForm.company ? ` at ${resolvedForm.company}` : ''}`.trim());
   }
   if (extractedData?.experience) {
     expParts.push(extractedData.experience);
   }
-  if (formData.relevance) {
-    expParts.push(formData.relevance);
+  if (resolvedForm.relevance) {
+    expParts.push(resolvedForm.relevance);
   }
   const experienceText = Array.from(new Set(expParts.filter(Boolean))).join(' | ');
   const yearsExp = resolveClarifiedYears(
     clarificationQuestions,
     clarificationAnswers,
     extractedData?.years_experience,
-    formData.relevance
+    resolvedForm.relevance
   );
 
-  const cleanedSkills = cleanRequirementList(formData.skills);
-  const cleanedDegree = cleanRequirementInput(formData.degree);
-  const cleanedCollege = cleanRequirementInput(formData.college);
+  const cleanedSkills = cleanRequirementList(resolvedForm.skills);
+  const cleanedDegree = cleanRequirementInput(resolvedForm.degree);
+  const cleanedCollege = cleanRequirementInput(resolvedForm.college);
   const cleanedCerts = cleanRequirementInput(extractedData?.certifications || '');
 
   return {
     skills: cleanedSkills.join(', '),
     skills_list: cleanedSkills,
-    job_title: cleanRequirementInput(formData.jobTitle),
-    company: cleanRequirementInput(formData.company),
+    job_title: cleanRequirementInput(resolvedForm.jobTitle),
+    company: cleanRequirementInput(resolvedForm.company),
     experience: experienceText,
-    relevance: cleanRequirementInput(formData.relevance),
+    relevance: cleanRequirementInput(resolvedForm.relevance),
     years_experience: yearsExp,
     work_experiences: extractedData?.work_experiences || [],
     education: [cleanedDegree, cleanedCollege].filter(Boolean).join(' - '),
@@ -299,8 +304,8 @@ export function buildCandidateMatchPayload(
     highest_educational_attainment: cleanRequirementInput(extractedData?.highest_educational_attainment || ''),
     education_entries: extractedData?.education_entries || [],
     certifications: cleanedCerts || undefined,
-    fullname: formData.fullName,
-    location: formData.location,
+    fullname: resolvedForm.fullName,
+    location: resolvedForm.location,
   };
 }
 
@@ -490,12 +495,14 @@ export function applyClarificationAnswerToFormData<
   if (question.field === 'education') {
     const trimmed = val.trim();
     if (!trimmed) return prev;
-    const parts = trimmed.split(/\s*[-–—|]\s*/);
+    const parts = trimmed.split(/\s*[-–—|]\s*/).map((p) => p.trim()).filter(Boolean);
     if (parts.length >= 2) {
+      const yearOnlyRe = /^(?:19|20)\d{2}(?:\s*(?:to|present|current))?$/i;
+      const collegeCandidate = parts.slice(1).find((p) => !yearOnlyRe.test(p)) || '';
       return {
         ...prev,
-        degree: prev.degree.trim() ? prev.degree : parts[0].trim(),
-        college: prev.college.trim() ? prev.college : parts[1].trim(),
+        degree: prev.degree.trim() ? prev.degree : parts[0],
+        college: prev.college.trim() ? prev.college : collegeCandidate,
       };
     }
     return prev.degree.trim() ? prev : { ...prev, degree: trimmed };

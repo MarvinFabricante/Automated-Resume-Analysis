@@ -572,3 +572,269 @@ Baking, 500 ml measuring
 """
     res_unit = extract_content(ml_unit)
     assert "Machine Learning" not in res_unit["skills_list"]
+
+
+def test_two_column_mern_pdf_no_false_positive_or_garbled_skills():
+    """
+    Regression test for two-column resumes (sidebar EDUCATION + SKILLS alongside
+    WORK PROJECTS with justified paragraphs, 'Bicol University', 'data integrity',
+    '• Technologies: React JS', and 'Role: Full Stack Developer').
+    Ensures clean skill analysis without geographic/homonym false positives,
+    column interleaving, or split justified-text fragments.
+    """
+    import fitz
+    from app.extractors.file.pdf_extractor import extract_text_from_pdf
+
+    doc = fitz.open()
+    page = doc.new_page(width=595, height=842)
+
+    # Top contact (left) + summary mentioning Bicol University (right)
+    page.insert_text((30, 55), "JERICHO MARALIT", fontsize=16)
+    page.insert_text((30, 78), "maralit25jericho@gmail.com", fontsize=9)
+    page.insert_text((30, 95), "Mahaba , Ligao City ,Albay", fontsize=9)
+    page.insert_textbox(
+        fitz.Rect(210, 45, 565, 125),
+        "Information Technology graduate from Bicol University Polangui with strong skills in "
+        "web development using the MERN stack (MongoDB, Express.js, React, Node.js). Good at "
+        "problem-solving, coding, and teamwork. Looking to use my technical skills to help a "
+        "forward-thinking team create great web solutions.",
+        fontsize=9,
+        align=fitz.TEXT_ALIGN_JUSTIFY,
+    )
+
+    # Left column: EDUCATION + SKILLS
+    page.insert_text((30, 150), "EDUCATION", fontsize=10)
+    page.insert_text(
+        (30, 170),
+        "Bicol University (BU)- Polangui Campus\nBS in Information Technology (IT)\n"
+        "Graduated - Cum Laude\n2019 - 2024",
+        fontsize=8.5,
+    )
+    page.insert_text((30, 232), "Ligao National High School\n2013 - 2019", fontsize=8.5)
+    page.insert_text((30, 272), "St. Mary's Academy of Ligao\n2007 - 2013", fontsize=8.5)
+    page.insert_text((30, 340), "SKILLS", fontsize=10)
+    page.insert_text((30, 365), "- HTML & CSS", fontsize=9)
+    page.insert_text((30, 390), "-React", fontsize=9)
+    page.insert_text((30, 415), "-Node JS", fontsize=9)
+    page.insert_text((30, 440), "-Express", fontsize=9)
+    page.insert_text((30, 465), "-MONGO DB", fontsize=9)
+    page.insert_text((30, 490), "-Tailwind CSS", fontsize=9)
+
+    # Right column: WORK PROJECTS (letter-spaced header + justified paragraphs)
+    page.insert_text((280, 150), "W O R K   P R O J E C T S", fontsize=10)
+    page.insert_textbox(
+        fitz.Rect(210, 165, 565, 255),
+        "RETIRO PARES\nfocusing on creating a seamless and efficient user experience. "
+        "Implemented receipt printing functionality directly from the web application, "
+        "ensuring smooth transaction processing.\n"
+        "• Role: Frontend\n• Technologies: React JS",
+        fontsize=8.5,
+        align=fitz.TEXT_ALIGN_JUSTIFY,
+    )
+    page.insert_textbox(
+        fitz.Rect(210, 265, 565, 365),
+        "Sisco Thrift\nImplemented user authentication, product management, and shopping cart features. "
+        "Designed a responsive and user-friendly interface to enhance customer experience. "
+        "Managed database operations, ensuring data integrity and security.\n"
+        "Role: Full Stack Developer\nTechnologies: MongoDB, Express.js, React.js, Node.js",
+        fontsize=8.5,
+        align=fitz.TEXT_ALIGN_JUSTIFY,
+    )
+    page.insert_textbox(
+        fitz.Rect(210, 375, 565, 495),
+        "Barangay Mahaba Management System\nThe Barangay Management System is a MERN stack-based project "
+        "designed to streamline barangay administration and official document issuance within the barangay.\n"
+        "• Role: Full Stack Developer\n• Technologies: MongoDB, Express.js, React.js, Node.js",
+        fontsize=8.5,
+        align=fitz.TEXT_ALIGN_JUSTIFY,
+    )
+    page.insert_textbox(
+        fitz.Rect(210, 505, 565, 645),
+        "iCrown Booking Dental System\nThe Dental Booking System is a MERN stack-based application "
+        "designed to streamline appointment scheduling and management for dental clinics. "
+        "This system allows patients to book, reschedule, and cancel appointments online, "
+        "while providing clinic staff with tools to manage their schedules efficiently through a "
+        "comprehensive dashboard.\n"
+        "• Role: Full Stack Developer\n• Technologies: MongoDB, Express.js, React.js, Node.js",
+        fontsize=8.5,
+        align=fitz.TEXT_ALIGN_JUSTIFY,
+    )
+
+    pdf_bytes = doc.tobytes()
+    doc.close()
+
+    extracted_txt = extract_text_from_pdf(pdf_bytes)
+    res = extract_content(extracted_txt)
+    skills = res["skills_list"]
+
+    # Expected real skills from the resume
+    for expected in [
+        "HTML5 & CSS3",
+        "React.js",
+        "Node.js",
+        "Express.js",
+        "MongoDB",
+        "Tailwind CSS",
+        "Problem Solving",
+        "Teamwork & Collaboration",
+    ]:
+        assert expected in skills, f"Expected '{expected}' in extracted skills: {skills}"
+
+    # Must NOT include geographic/homonym false positives or non-skill prose/school/project entries
+    for forbidden in [
+        "Bicolano / Bikol",
+        "Honesty & Integrity",
+        "TypeScript",
+        "St. Mary's Academy of Ligao",
+        "Sisco Thrift",
+        "Implemented user authentication",
+        "Full Stack Developer",
+        "Barangay Mahaba Management System",
+        "MONGO DB within the barangay",
+    ]:
+        assert forbidden not in skills, f"Unexpected false positive '{forbidden}' in skills: {skills}"
+
+    # Education should be properly parsed (not empty)
+    assert "Information Technology" in res["degree"]
+    assert "Bicol University" in res["college"]
+
+
+def test_defense_in_depth_against_interleaved_and_broken_pdf_skills():
+    """
+    Even if a severely malformed PDF interleaves columns, injects '|'-split
+    justified prose fragments, or breaks words like 'patien ts' / 'reschedul e',
+    skills extraction must reject all noise and homonym false positives.
+    """
+    corrupted_text = """
+JERICHO MARALIT
+maralit25jericho@gmail.com | Mahaba, Ligao City, Albay
+Information Technology graduate from Bicol University Polangui.
+
+EDUCATION
+Bicol University (BU)- Polangui Campus
+BS in Information Technology (IT)
+• Technologies: React JS
+St. Mary's Academy of Ligao
+2007 - 2013
+Sisco Thrift
+Implemented user authentication, product management, and shopping cart features.
+Managed database operations, ensuring data integrity and security.
+Role: Full Stack Developer
+
+SKILLS
+- HTML & CSS
+-React
+-Node JS
+-Express
+-MONGO DB
+within the barangay.
+-Tailwind CSS
+Barangay Mahaba Management System
+This system allows patien ts to book, reschedul e, and cancel appointmen ts online, while providing clinic staff with to | ols | to man | age th | eir schedu | les efficien | tly thro | ugh a comprehensive dashboard.
+"""
+    res = extract_content(corrupted_text)
+    skills = res["skills_list"]
+
+    for expected in ["HTML5 & CSS3", "React.js", "Node.js", "Express.js", "MongoDB", "Tailwind CSS"]:
+        assert expected in skills, f"Expected '{expected}' in {skills}"
+
+    for forbidden in [
+        "Bicolano / Bikol",
+        "Honesty & Integrity",
+        "TypeScript",
+        "St. Mary's Academy of Ligao",
+        "Sisco Thrift",
+        "Implemented user authentication",
+        "Full Stack Developer",
+        "Barangay Mahaba Management System",
+        "MONGO DB within the barangay",
+        "Reschedul E",
+        "Ols",
+        "To Man",
+        "Age Th",
+        "Eir Schedu",
+        "Les Efficien",
+        "Tly Thro",
+        "Ugh A Comprehensive Dashboard",
+    ]:
+        assert forbidden not in skills, f"Garbage/false-positive '{forbidden}' leaked into skills: {skills}"
+
+
+def test_contextual_homonym_guards_and_justified_row_merging():
+    """
+    Verifies contextual guards on ambiguous keywords (Express, Next, Spring, Integrity,
+    Bicol, Filipino citizenship, Setter, TS) and verifies justified/kerning row merging
+    in PDF extraction never splits words or injects pipes into prose.
+    """
+    from app.extractors.file.pdf_extractor import _extract_region_lines_paired
+
+    # 1. Ambiguous homonyms outside tech/language contexts must NOT trigger false skills
+    homonym_resume = """
+JUAN SANTOS
+juan@gmail.com | 09171234567
+Citizenship: Filipino
+Address: Legazpi City, Bicol Region
+
+SUMMARY
+Looking forward to the next step in my career. Built reliable systems and ensured data integrity.
+
+WORK EXPERIENCE
+Delivery Rider | LBC Express | Spring 2022 - Present
+- Worked as a tile setter before joining courier delivery.
+"""
+    res = extract_content(homonym_resume)
+    for fp in [
+        "Honesty & Integrity",
+        "Bicolano / Bikol",
+        "Tagalog / Filipino",
+        "Express.js",
+        "Next.js",
+        "Spring Boot",
+        "Appointment Setting",
+        "TypeScript",
+    ]:
+        assert fp not in res["skills_list"], f"False positive '{fp}' triggered on non-skill homonym: {res['skills_list']}"
+
+    # 2. Genuine mentions in proper contexts MUST still be extracted
+    genuine_resume = """
+MARIA CRUZ
+maria@gmail.com | 09181234567
+
+SKILLS
+TypeScript, JS/TS, Next.js, Express, Spring Boot, Honesty & Integrity, Fluent in Bicolano and Tagalog
+"""
+    res_gen = extract_content(genuine_resume)
+    for expected in [
+        "TypeScript",
+        "JavaScript",
+        "Next.js",
+        "Express.js",
+        "Spring Boot",
+        "Honesty & Integrity",
+        "Bicolano / Bikol",
+        "Tagalog / Filipino",
+    ]:
+        assert expected in res_gen["skills_list"], f"Legitimate skill '{expected}' missed: {res_gen['skills_list']}"
+
+    # 3. _extract_region_lines_paired: intra-word split merges without space, justified prose merges with spaces (no '|')
+    dict_blocks = [
+        {
+            "type": 0,
+            "lines": [
+                {"bbox": [210.0, 500.0, 250.0, 510.0], "spans": [{"text": "reschedul"}]},
+                {"bbox": [250.4, 500.0, 256.0, 510.0], "spans": [{"text": "e,"}]},
+                {"bbox": [210.0, 520.0, 232.0, 530.0], "spans": [{"text": "tools"}]},
+                {"bbox": [244.0, 520.0, 254.0, 530.0], "spans": [{"text": "to"}]},
+                {"bbox": [266.0, 520.0, 298.0, 530.0], "spans": [{"text": "manage"}]},
+                {"bbox": [310.0, 520.0, 330.0, 530.0], "spans": [{"text": "their"}]},
+                {"bbox": [342.0, 520.0, 384.0, 530.0], "spans": [{"text": "schedules"}]},
+                {"bbox": [396.0, 520.0, 440.0, 530.0], "spans": [{"text": "efficiently"}]},
+            ],
+        }
+    ]
+    blocks = [(210.0, 500.0, 440.0, 530.0, "reschedul e,\ntools to manage their schedules efficiently")]
+    lines = _extract_region_lines_paired(blocks, dict_blocks)
+    assert lines[0] == "reschedule,", f"Expected kerning-joined 'reschedule,', got: {lines[0]}"
+    assert lines[1] == "tools to manage their schedules efficiently", f"Expected clean prose line without pipes, got: {lines[1]}"
+    assert "|" not in lines[1]
+

@@ -3,7 +3,7 @@ import fitz  # PyMuPDF
 import os
 import io
 import re
-from typing import Union
+from typing import Optional, Union
 
 
 _PDF_DATE_HINT_RE = re.compile(
@@ -88,6 +88,7 @@ def _extract_region_lines_paired(
         return []
 
     raw_lines: list[tuple[float, float, float, float, str]] = []
+    seen_dict_lines: set[tuple[float, float, float, float, str]] = set()
     if dict_blocks:
         for b in blocks:
             bx0, by0, bx1, by1, btxt = b
@@ -105,7 +106,10 @@ def _extract_region_lines_paired(
                     if (bx0 - 2.5) <= cx <= (bx1 + 2.5) and (by0 - 2.5) <= cy <= (by1 + 2.5):
                         ltxt = "".join(sp.get("text", "") for sp in ln.get("spans", [])).strip()
                         if ltxt and not _PDF_DECORATIVE_BLOCK_RE.match(ltxt):
-                            matched_lines.append((lx0, ly0, lx1, ly1, ltxt))
+                            dedup_key = (round(lx0, 1), round(ly0, 1), round(lx1, 1), round(ly1, 1), ltxt)
+                            if dedup_key not in seen_dict_lines:
+                                seen_dict_lines.add(dedup_key)
+                                matched_lines.append((lx0, ly0, lx1, ly1, ltxt))
             if matched_lines:
                 raw_lines.extend(matched_lines)
             else:
@@ -143,6 +147,12 @@ def _extract_region_lines_paired(
             rows.append([item])
             anchor_y0, anchor_y1 = ly0, ly1
 
+    _PROSE_LINK_WORDS = {
+        "a", "an", "the", "to", "of", "in", "on", "for", "with", "by", "from",
+        "and", "or", "through", "while", "their", "our", "its", "this", "that",
+        "is", "are", "was", "were", "as", "at", "into", "within", "using",
+    }
+
     out_lines: list[str] = []
     for row in rows:
         row.sort(key=lambda r: r[0])
@@ -150,12 +160,27 @@ def _extract_region_lines_paired(
             out_lines.append(row[0][4])
             continue
 
-        # Merge standalone bullet symbols or tight (<8pt gap) inline spans first
+        # Merge standalone bullets, mid-word kerning splits (no space), and justified prose gaps
         compact: list[tuple[float, float, float, float, str]] = [row[0]]
         for nxt in row[1:]:
             prev = compact[-1]
             gap = nxt[0] - prev[2]
-            if _PDF_BULLET_ONLY_RE.match(prev[4]) or gap < 8.0:
+            line_h = max(6.0, min(prev[3] - prev[1], nxt[3] - nxt[1]))
+            nxt_is_date_or_loc = bool(_PDF_DATE_HINT_RE.search(nxt[4]) or _PDF_LOC_HINT_RE.search(nxt[4]))
+
+            if _PDF_BULLET_ONLY_RE.match(prev[4]):
+                compact[-1] = (prev[0], min(prev[1], nxt[1]), max(prev[2], nxt[2]), max(prev[3], nxt[3]), f"{prev[4]} {nxt[4]}")
+            elif (
+                gap <= max(1.0, line_h * 0.10)
+                or (
+                    gap <= max(1.5, line_h * 0.15)
+                    and prev[4][-1].isalnum()
+                    and nxt[4][0].isalnum()
+                )
+            ):
+                # Tight intra-word kerning split (e.g. Canva/Chromium justified text splitting "reschedul" + "e")
+                compact[-1] = (prev[0], min(prev[1], nxt[1]), max(prev[2], nxt[2]), max(prev[3], nxt[3]), f"{prev[4]}{nxt[4]}")
+            elif gap < (12.0 if nxt_is_date_or_loc else max(18.0, line_h * 1.65)):
                 compact[-1] = (prev[0], min(prev[1], nxt[1]), max(prev[2], nxt[2]), max(prev[3], nxt[3]), f"{prev[4]} {nxt[4]}")
             else:
                 compact.append(nxt)
@@ -175,8 +200,27 @@ def _extract_region_lines_paired(
         )
         any_bullet = any(t.startswith(("•", "-", "*", "▪", "►", "✓")) for t in texts)
 
-        if not has_dangling and not both_headers and all_short and (
-            has_date_or_loc or (not any_bullet and all(len(t) < 60 for t in texts))
+        # Detect justified prose lines (stretched word spacing) so we NEVER insert ' | ' inside sentences
+        lower_continuation_chunks = sum(1 for t in texts[1:] if t and t[0].islower())
+        prose_link_boundary = any(
+            (t.split()[-1].lower().strip(",.;:") in _PROSE_LINK_WORDS)
+            for t in texts[:-1]
+            if t.split()
+        )
+        looks_like_justified_prose = (
+            not both_headers
+            and not has_date_or_loc
+            and (
+                len(texts) >= 4
+                or lower_continuation_chunks >= 1
+                or prose_link_boundary
+            )
+        )
+
+        if looks_like_justified_prose:
+            out_lines.append(" ".join(texts))
+        elif not has_dangling and not both_headers and all_short and (
+            has_date_or_loc or (not any_bullet and len(texts) <= 3 and all(len(t) < 60 for t in texts))
         ):
             out_lines.append(" | ".join(texts))
         else:
@@ -441,16 +485,105 @@ def _extract_page_layout_parts(page, prev_split_x: float | None = None) -> dict:
     best_gutter_cutoff = first_section_y
     best_gutter_score = -1.0
 
+    def _split_block_at_x(
+        blk: tuple[float, float, float, float, str],
+        sx: float,
+    ) -> Optional[tuple[tuple[float, float, float, float, str], tuple[float, float, float, float, str]]]:
+        """Split a single crossing block along *sx* if its PyMuPDF dict spans do not cross *sx*."""
+        if not dict_blocks:
+            return None
+        bx0, by0, bx1, by1, _ = blk
+        spans: list[tuple[float, float, float, float, str]] = []
+        for db in dict_blocks:
+            if db.get("type") != 0:
+                continue
+            for ln in db.get("lines", []):
+                for sp in ln.get("spans", []):
+                    stxt = (sp.get("text") or "").strip()
+                    if not stxt or _PDF_DECORATIVE_BLOCK_RE.match(stxt):
+                        continue
+                    sb = sp.get("bbox")
+                    if not sb or len(sb) < 4:
+                        continue
+                    sx0, sy0, sx1, sy1 = float(sb[0]), float(sb[1]), float(sb[2]), float(sb[3])
+                    scx = (sx0 + sx1) * 0.5
+                    scy = (sy0 + sy1) * 0.5
+                    if (bx0 - 2.5) <= scx <= (bx1 + 2.5) and (by0 - 2.5) <= scy <= (by1 + 2.5):
+                        spans.append((sx0, sy0, sx1, sy1, stxt))
+        if not spans:
+            return None
+        l_sp = [s for s in spans if s[2] <= sx + 8.0]
+        r_sp = [s for s in spans if s[0] >= sx - 8.0 and s not in l_sp]
+        if len(l_sp) + len(r_sp) != len(spans) or not l_sp or not r_sp:
+            return None
+        # Require a real column gap (>= 14pt) between the left and right spans in this block
+        if (min(s[0] for s in r_sp) - max(s[2] for s in l_sp)) < 14.0:
+            return None
+
+        def _make_blk(sub: list[tuple[float, float, float, float, str]]) -> tuple[float, float, float, float, str]:
+            sub_s = sorted(sub, key=lambda s: (round(s[1] / 3.0), s[0]))
+            lines_acc: list[list[tuple[float, float, float, float, str]]] = []
+            for sp in sub_s:
+                if not lines_acc:
+                    lines_acc.append([sp])
+                    continue
+                cy_prev = (lines_acc[-1][0][1] + lines_acc[-1][0][3]) * 0.5
+                cy_curr = (sp[1] + sp[3]) * 0.5
+                if abs(cy_curr - cy_prev) <= 4.5:
+                    lines_acc[-1].append(sp)
+                else:
+                    lines_acc.append([sp])
+            built = [" ".join(x[4] for x in sorted(ln, key=lambda s: s[0])) for ln in lines_acc]
+            return (
+                min(s[0] for s in sub),
+                min(s[1] for s in sub),
+                max(s[2] for s in sub),
+                max(s[3] for s in sub),
+                "\n".join(built),
+            )
+
+        return _make_blk(l_sp), _make_blk(r_sp)
+
     fracs = [0.24, 0.28, 0.30, 0.33, 0.35, 0.38, 0.40, 0.42, 0.48, 0.52, 0.62, 0.67, 0.72]
     for cutoff in candidate_cutoffs:
         body_blocks = [b for b in main_blocks if b[1] >= cutoff]
         if len(body_blocks) < 2:
             continue
-        for frac in fracs:
-            split_x = page_w * frac
+
+        # Combine fixed fraction grid with data-driven column-gap midpoints from actual block x-edges
+        split_candidates: list[float] = [page_w * frac for frac in fracs]
+        edge_x1s = sorted({round(b[2], 1) for b in body_blocks if page_w * 0.18 <= b[2] <= page_w * 0.75})
+        edge_x0s = sorted({round(b[0], 1) for b in body_blocks if page_w * 0.20 <= b[0] <= page_w * 0.78})
+        for x1 in edge_x1s:
+            for x0 in edge_x0s:
+                if 6.0 <= (x0 - x1) <= page_w * 0.18:
+                    mid = (x1 + x0) * 0.5
+                    if page_w * 0.20 <= mid <= page_w * 0.76:
+                        if all(abs(mid - existing) > 4.0 for existing in split_candidates):
+                            split_candidates.append(mid)
+
+        for split_x in split_candidates:
             left_b = [b for b in body_blocks if b[2] <= split_x + 8]
             right_b = [b for b in body_blocks if b[0] >= split_x - 8 and b not in left_b]
             crossing_b = [b for b in body_blocks if b[0] < split_x - 8 and b[2] > split_x + 8]
+
+            # If only a few blocks bridged across the column gutter (e.g. coalesced single lines),
+            # check if their dict spans separate cleanly across split_x.
+            if crossing_b and len(crossing_b) <= 4:
+                resolved_left: list[tuple[float, float, float, float, str]] = []
+                resolved_right: list[tuple[float, float, float, float, str]] = []
+                unresolved = False
+                for cb in crossing_b:
+                    split_pair = _split_block_at_x(cb, split_x)
+                    if split_pair is None:
+                        unresolved = True
+                        break
+                    resolved_left.append(split_pair[0])
+                    resolved_right.append(split_pair[1])
+                if not unresolved:
+                    left_b = left_b + resolved_left
+                    right_b = right_b + resolved_right
+                    crossing_b = []
 
             if len(left_b) >= 1 and len(right_b) >= 1 and len(crossing_b) == 0:
                 left_is_gutter = _is_date_gutter_column(left_b, detect_section_label_fn)
@@ -504,9 +637,22 @@ def _extract_page_layout_parts(page, prev_split_x: float | None = None) -> dict:
         top_blocks = sorted([b for b in main_blocks if b[1] < best_cutoff], key=lambda b: (round(b[1] / 6.0), b[0]))
         body_blocks = [b for b in main_blocks if b[1] >= best_cutoff]
 
-        left_col = sorted([b for b in body_blocks if b[2] <= best_split + 8], key=lambda b: (round(b[1] / 4.0), b[0]))
-        right_col = sorted([b for b in body_blocks if b[0] >= best_split - 8 and b not in left_col], key=lambda b: (round(b[1] / 4.0), b[0]))
-        other_col = sorted([b for b in body_blocks if b not in left_col and b not in right_col], key=lambda b: (round(b[1] / 4.0), b[0]))
+        left_col = [b for b in body_blocks if b[2] <= best_split + 8]
+        right_col = [b for b in body_blocks if b[0] >= best_split - 8 and b not in left_col]
+        other_col = []
+        for b in body_blocks:
+            if b in left_col or b in right_col:
+                continue
+            split_pair = _split_block_at_x(b, best_split)
+            if split_pair is not None:
+                left_col.append(split_pair[0])
+                right_col.append(split_pair[1])
+            else:
+                other_col.append(b)
+
+        left_col.sort(key=lambda b: (round(b[1] / 4.0), b[0]))
+        right_col.sort(key=lambda b: (round(b[1] / 4.0), b[0]))
+        other_col.sort(key=lambda b: (round(b[1] / 4.0), b[0]))
 
         top_lines = _extract_region_lines_paired(top_blocks, dict_blocks, detect_section_label_fn)
         left_lines = _extract_region_lines_paired(left_col, dict_blocks, detect_section_label_fn)
@@ -708,17 +854,24 @@ def extract_text_from_pdf(file_input: Union[str, bytes, io.BytesIO]) -> str:
         if not t:
             return 999
         penalty = 0
-        edu_pos = t.find("EDUCATION")
-        exp_pos = max(t.find("WORK EXPERIENCE"), t.find("EXPERIENCE"))
+        t_up = t.upper()
+        edu_pos = t_up.find("EDUCATION")
+        exp_pos = max(t_up.find("WORK EXPERIENCE"), t_up.find("EXPERIENCE"))
 
         if edu_pos > 150:
-            for s in ["STI Colleges", "Universidad", "University", "College", "Bachelor", "BS "]:
-                p = t.find(s)
+            for s in ["STI COLLEGES", "UNIVERSIDAD", "UNIVERSITY", "COLLEGE", "BACHELOR", "BS "]:
+                p = t_up.find(s)
                 if 0 <= p < edu_pos:
+                    # Do not penalize summary/objective prose mentioning alma mater (e.g. "graduate from Bicol University")
+                    line_s = t.rfind("\n", 0, p) + 1
+                    line_e = t.find("\n", p)
+                    line_txt = t[line_s:(line_e if line_e >= 0 else len(t))].strip()
+                    if re.search(r'\b(?:graduate\s+from|graduated\s+from|seeking|looking\s+to|with\s+strong\s+skills|passionate|dedicated)\b', line_txt, re.I):
+                        continue
                     penalty += 50
         if exp_pos > 150:
-            for c in ["Food Panda", "ChanzIT", "Jollibee", "Shopee", "Accenture", "Delivery Rider"]:
-                p = t.find(c)
+            for c in ["FOOD PANDA", "CHANZIT", "JOLLIBEE", "SHOPEE", "ACCENTURE", "DELIVERY RIDER"]:
+                p = t_up.find(c)
                 if 0 <= p < exp_pos:
                     penalty += 50
         try:
@@ -726,9 +879,13 @@ def extract_text_from_pdf(file_input: Union[str, bytes, io.BytesIO]) -> str:
             secs = split_into_sections(t)
             if "SKILLS" in secs and not secs["SKILLS"].strip():
                 penalty += 50
+            if "EDUCATION" in secs and not secs["EDUCATION"].strip():
+                penalty += 50
             if other_t:
                 other_secs = split_into_sections(other_t)
                 if other_secs.get("EXPERIENCE", "").strip() and not secs.get("EXPERIENCE", "").strip():
+                    penalty += 60
+                if other_secs.get("EDUCATION", "").strip() and not secs.get("EDUCATION", "").strip():
                     penalty += 60
         except Exception:
             pass
