@@ -1,3 +1,4 @@
+from app.extractors.text_normalization import repair_line_hyphenation
 import re
 from typing import Optional, List, Dict, Any
 from .name_extractor import extract_fullname, extract_all_name_candidates, _normalize_name, is_valid_name
@@ -526,7 +527,7 @@ def _supplement_skills_from_section(skills_section_text: str, skills_details: di
     _BROKEN_TRAIL_LETTER_RE = re.compile(r'[a-z]{3,}\s+[a-z]$')
 
     # Pre-join soft-wrapped lines in PDF/DOCX skills sections (e.g. unclosed parens or wrapped phrases)
-    raw_lines = [l.strip() for l in skills_section_text.split('\n') if l.strip()]
+    raw_lines = [l.strip() for l in repair_line_hyphenation(skills_section_text).split('\n') if l.strip()]
     merged_lines: list[str] = []
     _CONTINUATION_END_RE = re.compile(
         r'(?:,\s*|\b(?:and|or|to|of|in|for|with|on|by|from|&|issue|admin|remote|device|order|data|customer|product|stock|multi-chat|handling)\s*)$',
@@ -1051,7 +1052,7 @@ def extract_content(text: str) -> dict:
     No external LLM is required; runs high-speed rule-based + spaCy NLP pipelines.
     """
     from ..file.file_extractor import clean_raw_text
-    text = clean_raw_text(text)
+    text = repair_line_hyphenation(clean_raw_text(text))
     sections = split_into_sections(text)
 
     # Structured entries

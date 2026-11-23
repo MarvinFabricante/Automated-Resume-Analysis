@@ -22,6 +22,8 @@ class JobMatchResult(BaseModel):
     criteria_evaluations: Optional[dict[str, Any]] = None
     matched_skills: list[str]
     missing_skills: list[str]
+    not_confirmed_skills: Optional[list[str]] = None
+    requirement_evaluations: Optional[list[dict[str, Any]]] = None
     skills_reason: Optional[str] = None
     experience_reason: Optional[str] = None
     education_reason: Optional[str] = None
@@ -58,6 +60,8 @@ class MatchResponse(BaseModel):
 
 class ResumeMatchRequest(BaseModel):
     """Accept already-parsed resume data for matching."""
+    clarification_responses: Optional[list[dict[str, Any]]] = None
+    raw_text: Optional[str] = ""
     skills: Optional[str] = ""
     years_experience: Optional[int] = 0
     highest_degree: Optional[str] = ""

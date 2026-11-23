@@ -123,6 +123,8 @@ async def init_db():
         async with engine.begin() as conn:
             # We use run_sync because metadata.create_all is a synchronous method
             await conn.run_sync(Base.metadata.create_all)
+            from migrations.add_requirement_confirmations import upgrade as upgrade_requirement_confirmations
+            await upgrade_requirement_confirmations(conn)
 
             # Auto-migrate newly added columns if they don't exist yet
             def _check_and_add_columns(sync_conn):
@@ -140,6 +142,21 @@ async def init_db():
                 # job_applications.imported_by
                 try:
                     sync_conn.execute(text("ALTER TABLE job_applications ADD COLUMN imported_by VARCHAR"))
+                except Exception:
+                    pass
+                # job_applications.user_id
+                try:
+                    sync_conn.execute(text("ALTER TABLE job_applications ADD COLUMN user_id INTEGER"))
+                except Exception:
+                    pass
+                # job_applications.resume_email
+                try:
+                    sync_conn.execute(text("ALTER TABLE job_applications ADD COLUMN resume_email VARCHAR"))
+                except Exception:
+                    pass
+                # job_applications.contact_email
+                try:
+                    sync_conn.execute(text("ALTER TABLE job_applications ADD COLUMN contact_email VARCHAR"))
                 except Exception:
                     pass
 

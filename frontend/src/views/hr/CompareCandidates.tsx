@@ -1,3 +1,4 @@
+import RequirementEvidence from '../../components/common/RequirementEvidence';
 import styles from './CompareCandidates.module.css';
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useSearchParams } from '@/utils/navigation';
@@ -59,6 +60,7 @@ interface CandidateComparisonData extends Partial<Application> {
   skills?: string[];
   matched_skills?: string[];
   missing_skills?: string[];
+  requirement_evaluations?: import('../../components/common/RequirementEvidence').RequirementEvaluation[];
   transferable_skills?: string[];
   strengths?: string[];
   weaknesses?: string[];
@@ -261,6 +263,16 @@ const calculateRuleBasedScore = (
     certScore = candidate.certifications_score ?? candidate.certificationsScore ?? 0;
   }
 
+  const evidence = candidate.requirement_evaluations || [];
+  const skillEvidence = evidence.filter(item => item.field === 'skills');
+  if (skillEvidence.length) {
+    matchedSkills = skillEvidence.filter(item => item.status === 'Meets requirement').map(item => item.requirement);
+    missingSkills = skillEvidence.filter(item => item.status === 'Does not meet').map(item => item.requirement);
+    skillsScore = Math.round(matchedSkills.length / skillEvidence.length * 100);
+  }
+  if (evidence.some(item => item.field === 'experience')) expScore = candidate.experience_score ?? candidate.experienceScore ?? 0;
+  if (evidence.some(item => item.field === 'certifications')) certScore = candidate.certifications_score ?? candidate.certificationsScore ?? 0;
+
   let totalWeight = 0;
   let rawScore = 0;
 
@@ -315,8 +327,8 @@ const calculateRuleBasedScore = (
         }
       : {}),
     certificationsScore: certScore,
-    matched_skills: matchedSkills.length > 0 ? matchedSkills : candidate.matched_skills,
-    missing_skills: missingSkills.length > 0 ? missingSkills : candidate.missing_skills,
+    matched_skills: matchedSkills,
+    missing_skills: missingSkills,
     isRuleBased: !!job
   };
 };
@@ -596,6 +608,7 @@ const CompareCandidates: React.FC = () => {
           required_certifications: sc.required_certifications || localApp?.required_certifications,
           matched_skills: sc.matched_skills || [],
           missing_skills: sc.missing_skills || [],
+          requirement_evaluations: sc.requirement_evaluations || localApp?.requirement_evaluations || [],
           transferable_skills: sc.transferable_skills || [],
           ai_summary: sc.ai_summary,
           strengths: sc.strengths,
@@ -2344,6 +2357,7 @@ const CompareCandidates: React.FC = () => {
                         <span>Missing Required Skills</span>
                       </h5>
                       <div className="flex flex-wrap gap-1.5">
+                        <RequirementEvidence items={activeCandidate.requirement_evaluations} />
                         {activeCandidate.missing_skills && activeCandidate.missing_skills.length > 0 ? (
                           activeCandidate.missing_skills.map((skill, i) => (
                             <span key={i} className="px-2 py-0.5 sm:px-2.5 sm:py-1 bg-white text-rose-700 border border-rose-200/80 rounded-md text-xs font-bold">

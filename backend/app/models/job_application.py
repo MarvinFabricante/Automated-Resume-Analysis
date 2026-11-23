@@ -13,12 +13,19 @@ class JobApplication(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     job_id = Column(Integer, ForeignKey("job_descriptions.id"), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
     
     # Candidate details
     candidate_name = Column(String, nullable=False)
     candidate_email = Column(String, nullable=False, index=True)
+    resume_email = Column(String, nullable=True)
+    contact_email = Column(String, nullable=True)
     phone = Column(String, nullable=True)
     location = Column(String, nullable=True)
+
+    @property
+    def applicant_id(self):
+        return self.user_id
     
     # Parsed resume and form data
     job_title = Column(String, nullable=True)
@@ -45,6 +52,8 @@ class JobApplication(Base):
     # Detailed ATS Breakdown
     matched_skills = Column(JSON, nullable=True)
     missing_skills = Column(JSON, nullable=True)
+    clarification_responses = Column(JSON, nullable=True)
+    requirement_evaluations = Column(JSON, nullable=True)
     relevant_experience = Column(String, nullable=True)
     experience_gaps = Column(String, nullable=True)
     work_experiences = Column(JSON, nullable=True)

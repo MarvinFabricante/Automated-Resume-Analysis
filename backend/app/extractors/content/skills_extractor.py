@@ -22,6 +22,8 @@ Principal NLP & Information Extraction Architecture for the Philippine workforce
 - Deterministic, local Python execution without external LLM dependencies.
 """
 
+from app.extractors.text_normalization import repair_line_hyphenation
+
 import os
 import re
 import json
@@ -593,6 +595,7 @@ class PhilippineSkillsExtractor:
           - Pass 2: spaCy Matcher, dependency verb-object pairs, and Filipino trait patterns
           - Pass 3: RapidFuzz fuzzy normalization and canonical deduplication
         """
+        text = repair_line_hyphenation(text)
         if not text or not text.strip():
             return {
                 "total_unique_skills": 0,

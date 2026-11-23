@@ -1,3 +1,4 @@
+from app.extractors.text_normalization import SKILL_SEPARATOR, normalize_skill_key, repair_line_hyphenation
 import re
 import json
 import math
@@ -206,7 +207,7 @@ def _normalize_skill(s: str) -> str:
     """Normalize a skill string for comparison."""
     if not s or is_no_value(s):
         return ""
-    s = s.lower().strip()
+    s = normalize_skill_key(s)
     # Remove common suffixes/versions to improve matching (e.g., React.js -> react)
     s = re.sub(r'\.js$', '', s)
     s = re.sub(r'[^a-z0-9+#/ ]', '', s).strip()
@@ -225,16 +226,16 @@ def _tokenize_skills(skills_input: Any) -> list[str]:
         for item in skills_input:
             if isinstance(item, str):
                 if not is_no_value(item):
-                    raw.extend(re.split(r'[|,;•\-]', item))
+                    raw.extend(re.split(SKILL_SEPARATOR, repair_line_hyphenation(item)))
             elif isinstance(item, dict) and ("name" in item or "skill_name" in item):
                 val = str(item.get("name") or item.get("skill_name") or "")
                 if not is_no_value(val):
-                    raw.extend(re.split(r'[|,;•\-]', val))
+                    raw.extend(re.split(SKILL_SEPARATOR, repair_line_hyphenation(val)))
             elif item and not is_no_value(item):
                 raw.append(str(item))
     else:
         # Split by pipe, comma, semicolon, or bullet
-        raw = re.split(r'[|,;•\-]', str(skills_input))
+        raw = re.split(SKILL_SEPARATOR, repair_line_hyphenation(str(skills_input)))
     skills = []
     for s in raw:
         if is_no_value(s):
@@ -955,7 +956,8 @@ def calculate_education_match(
 
     if education_req is not None:
         if is_no_value(education_req):
-            cand_label = cand_parsed["label"] or "None provided"
+            from app.services.requirement_rules import education_display_label
+            cand_label = education_display_label(resume_education, education_entries) or "None provided"
             return {
                 "score": 1.0,
                 "status": STATUS_NOT_REQUIRED,
@@ -972,7 +974,8 @@ def calculate_education_match(
     else:
         req_text = _find_education_context(job_description)
         if is_no_value(req_text):
-            cand_label = cand_parsed["label"] or "None provided"
+            from app.services.requirement_rules import education_display_label
+            cand_label = education_display_label(resume_education, education_entries) or "None provided"
             return {
                 "score": 1.0,
                 "status": STATUS_NOT_REQUIRED,
@@ -1058,13 +1061,8 @@ def calculate_education_match(
     else:
         cand_fields = list(cand_parsed["field_options"] or [])
 
-    if is_ongoing and pursuing_level > cand_level:
-        pursuing_label = EDUCATION_SHORT_LABELS.get(pursuing_level, "higher education")
-        cand_display = f"{cand_label} (currently pursuing {pursuing_label})"
-    elif cand_fields:
-        cand_display = f"{cand_label} in {', '.join(cand_fields[:2])}"
-    else:
-        cand_display = cand_label
+    from app.services.requirement_rules import education_display_label
+    cand_display = education_display_label(resume_education, education_entries)
 
     # Case 1: Job does NOT require a specific field/course
     if not req_fields:
@@ -2041,7 +2039,7 @@ def _generate_recommendations(
             )
 
     # 3. Experience & role-relevance probing (only when experience is required)
-    if experience_result.get("has_requirement", True):
+    if experience_result.get("has_requirement", True) and experience_result.get("status") != "Not confirmed":
         req_years = experience_result.get("required_years", 0) or 0
         cand_years = experience_result.get("candidate_years", 0) or 0
         total_years = experience_result.get("total_years", cand_years) or cand_years
@@ -2232,7 +2230,7 @@ def _generate_nlp_strengths(skills_result: dict, experience_result: dict, educat
 def _generate_nlp_weaknesses(skills_result: dict, experience_result: dict, education_result: dict, relevance_result: dict, certs_result: dict) -> list[str]:
     """Generate weaknesses list from NLP analysis results."""
     weaknesses = []
-    if experience_result.get("has_requirement", True):
+    if experience_result.get("has_requirement", True) and experience_result.get("status") != "Not confirmed":
         req_years = experience_result.get("required_years", 0) or 0
         cand_years = experience_result.get("candidate_years", 0) or 0
         total_years = experience_result.get("total_years", cand_years) or cand_years
@@ -2246,7 +2244,7 @@ def _generate_nlp_weaknesses(skills_result: dict, experience_result: dict, educa
     if skills_result.get("has_requirement", True) and skills_result["missing"]:
         missing_sample = ", ".join([s.title() for s in skills_result["missing"][:4]])
         weaknesses.append(f"Missing critical skills: {missing_sample}.")
-    if experience_result.get("has_requirement", True):
+    if experience_result.get("has_requirement", True) and experience_result.get("status") != "Not confirmed":
         irr_count = relevance_result.get("irrelevant_count", 0)
         total = relevance_result.get("total_entries", 0)
         if irr_count > 0 and irr_count == total:
@@ -2258,6 +2256,7 @@ def _generate_nlp_weaknesses(skills_result: dict, experience_result: dict, educa
         weaknesses.append("Education does not fully meet the job requirements.")
     if (
         certs_result.get("has_requirement", True)
+        and certs_result.get("status") != "Not confirmed"
         and certs_result["score"] < 0.5
         and not is_no_value(certs_result.get("required_certifications", "None"))
     ):
@@ -2269,7 +2268,7 @@ def _generate_nlp_summary(resume_data: dict, job_title: str, final_pct: float, s
     """Generate a human-readable analysis summary using NLP results."""
     name = resume_data.get("fullname", "The candidate")
     matched = len(skills_result["matched"])
-    total = matched + len(skills_result["missing"])
+    total = matched + len(skills_result["missing"]) + len(skills_result.get("not_confirmed", []))
     rel_count = relevance_result.get("relevant_count", 0)
     total_exp = relevance_result.get("total_entries", 0)
 
@@ -2299,7 +2298,7 @@ def _generate_nlp_skills_explanation(skills_result: dict) -> str:
         )
     matched = skills_result["matched"]
     missing = skills_result["missing"]
-    total = len(matched) + len(missing)
+    total = len(matched) + len(missing) + len(skills_result.get("not_confirmed", []))
     if total == 0:
         return format_criterion_reason(
             STATUS_NOT_REQUIRED,
@@ -2309,6 +2308,8 @@ def _generate_nlp_skills_explanation(skills_result: dict) -> str:
     parts = [f"Skills Match: {pct}% ({len(matched)}/{total} required skills found)."]
     if matched:
         parts.append(f"Matched: {', '.join([s.title() for s in matched[:8]])}.")
+    if skills_result.get("not_confirmed"):
+        parts.append("Not confirmed: " + ", ".join(skills_result["not_confirmed"]) + ".")
     if missing:
         parts.append(f"Missing: {', '.join([s.title() for s in missing[:8]])}.")
     return " ".join(parts)
@@ -2329,6 +2330,7 @@ def build_job_specific_questions(
     education_result: dict,
     certs_result: dict,
     relevance_result: dict,
+    requirement_evaluations: Optional[list[dict]] = None,
 ) -> list[dict]:
     """
     Generate follow-up clarification questions tailored to the target job
@@ -2397,56 +2399,9 @@ def build_job_specific_questions(
             "reason": f"Clarifying direct experience duration for {job_title}.",
         })
 
-    missing_skills = [s.title() for s in (skills_result.get("missing") or []) if s][:5]
-    matched_skills = [s.title() for s in (skills_result.get("matched") or []) if s][:5]
-    has_resume_skills = bool(normalize_requirement_text(resume_data.get("skills"))) or bool(resume_data.get("skills_list"))
-    if skills_result.get("has_requirement", True):
-        if missing_skills:
-            questions.append({
-                "id": f"clarify_{job_slug}_skills",
-                "field": "skills",
-                "job_id": job_id,
-                "job_title": job_title,
-                "question": f"For {job_title}, which of these required skills have you used: {', '.join(missing_skills)}?",
-                "type": "text",
-                "placeholder": f"e.g. {', '.join(missing_skills[:3])}",
-                "required": False,
-                "domain": department or "General",
-                "reason": f"Required skills for {job_title} not explicitly found in resume.",
-            })
-        elif skills_req and not is_no_value(skills_req) and not matched_skills and not has_resume_skills:
-            questions.append({
-                "id": f"clarify_{job_slug}_skills",
-                "field": "skills",
-                "job_id": job_id,
-                "job_title": job_title,
-                "question": f"Which key tools or competencies from {job_title} ({skills_req[:80]}) have you practiced?",
-                "type": "text",
-                "placeholder": "List relevant tools or processes",
-                "required": False,
-                "domain": department or "General",
-                "reason": f"Aligning candidate competencies with {job_title}.",
-            })
-
-    req_certs = (certs_result.get("required_certifications") or "").strip()
-    if (
-        certs_result.get("has_requirement", True)
-        and req_certs
-        and not is_no_value(req_certs)
-        and float(certs_result.get("score", 1.0) or 0.0) < 1.0
-    ):
-        questions.append({
-            "id": f"clarify_{job_slug}_certifications",
-            "field": "certifications",
-            "job_id": job_id,
-            "job_title": job_title,
-            "question": f"For {job_title}, do you currently hold any required certifications/licenses ({req_certs})?",
-            "type": "text",
-            "placeholder": f"e.g. {req_certs}",
-            "required": False,
-            "domain": department or "General",
-            "reason": f"{job_title} lists preferred or required certifications.",
-        })
+    from app.services.requirement_confirmation import evaluate_requirements, confirmation_questions
+    rows = requirement_evaluations if requirement_evaluations is not None else evaluate_requirements(resume_data, job, _normalize_skill)
+    questions.extend(confirmation_questions(rows, job))
 
     low_job = job_text.lower()
     if re.search(r'\b(?:quality|qc|qa|inspection|audit)\b', low_job):
@@ -2708,10 +2663,26 @@ def calculate_match_score(
             scoring_weights=job.get("scoring_weights", None),
         )
 
+    from app.services.requirement_confirmation import evaluate_requirements, apply_confirmations
+    requirement_evaluations = evaluate_requirements(
+        resume_data, job, _normalize_skill, matching_config.get("related_terms")
+    )
+    resume_data = apply_confirmations(resume_data, requirement_evaluations)
+
     # ── Rule-based scoring ────────────────────────────────────────────────────
     resume_skills = resume_data.get("skills", "")
     job_skills = job.skills_requirements or ""
     skills_result = calculate_skills_match(resume_skills, job_skills, fuzzy_threshold=fuzzy_th)
+    skill_rows = [r for r in requirement_evaluations if r["field"] == "skills"]
+    if skill_rows:
+        matched = [r["requirement"] for r in skill_rows if r["status"] == STATUS_MEETS]
+        failed = [r["requirement"] for r in skill_rows if r["status"] == STATUS_DOES_NOT_MEET]
+        pending = [r["requirement"] for r in skill_rows if r["status"] in ("Not confirmed", "Possible match")]
+        status = "Not confirmed" if pending else (STATUS_MEETS if not failed else STATUS_PARTIAL if matched else STATUS_DOES_NOT_MEET)
+        skills_result.update(score=len(matched) / len(skill_rows), matched=matched, missing=failed,
+                             not_confirmed=pending, status=status)
+        skills_result["reason"] = format_criterion_reason(status,
+            f"{len(matched)} of {len(skill_rows)} skills confirmed; {len(pending)} not confirmed; {len(failed)} answered No.")
     skills_status = skills_result.get(
         "status",
         STATUS_NOT_REQUIRED if not skills_result.get("has_requirement", True) else STATUS_MEETS,
@@ -2821,6 +2792,15 @@ def calculate_match_score(
         STATUS_NOT_REQUIRED if not certs_result.get("has_requirement", True) else STATUS_MEETS,
     )
 
+    for field, result in (("experience", experience_result), ("certifications", certs_result)):
+        rows = [r for r in requirement_evaluations if r["field"] == field]
+        pending = [r for r in rows if r["status"] in ("Not confirmed", "Possible match")]
+        if pending:
+            result["status"] = "Not confirmed"
+            result["reason"] = format_criterion_reason("Not confirmed", "Awaiting applicant confirmation: " + "; ".join(r["requirement"] for r in pending))
+    exp_status = experience_result.get("status", exp_status)
+    certs_status = certs_result.get("status", certs_status)
+
     # Location matching
     resume_location = resume_data.get("location", "")
     location_result = calculate_location_match(resume_location, getattr(job, 'location', None))
@@ -2880,8 +2860,8 @@ def calculate_match_score(
     blended_completeness_score = round(completeness_score_val * 100, 1)
     final_match_pct = min(100.0, round(rule_match_pct, 1))
 
-    all_matched = [s.title() for s in skills_result["matched"]]
-    all_missing = [s.title() for s in skills_result["missing"]]
+    all_matched = list(skills_result["matched"])
+    all_missing = list(skills_result["missing"])
     final_recommendations = _generate_recommendations(
         skills_result,
         experience_result,
@@ -2913,6 +2893,8 @@ def calculate_match_score(
     strengths = _generate_nlp_strengths(skills_result, experience_result, education_result, relevance_result, certs_result)
     weaknesses = _generate_nlp_weaknesses(skills_result, experience_result, education_result, relevance_result, certs_result)
     ai_summary = _generate_nlp_summary(resume_data, job.job_title, final_match_pct, skills_result, relevance_result)
+    if any(r["status"] in ("Not confirmed", "Possible match") for r in requirement_evaluations):
+        ai_summary += " Score reflects confirmed evidence; unconfirmed requirements are pending, not failures."
     skills_explanation = _generate_nlp_skills_explanation(skills_result)
     experience_explanation = (
         experience_result.get("reason", "")
@@ -2933,18 +2915,7 @@ def calculate_match_score(
     )
 
     # ── Build reason strings ──────────────────────────────────────────────────
-    total_job_skills = len(skills_result["matched"]) + len(skills_result["missing"])
-    if not skills_result.get("has_requirement", True) or total_job_skills == 0:
-        skills_reason = skills_result.get("reason") or format_criterion_reason(
-            STATUS_NOT_REQUIRED,
-            "No specific skills requirement for this position.",
-        )
-    else:
-        skills_reason = format_criterion_reason(
-            skills_status,
-            f"Matched {len(all_matched)} out of {total_job_skills} required skills. "
-            f"{'Strong alignment with the technical requirements.' if blended_skills_score >= 70 else 'Several critical skills from the job description are missing from the resume.'}",
-        )
+    skills_reason = skills_result.get("reason", "")
 
     experience_text = resume_experience
     exp_entries = [e.strip() for e in experience_text.split("|") if e.strip()] if experience_text else []
@@ -2954,7 +2925,7 @@ def calculate_match_score(
     irr_count = relevance_result.get("irrelevant_count", 0)
     total_exp = relevance_result.get("total_entries", len(exp_entries))
     experience_reason_strict = experience_result["reason"]
-    if exp_has_requirement and total_exp > 0:
+    if exp_has_requirement and total_exp > 0 and exp_status != "Not confirmed":
         if rel_count == 0:
             strict_detail = (
                 f"None of the {total_exp} work experience(s) are relevant to this position. "
@@ -3041,12 +3012,14 @@ def calculate_match_score(
         education_result=education_result,
         certs_result=certs_result,
         relevance_result=relevance_result,
+        requirement_evaluations=requirement_evaluations,
     )
 
     req_yrs_gap = experience_result.get("required_years", 0) or 0
     cand_yrs_gap = experience_result.get("candidate_years", 0) or 0
     below_min_exp = bool(
         exp_has_requirement
+        and exp_status != "Not confirmed"
         and experience_result.get("below_minimum", req_yrs_gap > 0 and cand_yrs_gap < req_yrs_gap)
     )
     gap_years_val = int(math.ceil(float(experience_result.get("gap_years", max(0, req_yrs_gap - cand_yrs_gap)) or 0))) if below_min_exp else 0
@@ -3143,6 +3116,8 @@ def calculate_match_score(
         # ── Skills ──
         "matched_skills": all_matched,
         "missing_skills": all_missing,
+        "not_confirmed_skills": skills_result.get("not_confirmed", []),
+        "requirement_evaluations": requirement_evaluations,
         "transferable_skills": transferable_skills,
         # ── Reasons ──
         "skills_reason": skills_reason,
@@ -3232,6 +3207,8 @@ def nlp_analyze_match(resume_data: dict, job_data: dict, matching_config: Option
         "recommendations": result["recommendations"],
         "matched_skills": result["matched_skills"],
         "missing_skills": result["missing_skills"],
+        "requirement_evaluations": result["requirement_evaluations"],
+        "not_confirmed_skills": result.get("not_confirmed_skills", []),
         "transferable_skills": result["transferable_skills"],
         "skills_reason": result.get("skills_reason"),
         "experience_reason": result.get("experience_reason"),

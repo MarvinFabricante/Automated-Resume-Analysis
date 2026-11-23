@@ -266,10 +266,27 @@ const PreviewAndVerifyPage: React.FC = () => {
   const activeData = dynamicExtractedData || data;
   const activeMatch = dynamicMatchData || matchData;
 
+  const accountEmail =
+    state?.accountEmail ||
+    (typeof window !== 'undefined' && localStorage.getItem('token') ? localStorage.getItem('saved_email') : '') ||
+    '';
+  const effectiveUserId =
+    typeof window !== 'undefined' && localStorage.getItem('token') && localStorage.getItem('userId')
+      ? Number(localStorage.getItem('userId'))
+      : undefined;
+  const resumeEmail = state?.resumeEmail || activeData?.email || data?.email || '';
+  const chosenContactEmail =
+    state?.contactEmail ||
+    state?.formData?.email ||
+    state?.personal?.email ||
+    accountEmail ||
+    activeData?.email ||
+    '';
+
   const extractedData = {
     personal: {
       name: (hasReplacedResume ? activeData?.fullname : (state?.formData?.fullName || state?.personal?.name || activeData?.fullname)) || "",
-      email: (hasReplacedResume ? activeData?.email : (state?.formData?.email || state?.personal?.email || activeData?.email)) || "",
+      email: chosenContactEmail,
       phone: (hasReplacedResume ? activeData?.phone : (state?.formData?.phone || state?.personal?.phone || activeData?.phone)) || "",
       location: (hasReplacedResume ? activeData?.location : (state?.formData?.location || state?.personal?.location || activeData?.location)) || ""
     },
@@ -401,9 +418,13 @@ const PreviewAndVerifyPage: React.FC = () => {
       const cleanedCerts = cleanRequirementInput(certString) || cleanRequirementInput(String(data?.candidate_certifications || ""));
 
       const payload = {
+        clarification_responses: activeData?.clarification_responses || data?.clarification_responses || [],
         job_id: String(effectiveJobId),
+        user_id: effectiveUserId || undefined,
         candidate_name: candidateName,
         candidate_email: candidateEmail,
+        contact_email: candidateEmail,
+        resume_email: resumeEmail || undefined,
         phone: extractedData.personal.phone,
         location: extractedData.personal.location,
         job_title: validCandidateJobTitle || validStateJobTitle || "Applicant",

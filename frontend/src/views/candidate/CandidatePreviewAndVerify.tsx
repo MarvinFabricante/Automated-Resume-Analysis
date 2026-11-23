@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useLocation, useNavigate, useParams } from '@/utils/navigation';
+import { useSelector } from 'react-redux';
+import { RootState } from '../../redux/store';
 import { Helmet } from 'react-helmet-async';
 import candidateService from '../../services/candidateService';
 import {
@@ -31,6 +33,15 @@ const CandidatePreviewAndVerify: React.FC = () => {
   const { state } = useLocation();
   const navigate = useNavigate();
   const { jobId } = useParams<{ jobId: string }>();
+  const { user: authUser, userId: authUserId } = useSelector((state: RootState) => state.auth);
+  const accountEmail =
+    state?.accountEmail ||
+    (typeof authUser === 'string' ? authUser : (authUser as any)?.email) ||
+    (typeof window !== 'undefined' ? localStorage.getItem('saved_email') : '') ||
+    '';
+  const effectiveUserId =
+    authUserId ||
+    (typeof window !== 'undefined' && localStorage.getItem('userId') ? Number(localStorage.getItem('userId')) : undefined);
   const effectiveJobId = (jobId && jobId !== 'smart' && jobId !== 'undefined')
     ? jobId
     : (state?.job?.job_id || state?.job?.id || (typeof window !== 'undefined' ? localStorage.getItem('draft_application_job_id') : null));
@@ -229,10 +240,19 @@ const CandidatePreviewAndVerify: React.FC = () => {
   const activeData = dynamicExtractedData || data;
   const activeMatch = dynamicMatchData || matchData;
 
+  const resumeEmail = state?.resumeEmail || activeData?.email || data?.email || "";
+  const chosenContactEmail =
+    state?.contactEmail ||
+    state?.formData?.email ||
+    state?.personal?.email ||
+    accountEmail ||
+    activeData?.email ||
+    "candidate@example.com";
+
   const extractedData = {
     personal: {
       name: (hasReplacedResume ? activeData?.fullname : (state?.formData?.fullName || state?.personal?.name || activeData?.fullname)) || "Candidate Name",
-      email: (hasReplacedResume ? activeData?.email : (state?.formData?.email || state?.personal?.email || activeData?.email)) || "candidate@example.com",
+      email: chosenContactEmail,
       phone: (hasReplacedResume ? activeData?.phone : (state?.formData?.phone || state?.personal?.phone || activeData?.phone)) || "Not specified",
       location: (hasReplacedResume ? activeData?.location : (state?.formData?.location || state?.personal?.location || activeData?.location)) || "Not specified"
     },
@@ -357,9 +377,13 @@ const CandidatePreviewAndVerify: React.FC = () => {
     const cleanedCerts = cleanRequirementInput(certString) || cleanRequirementInput(String(data?.candidate_certifications || ""));
 
     const payload = {
+      clarification_responses: activeData?.clarification_responses || data?.clarification_responses || [],
       job_id: String(effectiveJobId),
+      user_id: effectiveUserId ? Number(effectiveUserId) : undefined,
       candidate_name: candidateName,
       candidate_email: candidateEmail,
+      contact_email: candidateEmail,
+      resume_email: resumeEmail || undefined,
       phone: extractedData.personal.phone,
       location: extractedData.personal.location,
       job_title: validCandidateJobTitle || validStateJobTitle || "Applicant",

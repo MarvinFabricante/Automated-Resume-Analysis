@@ -54,6 +54,17 @@ def _resolve_application_years(
 
 def _apply_experience_gap_evaluation(data: dict, job_desc) -> None:
     """Ensure minimum experience gaps are computed and flagged on submitted applications."""
+    if job_desc:
+        from app.services.requirement_confirmation import evaluate_requirements, apply_confirmations
+        from app.services.job_matching_service import _normalize_skill
+        rows = evaluate_requirements(data, job_desc, _normalize_skill)
+        data["requirement_evaluations"] = rows
+        resolved = apply_confirmations(data, rows)
+        from app.services.requirement_rules import clean_list_items
+        data["skills"] = clean_list_items(resolved.get("skills"))
+        data["certifications"] = resolved.get("certifications") or None
+        data["relevance"] = " | ".join(filter(None, [data.get("relevance"), resolved.get("experience")]))
+        data["years_experience"] = resolved.get("years_experience", data.get("years_experience"))
     explicit_years = data.pop("years_experience", None)
     cand_years = _resolve_application_years(
         explicit_years=explicit_years,
@@ -69,6 +80,13 @@ def _apply_experience_gap_evaluation(data: dict, job_desc) -> None:
         return
 
     from app.services.job_matching_service import calculate_experience_match
+
+    pending_exp = [r for r in data.get("requirement_evaluations", []) if r["field"] == "experience" and r["status"] in ("Not confirmed", "Possible match")]
+    if pending_exp:
+        data["experience_reason"] = "Not confirmed: Awaiting applicant confirmation of experience requirements."
+        data["experience_gaps"] = None
+        data["weaknesses"] = [w for w in data.get("weaknesses", []) or [] if "below minimum" not in str(w).lower()]
+        return
 
     job_context = f"{getattr(job_desc, 'description', '') or ''} {getattr(job_desc, 'skills_requirements', '') or ''}"
     exp_res = calculate_experience_match(
@@ -180,6 +198,7 @@ def _resume_data_from_application(app: JobApplication) -> dict:
         "job_title": app_title or "",
         "skills": skills_text,
         "skills_list": cleaned_skills,
+        "clarification_responses": getattr(app, "clarification_responses", None) or [],
         "experience": experience_text,
         "work_experiences": cleaned_work_exps,
         "total_experience_months": getattr(app, "total_experience_months", 0) or 0,
@@ -385,9 +404,43 @@ def _enrich_applications(apps: list[JobApplication], bulk_mode: bool = False) ->
                     pass
     return apps
 
-async def check_duplicate(db: AsyncSession, db_job_id: int, candidate_email: str) -> Optional[JobApplication]:
-    """Check if an applicant has already applied for a specific job."""
-    if not candidate_email or not db_job_id:
+async def resolve_application_notification_email(
+    db: AsyncSession,
+    application: JobApplication,
+) -> Optional[str]:
+    """
+    Resolve the notification email for an application.
+    The login email of the linked user account (user_id) is always the account identity
+    and notification target. Falls back to candidate_email only when unlinked.
+    """
+    app_uid = getattr(application, "user_id", None)
+    if app_uid:
+        try:
+            from sqlalchemy import select
+            from app.models.user import User
+            res = await db.execute(select(User.email).where(User.id == app_uid))
+            account_email = res.scalar_one_or_none()
+            if account_email:
+                return account_email.strip()
+        except Exception as e:
+            logger.debug(f"Could not resolve account email for user_id={app_uid}: {e}")
+    return getattr(application, "candidate_email", None)
+
+
+async def check_duplicate(
+    db: AsyncSession,
+    db_job_id: int,
+    candidate_email: str,
+    user_id: Optional[int] = None,
+) -> Optional[JobApplication]:
+    """Check if an applicant has already applied for a specific job (by user_id first, then email)."""
+    if not db_job_id:
+        return None
+    if user_id:
+        return await JobApplicationRepository.get_by_job_and_user_id(
+            db, db_job_id, user_id, fallback_email=candidate_email
+        )
+    if not candidate_email:
         return None
     return await JobApplicationRepository.get_by_job_and_email(db, db_job_id, candidate_email)
 
@@ -396,13 +449,40 @@ async def create_job_application(
     db: AsyncSession, 
     application_in: JobApplicationCreate, 
     db_job_id: int,
-    duplicate_policy: Optional[str] = None
+    duplicate_policy: Optional[str] = None,
+    current_user: Optional[dict] = None,
 ):
     """Create a new job application or handle duplicates according to policy (block or version)."""
+    # Resolve authenticated candidate user_id and login email
+    is_imported = (getattr(application_in, "source", None) or "Online").strip().lower() == "imported"
+    auth_user_id: Optional[int] = None
+    account_email: Optional[str] = None
+
+    if not is_imported:
+        if current_user and (current_user.get("role") or "CANDIDATE").upper() == "CANDIDATE":
+            auth_user_id = current_user.get("id")
+            account_email = (current_user.get("sub") or current_user.get("email") or "").strip() or None
+        if not auth_user_id:
+            auth_user_id = getattr(application_in, "user_id", None) or getattr(application_in, "applicant_id", None)
+
+        if auth_user_id and not account_email:
+            try:
+                from sqlalchemy import select
+                from app.models.user import User
+                u_res = await db.execute(select(User.email).where(User.id == auth_user_id))
+                account_email = u_res.scalar_one_or_none()
+            except Exception:
+                account_email = None
+
     # ── Duplicate Detection (REQ: Limit / TC-RES-016) ───────────────────────────
-    existing_app = await JobApplicationRepository.get_by_job_and_email(
-        db, db_job_id, application_in.candidate_email
-    )
+    if auth_user_id:
+        existing_app = await JobApplicationRepository.get_by_job_and_user_id(
+            db, db_job_id, auth_user_id, fallback_email=account_email
+        )
+    else:
+        existing_app = await JobApplicationRepository.get_by_job_and_email(
+            db, db_job_id, application_in.candidate_email
+        )
     job_desc = None
     try:
         from app.repositories.job_description_repository import JobDescriptionRepository
@@ -416,7 +496,7 @@ async def create_job_application(
             from fastapi import HTTPException, status
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail=f"Duplicate application: An application for this role has already been submitted by {application_in.candidate_email}."
+                detail=f"Duplicate application: An application for this role has already been submitted by {account_email or application_in.candidate_email}."
             )
         elif policy == "version":
             # Update/version existing record without creating double records
@@ -424,6 +504,8 @@ async def create_job_application(
             data = application_in.model_dump()
             if 'job_id' in data:
                 del data['job_id']
+            if auth_user_id:
+                data['user_id'] = auth_user_id
             _sanitize_application_payload(data)
             _apply_experience_gap_evaluation(data, job_desc)
             valid_cols = set(JobApplication.__table__.columns.keys())
@@ -431,7 +513,6 @@ async def create_job_application(
                 if v is not None and k in valid_cols:
                     setattr(existing_app, k, v)
             existing_app.updated_at = datetime.utcnow()
-            existing_app.status = "PENDING"
             updated_app = await JobApplicationRepository.update(db, existing_app)
             try:
                 from app.tasks import analyze_application_task
@@ -443,14 +524,19 @@ async def create_job_application(
             from fastapi import HTTPException, status
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail=f"Duplicate application: An application for this role has already been submitted by {application_in.candidate_email}."
+                detail=f"Duplicate application: An application for this role has already been submitted by {account_email or application_in.candidate_email}."
             )
 
     # ── Active Applications Limit Check (REQ081 & REQ082) ───────────────────
     try:
         from app.services.system_config_service import system_config_service
         max_active = await system_config_service.get_max_active_applications(db)
-        candidate_apps = await JobApplicationRepository.get_by_email(db, application_in.candidate_email)
+        if auth_user_id:
+            candidate_apps = await JobApplicationRepository.get_by_user_id(
+                db, auth_user_id, fallback_email=account_email
+            )
+        else:
+            candidate_apps = await JobApplicationRepository.get_by_email(db, application_in.candidate_email)
         inactive_statuses = {
             "NOT SELECTED", "NOT_SELECTED", "REJECTED", "WITHDRAWN",
             "HIRED", "ACCEPTED", "OFFER_ACCEPTED", "CLOSED"
@@ -472,9 +558,27 @@ async def create_job_application(
 
     data = application_in.model_dump()
 
-    # Remove job_id from data as we'll pass the internal ID
+    # Remove job_id and virtual applicant_id from data as we'll pass the internal ID
     if 'job_id' in data:
         del data['job_id']
+    if 'applicant_id' in data:
+        del data['applicant_id']
+
+    submitted_email = (application_in.candidate_email or "").strip()
+    explicit_contact = (getattr(application_in, "contact_email", None) or "").strip() or None
+    explicit_resume_email = (getattr(application_in, "resume_email", None) or "").strip() or None
+
+    if auth_user_id:
+        data["user_id"] = auth_user_id
+        if not explicit_resume_email and account_email and submitted_email and submitted_email.lower() != account_email.lower():
+            explicit_resume_email = submitted_email
+        data["resume_email"] = explicit_resume_email
+        chosen_contact = explicit_contact or submitted_email or account_email
+        data["contact_email"] = chosen_contact
+        data["candidate_email"] = chosen_contact or account_email or submitted_email
+    else:
+        data["contact_email"] = explicit_contact or submitted_email
+        data["resume_email"] = explicit_resume_email
 
     _sanitize_application_payload(data)
     _apply_experience_gap_evaluation(data, job_desc)
@@ -485,7 +589,8 @@ async def create_job_application(
         **data
     })
 
-    # Trigger notifications
+    # Trigger notifications (always send candidate notifications to account login email!)
+    notification_target_email = account_email or application_in.candidate_email
     try:
         # Resolve the exact job title of the position applied for
         applied_job_title = getattr(job_desc, "job_title", None) if job_desc else None
@@ -518,15 +623,15 @@ async def create_job_application(
             target_role="ADMIN",
             sender_role="CANDIDATE"
         )
-        # 3. Personal confirmation for Candidate
-        if application_in.candidate_email:
+        # 3. Personal confirmation for Candidate (to login/account email)
+        if notification_target_email:
             await create_notification(
                 db=db,
                 title="Application Submitted",
                 message=f"You successfully applied for {applied_job_title}.",
                 type="application",
                 target_role="CANDIDATE",
-                target_email=application_in.candidate_email,
+                target_email=notification_target_email,
                 sender_role="SYSTEM"
             )
     except Exception as notif_err:
@@ -549,8 +654,12 @@ def serialize_application_summary(app: JobApplication) -> dict:
     return {
         "id": app.id,
         "job_id": app.job_id,
+        "user_id": getattr(app, "user_id", None),
+        "applicant_id": getattr(app, "user_id", None),
         "candidate_name": app.candidate_name,
         "candidate_email": app.candidate_email,
+        "resume_email": getattr(app, "resume_email", None),
+        "contact_email": getattr(app, "contact_email", None) or app.candidate_email,
         "phone": app.phone,
         "location": app.location,
         "job_title": app.job_title,
@@ -567,6 +676,8 @@ def serialize_application_summary(app: JobApplication) -> dict:
         "resume_url": app.resume_url,
         "matched_skills": app.matched_skills or [],
         "missing_skills": app.missing_skills or [],
+        "clarification_responses": getattr(app, "clarification_responses", None) or [],
+        "requirement_evaluations": getattr(app, "requirement_evaluations", None) or [],
         "total_experience_months": app.total_experience_months,
         "highest_educational_attainment": app.highest_educational_attainment,
         "experience_gaps": app.experience_gaps,
@@ -681,10 +792,17 @@ async def get_application_by_id(db: AsyncSession, application_id: int) -> Option
     _enrich_applications([app], bulk_mode=False)
 
     other_apps: list[dict] = []
-    # REQ083: Enrich with other active applications summary for this candidate
+    # REQ083: Enrich with other active applications summary for this candidate (by user_id first, then email)
     try:
-        if app.candidate_email:
+        if getattr(app, "user_id", None):
+            cand_apps = await JobApplicationRepository.get_by_user_id(
+                db, app.user_id, fallback_email=app.candidate_email
+            )
+        elif app.candidate_email:
             cand_apps = await JobApplicationRepository.get_by_email(db, app.candidate_email)
+        else:
+            cand_apps = []
+        if cand_apps:
             inactive_statuses = {
                 "NOT SELECTED", "NOT_SELECTED", "REJECTED", "WITHDRAWN",
                 "HIRED", "ACCEPTED", "OFFER_ACCEPTED", "CLOSED"
@@ -774,8 +892,20 @@ async def get_applications_by_job(db: AsyncSession, job_id: int):
 
 
 async def get_applications_by_email(db: AsyncSession, email: str):
-    """Get all applications for a specific candidate email."""
+    """Get all applications for a specific candidate email (or user_id)."""
     applications = await JobApplicationRepository.get_by_email(db, email)
+    return _enrich_applications(applications, bulk_mode=False)
+
+
+async def get_applications_for_user(
+    db: AsyncSession,
+    user_id: int,
+    fallback_email: Optional[str] = None,
+):
+    """Get all applications linked to an authenticated user_id."""
+    applications = await JobApplicationRepository.get_by_user_id(
+        db, user_id, fallback_email=fallback_email
+    )
     return _enrich_applications(applications, bulk_mode=False)
 
 
@@ -960,23 +1090,27 @@ async def update_application_status(
             title = "Application Status Update"
             message = f"Your application for the position of {job_title} is currently marked as {status_upper}."
 
-        # In-app notification
-        await create_notification(
-            db=db,
-            title=title,
-            message=message,
-            type="application_update",
-            target_role="CANDIDATE",
-            target_email=db_application.candidate_email,
-            sender_role="HR"
-        )
+        # Resolve account notification email (login email takes priority over resume/contact email)
+        notif_email = await resolve_application_notification_email(db, db_application)
 
-        # Dispatch professional email to candidate
-        if db_application.candidate_email:
+        # In-app notification
+        if notif_email:
+            await create_notification(
+                db=db,
+                title=title,
+                message=message,
+                type="application_update",
+                target_role="CANDIDATE",
+                target_email=notif_email,
+                sender_role="HR"
+            )
+
+        # Dispatch professional email to candidate's account email
+        if notif_email:
             try:
                 from app.services.email_service import send_application_status_update_email
                 await send_application_status_update_email(
-                    to_email=db_application.candidate_email,
+                    to_email=notif_email,
                     candidate_name=db_application.candidate_name or "Candidate",
                     job_title=job_title or "Position",
                     new_status=status_upper,
@@ -986,14 +1120,19 @@ async def update_application_status(
                     custom_message=custom_email_message,
                     db=db,
                 )
-                logger.info(f"Dispatched status update email ({status_upper}) to candidate {db_application.candidate_email}")
+                logger.info(f"Dispatched status update email ({status_upper}) to candidate {notif_email}")
             except Exception as email_err:
-                logger.error(f"Error dispatching status update email to candidate {db_application.candidate_email}: {email_err}")
+                logger.error(f"Error dispatching status update email to candidate {notif_email}: {email_err}")
 
         # ── REQ086: Flag other active applications when candidate is hired/accepted ──
-        if status_upper in ("ACCEPTED", "HIRED", "OFFER", "OFFER_ACCEPTED") and db_application.candidate_email:
+        if status_upper in ("ACCEPTED", "HIRED", "OFFER", "OFFER_ACCEPTED") and (getattr(db_application, "user_id", None) or db_application.candidate_email):
             try:
-                candidate_all_apps = await JobApplicationRepository.get_by_email(db, db_application.candidate_email)
+                if getattr(db_application, "user_id", None):
+                    candidate_all_apps = await JobApplicationRepository.get_by_user_id(
+                        db, db_application.user_id, fallback_email=db_application.candidate_email
+                    )
+                else:
+                    candidate_all_apps = await JobApplicationRepository.get_by_email(db, db_application.candidate_email)
                 inactive_statuses = {
                     "NOT SELECTED", "NOT_SELECTED", "REJECTED", "WITHDRAWN",
                     "HIRED", "ACCEPTED", "OFFER_ACCEPTED", "CLOSED"
@@ -1018,9 +1157,14 @@ async def update_application_status(
                 logger.warning(f"Error flagging other applications for hired candidate: {flag_err}")
 
         # ── REQ085: Combined Initial Interview Suggestion when candidate is shortlisted for 2+ positions ──
-        if status_upper in ("SHORTLISTED", "SHORTLIST") and db_application.candidate_email:
+        if status_upper in ("SHORTLISTED", "SHORTLIST") and (getattr(db_application, "user_id", None) or db_application.candidate_email):
             try:
-                candidate_all_apps = await JobApplicationRepository.get_by_email(db, db_application.candidate_email)
+                if getattr(db_application, "user_id", None):
+                    candidate_all_apps = await JobApplicationRepository.get_by_user_id(
+                        db, db_application.user_id, fallback_email=db_application.candidate_email
+                    )
+                else:
+                    candidate_all_apps = await JobApplicationRepository.get_by_email(db, db_application.candidate_email)
                 shortlisted_apps = [
                     a for a in candidate_all_apps 
                     if (getattr(a, "status", "") or "").upper() in ("SHORTLISTED", "SHORTLIST")

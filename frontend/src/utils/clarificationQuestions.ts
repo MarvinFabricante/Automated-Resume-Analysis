@@ -11,7 +11,41 @@ export interface ClarificationQuestion {
   reason?: string;
   job_id?: string;
   job_title?: string;
+  items?: Array<{ requirement: string; field: string; status?: string; evidence?: string[] }>;
 }
+
+export interface ClarificationResponse {
+  field: string;
+  requirement: string;
+  answer: 'yes' | 'some' | 'no';
+  years?: number;
+  details?: string;
+}
+
+export function parseRequirementAnswers(value: string): Record<string, Omit<ClarificationResponse, 'field' | 'requirement'>> {
+  try {
+    const parsed = JSON.parse(value || '{}');
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+  } catch { return {}; }
+}
+
+export function collectClarificationResponses(questions: ClarificationQuestion[], answers: Record<string, string>): ClarificationResponse[] {
+  return questions.flatMap(q => {
+    if (q.type !== 'requirement_group') return [];
+    const values = parseRequirementAnswers(answers[q.id]);
+    return (q.items || []).flatMap(item => {
+      const value = values[item.requirement];
+      return value && ['yes', 'some', 'no'].includes(value.answer)
+        ? [{ ...value, field: q.field, requirement: item.requirement }] : [];
+    });
+  });
+}
+
+const skillKey = (value: string) => value.toLowerCase().replace(/[-–—]/g, ' ').replace(/\s+/g, ' ').trim();
+const requirementItems = (value: any): string[] => cleanRequirementList(
+  (Array.isArray(value) ? value.join('|') : String(value || '')).split(/[,;|•▪►✓\n]+|\s+\/\s+/)
+);
+
 
 const MFG_JOB_RE =
   /\b(?:manufactur\w*|production|factory|plant|operator|machin\w*|assembly|assembl\w*|warehouse|kiln|ceramic|welding|quality|qc|maintenance|industrial|technician)\b/i;
@@ -87,80 +121,19 @@ function buildFallbackJobQuestions(
     });
   }
 
-  const skillsNotRequired =
-    String(matchData?.skills_status || '').toLowerCase() === 'not required' ||
-    isNoValueRequirement(job?.skills_requirements);
-  const missingFromMatch: string[] = Array.isArray(matchData?.missing_skills)
-    ? matchData.missing_skills.slice(0, 5)
-    : [];
-  const rawReqSkills = skillsNotRequired
-    ? []
-    : String(job?.skills_requirements || '')
-        .split(/[,;\n|]+/)
-        .map((s) => s.trim())
-        .filter((s) => s && !isNoValueRequirement(s));
-  const candLower = candidateSkills.map((s) => s.toLowerCase());
-  const missingFromReq = rawReqSkills
-    .filter((req) => !candLower.some((cs) => cs.includes(req.toLowerCase()) || req.toLowerCase().includes(cs)))
-    .slice(0, 5);
-  const missingSkills = skillsNotRequired
-    ? []
-    : (missingFromMatch.length > 0 ? missingFromMatch : missingFromReq);
-
-  if (missingSkills.length > 0) {
-    questions.push({
-      id: `clarify_${slug}_skills`,
-      field: 'skills',
-      job_id: jobId,
-      job_title: jobTitle,
-      domain: department || 'General',
-      type: 'text',
-      placeholder: `e.g. ${missingSkills.slice(0, 3).join(', ')}`,
-      question: `For ${jobTitle}, which of these required skills have you used: ${missingSkills.join(', ')}?`,
-      reason: `Required skills for ${jobTitle} not explicitly found in resume.`,
-    });
-  } else if (rawReqSkills.length > 0 && candidateSkills.length === 0) {
-    const sample = rawReqSkills.slice(0, 3);
-    questions.push({
-      id: `clarify_${slug}_skills`,
-      field: 'skills',
-      job_id: jobId,
-      job_title: jobTitle,
-      domain: department || 'General',
-      type: 'text',
-      placeholder: `Describe work using ${sample.slice(0, 2).join(', ')}`,
-      question: `For ${jobTitle}, please highlight your practical work with ${sample.join(', ')}.`,
-      reason: `Confirming practical proficiency for ${jobTitle}.`,
-    });
-  }
-
-  const reqCerts = String(job?.certifications_requirements || '').trim();
-  const hasCertRequirement = !isNoValueRequirement(reqCerts);
-  const rawCandCerts = Array.isArray(extractedData?.certifications_list)
-    ? extractedData.certifications_list.join(' ')
-    : Array.isArray(extractedData?.certifications)
-    ? extractedData.certifications.join(' ')
-    : String(extractedData?.certifications || '');
-  const candCertLower = `${rawCandCerts} ${candidateSkills.join(' ')}`.toLowerCase();
-  const reqCertTokens = reqCerts
-    .toLowerCase()
-    .split(/[,;\n|/]+/)
-    .map((t) => t.trim())
-    .filter((t) => t.length > 1 && t !== 'none');
-  const hasAllCerts =
-    Number(matchData?.certifications_score) >= 100 ||
-    (reqCertTokens.length > 0 && reqCertTokens.every((tok) => candCertLower.includes(tok)));
-  if (hasCertRequirement && !hasAllCerts) {
-    questions.push({
-      id: `clarify_${slug}_certifications`,
-      field: 'certifications',
-      job_id: jobId,
-      job_title: jobTitle,
-      domain: department || 'General',
-      type: 'text',
-      placeholder: `e.g. ${reqCerts}`,
-      question: `For ${jobTitle}, do you hold any preferred or required certifications/licenses (${reqCerts})?`,
-      reason: `${jobTitle} specifies certification requirements.`,
+  for (const [field, requirement, candidate] of [
+    ['skills', job?.skills_requirements, candidateSkills],
+    ['certifications', job?.certifications_requirements, extractedData?.certifications_list || extractedData?.certifications],
+    ['experience', job?.experience_requirements, extractedData?.experience || relevanceStr],
+  ] as const) {
+    const existing = new Set(requirementItems(candidate).map(skillKey));
+    const items = requirementItems(requirement).filter(item => !existing.has(skillKey(item)))
+      .map(requirement => ({ field, requirement, status: 'Not confirmed' }));
+    if (items.length) questions.push({
+      id: `clarify_${slug}_${field}`, field, job_id: jobId, job_title: jobTitle,
+      type: 'requirement_group', items,
+      question: field === 'certifications' ? 'Which of these certifications or licenses do you hold?' : 'Which of these requirements do you have experience with?',
+      reason: 'Confirm each item. Unanswered items remain Not confirmed.',
     });
   }
 
@@ -291,6 +264,8 @@ export function buildCandidateMatchPayload(
   const cleanedCerts = cleanRequirementInput(extractedData?.certifications || '');
 
   return {
+    raw_text: extractedData?.raw_text || "",
+    clarification_responses: collectClarificationResponses(clarificationQuestions, clarificationAnswers),
     skills: cleanedSkills.join(', '),
     skills_list: cleanedSkills,
     job_title: cleanRequirementInput(resolvedForm.jobTitle),
@@ -339,6 +314,7 @@ export function deriveClarificationQuestions(
     reason: q.reason || '',
     job_id: q.job_id,
     job_title: q.job_title,
+    items: q.items,
   });
 
   const resumeQuestionsRaw: any[] = Array.isArray(state?.extractedData?.clarification_questions)
@@ -431,7 +407,7 @@ export function deriveClarificationQuestions(
   const byField = new Map<string, ClarificationQuestion>();
   for (const q of combined) {
     if (!q.question) continue;
-    const key = q.field || q.id;
+    const key = q.type === 'requirement_group' ? q.id : q.field || q.id;
     if (!byField.has(key)) {
       byField.set(key, q);
     }
@@ -527,6 +503,7 @@ export function finalizeFormWithClarifications<
 ): T {
   let updated = { ...formData };
   for (const q of questions) {
+    if (q.type === 'requirement_group') continue;
     const ans = (answers[q.id] || '').trim();
     if (!ans || isNoValueRequirement(ans)) continue;
     updated = applyClarificationAnswerToFormData(q, ans, updated);

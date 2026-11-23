@@ -1,6 +1,6 @@
 import React from 'react';
 import { HelpCircle, AlertTriangle } from 'lucide-react';
-import { ClarificationQuestion } from '../../utils/clarificationQuestions';
+import { ClarificationQuestion, parseRequirementAnswers } from '../../utils/clarificationQuestions';
 
 interface ClarificationQuestionsPanelProps {
   questions: ClarificationQuestion[];
@@ -81,7 +81,50 @@ const ClarificationQuestionsPanel: React.FC<ClarificationQuestionsPanelProps> = 
                 </span>
               </label>
 
-              <input
+              {q.type === 'requirement_group' ? (
+                <div className="space-y-4">
+                  {(q.items || []).map((item, index) => {
+                    const values = parseRequirementAnswers(answers[q.id]);
+                    const value = values[item.requirement];
+                    const update = (patch: object) => onAnswerChange(q, JSON.stringify({
+                      ...values, [item.requirement]: { ...value, ...patch },
+                    }));
+                    return (
+                      <fieldset key={item.requirement} className="rounded-xl border border-slate-200 p-3">
+                        <legend className="px-1 text-sm font-semibold">{item.requirement}</legend>
+                        <p className="text-xs text-slate-500 mb-2">
+                          {item.status === 'Possible match' ? `Possible match: ${(item.evidence || []).join(', ')}. Please confirm.` : 'Not confirmed until answered.'}
+                        </p>
+                        <div className="flex flex-wrap gap-4">
+                          {([['yes', 'Yes with experience'], ['some', 'Some experience'], ['no', 'No']] as const).map(([answer, label]) => (
+                            <label key={answer} className="flex items-center gap-2 text-sm">
+                              <input type="checkbox" name={`${q.id}-${index}`} checked={value?.answer === answer}
+                                onChange={() => {
+                                  if (value?.answer === answer) {
+                                    const next = { ...values }; delete next[item.requirement];
+                                    onAnswerChange(q, JSON.stringify(next));
+                                  } else update({ answer });
+                                }} />
+                              {label}
+                            </label>
+                          ))}
+                        </div>
+                        <div className="flex flex-wrap gap-3 mt-3">
+                          <label className="text-xs text-slate-600">Years (optional)
+                            <input type="number" min="0" step="0.5" value={value?.years ?? ''}
+                              onChange={e => update({ years: e.target.value === '' ? undefined : Number(e.target.value) })}
+                              className="block w-24 rounded border border-slate-200 p-2" />
+                          </label>
+                          <label className="text-xs text-slate-600 flex-1">Details (optional)
+                            <input value={value?.details || ''} onChange={e => update({ details: e.target.value })}
+                              className="block w-full rounded border border-slate-200 p-2" />
+                          </label>
+                        </div>
+                      </fieldset>
+                    );
+                  })}
+                </div>
+              ) : <input
                 id={inputId}
                 data-testid={inputId}
                 name={q.id}
@@ -92,7 +135,7 @@ const ClarificationQuestionsPanel: React.FC<ClarificationQuestionsPanelProps> = 
                 onChange={(e) => onAnswerChange(q, e.target.value)}
                 placeholder={q.placeholder || 'Type your answer here...'}
                 className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2.5 px-4 text-slate-900 text-sm font-semibold focus:outline-none focus:border-[#D10043] focus:ring-4 focus:ring-[#D10043]/10 transition-all"
-              />
+              />}
 
               {q.reason && (
                 <p className="text-[11px] text-slate-500 font-medium mt-1.5 pl-6">

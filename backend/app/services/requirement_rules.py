@@ -27,8 +27,10 @@ STATUS_PARTIAL = "Partially meets"
 STATUS_NOT_REQUIRED = "Not required"
 STATUS_MANUAL_REVIEW = "Needs manual review"
 STATUS_DOES_NOT_MEET = "Does not meet"
+STATUS_NOT_CONFIRMED = "Not confirmed"
 
 VALID_CRITERION_STATUSES = (
+    STATUS_NOT_CONFIRMED,
     STATUS_MEETS,
     STATUS_EXCEEDS,
     STATUS_PARTIAL,
@@ -962,12 +964,11 @@ def parse_education_level(
         for entry in entries:
             if not isinstance(entry, dict):
                 continue
-            pieces = [
-                entry.get("degree_or_course"),
-                entry.get("raw_degree_or_course"),
-                entry.get("education_level"),
-                entry.get("major_or_specialization"),
-            ]
+            degree = entry.get("degree_or_course") or entry.get("raw_degree_or_course") or entry.get("degree") or entry.get("education_level")
+            major = entry.get("major_or_specialization")
+            pieces = [degree]
+            if major and str(major).casefold() not in str(degree).casefold():
+                pieces.append(major)
             combined = " ".join(str(p).strip() for p in pieces if p and not is_no_value(p))
             if combined:
                 entry_segments.append((combined, entry.get("status")))
@@ -1070,6 +1071,31 @@ def parse_education_level(
         "recognized": True,
         "is_no_value": False,
     }
+
+
+def education_display_label(text: str, entries=None) -> str:
+    """Format attainment independently of the completed-level score."""
+    parsed = parse_education_level(text, entries=entries)
+    level = parsed.get("pursuing_level") if parsed.get("is_ongoing") else parsed.get("level")
+    label = EDUCATION_SHORT_LABELS.get(level, "")
+    fields = parsed.get("field_options") or []
+    if fields:
+        field = fields[0]
+        # Remove repeated words and repeated phrases left by legacy extraction.
+        previous = None
+        while previous != field:
+            previous = field
+            field = re.sub(r"\b([\w]+(?:\s+[\w]+)*?)\s+\1\b", r"\1", field, flags=re.I)
+        label += " in " + field.title()
+    if parsed.get("is_ongoing"):
+        entry = next((e for e in (entries or []) if "progress" in str(e.get("status", "")).lower() or "undergrad" in str(e.get("status", "")).lower()), {})
+        notes = []
+        if entry.get("year_level"):
+            notes.append(f"{entry['year_level']} year")
+        if entry.get("expected_graduation_year"):
+            notes.append(f"expected {entry['expected_graduation_year']}")
+        label += " (" + ", ".join(notes or ["in progress"]) + ")"
+    return label or str(text or "")
 
 
 def map_education_level_to_ml_rank(level: Optional[int]) -> int:

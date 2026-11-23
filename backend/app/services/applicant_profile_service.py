@@ -11,6 +11,7 @@ from app.models.shortlist_roster import ShortlistRoster, ShortlistRosterItem
 from app.models.candidate_note import HRCandidateNote
 from app.models.profile_access_log import ApplicantProfileAccessLog
 from app.models.status_history import ApplicationStatusHistory
+from app.models.user import User
 from app.services.status_management_service import normalize_status
 from app.services.requirement_rules import extract_criterion_status, STATUS_MANUAL_REVIEW
 
@@ -42,15 +43,46 @@ async def get_applicant_comprehensive_profile(
     email: str,
     accessed_by: str = "HR"
 ) -> Optional[Dict[str, Any]]:
-    clean_email = email.lower().strip()
+    raw_identifier = (email or "").strip()
+    clean_email = raw_identifier.lower()
 
     # Log access for Data Privacy Act compliance
     await log_applicant_profile_access(db, clean_email, accessed_by)
 
-    # 1. Fetch all applications for this candidate
+    # Resolve candidate identity by user_id or any email (account email, contact email, resume email)
+    matched_user_id: Optional[int] = None
+    account_email: Optional[str] = None
+
+    if raw_identifier.isdigit():
+        matched_user_id = int(raw_identifier)
+    elif clean_email.startswith("uid_") and clean_email[4:].isdigit():
+        matched_user_id = int(clean_email[4:])
+    else:
+        u_res = await db.execute(
+            select(User.id, User.email).where(func.lower(User.email) == clean_email)
+        )
+        u_row = u_res.first()
+        if u_row:
+            matched_user_id = u_row[0]
+            account_email = u_row[1]
+
+    # 1. Fetch initial matching applications by user_id or any email column
+    email_match_cond = or_(
+        func.lower(JobApplication.candidate_email) == clean_email,
+        func.lower(JobApplication.contact_email) == clean_email,
+        func.lower(JobApplication.resume_email) == clean_email,
+    )
+    if matched_user_id is not None:
+        initial_cond = or_(
+            JobApplication.user_id == matched_user_id,
+            email_match_cond,
+        )
+    else:
+        initial_cond = email_match_cond
+
     stmt = (
         select(JobApplication)
-        .where(func.lower(JobApplication.candidate_email) == clean_email)
+        .where(initial_cond)
         .order_by(JobApplication.created_at.desc())
     )
     res = await db.execute(stmt)
@@ -59,14 +91,75 @@ async def get_applicant_comprehensive_profile(
     if not applications:
         return None
 
-    primary_app = applications[0]
+    # If any matched application has a user_id, unify all applications for that user_id
+    # so the person is never split or lost when account email and resume/contact email differ.
+    if matched_user_id is None:
+        for a in applications:
+            if getattr(a, "user_id", None) is not None:
+                matched_user_id = a.user_id
+                break
 
-    # 2. Extract applicant details
+    if matched_user_id is not None:
+        if not account_email:
+            u_res = await db.execute(select(User.email).where(User.id == matched_user_id))
+            account_email = u_res.scalar_one_or_none()
+        known_emails_for_query = {clean_email}
+        if account_email:
+            known_emails_for_query.add(account_email.strip().lower())
+        for a in applications:
+            for em in (a.candidate_email, getattr(a, "contact_email", None), getattr(a, "resume_email", None)):
+                if em and em.strip():
+                    known_emails_for_query.add(em.strip().lower())
+
+        unified_stmt = (
+            select(JobApplication)
+            .where(
+                or_(
+                    JobApplication.user_id == matched_user_id,
+                    and_(
+                        JobApplication.user_id.is_(None),
+                        or_(
+                            func.lower(JobApplication.candidate_email).in_(known_emails_for_query),
+                            func.lower(JobApplication.contact_email).in_(known_emails_for_query),
+                            func.lower(JobApplication.resume_email).in_(known_emails_for_query),
+                        ),
+                    ),
+                )
+            )
+            .order_by(JobApplication.created_at.desc())
+        )
+        unified_res = await db.execute(unified_stmt)
+        applications = list(unified_res.scalars().all())
+
+    primary_app = applications[0]
+    chosen_contact_email = getattr(primary_app, "contact_email", None) or primary_app.candidate_email
+    extracted_resume_email = getattr(primary_app, "resume_email", None)
+    if not extracted_resume_email:
+        for a in applications:
+            if getattr(a, "resume_email", None):
+                extracted_resume_email = a.resume_email
+                break
+
+    # Collect all known emails for this person (for notes lookup)
+    known_emails = {clean_email}
+    if account_email and account_email.strip():
+        known_emails.add(account_email.strip().lower())
+    for a in applications:
+        for em in (a.candidate_email, getattr(a, "contact_email", None), getattr(a, "resume_email", None)):
+            if em and em.strip():
+                known_emails.add(em.strip().lower())
+
+    # 2. Extract applicant details (show chosen HR contact email, plus account_email & resume_email)
     candidate_summary = {
-        "name": primary_app.candidate_name or primary_app.candidate_email or "Applicant",
-        "email": primary_app.candidate_email,
-        "candidate_name": primary_app.candidate_name or primary_app.candidate_email or "Applicant",
-        "candidate_email": primary_app.candidate_email,
+        "user_id": matched_user_id,
+        "applicant_id": matched_user_id,
+        "name": primary_app.candidate_name or chosen_contact_email or "Applicant",
+        "email": chosen_contact_email,
+        "candidate_name": primary_app.candidate_name or chosen_contact_email or "Applicant",
+        "candidate_email": chosen_contact_email,
+        "contact_email": chosen_contact_email,
+        "account_email": account_email,
+        "resume_email": extracted_resume_email,
         "phone": primary_app.phone,
         "location": primary_app.location,
         "resume_url": primary_app.resume_url,
@@ -248,10 +341,10 @@ async def get_applicant_comprehensive_profile(
         for c in call_logs
     ]
 
-    # 6. Fetch HR Notes
+    # 6. Fetch HR Notes across all emails associated with this candidate
     notes_stmt = (
         select(HRCandidateNote)
-        .where(func.lower(HRCandidateNote.candidate_email) == clean_email)
+        .where(func.lower(HRCandidateNote.candidate_email).in_(known_emails))
         .order_by(HRCandidateNote.created_at.desc())
     )
     notes_res = await db.execute(notes_stmt)
@@ -470,13 +563,15 @@ async def universal_search_hr(
         for _, _, j in scored_jobs[:10]
     ]
 
-    # 2. Search & Rank Candidates / Applicants (deduplicated by email, prefix-ranked)
+    # 2. Search & Rank Candidates / Applicants (deduplicated by user_id first, then email)
     app_stmt = (
         select(JobApplication)
         .where(
             or_(
                 func.lower(JobApplication.candidate_name).like(pattern),
                 func.lower(JobApplication.candidate_email).like(pattern),
+                func.lower(JobApplication.contact_email).like(pattern),
+                func.lower(JobApplication.resume_email).like(pattern),
                 func.lower(JobApplication.job_title).like(pattern)
             )
         )
@@ -488,28 +583,49 @@ async def universal_search_hr(
     job_title_map = {j.id: j.job_title for j in all_jobs}
 
     scored_applicants = []
+    seen_people = set()
     seen_emails = set()
     for a in apps:
-        email_key = (a.candidate_email or "").lower().strip()
-        if email_key and email_key in seen_emails:
+        app_uid = getattr(a, "user_id", None)
+        email_key = (getattr(a, "contact_email", None) or a.candidate_email or "").lower().strip()
+        person_key = f"uid_{app_uid}" if app_uid else email_key
+        if (person_key and person_key in seen_people) or (email_key and email_key in seen_emails):
             continue
         resolved_job_title = a.job_title or job_title_map.get(a.job_id, "Position") or "Position"
-        rank = _get_candidate_search_rank(
-            a.candidate_name or "",
-            a.candidate_email or "",
-            resolved_job_title,
-            q
-        )
+        candidate_emails = [
+            em for em in (
+                getattr(a, "contact_email", None),
+                a.candidate_email,
+                getattr(a, "resume_email", None),
+            )
+            if em
+        ] or [""]
+        ranks = [
+            r for r in (
+                _get_candidate_search_rank(a.candidate_name or "", em, resolved_job_title, q)
+                for em in candidate_emails
+            )
+            if r is not None
+        ]
+        rank = min(ranks) if ranks else None
         if rank is not None:
-            if email_key:
-                seen_emails.add(email_key)
+            if person_key:
+                seen_people.add(person_key)
+            for em in candidate_emails:
+                if em.strip():
+                    seen_emails.add(em.strip().lower())
+            display_email = getattr(a, "contact_email", None) or a.candidate_email
             scored_applicants.append((
                 rank,
                 (a.candidate_name or "").lower(),
                 {
                     "id": a.id,
+                    "user_id": app_uid,
+                    "applicant_id": app_uid,
                     "name": a.candidate_name,
-                    "email": a.candidate_email,
+                    "email": display_email,
+                    "contact_email": display_email,
+                    "resume_email": getattr(a, "resume_email", None),
                     "job_title": resolved_job_title,
                     "position": resolved_job_title,
                     "status": normalize_status(a.status),

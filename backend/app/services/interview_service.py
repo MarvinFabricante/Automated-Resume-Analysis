@@ -534,7 +534,8 @@ async def _resolve_candidate_phone(db: AsyncSession, application) -> Optional[st
     except Exception as e:
         logger.debug(f"PhysicalResume phone lookup skipped: {e}")
 
-    # 2. Check Candidate Resume records (by file_url or Candidate email)
+    # 2. Check Candidate Resume records (by file_url, authenticated user_id, or Candidate email)
+    app_user_id = getattr(application, "user_id", None)
     if not resolved_phone:
         try:
             from sqlalchemy import select, func
@@ -543,6 +544,16 @@ async def _resolve_candidate_phone(db: AsyncSession, application) -> Optional[st
 
             if resume_url:
                 r_stmt = select(Resume).where(Resume.file_url == resume_url).order_by(Resume.created_at.desc())
+                r_obj = (await db.execute(r_stmt)).scalars().first()
+                if r_obj:
+                    resolved_phone = _extract_phone_from_parsed_payload(getattr(r_obj, "parsed_data", None))
+
+            if not resolved_phone and app_user_id:
+                r_stmt = (
+                    select(Resume)
+                    .where(Resume.candidate_id == app_user_id)
+                    .order_by(Resume.created_at.desc())
+                )
                 r_obj = (await db.execute(r_stmt)).scalars().first()
                 if r_obj:
                     resolved_phone = _extract_phone_from_parsed_payload(getattr(r_obj, "parsed_data", None))
@@ -560,11 +571,15 @@ async def _resolve_candidate_phone(db: AsyncSession, application) -> Optional[st
         except Exception as e:
             logger.debug(f"Resume phone lookup skipped: {e}")
 
-    # 3. Fallback to User profile
-    if not resolved_phone and candidate_email:
+    # 3. Fallback to User profile (by user_id first, then email)
+    if not resolved_phone and (app_user_id or candidate_email):
         try:
             from app.repositories.auth_repository import AuthRepository
-            cand_user = await AuthRepository.get_user_by_email(db, candidate_email)
+            cand_user = None
+            if app_user_id:
+                cand_user = await AuthRepository.get_user_by_id_fresh(db, app_user_id)
+            if not cand_user and candidate_email:
+                cand_user = await AuthRepository.get_user_by_email(db, candidate_email)
             resolved_phone = _sms_phone_candidate(getattr(cand_user, "phone", None))
         except Exception as e:
             logger.warning(f"Could not resolve fallback candidate phone for {candidate_email}: {e}")
@@ -588,6 +603,26 @@ async def _resolve_candidate_phone(db: AsyncSession, application) -> Optional[st
             pass
 
     return resolved_phone
+
+
+async def _resolve_candidate_notification_email(db: AsyncSession, application) -> Optional[str]:
+    """
+    Resolve the notification email for a candidate's application.
+    The login email of the linked user account (user_id) is always the account identity
+    and notification target.
+    """
+    if not application:
+        return None
+    app_uid = getattr(application, "user_id", None)
+    if app_uid:
+        try:
+            from app.repositories.auth_repository import AuthRepository
+            u = await AuthRepository.get_user_by_id_fresh(db, app_uid)
+            if u and getattr(u, "email", None):
+                return u.email.strip()
+        except Exception:
+            pass
+    return getattr(application, "candidate_email", None)
 
 
 def _send_sms_with_reason_sync(to_phone: str, message: str) -> tuple[bool, Optional[str], Optional[str]]:
@@ -1061,16 +1096,23 @@ async def schedule_interview(db: AsyncSession, data: InterviewCreateSchema, user
         req_start = data.start_time.replace(tzinfo=None) if data.start_time.tzinfo else data.start_time
         req_end = data.end_time.replace(tzinfo=None) if data.end_time.tzinfo else data.end_time
 
-        if application.candidate_email:
+        if getattr(application, "user_id", None):
+            cand_all_ivs = await InterviewRepository.get_interviews_for_candidate_by_user_id(
+                db, application.user_id, fallback_email=application.candidate_email
+            )
+        elif application.candidate_email:
             cand_all_ivs = await InterviewRepository.get_interviews_for_candidate(db, application.candidate_email)
-            for iv in cand_all_ivs:
-                if (iv.status or "").upper() not in INACTIVE_INTERVIEW_STATUSES:
-                    iv_start = iv.start_time.replace(tzinfo=None) if iv.start_time and iv.start_time.tzinfo else iv.start_time
-                    iv_end = iv.end_time.replace(tzinfo=None) if iv.end_time and iv.end_time.tzinfo else iv.end_time
-                    if iv_start and iv_end and (req_start < iv_end and req_end > iv_start):
-                        raise ValueError(
-                            f"Scheduling conflict (REQ084): Candidate already has an interview scheduled that overlaps with this time slot ({iv_start.strftime('%b %d, %Y %I:%M %p')} - {iv_end.strftime('%I:%M %p')})."
-                        )
+        else:
+            cand_all_ivs = []
+
+        for iv in cand_all_ivs:
+            if (iv.status or "").upper() not in INACTIVE_INTERVIEW_STATUSES:
+                iv_start = iv.start_time.replace(tzinfo=None) if iv.start_time and iv.start_time.tzinfo else iv.start_time
+                iv_end = iv.end_time.replace(tzinfo=None) if iv.end_time and iv.end_time.tzinfo else iv.end_time
+                if iv_start and iv_end and (req_start < iv_end and req_end > iv_start):
+                    raise ValueError(
+                        f"Scheduling conflict (REQ084): Candidate already has an interview scheduled that overlaps with this time slot ({iv_start.strftime('%b %d, %Y %I:%M %p')} - {iv_end.strftime('%I:%M %p')})."
+                    )
 
         # Target interviewer: if specified, use that HR account, else fallback to current user_id
         interviewer_id = data.interviewer_id if data.interviewer_id else user_id
@@ -1081,7 +1123,7 @@ async def schedule_interview(db: AsyncSession, data: InterviewCreateSchema, user
         user = interviewer_user or scheduler_user
         interviewer_name = getattr(interviewer_user, "fullname", None) or "Mariwasa HR Panel"
         scheduler_email = getattr(scheduler_user, "email", None) if scheduler_user else None
-        candidate_email = getattr(application, "candidate_email", None)
+        candidate_email = await _resolve_candidate_notification_email(db, application)
         candidate_name = getattr(application, "candidate_name", None) or "Candidate"
         candidate_phone = await _resolve_candidate_phone(db, application)
         credentials_json = _get_valid_credentials(user) or _get_valid_credentials(scheduler_user)
@@ -1696,11 +1738,12 @@ async def update_interview(db: AsyncSession, interview_id: int, data: InterviewU
             except Exception as e:
                 print(f"Warning: Could not send reschedule email to panelist: {e}")
 
-        # 3. Candidate Reschedule Notification Email
-        if application.candidate_email:
+        # 3. Candidate Reschedule Notification Email (always to account login email when linked)
+        cand_notif_email = await _resolve_candidate_notification_email(db, application)
+        if cand_notif_email:
             try:
                 email_sent = await email_service.send_interview_rescheduled_email(
-                    to_email=application.candidate_email,
+                    to_email=cand_notif_email,
                     candidate_name=application.candidate_name or "Candidate",
                     job_title=job_name,
                     interview_title=interview.title,
@@ -1717,7 +1760,7 @@ async def update_interview(db: AsyncSession, interview_id: int, data: InterviewU
                 )
                 if email_sent:
                     await InterviewRepository.add_interview_log(
-                        db, interview.id, "EMAIL_RESCHEDULED", f"Reschedule notification email sent to {application.candidate_email}"
+                        db, interview.id, "EMAIL_RESCHEDULED", f"Reschedule notification email sent to {cand_notif_email}"
                     )
                     await InterviewRepository.commit_changes(db)
             except Exception as e:
@@ -1739,7 +1782,7 @@ async def update_interview(db: AsyncSession, interview_id: int, data: InterviewU
             location=iv_location,
             meeting_link=iv_meeting_link,
             notes=interview.description or "",
-            candidate_email=application.candidate_email,
+            candidate_email=cand_notif_email,
         )
         await _dispatch_candidate_sms(
             db,
@@ -1755,14 +1798,14 @@ async def update_interview(db: AsyncSession, interview_id: int, data: InterviewU
             from app.services.notification_service import create_notification
             time_str = interview.start_time.strftime('%b %d, %Y at %I:%M %p')
 
-            if application.candidate_email:
+            if cand_notif_email:
                 await create_notification(
                     db=db,
                     title="Interview Rescheduled 📅",
                     message=f"Your interview for {job_name} has been rescheduled to {time_str}.",
                     type="schedule",
                     target_role="CANDIDATE",
-                    target_email=application.candidate_email,
+                    target_email=cand_notif_email,
                     sender_role="HR"
                 )
 
@@ -2244,11 +2287,12 @@ async def cancel_interview(
             except Exception as e:
                 print(f"Warning: Could not send cancellation email to panelist: {e}")
 
-        # (c) Candidate Notification (Email + SMS)
-        if application.candidate_email:
+        # (c) Candidate Notification (Email + SMS) — always to account login email when linked
+        cand_notif_email = await _resolve_candidate_notification_email(db, application)
+        if cand_notif_email:
             try:
                 email_sent = await email_service.send_interview_cancellation_email(
-                    to_email=application.candidate_email,
+                    to_email=cand_notif_email,
                     candidate_name=application.candidate_name or "Candidate",
                     job_title=job_name,
                     interview_title=interview.title,
@@ -2264,7 +2308,7 @@ async def cancel_interview(
                 )
                 if email_sent:
                     await InterviewRepository.add_interview_log(
-                        db, interview.id, "EMAIL_CANCELED", f"Cancellation email sent to candidate {application.candidate_email}"
+                        db, interview.id, "EMAIL_CANCELED", f"Cancellation email sent to candidate {cand_notif_email}"
                     )
                     await InterviewRepository.commit_changes(db)
             except Exception as e:
@@ -2284,7 +2328,7 @@ async def cancel_interview(
             interviewer_email=interviewer_email,
             location=iv_location,
             reason=reason or "",
-            candidate_email=application.candidate_email,
+            candidate_email=cand_notif_email,
         )
         await _dispatch_candidate_sms(
             db,
@@ -2300,14 +2344,14 @@ async def cancel_interview(
             from app.services.notification_service import create_notification
             time_str = interview.start_time.strftime('%b %d, %Y at %I:%M %p')
 
-            if application.candidate_email:
+            if cand_notif_email:
                 await create_notification(
                     db=db,
                     title="Interview Canceled ❌",
                     message=f"Your interview for {job_name} originally scheduled for {time_str} has been canceled.",
                     type="schedule",
                     target_role="CANDIDATE",
-                    target_email=application.candidate_email,
+                    target_email=cand_notif_email,
                     sender_role="HR"
                 )
 
@@ -2366,6 +2410,7 @@ async def candidate_reschedule_interview(
     interview_id: int,
     data: CandidateRescheduleSchema,
     candidate_email: Optional[str],
+    candidate_user_id: Optional[int] = None,
 ):
     """
     Allow the candidate who owns the interview's application to reschedule a missed
@@ -2376,7 +2421,21 @@ async def candidate_reschedule_interview(
         raise ValueError("Interview not found")
 
     application = await InterviewRepository.get_job_application(db, interview.job_application_id)
-    if not application or not candidate_email or (application.candidate_email or "").strip().lower() != candidate_email.strip().lower():
+    if not application:
+        raise PermissionError("You do not have permission to reschedule this interview.")
+
+    app_uid = getattr(application, "user_id", None)
+    cand_notif_email = await _resolve_candidate_notification_email(db, application)
+    norm_req_email = (candidate_email or "").strip().lower()
+    owns_by_uid = bool(candidate_user_id and app_uid and int(app_uid) == int(candidate_user_id))
+    owns_by_email = bool(
+        norm_req_email
+        and (
+            (application.candidate_email or "").strip().lower() == norm_req_email
+            or (cand_notif_email or "").strip().lower() == norm_req_email
+        )
+    )
+    if not (owns_by_uid or owns_by_email):
         raise PermissionError("You do not have permission to reschedule this interview.")
 
     status_upper = (interview.status or "").upper()
@@ -2479,10 +2538,10 @@ async def candidate_reschedule_interview(
         except Exception as email_err:
             logger.warning(f"Could not send reschedule email to interviewer: {email_err}")
 
-    if getattr(application, "candidate_email", None):
+    if cand_notif_email:
         try:
             await email_service.send_interview_rescheduled_email(
-                to_email=application.candidate_email,
+                to_email=cand_notif_email,
                 candidate_name=application.candidate_name or "Candidate",
                 job_title=job_name,
                 interview_title=interview.title,
@@ -2513,7 +2572,7 @@ async def candidate_reschedule_interview(
         location=iv_location,
         meeting_link=iv_meeting_link,
         notes=data.reason.strip() if data.reason and data.reason.strip() else "",
-        candidate_email=application.candidate_email,
+        candidate_email=cand_notif_email,
     )
     await _dispatch_candidate_sms(
         db,
@@ -2535,8 +2594,14 @@ async def get_interviews_for_application(db: AsyncSession, application_id: int):
     interviews = await InterviewRepository.get_interviews_for_application(db, application_id)
     return [_populate_candidate_info(iv) for iv in interviews]
 
-async def get_interviews_for_candidate(db: AsyncSession, email: str):
-    interviews = await InterviewRepository.get_interviews_for_candidate(db, email)
+
+async def get_interviews_for_candidate(db: AsyncSession, email: str, user_id: Optional[int] = None):
+    if user_id:
+        interviews = await InterviewRepository.get_interviews_for_candidate_by_user_id(
+            db, user_id, fallback_email=email
+        )
+    else:
+        interviews = await InterviewRepository.get_interviews_for_candidate(db, email)
     return [_populate_candidate_info(iv) for iv in interviews]
 
 import sys

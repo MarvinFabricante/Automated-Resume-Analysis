@@ -17,6 +17,7 @@ Strictly local, deterministic NLP (spaCy + EntityRuler + PhraseMatcher + flashte
 
 import re
 import json
+from datetime import date
 from typing import Optional, List, Dict, Any, Tuple
 
 try:
@@ -444,6 +445,11 @@ def _get_spacy_pipeline():
 
 def _extract_years(text: str) -> Tuple[Optional[str], Optional[str]]:
     """Extract start_year and end_year (or Present)."""
+    years = re.findall(r'\b(?:19|20)\d{2}\b', text)
+    if re.search(r'\bExpected\b', text, re.I):
+        return (years[0] if len(years) > 1 else None), (years[-1] if years else None)
+    if re.search(r'\b(?:Present|Ongoing|Current)\b', text, re.I):
+        return (years[0] if years else None), "Present"
     # Pattern 1: AY 2022 - 2026 or 2020 - 2022 or (2019 - 2021)
     m = re.search(r'(?:(?:A\.?Y\.?|S\.?Y\.?)\s*)?((?:19|20)\d{2})\s*[-–—to]+\s*((?:19|20)\d{2}|Present)', text, re.I)
     if m:
@@ -542,7 +548,7 @@ def _is_invalid_institution(name: str) -> bool:
         return True
     lower = clean.lower()
     from app.services.requirement_rules import is_no_value
-    if is_no_value(clean) or lower in {"not specified", "none", "n/a", "na", "not applicable"}:
+    if is_no_value(clean) or lower in {"degree / course", "degree", "course", "not specified", "none", "n/a", "na", "not applicable"}:
         return True
     if clean.startswith(('•', '-', '*', '▪', '►', '✓')):
         return True
@@ -583,7 +589,7 @@ def _is_invalid_institution(name: str) -> bool:
         if not any(w in lower for w in ["training center", "institute", "college", "university", "school", "academy", "polytechnic", "campus", "department"]):
             return True
     # Dates or pure years
-    if re.match(r'^(?:19|20)\d{2}', lower) or re.search(r'\b(?:january|february|march|april|may|june|july|august|september|october|november|december)\b', lower):
+    if not has_school_word and (re.match(r'^(?:19|20)\d{2}', lower) or re.search(r'\b(?:january|february|march|april|may|june|july|august|september|october|november|december)\b', lower)):
         return True
     # Address lines without school keywords
     if re.search(r'\b(?:avenue|ave\.?|street|st\.?|barangay|brgy\.?|subdivision|subd\.?|boulevard|blvd\.?|road|rd\.?|highway)\b', lower):
@@ -594,20 +600,26 @@ def _is_invalid_institution(name: str) -> bool:
 
 def _detect_status(text: str, end_year: Optional[str] = None, level: str = "") -> str:
     """Determine enrollment status."""
-    if re.search(r'\b(?:Ongoing|Currently\s+Enrolled|Present|In\s+Progress|Current)\b', text, re.I) or end_year == "Present":
-        return "Ongoing"
+    if re.search(r'\b(?:Expected|Ongoing|Currently\s+Enrolled|Present|In\s+Progress|Current)\b', text, re.I) or end_year == "Present":
+        return "Undergraduate / In progress"
     if re.search(r'\b(?:College\s+Level|College\s+Undergrad(?:uate)?|Undergraduate|Undergrad|\d+(?:st|nd|rd|th)?\s+Year(?:\s+College|\s+Level|\s+irregular)?|Completed\s+\d+(?:st|nd|rd|th)?\s+Year|Units\s+Earned)\b', text, re.I):
-        return "Undergraduate / College Level"
+        return "Undergraduate / In progress"
     if re.search(r'\b(?:ALS\s+Completer|Completer|Completed|Finished|NC\s+I{1,3}\s+Holder|Certified)\b', text, re.I):
         return "Completed"
-    if level == "Vocational / Technical (TESDA)":
+    if level == "Vocational / Technical (TESDA)" and end_year and end_year.isdigit() and int(end_year) < date.today().year and re.search(r'\bNC\s+(?:IV|I{1,3}|[1-4])\b', text, re.I):
         return "Completed"
-    return "Graduated"
+    if re.search(r'\bGraduated?\b', text, re.I):
+        return "Graduated"
+    if end_year and end_year.isdigit() and int(end_year) < date.today().year and re.search(r'\b(?:Bachelor|Master|Doctor|Associate|Diploma|BS|BA|B\.S\.)\b', text, re.I):
+        return "Graduated"
+    return ""
 
 
 def _extract_school_and_location(text: str) -> Tuple[str, Optional[str]]:
     """Separates institution name from campus, branch, or city/province."""
     clean = text.strip()
+    # Dates are not part of a campus name. Preserve the supplied campus spelling.
+    clean = re.split(r',?\s+(?:(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+)?(?:19|20)\d{2}\b', clean, maxsplit=1, flags=re.I)[0].strip(' ,|')
     # Strip sub-tier prefixes if present
     clean = re.sub(r'^(?:Tertiary|Senior\s+High\s+School|Junior\s+High\s+School|Primary|Vocational\s*/?\s*Technical|Secondary)[:\s\-–—]+', '', clean, flags=re.I).strip()
     # Strip year notations like (2019 - 2021) or (2022)
@@ -632,7 +644,8 @@ def _extract_school_and_location(text: str) -> Tuple[str, Optional[str]]:
                 after_clean = re.sub(r'(?:S\.?Y\.?|A\.?Y\.?)?\s*\d{4}.*$', '', after_line).strip(' ,-–—()')
                 if after_clean and len(after_clean) > 1 and not _is_invalid_institution(after_clean):
                     loc = after_clean
-            return ks, loc
+            campus = clean[m.end():].strip(' ,-–—')
+            return (f"{ks} {campus}" if campus and ',' not in clean else ks), loc
 
     # 2. Suffix-based patterns
     for suffix in sorted(_SCHOOL_SUFFIXES, key=len, reverse=True):
@@ -667,6 +680,8 @@ def _normalize_degree_or_course(text: str, level: str) -> Tuple[Optional[str], O
     Returns: (degree_or_course, raw_degree_or_course, major_or_specialization)
     """
     clean = text.strip()
+    if re.fullmatch(r'(?:Degree\s*/\s*Course|Degree|Course|Not Specified)', clean, re.I):
+        return None, None, None
 
     # 0. Check Vocational / Technical courses
     voc_match = re.search(r'\b((?:Vocational|Technical|Vocational\s*/\s*Technical)\s+(?:Course|Program|Training|Education)(?:\s+in\s+[A-Za-z0-9\s/&,()-]+)?)\b', clean, re.I)
@@ -838,7 +853,7 @@ def extract_structured_education(text: str) -> Dict[str, Any]:
       ]
     }
     """
-    lines = [l.strip() for l in text.strip().split('\n') if l.strip()]
+    lines = [l.strip() for l in text.strip().split('\n')]
 
     # 1. Isolate education section
     in_edu = False
@@ -929,7 +944,8 @@ def extract_structured_education(text: str) -> Dict[str, Any]:
                 and re.search(r'\b(?:bachelor|master|doctor|associate|diploma)\b', curr_l, re.I)
                 and nxt_clean in _DEGREE_CONT_WORDS
             ):
-                merged_edu_lines.append(f"{curr_l} {nxt_l}")
+                connector = " in " if re.search(r"\b(?:Bachelor|Master) of (?:Science|Arts)$", curr_l, re.I) else " "
+                merged_edu_lines.append(f"{curr_l}{connector}{nxt_l}")
                 k += 2
                 continue
         merged_edu_lines.append(curr_l)
@@ -1139,9 +1155,9 @@ def extract_structured_education(text: str) -> Dict[str, Any]:
                 "degree": deg or raw_deg or "",
                 "raw_degree_or_course": raw_deg,
                 "major_or_specialization": spec,
-                "institution_name": inst or "Not Specified",
-                "institution": inst or "Not Specified",
-                "college": inst or "Not Specified",
+                "institution_name": inst,
+                "institution": inst,
+                "college": inst,
                 "location": loc,
                 "status": status,
                 "start_year": s_yr,
@@ -1150,12 +1166,18 @@ def extract_structured_education(text: str) -> Dict[str, Any]:
                 "honors_and_awards": honors,
                 "honors": honors_str
             })
+            year_level = re.search(r'\b(\d+(?:st|nd|rd|th))\s+Year\b', combined_text, re.I)
+            entries[-1]["year_level"] = year_level.group(1).lower() if year_level else None
+            entries[-1]["expected_graduation_year"] = e_yr if re.search(r'\bExpected\b', combined_text, re.I) else None
 
         def _is_edu_entry_boundary(line_str: str, curr_lines: List[str]) -> bool:
             if not curr_lines:
                 return False
             clean_l = line_str.strip()
             if not clean_l:
+                return True
+
+            if re.search(r'\b(?:Expected|Ongoing|Currently\s+Enrolled|Present|In\s+Progress|Undergraduate|\d+(?:st|nd|rd|th)\s+Year)\b', clean_l, re.I) and not _is_degree_text(clean_l) and not any(_extract_years(clean_l)):
                 return False
 
             if clean_l.lower() in ['school', 'high school', 'college', 'colleges', 'university', 'institute', 'academy', 'campus']:
@@ -1179,7 +1201,7 @@ def extract_structured_education(text: str) -> Dict[str, Any]:
                     return False
                 if has_d and not has_s and _is_school_text(clean_l) and not _is_degree_text(clean_l) and not has_line_y:
                     return False
-                return True
+                return (_is_degree_text(clean_l) and has_d) or (_is_school_text(clean_l) and has_s)
 
             if has_line_y:
                 return False
@@ -1195,7 +1217,7 @@ def extract_structured_education(text: str) -> Dict[str, Any]:
             matched_tier = None
             curr_t = " \n ".join(current_block) if current_block else ""
             s_y, e_y = _extract_years(curr_t)
-            can_be_tier = (not current_block) or bool(s_y or e_y) or line.strip().endswith(':') or line.strip().isupper()
+            can_be_tier = (not current_block) or line.strip().endswith(':') or line.strip().isupper()
 
             if can_be_tier:
                 for tier_name, tier_re in _SUB_TIER_HEADERS:
@@ -1217,6 +1239,28 @@ def extract_structured_education(text: str) -> Dict[str, Any]:
 
         if current_block:
             process_block(current_tier, current_block)
+
+    # Merge duplicate blocks without inventing fields or conflating distinct courses.
+    unique = []
+    for entry in entries:
+        degree = (entry.get("degree_or_course") or "").casefold()
+        school = (entry.get("institution_name") or "").casefold()
+        def overlaps(other):
+            a = [int(entry[k]) for k in ("start_year", "end_year") if str(entry.get(k) or "").isdigit()]
+            b = [int(other[k]) for k in ("start_year", "end_year") if str(other.get(k) or "").isdigit()]
+            return bool(a and b and min(a) <= max(b) and min(b) <= max(a))
+        duplicate = next((other for other in unique if
+            (degree and degree == (other.get("degree_or_course") or "").casefold()) or
+            (school and school == (other.get("institution_name") or "").casefold() and overlaps(other))), None)
+        if duplicate is None:
+            unique.append(entry)
+        else:
+            for key, value in entry.items():
+                if value and not duplicate.get(key):
+                    duplicate[key] = value
+            if entry.get("status") == "Undergraduate / In progress":
+                duplicate["status"] = entry["status"]
+    entries = unique
 
     # 3. Resolve Highest Educational Attainment
     highest = resolve_highest_educational_attainment(entries)

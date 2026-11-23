@@ -106,7 +106,7 @@ def test_template_2_undergrad_and_tesda():
 
     # College entry
     college = next(e for e in entries if e["education_level"] == "Tertiary / College")
-    assert college["status"] == "Undergraduate / College Level"
+    assert college["status"] == "Undergraduate / In progress"
     assert "Hospitality Management" in college["degree_or_course"] or "Hotel and Restaurant" in college["degree_or_course"]
     assert "ICCT Colleges" in college["institution_name"]
     assert college["start_year"] == "2019"
@@ -183,9 +183,9 @@ def test_academic_honors_extraction():
 
 
 def test_status_detection():
-    assert _detect_completion_status("2nd Year College Level irregular") == "Undergraduate / College Level"
-    assert _detect_completion_status("Completed 3rd Year College Undergrad") == "Undergraduate / College Level"
-    assert _detect_completion_status("Currently Enrolled in BSIT 4th year") == "Ongoing"
+    assert _detect_completion_status("2nd Year College Level irregular") == "Undergraduate / In progress"
+    assert _detect_completion_status("Completed 3rd Year College Undergrad") == "Undergraduate / In progress"
+    assert _detect_completion_status("Currently Enrolled in BSIT 4th year") == "Undergraduate / In progress"
     assert _detect_completion_status("Alternative Learning System (ALS) Completer") == "Completed"
     assert _detect_completion_status("TESDA NC II Holder") == "Completed"
     assert _detect_completion_status("Graduated Magna Cum Laude") == "Graduated"

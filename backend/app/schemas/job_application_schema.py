@@ -13,8 +13,12 @@ class JobInfo(BaseModel):
         from_attributes = True
 
 class JobApplicationBase(BaseModel):
+    user_id: Optional[int] = None
+    applicant_id: Optional[int] = None
     candidate_name: str
     candidate_email: EmailStr
+    resume_email: Optional[str] = None
+    contact_email: Optional[str] = None
     phone: Optional[str] = None
     location: Optional[str] = None
     job_title: Optional[str] = None
@@ -23,6 +27,8 @@ class JobApplicationBase(BaseModel):
     degree: Optional[str] = None
     college: Optional[str] = None
     certifications: Optional[str] = None
+    clarification_responses: Optional[List[Dict[str, Any]]] = None
+    requirement_evaluations: Optional[List[Dict[str, Any]]] = None
     skills: Optional[List[str]] = None
     match_score: Optional[float] = None
     skills_score: Optional[float] = None

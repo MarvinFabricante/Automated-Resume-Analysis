@@ -32,17 +32,18 @@ import { RootState } from '../../redux/store';
 
 const CandidateDashboard: React.FC = () => {
   const navigate = useNavigate();
-  const { user: email } = useSelector((state: RootState) => state.auth);
+  const { user: email, userId } = useSelector((state: RootState) => state.auth);
+  const candidateIdentifier = userId ? String(userId) : (typeof email === 'string' ? email : (email as any)?.email || '');
 
-  // Live queries
+  // Live queries (linked by authenticated user_id first)
   const { data: applications = [], isLoading: isLoadingApps } = useGetCandidateApplicationsQuery(
-    email || '',
-    { skip: !email, pollingInterval: 10000 }
+    candidateIdentifier,
+    { skip: !candidateIdentifier, pollingInterval: 10000 }
   );
 
   const { data: interviews = [] } = useGetCandidateInterviewsQuery(
-    email || '',
-    { skip: !email, pollingInterval: 10000 }
+    candidateIdentifier,
+    { skip: !candidateIdentifier, pollingInterval: 10000 }
   );
 
   // Active Interviews calculation

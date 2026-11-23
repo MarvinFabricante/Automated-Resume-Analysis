@@ -272,11 +272,23 @@ const ApplicantProfile: React.FC<ApplicantProfileProps> = ({
           </div>
         </div>
 
-        <div className="flex items-center gap-4 text-xs text-slate-300">
-          <span className="flex items-center gap-1.5">
+        <div className="flex items-center gap-4 text-xs text-slate-300 flex-wrap">
+          <span className="flex items-center gap-1.5" title="HR Contact Email">
             <Mail size={13} className="text-slate-400" />
-            <span>{candidate.email || emailParam}</span>
+            <span>{candidate.contact_email || candidate.email || emailParam}</span>
           </span>
+          {candidate.account_email &&
+            candidate.account_email.toLowerCase() !== (candidate.contact_email || candidate.email || '').toLowerCase() && (
+              <span className="px-2 py-0.5 rounded-md bg-white/10 text-[11px] text-slate-200 border border-white/15">
+                Account: {candidate.account_email}
+              </span>
+            )}
+          {candidate.resume_email &&
+            candidate.resume_email.toLowerCase() !== (candidate.contact_email || candidate.email || '').toLowerCase() && (
+              <span className="px-2 py-0.5 rounded-md bg-white/10 text-[11px] text-slate-200 border border-white/15">
+                Resume: {candidate.resume_email}
+              </span>
+            )}
           {candidate.phone && (
             <span className="flex items-center gap-1.5">
               <Phone size={13} className="text-slate-400" />
