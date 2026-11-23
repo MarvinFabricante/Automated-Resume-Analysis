@@ -1,5 +1,5 @@
 import React from 'react';
-import { Search, Filter, ArrowUpDown, X, Sparkles, RotateCcw, Archive, Eye } from 'lucide-react';
+import { Search, Filter, ArrowUpDown, X, Sparkles, RotateCcw, Archive, Eye, Briefcase, User, Users } from 'lucide-react';
 
 export interface JobOption {
   title: string;
@@ -7,7 +7,9 @@ export interface JobOption {
 }
 
 export interface SuggestionItem {
+  type?: 'job' | 'candidate';
   name: string;
+  email?: string;
   role?: string;
   score?: number;
 }
@@ -99,34 +101,82 @@ const SearchAndFilter: React.FC<SearchAndFilterProps> = ({
             </button>
           )}
 
-          {/* Suggestion Dropdown */}
-          {showSuggestions && suggestions.length > 0 && (
-            <ul className="absolute top-full left-0 w-full mt-1.5 bg-white border border-gray-100 rounded-xl sm:rounded-2xl shadow-xl z-50 overflow-hidden py-1.5 animate-in fade-in zoom-in-95 duration-150 max-h-64 overflow-y-auto">
-              {suggestions.map((item, idx) => {
-                const name = typeof item === 'string' ? item : item.name;
-                const subtext = typeof item === 'object' ? `${item.role || ''} ${item.score ? `• ${item.score}% Match` : ''}` : null;
+          {/* Suggestion Dropdown — Divided into Jobs first, then Candidates */}
+          {showSuggestions && suggestions.length > 0 && (() => {
+            const normalized = suggestions.map((item) =>
+              typeof item === 'string' ? { type: 'candidate' as const, name: item } : item
+            );
+            const jobSuggestions = normalized.filter((item) => item.type === 'job');
+            const candidateSuggestions = normalized.filter((item) => item.type !== 'job');
 
-                return (
-                  <li
-                    key={idx}
-                    className="px-3.5 sm:px-4 py-2 hover:bg-pink-50 hover:text-[#D60041] cursor-pointer text-xs sm:text-sm font-semibold transition-colors flex items-center justify-between"
-                    onMouseDown={() => {
-                      setSearchQuery(name);
-                      setShowSuggestions(false);
-                    }}
-                  >
-                    <div className="flex items-center gap-2.5 truncate pr-2">
-                      <Search className="h-3.5 w-3.5 text-gray-400 shrink-0" />
-                      <span className="truncate">{name}</span>
+            return (
+              <div className="absolute top-full left-0 w-full mt-1.5 bg-white border border-gray-200/90 rounded-xl sm:rounded-2xl shadow-xl z-50 overflow-hidden py-1.5 animate-in fade-in zoom-in-95 duration-150 max-h-80 overflow-y-auto divide-y divide-gray-100">
+                {jobSuggestions.length > 0 && (
+                  <div className="py-1.5">
+                    <div className="px-3.5 sm:px-4 py-1 text-[10px] font-bold text-gray-400 uppercase tracking-wider flex items-center gap-1.5">
+                      <Briefcase className="h-3 w-3 text-blue-500" />
+                      <span>Jobs ({jobSuggestions.length})</span>
                     </div>
-                    {subtext && (
-                      <span className="text-[11px] font-normal text-gray-400 shrink-0">{subtext}</span>
-                    )}
-                  </li>
-                );
-              })}
-            </ul>
-          )}
+                    <ul>
+                      {jobSuggestions.map((item, idx) => (
+                        <li
+                          key={`job-${idx}`}
+                          className="px-3.5 sm:px-4 py-2 hover:bg-blue-50/70 hover:text-blue-700 cursor-pointer text-xs sm:text-sm font-semibold transition-colors flex items-center justify-between gap-2"
+                          onMouseDown={() => {
+                            setJobFilter(item.name);
+                            setSearchQuery('');
+                            setShowSuggestions(false);
+                          }}
+                        >
+                          <div className="flex items-center gap-2.5 truncate pr-2">
+                            <Briefcase className="h-3.5 w-3.5 text-blue-500 shrink-0" />
+                            <span className="truncate">{item.name}</span>
+                          </div>
+                          {item.role && (
+                            <span className="text-[11px] font-medium text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full shrink-0">
+                              {item.role}
+                            </span>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {candidateSuggestions.length > 0 && (
+                  <div className="py-1.5">
+                    <div className="px-3.5 sm:px-4 py-1 text-[10px] font-bold text-gray-400 uppercase tracking-wider flex items-center gap-1.5">
+                      <Users className="h-3 w-3 text-[#D60041]" />
+                      <span>Candidates ({candidateSuggestions.length})</span>
+                    </div>
+                    <ul>
+                      {candidateSuggestions.map((item, idx) => {
+                        const subtext = `${item.role || ''}${item.score ? ` • ${item.score}% Match` : ''}`.trim();
+                        return (
+                          <li
+                            key={`cand-${idx}`}
+                            className="px-3.5 sm:px-4 py-2 hover:bg-pink-50 hover:text-[#D60041] cursor-pointer text-xs sm:text-sm font-semibold transition-colors flex items-center justify-between gap-2"
+                            onMouseDown={() => {
+                              setSearchQuery(item.name);
+                              setShowSuggestions(false);
+                            }}
+                          >
+                            <div className="flex items-center gap-2.5 truncate pr-2">
+                              <User className="h-3.5 w-3.5 text-[#D60041] shrink-0" />
+                              <span className="truncate">{item.name}</span>
+                            </div>
+                            {subtext && (
+                              <span className="text-[11px] font-normal text-gray-400 shrink-0">{subtext}</span>
+                            )}
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
         </div>
 
         {/* Quick Archive Controls - Responsive grouping */}

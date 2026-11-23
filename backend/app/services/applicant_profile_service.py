@@ -1,4 +1,5 @@
 import logging
+import re
 from datetime import datetime
 from typing import Optional, List, Dict, Any
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -319,21 +320,157 @@ async def add_candidate_hr_note(
     await db.refresh(note)
     return note
 
+def _split_words(text: str) -> List[str]:
+    return [w for w in re.split(r"[\s,;/().\-–—]+", (text or "").lower().strip()) if w]
+
+
+def _get_job_search_rank(job: JobDescription, raw_query: str) -> Optional[int]:
+    query = (raw_query or "").lower().strip()
+    if not query:
+        return 0
+
+    title = (job.job_title or "").lower().strip()
+    title_words = _split_words(title)
+
+    if title.startswith(query):
+        return 0
+    if any(w.startswith(query) for w in title_words):
+        return 1
+
+    # Single-letter search: only match jobs whose title (or a word in the title) starts with that letter
+    if len(query) == 1:
+        return None
+
+    dept = (job.department or "").lower().strip()
+    dept_words = _split_words(dept)
+    raw_skills = getattr(job, "skills_requirements", "") or ""
+    if isinstance(raw_skills, list):
+        skills = ", ".join(str(s) for s in raw_skills).lower()
+    else:
+        skills = str(raw_skills).lower()
+    skill_tokens = [s.strip() for s in re.split(r"[,;\n•]+", skills) if s.strip()]
+
+    if query in title:
+        return 2
+
+    if (
+        dept.startswith(query)
+        or any(w.startswith(query) for w in dept_words)
+        or any(s.startswith(query) for s in skill_tokens)
+    ):
+        return 3
+
+    if len(query) == 2:
+        return None
+
+    loc = (job.location or "").lower().strip()
+    desc = (getattr(job, "description", "") or "").lower()
+
+    if query in dept or query in skills:
+        return 4
+    if query in loc:
+        return 5
+    if query in desc:
+        return 6
+
+    return None
+
+
+def _get_candidate_search_rank(
+    name: str,
+    email: str,
+    job_title: str,
+    raw_query: str
+) -> Optional[int]:
+    query = (raw_query or "").lower().strip()
+    if not query:
+        return 0
+
+    clean_name = (name or "").lower().strip()
+    name_words = [w for w in _split_words(clean_name) if len(w) > 1 or w == query]
+    all_name_tokens = _split_words(clean_name)
+
+    if clean_name.startswith(query):
+        return 0
+    # Match any word in candidate name (ignoring single-letter middle initials like "T." unless the whole first/last name starts with query)
+    if any(w.startswith(query) for w in name_words) or any(w.startswith(query) for w in all_name_tokens if len(w) >= 2):
+        return 1
+
+    # Single-letter search (e.g. "J"): strictly match candidates whose name (or a name word like "John", "James") starts with that letter
+    if len(query) == 1:
+        return None
+
+    email_local = ((email or "").lower().split("@")[0]).strip()
+    role = (job_title or "").lower().strip()
+    role_words = _split_words(role)
+
+    if query in clean_name:
+        return 2
+    if email_local.startswith(query):
+        return 3
+    if role.startswith(query) or any(w.startswith(query) for w in role_words):
+        return 4
+
+    if len(query) == 2:
+        return None
+
+    if query in email_local:
+        return 5
+    if query in role:
+        return 6
+
+    return None
+
+
 async def universal_search_hr(
     db: AsyncSession,
     query: str
 ) -> Dict[str, Any]:
     """
     Universal Search for HR:
-    Groups results into Applicants, Jobs, and Shortlists.
+    Ranks Jobs (using Candidate job search ranking) and Candidates/Applicants (prefix & word-prefix aware),
+    plus Shortlist Rosters.
     """
     q = query.strip()
     if not q:
         return {"applicants": [], "jobs": [], "shortlists": []}
 
-    pattern = f"%{q.lower()}%"
+    q_lower = q.lower()
+    pattern = f"%{q_lower}%"
 
-    # 1. Search Applicants (name, email, job_title)
+    # 1. Search & Rank Jobs (mirrors Candidate job search getJobSearchRank)
+    job_stmt = select(JobDescription)
+    job_res = await db.execute(job_stmt)
+    all_jobs = list(job_res.scalars().all())
+
+    # Count applicants per job
+    counts_stmt = select(JobApplication.job_id, func.count(JobApplication.id)).group_by(JobApplication.job_id)
+    counts_res = await db.execute(counts_stmt)
+    job_app_counts = {row[0]: row[1] for row in counts_res.all() if row[0] is not None}
+
+    scored_jobs = []
+    for j in all_jobs:
+        rank = _get_job_search_rank(j, q)
+        if rank is not None:
+            scored_jobs.append((rank, (j.job_title or "").lower(), j))
+
+    scored_jobs.sort(key=lambda item: (item[0], item[1]))
+
+    jobs_results = [
+        {
+            "id": j.id,
+            "job_id": j.id,
+            "title": j.job_title,
+            "job_title": j.job_title,
+            "department": j.department or "General",
+            "location": j.location or "Plant",
+            "applicant_count": job_app_counts.get(j.id, 0),
+            "is_active": getattr(j, "is_active", True)
+        }
+        for _, _, j in scored_jobs[:10]
+    ]
+
+    # 2. Search & Rank Candidates / Applicants (deduplicated by email, prefix-ranked)
     app_stmt = (
         select(JobApplication)
         .where(
@@ -344,48 +481,45 @@ async def universal_search_hr(
             )
         )
         .order_by(JobApplication.created_at.desc())
-        .limit(10)
     )
     app_res = await db.execute(app_stmt)
     apps = list(app_res.scalars().all())
 
-    applicants_results = []
+    job_title_map = {j.id: j.job_title for j in all_jobs}
+
+    scored_applicants = []
+    seen_emails = set()
     for a in apps:
-        applicants_results.append({
-            "id": a.id,
-            "name": a.candidate_name,
-            "email": a.candidate_email,
-            "job_title": a.job_title or "Position",
-            "status": normalize_status(a.status),
-            "match_score": a.match_score,
-            "created_at": a.created_at.isoformat() if a.created_at else None
-        })
-
-    # 2. Search Jobs (title, department, location)
-    job_stmt = (
-        select(JobDescription)
-        .where(
-            or_(
-                func.lower(JobDescription.job_title).like(pattern),
-                func.lower(JobDescription.department).like(pattern),
-                func.lower(JobDescription.location).like(pattern)
-            )
+        email_key = (a.candidate_email or "").lower().strip()
+        if email_key and email_key in seen_emails:
+            continue
+        resolved_job_title = a.job_title or job_title_map.get(a.job_id, "Position") or "Position"
+        rank = _get_candidate_search_rank(
+            a.candidate_name or "",
+            a.candidate_email or "",
+            resolved_job_title,
+            q
         )
-        .limit(10)
-    )
-    job_res = await db.execute(job_stmt)
-    jobs = list(job_res.scalars().all())
+        if rank is not None:
+            if email_key:
+                seen_emails.add(email_key)
+            scored_applicants.append((
+                rank,
+                (a.candidate_name or "").lower(),
+                {
+                    "id": a.id,
+                    "name": a.candidate_name,
+                    "email": a.candidate_email,
+                    "job_title": resolved_job_title,
+                    "position": resolved_job_title,
+                    "status": normalize_status(a.status),
+                    "match_score": a.match_score,
+                    "created_at": a.created_at.isoformat() if a.created_at else None
+                }
+            ))
 
-    jobs_results = [
-        {
-            "id": j.id,
-            "title": j.job_title,
-            "department": j.department or "General",
-            "location": j.location or "Plant",
-            "is_active": getattr(j, "is_active", True)
-        }
-        for j in jobs
-    ]
+    scored_applicants.sort(key=lambda item: (item[0], item[1]))
+    applicants_results = [item[2] for item in scored_applicants[:10]]
 
     # 3. Search Shortlists (roster name)
     roster_stmt = (
@@ -398,9 +532,14 @@ async def universal_search_hr(
 
     shortlists_results = []
     for r in rosters:
-        j_stmt = select(JobDescription).where(JobDescription.id == r.job_id)
-        j_res = await db.execute(j_stmt)
-        j_obj = j_res.scalar_one_or_none()
+        roster_name = (r.name or "").lower().strip()
+        roster_words = _split_words(roster_name)
+        if len(q_lower) == 1 and not (
+            roster_name.startswith(q_lower) or any(w.startswith(q_lower) for w in roster_words)
+        ):
+            continue
+
+        j_title = job_title_map.get(r.job_id, "Position")
 
         count_stmt = select(func.count(ShortlistRosterItem.id)).where(ShortlistRosterItem.roster_id == r.id)
         c_res = await db.execute(count_stmt)
@@ -409,13 +548,13 @@ async def universal_search_hr(
         shortlists_results.append({
             "id": r.id,
             "name": r.name,
-            "job_title": j_obj.job_title if j_obj else "Position",
+            "job_title": j_title,
             "candidate_count": c_count,
             "created_at": r.created_at.isoformat() if r.created_at else None
         })
 
     return {
-        "applicants": applicants_results,
         "jobs": jobs_results,
+        "applicants": applicants_results,
         "shortlists": shortlists_results
     }
