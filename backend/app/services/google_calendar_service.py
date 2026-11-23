@@ -116,6 +116,44 @@ def _cred_hash(credentials_json: str) -> str:
     return hashlib.sha256(credentials_json.encode("utf-8")).hexdigest()[:16]
 
 
+def _ensure_rfc3339_datetime(dt_str: str, default_offset: str = "+08:00") -> str:
+    """Ensure a datetime ISO string includes a timezone offset for Google Calendar API v3."""
+    if not dt_str:
+        return dt_str
+    clean = str(dt_str).strip()
+    if "T" in clean:
+        time_part = clean.split("T", 1)[1]
+        if not (time_part.endswith("Z") or "+" in time_part or "-" in time_part):
+            return f"{clean}{default_offset}"
+    return clean
+
+
+def _normalize_freebusy_bound(dt_str: str, default_offset: str = "+08:00") -> str:
+    """
+    Convert naive-local timestamps that had 'Z' appended (e.g. '2026-11-25T09:00:00Z')
+    into Asia/Manila (+08:00) RFC3339 bounds so Google Calendar freebusy queries
+    the actual local working hours.
+    """
+    if not dt_str:
+        return dt_str
+    clean = str(dt_str).strip()
+    if clean.endswith("Z") and "T" in clean:
+        return f"{clean[:-1]}{default_offset}"
+    return _ensure_rfc3339_datetime(clean, default_offset=default_offset)
+
+
+def invalidate_google_calendar_cache(credentials_json: Optional[str] = None):
+    """Invalidate cached Google Calendar lists, events, and freebusy responses in Redis."""
+    if credentials_json:
+        cred_h = _cred_hash(credentials_json)
+        _sync_del_pattern(f"google_cal:list:{cred_h}")
+        _sync_del_pattern(f"google_cal:events:{cred_h}")
+        _sync_del_pattern(f"google_cal:all_events:{cred_h}")
+        _sync_del_pattern(f"google_cal:freebusy:{cred_h}")
+    else:
+        _sync_del_pattern("google_cal:")
+
+
 def _sync_get_cache(key: str) -> Optional[Any]:
     try:
         r = get_sync_redis()
@@ -149,13 +187,14 @@ def _sync_del_pattern(pattern: str):
 # ── Calendar operations ──────────────────────────────────────────────────────
 
 
-def get_real_google_calendars(credentials_json: str):
+def get_real_google_calendars(credentials_json: str, bypass_cache: bool = False):
     """Fetch all calendars from the authenticated Google account with Redis caching."""
     cred_h = _cred_hash(credentials_json)
     cache_key = f"google_cal:list:{cred_h}"
-    cached = _sync_get_cache(cache_key)
-    if cached is not None:
-        return cached
+    if not bypass_cache:
+        cached = _sync_get_cache(cache_key)
+        if cached is not None:
+            return cached
 
     service, _ = get_google_calendar_service(credentials_json)
     if not service:
@@ -172,6 +211,10 @@ def get_real_google_calendars(credentials_json: str):
                 "time_zone": item.get('timeZone', '(GMT+00:00) Coordinated Universal Time'),
                 "owner_name": item.get('summary', 'Google User'),
                 "owner_email": item.get('id', 'user@gmail.com'),
+                "primary": bool(item.get('primary', False)),
+                "selected": bool(item.get('selected', True)),
+                "access_role": item.get('accessRole', 'reader'),
+                "background_color": item.get('backgroundColor', '#4285F4'),
                 "is_public": item.get('accessRole') == 'reader' or item.get('public', False),
                 "public_permission": "See all event details",
                 "secret_token": "google_api_authenticated",
@@ -205,7 +248,7 @@ def get_real_google_calendars(credentials_json: str):
                     "notify_daily_agenda": "None",
                 },
             })
-        _sync_set_cache(cache_key, results, ttl=300)
+        _sync_set_cache(cache_key, results, ttl=30)
         return results
     except HttpError as err:
         logger.error(f"Google Calendar API Error: {err}")
@@ -272,13 +315,16 @@ def get_real_google_events(
     max_results: int = 150,
     time_min: str = None,
     time_max: str = None,
+    bypass_cache: bool = False,
+    calendar_name: str = None,
 ):
-    """List events from a specific calendar with Redis caching."""
+    """List events from a specific calendar with short-TTL Redis caching for real-time sync."""
     cred_h = _cred_hash(credentials_json)
     cache_key = f"google_cal:events:{cred_h}:{calendar_id}:{time_min}:{time_max}:{max_results}"
-    cached = _sync_get_cache(cache_key)
-    if cached is not None:
-        return cached
+    if not bypass_cache:
+        cached = _sync_get_cache(cache_key)
+        if cached is not None:
+            return cached
 
     service, _ = get_google_calendar_service(credentials_json)
     if not service:
@@ -302,7 +348,10 @@ def get_real_google_events(
         events_result = service.events().list(**kwargs).execute()
         events = events_result.get('items', [])
         formatted = []
+        is_holiday_cal = "#holiday@" in (calendar_id or "")
         for ev in events:
+            if ev.get('status') == 'cancelled':
+                continue
             start_info = ev.get('start', {})
             end_info = ev.get('end', {})
             is_all_day = 'date' in start_info
@@ -312,24 +361,96 @@ def get_real_google_events(
             formatted.append({
                 "id": ev.get('id'),
                 "calendar_id": calendar_id,
+                "calendar_name": calendar_name or ("Holidays" if is_holiday_cal else "Google Calendar"),
+                "is_holiday": is_holiday_cal,
                 "summary": ev.get('summary', 'Untitled Event'),
                 "description": ev.get('description', ''),
                 "location": ev.get('location', ''),
                 "start_datetime": start,
                 "end_datetime": end,
                 "is_all_day": is_all_day,
-                "label_color": "#4285F4",
-                "label_name": "Google Event",
+                "transparency": ev.get('transparency', 'opaque'),
+                "label_color": "#0B8043" if is_holiday_cal else "#4285F4",
+                "label_name": "Holiday" if is_holiday_cal else (calendar_name or "Google Event"),
                 "status": ev.get('status', 'confirmed').capitalize(),
                 "created_at": ev.get('created', ''),
                 "html_link": ev.get('htmlLink', ''),
-                "meet_link": "",
+                "meet_link": ev.get('hangoutLink', ''),
             })
-        _sync_set_cache(cache_key, formatted, ttl=180)
+        _sync_set_cache(cache_key, formatted, ttl=10)
         return formatted
     except HttpError as err:
-        logger.error(f"Google Calendar API Error listing events: {err}")
+        logger.error(f"Google Calendar API Error listing events for {calendar_id}: {err}")
         return None
+
+
+def get_all_calendars_google_events(
+    credentials_json: str,
+    max_results: int = 150,
+    time_min: str = None,
+    time_max: str = None,
+    bypass_cache: bool = False,
+):
+    """
+    Fetch events across the HR user's primary calendar and all visible secondary/holiday
+    calendars on their Google account so the application calendar matches Google Calendar in real time.
+    """
+    cred_h = _cred_hash(credentials_json)
+    cache_key = f"google_cal:all_events:{cred_h}:{time_min}:{time_max}:{max_results}"
+    if not bypass_cache:
+        cached = _sync_get_cache(cache_key)
+        if cached is not None:
+            return cached
+
+    # Always fetch primary calendar events first
+    primary_events = get_real_google_events(
+        credentials_json=credentials_json,
+        calendar_id="primary",
+        max_results=max_results,
+        time_min=time_min,
+        time_max=time_max,
+        bypass_cache=bypass_cache,
+        calendar_name="Primary Calendar",
+    )
+    if primary_events is None:
+        return None
+
+    combined: List[Dict[str, Any]] = []
+    seen_keys = set()
+
+    for ev in primary_events:
+        key = (ev.get("id"), ev.get("start_datetime"))
+        if key not in seen_keys:
+            seen_keys.add(key)
+            combined.append(ev)
+
+    # Also query all other calendars in user's calendarList (custom calendars, holiday calendars, etc.)
+    calendars = get_real_google_calendars(credentials_json, bypass_cache=bypass_cache) or []
+    for cal in calendars:
+        cal_id = cal.get("id")
+        if not cal_id or cal_id == "primary" or cal.get("primary"):
+            continue
+        # Skip birthday contacts calendar if unselected
+        if "#contacts@group.v.calendar.google.com" in cal_id and not cal.get("selected", False):
+            continue
+        cal_events = get_real_google_events(
+            credentials_json=credentials_json,
+            calendar_id=cal_id,
+            max_results=max_results,
+            time_min=time_min,
+            time_max=time_max,
+            bypass_cache=bypass_cache,
+            calendar_name=cal.get("name") or cal_id,
+        )
+        if cal_events:
+            for ev in cal_events:
+                key = (ev.get("id"), ev.get("start_datetime"))
+                if key not in seen_keys:
+                    seen_keys.add(key)
+                    combined.append(ev)
+
+    _sync_set_cache(cache_key, combined, ttl=10)
+    return combined
 
 
 def create_real_google_event(
@@ -363,12 +484,22 @@ def create_real_google_event(
         redis_tx_manager.fail_transaction_sync(tx_id, "Google service unavailable")
         return None
     try:
+        start_payload = (
+            {'date': str(start_dt)[:10]}
+            if is_all_day
+            else {'dateTime': _ensure_rfc3339_datetime(start_dt), 'timeZone': 'Asia/Manila'}
+        )
+        end_payload = (
+            {'date': str(end_dt)[:10]}
+            if is_all_day
+            else {'dateTime': _ensure_rfc3339_datetime(end_dt), 'timeZone': 'Asia/Manila'}
+        )
         body = {
             'summary': summary,
             'description': description,
             'location': location,
-            'start': {'date': start_dt} if is_all_day else {'dateTime': start_dt},
-            'end': {'date': end_dt} if is_all_day else {'dateTime': end_dt},
+            'start': start_payload,
+            'end': end_payload,
         }
 
         if attendees:
@@ -386,7 +517,7 @@ def create_real_google_event(
 
         created = execute_with_retry(_do_insert, max_retries=3, initial_delay=0.05, operation_name="create_real_google_event")
         redis_tx_manager.commit_transaction_sync(tx_id, created)
-        _sync_del_pattern(f"google_cal:events:{_cred_hash(credentials_json)}")
+        invalidate_google_calendar_cache(credentials_json)
         return created
     except (GoogleCalendarRateLimitError, GoogleCalendarTimeoutError) as err:
         logger.error(f"Google Calendar API rate limit/timeout creating event: {err}")
@@ -448,9 +579,9 @@ def update_real_google_event(
         if status is not None:
             body['status'] = status.lower()
         if start_dt:
-            body['start'] = {'dateTime': start_dt}
+            body['start'] = {'dateTime': _ensure_rfc3339_datetime(start_dt), 'timeZone': 'Asia/Manila'}
         if end_dt:
-            body['end'] = {'dateTime': end_dt}
+            body['end'] = {'dateTime': _ensure_rfc3339_datetime(end_dt), 'timeZone': 'Asia/Manila'}
 
         def _do_patch():
             return service.events().patch(
@@ -462,7 +593,7 @@ def update_real_google_event(
 
         updated = execute_with_retry(_do_patch, max_retries=3, initial_delay=0.05, operation_name="update_real_google_event")
         redis_tx_manager.commit_transaction_sync(tx_id, updated)
-        _sync_del_pattern(f"google_cal:events:{_cred_hash(credentials_json)}")
+        invalidate_google_calendar_cache(credentials_json)
         return updated
     except (GoogleCalendarRateLimitError, GoogleCalendarTimeoutError) as err:
         logger.error(f"Google Calendar API rate limit/timeout updating event {event_id}: {err}")
@@ -501,7 +632,7 @@ def get_single_google_event(credentials_json: str, calendar_id: str, event_id: s
             calendarId=calendar_id or 'primary',
             eventId=event_id,
         ).execute()
-        _sync_set_cache(cache_key, ev, ttl=300)
+        _sync_set_cache(cache_key, ev, ttl=30)
         return ev
     except HttpError as err:
         logger.error(f"Google Calendar API Error fetching event {event_id}: {err}")
@@ -529,13 +660,14 @@ def delete_real_google_event(credentials_json: str, calendar_id: str, event_id: 
 
         execute_with_retry(_do_delete, max_retries=3, initial_delay=0.05, operation_name="delete_real_google_event")
         redis_tx_manager.commit_transaction_sync(tx_id, {"deleted": True})
-        _sync_del_pattern(f"google_cal:events:{_cred_hash(credentials_json)}")
+        invalidate_google_calendar_cache(credentials_json)
         return True
     except HttpError as err:
         status = getattr(getattr(err, "resp", None), "status", None)
         if status == 404:
             # Event already deleted or not found
             redis_tx_manager.commit_transaction_sync(tx_id, {"deleted": True, "already_gone": True})
+            invalidate_google_calendar_cache(credentials_json)
             return True
         logger.error(f"Google Calendar API Error deleting event: {err}")
         redis_tx_manager.fail_transaction_sync(tx_id, str(err))
@@ -546,28 +678,29 @@ def delete_real_google_event(credentials_json: str, calendar_id: str, event_id: 
         return False
 
 
-def query_freebusy(credentials_json: str, emails: list, time_min: str, time_max: str):
-    """Query freebusy API with Redis caching."""
+def query_freebusy(credentials_json: str, emails: list, time_min: str, time_max: str, bypass_cache: bool = False):
+    """Query freebusy API with short-TTL Redis caching."""
     cred_h = _cred_hash(credentials_json)
     emails_str = ",".join(sorted(emails or []))
     cache_key = f"google_cal:freebusy:{cred_h}:{emails_str}:{time_min}:{time_max}"
-    cached = _sync_get_cache(cache_key)
-    if cached is not None:
-        return cached
+    if not bypass_cache:
+        cached = _sync_get_cache(cache_key)
+        if cached is not None:
+            return cached
 
     service, _ = get_google_calendar_service(credentials_json)
     if not service:
         return None
     try:
         body = {
-            "timeMin": time_min,
-            "timeMax": time_max,
+            "timeMin": _normalize_freebusy_bound(time_min),
+            "timeMax": _normalize_freebusy_bound(time_max),
             "timeZone": "Asia/Manila",
             "items": [{"id": e} for e in emails],
         }
         result = service.freebusy().query(body=body).execute()
         cal_data = result.get('calendars', {})
-        _sync_set_cache(cache_key, cal_data, ttl=120)
+        _sync_set_cache(cache_key, cal_data, ttl=15)
         return cal_data
     except HttpError as err:
         logger.error(f"Google Calendar API Error querying freebusy: {err}")

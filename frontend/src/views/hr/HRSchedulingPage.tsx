@@ -60,6 +60,9 @@ export interface FormattedCalendarEvent {
   id: string;
   rawId: string | number;
   isGoogleEvent: boolean;
+  isAllDay?: boolean;
+  isHoliday?: boolean;
+  calendarName?: string;
   title: string;
   candidate_name: string;
   candidate_email: string;
@@ -134,8 +137,29 @@ const HRSchedulingPage: React.FC = () => {
   const googleAccount: string | undefined = calendarFeed?.google_account || googleStatus?.email;
 
   const loggedInUserId = parseInt(localStorage.getItem('user_id') || '0', 10);
+  const loggedInEmail = localStorage.getItem('saved_email') || '';
   const userRole = useSelector((state: RootState) => state.auth?.role) || localStorage.getItem('role');
   const isAdmin = userRole === 'ADMIN' || userRole === 'SUPERADMIN';
+
+  React.useEffect(() => {
+    if (typeof window !== 'undefined' && window.location.search.includes('google_linked=success')) {
+      setSyncToast('Google Calendar connected and synchronized in real time!');
+      setTimeout(() => setSyncToast(''), 4500);
+      try {
+        window.history.replaceState({}, document.title, window.location.pathname);
+      } catch {
+        // ignore
+      }
+      refetch();
+    }
+  }, [refetch]);
+
+  const handleConnectGoogleCalendar = () => {
+    const clientOrigin = typeof window !== 'undefined' ? window.location.origin : '';
+    const userIdParam = loggedInUserId ? `&user_id=${encodeURIComponent(String(loggedInUserId))}` : '';
+    const hintParam = loggedInEmail ? `&login_hint=${encodeURIComponent(loggedInEmail)}` : '';
+    window.location.href = `${API_BASE_URL}/auth/google/login?flow=link_account&role=hr${userIdParam}${hintParam}&origin=${encodeURIComponent(clientOrigin)}&return_to=${encodeURIComponent('/hr/scheduling')}`;
+  };
 
   const isEventOwnedByCurrentUser = (ev: FormattedCalendarEvent) => {
     if (ev.isGoogleEvent) return true;
@@ -271,27 +295,63 @@ const HRSchedulingPage: React.FC = () => {
 
     // Google Calendar external events
     googleEvents.forEach((ev: any) => {
-      const start = ev.start_datetime ? new Date(ev.start_datetime) : null;
-      const end = ev.end_datetime ? new Date(ev.end_datetime) : null;
-      if (start && end) {
+      const rawStart = ev.start_datetime ? String(ev.start_datetime) : '';
+      const rawEnd = ev.end_datetime ? String(ev.end_datetime) : '';
+      const isAllDay = Boolean(ev.is_all_day || (rawStart && !rawStart.includes('T')));
+      const isHoliday = Boolean(ev.is_holiday || (ev.calendar_id && String(ev.calendar_id).includes('#holiday@')));
+
+      let start: Date | null = null;
+      let end: Date | null = null;
+
+      if (isAllDay && rawStart) {
+        const sParts = rawStart.slice(0, 10).split('-').map(Number);
+        if (sParts.length === 3) {
+          start = new Date(sParts[0], sParts[1] - 1, sParts[2], 0, 0, 0);
+        }
+        if (rawEnd) {
+          const eParts = rawEnd.slice(0, 10).split('-').map(Number);
+          if (eParts.length === 3) {
+            // Google all-day end date is exclusive (next day); subtract 1 day for inclusive end
+            const exclEnd = new Date(eParts[0], eParts[1] - 1, eParts[2], 0, 0, 0);
+            exclEnd.setDate(exclEnd.getDate() - 1);
+            exclEnd.setHours(23, 59, 59, 999);
+            end = start && exclEnd < start ? new Date(start.getFullYear(), start.getMonth(), start.getDate(), 23, 59, 59, 999) : exclEnd;
+          }
+        }
+        if (start && !end) {
+          end = new Date(start.getFullYear(), start.getMonth(), start.getDate(), 23, 59, 59, 999);
+        }
+      } else {
+        start = rawStart ? new Date(rawStart) : null;
+        end = rawEnd ? new Date(rawEnd) : null;
+      }
+
+      if (start && end && !isNaN(start.getTime()) && !isNaN(end.getTime())) {
         list.push({
-          id: `g-${ev.id}`,
+          id: `g-${ev.id}-${rawStart}`,
           rawId: ev.id,
           isGoogleEvent: true,
+          isAllDay,
+          isHoliday,
+          calendarName: ev.calendar_name || (isHoliday ? 'Holidays' : 'Google Calendar'),
           title: ev.summary || 'Google Calendar Event',
-          candidate_name: 'External Google Event',
-          candidate_email: '',
+          candidate_name: isHoliday ? 'Public Holiday' : (ev.calendar_name || 'Google Calendar Event'),
+          candidate_email: ev.interviewer_email || '',
           candidate_phone: '',
-          job_title: '',
+          job_title: ev.calendar_name || (isHoliday ? 'Holiday Schedule' : 'Synced Google Calendar'),
           status: 'CONFIRMED',
           start,
           end,
           start_time: ev.start_datetime,
           end_time: ev.end_datetime,
+          location: ev.location,
           meeting_link: ev.meet_link,
           html_link: ev.html_link,
           google_event_id: ev.id,
           description: ev.description,
+          interviewer_id: ev.interviewer_id,
+          interviewer_name: ev.interviewer_name,
+          interviewer_email: ev.interviewer_email,
           type: 'google'
         });
       }
@@ -462,7 +522,50 @@ const HRSchedulingPage: React.FC = () => {
   }, [currentWeekDays]);
 
   const getEventsForDay = (dayDate: Date) => {
-    return filteredEvents.filter((ev) => isSameDay(ev.start, dayDate));
+    const dayStart = new Date(dayDate.getFullYear(), dayDate.getMonth(), dayDate.getDate(), 0, 0, 0, 0);
+    const dayEnd = new Date(dayDate.getFullYear(), dayDate.getMonth(), dayDate.getDate(), 23, 59, 59, 999);
+    return filteredEvents.filter((ev) => {
+      if (isSameDay(ev.start, dayDate)) return true;
+      return ev.start <= dayEnd && ev.end >= dayStart;
+    });
+  };
+
+  const getDaySlotAvailability = (dayDate: Date) => {
+    const dayOfWeek = dayDate.getDay();
+    const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+    const isPast = isPastDate(dayDate);
+    const dayEvents = getEventsForDay(dayDate);
+
+    const activeTimedEvents = dayEvents.filter((ev) => {
+      if (ev.isAllDay) return false;
+      const st = (ev.status || '').toUpperCase();
+      if (st === 'CANCELED' || st === 'CANCELLED' || st === 'REJECTED') return false;
+      return true;
+    });
+
+    const slots = WORKING_HOURS.filter((s) => !s.isLunch).map((slot) => {
+      const slotStart = new Date(dayDate.getFullYear(), dayDate.getMonth(), dayDate.getDate(), slot.hour, 0, 0, 0);
+      const slotEnd = new Date(dayDate.getFullYear(), dayDate.getMonth(), dayDate.getDate(), slot.hour + 1, 0, 0, 0);
+      const endLabel = `${slot.hour + 1 > 12 ? String(slot.hour + 1 - 12).padStart(2, '0') : String(slot.hour + 1).padStart(2, '0')}:00 ${slot.hour + 1 >= 12 ? 'PM' : 'AM'}`;
+      const blockingEvent = activeTimedEvents.find((ev) => ev.start < slotEnd && ev.end > slotStart);
+      return {
+        hour: slot.hour,
+        timeStr: `${String(slot.hour).padStart(2, '0')}:00`,
+        label: slot.label,
+        rangeLabel: `${slot.label} – ${endLabel}`,
+        isFree: !isWeekend && !isPast && !blockingEvent,
+        blockingEvent: blockingEvent || null,
+      };
+    });
+
+    const freeSlots = slots.filter((s) => s.isFree);
+    return {
+      isWeekend,
+      isPast,
+      slots,
+      freeSlots,
+      totalStandardSlots: slots.length,
+    };
   };
 
   const handleEventClick = (ev: FormattedCalendarEvent) => {
@@ -572,8 +675,16 @@ const HRSchedulingPage: React.FC = () => {
                   <div className={`w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-full ${isGoogleConnected ? 'bg-emerald-500 animate-pulse' : 'bg-amber-400'}`} />
                   <span className="text-gray-700">
                     {isGoogleConnected ? (
-                      <span className="flex items-center gap-1">
-                        Google: <strong className="text-emerald-600 font-bold truncate max-w-[100px] sm:max-w-[120px]">{googleAccount || 'Connected'}</strong>
+                      <span className="flex items-center gap-1.5">
+                        Google: <strong className="text-emerald-600 font-bold truncate max-w-[130px] sm:max-w-[180px]">{googleAccount || 'Connected'}</strong>
+                        <button
+                          type="button"
+                          onClick={handleConnectGoogleCalendar}
+                          className="ml-1 text-[10px] font-bold text-gray-400 hover:text-[#D60041] underline cursor-pointer"
+                          title="Reconnect or switch linked Google Calendar account"
+                        >
+                          Switch
+                        </button>
                       </span>
                     ) : (
                       <span className="text-gray-500">Google: Offline</span>
@@ -584,12 +695,9 @@ const HRSchedulingPage: React.FC = () => {
                 {/* Connect Google Calendar Button if offline */}
                 {!isGoogleConnected && (
                   <button
-                    onClick={() => {
-                      const clientOrigin = typeof window !== 'undefined' ? window.location.origin : '';
-                      window.location.href = `${API_BASE_URL}/auth/google/login?role=hr&origin=${encodeURIComponent(clientOrigin)}&return_to=${encodeURIComponent('/hr/scheduling')}`;
-                    }}
+                    onClick={handleConnectGoogleCalendar}
                     className="px-3 py-1.5 sm:px-3.5 sm:py-2 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-700 rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-1.5 sm:gap-2 cursor-pointer"
-                    title="Connect Google Calendar for interview synchronization"
+                    title="Connect Google Calendar for real-time interview synchronization"
                   >
                     <CalendarIcon size={14} className="text-emerald-600" />
                     <span>Connect Calendar</span>
@@ -637,6 +745,33 @@ const HRSchedulingPage: React.FC = () => {
               <div className="p-3.5 bg-emerald-50 border border-emerald-200 rounded-2xl flex items-center gap-2.5 text-xs text-emerald-800 font-bold animate-in fade-in slide-in-from-top-2 duration-300 shadow-sm">
                 <CheckCircle2 size={18} className="text-emerald-600 shrink-0" />
                 <span>{syncToast}</span>
+              </div>
+            )}
+
+            {/* Google Calendar Connection Prompt Banner when current HR account is not yet linked */}
+            {!isLoading && !isGoogleConnected && (
+              <div className="p-4 bg-amber-50/90 border border-amber-200 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-sm">
+                <div className="flex items-start sm:items-center gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center shrink-0">
+                    <CalendarIcon size={18} />
+                  </div>
+                  <div>
+                    <p className="text-xs font-black text-amber-950">
+                      Connect Your HR Google Calendar for Real-Time Synchronization
+                    </p>
+                    <p className="text-[11px] font-medium text-amber-800 mt-0.5">
+                      Link your Google account ({loggedInEmail || 'HR session'}) so your personal Google Calendar events, holidays, and interview bookings sync automatically in real time.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleConnectGoogleCalendar}
+                  className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-1.5 shrink-0 cursor-pointer"
+                >
+                  <CalendarIcon size={14} />
+                  <span>Connect Google Calendar Now</span>
+                </button>
               </div>
             )}
 
@@ -902,6 +1037,141 @@ const HRSchedulingPage: React.FC = () => {
               </div>
             )}
 
+            {/* REAL-TIME AVAILABLE SCHEDULE STRIP */}
+            {!isLoading && (() => {
+              const activeDay = selectedDayForDayView || new Date();
+              const availInfo = getDaySlotAvailability(activeDay);
+              const dayAllDayEvents = getEventsForDay(activeDay).filter((e) => e.isAllDay);
+              return (
+                <div className="bg-white border border-gray-100 rounded-2xl sm:rounded-3xl p-4 sm:p-5 shadow-sm space-y-3">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                    <div className="flex items-center gap-2.5 flex-wrap">
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-50 text-emerald-700 border border-emerald-200">
+                        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                        Real-Time Available Schedule
+                      </span>
+                      <span className="text-xs sm:text-sm font-black text-gray-900">
+                        {activeDay.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' })}
+                      </span>
+                      {!availInfo.isWeekend && !availInfo.isPast && (
+                        <span className="text-xs font-bold text-emerald-600">
+                          • {availInfo.freeSlots.length} of {availInfo.totalStandardSlots} standard slots available
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <label className="text-[11px] font-bold text-gray-500">Check Date:</label>
+                      <input
+                        type="date"
+                        value={toLocalDateString(activeDay)}
+                        onChange={(e) => {
+                          if (e.target.value) {
+                            const parts = e.target.value.split('-').map(Number);
+                            if (parts.length === 3) {
+                              const nextD = new Date(parts[0], parts[1] - 1, parts[2]);
+                              setSelectedDayForDayView(nextD);
+                              setCurrentDate(new Date(parts[0], parts[1] - 1, 1));
+                            }
+                          }
+                        }}
+                        className="px-2.5 py-1.5 bg-gray-50 border border-gray-200 rounded-xl text-xs font-bold text-gray-800 focus:outline-none focus:ring-2 focus:ring-[#D60041]/20 cursor-pointer"
+                      />
+                    </div>
+                  </div>
+
+                  {dayAllDayEvents.length > 0 && (
+                    <div className="flex flex-wrap items-center gap-2 pt-0.5">
+                      <span className="text-[10px] font-black uppercase tracking-wider text-gray-400">
+                        Google Calendar All-Day / Holidays:
+                      </span>
+                      {dayAllDayEvents.map((ev) => (
+                        <button
+                          key={ev.id}
+                          type="button"
+                          onClick={() => handleEventClick(ev)}
+                          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold border transition-all cursor-pointer ${
+                            ev.isHoliday
+                              ? 'bg-emerald-50 text-emerald-800 border-emerald-200 hover:border-emerald-400'
+                              : 'bg-blue-50 text-blue-700 border-blue-200 hover:border-blue-400'
+                          }`}
+                        >
+                          <span className={`w-1.5 h-1.5 rounded-full ${ev.isHoliday ? 'bg-emerald-600' : 'bg-blue-600'}`} />
+                          <span>{ev.title}</span>
+                          {ev.calendarName && (
+                            <span className="text-[9px] opacity-75">({ev.calendarName})</span>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {availInfo.isPast ? (
+                    <p className="text-xs font-semibold text-gray-400">
+                      This date has already passed. Select today or an upcoming weekday to view real-time available interview slots.
+                    </p>
+                  ) : availInfo.isWeekend ? (
+                    <p className="text-xs font-semibold text-amber-700 bg-amber-50 border border-amber-200/80 px-3 py-2 rounded-xl">
+                      Weekend (Non-Working Day) — Standard HR interview hours are Monday to Friday, 9:00 AM – 5:00 PM.
+                    </p>
+                  ) : (
+                    <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2">
+                      {availInfo.slots.map((slot) => {
+                        if (slot.isFree) {
+                          return (
+                            <button
+                              key={slot.hour}
+                              type="button"
+                              onClick={() => handleOpenNewSchedule(activeDay, slot.timeStr)}
+                              className="p-2.5 rounded-xl bg-emerald-50/70 hover:bg-emerald-100/80 border border-emerald-200 hover:border-emerald-400 text-left transition-all group cursor-pointer"
+                              title={`Click to schedule an interview at ${slot.rangeLabel}`}
+                            >
+                              <div className="flex items-center justify-between">
+                                <span className="text-[11px] font-black text-emerald-900">{slot.label}</span>
+                                <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded bg-emerald-200/70 text-emerald-800 group-hover:bg-[#D60041] group-hover:text-white transition-colors">
+                                  Available
+                                </span>
+                              </div>
+                              <p className="text-[10px] font-semibold text-emerald-700 mt-1 truncate">
+                                Click to book slot
+                              </p>
+                            </button>
+                          );
+                        }
+                        const blk = slot.blockingEvent;
+                        const isGoogleBlk = blk?.isGoogleEvent;
+                        return (
+                          <button
+                            key={slot.hour}
+                            type="button"
+                            onClick={() => blk && handleEventClick(blk)}
+                            className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
+                              isGoogleBlk
+                                ? 'bg-blue-50/70 border-blue-200 text-blue-900 hover:border-blue-400'
+                                : 'bg-rose-50/70 border-rose-200 text-rose-900 hover:border-[#D60041]'
+                            }`}
+                            title={blk ? `Busy: ${blk.title}` : 'Busy'}
+                          >
+                            <div className="flex items-center justify-between">
+                              <span className="text-[11px] font-black">{slot.label}</span>
+                              <span className={`text-[9px] font-black uppercase px-1.5 py-0.5 rounded ${
+                                isGoogleBlk ? 'bg-blue-200/70 text-blue-800' : 'bg-rose-200/70 text-[#D60041]'
+                              }`}>
+                                {isGoogleBlk ? 'G-Cal' : 'Booked'}
+                              </span>
+                            </div>
+                            <p className="text-[10px] font-bold mt-1 truncate">
+                              {blk ? (blk.candidate_name && !blk.isGoogleEvent ? blk.candidate_name : blk.title) : 'Occupied'}
+                            </p>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+
             {/* VIEW 1: MONTH VIEW */}
             {!isLoading && viewMode === 'month' && (
               <div className="bg-white border border-gray-100 rounded-2xl sm:rounded-3xl shadow-sm overflow-hidden">
@@ -925,25 +1195,34 @@ const HRSchedulingPage: React.FC = () => {
                         const dayEvents = getEventsForDay(dayObj.date);
                         const dayIsToday = isToday(dayObj.date);
                         const isPast = isPastDate(dayObj.date);
+                        const dayAvail = getDaySlotAvailability(dayObj.date);
+                        const isSelectedDay = isSameDay(dayObj.date, selectedDayForDayView);
 
                         return (
                           <div
                             key={index}
-                            onClick={isPast ? undefined : () => handleOpenNewSchedule(dayObj.date)}
-                            className={`min-h-[125px] p-2 flex flex-col justify-between transition-colors ${isPast
-                              ? 'bg-gray-100/50 text-gray-400 cursor-not-allowed select-none'
-                              : dayObj.isCurrentMonth
-                                ? 'bg-white hover:bg-gray-50/50 cursor-pointer group'
-                                : 'bg-gray-50/30 text-gray-300 cursor-pointer group'
+                            onClick={() => {
+                              setSelectedDayForDayView(dayObj.date);
+                              if (!isPast && !dayAvail.isWeekend) {
+                                handleOpenNewSchedule(dayObj.date);
+                              }
+                            }}
+                            className={`min-h-[135px] p-2 flex flex-col justify-between transition-colors ${isPast
+                              ? 'bg-gray-100/50 text-gray-400 cursor-pointer select-none'
+                              : isSelectedDay
+                                ? 'bg-pink-50/20 ring-1 ring-inset ring-[#D60041]/30 cursor-pointer group'
+                                : dayObj.isCurrentMonth
+                                  ? 'bg-white hover:bg-gray-50/50 cursor-pointer group'
+                                  : 'bg-gray-50/30 text-gray-300 cursor-pointer group'
                               }`}
-                            title={isPast ? 'Unavailable: Date has passed' : 'Click to schedule an interview'}
+                            title={isPast ? 'Past date — click to inspect schedule' : dayAvail.isWeekend ? 'Weekend' : `Click to schedule (${dayAvail.freeSlots.length} slots open)`}
                           >
                             {/* Day Number Header */}
                             <div className="flex items-center justify-between mb-1.5">
                               {isPast ? (
                                 <span
-                                  className="text-xs font-black w-6 h-6 rounded-full flex items-center justify-center text-gray-400 select-none cursor-not-allowed"
-                                  title="Unavailable: Date has passed"
+                                  className="text-xs font-black w-6 h-6 rounded-full flex items-center justify-center text-gray-400 select-none"
+                                  title="Date has passed"
                                 >
                                   {dayObj.date.getDate()}
                                 </span>
@@ -974,25 +1253,51 @@ const HRSchedulingPage: React.FC = () => {
                                 >
                                   Unavailable
                                 </span>
-                              ) : (
-                                <span className="opacity-0 group-hover:opacity-100 text-[#D60041] text-[10px] font-bold transition-opacity">
-                                  + Add
+                              ) : dayAvail.isWeekend ? (
+                                <span className="text-[9px] font-bold tracking-tight text-gray-400 bg-gray-50 border border-gray-200/60 px-1.5 py-0.5 rounded select-none">
+                                  Weekend
                                 </span>
+                              ) : (
+                                <div className="flex items-center gap-1">
+                                  <span
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setSelectedDayForDayView(dayObj.date);
+                                    }}
+                                    className={`text-[9px] font-bold px-1.5 py-0.5 rounded border ${
+                                      dayAvail.freeSlots.length > 0
+                                        ? 'bg-emerald-50 text-emerald-700 border-emerald-200/80'
+                                        : 'bg-amber-50 text-amber-700 border-amber-200/80'
+                                    }`}
+                                    title={`${dayAvail.freeSlots.length} of ${dayAvail.totalStandardSlots} standard 1-hour slots available`}
+                                  >
+                                    {dayAvail.freeSlots.length > 0 ? `${dayAvail.freeSlots.length} open` : 'Full'}
+                                  </span>
+                                  <span className="hidden group-hover:inline text-[#D60041] text-[10px] font-bold transition-opacity">
+                                    + Add
+                                  </span>
+                                </div>
                               )}
                             </div>
 
                             {/* Events List in Day Cell */}
-                            <div className="space-y-1 flex-1 overflow-y-auto max-h-[85px] scrollbar-hide">
+                            <div className="space-y-1 flex-1 overflow-y-auto max-h-[90px] scrollbar-hide">
                               {dayEvents.slice(0, 3).map((ev) => {
                                 const isGoogle = ev.isGoogleEvent;
+                                const isHoliday = Boolean(ev.isHoliday);
+                                const isAllDay = Boolean(ev.isAllDay);
                                 const isCompleted = ev.status === 'COMPLETED';
                                 const isCanceled = ev.status === 'CANCELED' || ev.status === 'CANCELLED';
                                 const isNoShow = ev.status === 'NO_SHOW';
                                 const readOnly = isEventReadOnly(ev);
 
                                 let badgeStyle = 'bg-pink-50 text-[#D60041] border border-pink-200/80 hover:border-[#D60041]';
-                                if (isGoogle) {
-                                  badgeStyle = 'bg-blue-50 text-blue-700 border border-blue-200/80 hover:border-blue-400';
+                                if (isHoliday) {
+                                  badgeStyle = 'bg-emerald-600 text-white border border-emerald-700 hover:bg-emerald-700';
+                                } else if (isGoogle) {
+                                  badgeStyle = isAllDay
+                                    ? 'bg-sky-500 text-white border border-sky-600 hover:bg-sky-600'
+                                    : 'bg-blue-50 text-blue-700 border border-blue-200/80 hover:border-blue-400';
                                 } else if (isCompleted) {
                                   badgeStyle = 'bg-emerald-50 text-emerald-700 border border-emerald-200/80';
                                 } else if (isCanceled) {
@@ -1011,17 +1316,19 @@ const HRSchedulingPage: React.FC = () => {
                                       handleEventClick(ev);
                                     }}
                                     className={`px-2 py-1 rounded-lg text-[10px] font-bold truncate flex items-center gap-1 transition-transform hover:scale-101 cursor-pointer ${badgeStyle}`}
-                                    title={`${ev.title} (${formatEventTime(ev.start)})${readOnly && ev.interviewer_name ? ` • Assigned to ${ev.interviewer_name} (Read-Only)` : ''}`}
+                                    title={`${ev.title} (${isAllDay ? 'All Day' : formatEventTime(ev.start)})${readOnly && ev.interviewer_name ? ` • Assigned to ${ev.interviewer_name} (Read-Only)` : ''}`}
                                   >
                                     {isGoogle ? (
-                                      <span className="w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0" />
+                                      <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${isHoliday || isAllDay ? 'bg-white' : 'bg-blue-500'}`} />
                                     ) : readOnly ? (
                                       <Lock size={10} className="shrink-0 text-amber-600" />
                                     ) : (
                                       <CalendarIcon size={10} className="shrink-0" />
                                     )}
-                                    <span className="shrink-0 font-medium opacity-80">{formatEventTime(ev.start)}</span>
-                                    <span className="truncate">{ev.candidate_name && !isGoogle ? ev.candidate_name : ev.title}</span>
+                                    {!isAllDay && (
+                                      <span className="shrink-0 font-medium opacity-80">{formatEventTime(ev.start)}</span>
+                                    )}
+                                    <span className="truncate">{!isGoogle && ev.candidate_name ? ev.candidate_name : ev.title}</span>
                                   </div>
                                 );
                               })}
@@ -1166,7 +1473,7 @@ const HRSchedulingPage: React.FC = () => {
                                         }`}
                                     >
                                       <div className="flex items-center justify-between text-[10px] font-bold text-gray-500 mb-1">
-                                        <span>{formatEventTime(ev.start)} – {formatEventTime(ev.end)}</span>
+                                        <span>{ev.isAllDay ? 'All Day' : `${formatEventTime(ev.start)} – ${formatEventTime(ev.end)}`}</span>
                                         <div className="flex items-center gap-1 flex-wrap justify-end">
                                           {readOnly && (
                                             <span className="inline-flex items-center gap-0.5 text-[9px] font-black text-amber-700 bg-amber-50 px-1 py-0.5 rounded border border-amber-200" title="Read-Only">
@@ -1287,12 +1594,30 @@ const HRSchedulingPage: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* Day Hourly Schedule Timeline (8:00 AM - 5:00 PM) */}
+                  {/* Day Hourly Schedule Timeline (9:00 AM - 5:00 PM) */}
                   <div className="space-y-3">
                     {WORKING_HOURS.map((slot) => {
+                      const slotStart = new Date(
+                        selectedDayForDayView.getFullYear(),
+                        selectedDayForDayView.getMonth(),
+                        selectedDayForDayView.getDate(),
+                        slot.hour,
+                        0,
+                        0,
+                        0
+                      );
+                      const slotEnd = new Date(
+                        selectedDayForDayView.getFullYear(),
+                        selectedDayForDayView.getMonth(),
+                        selectedDayForDayView.getDate(),
+                        slot.hour + 1,
+                        0,
+                        0,
+                        0
+                      );
                       const hourEvents = getEventsForDay(selectedDayForDayView).filter((ev) => {
-                        const evHour = ev.start.getHours();
-                        return evHour === slot.hour;
+                        if (ev.isAllDay) return false;
+                        return ev.start < slotEnd && ev.end > slotStart;
                       });
 
                       return (
@@ -1557,7 +1882,7 @@ const HRSchedulingPage: React.FC = () => {
                                       </p>
                                       <p className="text-[11px] text-gray-400 font-semibold mt-1 flex items-center gap-1.5">
                                         <Clock size={12} className="text-[#D60041]" />
-                                        {formatEventTime(ev.start)} – {formatEventTime(ev.end)}
+                                        {ev.isAllDay ? 'All Day Event' : `${formatEventTime(ev.start)} – ${formatEventTime(ev.end)}`}
                                       </p>
                                       {!isGoogle && (
                                         <p className="text-[11px] text-[#D60041] font-semibold mt-1 flex items-center gap-1.5">

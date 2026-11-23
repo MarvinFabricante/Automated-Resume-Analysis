@@ -65,10 +65,12 @@ async def sync_google_calendar(
     Manually trigger two-way synchronization between the system calendar and Google Calendar.
     """
     try:
-        feed = await interview_service.get_calendar_feed(db, current_user.get("id"))
+        from app.services.google_calendar_service import invalidate_google_calendar_cache
+        invalidate_google_calendar_cache()
         await clear_cache_pattern("app_interviews*")
         await clear_cache_pattern("cand_interviews*")
         await clear_cache_pattern("calendar_events*")
+        feed = await interview_service.get_calendar_feed(db, current_user.get("id"), bypass_cache=True)
         return feed
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

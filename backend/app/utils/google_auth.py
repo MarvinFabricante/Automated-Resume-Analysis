@@ -320,6 +320,15 @@ def get_calendar_service(credentials_json: str):
         return None, None
     try:
         creds_data = json.loads(credentials_json) if isinstance(credentials_json, str) else credentials_json
+        if isinstance(creds_data, dict):
+            if not creds_data.get("refresh_token") and is_google_credentials_expired(credentials_json):
+                print("Google OAuth credentials invalid or expired without refresh token.")
+                return None, credentials_json
+            if creds_data.get("refresh_token") and not creds_data.get("client_id") and os.getenv("GOOGLE_CLIENT_ID"):
+                creds_data = dict(creds_data)
+                creds_data["client_id"] = os.getenv("GOOGLE_CLIENT_ID")
+                creds_data["client_secret"] = os.getenv("GOOGLE_CLIENT_SECRET", "")
+                creds_data.setdefault("token_uri", "https://oauth2.googleapis.com/token")
         try:
             creds = Credentials.from_authorized_user_info(creds_data, SCOPES)
         except Exception:
@@ -328,9 +337,9 @@ def get_calendar_service(credentials_json: str):
                 creds = Credentials(
                     token=token,
                     refresh_token=creds_data.get("refresh_token"),
-                    token_uri=creds_data.get("token_uri"),
-                    client_id=creds_data.get("client_id"),
-                    client_secret=creds_data.get("client_secret"),
+                    token_uri=creds_data.get("token_uri") or "https://oauth2.googleapis.com/token",
+                    client_id=creds_data.get("client_id") or os.getenv("GOOGLE_CLIENT_ID"),
+                    client_secret=creds_data.get("client_secret") or os.getenv("GOOGLE_CLIENT_SECRET"),
                     scopes=SCOPES
                 )
             else:

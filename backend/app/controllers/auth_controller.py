@@ -144,6 +144,28 @@ async def get_security_status(
             "last_active": None
         }
         
+    # If real Google OAuth credentials exist (has client_id), verify/auto-refresh them
+    # so revoked or invalid_grant refresh tokens are detected immediately.
+    linked_google_account = None
+    if user.google_credentials:
+        try:
+            import json as _json
+            c_dict = _json.loads(user.google_credentials) if isinstance(user.google_credentials, str) else {}
+            if isinstance(c_dict, dict):
+                linked_google_account = c_dict.get("account")
+                if c_dict.get("client_id"):
+                    from app.services.interview_service import _get_valid_credentials
+                    fresh_user = await AuthRepository.get_user_by_id_fresh(db, target_id)
+                    if fresh_user:
+                        valid_creds = _get_valid_credentials(fresh_user)
+                        await db.commit()
+                        await AuthRepository.invalidate_user_cache(fresh_user)
+                        user = fresh_user
+                        if not valid_creds:
+                            linked_google_account = None
+        except Exception:
+            pass
+
     # Check if Google OAuth token has expired (1 hour limit)
     is_google_expired = False
     if user.google_token_expiry:
@@ -199,7 +221,7 @@ async def get_security_status(
         "role": user.role,
         "fullname": user.fullname,
         "is_google_linked": is_google_linked,
-        "google_email": user.email if is_google_linked else None,
+        "google_email": (linked_google_account or user.email) if is_google_linked else None,
         "has_calendar_sync": has_calendar,
         "google_token_expired": is_google_expired,
         "has_custom_password": has_custom_password,
@@ -370,7 +392,16 @@ async def google_register(request: Request, origin: str = None):
     return await google_candidate_register(request, origin)
 
 @router.get("/google/login")
-async def google_login(request: Request, flow: str = "login", role: str = "auto", origin: str = None, user_id: int = None, return_to: str = None):
+async def google_login(
+    request: Request,
+    flow: str = "login",
+    role: str = "auto",
+    origin: str = None,
+    user_id: int = None,
+    return_to: str = None,
+    login_hint: str = None,
+    db: AsyncSession = Depends(get_db),
+):
     """
     Role-aware Google OAuth login and account-linking endpoint.
     - If flow is 'link_account': links Google credentials to an existing user session.
@@ -384,10 +415,30 @@ async def google_login(request: Request, flow: str = "login", role: str = "auto"
     base_origin = _public_origin_from_request(request, origin)
     redirect_uri = _redirect_uri_for_origin(base_origin)
     norm_role = (role or "auto").strip().lower()
-    
+    hint_clean = (login_hint or "").strip().lower() or None
+
+    # If role is 'auto' but login_hint or user_id identifies an HR user, request HR calendar scopes directly
+    if norm_role == "auto" and flow == "login":
+        if hint_clean:
+            row = await AuthRepository.get_raw_user_by_email(db, hint_clean)
+            if (row and (row.role or "").upper() == "HR") or hint_clean in auth_service.KNOWN_HR_EMAILS:
+                norm_role = "hr"
+        elif user_id:
+            u_obj = await AuthRepository.get_user_by_id(db, user_id)
+            if u_obj and (u_obj.role or "").upper() == "HR":
+                norm_role = "hr"
+                if not hint_clean and u_obj.email and u_obj.email.endswith("@gmail.com"):
+                    hint_clean = u_obj.email
+
     if flow in ["link_account", "link_google"]:
         if norm_role == "hr":
-            url, state = get_hr_google_auth_url(flow_type="link_account", redirect_uri=redirect_uri, user_id=user_id, return_to=return_to)
+            url, state = get_hr_google_auth_url(
+                flow_type="link_account",
+                redirect_uri=redirect_uri,
+                user_id=user_id,
+                return_to=return_to,
+                login_hint=hint_clean,
+            )
         elif norm_role == "admin":
             url, state = get_admin_google_auth_url(flow_type="link_account", redirect_uri=redirect_uri, user_id=user_id)
         else:
@@ -395,14 +446,20 @@ async def google_login(request: Request, flow: str = "login", role: str = "auto"
     elif flow in ["candidate_register", "register"]:
         url, state = get_candidate_google_auth_url(flow_type="candidate_register", redirect_uri=redirect_uri, user_id=user_id)
     elif norm_role == "hr" or flow == "hr_login":
-        url, state = get_hr_google_auth_url(flow_type="hr_login", redirect_uri=redirect_uri, user_id=user_id, return_to=return_to)
+        url, state = get_hr_google_auth_url(
+            flow_type="hr_login",
+            redirect_uri=redirect_uri,
+            user_id=user_id,
+            return_to=return_to,
+            login_hint=hint_clean,
+        )
     elif norm_role == "admin" or flow == "admin_login":
         url, state = get_admin_google_auth_url(flow_type="admin_login", redirect_uri=redirect_uri, user_id=user_id)
     elif norm_role == "candidate":
         url, state = get_candidate_google_auth_url(flow_type="candidate_login", redirect_uri=redirect_uri, user_id=user_id)
     else:
         url, state = get_google_auth_url(role="auto", flow_type="login", redirect_uri=redirect_uri, user_id=user_id)
-    
+
     return RedirectResponse(url)
 
 @router.get("/google/callback")
@@ -492,6 +549,7 @@ async def google_callback(
 
         if flow_type in ["link_account", "link_google"]:
             target_user_id = flow_info.get("user_id") if isinstance(flow_info, dict) else None
+            return_to = flow_info.get("return_to") if isinstance(flow_info, dict) else None
             user = None
             if target_user_id:
                 try:
@@ -507,22 +565,33 @@ async def google_callback(
                 try:
                     import json as _json
                     c_dict = _json.loads(creds_json)
-                    if isinstance(c_dict, dict) and effective_refresh and not c_dict.get("refresh_token"):
-                        c_dict["refresh_token"] = effective_refresh
+                    if isinstance(c_dict, dict):
+                        if effective_refresh and not c_dict.get("refresh_token"):
+                            c_dict["refresh_token"] = effective_refresh
+                        if email:
+                            c_dict["account"] = email
                         merged_creds = _json.dumps(c_dict)
                 except Exception:
                     pass
                 user.google_credentials = merged_creds
                 user.google_access_token = google_access_tok
-                if google_refresh_tok:
-                    user.google_refresh_token = google_refresh_tok
+                if effective_refresh:
+                    user.google_refresh_token = effective_refresh
                 user.google_token_expiry = google_expiry
                 user.google_linked = True
                 if picture and not user.profile_image_url:
                     user.profile_image_url = picture
                 await db.commit()
                 await AuthRepository.invalidate_user_cache(user)
+                try:
+                    from app.services.google_calendar_service import invalidate_google_calendar_cache
+                    invalidate_google_calendar_cache(merged_creds)
+                except Exception:
+                    pass
                 
+                if return_to and str(return_to).startswith("/"):
+                    sep = "&" if "?" in str(return_to) else "?"
+                    return RedirectResponse(f"{base_url}{return_to}{sep}google_linked=success")
                 role_path = (user.role or "candidate").lower()
                 return RedirectResponse(f"{base_url}/{role_path}/settings?tab=security&google_linked=success")
             else:

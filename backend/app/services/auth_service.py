@@ -391,16 +391,37 @@ async def login_with_google(
                 effective_refresh = google_refresh_token or user.google_refresh_token
                 try:
                     creds_dict = _json.loads(google_credentials)
-                    if isinstance(creds_dict, dict) and effective_refresh and not creds_dict.get("refresh_token"):
-                        creds_dict["refresh_token"] = effective_refresh
+                    if isinstance(creds_dict, dict):
+                        if effective_refresh and not creds_dict.get("refresh_token"):
+                            creds_dict["refresh_token"] = effective_refresh
+                        if email and not creds_dict.get("account"):
+                            creds_dict["account"] = email
                         merged_creds = _json.dumps(creds_dict)
                 except Exception:
                     pass
                 user.google_credentials = merged_creds
                 user.google_access_token = google_access_token
-                if google_refresh_token:
-                    user.google_refresh_token = google_refresh_token
+                if effective_refresh:
+                    user.google_refresh_token = effective_refresh
                 user.google_token_expiry = google_token_expiry or (datetime.utcnow() + timedelta(hours=1))
+                try:
+                    from app.services.google_calendar_service import invalidate_google_calendar_cache
+                    invalidate_google_calendar_cache(merged_creds)
+                except Exception:
+                    pass
+            elif user.google_credentials:
+                # Validate existing calendar credentials so dead/revoked tokens (e.g. invalid_grant)
+                # are cleared and trigger fresh Google Calendar OAuth upgrade automatically.
+                try:
+                    from app.services.interview_service import _get_valid_credentials
+                    valid_existing = _get_valid_credentials(user)
+                    if not valid_existing:
+                        user.google_credentials = None
+                        user.google_access_token = None
+                        user.google_refresh_token = None
+                        user.google_token_expiry = None
+                except Exception:
+                    pass
         else:
             user.google_credentials = None
             user.google_access_token = None
