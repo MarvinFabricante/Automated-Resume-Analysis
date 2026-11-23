@@ -192,11 +192,12 @@ async def export_hr_dashboard_pdf(db: AsyncSession = Depends(get_db)):
 
 @router.get("/interviewers")
 async def get_hr_interviewers(db: AsyncSession = Depends(get_db)):
-    """Fetch all active HR interviewers/panelists with their details and Google Calendar status."""
+    """Fetch all active HR interviewers/panelists with their details and live Google Calendar status."""
     from sqlalchemy import text
+    from app.utils.google_auth import is_google_credentials_expired
     query = text("""
         SELECT u.id, u.fullname, u.email, u.profile_image_url, 
-               (u.google_credentials IS NOT NULL) AS has_google_calendar,
+               u.google_credentials,
                h.company_name, h.department, h.position
         FROM users u
         LEFT JOIN hr_staffs h ON h.id = u.id
@@ -211,7 +212,11 @@ async def get_hr_interviewers(db: AsyncSession = Depends(get_db)):
             "fullname": r.fullname,
             "email": r.email,
             "profile_image_url": r.profile_image_url,
-            "has_google_calendar": bool(r.has_google_calendar),
+            "has_google_calendar": bool(
+                r.google_credentials
+                and "calendar" in r.google_credentials
+                and not is_google_credentials_expired(r.google_credentials)
+            ),
             "company_name": r.company_name or "Mariwasa Siam Ceramics, Inc.",
             "department": r.department or "Human Resources",
             "position": r.position or "HR Specialist",

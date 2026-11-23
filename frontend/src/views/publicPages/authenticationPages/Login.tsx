@@ -177,7 +177,8 @@ const Login: React.FC = () => {
     // Universal Google login (requests Calendar scopes immediately if HR role was detected)
     const clientOrigin = typeof window !== 'undefined' ? window.location.origin : '';
     const roleParam = detectedRoleInfo?.role === 'hr' ? '&role=hr' : '';
-    window.location.href = `${API_BASE_URL}/auth/google/login?origin=${encodeURIComponent(clientOrigin)}${roleParam}`;
+    const hintParam = email.trim() && email.includes('@') ? `&login_hint=${encodeURIComponent(email.trim())}` : '';
+    window.location.href = `${API_BASE_URL}/auth/google/login?origin=${encodeURIComponent(clientOrigin)}${roleParam}${hintParam}`;
   };
 
   const handleEmailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
