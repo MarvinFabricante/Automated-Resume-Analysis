@@ -351,7 +351,7 @@ const ViewCandidateDetailsModal: React.FC<ViewCandidateDetailsModalProps> = ({
     candidate.phone,
     candidate.email || candidate.candidate_email
   );
-  const deliveredSmsCount = messageLogs.filter((m) => m.channel === 'SMS' && m.status !== 'FAILED').length;
+  const queuedSmsCount = messageLogs.filter((m) => m.channel === 'SMS' && m.status !== 'FAILED').length;
   const failedSmsCount = messageLogs.filter((m) => m.channel === 'SMS' && m.status === 'FAILED').length;
   const isLoadingHistory = isLoadingAppInterviews || isLoadingEmailInterviews;
 
@@ -964,10 +964,10 @@ const ViewCandidateDetailsModal: React.FC<ViewCandidateDetailsModalProps> = ({
             </div>
 
             <div className="flex items-center gap-1.5 flex-wrap">
-              {deliveredSmsCount > 0 && (
+              {queuedSmsCount > 0 && (
                 <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black uppercase bg-emerald-50 text-emerald-700 border border-emerald-200">
                   <CheckCircle2 size={12} className="text-emerald-600" />
-                  <span>SMS Delivered ({deliveredSmsCount})</span>
+                  <span>SMS Queued ({queuedSmsCount})</span>
                 </span>
               )}
               {failedSmsCount > 0 && (
@@ -1021,7 +1021,7 @@ const ViewCandidateDetailsModal: React.FC<ViewCandidateDetailsModalProps> = ({
                           }`}
                         >
                           {isFailed ? <AlertTriangle size={10} /> : <Check size={10} />}
-                          <span>{msg.status || 'DELIVERED'}</span>
+                          <span>{msg.status || (msg.channel === 'SMS' ? 'QUEUED' : 'DELIVERED')}</span>
                         </span>
                       </div>
                       <p className="text-[11px] text-gray-500 font-medium">

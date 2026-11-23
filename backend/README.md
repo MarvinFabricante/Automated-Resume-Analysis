@@ -76,3 +76,33 @@ To ensure high concurrency, ultra-low latency, and smooth application execution,
    - **Google Calendar**: Calendar queries check Redis first; calendar mutations are staged in Redis first.
    - **Rate Limiting**: Backed by Redis distributed storage via Slowapi.
    - **Real-Time WebSockets**: Distributed cross-worker broadcasting using Redis Pub/Sub (`pubsub:ws_notifications`, `pubsub:ws_chat`, `pubsub:ws_status`).
+
+## SMS verification
+
+Interview scheduling, rescheduling, and cancellation send candidate SMS through
+[iProgSMS v1](https://www.iprogsms.com/api/v1/documentation). Configure
+`IPROG_SMS_API_TOKEN`, `IPROG_SMS_API_URL`, and `IPROG_SMS_PROVIDER` in the backend
+environment. The application accepts Philippine mobile numbers in local, +63,
+0063, and formatted resume notation. Invalid application numbers fall back to
+candidate contact fields in the stored resume and profile. Missing recipients
+and provider rejections appear as `SMS_FAILED` in interview logs.
+
+Run from the repository root (use your Python environment):
+
+```bash
+.venv/bin/python backend/scripts/check_sms.py
+.venv/bin/python backend/scripts/check_sms.py --phone YOUR_TEST_MOBILE
+```
+
+These checks do not send messages. To send one test SMS to a number you control,
+add `--send-test` (uses SMS credits). Check an existing message without resending:
+
+```bash
+.venv/bin/python backend/scripts/check_sms.py --message-id YOUR_MESSAGE_ID
+```
+
+`SMS Queued` means the API accepted the message; it does not prove receipt on the
+phone. Verify receipt with the test recipient. Smart/TNT requires an approved
+custom sender name and a supported route confirmed by iProgSMS; a successful API
+response alone cannot establish carrier support. Configure `IPROG_SMS_SENDER_NAME`
+only after approval.

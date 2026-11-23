@@ -499,7 +499,7 @@ const InterviewDetailsModal: React.FC<InterviewDetailsModalProps> = ({ isOpen, o
                       interview?.candidate_phone,
                       interview?.candidate_email
                     );
-                    const deliveredSmsCount = interviewMsgLogs.filter(
+                    const queuedSmsCount = interviewMsgLogs.filter(
                       (m) => m.channel === 'SMS' && m.status !== 'FAILED'
                     ).length;
                     const failedSmsCount = interviewMsgLogs.filter(
@@ -513,10 +513,10 @@ const InterviewDetailsModal: React.FC<InterviewDetailsModalProps> = ({ isOpen, o
                             Message Logs ({interviewMsgLogs.length})
                           </span>
                           <div className="flex items-center gap-1.5 flex-wrap">
-                            {deliveredSmsCount > 0 && (
+                            {queuedSmsCount > 0 && (
                               <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase bg-emerald-100 text-emerald-800 border border-emerald-200 inline-flex items-center gap-1">
                                 <Check size={10} />
-                                <span>SMS Delivered{deliveredSmsCount > 1 ? ` (${deliveredSmsCount})` : ''}</span>
+                                <span>SMS Queued{queuedSmsCount > 1 ? ` (${queuedSmsCount})` : ''}</span>
                               </span>
                             )}
                             {failedSmsCount > 0 && (
@@ -560,7 +560,7 @@ const InterviewDetailsModal: React.FC<InterviewDetailsModalProps> = ({ isOpen, o
                                         }`}
                                       >
                                         {isFailed ? <AlertCircle size={9} /> : <Check size={9} />}
-                                        <span>{msg.status || 'DELIVERED'}</span>
+                                        <span>{msg.status || (msg.channel === 'SMS' ? 'QUEUED' : 'DELIVERED')}</span>
                                       </span>
                                     </div>
                                     <p className="text-[11px] text-gray-500 font-medium">To {msg.recipient}</p>

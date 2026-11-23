@@ -119,6 +119,9 @@ export const getCallOutcomeBadgeClass = (value?: string | null): string => {
   if (normalized === 'FAILED' || normalized === 'UNREACHABLE') {
     return 'bg-rose-100 text-rose-800 border-rose-200';
   }
+  if (normalized === 'QUEUED') {
+    return 'bg-amber-100 text-amber-800 border-amber-200';
+  }
   if (normalized === 'DELIVERED' || normalized === 'SENT' || normalized === 'SMS_SENT' || normalized === 'SMS_BACKUP_SENT') {
     return 'bg-emerald-100 text-emerald-800 border-emerald-200';
   }
@@ -202,9 +205,9 @@ export const extractMessageLogs = (
           log_type: lType,
           channel: 'SMS',
           label,
-          status: isFailed ? 'FAILED' : 'DELIVERED',
+          status: isFailed ? 'FAILED' : 'QUEUED',
           recipient,
-          details: details || (isFailed ? `Failed to deliver SMS to ${recipient} for ${ivTitle}.` : `${label} delivered to ${recipient} for ${ivTitle}.`),
+          details: details || (isFailed ? `Failed to deliver SMS to ${recipient} for ${ivTitle}.` : `${label} queued for ${recipient} for ${ivTitle}.`),
           created_at: log.created_at || iv.created_at,
         });
       } else if (lType === 'EMAIL_SENT' || lType === 'EMAIL_RESCHEDULED' || lType === 'EMAIL_CANCELED') {
@@ -247,9 +250,9 @@ export const extractMessageLogs = (
         log_type: 'SMS_BACKUP_SENT',
         channel: 'SMS',
         label: 'Backup SMS Notification',
-        status: 'DELIVERED',
+        status: 'QUEUED',
         recipient,
-        details: `Backup SMS notification delivered to ${recipient} following unsuccessful voice call attempts.`,
+        details: `Backup SMS notification queued for ${recipient} following unsuccessful voice call attempts.`,
         created_at: iv.updated_at || iv.last_call_at || iv.created_at,
       });
     }
@@ -272,9 +275,9 @@ export const extractMessageLogs = (
           log_type: 'SMS_BACKUP_SENT',
           channel: 'SMS',
           label: 'Backup SMS Notification',
-          status: 'DELIVERED',
+          status: 'QUEUED',
           recipient,
-          details: `Backup SMS notification delivered to ${recipient} following voice call attempt #${cLog.attempt_number || 1}.`,
+          details: `Backup SMS notification queued for ${recipient} following voice call attempt #${cLog.attempt_number || 1}.`,
           created_at: cLog.created_at,
         });
       }
@@ -295,11 +298,11 @@ export const extractMessageLogs = (
   });
 };
 
-export const getInterviewSmsStatus = (iv: any): 'DELIVERED' | 'FAILED' | null => {
+export const getInterviewSmsStatus = (iv: any): 'QUEUED' | 'FAILED' | null => {
   if (!iv) return null;
   const smsLogs = extractMessageLogs([iv]).filter((m) => m.channel === 'SMS');
   if (smsLogs.length === 0) return null;
-  return smsLogs[0].status === 'FAILED' ? 'FAILED' : 'DELIVERED';
+  return smsLogs[0].status === 'FAILED' ? 'FAILED' : 'QUEUED';
 };
 
 
