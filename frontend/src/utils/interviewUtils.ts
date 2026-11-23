@@ -170,7 +170,6 @@ export const extractMessageLogs = (
     const ivEmail = iv.candidate_email || cleanEmail || 'Candidate Email';
     const ivLogs: any[] = Array.isArray(iv.logs) ? iv.logs : [];
 
-    let hasSmsScheduleLog = false;
     let hasSmsBackupLog = false;
 
     for (const log of ivLogs) {
@@ -179,7 +178,6 @@ export const extractMessageLogs = (
       const details = String(log.details || '').trim();
 
       if (lType === 'SMS_SENT' || lType === 'SMS_RESCHEDULED' || lType === 'SMS_CANCELED' || lType === 'SMS_BACKUP_SENT' || lType === 'SMS_FAILED') {
-        if (lType === 'SMS_SENT' || lType === 'SMS_RESCHEDULED' || lType === 'SMS_FAILED') hasSmsScheduleLog = true;
         if (lType === 'SMS_BACKUP_SENT') hasSmsBackupLog = true;
 
         const phoneMatch = details.match(/(?:\+63|09)\d[\d\s-]{7,13}/);
@@ -239,26 +237,7 @@ export const extractMessageLogs = (
       }
     }
 
-    // Fallback synthesis if interview has a phone number and was scheduled, ensuring SMS delivery status is always visible
-    if (!hasSmsScheduleLog && (iv.candidate_phone || cleanPhone)) {
-      const recipient = iv.candidate_phone || cleanPhone;
-      const jobName = iv.job_title || 'applied position';
-      const candName = iv.candidate_name || 'Candidate';
-      addEntry(`synth-sms-sched-${ivId}`, {
-        id: `sms-sched-${ivId}`,
-        interview_id: ivId,
-        interview_title: ivTitle,
-        log_type: 'SMS_SENT',
-        channel: 'SMS',
-        label: 'SMS Notification',
-        status: 'DELIVERED',
-        recipient,
-        details: `SMS interview notification delivered to ${recipient} for ${candName} (${jobName}).`,
-        created_at: iv.created_at || iv.start_time,
-      });
-    }
-
-    // Fallback synthesis if backup SMS was triggered on the interview
+    // Fallback synthesis only when backup SMS was explicitly recorded on the interview
     if (!hasSmsBackupLog && (iv.sms_backup_sent || String(iv.call_status || '').toUpperCase() === 'SMS_BACKUP_SENT')) {
       const recipient = iv.candidate_phone || cleanPhone || 'Candidate Phone';
       addEntry(`synth-sms-backup-${ivId}`, {
@@ -314,6 +293,13 @@ export const extractMessageLogs = (
     }
     return (Number.isNaN(bMs) ? 0 : bMs) - (Number.isNaN(aMs) ? 0 : aMs);
   });
+};
+
+export const getInterviewSmsStatus = (iv: any): 'DELIVERED' | 'FAILED' | null => {
+  if (!iv) return null;
+  const smsLogs = extractMessageLogs([iv]).filter((m) => m.channel === 'SMS');
+  if (smsLogs.length === 0) return null;
+  return smsLogs[0].status === 'FAILED' ? 'FAILED' : 'DELIVERED';
 };
 
 

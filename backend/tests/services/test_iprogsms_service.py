@@ -1,3 +1,5 @@
+from datetime import datetime
+from pathlib import Path
 import pytest
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -5,10 +7,15 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from app.services.interview_service import (
     _dispatch_candidate_sms,
     _resolve_candidate_phone,
+    check_iprogsms_credits,
+    check_iprogsms_message_status,
+    detect_phone_network_iprogsms,
     format_phone_for_iprogsms,
+    format_phone_for_iprogsms_detect,
     format_to_e164,
     send_iprogsms_sync,
     send_sms_notification_sync,
+    validate_iprogsms_content,
 )
 
 
@@ -161,3 +168,173 @@ async def test_resolve_candidate_phone_falls_back_to_physical_resume_parsed_data
     resolved = await _resolve_candidate_phone(db_session, app_obj)
     assert resolved == "0917-555-8899"
     assert app_obj.phone == "0917-555-8899"
+
+
+def test_format_phone_for_iprogsms_detect_normalizes_to_11_digit_local():
+    """Formats dashed/E.164 PH numbers into 09XXXXXXXXX for /api/v1/phone_numbers/detect."""
+    assert format_phone_for_iprogsms_detect("0960-246-5936") == "09602465936"
+    assert format_phone_for_iprogsms_detect("+63 960 246 5936") == "09602465936"
+    assert format_phone_for_iprogsms_detect("639602465936") == "09602465936"
+    assert format_phone_for_iprogsms_detect("N/A") == ""
+
+
+def test_send_iprogsms_sync_clamps_unsupported_sms_provider_to_default():
+    """Falls back to sms_provider=0 when IPROG_SMS_PROVIDER is outside {0, 1, 2}."""
+    mock_resp = MagicMock(status_code=200, text='{"status": 200, "message_id": "iSms-99"}')
+    mock_resp.json.return_value = {"status": 200, "message_id": "iSms-99"}
+
+    with patch.dict(
+        "os.environ",
+        {
+            "IPROG_SMS_API_TOKEN": "tok",
+            "IPROG_SMS_API_URL": "https://www.iprogsms.com/api/v1/sms_messages",
+            "IPROG_SMS_PROVIDER": "99",
+            "IPROG_SMS_SENDER_NAME": "",
+        },
+        clear=False,
+    ), patch("app.services.interview_service.requests.post", return_value=mock_resp) as mock_post:
+        ok = send_iprogsms_sync("09171234567", "Provider clamp check")
+
+    assert ok is True
+    assert mock_post.call_args.kwargs["json"]["sms_provider"] == 0
+
+
+def test_iprogsms_v1_diagnostic_helpers():
+    """Verifies credits, network detect, message status, and content validation helpers against v1 API."""
+    env = {
+        "IPROG_SMS_API_TOKEN": "tok_v1",
+        "IPROG_SMS_API_URL": "https://www.iprogsms.com/api/v1/sms_messages",
+    }
+
+    detect_resp = MagicMock(status_code=200, text="{}")
+    detect_resp.json.return_value = {
+        "status": "success",
+        "data": {"phone_number": "09602465936", "is_smart_tnt": True, "network": "Smart/TNT"},
+    }
+    credits_resp = MagicMock(status_code=200, text="{}")
+    credits_resp.json.return_value = {"status": "success", "data": {"load_balance": "199.0"}}
+    status_resp = MagicMock(status_code=200, text="{}")
+    status_resp.json.return_value = {"status": 200, "message_status": "completed"}
+    validate_resp = MagicMock(status_code=200, text="{}")
+    validate_resp.json.return_value = {
+        "status": "success",
+        "message": "Message passed validation",
+        "data": {"passed": True, "warnings": []},
+    }
+
+    with patch.dict("os.environ", env, clear=False), \
+         patch("app.services.interview_service.requests.post", return_value=detect_resp) as mock_post, \
+         patch(
+             "app.services.interview_service.requests.get",
+             side_effect=[credits_resp, status_resp, validate_resp],
+         ) as mock_get:
+        net = detect_phone_network_iprogsms("0960-246-5936")
+        creds = check_iprogsms_credits()
+        msg_status = check_iprogsms_message_status("iSms-abc123")
+        val = validate_iprogsms_content("Mariwasa HR Interview Test")
+
+    assert net == {
+        "ok": True,
+        "phone_number": "09602465936",
+        "network": "Smart/TNT",
+        "is_smart_tnt": True,
+        "error": None,
+    }
+    mock_post.assert_called_once_with(
+        "https://www.iprogsms.com/api/v1/phone_numbers/detect",
+        json={"api_token": "tok_v1", "phone_number": "09602465936"},
+        timeout=15,
+    )
+    assert creds == {"ok": True, "load_balance": "199.0", "error": None}
+    assert msg_status == {"ok": True, "message_id": "iSms-abc123", "message_status": "completed", "error": None}
+    assert val == {
+        "ok": True,
+        "passed": True,
+        "warnings": [],
+        "message": "Message passed validation",
+        "error": None,
+    }
+    assert mock_get.call_count == 3
+
+
+@pytest.mark.asyncio
+async def test_john_paul_basagre_resume_sms_extraction_formatting_and_dispatch():
+    """End-to-end check on John Paul Basagre's resume: extract phone, render SMS template, log message_id or Smart/TNT failure."""
+    from app.extractors.resume_processor import process_resume
+    from app.services.message_template_service import (
+        DEFAULT_TEMPLATES,
+        build_interview_template_context,
+        render_template,
+    )
+
+    resume_path = Path(__file__).resolve().parents[2] / "uploads" / "resumes" / "1779865932_jampol.pdf"
+    if not resume_path.is_file():
+        pytest.skip("Sample resume 1779865932_jampol.pdf is not present in uploads/resumes")
+
+    parsed = process_resume(str(resume_path), "pdf")
+    assert "john paul" in (parsed.get("candidate_name") or "").lower()
+    assert parsed.get("phone") == "0960-246-5936"
+    assert format_phone_for_iprogsms(parsed["phone"]) == "639602465936"
+    assert format_to_e164(parsed["phone"]) == "+639602465936"
+    assert format_phone_for_iprogsms_detect(parsed["phone"]) == "09602465936"
+
+    ctx = build_interview_template_context(
+        candidate_name=parsed["candidate_name"],
+        job_title="Software Developer",
+        interview_title="Technical Interview",
+        start_time=datetime(2026, 11, 25, 10, 0),
+        end_time=datetime(2026, 11, 25, 11, 0),
+        interviewer_name="Mariwasa HR Panel",
+        location="Mariwasa Head Office",
+    )
+    rendered_sms = render_template(DEFAULT_TEMPLATES["interview_scheduled"]["sms_message"], ctx)
+    assert "John Paul" in rendered_sms
+
+    # 1) When accepted (e.g., with approved custom sender), logs SMS_SENT with message_id
+    ok_resp = MagicMock(status_code=200, text='{"status": 200, "message_id": "iSms-JP001"}')
+    ok_resp.json.return_value = {"status": 200, "message": "Queued", "message_id": "iSms-JP001"}
+    mock_db = AsyncMock()
+    with patch.dict(
+        "os.environ",
+        {"IPROG_SMS_API_TOKEN": "tok", "IPROG_SMS_PROVIDER": "0", "IPROG_SMS_SENDER_NAME": "MARIWASA"},
+        clear=False,
+    ), patch("app.services.interview_service.requests.post", return_value=ok_resp), \
+       patch("app.services.interview_service.InterviewRepository.add_interview_log", new_callable=AsyncMock) as mock_log, \
+       patch("app.services.interview_service.InterviewRepository.commit_changes", new_callable=AsyncMock):
+        sent = await _dispatch_candidate_sms(
+            mock_db, 101, parsed["phone"], rendered_sms, "SMS_SENT", "SMS interview notification delivered"
+        )
+
+    assert sent is True
+    _, _, event_name, log_desc = mock_log.call_args[0]
+    assert event_name == "SMS_SENT"
+    assert "+639602465936" in log_desc
+    assert "[message_id=iSms-JP001]" in log_desc
+
+    # 2) When rejected by Smart/TNT shared-sender restriction, logs SMS_FAILED with exact provider reason
+    fail_resp = MagicMock(
+        status_code=200,
+        text='{"status":500,"message":["Smart/TNT networks do not accept shared sender names. Please get your own sender name approved at https://www.iprogsms.com/sender-names/new to support all networks."]}',
+    )
+    fail_resp.json.return_value = {
+        "status": 500,
+        "message": [
+            "Smart/TNT networks do not accept shared sender names. Please get your own sender name approved at https://www.iprogsms.com/sender-names/new to support all networks."
+        ],
+    }
+    with patch.dict(
+        "os.environ",
+        {"IPROG_SMS_API_TOKEN": "tok", "IPROG_SMS_PROVIDER": "0", "IPROG_SMS_SENDER_NAME": ""},
+        clear=False,
+    ), patch("app.services.interview_service.requests.post", return_value=fail_resp), \
+       patch("app.services.interview_service.InterviewRepository.add_interview_log", new_callable=AsyncMock) as mock_fail_log, \
+       patch("app.services.interview_service.InterviewRepository.commit_changes", new_callable=AsyncMock):
+        sent_fail = await _dispatch_candidate_sms(
+            mock_db, 101, parsed["phone"], rendered_sms, "SMS_SENT", "SMS interview notification delivered"
+        )
+
+    assert sent_fail is False
+    _, _, fail_event, fail_desc = mock_fail_log.call_args[0]
+    assert fail_event == "SMS_FAILED"
+    assert "+639602465936" in fail_desc
+    assert "Smart/TNT networks do not accept shared sender names" in fail_desc

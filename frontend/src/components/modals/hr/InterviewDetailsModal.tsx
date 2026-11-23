@@ -499,54 +499,83 @@ const InterviewDetailsModal: React.FC<InterviewDetailsModalProps> = ({ isOpen, o
                       interview?.candidate_phone,
                       interview?.candidate_email
                     );
+                    const deliveredSmsCount = interviewMsgLogs.filter(
+                      (m) => m.channel === 'SMS' && m.status !== 'FAILED'
+                    ).length;
+                    const failedSmsCount = interviewMsgLogs.filter(
+                      (m) => m.channel === 'SMS' && m.status === 'FAILED'
+                    ).length;
                     return (
                       <div className="pt-2 border-t border-rose-100/60">
-                        <div className="flex items-center justify-between text-xs font-bold text-gray-600 py-1">
+                        <div className="flex items-center justify-between gap-2 flex-wrap text-xs font-bold text-gray-600 py-1">
                           <span className="flex items-center gap-1.5">
                             <MessageSquare size={14} className="text-emerald-600" />
                             Message Logs ({interviewMsgLogs.length})
                           </span>
-                          {interviewMsgLogs.some((m) => m.channel === 'SMS') && (
-                            <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase bg-emerald-100 text-emerald-800 border border-emerald-200 inline-flex items-center gap-1">
-                              <Check size={10} />
-                              <span>SMS Delivered</span>
-                            </span>
-                          )}
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            {deliveredSmsCount > 0 && (
+                              <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase bg-emerald-100 text-emerald-800 border border-emerald-200 inline-flex items-center gap-1">
+                                <Check size={10} />
+                                <span>SMS Delivered{deliveredSmsCount > 1 ? ` (${deliveredSmsCount})` : ''}</span>
+                              </span>
+                            )}
+                            {failedSmsCount > 0 && (
+                              <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase bg-rose-100 text-rose-800 border border-rose-200 inline-flex items-center gap-1">
+                                <AlertCircle size={10} />
+                                <span>SMS Failed{failedSmsCount > 1 ? ` (${failedSmsCount})` : ''}</span>
+                              </span>
+                            )}
+                          </div>
                         </div>
                         <div className="mt-2 space-y-2 max-h-48 overflow-y-auto pr-1">
                           {interviewMsgLogs.length > 0 ? (
-                            interviewMsgLogs.map((msg, idx) => (
-                              <div
-                                key={msg.id || idx}
-                                className="bg-white/90 p-3 rounded-xl border border-gray-100 flex flex-col sm:flex-row sm:items-start justify-between gap-2 text-xs"
-                              >
-                                <div className="space-y-0.5 min-w-0">
-                                  <div className="flex items-center gap-2 flex-wrap">
-                                    <span className="font-black text-gray-900">{msg.label}</span>
-                                    <span
-                                      className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase border ${
-                                        msg.channel === 'SMS'
-                                          ? 'bg-indigo-100 text-indigo-800 border-indigo-200'
-                                          : 'bg-sky-100 text-sky-800 border-sky-200'
-                                      }`}
-                                    >
-                                      {msg.channel}
-                                    </span>
-                                    <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-full text-[9px] font-black uppercase inline-flex items-center gap-1">
-                                      <Check size={9} />
-                                      <span>{msg.status || 'DELIVERED'}</span>
-                                    </span>
+                            interviewMsgLogs.map((msg, idx) => {
+                              const isFailed = msg.status === 'FAILED';
+                              return (
+                                <div
+                                  key={msg.id || idx}
+                                  className={`p-3 rounded-xl border flex flex-col sm:flex-row sm:items-start justify-between gap-2 text-xs ${
+                                    isFailed
+                                      ? 'bg-rose-50/60 border-rose-200'
+                                      : 'bg-white/90 border-gray-100'
+                                  }`}
+                                >
+                                  <div className="space-y-0.5 min-w-0">
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                      <span className="font-black text-gray-900">{msg.label}</span>
+                                      <span
+                                        className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase border ${
+                                          msg.channel === 'SMS'
+                                            ? 'bg-indigo-100 text-indigo-800 border-indigo-200'
+                                            : 'bg-sky-100 text-sky-800 border-sky-200'
+                                        }`}
+                                      >
+                                        {msg.channel}
+                                      </span>
+                                      <span
+                                        className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase border inline-flex items-center gap-1 ${
+                                          isFailed
+                                            ? 'bg-rose-100 text-rose-800 border-rose-200'
+                                            : 'bg-emerald-100 text-emerald-800 border-emerald-200'
+                                        }`}
+                                      >
+                                        {isFailed ? <AlertCircle size={9} /> : <Check size={9} />}
+                                        <span>{msg.status || 'DELIVERED'}</span>
+                                      </span>
+                                    </div>
+                                    <p className="text-[11px] text-gray-500 font-medium">To {msg.recipient}</p>
+                                    {msg.details && (
+                                      <p className={`text-[11px] leading-relaxed ${isFailed ? 'text-rose-700 font-medium' : 'text-gray-600'}`}>
+                                        {msg.details}
+                                      </p>
+                                    )}
                                   </div>
-                                  <p className="text-[11px] text-gray-500 font-medium">To {msg.recipient}</p>
-                                  {msg.details && (
-                                    <p className="text-[11px] text-gray-600 leading-relaxed">{msg.details}</p>
-                                  )}
+                                  <span className="text-[10px] text-gray-400 font-mono shrink-0">
+                                    {formatUtcLogTimestamp(msg.created_at)}
+                                  </span>
                                 </div>
-                                <span className="text-[10px] text-gray-400 font-mono shrink-0">
-                                  {formatUtcLogTimestamp(msg.created_at)}
-                                </span>
-                              </div>
-                            ))
+                              );
+                            })
                           ) : (
                             <p className="text-xs text-gray-400 font-medium py-2 text-center">
                               No SMS or message logs recorded yet.

@@ -20,6 +20,7 @@ import {
   filterAndSortUpcomingInterviews,
   mergeInterviewsById,
   extractMessageLogs,
+  getInterviewSmsStatus,
   formatUtcLogTimestamp,
   isUpcomingInterview,
 } from '../../../utils/interviewUtils';
@@ -350,7 +351,8 @@ const ViewCandidateDetailsModal: React.FC<ViewCandidateDetailsModalProps> = ({
     candidate.phone,
     candidate.email || candidate.candidate_email
   );
-  const smsLogsCount = messageLogs.filter((m) => m.channel === 'SMS').length;
+  const deliveredSmsCount = messageLogs.filter((m) => m.channel === 'SMS' && m.status !== 'FAILED').length;
+  const failedSmsCount = messageLogs.filter((m) => m.channel === 'SMS' && m.status === 'FAILED').length;
   const isLoadingHistory = isLoadingAppInterviews || isLoadingEmailInterviews;
 
   const handleCopy = (text?: string, field?: string) => {
@@ -871,11 +873,22 @@ const ViewCandidateDetailsModal: React.FC<ViewCandidateDetailsModalProps> = ({
                       <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase bg-pink-100 text-[#D60041]">
                         {iv.status || 'SCHEDULED'}
                       </span>
-                      {(iv.candidate_phone || (candidatePhone && candidatePhone !== 'Not provided')) && (
-                        <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase bg-emerald-100 text-emerald-800 border border-emerald-200">
-                          SMS: DELIVERED
-                        </span>
-                      )}
+                      {(() => {
+                        const ivSmsStatus = getInterviewSmsStatus(iv);
+                        if (!ivSmsStatus) return null;
+                        const isFailed = ivSmsStatus === 'FAILED';
+                        return (
+                          <span
+                            className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase border ${
+                              isFailed
+                                ? 'bg-rose-100 text-rose-800 border-rose-200'
+                                : 'bg-emerald-100 text-emerald-800 border-emerald-200'
+                            }`}
+                          >
+                            SMS: {ivSmsStatus}
+                          </span>
+                        );
+                      })()}
                     </div>
                     <p className="text-[11px] text-gray-600 font-semibold flex items-center gap-1.5">
                       <Clock size={12} className="text-[#D60041] shrink-0" />
@@ -950,12 +963,20 @@ const ViewCandidateDetailsModal: React.FC<ViewCandidateDetailsModalProps> = ({
               </div>
             </div>
 
-            {smsLogsCount > 0 && (
-              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black uppercase bg-emerald-50 text-emerald-700 border border-emerald-200">
-                <CheckCircle2 size={12} className="text-emerald-600" />
-                <span>SMS Delivered ({smsLogsCount})</span>
-              </span>
-            )}
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {deliveredSmsCount > 0 && (
+                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black uppercase bg-emerald-50 text-emerald-700 border border-emerald-200">
+                  <CheckCircle2 size={12} className="text-emerald-600" />
+                  <span>SMS Delivered ({deliveredSmsCount})</span>
+                </span>
+              )}
+              {failedSmsCount > 0 && (
+                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black uppercase bg-rose-50 text-rose-700 border border-rose-200">
+                  <AlertTriangle size={12} className="text-rose-600" />
+                  <span>SMS Failed ({failedSmsCount})</span>
+                </span>
+              )}
+            </div>
           </div>
 
           {isLoadingHistory ? (
@@ -966,44 +987,59 @@ const ViewCandidateDetailsModal: React.FC<ViewCandidateDetailsModalProps> = ({
             </div>
           ) : (
             <div className="space-y-2.5 max-h-72 overflow-y-auto pr-1">
-              {displayedMessages.map((msg, idx) => (
-                <div
-                  key={msg.id || `msg-${idx}`}
-                  data-testid="candidate-message-log-item"
-                  className="p-3 rounded-xl bg-slate-50/70 border border-slate-200/70 flex flex-col sm:flex-row sm:items-start justify-between gap-2 text-xs"
-                >
-                  <div className="space-y-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-black text-gray-900">
-                        {msg.label}
-                      </span>
-                      <span
-                        className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase border ${
-                          msg.channel === 'SMS'
-                            ? 'bg-indigo-100 text-indigo-800 border-indigo-200'
-                            : 'bg-sky-100 text-sky-800 border-sky-200'
-                        }`}
-                      >
-                        {msg.channel}
-                      </span>
-                      <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase bg-emerald-100 text-emerald-800 border border-emerald-200 inline-flex items-center gap-1">
-                        <Check size={10} />
-                        <span>{msg.status || 'DELIVERED'}</span>
-                      </span>
+              {displayedMessages.map((msg, idx) => {
+                const isFailed = msg.status === 'FAILED';
+                return (
+                  <div
+                    key={msg.id || `msg-${idx}`}
+                    data-testid="candidate-message-log-item"
+                    className={`p-3 rounded-xl border flex flex-col sm:flex-row sm:items-start justify-between gap-2 text-xs ${
+                      isFailed
+                        ? 'bg-rose-50/60 border-rose-200'
+                        : 'bg-slate-50/70 border-slate-200/70'
+                    }`}
+                  >
+                    <div className="space-y-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-black text-gray-900">
+                          {msg.label}
+                        </span>
+                        <span
+                          className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase border ${
+                            msg.channel === 'SMS'
+                              ? 'bg-indigo-100 text-indigo-800 border-indigo-200'
+                              : 'bg-sky-100 text-sky-800 border-sky-200'
+                          }`}
+                        >
+                          {msg.channel}
+                        </span>
+                        <span
+                          className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase border inline-flex items-center gap-1 ${
+                            isFailed
+                              ? 'bg-rose-100 text-rose-800 border-rose-200'
+                              : 'bg-emerald-100 text-emerald-800 border-emerald-200'
+                          }`}
+                        >
+                          {isFailed ? <AlertTriangle size={10} /> : <Check size={10} />}
+                          <span>{msg.status || 'DELIVERED'}</span>
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-gray-500 font-medium">
+                        To {msg.recipient}
+                        {msg.interview_title ? ` • ${msg.interview_title}` : ''}
+                      </p>
+                      {msg.details && (
+                        <p className={`text-[11px] leading-relaxed ${isFailed ? 'text-rose-700 font-medium' : 'text-gray-600'}`}>
+                          {msg.details}
+                        </p>
+                      )}
                     </div>
-                    <p className="text-[11px] text-gray-500 font-medium">
-                      To {msg.recipient}
-                      {msg.interview_title ? ` • ${msg.interview_title}` : ''}
-                    </p>
-                    {msg.details && (
-                      <p className="text-[11px] text-gray-600 leading-relaxed">{msg.details}</p>
-                    )}
+                    <span className="text-[10px] text-gray-400 font-mono shrink-0">
+                      {formatUtcLogTimestamp(msg.created_at)}
+                    </span>
                   </div>
-                  <span className="text-[10px] text-gray-400 font-mono shrink-0">
-                    {formatUtcLogTimestamp(msg.created_at)}
-                  </span>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
