@@ -305,14 +305,20 @@ async def broadcast_job_message(
     sent_count = 0
     sender_name = (getattr(current_user, "fullname", None) or "").strip() or getattr(current_user, "email", "HR Panel")
 
-    seen_emails = set()
+    seen_recipients = set()
     for app in applications:
+        app_uid = getattr(app, "user_id", None)
         email = (app.candidate_email or "").strip().lower()
-        if not email or email in seen_emails:
+        recipient_key = f"uid_{app_uid}" if app_uid else email
+        if not recipient_key or recipient_key in seen_recipients:
             continue
-        seen_emails.add(email)
+        seen_recipients.add(recipient_key)
 
-        candidate_user = await ChatRepository.get_user_by_email(db, email)
+        candidate_user = None
+        if app_uid:
+            candidate_user = await ChatRepository.get_user_by_id(db, app_uid)
+        if not candidate_user and email:
+            candidate_user = await ChatRepository.get_user_by_email(db, email)
         if candidate_user:
             await send_message(
                 db=db,
@@ -323,7 +329,7 @@ async def broadcast_job_message(
                 application_id=app.id
             )
             sent_count += 1
-        else:
+        elif email:
             try:
                 from app.services.notification_service import create_notification
                 await create_notification(

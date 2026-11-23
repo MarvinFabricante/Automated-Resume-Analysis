@@ -1,5 +1,8 @@
+import { collectClarificationResponses } from '../../../utils/clarificationQuestions';
 import React, { useState, useEffect } from 'react';
 import { useLocation, useNavigate, useParams } from '@/utils/navigation';
+import { useSelector } from 'react-redux';
+import { RootState } from '../../../redux/store';
 import candidateService from '../../../services/candidateService';
 import { Helmet } from 'react-helmet-async';
 import {
@@ -60,6 +63,7 @@ const ApplicationForm: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { jobId } = useParams<{ jobId: string }>();
+  const loggedInUser = useSelector((state: RootState) => state.auth?.user);
 
   const [currentStep, setCurrentStep] = useState<number>(() => {
     if (typeof window !== 'undefined') {
@@ -111,9 +115,28 @@ const ApplicationForm: React.FC = () => {
     if (s && !genericTiers.includes(s.toUpperCase())) return s;
     return p || s || t;
   };
+  const accountEmail =
+    cleanField(typeof loggedInUser === 'string' ? loggedInUser : (loggedInUser as any)?.email) ||
+    (typeof window !== 'undefined' && localStorage.getItem('token') ? cleanField(localStorage.getItem('saved_email')) : '') ||
+    '';
+  const resumeEmail = cleanField(location.state?.resumeEmail) || cleanField(ext?.email) || cleanField(savedDraft?.resumeEmail) || '';
+  const hasEmailMismatch = Boolean(
+    accountEmail &&
+    resumeEmail &&
+    accountEmail.toLowerCase() !== resumeEmail.toLowerCase()
+  );
+  const initialContactEmail =
+    cleanField(location.state?.contactEmail) ||
+    cleanField(savedDraft?.contactEmail) ||
+    accountEmail ||
+    cleanField(location.state?.personal?.email) ||
+    resumeEmail ||
+    cleanField(savedDraft?.formData?.email) ||
+    '';
+
   const initialFormData = {
     fullName: cleanField(location.state?.personal?.name) || cleanField(ext?.fullname) || cleanField(savedDraft?.formData?.fullName),
-    email: cleanField(location.state?.personal?.email) || cleanField(ext?.email) || cleanField(savedDraft?.formData?.email),
+    email: initialContactEmail,
     phone: cleanField(location.state?.personal?.phone) || cleanField(ext?.phone) || cleanField(savedDraft?.formData?.phone),
     location: cleanField(location.state?.personal?.location) || cleanField(ext?.location) || cleanField(savedDraft?.formData?.location),
     jobTitle: cleanField(location.state?.experience?.title) || cleanField(ext?.job_title) || cleanField(ext?.work_experiences?.[0]?.job_title) || cleanField(savedDraft?.formData?.jobTitle),
@@ -328,6 +351,7 @@ const ApplicationForm: React.FC = () => {
         certifications: location.state?.extractedData?.certifications || [],
         clarification_questions: clarificationQuestions,
         clarification_answers: clarificationAnswers,
+        clarification_responses: collectClarificationResponses(clarificationQuestions, clarificationAnswers),
         summary: location.state?.extractedData?.summary || "",
         file_url: location.state?.resumeUrl || location.state?.extractedData?.file_url || null,
         resume_url: location.state?.resumeUrl || location.state?.extractedData?.file_url || null,
@@ -338,6 +362,7 @@ const ApplicationForm: React.FC = () => {
       const runSmartMatch = async () => {
         try {
           const payload = {
+            clarification_responses: collectClarificationResponses(clarificationQuestions, clarificationAnswers),
             skills: finalForm.skills.join(', '),
             skills_list: finalForm.skills,
             experience: finalForm.relevance,
@@ -380,6 +405,9 @@ const ApplicationForm: React.FC = () => {
           detailsConfirmed: true,
           questionsConfirmed: true,
           formData: finalForm,
+          accountEmail,
+          resumeEmail,
+          contactEmail: finalForm.email || accountEmail,
           clarificationAnswers,
           resumeUrl: location.state?.resumeUrl || location.state?.extractedData?.file_url || null,
           fileName: location.state?.fileName || null,
@@ -397,6 +425,9 @@ const ApplicationForm: React.FC = () => {
         resumeUrl: location.state?.resumeUrl || location.state?.extractedData?.file_url || null,
         rawText: location.state?.rawText || location.state?.extractedData?.raw_text || null,
         formData: finalForm,
+        accountEmail,
+        resumeEmail,
+        contactEmail: finalForm.email || accountEmail,
         clarificationQuestions,
         clarificationAnswers,
         extractedData: {
@@ -415,6 +446,7 @@ const ApplicationForm: React.FC = () => {
           skills_list: finalForm.skills,
           clarification_questions: clarificationQuestions,
           clarification_answers: clarificationAnswers,
+        clarification_responses: collectClarificationResponses(clarificationQuestions, clarificationAnswers),
           file_url: location.state?.resumeUrl || location.state?.extractedData?.file_url || null,
           raw_text: location.state?.rawText || location.state?.extractedData?.raw_text || null,
           profile_image_url: location.state?.profile_image_url || location.state?.extractedData?.profile_image_url
@@ -579,16 +611,59 @@ const ApplicationForm: React.FC = () => {
                     placeholder="e.g. John Doe"
                     required={true}
                   />
-                  <InputField
-                    icon={<Mail size={18} />}
-                    label="Email Address"
-                    name="email"
-                    type="email"
-                    value={formData.email}
-                    onChange={handleChange}
-                    placeholder="john@example.com"
-                    required={true}
-                  />
+                  <div className="w-full space-y-2">
+                    <InputField
+                      icon={<Mail size={18} />}
+                      label="Email Address"
+                      name="email"
+                      type="email"
+                      value={formData.email}
+                      onChange={handleChange}
+                      placeholder="john@example.com"
+                      required={true}
+                    />
+                    {hasEmailMismatch && (
+                      <div
+                        data-testid="email-mismatch-note"
+                        className="rounded-2xl border border-amber-200 bg-amber-50/80 p-3.5 text-xs text-amber-900 space-y-2.5"
+                      >
+                        <p className="font-semibold leading-relaxed">
+                          The email on your resume is different from your account email. Notifications will be sent to your account email.
+                        </p>
+                        <div className="space-y-1.5">
+                          <p className="text-[11px] font-bold uppercase tracking-wider text-amber-800">
+                            Which email should HR use for contact?
+                          </p>
+                          <div className="flex flex-col sm:flex-row gap-2">
+                            <label className="flex items-center gap-2 px-3 py-2 rounded-xl border border-amber-200 bg-white cursor-pointer hover:border-[#D10043]/40 transition-colors">
+                              <input
+                                type="radio"
+                                name="hrContactEmailChoice"
+                                checked={formData.email.trim().toLowerCase() === accountEmail.trim().toLowerCase()}
+                                onChange={() => setFormData((prev) => ({ ...prev, email: accountEmail }))}
+                                className="accent-[#D10043]"
+                              />
+                              <span className="text-xs font-medium text-slate-800">
+                                Account email (<span className="font-bold">{accountEmail}</span>)
+                              </span>
+                            </label>
+                            <label className="flex items-center gap-2 px-3 py-2 rounded-xl border border-amber-200 bg-white cursor-pointer hover:border-[#D10043]/40 transition-colors">
+                              <input
+                                type="radio"
+                                name="hrContactEmailChoice"
+                                checked={formData.email.trim().toLowerCase() === resumeEmail.trim().toLowerCase()}
+                                onChange={() => setFormData((prev) => ({ ...prev, email: resumeEmail }))}
+                                className="accent-[#D10043]"
+                              />
+                              <span className="text-xs font-medium text-slate-800">
+                                Resume email (<span className="font-bold">{resumeEmail}</span>)
+                              </span>
+                            </label>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                   <InputField
                     icon={<Phone size={18} />}
                     label="Phone Number"

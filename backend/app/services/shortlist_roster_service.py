@@ -180,10 +180,15 @@ async def get_shortlist_roster_by_id(
             exp_status = extract_criterion_status(app.experience_reason)
             certs_status = extract_criterion_status(getattr(app, "certifications_reason", None))
 
+            contact_em = getattr(app, "contact_email", None) or app.candidate_email or ""
             app_info = {
                 "id": app.id,
-                "candidate_name": app.candidate_name or app.candidate_email or "Applicant",
-                "candidate_email": app.candidate_email or "",
+                "user_id": getattr(app, "user_id", None),
+                "applicant_id": getattr(app, "user_id", None),
+                "candidate_name": app.candidate_name or contact_em or "Applicant",
+                "candidate_email": contact_em,
+                "contact_email": contact_em,
+                "resume_email": getattr(app, "resume_email", None),
                 "phone": app.phone,
                 "job_title": app.job_title or (job.job_title if job else "Position"),
                 "status": app.status,
@@ -218,17 +223,21 @@ async def get_shortlist_roster_by_id(
             }
 
         candidate_name = (app.candidate_name if app and app.candidate_name else (app.candidate_email if app else "Applicant"))
-        candidate_email = app.candidate_email if app else ""
+        candidate_email = (getattr(app, "contact_email", None) or app.candidate_email) if app else ""
         match_score = app.match_score if app else None
 
         items_data.append({
             "id": item.id,
             "roster_id": item.roster_id,
             "application_id": item.application_id,
+            "user_id": getattr(app, "user_id", None) if app else None,
+            "applicant_id": getattr(app, "user_id", None) if app else None,
             "stage": item.stage,
             "added_by": item.added_by,
             "candidate_name": candidate_name,
             "candidate_email": candidate_email,
+            "contact_email": candidate_email,
+            "resume_email": getattr(app, "resume_email", None) if app else None,
             "match_score": match_score,
             "education_score": edu_score,
             "education_reason": edu_reason,
@@ -282,7 +291,7 @@ async def add_application_to_roster(
     application_id: int,
     added_by: str
 ) -> ShortlistRosterItem:
-    # Check if already in this roster
+    # Check if already in this roster by application_id
     check_stmt = select(ShortlistRosterItem).where(
         and_(
             ShortlistRosterItem.roster_id == roster_id,
@@ -293,6 +302,25 @@ async def add_application_to_roster(
     existing = check_res.scalar_one_or_none()
     if existing:
         return existing
+
+    # Also check if another application from the same user_id is already in this roster
+    target_app_res = await db.execute(select(JobApplication).where(JobApplication.id == application_id))
+    target_app = target_app_res.scalar_one_or_none()
+    if target_app and getattr(target_app, "user_id", None):
+        same_user_stmt = (
+            select(ShortlistRosterItem)
+            .join(JobApplication, ShortlistRosterItem.application_id == JobApplication.id)
+            .where(
+                and_(
+                    ShortlistRosterItem.roster_id == roster_id,
+                    JobApplication.user_id == target_app.user_id,
+                )
+            )
+        )
+        same_user_res = await db.execute(same_user_stmt)
+        existing_same_user = same_user_res.scalars().first()
+        if existing_same_user:
+            return existing_same_user
 
     item = ShortlistRosterItem(
         roster_id=roster_id,

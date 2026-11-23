@@ -4,7 +4,7 @@ from app.models.job_description import JobDescription, JobType
 
 
 def test_normalize_and_tokenize_skills():
-    raw_skills = "Python | React.js, FastAPI; Docker • Kubernetes - SQL"
+    raw_skills = "Python | React.js, FastAPI; Docker • Kubernetes / SQL"
     tokens = job_matching_service._tokenize_skills(raw_skills)
     assert "python" in tokens
     assert "react" in tokens

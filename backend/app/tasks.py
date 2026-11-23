@@ -82,7 +82,7 @@ async def async_analyze_application(application_id: int):
         hash_resume = {k: v for k, v in resume_data.items() if k not in ("id", "application_id")}
         hash_payload = json.dumps({"resume": hash_resume, "job": job_data}, sort_keys=True).encode("utf-8")
         content_hash = hashlib.sha256(hash_payload).hexdigest()
-        cache_key = f"ai_analysis:v6:{content_hash}"
+        cache_key = f"ai_analysis:v7:{content_hash}"
         
         cached_result = await get_cache(cache_key)
         
@@ -110,6 +110,7 @@ async def async_analyze_application(application_id: int):
                 app.applied_weights = ai_result.get("applied_weights")
             app.matched_skills = ai_result.get("matched_skills")
             app.missing_skills = ai_result.get("missing_skills")
+            app.requirement_evaluations = ai_result.get("requirement_evaluations", [])
             app.recommendations = ai_result.get("recommendations")
             app.ai_summary = ai_result.get("ai_summary")
             app.strengths = ai_result.get("strengths")

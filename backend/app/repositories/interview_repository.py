@@ -1,6 +1,6 @@
 from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, func
+from sqlalchemy import select, and_, or_, func
 from sqlalchemy.orm import selectinload
 from typing import List, Optional, Union
 import logging
@@ -170,25 +170,80 @@ async def get_interviews_in_range(
     return result.scalars().all()
 
 
-async def get_interviews_for_candidate(db: AsyncSession, email: str) -> List[Interview]:
-    """Get interviews for candidate by email (checks Redis cache first)."""
-    normalized_email = (email or "").strip().lower()
-    cache_key = f"interviews:cand:{normalized_email}"
-    cached = await get_cache(cache_key)
-    if cached is not None:
-        return cached
+async def get_interviews_for_candidate_by_user_id(
+    db: AsyncSession,
+    user_id: int,
+    fallback_email: Optional[str] = None,
+) -> List[Interview]:
+    """Get interviews for a candidate by authenticated user_id (with legacy email fallback)."""
+    if not user_id:
+        if fallback_email:
+            return await get_interviews_for_candidate(db, fallback_email)
+        return []
+
+    norm_email = (fallback_email or "").strip().lower()
+    if not norm_email:
+        u_res = await db.execute(select(User.email).where(User.id == user_id))
+        u_email = u_res.scalar_one_or_none()
+        norm_email = (u_email or "").strip().lower()
+
+    if norm_email:
+        condition = or_(
+            JobApplication.user_id == user_id,
+            and_(
+                JobApplication.user_id.is_(None),
+                func.lower(JobApplication.candidate_email) == norm_email,
+            ),
+        )
+    else:
+        condition = JobApplication.user_id == user_id
 
     result = await db.execute(
         select(Interview)
         .options(*_interview_load_options())
         .join(JobApplication)
-        .filter(func.lower(JobApplication.candidate_email) == normalized_email)
+        .filter(condition)
         .order_by(Interview.start_time.asc())
         .execution_options(populate_existing=True)
     )
-    interviews = result.scalars().all()
-    await set_cache(cache_key, interviews, ttl=300)
-    return interviews
+    return result.scalars().all()
+
+
+async def get_interviews_for_candidate(db: AsyncSession, email: str) -> List[Interview]:
+    """Get interviews for candidate by email or user_id."""
+    raw = (email or "").strip()
+    if not raw:
+        return []
+    if raw.isdigit():
+        return await get_interviews_for_candidate_by_user_id(db, int(raw))
+
+    normalized_email = raw.lower()
+    u_res = await db.execute(
+        select(User.id).where(func.lower(User.email) == normalized_email)
+    )
+    matched_user_id = u_res.scalar_one_or_none()
+
+    if matched_user_id is not None:
+        condition = or_(
+            JobApplication.user_id == matched_user_id,
+            func.lower(JobApplication.candidate_email) == normalized_email,
+            func.lower(JobApplication.contact_email) == normalized_email,
+        )
+    else:
+        condition = or_(
+            func.lower(JobApplication.candidate_email) == normalized_email,
+            func.lower(JobApplication.contact_email) == normalized_email,
+        )
+
+    result = await db.execute(
+        select(Interview)
+        .options(*_interview_load_options())
+        .join(JobApplication)
+        .filter(condition)
+        .order_by(Interview.start_time.asc())
+        .execution_options(populate_existing=True)
+    )
+    return result.scalars().all()
 
 
 async def get_all_interviews(db: AsyncSession) -> List[Interview]:

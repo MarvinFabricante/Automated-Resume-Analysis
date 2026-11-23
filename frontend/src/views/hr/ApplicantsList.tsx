@@ -27,7 +27,9 @@ import {
 } from 'lucide-react';
 
 interface GroupedApplicant {
+  userId?: number;
   email: string;
+  allEmails: string[];
   name: string;
   phone?: string;
   positions: {
@@ -62,26 +64,34 @@ const ApplicantsList: React.FC = () => {
   const [sortBy, setSortBy] = useState<'date_desc' | 'date_asc' | 'score_desc' | 'name_asc'>('date_desc');
   const [currentPage, setCurrentPage] = useState<number>(1);
 
-  // Group applications by candidate email to get consolidated applicants
+  // Group applications by authenticated user_id first (falling back to email) so one person is never duplicated when emails differ
   const applicants: GroupedApplicant[] = useMemo(() => {
     if (!Array.isArray(rawApps)) return [];
 
     const map = new Map<string, GroupedApplicant>();
 
     rawApps.forEach((app: any) => {
-      const email = (app.candidate_email || '').toLowerCase().trim();
-      if (!email) return;
+      const contactEmail = (app.contact_email || app.candidate_email || app.email || '').toLowerCase().trim();
+      const resumeEmail = (app.resume_email || '').toLowerCase().trim();
+      const uid = app.user_id ?? app.applicant_id;
+      const personKey = uid ? `uid_${uid}` : contactEmail;
+      if (!personKey) return;
+
+      const appEmails = Array.from(
+        new Set([contactEmail, (app.candidate_email || '').toLowerCase().trim(), resumeEmail].filter(Boolean))
+      );
 
       const appDate = app.created_at || '';
       const appScore = typeof app.match_score === 'number' ? app.match_score : null;
-      const appStatus = (app.status || 'SUBMITTED').toUpperCase();
       const appSource = app.source || 'Online';
       const appOrigin = app.import_origin;
 
-      if (!map.has(email)) {
-        map.set(email, {
-          email,
-          name: app.candidate_name || email,
+      if (!map.has(personKey)) {
+        map.set(personKey, {
+          userId: uid ? Number(uid) : undefined,
+          email: contactEmail || resumeEmail,
+          allEmails: appEmails,
+          name: app.candidate_name || contactEmail,
           phone: app.phone,
           positions: [
             {
@@ -103,7 +113,7 @@ const ApplicantsList: React.FC = () => {
           import_origin: appOrigin,
         });
       } else {
-        const existing = map.get(email)!;
+        const existing = map.get(personKey)!;
         existing.positions.push({
           id: app.id,
           job_id: app.job_id,
@@ -115,6 +125,11 @@ const ApplicantsList: React.FC = () => {
           source: appSource,
           import_origin: appOrigin,
         });
+        appEmails.forEach((em) => {
+          if (em && !existing.allEmails.includes(em)) {
+            existing.allEmails.push(em);
+          }
+        });
 
         // Update latest status & best match score
         if (appScore !== null && (existing.bestMatchScore === null || appScore > existing.bestMatchScore)) {
@@ -123,9 +138,12 @@ const ApplicantsList: React.FC = () => {
         if (appDate > existing.latestAppliedDate) {
           existing.latestAppliedDate = appDate;
           existing.latestStatus = app.status || 'Submitted';
+          if (contactEmail) {
+            existing.email = contactEmail;
+          }
         }
-        if (!existing.name || existing.name === email) {
-          existing.name = app.candidate_name || email;
+        if (!existing.name || existing.name === existing.email) {
+          existing.name = app.candidate_name || existing.email;
         }
       }
     });
@@ -149,18 +167,21 @@ const ApplicantsList: React.FC = () => {
     const trimmedSearch = search.trim();
     return applicants
       .filter((applicant) => {
-        // Search filter (prefix-aware for 1-2 character queries, full search for 3+)
+        // Search filter (matches across name, job title, and any of the applicant's emails)
         let matchSearch = true;
         if (trimmedSearch) {
-          const rank = getCandidateSearchRank(
-            {
-              name: applicant.name,
-              email: applicant.email,
-              job_title: applicant.positions.map((p) => p.job_title).join(' '),
-            },
-            trimmedSearch
+          const emailsToCheck = applicant.allEmails.length > 0 ? applicant.allEmails : [applicant.email];
+          matchSearch = emailsToCheck.some(
+            (em) =>
+              getCandidateSearchRank(
+                {
+                  name: applicant.name,
+                  email: em,
+                  job_title: applicant.positions.map((p) => p.job_title).join(' '),
+                },
+                trimmedSearch
+              ) !== null
           );
-          matchSearch = rank !== null;
         }
 
         // Position filter

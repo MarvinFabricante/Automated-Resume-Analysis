@@ -29,11 +29,13 @@ router = APIRouter(prefix="/applications", tags=["Job Applications"], redirect_s
 async def create_job_application(
     application_in: JobApplicationCreate, 
     duplicate_policy: Optional[str] = None,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    current_user: Optional[dict] = Depends(get_optional_current_user),
 ):
     """
     Submit a new job application.
     Supports duplicate handling policy ('block' or 'version').
+    Links the application to the authenticated candidate's user_id when logged in.
     """
     # Verify job exists and is open for applications
     job = await job_application_service.get_and_validate_job(db, application_in.job_id)
@@ -47,7 +49,11 @@ async def create_job_application(
         )
         
     res = await job_application_service.create_job_application(
-        db, application_in, job.id, duplicate_policy=duplicate_policy
+        db,
+        application_in,
+        job.id,
+        duplicate_policy=duplicate_policy,
+        current_user=current_user,
     )
     
     # Invalidate cache so HR immediately sees the new applicant and updated counts
@@ -59,13 +65,21 @@ async def create_job_application(
 @router.get("/check-duplicate")
 async def check_duplicate_application(
     job_id: int, 
-    email: str, 
-    db: AsyncSession = Depends(get_db)
+    email: Optional[str] = None,
+    user_id: Optional[int] = None,
+    db: AsyncSession = Depends(get_db),
+    current_user: Optional[dict] = Depends(get_optional_current_user),
 ):
     """
     Check if a candidate has already applied for a specific job (REQ: Limit / TC-RES-016).
+    Uses authenticated user_id first when available.
     """
-    existing = await job_application_service.check_duplicate(db, job_id, email)
+    effective_user_id = user_id
+    if effective_user_id is None and current_user and (current_user.get("role") or "CANDIDATE").upper() == "CANDIDATE":
+        effective_user_id = current_user.get("id")
+    existing = await job_application_service.check_duplicate(
+        db, job_id, email or "", user_id=effective_user_id
+    )
     return {
         "is_duplicate": existing is not None,
         "existing_application_id": existing.id if existing else None,
@@ -118,12 +132,49 @@ async def get_candidate_comparison(job_id: int):
         raise HTTPException(status_code=404, detail="Comparison not found or still processing.")
     return cached_result
 
+@router.get("/my", response_model=List[JobApplicationResponse])
+async def get_my_applications(
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """
+    Get all applications for the currently authenticated candidate by user_id.
+    """
+    uid = current_user.get("id")
+    u_email = current_user.get("sub") or current_user.get("email")
+    return await job_application_service.get_applications_for_user(
+        db, user_id=uid, fallback_email=u_email
+    )
+
+
 @router.get("/candidate/{email}", response_model=List[JobApplicationResponse])
-@cache_response("cand_apps", ttl=60)
-async def get_applications_for_candidate(email: str, db: AsyncSession = Depends(get_db)):
+async def get_applications_for_candidate(
+    email: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: Optional[dict] = Depends(get_optional_current_user),
+):
     """
-    Get all applications for a specific candidate by email.
+    Get all applications for a candidate.
+    Prioritizes authenticated user_id (or numeric user_id parameter) so applications
+    are linked to the logged-in user account even if the resume email differs.
     """
+    raw_param = (email or "").strip()
+    if current_user and (current_user.get("role") or "CANDIDATE").upper() == "CANDIDATE":
+        auth_uid = current_user.get("id")
+        auth_email = (current_user.get("sub") or current_user.get("email") or "").strip().lower()
+        if auth_uid and (
+            raw_param in ("me", "my", str(auth_uid))
+            or raw_param.lower() == auth_email
+        ):
+            return await job_application_service.get_applications_for_user(
+                db, user_id=auth_uid, fallback_email=auth_email
+            )
+
+    if raw_param.isdigit():
+        return await job_application_service.get_applications_for_user(
+            db, user_id=int(raw_param)
+        )
+
     return await job_application_service.get_applications_by_email(db, email)
 
 

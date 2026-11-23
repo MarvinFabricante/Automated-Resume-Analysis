@@ -21,12 +21,13 @@ import CandidateRescheduleModal, { isInterviewMissed } from '../../modals/candid
 
 const UpcomingInterviews: React.FC = () => {
   const navigate = useNavigate();
-  const { user: email } = useSelector((state: RootState) => state.auth);
+  const { user: email, userId } = useSelector((state: RootState) => state.auth);
+  const candidateIdentifier = userId ? String(userId) : (typeof email === 'string' ? email : (email as any)?.email || '');
   const [copiedId, setCopiedId] = useState<string | number | null>(null);
   const [rescheduleTarget, setRescheduleTarget] = useState<any | null>(null);
 
-  const { data: interviews = [], isLoading, refetch } = useGetCandidateInterviewsQuery(email || '', {
-    skip: !email,
+  const { data: interviews = [], isLoading, refetch } = useGetCandidateInterviewsQuery(candidateIdentifier, {
+    skip: !candidateIdentifier,
     pollingInterval: 10000,
   });
 

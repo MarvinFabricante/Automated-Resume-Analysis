@@ -27,16 +27,25 @@ async def get_profile(candidate_id: int, db: AsyncSession = Depends(get_db)):
     try:
         from app.models.job_application import JobApplication
         from app.models.interview import Interview
-        from sqlalchemy import select, func
+        from sqlalchemy import select, func, or_, and_
+
+        norm_profile_email = (profile.email or "").strip().lower()
+        cand_app_filter = or_(
+            JobApplication.user_id == candidate_id,
+            and_(
+                JobApplication.user_id.is_(None),
+                func.lower(JobApplication.candidate_email) == norm_profile_email,
+            ),
+        )
 
         apps_res = await db.execute(
-            select(func.count(JobApplication.id)).where(JobApplication.candidate_email == profile.email)
+            select(func.count(JobApplication.id)).where(cand_app_filter)
         )
         apps_count = apps_res.scalar() or 0
 
         offers_res = await db.execute(
             select(func.count(JobApplication.id)).where(
-                JobApplication.candidate_email == profile.email,
+                cand_app_filter,
                 JobApplication.status.in_(["ACCEPTED", "OFFER"])
             )
         )
@@ -45,7 +54,7 @@ async def get_profile(candidate_id: int, db: AsyncSession = Depends(get_db)):
         interviews_res = await db.execute(
             select(func.count(Interview.id))
             .join(JobApplication, Interview.job_application_id == JobApplication.id)
-            .where(JobApplication.candidate_email == profile.email)
+            .where(cand_app_filter)
         )
         interviews_count = interviews_res.scalar() or 0
     except Exception as e:

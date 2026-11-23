@@ -65,8 +65,8 @@ async def compare_candidates_service(
     seen_phones = set()
 
     for app in ordered_apps:
-        # Check applicant_id if present
-        app_uid = getattr(app, "applicant_id", None)
+        # Check user_id / applicant_id if present
+        app_uid = getattr(app, "user_id", None) or getattr(app, "applicant_id", None)
         if app_uid:
             if app_uid in seen_applicant_ids:
                 raise HTTPException(
@@ -75,15 +75,24 @@ async def compare_candidates_service(
                 )
             seen_applicant_ids.add(app_uid)
 
-        # Check normalized email
-        norm_email = normalize_email(app.candidate_email)
-        if norm_email:
-            if norm_email in seen_emails:
-                raise HTTPException(
-                    status_code=422,
-                    detail=f"Cannot compare multiple applications from the same person (duplicate email: {norm_email}). Comparison is for choosing between different people."
-                )
-            seen_emails.add(norm_email)
+        # Check all normalized emails associated with this application (candidate_email, contact_email, resume_email)
+        app_emails = {
+            normalize_email(em)
+            for em in (
+                app.candidate_email,
+                getattr(app, "contact_email", None),
+                getattr(app, "resume_email", None),
+            )
+            if normalize_email(em)
+        }
+        overlap = app_emails & seen_emails
+        if overlap:
+            dup_em = sorted(overlap)[0]
+            raise HTTPException(
+                status_code=422,
+                detail=f"Cannot compare multiple applications from the same person (duplicate email: {dup_em}). Comparison is for choosing between different people."
+            )
+        seen_emails.update(app_emails)
 
         # Check normalized phone
         norm_phone = normalize_phone(app.phone)
@@ -153,9 +162,12 @@ async def compare_candidates_service(
 
         candidates_result.append({
             "application_id": app.id,
-            "applicant_id": getattr(app, "applicant_id", None) or app.id,
+            "user_id": getattr(app, "user_id", None),
+            "applicant_id": getattr(app, "user_id", None) or getattr(app, "applicant_id", None) or app.id,
             "name": app.candidate_name,
-            "email": app.candidate_email,
+            "email": getattr(app, "contact_email", None) or app.candidate_email,
+            "contact_email": getattr(app, "contact_email", None) or app.candidate_email,
+            "resume_email": getattr(app, "resume_email", None),
             "phone": app.phone,
             "location": app.location,
             "applied_job_id": app.job_id,
@@ -183,6 +195,7 @@ async def compare_candidates_service(
             "applied_weights": score_res.get("applied_weights"),
             "matched_skills": score_res.get("matched_skills", []),
             "missing_skills": score_res.get("missing_skills", []),
+            "requirement_evaluations": score_res.get("requirement_evaluations", []),
             "transferable_skills": score_res.get("transferable_skills", []),
             "relevance": app.relevance,
             "experience_years": years_exp,

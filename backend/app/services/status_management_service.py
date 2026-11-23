@@ -125,25 +125,36 @@ async def apply_application_status_change(
         can_undo=(change_type == "auto")
     )
 
-    # Dispatch email only once per distinct status change
-    if send_email and application.candidate_email:
-        try:
-            from app.services.email_service import send_application_status_update_email
-            job_title = getattr(application, "job_title", "Position")
-            if application.job and getattr(application.job, "job_title", None):
-                job_title = application.job.job_title
+    # Dispatch email only once per distinct status change (always to account login email when linked)
+    if send_email and (getattr(application, "user_id", None) or application.candidate_email):
+        target_email = application.candidate_email
+        if getattr(application, "user_id", None):
+            try:
+                from app.models.user import User
+                u_res = await db.execute(select(User.email).where(User.id == application.user_id))
+                acc_email = u_res.scalar_one_or_none()
+                if acc_email:
+                    target_email = acc_email.strip()
+            except Exception:
+                pass
+        if target_email:
+            try:
+                from app.services.email_service import send_application_status_update_email
+                job_title = getattr(application, "job_title", "Position")
+                if application.job and getattr(application.job, "job_title", None):
+                    job_title = application.job.job_title
 
-            await send_application_status_update_email(
-                to_email=application.candidate_email,
-                candidate_name=application.candidate_name or "Candidate",
-                job_title=job_title,
-                new_status=new_norm,
-                previous_status=old_norm,
-                notes=reason,
-                db=db,
-            )
-        except Exception as e:
-            logger.warning(f"Could not send status email to {application.candidate_email}: {e}")
+                await send_application_status_update_email(
+                    to_email=target_email,
+                    candidate_name=application.candidate_name or "Candidate",
+                    job_title=job_title,
+                    new_status=new_norm,
+                    previous_status=old_norm,
+                    notes=reason,
+                    db=db,
+                )
+            except Exception as e:
+                logger.warning(f"Could not send status email to {target_email}: {e}")
 
     # Invalidate cache
     try:

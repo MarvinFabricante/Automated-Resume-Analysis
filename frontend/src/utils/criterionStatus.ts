@@ -4,6 +4,7 @@ export type CriterionStatus =
   | 'Partially meets'
   | 'Not required'
   | 'Needs manual review'
+  | 'Not confirmed'
   | 'Does not meet';
 
 export const VALID_CRITERION_STATUSES: CriterionStatus[] = [
@@ -13,6 +14,7 @@ export const VALID_CRITERION_STATUSES: CriterionStatus[] = [
   'Not required',
   'Needs manual review',
   'Does not meet',
+  'Not confirmed',
 ];
 
 export const NO_VALUE_MARKERS = new Set<string>([
@@ -213,6 +215,7 @@ export function getCriterionStatusBadgeStyle(status: CriterionStatus): {
         barClass: 'bg-slate-400',
         isFailure: false,
       };
+    case 'Not confirmed':
     case 'Needs manual review':
       return {
         badgeClass: 'bg-indigo-50 text-indigo-700 border-indigo-200',

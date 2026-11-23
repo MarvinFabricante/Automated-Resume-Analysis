@@ -1,3 +1,4 @@
+import RequirementEvidence from '../../common/RequirementEvidence';
 import React, { useState, useEffect } from 'react';
 import { Helmet } from 'react-helmet-async';
 import {
@@ -1769,12 +1770,13 @@ const ViewCandidateDetailsModal: React.FC<ViewCandidateDetailsModalProps> = ({
                     </div>
                   </div>
 
+                  <RequirementEvidence items={candidate.requirement_evaluations} />
                   {/* Matched Skills Found */}
                   <div className="bg-emerald-50/40 border border-emerald-100 rounded-2xl p-5">
                     <div className="flex items-center gap-2 mb-3">
                       <CheckCircle2 size={16} className="text-emerald-600" />
                       <h4 className="text-xs font-black text-emerald-900 uppercase tracking-wider">
-                        Matched Skills Found in Resume ({matchedSkills.length})
+                        Confirmed Skills ({matchedSkills.length})
                       </h4>
                     </div>
                     {matchedSkills.length > 0 ? (
@@ -2062,7 +2064,7 @@ const ViewCandidateDetailsModal: React.FC<ViewCandidateDetailsModalProps> = ({
                       {candidate.education_entries.map((edu: any, idx: number) => {
                         const levelBadge = getEduLevelBadge(edu.education_level);
                         const statusBadge = getEduStatusBadge(edu.status);
-                        const displayDegree = edu.degree_or_course || edu.raw_degree_or_course || "Degree / Course";
+                        const displayDegree = edu.degree_or_course || edu.raw_degree_or_course || "";
                         const yearsDisplay = [edu.start_year, edu.end_year].filter(Boolean).join(' – ');
 
                         return (
@@ -2089,7 +2091,7 @@ const ViewCandidateDetailsModal: React.FC<ViewCandidateDetailsModalProps> = ({
                               )}
                             </div>
 
-                            <h5 className="text-sm font-bold text-gray-900">{displayDegree}</h5>
+                            {displayDegree && <h5 className="text-sm font-bold text-gray-900">{displayDegree}</h5>}
 
                             {edu.major_or_specialization && (
                               <p className="text-xs text-amber-700 font-medium mt-0.5">

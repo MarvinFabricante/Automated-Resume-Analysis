@@ -210,7 +210,11 @@ async def schedule_interview(
         )
 
     # Check if candidate has an overlapping interview across ANY of their applications (REQ084)
-    if application.candidate_email:
+    if getattr(application, "user_id", None):
+        cand_all_ivs = await InterviewRepository.get_interviews_for_candidate_by_user_id(
+            db, application.user_id, fallback_email=application.candidate_email
+        )
+    elif application.candidate_email:
         cand_all_ivs = await InterviewRepository.get_interviews_for_candidate(db, application.candidate_email)
     else:
         cand_all_ivs = app_interviews
@@ -294,7 +298,11 @@ async def candidate_reschedule_interview(
     """
     try:
         result = await interview_service.candidate_reschedule_interview(
-            db, interview_id, data, candidate_email=current_user.get("sub")
+            db,
+            interview_id,
+            data,
+            candidate_email=current_user.get("sub") or current_user.get("email"),
+            candidate_user_id=current_user.get("id"),
         )
         await clear_cache_pattern("app_interviews*")
         await clear_cache_pattern("cand_interviews*")
@@ -417,15 +425,29 @@ async def get_application_interviews(
     return await interview_service.get_interviews_for_application(db, application_id)
 
 @router.get("/candidate/{email}", response_model=List[InterviewResponseSchema])
-@cache_response("cand_interviews", ttl=60)
 async def get_candidate_interviews(
     email: str,
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
     """
-    Maintain interview history for a candidate.
+    Maintain interview history for a candidate (linked by authenticated user_id first).
     """
+    raw_param = (email or "").strip()
+    if (current_user.get("role") or "").upper() == "CANDIDATE":
+        auth_uid = current_user.get("id")
+        auth_email = (current_user.get("sub") or current_user.get("email") or "").strip().lower()
+        if auth_uid and (
+            raw_param in ("me", "my", str(auth_uid))
+            or raw_param.lower() == auth_email
+        ):
+            return await interview_service.get_interviews_for_candidate(
+                db, auth_email or raw_param, user_id=auth_uid
+            )
+    if raw_param.isdigit():
+        return await interview_service.get_interviews_for_candidate(
+            db, raw_param, user_id=int(raw_param)
+        )
     return await interview_service.get_interviews_for_candidate(db, email)
 
 

@@ -106,3 +106,22 @@ phone. Verify receipt with the test recipient. Smart/TNT requires an approved
 custom sender name and a supported route confirmed by iProgSMS; a successful API
 response alone cannot establish carrier support. Configure `IPROG_SMS_SENDER_NAME`
 only after approval.
+# Requirement confirmation and extraction fixes
+
+Unconfirmed job requirements are returned as `Not confirmed` (or `Possible match`
+when related evidence exists). Grouped clarification questions retain every item.
+`clarification_responses` is an optional list of `{field, requirement, answer,
+years?, details?}` objects; answers are `yes`, `some`, or `no`. Positive answers use
+the regular scoring pipeline and retain `Confirmed by applicant` provenance.
+Scores describe confirmed evidence coverage while unresolved items remain neutral.
+
+Related terms can be edited in `app/services/requirement_related_terms.json`
+(restart API and Celery workers after changing it), or overridden through the
+matching configuration's `related_terms` mapping.
+
+Startup adds the two nullable evidence columns automatically. For an explicit
+deployment migration, run `python -m migrations.add_requirement_confirmations`
+from `backend` before starting API and Celery processes. This migration does not
+modify application statuses or existing records. Existing resumes can be
+re-extracted through the existing upload flow to repair education/skill data.
+

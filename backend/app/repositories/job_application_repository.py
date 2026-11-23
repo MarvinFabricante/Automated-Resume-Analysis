@@ -1,11 +1,12 @@
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, text
+from sqlalchemy import select, text, or_, and_, func
 from sqlalchemy.orm import selectinload
 from typing import List, Optional, Dict, Any
 import logging
 
 from app.models.job_application import JobApplication
 from app.models.job_description import JobDescription
+from app.models.user import User
 from app.services.requirement_rules import extract_criterion_status, STATUS_MANUAL_REVIEW
 from app.utils.redis_client import redis_tx_manager
 from app.utils.cache import (
@@ -67,29 +68,126 @@ async def get_by_job_id(db: AsyncSession, job_id: int) -> List[JobApplication]:
     return apps
 
 
-async def get_by_email(db: AsyncSession, email: str) -> List[JobApplication]:
-    """Get all applications by email (checks Redis cache first)."""
-    cache_key = f"cand_apps:by_email:{email}"
-    cached = await get_cache(cache_key)
-    if cached is not None:
-        return cached
+async def get_by_user_id(
+    db: AsyncSession,
+    user_id: int,
+    fallback_email: Optional[str] = None,
+) -> List[JobApplication]:
+    """Get all applications linked to a specific authenticated user_id (with optional legacy email fallback for unlinked rows)."""
+    if not user_id:
+        if fallback_email:
+            return await get_by_email(db, fallback_email)
+        return []
+
+    norm_email = (fallback_email or "").strip().lower()
+    if not norm_email:
+        user_res = await db.execute(select(User.email).where(User.id == user_id))
+        u_email = user_res.scalar_one_or_none()
+        norm_email = (u_email or "").strip().lower()
+
+    if norm_email:
+        condition = or_(
+            JobApplication.user_id == user_id,
+            and_(
+                JobApplication.user_id.is_(None),
+                func.lower(JobApplication.candidate_email) == norm_email,
+            ),
+        )
+    else:
+        condition = JobApplication.user_id == user_id
 
     result = await db.execute(
         select(JobApplication)
         .options(selectinload(JobApplication.job))
-        .filter(JobApplication.candidate_email == email)
+        .filter(condition)
         .order_by(JobApplication.created_at.desc())
     )
-    apps = result.scalars().all()
-    await set_cache(cache_key, apps, ttl=300)
-    return apps
+    return result.scalars().all()
+
+
+async def get_by_job_and_user_id(
+    db: AsyncSession,
+    job_id: int,
+    user_id: int,
+    fallback_email: Optional[str] = None,
+) -> Optional[JobApplication]:
+    """Get existing application for a logged-in user and job by user_id."""
+    if not user_id:
+        if fallback_email:
+            return await get_by_job_and_email(db, job_id, fallback_email)
+        return None
+
+    norm_email = (fallback_email or "").strip().lower()
+    if norm_email:
+        user_cond = or_(
+            JobApplication.user_id == user_id,
+            and_(
+                JobApplication.user_id.is_(None),
+                func.lower(JobApplication.candidate_email) == norm_email,
+            ),
+        )
+    else:
+        user_cond = JobApplication.user_id == user_id
+
+    result = await db.execute(
+        select(JobApplication)
+        .options(selectinload(JobApplication.job))
+        .filter(JobApplication.job_id == job_id, user_cond)
+        .order_by(JobApplication.created_at.desc())
+    )
+    return result.scalars().first()
+
+
+async def get_by_email(db: AsyncSession, email: str) -> List[JobApplication]:
+    """Get all applications for a candidate (resolving user_id when email belongs to a registered user or is a user ID)."""
+    raw = (email or "").strip()
+    if not raw:
+        return []
+    if raw.isdigit():
+        return await get_by_user_id(db, int(raw))
+
+    norm_email = raw.lower()
+    user_res = await db.execute(
+        select(User.id).where(func.lower(User.email) == norm_email)
+    )
+    matched_user_id = user_res.scalar_one_or_none()
+
+    if matched_user_id is not None:
+        condition = or_(
+            JobApplication.user_id == matched_user_id,
+            func.lower(JobApplication.candidate_email) == norm_email,
+            func.lower(JobApplication.contact_email) == norm_email,
+        )
+    else:
+        condition = or_(
+            func.lower(JobApplication.candidate_email) == norm_email,
+            func.lower(JobApplication.contact_email) == norm_email,
+        )
+
+    result = await db.execute(
+        select(JobApplication)
+        .options(selectinload(JobApplication.job))
+        .filter(condition)
+        .order_by(JobApplication.created_at.desc())
+    )
+    return result.scalars().all()
 
 
 async def get_by_job_and_email(db: AsyncSession, job_id: int, email: str) -> Optional[JobApplication]:
-    """Get existing application for a candidate and job (case-insensitive email)."""
+    """Get existing application for a candidate and job (resolves user_id if email matches an account)."""
     if not email:
         return None
-    normalized_email = email.strip().lower()
+    raw = email.strip()
+    if raw.isdigit():
+        return await get_by_job_and_user_id(db, job_id, int(raw))
+    normalized_email = raw.lower()
+    user_res = await db.execute(
+        select(User.id).where(func.lower(User.email) == normalized_email)
+    )
+    matched_user_id = user_res.scalar_one_or_none()
+    if matched_user_id is not None:
+        return await get_by_job_and_user_id(db, job_id, matched_user_id, fallback_email=normalized_email)
+
     result = await db.execute(
         select(JobApplication)
         .options(selectinload(JobApplication.job))
@@ -122,7 +220,7 @@ async def get_all(db: AsyncSession) -> List[JobApplication]:
 
 async def get_all_summaries(db: AsyncSession) -> List[Dict[str, Any]]:
     """Get lightweight dashboard summary rows via SQL column projection (checks Redis cache first)."""
-    cache_key = "all_apps:summaries:list:v3"
+    cache_key = "all_apps:summaries:list:v4"
     cached = await get_cache(cache_key)
     if cached is not None:
         return cached
@@ -131,8 +229,11 @@ async def get_all_summaries(db: AsyncSession) -> List[Dict[str, Any]]:
         select(
             JobApplication.id,
             JobApplication.job_id,
+            JobApplication.user_id,
             JobApplication.candidate_name,
             JobApplication.candidate_email,
+            JobApplication.resume_email,
+            JobApplication.contact_email,
             JobApplication.phone,
             JobApplication.location,
             JobApplication.job_title,
@@ -155,6 +256,8 @@ async def get_all_summaries(db: AsyncSession) -> List[Dict[str, Any]]:
             JobApplication.resume_url,
             JobApplication.matched_skills,
             JobApplication.missing_skills,
+            JobApplication.requirement_evaluations,
+            JobApplication.clarification_responses,
             JobApplication.total_experience_months,
             JobApplication.highest_educational_attainment,
             JobApplication.experience_gaps,
@@ -183,8 +286,12 @@ async def get_all_summaries(db: AsyncSession) -> List[Dict[str, Any]]:
         summaries.append({
             "id": row.id,
             "job_id": row.job_id,
+            "user_id": row.user_id,
+            "applicant_id": row.user_id,
             "candidate_name": row.candidate_name,
             "candidate_email": row.candidate_email,
+            "resume_email": row.resume_email,
+            "contact_email": row.contact_email or row.candidate_email,
             "phone": row.phone,
             "location": row.location,
             "job_title": row.job_title,
@@ -212,6 +319,8 @@ async def get_all_summaries(db: AsyncSession) -> List[Dict[str, Any]]:
             "resume_url": row.resume_url,
             "matched_skills": row.matched_skills or [],
             "missing_skills": row.missing_skills or [],
+            "requirement_evaluations": row.requirement_evaluations or [],
+            "clarification_responses": row.clarification_responses or [],
             "total_experience_months": row.total_experience_months,
             "highest_educational_attainment": row.highest_educational_attainment,
             "experience_gaps": row.experience_gaps,

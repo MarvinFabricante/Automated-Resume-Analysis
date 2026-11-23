@@ -59,14 +59,15 @@ const ApplicationTracking: React.FC = () => {
   const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
   const [isRescheduleModalOpen, setIsRescheduleModalOpen] = useState(false);
 
-  const { user } = useSelector((state: RootState) => state.auth);
+  const { user, userId } = useSelector((state: RootState) => state.auth);
   const email = typeof user === 'string' ? user : (user as any)?.email;
+  const candidateIdentifier = userId ? String(userId) : (email || '');
 
-  // Real-time polling of candidate applications
+  // Real-time polling of candidate applications (linked by authenticated user_id first)
   const { data: applications = [], isLoading: isLoadingApps } = useGetCandidateApplicationsQuery(
-    email || '',
+    candidateIdentifier,
     {
-      skip: !email,
+      skip: !candidateIdentifier,
       pollingInterval: 5000,
     }
   );

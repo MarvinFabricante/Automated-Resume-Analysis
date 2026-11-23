@@ -45,6 +45,7 @@ def apply_match_result_to_application(app, scores: dict) -> None:
 
     app.matched_skills = scores.get("matched_skills")
     app.missing_skills = scores.get("missing_skills")
+    app.requirement_evaluations = scores.get("requirement_evaluations", [])
     app.relevant_experience = scores.get("relevant_experience")
     app.experience_gaps = scores.get("experience_gaps")
     app.required_degree = scores.get("required_degree")
