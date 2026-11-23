@@ -144,3 +144,43 @@ async def test_change_password_and_set_password(db_session):
     # Login with directly set password
     login_res = await auth_service.login_user(db_session, email, "direct_set_pwd_999")
     assert "token" in login_res
+
+
+@pytest.mark.asyncio
+async def test_login_with_google_ignores_stale_exists_cache_and_handles_repeat_signin(db_session):
+    """Google sign-in succeeds for a new or deleted user even if user:exists cache was stale."""
+    email = "friend.google.signin@gmail.com"
+
+    # 1. First Google sign-in creates candidate account
+    first_login = await auth_service.login_with_google(
+        db=db_session,
+        email=email,
+        fullname="Friend Candidate",
+        picture="",
+        google_credentials="",
+        target_role="auto",
+    )
+    assert "token" in first_login
+    assert first_login["role"] == "CANDIDATE"
+
+    # 2. Repeat Google sign-in logs in cleanly without raising 'Email already registered'
+    second_login = await auth_service.login_with_google(
+        db=db_session,
+        email=email,
+        fullname="Friend Candidate",
+        picture="",
+        google_credentials="",
+        target_role="auto",
+    )
+    assert second_login["token"]
+    assert second_login["user_id"] == first_login["user_id"]
+
+    # 3. Clicking 'Register with Google' for an already-registered email also signs in cleanly
+    reg_google = await auth_service.register_candidate_with_google(
+        db=db_session,
+        email=email,
+        fullname="Friend Candidate",
+        picture="",
+    )
+    assert reg_google["token"]
+    assert reg_google["user_id"] == first_login["user_id"]

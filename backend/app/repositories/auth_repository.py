@@ -1,6 +1,6 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from sqlalchemy import text
+from sqlalchemy import text, func
 from typing import Optional
 import logging
 
@@ -16,17 +16,23 @@ logger = logging.getLogger(__name__)
 
 
 async def check_email_exists_raw(db: AsyncSession, email: str) -> bool:
-    """Check if email exists (checks Redis cache first)."""
-    cache_key = f"user:exists:{email.lower()}"
-    cached = await get_cache(cache_key)
-    if cached is not None:
-        return bool(cached)
+    """Check if email exists directly in the database and keep Redis cache synchronized."""
+    email_clean = (email or "").strip().lower()
+    if not email_clean:
+        return False
 
     existing = await db.execute(
-        text("SELECT id FROM users WHERE email = :email"), {"email": email}
+        text("SELECT id FROM users WHERE LOWER(email) = :email"), {"email": email_clean}
     )
     exists = existing.fetchone() is not None
-    await set_cache(cache_key, exists, ttl=300)
+    cache_key = f"user:exists:{email_clean}"
+    if exists:
+        await set_cache(cache_key, True, ttl=300)
+    else:
+        await delete_cache(cache_key)
+        await delete_cache(f"user:email:{email_clean}")
+        await delete_cache(f"user:raw_email:{email_clean}")
+        await clear_cache_pattern(f"user:email_role:{email_clean}")
     return exists
 
 
@@ -73,44 +79,44 @@ async def create_user(db: AsyncSession, role: str, common_fields: dict) -> User:
 
 
 async def get_raw_user_by_email(db: AsyncSession, email: str):
-    """Get raw user tuple by email (checks Redis cache first)."""
-    email_clean = email.lower()
-    cache_key = f"user:raw_email:{email_clean}"
-    cached = await get_cache(cache_key)
-    if cached is not None:
-        return cached
+    """Get raw user row by email directly from the database (case-insensitive)."""
+    email_clean = (email or "").strip().lower()
+    if not email_clean:
+        return None
 
     raw = await db.execute(
-        text("SELECT id, email, password, role, fullname, profile_image_url, is_archived, is_online FROM users WHERE email = :email"),
-        {"email": email}
+        text("SELECT id, email, password, role, fullname, profile_image_url, is_archived, is_online FROM users WHERE LOWER(email) = :email"),
+        {"email": email_clean}
     )
     row = raw.fetchone()
-    if row:
-        await set_cache(cache_key, row, ttl=600)
+    if not row:
+        await delete_cache(f"user:exists:{email_clean}")
+        await delete_cache(f"user:email:{email_clean}")
+        await delete_cache(f"user:raw_email:{email_clean}")
+        await clear_cache_pattern(f"user:email_role:{email_clean}")
     return row
 
 
 async def get_user_by_email_and_role(db: AsyncSession, email: str, role: str) -> Optional[User]:
-    """Get user by email and role (checks Redis cache first)."""
-    email_clean = email.lower()
+    """Get user by email and role (queries DB directly to ensure live session-attached ORM instance)."""
+    email_clean = (email or "").strip().lower()
     cache_key = f"user:email_role:{email_clean}:{role}"
-    cached = await get_cache(cache_key)
-    if cached is not None:
-        return cached
 
     if role == "CANDIDATE":
-        result = await db.execute(select(Candidate).where(Candidate.email == email))
+        result = await db.execute(select(Candidate).where(func.lower(Candidate.email) == email_clean))
     elif role == "HR":
-        result = await db.execute(select(HR).where(HR.email == email))
+        result = await db.execute(select(HR).where(func.lower(HR.email) == email_clean))
     elif role == "ADMIN":
-        result = await db.execute(select(Admin).where(Admin.email == email))
+        result = await db.execute(select(Admin).where(func.lower(Admin.email) == email_clean))
     else:
-        result = await db.execute(select(User).where(User.email == email))
+        result = await db.execute(select(User).where(func.lower(User.email) == email_clean))
     user = result.scalar_one_or_none()
     if user:
         await set_cache(cache_key, user, ttl=1800)
         await set_cache(f"user:id:{user.id}", user, ttl=1800)
         await set_cache(f"user:email:{email_clean}", user, ttl=1800)
+    else:
+        await delete_cache(cache_key)
     return user
 
 
@@ -150,26 +156,21 @@ async def update_online_status_orm(db: AsyncSession, user: User, now) -> None:
         )
         await db.commit()
         await redis_tx_manager.commit_transaction(tx_id, {"user_id": user.id})
-        await delete_cache(f"user:id:{user.id}")
-        if user.email:
-            email_clean = user.email.lower()
-            await delete_cache(f"user:email:{email_clean}")
-            await delete_cache(f"user:raw_email:{email_clean}")
-            await delete_cache(f"user:email_role:{email_clean}:*")
+        await invalidate_user_cache(user)
     except Exception as e:
         await redis_tx_manager.fail_transaction(tx_id, str(e))
         raise
 
 
 async def get_user_by_email(db: AsyncSession, email: str) -> Optional[User]:
-    """Get user by email (checks Redis cache first)."""
-    email_clean = email.lower()
+    """Get user by email (case-insensitive)."""
+    email_clean = (email or "").strip().lower()
     cache_key = f"user:email:{email_clean}"
     cached = await get_cache(cache_key)
     if cached is not None:
         return cached
 
-    result = await db.execute(select(User).where(User.email == email))
+    result = await db.execute(select(User).where(func.lower(User.email) == email_clean))
     user = result.scalar_one_or_none()
     if user:
         await set_cache(cache_key, user, ttl=1800)
@@ -204,20 +205,26 @@ async def get_user_by_id_fresh(db: AsyncSession, user_id: int) -> Optional[User]
 
 async def get_user_by_email_fresh(db: AsyncSession, email: str) -> Optional[User]:
     """Get user by email directly from the DB (session-attached, bypasses Redis cache)."""
+    email_clean = (email or "").strip().lower()
     result = await db.execute(
-        select(User).where(User.email == email.strip().lower()).execution_options(populate_existing=True)
+        select(User).where(func.lower(User.email) == email_clean).execution_options(populate_existing=True)
     )
     return result.scalar_one_or_none()
 
 
-async def invalidate_user_cache(user) -> None:
-    """Drop cached copies of a user so subsequent reads see committed changes."""
-    if not user:
-        return
+async def invalidate_user_cache(user=None, *, user_id: Optional[int] = None, email: Optional[str] = None) -> None:
+    """Drop all cached copies of a user so subsequent reads see committed changes."""
+    uid = user_id or (getattr(user, "id", None) if user else None)
+    uemail = email or (getattr(user, "email", None) if user else None)
     try:
-        await delete_cache(f"user:id:{user.id}")
-        if getattr(user, "email", None):
-            await delete_cache(f"user:email:{user.email.lower()}")
+        if uid is not None:
+            await delete_cache(f"user:id:{uid}")
+        if uemail:
+            email_clean = uemail.strip().lower()
+            await delete_cache(f"user:email:{email_clean}")
+            await delete_cache(f"user:raw_email:{email_clean}")
+            await delete_cache(f"user:exists:{email_clean}")
+            await clear_cache_pattern(f"user:email_role:{email_clean}")
     except Exception as e:
         logger.warning(f"Could not invalidate user cache: {e}")
 
@@ -267,12 +274,7 @@ async def update_user_password(db: AsyncSession, user: User, hashed_password: st
         await redis_tx_manager.commit_transaction(tx_id, {"user_id": user.id})
 
         # Evict cached user credentials
-        await delete_cache(f"user:id:{user.id}")
-        if user.email:
-            email_clean = user.email.lower()
-            await delete_cache(f"user:email:{email_clean}")
-            await delete_cache(f"user:raw_email:{email_clean}")
-            await delete_cache(f"user:email_role:{email_clean}:*")
+        await invalidate_user_cache(user)
     except Exception as e:
         await redis_tx_manager.fail_transaction(tx_id, str(e))
         raise

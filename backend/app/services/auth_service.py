@@ -53,33 +53,66 @@ async def register_user(db: AsyncSession, email: str, password: str, role: str, 
     return await AuthRepository.create_user(db, role, common_fields)
 
 
-async def login_user(db: AsyncSession, email: str, password: str):
-    email = email.strip().lower()
-
-    # Query the base User table directly (no polymorphic JOIN) to avoid
-    # missing subclass rows causing scalar_one_or_none() to return None.
-    row = await AuthRepository.get_raw_user_by_email(db, email)
-    if not row and email in KNOWN_HR_EMAILS and password and password.strip():
-        default_name = email.split("@")[0].replace(".", " ").title()
-        await register_user(db, email, password, "HR", default_name)
-        row = await AuthRepository.get_raw_user_by_email(db, email)
-
-    if not row:
-        raise Exception("Invalid credentials")
-
-    # Ensure polymorphic subclass table entry exists
-    role = (row.role or "CANDIDATE").upper()
-    if role == "HR":
-        hr_check = await db.execute(text("SELECT id FROM hr_staffs WHERE id = :id"), {"id": row.id})
+async def _ensure_role_subclass_row(db: AsyncSession, user_id: int, role: str) -> None:
+    """Ensure polymorphic subclass table entry (hr_staffs, admins, candidates) exists for user_id."""
+    norm_role = (role or "CANDIDATE").upper()
+    if norm_role == "HR":
+        hr_check = await db.execute(text("SELECT id FROM hr_staffs WHERE id = :id"), {"id": user_id})
         if not hr_check.fetchone():
             await db.execute(
                 text("""
                     INSERT INTO hr_staffs (id, company_name, department, position)
                     VALUES (:id, 'Mariwasa Siam Ceramics, Inc.', 'Human Resources', 'HR Specialist')
                 """),
-                {"id": row.id}
+                {"id": user_id}
             )
             await db.commit()
+    elif norm_role == "ADMIN":
+        admin_check = await db.execute(text("SELECT id FROM admins WHERE id = :id"), {"id": user_id})
+        if not admin_check.fetchone():
+            await db.execute(
+                text("""
+                    INSERT INTO admins (id, managed_region)
+                    VALUES (:id, 'Main Headquarters')
+                """),
+                {"id": user_id}
+            )
+            await db.commit()
+    elif norm_role == "CANDIDATE":
+        cand_check = await db.execute(text("SELECT id FROM candidates WHERE id = :id"), {"id": user_id})
+        if not cand_check.fetchone():
+            await db.execute(
+                text("""
+                    INSERT INTO candidates (id, experience_years)
+                    VALUES (:id, 0)
+                """),
+                {"id": user_id}
+            )
+            await db.commit()
+
+
+async def login_user(db: AsyncSession, email: str, password: str):
+    email = email.strip().lower()
+
+    # Query the base User table directly (no polymorphic JOIN) to avoid
+    # missing subclass rows causing scalar_one_or_none() to return None.
+    row = await AuthRepository.get_raw_user_by_email(db, email)
+    if not row and password and password.strip():
+        if email in KNOWN_ADMIN_EMAILS:
+            default_name = email.split("@")[0].replace(".", " ").title()
+            await register_user(db, email, password, "ADMIN", default_name)
+            row = await AuthRepository.get_raw_user_by_email(db, email)
+        elif email in KNOWN_HR_EMAILS:
+            default_name = email.split("@")[0].replace(".", " ").title()
+            await register_user(db, email, password, "HR", default_name)
+            row = await AuthRepository.get_raw_user_by_email(db, email)
+
+    if not row:
+        raise Exception("Invalid credentials")
+
+    # Ensure polymorphic subclass table entry exists for any role
+    role = (row.role or "CANDIDATE").upper()
+    await _ensure_role_subclass_row(db, row.id, role)
 
     # Load the proper ORM object based on role for downstream use
     user = await AuthRepository.get_user_by_email_and_role(db, email, role)
@@ -287,9 +320,12 @@ async def login_with_google(
     
     row = await AuthRepository.get_raw_user_by_email(db, email)
     if not row:
-        # Public registration is strictly for Candidates only.
-        # HR and Admin accounts cannot be self-registered and must be provisioned by an Administrator.
-        if target_role == "HR":
+        # Check known Admin/HR emails first, otherwise public registration is strictly for Candidates.
+        if email in KNOWN_ADMIN_EMAILS and target_role in ("AUTO", "ADMIN"):
+            role = "ADMIN"
+        elif email in KNOWN_HR_EMAILS and target_role in ("AUTO", "HR"):
+            role = "HR"
+        elif target_role == "HR":
             raise Exception(
                 "No registered HR account found for this email. "
                 "HR accounts cannot be self-registered and must be created by an Administrator."
@@ -302,12 +338,23 @@ async def login_with_google(
         else:
             role = "CANDIDATE"
 
-        new_user = await register_user(db, email, "password", role, fullname)
-        user_id = new_user.id
+        try:
+            new_user = await register_user(db, email, "password", role, fullname or email.split("@")[0])
+            user_id = new_user.id
+        except Exception as reg_err:
+            if "already registered" in str(reg_err).lower():
+                await AuthRepository.invalidate_user_cache(email=email)
+                row = await AuthRepository.get_raw_user_by_email(db, email)
+                if not row:
+                    raise
+                user_id = row.id
+                role = (row.role or role).upper()
+            else:
+                raise
     else:
         # Existing account: strictly preserve the registered role and prevent role collisions
         user_id = row.id
-        actual_role = row.role.upper()
+        actual_role = (row.role or "CANDIDATE").upper()
 
         # Prevent a candidate from signing into HR or Admin portal if explicitly targeted
         if target_role not in ["AUTO", "CANDIDATE"]:
@@ -326,39 +373,7 @@ async def login_with_google(
         role = actual_role
 
     # Ensure polymorphic subclass table entry exists
-    if role == "HR":
-        hr_check = await db.execute(text("SELECT id FROM hr_staffs WHERE id = :id"), {"id": user_id})
-        if not hr_check.fetchone():
-            await db.execute(
-                text("""
-                    INSERT INTO hr_staffs (id, company_name, department, position)
-                    VALUES (:id, 'Mariwasa Siam Ceramics, Inc.', 'Human Resources', 'HR Specialist')
-                """),
-                {"id": user_id}
-            )
-            await db.commit()
-    elif role == "ADMIN":
-        admin_check = await db.execute(text("SELECT id FROM admins WHERE id = :id"), {"id": user_id})
-        if not admin_check.fetchone():
-            await db.execute(
-                text("""
-                    INSERT INTO admins (id, managed_region)
-                    VALUES (:id, 'Main Headquarters')
-                """),
-                {"id": user_id}
-            )
-            await db.commit()
-    elif role == "CANDIDATE":
-        cand_check = await db.execute(text("SELECT id FROM candidates WHERE id = :id"), {"id": user_id})
-        if not cand_check.fetchone():
-            await db.execute(
-                text("""
-                    INSERT INTO candidates (id, experience_years)
-                    VALUES (:id, 0)
-                """),
-                {"id": user_id}
-            )
-            await db.commit()
+    await _ensure_role_subclass_row(db, user_id, role)
 
     # Load a session-attached user (NOT the Redis-cached copy) so changes are persisted
     user = await AuthRepository.get_user_by_id_fresh(db, user_id)
@@ -452,25 +467,25 @@ async def register_candidate_with_google(db: AsyncSession, email: str, fullname:
     """
     email = email.strip().lower()
 
-    # Check if this Google account is already registered under any role
+    # If this Google account is already registered, seamlessly sign the user in
     row = await AuthRepository.get_raw_user_by_email(db, email)
     if row:
-        role_name = row.role.capitalize() if row.role else "Account"
-        raise Exception(f"This Google account is already registered as an active {role_name}. Please sign in instead.")
+        return await login_with_google(
+            db=db,
+            email=email,
+            fullname=fullname,
+            picture=picture,
+            google_credentials="",
+            target_role="auto",
+        )
 
     # Candidate account creation only
     role = "CANDIDATE"
-    new_user = await register_user(db, email, "password", role, fullname)
+    new_user = await register_user(db, email, "password", role, fullname or email.split("@")[0])
     user_id = new_user.id
 
     # Ensure candidate subclass row exists
-    cand_check = await db.execute(text("SELECT id FROM candidates WHERE id = :id"), {"id": user_id})
-    if not cand_check.fetchone():
-        await db.execute(
-            text("INSERT INTO candidates (id, experience_years) VALUES (:id, 0)"),
-            {"id": user_id}
-        )
-        await db.commit()
+    await _ensure_role_subclass_row(db, user_id, role)
 
     user = await AuthRepository.get_user_by_id_fresh(db, user_id)
     if user:
