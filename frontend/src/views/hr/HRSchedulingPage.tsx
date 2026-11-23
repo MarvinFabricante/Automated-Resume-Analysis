@@ -423,7 +423,7 @@ const HRSchedulingPage: React.FC = () => {
     setHrFilter('ALL');
   };
 
-  // Metrics computation dynamically from filtered dataset
+  // Metrics computation dynamically from filtered interview dataset (strictly system interviews, excluding external Google events)
   const metrics = useMemo(() => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -439,25 +439,25 @@ const HRSchedulingPage: React.FC = () => {
     endOfWeek.setDate(startOfWeek.getDate() + 6);
     endOfWeek.setHours(23, 59, 59, 999);
 
-    const todayCount = filteredEvents.filter((ev) => {
+    const interviewOnlyEvents = filteredEvents.filter((ev) => !ev.isGoogleEvent);
+
+    const todayCount = interviewOnlyEvents.filter((ev) => {
       const d = ev.start;
       const st = (ev.status || '').toUpperCase();
       return d >= today && d <= todayEnd && st !== 'CANCELED' && st !== 'CANCELLED';
     }).length;
 
-    const weekCount = filteredEvents.filter((ev) => {
+    const weekCount = interviewOnlyEvents.filter((ev) => {
       const d = ev.start;
       const st = (ev.status || '').toUpperCase();
       return d >= startOfWeek && d <= endOfWeek && st !== 'CANCELED' && st !== 'CANCELLED';
     }).length;
 
-    const completedCount = filteredEvents.filter((ev) => (ev.status || '').toUpperCase() === 'COMPLETED').length;
+    const completedCount = interviewOnlyEvents.filter((ev) => (ev.status || '').toUpperCase() === 'COMPLETED').length;
     const now = new Date();
-    const totalScheduled = filteredEvents.filter((ev) =>
-      ev.isGoogleEvent ? ev.end >= now : isUpcomingInterview(ev, now)
-    ).length;
+    const totalScheduled = interviewOnlyEvents.filter((ev) => isUpcomingInterview(ev, now)).length;
 
-    return { todayCount, weekCount, completedCount, totalScheduled, totalCount: filteredEvents.length };
+    return { todayCount, weekCount, completedCount, totalScheduled, totalCount: interviewOnlyEvents.length };
   }, [filteredEvents]);
 
   // Month View calendar grid calculation

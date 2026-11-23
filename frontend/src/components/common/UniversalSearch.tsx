@@ -2,9 +2,10 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useLocation, useNavigate } from '@/utils/navigation';
 import { useSelector } from 'react-redux';
 import { RootState } from '../../redux/store';
-import { filterAndRankJobs } from '../../utils/jobSearch';
+import { filterAndRankJobs, filterAndRankCandidates } from '../../utils/jobSearch';
 import { 
   useGetJobsQuery, 
+  useGetApplicationsSummaryQuery,
   useGetCandidateApplicationsQuery,
   useUniversalSearchHRQuery
 } from '../../redux/api/apiSlice';
@@ -34,7 +35,7 @@ interface UniversalSearchProps {
 interface SearchResultItem {
   id: string;
   type: 'job' | 'application' | 'hr-applicant' | 'hr-job' | 'hr-shortlist';
-  category: 'Applicants' | 'Jobs' | 'Shortlists' | 'My Applications';
+  category: 'Jobs' | 'Candidates' | 'Applicants' | 'Shortlists' | 'My Applications';
   title: string;
   subtitle: string;
   tag?: string;
@@ -119,9 +120,12 @@ const UniversalSearch: React.FC<UniversalSearchProps> = ({
   const isHR = normRole === 'HR';
   const isAdmin = normRole === 'ADMIN';
 
-  // Fetch jobs (cached via RTK query)
-  const { data: rawJobs = [], isLoading: isLoadingJobs } = useGetJobsQuery(undefined, {
-    skip: isHR && !debouncedQuery,
+  // Fetch jobs (cached via RTK query — preloaded for Candidate, HR, and Admin for instant job search)
+  const { data: rawJobs = [], isLoading: isLoadingJobs } = useGetJobsQuery(undefined);
+
+  // Fetch HR applications summary so HR candidate search responds instantaneously alongside server search
+  const { data: hrApplicationsSummary = [] } = useGetApplicationsSummaryQuery(undefined, {
+    skip: !isHR,
   });
 
   // Fetch candidate applications if logged in as candidate
@@ -129,7 +133,7 @@ const UniversalSearch: React.FC<UniversalSearchProps> = ({
     skip: !isCandidate || !userEmail
   });
 
-  // HR Universal Search (searches Applicants, Jobs, Shortlists on the server)
+  // HR Universal Search (searches Jobs, Candidates/Applicants, Shortlists on the server)
   const { data: hrSearchData, isFetching: isFetchingHR } = useUniversalSearchHRQuery(
     debouncedQuery,
     { skip: !isHR || !debouncedQuery || debouncedQuery.length < 1 }
@@ -186,47 +190,99 @@ const UniversalSearch: React.FC<UniversalSearchProps> = ({
     if (!debouncedQuery) return [];
     const q = debouncedQuery.toLowerCase();
 
-    // ─── HR UNIVERSAL SEARCH RESULTS ───
-    if (isHR && hrSearchData) {
+    // ─── HR UNIVERSAL SEARCH RESULTS (1. Jobs first — same ranking as Candidate, 2. Candidates under Jobs, 3. Shortlists) ───
+    if (isHR) {
       const items: SearchResultItem[] = [];
 
-      // 1. Applicants
-      if (Array.isArray(hrSearchData.applicants)) {
-        for (const app of hrSearchData.applicants) {
-          items.push({
-            id: `hr-applicant-${app.id || app.email}`,
-            type: 'hr-applicant',
-            category: 'Applicants',
-            title: app.name || 'Candidate',
-            subtitle: `${app.position || app.job_title || 'Applicant'} • ${app.email}`,
-            tag: app.status || 'Submitted',
-            tagColor: app.status === 'Shortlisted' ? 'bg-purple-50 text-purple-700' : 'bg-rose-50 text-[#D60041]',
-            url: `/hr/applicant/${encodeURIComponent(app.email)}`,
-            data: app,
-          });
+      // Compute applicant count per job title from summary if not present on job object
+      const jobApplicantCounts = new Map<string, number>();
+      if (Array.isArray(hrApplicationsSummary)) {
+        for (const app of hrApplicationsSummary) {
+          const jt = (app.preferredJob || app.job_title || app.applied_job_title || '').toLowerCase().trim();
+          if (jt) {
+            jobApplicantCounts.set(jt, (jobApplicantCounts.get(jt) || 0) + 1);
+          }
         }
       }
 
-      // 2. Jobs
-      if (Array.isArray(hrSearchData.jobs)) {
-        for (const j of hrSearchData.jobs) {
-          const jobTitle = j.job_title || j.title || 'Position';
-          items.push({
-            id: `hr-job-${j.id}`,
-            type: 'hr-job',
-            category: 'Jobs',
-            title: jobTitle,
-            subtitle: `${j.department || 'General'} • ${j.location || 'Mariwasa'}`,
-            tag: `${j.applicant_count || 0} applicants`,
-            tagColor: 'bg-blue-50 text-blue-700',
-            url: `/hr/screening?job=${encodeURIComponent(jobTitle)}`,
-            data: j,
-          });
+      // 1. Jobs (ranked identically to Candidate job search via filterAndRankJobs)
+      const jobsSource = rawJobs.length > 0 ? rawJobs : (Array.isArray(hrSearchData?.jobs) ? hrSearchData.jobs : []);
+      const rankedHRJobs = filterAndRankJobs(jobsSource, debouncedQuery);
+
+      for (const j of rankedHRJobs.slice(0, 8)) {
+        const jobTitle = j.job_title || j.title || 'Position';
+        const jobId = j.id ?? j.job_id ?? jobTitle;
+        const countFromSummary = jobApplicantCounts.get(jobTitle.toLowerCase().trim());
+        const appCount = Number(j.applicant_count ?? countFromSummary ?? 0);
+
+        items.push({
+          id: `hr-job-${jobId}`,
+          type: 'hr-job',
+          category: 'Jobs',
+          title: jobTitle,
+          subtitle: `${j.department || 'General'} • ${j.location || 'Mariwasa'}`,
+          tag: `${appCount} ${appCount === 1 ? 'applicant' : 'applicants'}`,
+          tagColor: 'bg-blue-50 text-blue-700 border-blue-200',
+          url: `/hr/screeningportal?job=${encodeURIComponent(jobTitle)}`,
+          data: j,
+        });
+      }
+
+      // 2. Candidates (under Jobs — deduplicated by email and ranked via filterAndRankCandidates)
+      const combinedCandidatesPool: any[] = [];
+      const seenCandidateEmails = new Set<string>();
+
+      const pushCandidateToPool = (c: any) => {
+        const emailKey = (c.email || c.candidate_email || '').toLowerCase().trim();
+        const nameKey = (c.name || c.candidate_name || '').toLowerCase().trim();
+        const dedupeKey = emailKey || `${nameKey}-${c.id}`;
+        if (!dedupeKey || seenCandidateEmails.has(dedupeKey)) return;
+        seenCandidateEmails.add(dedupeKey);
+        combinedCandidatesPool.push(c);
+      };
+
+      if (Array.isArray(hrApplicationsSummary)) {
+        for (const app of hrApplicationsSummary) {
+          pushCandidateToPool(app);
         }
+      }
+      if (Array.isArray(hrSearchData?.applicants)) {
+        for (const app of hrSearchData.applicants) {
+          pushCandidateToPool(app);
+        }
+      }
+
+      const rankedCandidates = filterAndRankCandidates(combinedCandidatesPool, debouncedQuery);
+      for (const app of rankedCandidates.slice(0, 8)) {
+        const email = app.email || app.candidate_email || '';
+        const candidateName = app.name || app.candidate_name || 'Candidate';
+        const appliedRole = app.preferredJob || app.position || app.job_title || app.applied_job_title || 'Applicant';
+        const matchScore = app.matchScore ?? app.match_score;
+        const statusLabel = app.status || 'Submitted';
+
+        items.push({
+          id: `hr-applicant-${app.id || email || candidateName}`,
+          type: 'hr-applicant',
+          category: 'Candidates',
+          title: candidateName,
+          subtitle: `${appliedRole}${email ? ` • ${email}` : ''}`,
+          tag:
+            typeof matchScore === 'number' && matchScore > 0
+              ? `${Math.round(matchScore)}% Match • ${statusLabel}`
+              : statusLabel,
+          tagColor:
+            statusLabel === 'Shortlisted'
+              ? 'bg-purple-50 text-purple-700 border-purple-200'
+              : 'bg-rose-50 text-[#D60041] border-rose-200',
+          url: email
+            ? `/hr/applicant/${encodeURIComponent(email)}`
+            : `/hr/screeningportal?search=${encodeURIComponent(candidateName)}`,
+          data: app,
+        });
       }
 
       // 3. Shortlists
-      if (Array.isArray(hrSearchData.shortlists)) {
+      if (Array.isArray(hrSearchData?.shortlists)) {
         for (const s of hrSearchData.shortlists) {
           items.push({
             id: `hr-shortlist-${s.id}`,
@@ -235,8 +291,8 @@ const UniversalSearch: React.FC<UniversalSearchProps> = ({
             title: s.name || 'Shortlist Roster',
             subtitle: `Position: ${s.job_title || 'General'}`,
             tag: `${s.total_candidates ?? s.candidate_count ?? 0} candidates`,
-            tagColor: 'bg-emerald-50 text-emerald-700',
-            url: `/hr/screening?tab=shortlists&rosterId=${s.id}`,
+            tagColor: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+            url: `/hr/screeningportal?tab=shortlists&rosterId=${s.id}`,
             data: s,
           });
         }
@@ -320,7 +376,7 @@ const UniversalSearch: React.FC<UniversalSearchProps> = ({
     }
 
     return [...matchedJobs, ...matchedApps];
-  }, [debouncedQuery, rawJobs, candidateApps, isCandidate, isHR, isAdmin, hrSearchData]);
+  }, [debouncedQuery, rawJobs, hrApplicationsSummary, candidateApps, isCandidate, isHR, isAdmin, hrSearchData]);
 
   // Reset selected index when query changes
   useEffect(() => {
@@ -403,7 +459,7 @@ const UniversalSearch: React.FC<UniversalSearchProps> = ({
   }, [results]);
 
   const placeholderText = isHR 
-    ? "Search applicants, jobs, shortlists... (Press / or Ctrl+K)" 
+    ? "Search jobs, candidates, shortlists... (Press / or Ctrl+K)" 
     : "Search jobs, departments, locations... (Press / or Ctrl+K)";
 
   return (
@@ -471,8 +527,8 @@ const UniversalSearch: React.FC<UniversalSearchProps> = ({
               {Object.entries(groupedResults).map(([category, items]) => (
                 <div key={category} className="py-2">
                   <div className="px-4 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-                    {category === 'Applicants' && <Users size={12} className="text-[#D60041]" />}
                     {category === 'Jobs' && <Briefcase size={12} className="text-blue-500" />}
+                    {(category === 'Candidates' || category === 'Applicants') && <Users size={12} className="text-[#D60041]" />}
                     {category === 'Shortlists' && <Layers size={12} className="text-emerald-500" />}
                     <span>{category} ({items.length})</span>
                   </div>
@@ -493,7 +549,7 @@ const UniversalSearch: React.FC<UniversalSearchProps> = ({
                         >
                           <div className="flex items-center gap-3 min-w-0">
                             <div className="w-8 h-8 rounded-lg bg-slate-100 border border-slate-200/60 flex items-center justify-center shrink-0">
-                              {item.category === 'Applicants' && <User size={15} className="text-slate-600" />}
+                              {(item.category === 'Candidates' || item.category === 'Applicants') && <User size={15} className="text-[#D60041]" />}
                               {item.category === 'Jobs' && <Briefcase size={15} className="text-blue-600" />}
                               {item.category === 'Shortlists' && <Layers size={15} className="text-emerald-600" />}
                               {item.category === 'My Applications' && <FileText size={15} className="text-[#D60041]" />}

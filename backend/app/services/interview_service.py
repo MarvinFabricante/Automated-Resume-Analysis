@@ -2009,12 +2009,13 @@ async def get_calendar_feed(
                                 print(f"Error parsing date during sync: {parse_err}")
                     else:
                         # Check if this Google event is a copy of an active DB interview (by title + start time)
+                        # or an orphaned interview event from a deleted application.
                         is_duplicate_iv = False
+                        ev_summary = (ev.get("summary") or "").strip().lower()
                         g_start_str = ev.get("start_datetime")
                         if g_start_str and not ev.get("is_all_day"):
                             try:
                                 dt_start = datetime.fromisoformat(g_start_str.replace("Z", "+00:00")).replace(tzinfo=None)
-                                ev_summary = (ev.get("summary") or "").strip().lower()
                                 for iv in db_interviews:
                                     if (iv.title or "").strip().lower() == ev_summary and abs((dt_start - iv.start_time).total_seconds()) < 60:
                                         if not iv.google_event_id:
@@ -2024,6 +2025,9 @@ async def get_calendar_feed(
                                         break
                             except Exception:
                                 pass
+                        if not is_duplicate_iv and is_real_oauth_creds and ev_summary.startswith("interview with "):
+                            # Orphaned interview event on Google Calendar whose application/interview was deleted from the DB
+                            is_duplicate_iv = True
                         if not is_duplicate_iv:
                             # Deduplicate holidays/shared events across multiple connected HR calendars
                             dedup_key = (ev.get("summary"), ev.get("start_datetime"), ev.get("end_datetime")) if ev.get("is_holiday") else (ev_id, ev.get("start_datetime"))

@@ -27,6 +27,7 @@ import ScreeningWorkflowBoard from '../../components/hr/screening/ScreeningWorkf
 import ShortlistRostersList from '../../components/hr/screening/ShortlistRostersList';
 import RosterPipelineModal from '../../components/hr/screening/RosterPipelineModal';
 import { exportToCSV } from '../../utils/exportUtils';
+import { filterAndRankJobs, filterAndRankCandidates } from '../../utils/jobSearch';
 import {
   matchesPositionFilter,
   sortCandidatesByOption,
@@ -69,21 +70,35 @@ const ScreeningPortal: React.FC = () => {
   const [finalizeCandidateIds, setFinalizeCandidateIds] = useState<(number | string)[]>([]);
   const [activeRoster, setActiveRoster] = useState<any | null>(null);
 
-  // Auto-initialize screeningConfig with the first active job or from URL param
+  // Auto-initialize or update screeningConfig when URL ?job= param changes or jobs load
   useEffect(() => {
-    if (!screeningConfig && rawJobs.length > 0) {
-      const jobParam = searchParams.get('job');
-      let targetJob = null;
-      if (jobParam) {
-        targetJob = rawJobs.find((j: any) => (j.job_title || j.title || '').toLowerCase() === jobParam.toLowerCase());
-      }
-      if (!targetJob) {
-        targetJob = rawJobs.find((j: any) => j.is_active !== false) || rawJobs[0];
-      }
-      if (targetJob) {
+    if (rawJobs.length === 0) return;
+    const jobParam = searchParams.get('job');
+    if (jobParam) {
+      const targetJob = rawJobs.find(
+        (j: any) => (j.job_title || j.title || '').toLowerCase() === jobParam.toLowerCase()
+      );
+      if (
+        targetJob &&
+        (!screeningConfig ||
+          screeningConfig.jobTitle.toLowerCase() !== (targetJob.job_title || targetJob.title || '').toLowerCase())
+      ) {
         setScreeningConfig({
           jobId: targetJob.id || targetJob.job_id,
           jobTitle: targetJob.job_title || targetJob.title || 'Position',
+          minThreshold: screeningConfig?.minThreshold ?? 80,
+          statusFilters: screeningConfig?.statusFilters ?? ['Submitted', 'Under Review'],
+        });
+      }
+      return;
+    }
+
+    if (!screeningConfig) {
+      const defaultJob = rawJobs.find((j: any) => j.is_active !== false) || rawJobs[0];
+      if (defaultJob) {
+        setScreeningConfig({
+          jobId: defaultJob.id || defaultJob.job_id,
+          jobTitle: defaultJob.job_title || defaultJob.title || 'Position',
           minThreshold: 80,
           statusFilters: ['Submitted', 'Under Review'],
         });
@@ -115,13 +130,20 @@ const ScreeningPortal: React.FC = () => {
   const [showSuggestions, setShowSuggestions] = useState<boolean>(false);
   const [includeArchived, setIncludeArchived] = useState<boolean>(false);
 
-  // Sync URL query params into state (e.g. from HR Dashboard links)
+  // Sync URL query params into state (e.g. from HR Dashboard links or UniversalSearch)
   useEffect(() => {
     const statusParam = searchParams.get('status');
     const searchParam = searchParams.get('search');
     const jobParam = searchParams.get('job');
     const scoreParam = searchParams.get('score');
     const candidateIdParam = searchParams.get('candidateId');
+    const tabParam = searchParams.get('tab');
+
+    if (tabParam === 'shortlists' || tabParam === 'pool' || tabParam === 'workflow') {
+      setActiveTab(tabParam);
+    } else if (searchParam || statusParam || scoreParam) {
+      setActiveTab('pool');
+    }
 
     if (statusParam) {
       const upper = statusParam.toUpperCase();
@@ -293,22 +315,32 @@ const ScreeningPortal: React.FC = () => {
       if (scoreFilter === "60-79" && (score < 60 || score >= 80)) return false;
       if (scoreFilter === "<60" && score >= 60) return false;
 
-      // Omnisearch
+      // Omnisearch (prefix-aware for 1-letter queries, full search for 2+ chars)
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase().trim();
-        const matchesName = c.name && c.name.toLowerCase().includes(q);
-        const matchesJob = c.preferredJob && c.preferredJob.toLowerCase().includes(q);
-        const matchesEmail = c.email && c.email.toLowerCase().includes(q);
-        const matchesLocation = c.location && c.location.toLowerCase().includes(q);
-        const matchesDegree = (c.degree || '').toLowerCase().includes(q) || (c.college || '').toLowerCase().includes(q);
-        const matchesSkills = Array.isArray(c.skills) && c.skills.some((s: string) => (s || '').toLowerCase().includes(q));
+        if (q.length === 1) {
+          const nameWords = (c.name || '').toLowerCase().split(/[\s,;/().\-–—]+/).filter((w: string) => w.length >= 2);
+          const jobWords = (c.preferredJob || '').toLowerCase().split(/[\s,;/().\-–—]+/).filter(Boolean);
+          const matchesSingleLetter =
+            (c.name || '').toLowerCase().startsWith(q) ||
+            nameWords.some((w: string) => w.startsWith(q)) ||
+            (c.preferredJob || '').toLowerCase().startsWith(q) ||
+            jobWords.some((w: string) => w.startsWith(q));
+          if (!matchesSingleLetter) return false;
+        } else {
+          const matchesName = c.name && c.name.toLowerCase().includes(q);
+          const matchesJob = c.preferredJob && c.preferredJob.toLowerCase().includes(q);
+          const matchesEmail = c.email && c.email.toLowerCase().includes(q);
+          const matchesLocation = c.location && c.location.toLowerCase().includes(q);
+          const matchesDegree = (c.degree || '').toLowerCase().includes(q) || (c.college || '').toLowerCase().includes(q);
+          const matchesSkills = Array.isArray(c.skills) && c.skills.some((s: string) => (s || '').toLowerCase().includes(q));
+          const matchesDept = c.jobDepartment && c.jobDepartment.toLowerCase().includes(q);
+          const matchesCompany = c.company && c.company.toLowerCase().includes(q);
+          const matchesSource = (c.source || '').toLowerCase().includes(q) || (c.import_origin || '').toLowerCase().includes(q);
 
-        const matchesDept = c.jobDepartment && c.jobDepartment.toLowerCase().includes(q);
-        const matchesCompany = c.company && c.company.toLowerCase().includes(q);
-        const matchesSource = (c.source || '').toLowerCase().includes(q) || (c.import_origin || '').toLowerCase().includes(q);
-
-        if (!matchesName && !matchesJob && !matchesEmail && !matchesLocation && !matchesDegree && !matchesSkills && !matchesDept && !matchesCompany && !matchesSource) {
-          return false;
+          if (!matchesName && !matchesJob && !matchesEmail && !matchesLocation && !matchesDegree && !matchesSkills && !matchesDept && !matchesCompany && !matchesSource) {
+            return false;
+          }
         }
       }
 
@@ -324,19 +356,45 @@ const ScreeningPortal: React.FC = () => {
     return filteredCandidates.slice(startIndex, startIndex + itemsPerPage);
   }, [filteredCandidates, currentPage, itemsPerPage]);
 
-  // Autocomplete suggestions based on search query
+  // Autocomplete suggestions divided into Jobs first, then Candidates under that
   const suggestions = useMemo(() => {
-    if (!searchQuery.trim()) return [];
-    const q = searchQuery.toLowerCase().trim();
-    return candidates
-      .filter((c: any) => (c.name || '').toLowerCase().includes(q))
+    const trimmed = searchQuery.trim();
+    if (!trimmed) return [];
+
+    // 1. Matching Jobs (same ranking as Candidate job search)
+    const jobPool = rawJobs.length > 0
+      ? rawJobs
+      : jobOptions.map((opt) => ({
+          job_title: opt.title,
+          title: opt.title,
+          applicant_count: opt.count,
+        }));
+    const matchedJobs = filterAndRankJobs(jobPool, trimmed)
+      .slice(0, 5)
+      .map((j: any) => {
+        const title = j.job_title || j.title || 'Position';
+        const optMatch = jobOptions.find((o) => o.title.toLowerCase() === title.toLowerCase());
+        const appCount = optMatch?.count ?? j.applicant_count ?? 0;
+        return {
+          type: 'job' as const,
+          name: title,
+          role: `${j.department || 'Department'} • ${appCount} ${appCount === 1 ? 'applicant' : 'applicants'}`,
+        };
+      });
+
+    // 2. Matching Candidates (ranked by name / word prefix)
+    const matchedCandidates = filterAndRankCandidates(candidates, trimmed)
       .slice(0, 6)
       .map((c: any) => ({
+        type: 'candidate' as const,
         name: c.name,
+        email: c.email,
         role: c.preferredJob,
-        score: Math.round(c.matchScore || 0)
+        score: Math.round(c.matchScore || 0),
       }));
-  }, [candidates, searchQuery]);
+
+    return [...matchedJobs, ...matchedCandidates];
+  }, [candidates, rawJobs, jobOptions, searchQuery]);
 
   // Check if any non-default filter is applied
   const isFiltered = Boolean(

@@ -4,6 +4,7 @@ import { useNavigate } from '@/utils/navigation';
 import Header from '../../components/layout/Header';
 import Sidebar from '../../components/layout/Sidebar';
 import { useGetApplicationsQuery, useGetJobsQuery } from '../../redux/api/apiSlice';
+import { getCandidateSearchRank } from '../../utils/jobSearch';
 import HelpTooltip from '../../components/common/HelpTooltip';
 import {
   Users,
@@ -145,14 +146,22 @@ const ApplicantsList: React.FC = () => {
 
   // Filtering & Sorting
   const filteredApplicants = useMemo(() => {
+    const trimmedSearch = search.trim();
     return applicants
       .filter((applicant) => {
-        // Search filter
-        const matchSearch =
-          !search.trim() ||
-          applicant.name.toLowerCase().includes(search.toLowerCase()) ||
-          applicant.email.toLowerCase().includes(search.toLowerCase()) ||
-          applicant.positions.some((p) => p.job_title.toLowerCase().includes(search.toLowerCase()));
+        // Search filter (prefix-aware for 1-2 character queries, full search for 3+)
+        let matchSearch = true;
+        if (trimmedSearch) {
+          const rank = getCandidateSearchRank(
+            {
+              name: applicant.name,
+              email: applicant.email,
+              job_title: applicant.positions.map((p) => p.job_title).join(' '),
+            },
+            trimmedSearch
+          );
+          matchSearch = rank !== null;
+        }
 
         // Position filter
         const matchPosition =

@@ -352,6 +352,8 @@ def get_real_google_events(
         for ev in events:
             if ev.get('status') == 'cancelled':
                 continue
+            if ev.get('eventType') == 'birthday' or (ev.get('summary') or '').strip().lower() == 'happy birthday!':
+                continue
             start_info = ev.get('start', {})
             end_info = ev.get('end', {})
             is_all_day = 'date' in start_info
@@ -424,14 +426,16 @@ def get_all_calendars_google_events(
             seen_keys.add(key)
             combined.append(ev)
 
-    # Also query all other calendars in user's calendarList (custom calendars, holiday calendars, etc.)
+    # Also query the user's own secondary calendars in calendarList (excluding built-in holiday/contact feeds
+    # which contain hundreds of multi-year public holidays).
     calendars = get_real_google_calendars(credentials_json, bypass_cache=bypass_cache) or []
     for cal in calendars:
         cal_id = cal.get("id")
         if not cal_id or cal_id == "primary" or cal.get("primary"):
             continue
-        # Skip birthday contacts calendar if unselected
-        if "#contacts@group.v.calendar.google.com" in cal_id and not cal.get("selected", False):
+        if "#holiday@" in cal_id or "#contacts@" in cal_id or "holiday.calendar.google.com" in cal_id:
+            continue
+        if not cal.get("selected", True):
             continue
         cal_events = get_real_google_events(
             credentials_json=credentials_json,
