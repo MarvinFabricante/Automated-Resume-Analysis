@@ -171,6 +171,74 @@ _SHORT_KEYWORDS_REQUIRING_CONTEXT = {
     "PM": {"PROJECT MANAGER", "MAINTENANCE", "PREVENTIVE MAINTENANCE", "SCRUM"},
     "REACT": {"JS", "JAVASCRIPT", "TYPESCRIPT", "NODE", "FRONTEND", "FRONT-END", "WEB", "UI", "COMPONENT", "REDUX", "NEXT", "HTML", "CSS", "DEVELOPER", "PROGRAMMING", "SKILLS"},
     "VA": {"VIRTUAL ASSISTANT", "VIRTUAL ASSISTANCE", "ADMINISTRATIVE", "CALENDAR", "INBOX", "EMAIL MANAGEMENT", "EXECUTIVE ASSISTANT", "SOCIAL MEDIA"},
+    "TS": {"TYPESCRIPT", "JAVASCRIPT", "JS", "REACT", "ANGULAR", "VUE", "NEXT", "NODE", "NESTJS", "FRONTEND", "FRONT-END", "BACKEND", "WEB", "SKILLS"},
+    "JS": {"JAVASCRIPT", "TYPESCRIPT", "REACT", "NODE", "VUE", "NEXT", "EXPRESS", "ANGULAR", "HTML", "CSS", "FRONTEND", "WEB", "DEVELOPER", "PROGRAMMING", "SKILLS"},
+    "RN": {"NURSE", "NURSING", "PRC", "LICENSE", "LICENSURE", "BOARD", "HOSPITAL", "CLINICAL", "PATIENT", "BSN", "HEALTHCARE"},
+}
+
+# Context-guard patterns for ambiguous non-short aliases (prevents false positives like
+# "data integrity" -> Honesty & Integrity, "Bicol University" -> Bicolano, "LBC Express" -> Express.js)
+_TECH_INTEGRITY_RE = re.compile(
+    r'\b(?:data|database|referential|structural|system|file|signal|code|network|'
+    r'message|memory|record|records|packet|schema|software|security|information)\s+integrity\b|'
+    r'\bintegrity\s+(?:check|checks|constraint|constraints|validation|verification|and\s+security|of\s+(?:the\s+)?(?:data|database|system|records|files))\b',
+    re.IGNORECASE,
+)
+_TECH_RELIABLE_RE = re.compile(
+    r'\breliable\s+(?:system|systems|software|code|api|apis|service|services|network|'
+    r'performance|solution|solutions|application|applications|app|apps|platform|data|'
+    r'database|infrastructure|delivery|connection|hardware|equipment|machine|product|backend|frontend)\b',
+    re.IGNORECASE,
+)
+_BICOL_NON_LANG_RE = re.compile(
+    r'\b(?:bicol|bikol|bicolano)\s+(?:university|college|campus|region|medical|hospital|'
+    r'state|express|peninsula|province|city|polangui|albay|legazpi|naga)\b|'
+    r'\b(?:from|in|at|region\s+v|albay|camarines)\s+bicol\b',
+    re.IGNORECASE,
+)
+_FILIPINO_NON_LANG_RE = re.compile(
+    r'\b(?:citizenship|nationality|religion)\s*[:\-]?\s*filipino\b|'
+    r'\bfilipino\s+(?:cuisine|food|dish|dishes|restaurant|culture|heritage|citizen|citizenship|nationality)\b',
+    re.IGNORECASE,
+)
+_FOREIGN_LANG_NON_LANG_RE = re.compile(
+    r'\b(?:japanese|chinese|spanish)\s+(?:restaurant|hospital|cuisine|food|company|corp|'
+    r'embassy|bread|bakery|new\s+year|market|store|style|brand)\b',
+    re.IGNORECASE,
+)
+_EXPRESS_NON_TECH_RE = re.compile(
+    r'\b(?:lbc|j&t|flash|ninja|american|pony|bicol|fed|federal|2go|dhl|ali|panda|grab|'
+    r'lalamove|cargo|air|mail|delivery|shipping)\s+express\b|'
+    r'\bexpress\s+(?:my|our|their|your|his|her|interest|gratitude|thanks|appreciation|'
+    r'ideas|thoughts|myself|yourself|delivery|shipping|lane|way|counter|checkout)\b',
+    re.IGNORECASE,
+)
+_NEXT_PROSE_RE = re.compile(
+    r'\bnext\s+(?:year|month|week|day|step|steps|level|role|position|challenge|chapter|'
+    r'phase|generation|time|to|of|in|on|door|project|client|customer|shift|batch)\b|'
+    r'\b(?:the|my|our|your|his|her|their|until|for)\s+next\b',
+    re.IGNORECASE,
+)
+_SPRING_NON_TECH_RE = re.compile(
+    r'\bspring\s+(?:19|20)\d{2}\b|'
+    r'\b(?:hot|cold|water|coil|leaf|box|mattress|natural|mineral|early|late)\s+spring\b',
+    re.IGNORECASE,
+)
+_SETTER_NON_SALES_RE = re.compile(
+    r'\b(?:tile|brick|stone|type|trend|goal|pace|table|bone|die|mold|pin|hair|ceramic)\s+setter\b',
+    re.IGNORECASE,
+)
+_NODE_NON_TECH_RE = re.compile(
+    r'\b(?:lymph|network|cluster|tree|graph|leaf|child|parent|root|sensor)\s+node\b',
+    re.IGNORECASE,
+)
+_WEB_DEV_CONTEXT_WORDS = {
+    "JAVASCRIPT", "TYPESCRIPT", "REACT", "NODE", "NODE.JS", "NODEJS", "MONGO", "MONGODB",
+    "MERN", "MEAN", "FULL STACK", "FULL-STACK", "BACKEND", "FRONTEND", "WEB", "API", "REST",
+    "HTML", "CSS", "TAILWIND", "NEXT.JS", "NEXTJS", "NESTJS", "EXPRESS.JS", "VUE", "ANGULAR",
+}
+_JAVA_DEV_CONTEXT_WORDS = {
+    "JAVA", "HIBERNATE", "MAVEN", "GRADLE", "JPA", "MICROSERVICES", "BACKEND", "REST", "API", "KOTLIN",
 }
 
 # Filipino Soft Skills & Workplace Traits Trigger Patterns
@@ -395,6 +463,34 @@ class PhilippineSkillsExtractor:
                 return True
             return bool(re.search(r'(?:^|[,|;/•]\s*)QC(?:\s*[,|;/•]|$)', line_text))
 
+        if raw_upper == "TS":
+            # Prevent broken word fragments ("patien ts", "appointmen ts") or stray initials from matching TypeScript
+            if not exact_snippet.isupper():
+                return False
+            if re.search(r'(?:^|[,|;/•(\s])(?:JS\s*/\s*TS|TS\s*/\s*JS)(?:$|[,|;/•)\s])', line_text):
+                return True
+            if section == "Skills" and re.search(r'(?:^|[,|;/•:\-]\s*)TS(?:\s*[,|;/•)]|$)', line_text):
+                return True
+            return False
+
+        if raw_upper == "JS":
+            if not exact_snippet.isupper():
+                return False
+            if re.search(r'\b(?:React|Node|Vue|Next|Express|Nest|Angular|Vanilla)\s+JS\b', line_text, re.IGNORECASE):
+                return True
+            if section == "Skills":
+                return True
+            window = text[max(0, start - 100):min(len(text), end + 100)].upper()
+            return any(w in window for w in _SHORT_KEYWORDS_REQUIRING_CONTEXT["JS"])
+
+        if raw_upper == "RN":
+            if not exact_snippet.isupper():
+                return False
+            if section in {"Skills", "Certifications"}:
+                return True
+            window = text[max(0, start - 100):min(len(text), end + 100)].upper()
+            return any(w in window for w in _SHORT_KEYWORDS_REQUIRING_CONTEXT["RN"])
+
         if not exact_snippet.isupper() and len(exact_snippet) <= 2:
             return False
 
@@ -404,6 +500,91 @@ class PhilippineSkillsExtractor:
 
         context_words = _SHORT_KEYWORDS_REQUIRING_CONTEXT[raw_upper]
         return any(w in window for w in context_words)
+
+    def _is_valid_contextual_mention(
+        self,
+        canonical: str,
+        raw: str,
+        start: int,
+        end: int,
+        text: str,
+        section: str = "General",
+    ) -> bool:
+        """Filters out common false-positive matches caused by geographic/technical homonyms."""
+        raw_clean = raw.strip()
+        raw_lower = raw_clean.lower()
+        local_window = text[max(0, start - 45):min(len(text), end + 45)]
+        line_start = text.rfind('\n', 0, start) + 1
+        line_end = text.find('\n', end)
+        if line_end < 0:
+            line_end = len(text)
+        line_text = text[line_start:line_end]
+
+        if canonical == "Honesty & Integrity":
+            if raw_lower == "integrity" and _TECH_INTEGRITY_RE.search(local_window):
+                return False
+            if raw_lower == "reliable" and _TECH_RELIABLE_RE.search(local_window):
+                return False
+
+        elif canonical == "Bicolano / Bikol":
+            if _BICOL_NON_LANG_RE.search(local_window) or _BICOL_NON_LANG_RE.search(line_text):
+                return False
+            if section == "Education" and not re.search(r'\b(?:language|dialect|fluent|speaks?)\b', line_text, re.I):
+                return False
+
+        elif canonical == "Tagalog / Filipino" and raw_lower == "filipino":
+            if _FILIPINO_NON_LANG_RE.search(local_window) or _FILIPINO_NON_LANG_RE.search(line_text):
+                return False
+
+        elif canonical in {"Japanese (Nihongo)", "Mandarin Chinese", "Spanish"} and raw_lower in {"japanese", "chinese", "spanish"}:
+            if _FOREIGN_LANG_NON_LANG_RE.search(local_window) or _FOREIGN_LANG_NON_LANG_RE.search(line_text):
+                return False
+
+        elif canonical == "Next.js" and raw_lower == "next":
+            if raw_clean.islower() or _NEXT_PROSE_RE.search(local_window):
+                return False
+            if section != "Skills":
+                wide = text[max(0, start - 100):min(len(text), end + 100)].upper()
+                if not any(w in wide for w in _WEB_DEV_CONTEXT_WORDS):
+                    return False
+
+        elif canonical == "NestJS" and raw_lower == "nest":
+            if raw_clean.islower():
+                return False
+            if section != "Skills":
+                wide = text[max(0, start - 100):min(len(text), end + 100)].upper()
+                if not any(w in wide for w in _WEB_DEV_CONTEXT_WORDS):
+                    return False
+
+        elif canonical == "Spring Boot" and raw_lower == "spring":
+            if _SPRING_NON_TECH_RE.search(local_window):
+                return False
+            if section != "Skills":
+                wide = text[max(0, start - 120):min(len(text), end + 120)].upper()
+                if not any(w in wide for w in _JAVA_DEV_CONTEXT_WORDS):
+                    return False
+
+        elif canonical == "Express.js" and raw_lower == "express":
+            if _EXPRESS_NON_TECH_RE.search(local_window) or _EXPRESS_NON_TECH_RE.search(line_text):
+                return False
+            if section != "Skills":
+                wide = text[max(0, start - 120):min(len(text), end + 120)].upper()
+                if not any(w in wide for w in _WEB_DEV_CONTEXT_WORDS):
+                    return False
+
+        elif canonical == "Node.js" and raw_lower == "node":
+            if _NODE_NON_TECH_RE.search(local_window):
+                return False
+            if section != "Skills":
+                wide = text[max(0, start - 120):min(len(text), end + 120)].upper()
+                if not any(w in wide for w in _WEB_DEV_CONTEXT_WORDS):
+                    return False
+
+        elif canonical == "Appointment Setting" and raw_lower == "setter":
+            if _SETTER_NON_SALES_RE.search(local_window):
+                return False
+
+        return True
 
     def extract(self, text: str) -> Dict[str, Any]:
         """
@@ -441,6 +622,8 @@ class PhilippineSkillsExtractor:
                 raw_mention = text[start:end].strip()
                 sec = self._get_section(start, section_spans)
                 if not self._is_valid_short_mention(raw_mention, start, end, text, section=sec):
+                    continue
+                if not self._is_valid_contextual_mention(canonical, raw_mention, start, end, text, section=sec):
                     continue
 
                 candidates.append({

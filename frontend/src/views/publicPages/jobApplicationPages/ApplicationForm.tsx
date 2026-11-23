@@ -16,7 +16,6 @@ import ExperienceGapAlert from '../../../components/common/ExperienceGapAlert';
 import { useJobClarifications } from '../../../hooks/useJobClarifications';
 import {
   ClarificationQuestion,
-  applyClarificationAnswerToFormData,
   buildCandidateMatchPayload,
   finalizeFormWithClarifications,
   resolveClarifiedYears,
@@ -161,7 +160,6 @@ const ApplicationForm: React.FC = () => {
 
   const handleClarificationChange = (question: ClarificationQuestion, value: string) => {
     setClarificationAnswers((prev) => ({ ...prev, [question.id]: value }));
-    setFormData((prev) => applyClarificationAnswerToFormData(question, value, prev));
   };
 
   useEffect(() => {

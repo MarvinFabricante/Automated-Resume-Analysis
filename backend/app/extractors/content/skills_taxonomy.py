@@ -610,11 +610,11 @@ PHILIPPINE_SKILLS_TAXONOMY: Dict[str, Dict[str, Any]] = {
         "is_tool": True,
         "aliases": ["MySQL", "MariaDB"]
     },
-    "MongoDB Atlas": {
+    "MongoDB": {
         "type": "Hard Skill",
         "domain": "Software Development & IT",
         "is_tool": True,
-        "aliases": ["MongoDB", "Mongo", "MongoDB Atlas", "NoSQL"]
+        "aliases": ["MongoDB", "Mongo DB", "Mongo", "MongoDB Atlas", "NoSQL"]
     },
     "Supabase": {
         "type": "Hard Skill",
@@ -1111,7 +1111,7 @@ PHILIPPINE_SKILLS_TAXONOMY: Dict[str, Dict[str, Any]] = {
         "type": "Language",
         "domain": "Philippine Licenses, Eligibility & Languages",
         "is_tool": False,
-        "aliases": ["Bicolano", "Bikol", "Bicol"]
+        "aliases": ["Bicolano", "Bikol", "Bicolano / Bikol", "Bicol dialect", "Bicol language"]
     },
     "Waray-Waray / Waray": {
         "type": "Language",

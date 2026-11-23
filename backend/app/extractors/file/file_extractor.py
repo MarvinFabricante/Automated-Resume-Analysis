@@ -64,7 +64,9 @@ def _collapse_letter_spaced_line(line: str) -> str:
         inner = re.sub(r"\s+", "", m_paren.group(1))
         return f"({inner})"
     # Case 2: Entire line is letter-spaced uppercase words (word gap = 2+ spaces, letter gap = 1 space)
-    if re.match(r"^(?:[A-Z]\s){3,}[A-Z](?:\s{2,}(?:[A-Z]\s)+[A-Z])*$", stripped):
+    if re.match(r"^(?:[A-Z]\s){2,}[A-Z](?:\s{2,}(?:[A-Z]\s)+[A-Z])*$", stripped) or re.match(
+        r"^[A-Z]\s[A-Z]\s{2,}(?:[A-Z]\s)+[A-Z](?:\s{2,}(?:[A-Z]\s)+[A-Z])*$", stripped
+    ):
         word_groups = re.split(r"\s{2,}", stripped)
         collapsed_words = [re.sub(r"\s+", "", wg) for wg in word_groups]
         return " ".join(collapsed_words)

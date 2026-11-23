@@ -434,9 +434,20 @@ def _supplement_skills_from_section(skills_section_text: str, skills_details: di
 
     extracted_items = skills_details.get("extracted_skills", []) if isinstance(skills_details, dict) else []
     covered_terms = set()
+    try:
+        from .skills_taxonomy import PHILIPPINE_SKILLS_TAXONOMY
+    except Exception:
+        PHILIPPINE_SKILLS_TAXONOMY = {}
+
     for item in extracted_items:
-        if item.get("canonical_skill"):
-            covered_terms.add(item["canonical_skill"].lower())
+        canon = item.get("canonical_skill")
+        if canon:
+            covered_terms.add(canon.lower())
+            meta = PHILIPPINE_SKILLS_TAXONOMY.get(canon, {})
+            for al in meta.get("aliases", []):
+                al_clean = al.strip().lower()
+                if len(al_clean) >= 3:
+                    covered_terms.add(al_clean)
         if item.get("raw_mention"):
             covered_terms.add(item["raw_mention"].lower())
 
@@ -450,8 +461,69 @@ def _supplement_skills_from_section(skills_section_text: str, skills_details: di
         "other", "others", "basic", "good", "strong", "excellent", "proficient",
     }
     category_prefix_re = re.compile(
-        r'^[A-Za-z0-9][A-Za-z0-9\s/&\-]{1,35}:\s*(.+)$'
+        r'^([A-Za-z0-9][A-Za-z0-9\s/&\-]{1,35}):\s*(.+)$'
     )
+    _NON_SKILL_PREFIX_RE = re.compile(
+        r'^(?:role|position|job\s*title|title|company|employer|organization|client|'
+        r'project|projects|location|address|email|e-mail|phone|mobile|contact|'
+        r'date|dates|duration|period|school|university|college|degree|course|major|'
+        r'honors|gpa|name|full\s*name|nationality|citizenship|religion|gender|sex|'
+        r'civil\s*status|status|age|birthday|birth\s*date|reference|references|'
+        r'summary|objective|description|overview|responsibilities|duties|achievements)$',
+        re.I,
+    )
+    _SKILL_CATEGORY_HINT_RE = re.compile(
+        r'\b(?:skill|language|framework|librar|database|cloud|tool|tech|stack|test|'
+        r'software|hardware|front|back|mobile|design|office|devops|platform|system|'
+        r'os|network|security|data|analytics|erp|crm|engineering|safety|machin|'
+        r'equipment|competenc|proficienc|other|additional|core|key|web|program|'
+        r'soft|hard|personal|interpersonal|computer|digital|admin|operat|manufactur|'
+        r'production|methodolog|ide|version|container|scripting|markup|styling)\w*\b',
+        re.I,
+    )
+    _PROSE_SENTENCE_RE = re.compile(
+        r'\b(?:this\s+system|the\s+\w+\s+system|allows\s+\w+\s+to|designed\s+to|'
+        r'facilitates\s+the|while\s+providing|ensuring\s+|focusing\s+on|'
+        r'collaborated\s+|looking\s+to|streamline\s+|through\s+a\s+|within\s+the\s+|'
+        r'for\s+the\s+project|enhance\s+customer|smooth\s+transaction|'
+        r'overall\s+system\s+performance|comprehensive\s+dashboard|'
+        r'record[\s\-]keeping\s+and\s+official|cancel\s+appointments)\b',
+        re.I,
+    )
+    _NARRATIVE_VERB_START_RE = re.compile(
+        r'^(?:implemented|designed|developed|built|created|managed|led|collaborated|'
+        r'ensured|ensuring|focusing|focused|providing|provided|allows|allowing|'
+        r'streamlined|streamline|facilitated|facilitates|worked|working|assisted|'
+        r'handled|performed|conducted|prepared|maintained|operated|supervised|'
+        r'monitored|executed|delivered|delivering|looking|seeking|graduated|'
+        r'completed|earned|achieved|responsible|dedicated|passionate|motivated|'
+        r'utilized|utilizing|integrated|integrating|optimized|optimizing)\b',
+        re.I,
+    )
+    _INSTITUTION_NOISE_RE = re.compile(
+        r'\b(?:university|college|colleges|academy|high\s+school|elementary\s+school|'
+        r'national\s+high|school\s+of|campus|polytechnic|institute\s+of)\b',
+        re.I,
+    )
+    _PROJECT_OR_ROLE_NOISE_RE = re.compile(
+        r'\b(?:barangay|dental\s+system|booking\s+(?:\w+\s+)?system|thrift)\b|'
+        r'^(?:(?:junior|senior|lead|associate|assistant|intern|entry[\s\-]level)\s+)?'
+        r'(?:full[\s\-]?stack|front[\s\-]?end|back[\s\-]?end|web|software|mobile|'
+        r'java|python|react|node\.?js|php|android|ios)\s+(?:developer|engineer|programmer)$',
+        re.I,
+    )
+    _DANGLING_STOP_START_RE = re.compile(
+        r'^(?:a|an|the|to|of|in|on|at|by|for|from|with|within|into|onto|through|'
+        r'while|their|our|my|his|her|its|this|that|these|those|is|are|was|were|'
+        r'be|been|being|who|which|where|when)\b',
+        re.I,
+    )
+    _DANGLING_STOP_END_RE = re.compile(
+        r'\b(?:a|an|the|to|of|in|on|at|by|for|from|with|within|into|onto|through|'
+        r'while|their|our|my|his|her|its|this|that|these|those|is|are|was|were)$',
+        re.I,
+    )
+    _BROKEN_TRAIL_LETTER_RE = re.compile(r'[a-z]{3,}\s+[a-z]$')
 
     # Pre-join soft-wrapped lines in PDF/DOCX skills sections (e.g. unclosed parens or wrapped phrases)
     raw_lines = [l.strip() for l in skills_section_text.split('\n') if l.strip()]
@@ -465,18 +537,27 @@ def _supplement_skills_from_section(skills_section_text: str, skills_details: di
             merged_lines.append(rl)
             continue
         prev = merged_lines[-1]
+        prev_starts_bullet = prev.startswith(('•', '-', '*', '▪', '►', '✓'))
         starts_bullet = rl.startswith(('•', '-', '*', '▪', '►', '✓'))
         has_cat_colon = bool(category_prefix_re.match(rl)) and not prev.endswith(',')
         unclosed_paren = prev.count('(') > prev.count(')')
+        # Do not glue an unrelated lowercase prose line (e.g. "within the barangay.") onto a short bullet skill (e.g. "-MONGO DB")
+        prev_is_complete_short_bullet = (
+            prev_starts_bullet
+            and len(prev.split()) <= 4
+            and not prev.endswith((',', '&', '/', '-'))
+            and _CONTINUATION_END_RE.search(prev) is None
+        )
         is_continuation = (
             unclosed_paren
             or (
                 not starts_bullet
                 and not has_cat_colon
+                and not prev_is_complete_short_bullet
                 and (
                     prev.endswith(',')
                     or _CONTINUATION_END_RE.search(prev) is not None
-                    or rl[0].islower()
+                    or (rl[0].islower() and not rl.endswith('.'))
                     or rl.startswith(')')
                 )
             )
@@ -493,9 +574,28 @@ def _supplement_skills_from_section(skills_section_text: str, skills_details: di
         line = raw_line.strip()
         if not line:
             continue
-        m_cat = category_prefix_re.match(line)
+        # Strip leading bullet before checking metadata prefixes like "• Role: Full Stack Developer"
+        line_no_bullet = re.sub(r'^[•\-*▪►✓·]\s*', '', line).strip()
+        m_cat = category_prefix_re.match(line_no_bullet)
         if m_cat:
-            line = m_cat.group(1).strip()
+            prefix_label = m_cat.group(1).strip()
+            if _NON_SKILL_PREFIX_RE.match(prefix_label):
+                continue
+            if _SKILL_CATEGORY_HINT_RE.search(prefix_label):
+                line = m_cat.group(2).strip()
+            else:
+                continue
+
+        # Skip full narrative/prose sentences or corrupted multi-pipe lowercase fragments
+        if _PROSE_SENTENCE_RE.search(line):
+            continue
+        if len(line.split()) >= 10 and (line.endswith('.') or '. ' in line) and line.count(',') < 3 and line.count('|') < 2:
+            continue
+        if line.count('|') >= 3:
+            pipe_chunks = [c.strip() for c in line.split('|') if c.strip()]
+            lower_short_chunks = sum(1 for c in pipe_chunks if c.islower() and len(c.split()) <= 3)
+            if lower_short_chunks >= 3:
+                continue
 
         # Split on delimiters outside parentheses and on spaced slashes (" / ")
         parts = re.split(r'(?:[,|•*▪►✓\t;]+(?![^()]*\))|\s+/\s+)', line)
@@ -507,7 +607,10 @@ def _supplement_skills_from_section(skills_section_text: str, skills_details: di
             if item_clean.count('(') != item_clean.count(')'):
                 continue
             if ':' in item_clean:
-                item_clean = item_clean.split(':', 1)[1].strip(' -•*▪►✓.:')
+                sub_prefix, sub_rest = item_clean.split(':', 1)
+                if _NON_SKILL_PREFIX_RE.match(sub_prefix.strip()):
+                    continue
+                item_clean = sub_rest.strip(' -•*▪►✓.:')
                 if not item_clean or len(item_clean) < 2:
                     continue
             if len(item_clean.split()) > 5:
@@ -525,6 +628,20 @@ def _supplement_skills_from_section(skills_section_text: str, skills_details: di
             if any(tok in item_lower for tok in ("@", "http", "www.", "[optional", "list computer", "certifications", "trainings", "featured project", "other project", "credential id")):
                 continue
             if re.search(r'\b(?:19|20)\d{2}\b|\d{4,}', item_clean):
+                continue
+            # Filter out prose fragments, schools, job roles, project titles, and mid-word splits
+            if (
+                _NARRATIVE_VERB_START_RE.search(item_clean)
+                or _INSTITUTION_NOISE_RE.search(item_clean)
+                or _PROJECT_OR_ROLE_NOISE_RE.search(item_clean)
+                or _DANGLING_STOP_START_RE.search(item_clean)
+                or _DANGLING_STOP_END_RE.search(item_clean)
+                or _BROKEN_TRAIL_LETTER_RE.search(item_clean)
+                or _PROSE_SENTENCE_RE.search(item_clean)
+            ):
+                continue
+            # Reject 2-3 char all-lowercase non-taxonomy fragments (e.g. broken word piece "ols", "ugh")
+            if item_clean.islower() and len(item_clean) <= 3:
                 continue
 
             # Skip if already covered by an extracted canonical skill or raw mention
@@ -816,7 +933,7 @@ def assess_resume_completeness(data: dict, sections: Optional[dict] = None, raw_
     edu_section = sections.get("EDUCATION", "").strip() if sections else ""
 
     from app.services.requirement_rules import is_no_value
-    placeholder_edu = is_no_value(edu_section) or bool(re.search(r'^(?:none|n/?a|not\s+applicable)$', edu_section, re.I))
+    placeholder_edu = bool(edu_section) and (is_no_value(edu_section) or bool(re.search(r'^(?:none|n/?a|not\s+applicable)$', edu_section, re.I)))
     has_other_headers_for_edu = bool(sections and any(k in sections for k in ("EXPERIENCE", "SKILLS", "CERTIFICATIONS")))
     if has_other_headers_for_edu and not edu_section:
         has_education = False
@@ -849,7 +966,7 @@ def assess_resume_completeness(data: dict, sections: Optional[dict] = None, raw_
     skills_section = sections.get("SKILLS", "").strip() if sections else ""
     has_extracted_skills = bool(skills_list or (skills_str and not is_no_value(skills_str) and len(skills_str) > 2))
 
-    placeholder_skills = is_no_value(skills_section) or bool(re.search(r'^(?:none|n/?a|not\s+applicable)\.?$', skills_section, re.I))
+    placeholder_skills = bool(skills_section) and (is_no_value(skills_section) or bool(re.search(r'^(?:none|n/?a|not\s+applicable)\.?$', skills_section, re.I)))
     has_other_headers_for_skills = bool(sections and any(k in sections for k in ("EXPERIENCE", "EDUCATION", "CERTIFICATIONS")))
 
     if placeholder_skills:
