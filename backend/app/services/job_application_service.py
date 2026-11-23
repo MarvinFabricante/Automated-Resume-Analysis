@@ -63,7 +63,17 @@ def _apply_experience_gap_evaluation(data: dict, job_desc) -> None:
         from app.services.requirement_rules import clean_list_items
         data["skills"] = clean_list_items(resolved.get("skills"))
         data["certifications"] = resolved.get("certifications") or None
-        data["relevance"] = " | ".join(filter(None, [data.get("relevance"), resolved.get("experience")]))
+        confirmed_exp_items = [
+            part for r in rows if r["field"] == "experience" and r.get("answer") in ("yes", "some")
+            for part in (r.get("requirement"), r.get("details")) if part
+        ]
+        if confirmed_exp_items:
+            existing_rel = str(data.get("relevance") or "").strip()
+            rel_parts = [existing_rel] if existing_rel else []
+            for part in confirmed_exp_items:
+                if str(part).strip() not in rel_parts:
+                    rel_parts.append(str(part).strip())
+            data["relevance"] = " | ".join(rel_parts)
         data["years_experience"] = resolved.get("years_experience", data.get("years_experience"))
     explicit_years = data.pop("years_experience", None)
     cand_years = _resolve_application_years(

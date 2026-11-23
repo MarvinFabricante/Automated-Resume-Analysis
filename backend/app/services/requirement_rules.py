@@ -787,7 +787,9 @@ def extract_education_fields(text: str) -> list[str]:
     m_in = re.search(
         r"\b(?:major\s+in|specializing\s+in|bachelor(?:'?s)?(?:\s+of\s+(?:science|arts|secondary|elementary))?\s+in|"
         r"master(?:'?s)?(?:\s+of\s+(?:science|arts))?\s+in|associate(?:'?s)?\s+in|diploma\s+in|"
-        r"vocational\s+(?:course|program|training)\s+in|(?:bs|ba|ab|ms|ma)(?:\s+in)?|in)\s+([^.|;\n]+)",
+        r"vocational\s+(?:course|program|training)\s+in|"
+        r"(?:bachelor|master)(?:'?s)?\s+of\s+(?:science|arts)|"
+        r"(?:bs|ba|ab|ms|ma)(?:\s+in)?|in)\s+([^.|;\n]+)",
         work_acr,
         re.I,
     )
@@ -973,7 +975,15 @@ def parse_education_level(
             if combined:
                 entry_segments.append((combined, entry.get("status")))
 
-    raw_str = normalize_requirement_text(text)
+    pre_merged_text = text
+    if isinstance(text, str) and "\n" in text and not is_job_requirement:
+        pre_merged_text = re.sub(
+            r"\b((?:Bachelor|Master)(?:'s)?\s+of\s+(?:Science|Arts)|B\.?S\.?|B\.?A\.?|M\.?S\.?|M\.?A\.?)[ \t]*\r?\n[ \t]*(?!(?:19|20)\d{2}\b)([A-Za-z][A-Za-z\s&/-]{2,60})",
+            lambda m: f"{m.group(1)} in {m.group(2).strip()}" if re.search(r"\bof\s+(?:Science|Arts)$", m.group(1), re.I) else f"{m.group(1)} {m.group(2).strip()}",
+            text,
+            flags=re.I,
+        )
+    raw_str = normalize_requirement_text(pre_merged_text)
     if raw_str:
         if is_job_requirement:
             text_segments.append((raw_str, None))
@@ -1073,6 +1083,21 @@ def parse_education_level(
     }
 
 
+_TITLE_MINOR_WORDS = {"and", "of", "in", "for", "on", "to", "the", "with"}
+
+
+def _title_case_field(field: str) -> str:
+    words = field.split()
+    out = []
+    for idx, word in enumerate(words):
+        low = word.lower()
+        if idx > 0 and low in _TITLE_MINOR_WORDS:
+            out.append(low)
+        else:
+            out.append(word[:1].upper() + word[1:].lower())
+    return " ".join(out)
+
+
 def education_display_label(text: str, entries=None) -> str:
     """Format attainment independently of the completed-level score."""
     parsed = parse_education_level(text, entries=entries)
@@ -1081,19 +1106,32 @@ def education_display_label(text: str, entries=None) -> str:
     fields = parsed.get("field_options") or []
     if fields:
         field = fields[0]
-        # Remove repeated words and repeated phrases left by legacy extraction.
+        # Remove repeated consecutive words and repeated phrases left by legacy extraction.
         previous = None
         while previous != field:
             previous = field
             field = re.sub(r"\b([\w]+(?:\s+[\w]+)*?)\s+\1\b", r"\1", field, flags=re.I)
-        label += " in " + field.title()
+        label += " in " + _title_case_field(field.strip())
     if parsed.get("is_ongoing"):
-        entry = next((e for e in (entries or []) if "progress" in str(e.get("status", "")).lower() or "undergrad" in str(e.get("status", "")).lower()), {})
+        entry = next((e for e in (entries or []) if "progress" in str(e.get("status", "")).lower() or "undergrad" in str(e.get("status", "")).lower() or "ongoing" in str(e.get("status", "")).lower()), {})
+        fallback_blob = " ".join(
+            str(x) for x in (text, entry.get("raw_degree_or_course"), entry.get("degree_or_course"), entry.get("year")) if x
+        )
+        year_level = entry.get("year_level")
+        if not year_level:
+            m_yl = re.search(r"\b(\d+(?:st|nd|rd|th))\s+Year\b", fallback_blob, re.I)
+            if m_yl:
+                year_level = m_yl.group(1).lower()
+        exp_year = entry.get("expected_graduation_year")
+        if not exp_year:
+            m_ey = re.search(r"\bExpected\s+((?:19|20)\d{2})\b", fallback_blob, re.I)
+            if m_ey:
+                exp_year = m_ey.group(1)
         notes = []
-        if entry.get("year_level"):
-            notes.append(f"{entry['year_level']} year")
-        if entry.get("expected_graduation_year"):
-            notes.append(f"expected {entry['expected_graduation_year']}")
+        if year_level:
+            notes.append(f"{year_level} year")
+        if exp_year:
+            notes.append(f"expected {exp_year}")
         label += " (" + ", ".join(notes or ["in progress"]) + ")"
     return label or str(text or "")
 

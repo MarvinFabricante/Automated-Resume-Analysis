@@ -961,12 +961,29 @@ def test_arbitrary_certification_text_gets_zero_credit_and_scoring_is_determinis
     r2 = job_matching_service.calculate_match_score(resume, job)
 
     assert r1["certifications_score"] == 0.0
-    assert r1["certifications_status"] == requirement_rules.STATUS_DOES_NOT_MEET
+    assert r1["certifications_status"] == requirement_rules.STATUS_NOT_CONFIRMED
     assert r1["match_percentage"] == r2["match_percentage"]
     assert r1["skills_score"] == r2["skills_score"]
     assert r1["experience_score"] == r2["experience_score"]
     assert r1["education_score"] == r2["education_score"]
     assert r1["certifications_score"] == r2["certifications_score"]
+
+    # After applicant explicitly answers No, status transitions to Does not meet
+    r_denied = job_matching_service.calculate_match_score(
+        {
+            **resume,
+            "clarification_responses": [
+                {
+                    "field": "certifications",
+                    "requirement": "Registered Electrical Engineer (REE) / PRC License",
+                    "answer": "no",
+                }
+            ],
+        },
+        job,
+    )
+    assert r_denied["certifications_score"] == 0.0
+    assert r_denied["certifications_status"] == requirement_rules.STATUS_DOES_NOT_MEET
 
 
 @pytest.mark.asyncio

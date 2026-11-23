@@ -744,8 +744,23 @@ def test_unrelated_certification_not_perfect_score_or_strength():
     }
     res_prod_unrelated = job_matching_service.calculate_match_score(resume_food_safety, job_prod, matching_config=cfg)
     assert res_prod_unrelated["certifications_score"] == 0.0
+    assert res_prod_unrelated["certifications_status"] == "Not confirmed"
     assert "certification" not in " ".join(res_prod_unrelated.get("strengths") or []).lower()
-    assert any("required certifications" in w.lower() for w in (res_prod_unrelated.get("weaknesses") or []))
+    # Unasked unmatched certifications stay neutral until applicant answers No
+    assert not any("required certifications" in w.lower() for w in (res_prod_unrelated.get("weaknesses") or []))
+    res_prod_denied = job_matching_service.calculate_match_score(
+        {
+            **resume_food_safety,
+            "clarification_responses": [
+                {"field": "certifications", "requirement": "safety training (OSHA or BOSH)", "answer": "no"}
+            ],
+        },
+        job_prod,
+        matching_config=cfg,
+    )
+    assert res_prod_denied["certifications_score"] == 0.0
+    assert res_prod_denied["certifications_status"] == "Does not meet"
+    assert any("required certifications" in w.lower() for w in (res_prod_denied.get("weaknesses") or []))
 
     # 4. Skills alone must never masquerade as certifications when certifications field is empty
     job_iso = {

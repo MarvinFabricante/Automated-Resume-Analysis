@@ -117,23 +117,23 @@ const calculateRuleBasedScore = (
     const rawCandSkills = Array.isArray(candidate.skills)
       ? candidate.skills
       : typeof candidate.skills === 'string'
-        ? (candidate.skills as string).split(/[,;\n•|]+/)
+        ? (candidate.skills as string).split(/[,;\n•●◦‣|]+|\s+\/\s+/)
         : [];
+
+    const normSkill = (val: string) =>
+      String(val).replace(/\t/g, ' ').replace(/[-–—]/g, ' ').replace(/\s+/g, ' ').trim().toLowerCase();
 
     const candSkillTokens = new Set<string>();
     rawCandSkills.forEach(s => {
-      const clean = String(s).replace(/\t/g, ' ').trim().toLowerCase();
+      const clean = normSkill(s);
       if (clean) {
         candSkillTokens.add(clean);
-        clean.split(/[\s/]+/).forEach(tok => {
-          if (tok.length > 1) candSkillTokens.add(tok);
-        });
       }
     });
 
     if (Array.isArray(candidate.matched_skills)) {
       candidate.matched_skills.forEach(s => {
-        const clean = String(s).trim().toLowerCase();
+        const clean = normSkill(s);
         if (clean) candSkillTokens.add(clean);
       });
     }
@@ -143,13 +143,9 @@ const calculateRuleBasedScore = (
 
     if (jobSkills.length > 0) {
       let matchCount = 0;
-      const candSkillList = Array.from(candSkillTokens);
       jobSkills.forEach(reqSkill => {
-        const hasSkill = candSkillList.some(cs => {
-          if (cs === reqSkill) return true;
-          if (reqSkill.length > 2 && (cs.includes(reqSkill) || reqSkill.includes(cs))) return true;
-          return false;
-        });
+        const normReq = normSkill(reqSkill);
+        const hasSkill = Boolean(normReq && candSkillTokens.has(normReq));
         if (hasSkill) {
           matchCount++;
           matchedSkills.push(reqSkill);
@@ -2357,19 +2353,26 @@ const CompareCandidates: React.FC = () => {
                         <span>Missing Required Skills</span>
                       </h5>
                       <div className="flex flex-wrap gap-1.5">
-                        <RequirementEvidence items={activeCandidate.requirement_evaluations} />
                         {activeCandidate.missing_skills && activeCandidate.missing_skills.length > 0 ? (
                           activeCandidate.missing_skills.map((skill, i) => (
                             <span key={i} className="px-2 py-0.5 sm:px-2.5 sm:py-1 bg-white text-rose-700 border border-rose-200/80 rounded-md text-xs font-bold">
                               {skill}
                             </span>
                           ))
+                        ) : (activeCandidate.requirement_evaluations || []).some(
+                            (r) => r.field === 'skills' && (r.status === 'Not confirmed' || r.status === 'Possible match')
+                          ) ? (
+                          <span className="text-xs text-slate-600 font-semibold">
+                            No confirmed failures — unconfirmed skills await applicant response
+                          </span>
                         ) : (
                           <span className="text-xs text-emerald-600 font-bold">All Requirements Satisfied</span>
                         )}
                       </div>
                     </div>
                   </div>
+
+                  <RequirementEvidence items={activeCandidate.requirement_evaluations} />
 
                   {activeCandidate.skills_reason && (
                     <div className="bg-slate-50/60 border border-slate-100 rounded-2xl p-3.5 sm:p-4">

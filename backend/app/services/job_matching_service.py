@@ -1892,6 +1892,7 @@ def calculate_certifications_match(
     # Mode A: Specific required certifications (supports graded certification hierarchies)
     total_req_score = 0.0
     matched_cands: list[str] = []
+    matched_reqs: list[str] = []
     exceeds_any = False
 
     for req_item in req_items:
@@ -1926,6 +1927,8 @@ def calculate_certifications_match(
             total_req_score += best_req_score
             if best_cand_item not in matched_cands:
                 matched_cands.append(best_cand_item)
+            if best_req_score >= 1.0 and req_item not in matched_reqs:
+                matched_reqs.append(req_item)
             if best_exceeds:
                 exceeds_any = True
 
@@ -1936,6 +1939,7 @@ def calculate_certifications_match(
             "required_certifications": required_certs,
             "candidate_certifications": cand_display,
             "matched_certifications": [],
+            "matched_requirements": [],
             "is_relevant": False,
             "has_requirement": True,
             "reason": format_criterion_reason(
@@ -1965,6 +1969,7 @@ def calculate_certifications_match(
         "required_certifications": required_certs,
         "candidate_certifications": ", ".join(matched_cands) if matched_cands else cand_display,
         "matched_certifications": matched_cands,
+        "matched_requirements": matched_reqs,
         "is_relevant": score >= 1.0,
         "has_requirement": True,
         "reason": format_criterion_reason(status, detail),
@@ -2792,13 +2797,47 @@ def calculate_match_score(
         STATUS_NOT_REQUIRED if not certs_result.get("has_requirement", True) else STATUS_MEETS,
     )
 
+    # Sync certification requirement evaluations with confident resume matches (e.g. graded NC levels or abbreviations)
+    cert_rows = [r for r in requirement_evaluations if r["field"] == "certifications"]
+    if cert_rows:
+        matched_cert_req_keys = {_normalize_skill(m) for m in (certs_result.get("matched_requirements") or [])}
+        cert_fully_matched = float(certs_result.get("score", 0.0) or 0.0) >= 1.0
+        for row in cert_rows:
+            if row.get("source") == "Confirmed by applicant":
+                continue
+            if cert_fully_matched or _normalize_skill(row["requirement"]) in matched_cert_req_keys:
+                row["status"] = STATUS_MEETS
+                row["source"] = "Resume"
+        # Ensure positive applicant confirmations on certifications (including generic phrases) count in score
+        confirmed_certs = [r for r in cert_rows if r["status"] == STATUS_MEETS]
+        if confirmed_certs and float(certs_result.get("score", 0.0) or 0.0) < (len(confirmed_certs) / len(cert_rows)):
+            certs_result["score"] = round(len(confirmed_certs) / len(cert_rows), 4)
+            if certs_result["score"] >= 1.0:
+                certs_result["status"] = STATUS_MEETS
+                certs_result["is_relevant"] = True
+                certs_result["reason"] = format_criterion_reason(
+                    STATUS_MEETS,
+                    f"Confirmed required certification(s): {', '.join(r['requirement'] for r in confirmed_certs)}.",
+                )
+
     for field, result in (("experience", experience_result), ("certifications", certs_result)):
         rows = [r for r in requirement_evaluations if r["field"] == field]
         pending = [r for r in rows if r["status"] in ("Not confirmed", "Possible match")]
         if pending:
+            existing_detail = re.sub(
+                r"^(?:Does not meet|Partially meets|Meets requirement|Exceeds requirement|Not confirmed|Needs manual review|Not required):\s*",
+                "",
+                str(result.get("reason") or "").strip(),
+                flags=re.I,
+            )
+            pending_text = "Awaiting applicant confirmation: " + "; ".join(r["requirement"] for r in pending)
+            combined_detail = f"{existing_detail} {pending_text}".strip() if existing_detail else pending_text
             result["status"] = "Not confirmed"
-            result["reason"] = format_criterion_reason("Not confirmed", "Awaiting applicant confirmation: " + "; ".join(r["requirement"] for r in pending))
-    exp_status = experience_result.get("status", exp_status)
+            result["reason"] = format_criterion_reason("Not confirmed", combined_detail)
+            if field == "experience":
+                exp_status = "Not confirmed"
+            else:
+                certs_status = "Not confirmed"
     certs_status = certs_result.get("status", certs_status)
 
     # Location matching
