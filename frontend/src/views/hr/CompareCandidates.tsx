@@ -1,11 +1,12 @@
+import styles from './CompareCandidates.module.css';
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useSearchParams } from '@/utils/navigation';
 import { Helmet } from 'react-helmet-async';
 import {
   Search, CheckCircle2, XCircle, Users, ArrowLeft, Award, TrendingUp, AlertTriangle,
   Mail, Phone, MapPin, Briefcase, Star, Zap, BarChart3, Trophy, Sparkles,
-  Check, Plus, Trash2, User, Table, LayoutGrid, SlidersHorizontal,
-  Download, Printer, Save, FileText, GraduationCap
+  Check, Plus, User, Table, LayoutGrid, SlidersHorizontal,
+  Download, Printer, Save, FileText, GraduationCap, X, Scale
 } from 'lucide-react';
 import Header from '../../components/layout/Header';
 import Sidebar from '../../components/layout/Sidebar';
@@ -336,7 +337,7 @@ const isSamePerson = (c1: CandidateComparisonData, c2: CandidateComparisonData):
 };
 
 const CompareCandidates: React.FC = () => {
-  const { data: candidates = EMPTY_CANDIDATES, isLoading } = useGetApplicationsQuery();
+  const { data: candidates = EMPTY_CANDIDATES, isLoading, isError: candidatesError, refetch: refetchCandidates } = useGetApplicationsQuery();
   const { data: jobs = EMPTY_JOBS } = useGetJobsQuery();
   const listScrollRef = useRef<HTMLDivElement | null>(null);
   const [searchQuery, setSearchQuery] = useState<string>("");
@@ -724,7 +725,13 @@ const CompareCandidates: React.FC = () => {
   }, [selectedCandidatesData]);
 
   const renderComparisonView = () => {
-    if (selectedCandidatesData.length === 0 || !winner) return null;
+    if (selectedCandidatesData.length === 0 || !winner) return (
+      <div className={styles.emptyState} role="status">
+        <Users size={32} /><h1>{isLoading ? 'Loading your comparison…' : 'Choose candidates to compare'}</h1>
+        <p>{isLoading ? 'Preparing the selected profiles.' : 'Select at least two available candidates from the directory.'}</p>
+        <button type="button" onClick={() => setIsComparing(false)}>Back to candidate selection</button>
+      </div>
+    );
 
     const displayedCandidatesInScorecards = scorecardFilter === 'all'
       ? selectedCandidatesData
@@ -744,10 +751,10 @@ const CompareCandidates: React.FC = () => {
             Back to Candidate Selection
           </button>
 
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 sm:gap-4">
+          <div className={styles.pageHeader}>
             <div>
-              <h1 className="text-xl sm:text-2xl md:text-3xl font-black text-slate-900 tracking-tight leading-tight">
-                Side-by-Side Comparison
+              <h1>
+                Candidate comparison
               </h1>
               <p className="text-xs sm:text-sm text-slate-500 font-medium mt-0.5 sm:mt-1">
                 Comparing {selectedCandidatesData.length} selected candidates for role suitability.
@@ -755,25 +762,25 @@ const CompareCandidates: React.FC = () => {
             </div>
 
             <div className="flex items-center gap-2 self-start sm:self-auto">
-              <div className="px-3 py-1.5 bg-rose-50 border border-rose-100 rounded-xl text-[11px] sm:text-xs font-bold text-[#D60041] flex items-center gap-1.5 shadow-2xs">
+              <div className="px-3 py-1.5 bg-rose-50 border border-rose-100 rounded-xl text-xs font-bold text-[#D60041] flex items-center gap-1.5 shadow-2xs">
                 <Sparkles className="w-3.5 h-3.5" />
-                <span>AI Ranked & Evaluated</span>
+                <span>Match score overview</span>
               </div>
             </div>
           </div>
 
           {/* Reference Position Selector */}
-          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 bg-white p-3.5 sm:p-4 rounded-2xl border border-slate-200/90 shadow-2xs">
+          <div className={styles.referenceBar}>
             <div className="flex items-center gap-2.5">
               <div className="w-8 h-8 rounded-lg bg-rose-50 text-[#D60041] flex items-center justify-center shrink-0">
                 <Briefcase size={16} />
               </div>
               <div>
-                <label htmlFor="compare-for-select" className="text-xs font-black text-slate-800 flex items-center gap-1.5">
+                <label htmlFor="compare-for-select" className="text-xs font-semibold text-slate-800 flex items-center gap-1.5">
                   Compare for Reference Position:
                   <HelpTooltip text="All candidates are evaluated and scored against this reference role, including transferable skills." />
                 </label>
-                <p className="text-[11px] text-slate-400 font-medium">Scores and category rankings adapt to this position</p>
+                <p className="text-xs text-slate-500 font-medium">Scores and category rankings adapt to this position</p>
               </div>
             </div>
 
@@ -791,7 +798,7 @@ const CompareCandidates: React.FC = () => {
                 ))}
               </select>
               {isComparingServer && (
-                <div className="w-4 h-4 border-2 border-rose-200 border-t-[#D60041] rounded-full animate-spin shrink-0" />
+                <span role="status" className="text-xs text-slate-500 shrink-0">Updating scores…</span>
               )}
             </div>
           </div>
@@ -819,169 +826,25 @@ const CompareCandidates: React.FC = () => {
           )}
         </div>
 
-        {/* AI Recommendation / Winner Banner */}
-        {isAllZero ? (
-          <div className="bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-white rounded-2xl sm:rounded-3xl p-4 sm:p-7 md:p-8 mb-5 sm:mb-8 shadow-xl relative overflow-hidden border border-slate-800">
-            <div className="absolute -right-10 -top-10 w-40 h-40 bg-rose-500/10 rounded-full blur-3xl pointer-events-none"></div>
-            <div className="absolute -left-10 -bottom-10 w-40 h-40 bg-amber-500/10 rounded-full blur-3xl pointer-events-none"></div>
-
-            <div className="relative flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-4 sm:gap-6">
-              <div className="flex-1">
-                <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-500/20 border border-amber-500/30 rounded-full text-[10px] sm:text-xs font-black text-amber-300 uppercase tracking-wider mb-2 sm:mb-3">
-                  <AlertTriangle className="w-3.5 h-3.5 text-amber-400" />
-                  <span>No Strong Match Identified</span>
-                </div>
-                <h2 className="text-lg sm:text-2xl md:text-3xl font-black tracking-tight leading-tight">
-                  No Qualifying Candidates Found
-                </h2>
-                <p className="text-slate-300 font-medium mt-1.5 sm:mt-2 max-w-3xl leading-relaxed text-xs sm:text-sm">
-                  None of the {selectedCandidatesData.length} compared candidates meet the required qualifications, skills, or experience criteria for this position (all scored 0% match). Consider reviewing other applicants, adjusting evaluation criteria weights, or comparing against a different job profile.
-                </p>
-              </div>
-
-              {/* Mobile-Friendly Snapshot Card for No Match */}
-              <div className="bg-white/5 border border-white/10 p-3.5 sm:p-5 rounded-2xl shrink-0 flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-xl overflow-hidden border border-white/20 shrink-0 bg-white/10 flex items-center justify-center">
-                    <Users className="w-6 h-6 text-slate-400" />
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-xs sm:text-sm font-bold text-white truncate max-w-[150px] sm:max-w-[200px]">All {selectedCandidatesData.length} Candidates</p>
-                    <span className="px-1.5 py-0.5 bg-rose-500/20 text-rose-300 border border-rose-500/30 rounded text-[9px] font-black uppercase shrink-0">Unmatched (0%)</span>
-                    <p className="text-[11px] text-slate-400 font-semibold truncate mt-0.5">Below required criteria</p>
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-between sm:justify-end gap-3 pt-2.5 sm:pt-0 border-t sm:border-t-0 border-white/10">
-                  <div className="text-left sm:text-right">
-                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Match Score</p>
-                    <p className="text-2xl sm:text-4xl font-black text-slate-400 leading-tight">0%</p>
-                  </div>
-                  <div className="flex flex-wrap sm:flex-col gap-1 sm:gap-1 text-[9px] font-bold">
-                    <span className="px-2 py-0.5 bg-slate-800 text-slate-400 rounded border border-slate-700">Skills: 0%</span>
-                    <span className="px-2 py-0.5 bg-slate-800 text-slate-400 rounded border border-slate-700">Exp: 0%</span>
-                    <span className="px-2 py-0.5 bg-slate-800 text-slate-400 rounded border border-slate-700">Certs: 0%</span>
-                  </div>
-                </div>
-              </div>
-            </div>
+        <section className={styles.resultSummary} aria-label="Comparison summary" aria-busy={isComparingServer}>
+          <div>
+            <p className={styles.summaryEyebrow}><Scale size={16} /> COMPARISON INSIGHT</p>
+            <h2>{isAllZero ? 'Review the evidence behind each match' : hasTiedWinner ? 'A closer look at your leading candidates' : `${winner.name} has the highest match score`}</h2>
+            <p>{isAllZero
+              ? 'All selected candidates currently have a 0% match score. Review the reference role and individual criteria below.'
+              : hasTiedWinner
+                ? `The highest score is shared at ${winner.matchScore}%. Compare skills, experience, and qualifications to see where candidates differ.`
+                : 'Explore the strengths, gaps, and qualifications behind the scores before recording your assessment.'}</p>
           </div>
-        ) : hasTiedWinner ? (
-          <div className="bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-white rounded-2xl sm:rounded-3xl p-4 sm:p-7 md:p-8 mb-5 sm:mb-8 shadow-xl relative overflow-hidden border border-slate-800">
-            <div className="absolute -right-10 -top-10 w-40 h-40 bg-blue-500/20 rounded-full blur-3xl pointer-events-none"></div>
-            <div className="absolute -left-10 -bottom-10 w-40 h-40 bg-purple-500/15 rounded-full blur-3xl pointer-events-none"></div>
-
-            <div className="relative flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-4 sm:gap-6">
-              <div className="flex-1">
-                <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-blue-500/25 border border-blue-500/40 rounded-full text-[10px] sm:text-xs font-black text-blue-300 uppercase tracking-wider mb-2 sm:mb-3">
-                  <Users className="w-3.5 h-3.5 text-blue-300" />
-                  <span>Tie For Top Match</span>
-                </div>
-                <h2 className="text-lg sm:text-2xl md:text-3xl font-black tracking-tight leading-tight">
-                  {winner.name} & {selectedCandidatesData[1]?.name} are tied!
-                </h2>
-                <p className="text-slate-300 font-medium mt-1.5 sm:mt-2 max-w-3xl leading-relaxed text-xs sm:text-sm">
-                  Both candidates share the highest matching index of <span className="text-[#FF3E74] font-black">{winner.matchScore}%</span> based on our {winner.isRuleBased ? 'rule-based analysis' : 'semantic AI analysis'}. Review their individual skills and experience breakdowns below to differentiate.
-                </p>
-              </div>
-
-              {/* Mobile-Friendly Winner Snapshot Card */}
-              <div className="bg-white/5 border border-white/10 p-3.5 sm:p-5 rounded-2xl shrink-0 flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-xl overflow-hidden border border-white/20 shrink-0 bg-white/10">
-                    <img
-                      src={getAvatarUrl(winner)}
-                      alt={winner.name}
-                      className="w-full h-full object-cover"
-                      onError={(e) => {
-                        (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${encodeURIComponent(winner.name)}&background=fdf2f8&color=d81159&bold=true`;
-                      }}
-                    />
-                  </div>
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-1.5">
-                      <p className="text-xs sm:text-sm font-bold text-white truncate max-w-[150px] sm:max-w-[200px]">{winner.name}</p>
-                      <span className="px-1.5 py-0.5 bg-blue-400/20 text-blue-300 border border-blue-400/30 rounded text-[9px] font-black uppercase shrink-0">Tied #1</span>
-                    </div>
-                    <p className="text-[11px] text-slate-300 font-semibold truncate mt-0.5">{winner.preferredJob}</p>
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-between sm:justify-end gap-3 pt-2.5 sm:pt-0 border-t sm:border-t-0 border-white/10">
-                  <div className="text-left sm:text-right">
-                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Match Score</p>
-                    <p className="text-2xl sm:text-4xl font-black text-[#FF3E74] leading-tight">{winner.matchScore}%</p>
-                  </div>
-                  <div className="flex flex-wrap sm:flex-col gap-1 sm:gap-1 text-[9px] font-bold">
-                    <span className="px-2 py-0.5 bg-blue-500/20 text-blue-300 rounded border border-blue-500/30">Skills: {winner.skillsScore}%</span>
-                    <span className="px-2 py-0.5 bg-purple-500/20 text-purple-300 rounded border border-purple-500/30">Exp: {winner.experienceScore}%</span>
-                    <span className="px-2 py-0.5 bg-amber-500/20 text-amber-300 rounded border border-amber-500/30">Certs: {winner.certificationsScore || 0}%</span>
-                  </div>
-                </div>
-              </div>
-            </div>
+          <div className={styles.summaryNumbers}>
+            <div><strong>{selectedCandidatesData.length}</strong><span>Candidates compared</span></div>
+            <div><strong>{winner.matchScore || 0}<small>%</small></strong><span>Highest match score</span></div>
           </div>
-        ) : (
-          <div className="bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-white rounded-2xl sm:rounded-3xl p-4 sm:p-7 md:p-8 mb-5 sm:mb-8 shadow-xl relative overflow-hidden border border-slate-800">
-            <div className="absolute -right-10 -top-10 w-40 h-40 bg-[#D60041]/20 rounded-full blur-3xl pointer-events-none"></div>
-            <div className="absolute -left-10 -bottom-10 w-40 h-40 bg-blue-500/15 rounded-full blur-3xl pointer-events-none"></div>
-
-            <div className="relative flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-4 sm:gap-6">
-              <div className="flex-1">
-                <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-[#D60041]/25 border border-[#D60041]/40 rounded-full text-[10px] sm:text-xs font-black text-[#FF3E74] uppercase tracking-wider mb-2 sm:mb-3">
-                  <Trophy className="w-3.5 h-3.5 text-amber-400" />
-                  <span>Top Recommended Match</span>
-                </div>
-                <h2 className="text-lg sm:text-2xl md:text-3xl font-black tracking-tight leading-tight">
-                  {winner.name} is the top match!
-                </h2>
-                <p className="text-slate-300 font-medium mt-1.5 sm:mt-2 max-w-3xl leading-relaxed text-xs sm:text-sm">
-                  Based on our {winner.isRuleBased ? 'rule-based analysis' : 'semantic AI analysis'} of skills, experience, and educational background, <span className="text-white font-bold">{winner.name}</span> has the highest matching index of <span className="text-[#FF3E74] font-black">{winner.matchScore}%</span>.
-                  {winner.ai_summary ? ` ${winner.ai_summary}` : ` Strong alignment demonstrated with requirements for ${winner.preferredJob}.`}
-                </p>
-              </div>
-
-              {/* Mobile-Friendly Winner Snapshot Card */}
-              <div className="bg-white/5 border border-white/10 p-3.5 sm:p-5 rounded-2xl shrink-0 flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-xl overflow-hidden border border-white/20 shrink-0 bg-white/10">
-                    <img
-                      src={getAvatarUrl(winner)}
-                      alt={winner.name}
-                      className="w-full h-full object-cover"
-                      onError={(e) => {
-                        (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${encodeURIComponent(winner.name)}&background=fdf2f8&color=d81159&bold=true`;
-                      }}
-                    />
-                  </div>
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-1.5">
-                      <p className="text-xs sm:text-sm font-bold text-white truncate max-w-[150px] sm:max-w-[200px]">{winner.name}</p>
-                      <span className="px-1.5 py-0.5 bg-amber-400/20 text-amber-300 border border-amber-400/30 rounded text-[9px] font-black uppercase shrink-0">#1 Top</span>
-                    </div>
-                    <p className="text-[11px] text-slate-300 font-semibold truncate mt-0.5">{winner.preferredJob}</p>
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-between sm:justify-end gap-3 pt-2.5 sm:pt-0 border-t sm:border-t-0 border-white/10">
-                  <div className="text-left sm:text-right">
-                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Match Score</p>
-                    <p className="text-2xl sm:text-4xl font-black text-[#FF3E74] leading-tight">{winner.matchScore}%</p>
-                  </div>
-                  <div className="flex flex-wrap sm:flex-col gap-1 sm:gap-1 text-[9px] font-bold">
-                    <span className="px-2 py-0.5 bg-blue-500/20 text-blue-300 rounded border border-blue-500/30">Skills: {winner.skillsScore}%</span>
-                    <span className="px-2 py-0.5 bg-purple-500/20 text-purple-300 rounded border border-purple-500/30">Exp: {winner.experienceScore}%</span>
-                    <span className="px-2 py-0.5 bg-amber-500/20 text-amber-300 rounded border border-amber-500/30">Certs: {winner.certificationsScore || 0}%</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
+        </section>
 
         {/* Category Winners Filter Display */}
         {(categoryWinners.skills || categoryWinners.experience || categoryWinners.education || categoryWinners.certifications) && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4 mb-5 sm:mb-7">
+          <div className={styles.categoryHighlights}>
             {evaluationFilters.skills && categoryWinners.skills && (
               <div className="bg-blue-50/60 border border-blue-100 rounded-2xl p-3 sm:p-4 flex items-center justify-between shadow-2xs">
                 <div className="flex items-center gap-2.5 min-w-0">
@@ -989,11 +852,11 @@ const CompareCandidates: React.FC = () => {
                     <Zap className="w-4 h-4" />
                   </div>
                   <div className="min-w-0">
-                    <p className="text-[9px] sm:text-[10px] font-black text-slate-400 uppercase tracking-wider">Top Skills Match</p>
+                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Top Skills Match</p>
                     <p className="text-xs sm:text-sm font-bold text-slate-800 truncate">{categoryWinners.skills.name}</p>
                   </div>
                 </div>
-                <span className="px-2 py-1 bg-blue-100/80 text-blue-700 rounded-lg text-xs font-black shrink-0">
+                <span className="px-2 py-1 bg-blue-100/80 text-blue-700 rounded-lg text-xs font-semibold shrink-0">
                   {categoryWinners.skills.skillsScore}%
                 </span>
               </div>
@@ -1005,11 +868,11 @@ const CompareCandidates: React.FC = () => {
                     <Briefcase className="w-4 h-4" />
                   </div>
                   <div className="min-w-0">
-                    <p className="text-[9px] sm:text-[10px] font-black text-slate-400 uppercase tracking-wider">Top Experience</p>
+                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Top Experience</p>
                     <p className="text-xs sm:text-sm font-bold text-slate-800 truncate">{categoryWinners.experience.name}</p>
                   </div>
                 </div>
-                <span className="px-2 py-1 bg-purple-100/80 text-purple-700 rounded-lg text-xs font-black shrink-0">
+                <span className="px-2 py-1 bg-purple-100/80 text-purple-700 rounded-lg text-xs font-semibold shrink-0">
                   {categoryWinners.experience.experienceScore}%
                 </span>
               </div>
@@ -1021,11 +884,11 @@ const CompareCandidates: React.FC = () => {
                     <GraduationCap className="w-4 h-4" />
                   </div>
                   <div className="min-w-0">
-                    <p className="text-[9px] sm:text-[10px] font-black text-slate-400 uppercase tracking-wider">Top Education</p>
+                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Top Education</p>
                     <p className="text-xs sm:text-sm font-bold text-slate-800 truncate">{categoryWinners.education.name}</p>
                   </div>
                 </div>
-                <span className="px-2 py-1 bg-emerald-100/80 text-emerald-700 rounded-lg text-xs font-black shrink-0">
+                <span className="px-2 py-1 bg-emerald-100/80 text-emerald-700 rounded-lg text-xs font-semibold shrink-0">
                   {categoryWinners.education.education_score ?? categoryWinners.education.educationScore ?? 0}%
                 </span>
               </div>
@@ -1037,11 +900,11 @@ const CompareCandidates: React.FC = () => {
                     <Award className="w-4 h-4" />
                   </div>
                   <div className="min-w-0">
-                    <p className="text-[9px] sm:text-[10px] font-black text-slate-400 uppercase tracking-wider">Top Certifications</p>
+                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Top Certifications</p>
                     <p className="text-xs sm:text-sm font-bold text-slate-800 truncate">{categoryWinners.certifications.name}</p>
                   </div>
                 </div>
-                <span className="px-2 py-1 bg-amber-100/80 text-amber-700 rounded-lg text-xs font-black shrink-0">
+                <span className="px-2 py-1 bg-amber-100/80 text-amber-700 rounded-lg text-xs font-semibold shrink-0">
                   {categoryWinners.certifications.certificationsScore || 0}%
                 </span>
               </div>
@@ -1050,18 +913,18 @@ const CompareCandidates: React.FC = () => {
         )}
 
         {/* View Mode Switcher for Mobile & Tablet */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 mb-3 sm:mb-4">
+        <div className={styles.resultsToolbar}>
           <div className="flex items-center gap-2 min-w-0">
-            <h3 className="text-xs sm:text-base font-black text-slate-900 tracking-tight truncate">Comparison Results</h3>
-            <span className="text-[10px] sm:text-[11px] font-bold text-slate-400 shrink-0">({selectedCandidatesData.length})</span>
+            <h3 className="text-xs sm:text-base font-semibold text-slate-900 tracking-tight truncate">Comparison Results</h3>
+            <span className="text-xs font-bold text-slate-500 shrink-0">({selectedCandidatesData.length})</span>
           </div>
 
           <div className="flex items-center gap-2 flex-wrap justify-end">
             <button
               type="button"
               onClick={exportToCSV}
-              className="px-2.5 sm:px-3 py-1.5 rounded-xl bg-white border border-slate-200 text-slate-700 hover:text-[#D60041] hover:border-rose-200 text-[11px] sm:text-xs font-bold transition-all flex items-center gap-1.5 shadow-2xs cursor-pointer"
-              title="Export Comparison Matrix to CSV (REQ057)"
+              className="px-2.5 sm:px-3 py-1.5 rounded-xl bg-white border border-slate-200 text-slate-700 hover:text-[#D60041] hover:border-rose-200 text-xs font-bold transition-all flex items-center gap-1.5 shadow-2xs cursor-pointer"
+              title="Export comparison to CSV"
             >
               <Download size={13} className="text-[#D60041]" />
               <span className="hidden sm:inline">Export CSV</span>
@@ -1070,8 +933,8 @@ const CompareCandidates: React.FC = () => {
             <button
               type="button"
               onClick={exportToPDF}
-              className="px-2.5 sm:px-3 py-1.5 rounded-xl bg-white border border-slate-200 text-slate-700 hover:text-[#D60041] hover:border-rose-200 text-[11px] sm:text-xs font-bold transition-all flex items-center gap-1.5 shadow-2xs cursor-pointer"
-              title="Export / Print Comparison to PDF (REQ078)"
+              className="px-2.5 sm:px-3 py-1.5 rounded-xl bg-white border border-slate-200 text-slate-700 hover:text-[#D60041] hover:border-rose-200 text-xs font-bold transition-all flex items-center gap-1.5 shadow-2xs cursor-pointer"
+              title="Print comparison or save as PDF"
             >
               <Printer size={13} className="text-[#D60041]" />
               <span className="hidden sm:inline">Print / PDF</span>
@@ -1082,8 +945,9 @@ const CompareCandidates: React.FC = () => {
             <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200/80 shrink-0 shadow-2xs">
               <button
                 type="button"
+                aria-pressed={compareViewMode === 'table'}
                 onClick={() => setCompareViewMode('table')}
-                className={`px-2.5 sm:px-3 py-1.5 rounded-lg text-[11px] sm:text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${compareViewMode === 'table' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-500 hover:text-slate-800'
+                className={`px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${compareViewMode === 'table' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-500 hover:text-slate-800'
                   }`}
                 title="Side-by-side Table Matrix"
               >
@@ -1092,8 +956,9 @@ const CompareCandidates: React.FC = () => {
               </button>
               <button
                 type="button"
+                aria-pressed={compareViewMode === 'cards'}
                 onClick={() => setCompareViewMode('cards')}
-                className={`px-2.5 sm:px-3 py-1.5 rounded-lg text-[11px] sm:text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${compareViewMode === 'cards' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-500 hover:text-slate-800'
+                className={`px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${compareViewMode === 'cards' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-500 hover:text-slate-800'
                   }`}
                 title="Card Scorecards"
               >
@@ -1108,23 +973,24 @@ const CompareCandidates: React.FC = () => {
         {compareViewMode === 'table' ? (
           <div>
             {/* Mobile swipe helper badge (< sm) */}
-            <div className="sm:hidden flex items-center justify-between px-3 py-1.5 bg-rose-50/70 border border-rose-100 rounded-xl mb-2.5 text-[11px] font-bold text-rose-800 shadow-2xs">
+            <div className="sm:hidden flex items-center justify-between px-3 py-1.5 bg-rose-50/70 border border-rose-100 rounded-xl mb-2.5 text-xs font-bold text-rose-800 shadow-2xs">
               <span className="flex items-center gap-1.5">
                 <span>↔</span>
                 <span>Swipe left/right to compare</span>
               </span>
-              <span className="text-[10px] bg-white px-2 py-0.5 rounded-md border border-rose-200/70 text-[#D60041] font-black">
+              <span className="text-xs bg-white px-2 py-0.5 rounded-md border border-rose-200/70 text-[#D60041] font-semibold">
                 Labels Pinned
               </span>
             </div>
 
-            <div className="bg-white border border-slate-200/90 rounded-2xl sm:rounded-3xl shadow-xs overflow-hidden">
-              <div className="overflow-x-auto custom-scrollbar relative overscroll-x-contain">
-                <table className="w-full border-collapse">
+            <div className="bg-white border border-slate-200/90 rounded-2xl shadow-xs overflow-hidden">
+              <div className={styles.matrixScroll} tabIndex={0} role="region" aria-label="Candidate comparison table; scroll horizontally to see all candidates">
+                <table className={styles.matrix}>
+                  <caption className="sr-only">Candidate scores, qualifications, and assessment notes</caption>
                   <thead>
                     <tr className="bg-slate-50/90 border-b border-slate-200/90">
                       {/* Sticky Column 1 Header with fixed intact width */}
-                      <th className="sticky left-0 z-30 bg-slate-100/95 backdrop-blur-md p-3 sm:p-5 text-left text-[11px] sm:text-xs font-black text-slate-700 uppercase tracking-wider w-[125px] min-w-[125px] max-w-[125px] sm:w-56 sm:min-w-[220px] sm:max-w-[220px] shrink-0 border-r-2 border-slate-200 shadow-[3px_0_8px_rgba(0,0,0,0.05)]">
+                      <th className="sticky left-0 z-30 bg-slate-100/95 backdrop-blur-md p-3 sm:p-5 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider w-[125px] min-w-[125px] max-w-[125px] sm:w-56 sm:min-w-[220px] sm:max-w-[220px] shrink-0 border-r-2 border-slate-200 shadow-[3px_0_8px_rgba(0,0,0,0.05)]">
                         <div className="flex items-center gap-1.5">
                           <SlidersHorizontal size={13} className="text-slate-500 shrink-0" />
                           <span>Criteria</span>
@@ -1154,20 +1020,20 @@ const CompareCandidates: React.FC = () => {
                               </div>
                               <div className="min-w-0">
                                 <div className="flex items-center gap-1.5 flex-wrap">
-                                  <span className={`px-1.5 py-0.5 rounded text-[9px] font-black uppercase shrink-0 ${isTop ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-600'
+                                  <span className={`px-1.5 py-0.5 rounded text-xs font-semibold uppercase shrink-0 ${isTop ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-600'
                                     }`}>
                                     {isAllZero ? 'Unranked' : `Rank #${idx + 1}`}
                                   </span>
                                   {isTop && <Trophy className="w-3 h-3 text-amber-500 shrink-0" />}
                                   {(candidate.completeness_status === 'Incomplete' || (candidate.completeness_score !== undefined && candidate.completeness_score < 70)) && (
-                                    <span className="px-1.5 py-0.5 rounded text-[9px] font-black uppercase bg-amber-100 text-amber-800 border border-amber-300 flex items-center gap-0.5" title="Incomplete Profile (REQ058)">
+                                    <span className="px-1.5 py-0.5 rounded text-xs font-semibold uppercase bg-amber-100 text-amber-800 border border-amber-300 flex items-center gap-0.5" title="Incomplete Profile (REQ058)">
                                       <AlertTriangle className="w-2.5 h-2.5 shrink-0" />
                                       <span>Incomplete</span>
                                     </span>
                                   )}
                                 </div>
                                 <h4 className="text-xs sm:text-sm font-bold text-slate-900 tracking-tight truncate mt-0.5">{candidate.name}</h4>
-                                <p className="text-[10px] sm:text-[11px] text-slate-500 font-semibold truncate">Applied for: {candidate.applied_job_title || candidate.preferredJob}</p>
+                                <p className="text-xs text-slate-500 font-semibold truncate">Applied for: {candidate.applied_job_title || candidate.preferredJob}</p>
                               </div>
                             </div>
                           </th>
@@ -1179,7 +1045,7 @@ const CompareCandidates: React.FC = () => {
                   <tbody className="divide-y divide-slate-100">
                     {/* Row 1: Match Percentage */}
                     <tr className="hover:bg-slate-50/40 transition-colors">
-                      <td className="sticky left-0 z-20 bg-slate-50/95 backdrop-blur-md p-3 sm:p-5 text-[11px] sm:text-xs font-black text-slate-700 uppercase tracking-wider w-[125px] min-w-[125px] max-w-[125px] sm:w-56 sm:min-w-[220px] sm:max-w-[220px] shrink-0 border-r-2 border-slate-200 shadow-[3px_0_8px_rgba(0,0,0,0.05)]">
+                      <td className="sticky left-0 z-20 bg-slate-50/95 backdrop-blur-md p-3 sm:p-5 text-xs font-semibold text-slate-700 uppercase tracking-wider w-[125px] min-w-[125px] max-w-[125px] sm:w-56 sm:min-w-[220px] sm:max-w-[220px] shrink-0 border-r-2 border-slate-200 shadow-[3px_0_8px_rgba(0,0,0,0.05)]">
                         <div className="flex items-center gap-1.5 sm:gap-2">
                           <TrendingUp size={13} className="text-[#D60041] shrink-0" />
                           <span>Match Score</span>
@@ -1190,7 +1056,7 @@ const CompareCandidates: React.FC = () => {
                         return (
                           <td key={candidate.id} className={`p-3 sm:p-5 ${isTop ? 'bg-rose-50/15' : ''}`}>
                             <div className="flex items-center gap-2 sm:gap-3">
-                              <span className={`text-lg sm:text-2xl font-black ${isTop ? 'text-[#D60041]' : (candidate.matchScore || 0) === 0 ? 'text-slate-400' : 'text-slate-900'}`}>
+                              <span className={`text-lg sm:text-2xl font-semibold ${isTop ? 'text-[#D60041]' : (candidate.matchScore || 0) === 0 ? 'text-slate-500' : 'text-slate-900'}`}>
                                 {candidate.matchScore}%
                               </span>
                               <div className="flex-1 max-w-[80px] sm:max-w-[120px] bg-slate-100 rounded-full h-2">
@@ -1201,9 +1067,9 @@ const CompareCandidates: React.FC = () => {
                               </div>
                             </div>
                             {isTop ? (
-                              <span className="text-[9px] font-black text-[#D60041] uppercase tracking-wider mt-1 block">Top Match</span>
+                              <span className="text-xs font-semibold text-[#D60041] uppercase tracking-wider mt-1 block">Top Match</span>
                             ) : (candidate.matchScore || 0) === 0 ? (
-                              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mt-1 block">No Match</span>
+                              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider mt-1 block">No Match</span>
                             ) : null}
                           </td>
                         );
@@ -1212,7 +1078,7 @@ const CompareCandidates: React.FC = () => {
 
                     {/* Row 2: Pillar Scores */}
                     <tr className="hover:bg-slate-50/40 transition-colors">
-                      <td className="sticky left-0 z-20 bg-slate-50/95 backdrop-blur-md p-3 sm:p-5 text-[11px] sm:text-xs font-black text-slate-700 uppercase tracking-wider w-[125px] min-w-[125px] max-w-[125px] sm:w-56 sm:min-w-[220px] sm:max-w-[220px] shrink-0 border-r-2 border-slate-200 shadow-[3px_0_8px_rgba(0,0,0,0.05)]">
+                      <td className="sticky left-0 z-20 bg-slate-50/95 backdrop-blur-md p-3 sm:p-5 text-xs font-semibold text-slate-700 uppercase tracking-wider w-[125px] min-w-[125px] max-w-[125px] sm:w-56 sm:min-w-[220px] sm:max-w-[220px] shrink-0 border-r-2 border-slate-200 shadow-[3px_0_8px_rgba(0,0,0,0.05)]">
                         <div className="flex items-center gap-1.5 sm:gap-2">
                           <BarChart3 size={13} className="text-blue-500 shrink-0" />
                           <span>Pillar Scores</span>
@@ -1223,7 +1089,7 @@ const CompareCandidates: React.FC = () => {
                         return (
                           <td key={candidate.id} className={`p-3 sm:p-5 space-y-2 sm:space-y-2.5 ${isTop ? 'bg-rose-50/15' : ''}`}>
                             <div>
-                              <div className="flex justify-between text-[10px] sm:text-[11px] font-bold mb-0.5">
+                              <div className="flex justify-between text-xs font-bold mb-0.5">
                                 <span className={evaluationFilters.skills ? 'text-slate-600' : 'text-slate-300 line-through'}>Skills</span>
                                 <span className="text-blue-600">{candidate.skillsScore}%</span>
                               </div>
@@ -1232,7 +1098,7 @@ const CompareCandidates: React.FC = () => {
                               </div>
                             </div>
                             <div>
-                              <div className="flex justify-between text-[10px] sm:text-[11px] font-bold mb-0.5">
+                              <div className="flex justify-between text-xs font-bold mb-0.5">
                                 <span className={evaluationFilters.experience ? 'text-slate-600' : 'text-slate-300 line-through'}>Experience</span>
                                 <span className="text-purple-600">{candidate.experienceScore}%</span>
                               </div>
@@ -1241,7 +1107,7 @@ const CompareCandidates: React.FC = () => {
                               </div>
                             </div>
                             <div>
-                              <div className="flex justify-between text-[10px] sm:text-[11px] font-bold mb-0.5">
+                              <div className="flex justify-between text-xs font-bold mb-0.5">
                                 <span className="text-slate-600">Education</span>
                                 <span className="text-emerald-600">{candidate.education_score ?? candidate.educationScore ?? 0}%</span>
                               </div>
@@ -1250,7 +1116,7 @@ const CompareCandidates: React.FC = () => {
                               </div>
                             </div>
                             <div>
-                              <div className="flex justify-between text-[10px] sm:text-[11px] font-bold mb-0.5">
+                              <div className="flex justify-between text-xs font-bold mb-0.5">
                                 <span className={evaluationFilters.certifications ? 'text-slate-600' : 'text-slate-300 line-through'}>Certifications</span>
                                 <span className="text-amber-600">{candidate.certificationsScore || 0}%</span>
                               </div>
@@ -1265,7 +1131,7 @@ const CompareCandidates: React.FC = () => {
 
                     {/* Row 3: Skills Alignment (Direct & Transferable) */}
                     <tr className="hover:bg-slate-50/40 transition-colors">
-                      <td className="sticky left-0 z-20 bg-slate-50/95 backdrop-blur-md p-3 sm:p-5 text-[11px] sm:text-xs font-black text-slate-700 uppercase tracking-wider w-[125px] min-w-[125px] max-w-[125px] sm:w-56 sm:min-w-[220px] sm:max-w-[220px] shrink-0 border-r-2 border-slate-200 shadow-[3px_0_8px_rgba(0,0,0,0.05)]">
+                      <td className="sticky left-0 z-20 bg-slate-50/95 backdrop-blur-md p-3 sm:p-5 text-xs font-semibold text-slate-700 uppercase tracking-wider w-[125px] min-w-[125px] max-w-[125px] sm:w-56 sm:min-w-[220px] sm:max-w-[220px] shrink-0 border-r-2 border-slate-200 shadow-[3px_0_8px_rgba(0,0,0,0.05)]">
                         <div className="flex items-center gap-1.5 sm:gap-2">
                           <CheckCircle2 size={13} className="text-emerald-500 shrink-0" />
                           <span>Skills Alignment</span>
@@ -1275,31 +1141,31 @@ const CompareCandidates: React.FC = () => {
                         <td key={candidate.id} className={`p-3 sm:p-5 ${idx === 0 ? 'bg-rose-50/15' : ''}`}>
                           <div className="space-y-2">
                             <div>
-                              <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400 block mb-1">Direct Matches</span>
+                              <span className="text-xs font-bold uppercase tracking-wider text-slate-500 block mb-1">Direct Matches</span>
                               <div className="flex flex-wrap gap-1 sm:gap-1.5">
                                 {candidate.matched_skills && candidate.matched_skills.length > 0 ? (
                                   candidate.matched_skills.map((skill, i) => (
-                                    <span key={i} className="inline-flex items-center gap-1 px-1.5 py-0.5 sm:px-2.5 sm:py-1 bg-emerald-50 text-emerald-700 border border-emerald-200/80 rounded-md text-[9px] sm:text-[10px] font-bold">
+                                    <span key={i} className="inline-flex items-center gap-1 px-1.5 py-0.5 sm:px-2.5 sm:py-1 bg-emerald-50 text-emerald-700 border border-emerald-200/80 rounded-md text-xs font-bold">
                                       <Check className="w-2.5 h-2.5" />
                                       <span>{skill}</span>
                                     </span>
                                   ))
                                 ) : (
-                                  <span className="text-[11px] text-slate-400 italic">None matched</span>
+                                  <span className="text-xs text-slate-500 italic">None matched</span>
                                 )}
                               </div>
                             </div>
 
                             {candidate.transferable_skills && candidate.transferable_skills.length > 0 && (
                               <div className="pt-2 border-t border-slate-100">
-                                <span className="text-[9px] font-bold uppercase tracking-wider text-purple-700 mb-1 flex items-center gap-1">
+                                <span className="text-xs font-bold uppercase tracking-wider text-purple-700 mb-1 flex items-center gap-1">
                                   <Zap size={10} /> Transferable Skills
                                 </span>
                                 <div className="flex flex-wrap gap-1 sm:gap-1.5">
                                   {candidate.transferable_skills.map((skill, i) => (
-                                    <span key={i} className="inline-flex items-center gap-1 px-1.5 py-0.5 sm:px-2 sm:py-0.5 bg-purple-50 text-purple-700 border border-purple-200 rounded-md text-[9px] sm:text-[10px] font-bold">
+                                    <span key={i} className="inline-flex items-center gap-1 px-1.5 py-0.5 sm:px-2 sm:py-0.5 bg-purple-50 text-purple-700 border border-purple-200 rounded-md text-xs font-bold">
                                       <span>{skill}</span>
-                                      <span className="text-[8px] bg-purple-100 text-purple-800 px-1 rounded uppercase font-black">Transferable</span>
+                                      <span className="text-xs bg-purple-100 text-purple-800 px-1 rounded uppercase font-semibold">Transferable</span>
                                     </span>
                                   ))}
                                 </div>
@@ -1312,7 +1178,7 @@ const CompareCandidates: React.FC = () => {
 
                     {/* Row 4: Missing Skills */}
                     <tr className="hover:bg-slate-50/40 transition-colors">
-                      <td className="sticky left-0 z-20 bg-slate-50/95 backdrop-blur-md p-3 sm:p-5 text-[11px] sm:text-xs font-black text-slate-700 uppercase tracking-wider w-[125px] min-w-[125px] max-w-[125px] sm:w-56 sm:min-w-[220px] sm:max-w-[220px] shrink-0 border-r-2 border-slate-200 shadow-[3px_0_8px_rgba(0,0,0,0.05)]">
+                      <td className="sticky left-0 z-20 bg-slate-50/95 backdrop-blur-md p-3 sm:p-5 text-xs font-semibold text-slate-700 uppercase tracking-wider w-[125px] min-w-[125px] max-w-[125px] sm:w-56 sm:min-w-[220px] sm:max-w-[220px] shrink-0 border-r-2 border-slate-200 shadow-[3px_0_8px_rgba(0,0,0,0.05)]">
                         <div className="flex items-center gap-1.5 sm:gap-2">
                           <XCircle size={13} className="text-rose-500 shrink-0" />
                           <span>Missing Skills</span>
@@ -1323,13 +1189,13 @@ const CompareCandidates: React.FC = () => {
                           <div className="flex flex-wrap gap-1 sm:gap-1.5">
                             {candidate.missing_skills && candidate.missing_skills.length > 0 ? (
                               candidate.missing_skills.map((skill, i) => (
-                                <span key={i} className="inline-flex items-center gap-1 px-1.5 py-0.5 sm:px-2.5 sm:py-1 bg-rose-50 text-rose-700 border border-rose-200/80 rounded-md text-[9px] sm:text-[10px] font-bold">
+                                <span key={i} className="inline-flex items-center gap-1 px-1.5 py-0.5 sm:px-2.5 sm:py-1 bg-rose-50 text-rose-700 border border-rose-200/80 rounded-md text-xs font-bold">
                                   <XCircle className="w-2.5 h-2.5" />
                                   <span>{skill}</span>
                                 </span>
                               ))
                             ) : (
-                              <span className="text-[11px] text-emerald-600 font-bold">All Requirements Met</span>
+                              <span className="text-xs text-emerald-600 font-bold">All Requirements Met</span>
                             )}
                           </div>
                         </td>
@@ -1338,7 +1204,7 @@ const CompareCandidates: React.FC = () => {
 
                     {/* Row 5: Core Strengths */}
                     <tr className="hover:bg-slate-50/40 transition-colors">
-                      <td className="sticky left-0 z-20 bg-slate-50/95 backdrop-blur-md p-3 sm:p-5 text-[11px] sm:text-xs font-black text-slate-700 uppercase tracking-wider w-[125px] min-w-[125px] max-w-[125px] sm:w-56 sm:min-w-[220px] sm:max-w-[220px] shrink-0 border-r-2 border-slate-200 shadow-[3px_0_8px_rgba(0,0,0,0.05)]">
+                      <td className="sticky left-0 z-20 bg-slate-50/95 backdrop-blur-md p-3 sm:p-5 text-xs font-semibold text-slate-700 uppercase tracking-wider w-[125px] min-w-[125px] max-w-[125px] sm:w-56 sm:min-w-[220px] sm:max-w-[220px] shrink-0 border-r-2 border-slate-200 shadow-[3px_0_8px_rgba(0,0,0,0.05)]">
                         <div className="flex items-center gap-1.5 sm:gap-2">
                           <Star size={13} className="text-emerald-500 shrink-0" />
                           <span>Strengths</span>
@@ -1346,13 +1212,13 @@ const CompareCandidates: React.FC = () => {
                       </td>
                       {selectedCandidatesData.map((candidate, idx) => (
                         <td key={candidate.id} className={`p-3 sm:p-5 ${idx === 0 ? 'bg-rose-50/15' : ''}`}>
-                          <ul className="space-y-1 sm:space-y-1.5 text-[11px] sm:text-xs text-slate-700 font-medium">
+                          <ul className="space-y-1 sm:space-y-1.5 text-xs text-slate-700 font-medium">
                             {(candidate.strengths && candidate.strengths.slice(0, 3).map((strength, i) => (
                               <li key={i} className="flex items-start gap-1.5">
                                 <Check className="w-3.5 h-3.5 text-emerald-600 mt-0.5 shrink-0 stroke-[2.5px]" />
                                 <span>{strength}</span>
                               </li>
-                            ))) || <span className="italic text-slate-400">N/A</span>}
+                            ))) || <span className="italic text-slate-500">N/A</span>}
                           </ul>
                         </td>
                       ))}
@@ -1360,7 +1226,7 @@ const CompareCandidates: React.FC = () => {
 
                     {/* Row 6: Gaps & Weaknesses */}
                     <tr className="hover:bg-slate-50/40 transition-colors">
-                      <td className="sticky left-0 z-20 bg-slate-50/95 backdrop-blur-md p-3 sm:p-5 text-[11px] sm:text-xs font-black text-slate-700 uppercase tracking-wider w-[125px] min-w-[125px] max-w-[125px] sm:w-56 sm:min-w-[220px] sm:max-w-[220px] shrink-0 border-r-2 border-slate-200 shadow-[3px_0_8px_rgba(0,0,0,0.05)]">
+                      <td className="sticky left-0 z-20 bg-slate-50/95 backdrop-blur-md p-3 sm:p-5 text-xs font-semibold text-slate-700 uppercase tracking-wider w-[125px] min-w-[125px] max-w-[125px] sm:w-56 sm:min-w-[220px] sm:max-w-[220px] shrink-0 border-r-2 border-slate-200 shadow-[3px_0_8px_rgba(0,0,0,0.05)]">
                         <div className="flex items-center gap-1.5 sm:gap-2">
                           <AlertTriangle size={13} className="text-amber-500 shrink-0" />
                           <span>Gaps & Weaknesses</span>
@@ -1368,13 +1234,13 @@ const CompareCandidates: React.FC = () => {
                       </td>
                       {selectedCandidatesData.map((candidate, idx) => (
                         <td key={candidate.id} className={`p-3 sm:p-5 ${idx === 0 ? 'bg-rose-50/15' : ''}`}>
-                          <ul className="space-y-1 sm:space-y-1.5 text-[11px] sm:text-xs text-slate-700 font-medium">
+                          <ul className="space-y-1 sm:space-y-1.5 text-xs text-slate-700 font-medium">
                             {(candidate.weaknesses && candidate.weaknesses.slice(0, 3).map((weakness, i) => (
                               <li key={i} className="flex items-start gap-1.5">
                                 <AlertTriangle className="w-3.5 h-3.5 text-amber-500 mt-0.5 shrink-0" />
                                 <span>{weakness}</span>
                               </li>
-                            ))) || <span className="italic text-slate-400">N/A</span>}
+                            ))) || <span className="italic text-slate-500">N/A</span>}
                           </ul>
                         </td>
                       ))}
@@ -1382,7 +1248,7 @@ const CompareCandidates: React.FC = () => {
 
                     {/* Row 7: Experience Relevance */}
                     <tr className="hover:bg-slate-50/40 transition-colors">
-                      <td className="sticky left-0 z-20 bg-slate-50/95 backdrop-blur-md p-3 sm:p-5 text-[11px] sm:text-xs font-black text-slate-700 uppercase tracking-wider w-[125px] min-w-[125px] max-w-[125px] sm:w-56 sm:min-w-[220px] sm:max-w-[220px] shrink-0 border-r-2 border-slate-200 shadow-[3px_0_8px_rgba(0,0,0,0.05)]">
+                      <td className="sticky left-0 z-20 bg-slate-50/95 backdrop-blur-md p-3 sm:p-5 text-xs font-semibold text-slate-700 uppercase tracking-wider w-[125px] min-w-[125px] max-w-[125px] sm:w-56 sm:min-w-[220px] sm:max-w-[220px] shrink-0 border-r-2 border-slate-200 shadow-[3px_0_8px_rgba(0,0,0,0.05)]">
                         <div className="flex items-center gap-1.5 sm:gap-2">
                           <Briefcase size={13} className="text-purple-500 shrink-0" />
                           <span>Experience</span>
@@ -1395,15 +1261,15 @@ const CompareCandidates: React.FC = () => {
                           score: candidate.experienceScore ?? 0,
                         });
                         return (
-                          <td key={candidate.id} className={`p-3 sm:p-5 text-[11px] sm:text-xs text-slate-700 leading-relaxed ${idx === 0 ? 'bg-rose-50/15' : ''}`}>
+                          <td key={candidate.id} className={`p-3 sm:p-5 text-xs text-slate-700 leading-relaxed ${idx === 0 ? 'bg-rose-50/15' : ''}`}>
                             <div className="flex items-center justify-between gap-2 mb-1">
                               <span className="font-bold text-slate-900">{!isNoValueRequirement(candidate.company) ? candidate.company : "Company Unspecified"}</span>
-                              <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold border shrink-0 ${getCriterionStatusBadgeStyle(expStatus).badgeClass}`}>
+                              <span className={`px-2 py-0.5 rounded-full text-xs font-bold border shrink-0 ${getCriterionStatusBadgeStyle(expStatus).badgeClass}`}>
                                 {expStatus}
                               </span>
                             </div>
-                            <span className="text-[10px] uppercase font-bold text-slate-400 block mb-0.5">{!isNoValueRequirement(candidate.relevance) ? candidate.relevance : "Role unspecified"}</span>
-                            <p className="line-clamp-3 text-slate-500 text-[10px] sm:text-[11px]">{candidate.experience_reason || "No details provided"}</p>
+                            <span className="text-xs uppercase font-bold text-slate-500 block mb-0.5">{!isNoValueRequirement(candidate.relevance) ? candidate.relevance : "Role unspecified"}</span>
+                            <p className="line-clamp-3 text-slate-500 text-xs">{candidate.experience_reason || "No details provided"}</p>
                           </td>
                         );
                       })}
@@ -1411,7 +1277,7 @@ const CompareCandidates: React.FC = () => {
 
                     {/* Row 7b: Education & Attainment */}
                     <tr className="hover:bg-slate-50/40 transition-colors">
-                      <td className="sticky left-0 z-20 bg-slate-50/95 backdrop-blur-md p-3 sm:p-5 text-[11px] sm:text-xs font-black text-slate-700 uppercase tracking-wider w-[125px] min-w-[125px] max-w-[125px] sm:w-56 sm:min-w-[220px] sm:max-w-[220px] shrink-0 border-r-2 border-slate-200 shadow-[3px_0_8px_rgba(0,0,0,0.05)]">
+                      <td className="sticky left-0 z-20 bg-slate-50/95 backdrop-blur-md p-3 sm:p-5 text-xs font-semibold text-slate-700 uppercase tracking-wider w-[125px] min-w-[125px] max-w-[125px] sm:w-56 sm:min-w-[220px] sm:max-w-[220px] shrink-0 border-r-2 border-slate-200 shadow-[3px_0_8px_rgba(0,0,0,0.05)]">
                         <div className="flex items-center gap-1.5 sm:gap-2">
                           <GraduationCap size={13} className="text-emerald-600 shrink-0" />
                           <span>Education</span>
@@ -1428,19 +1294,19 @@ const CompareCandidates: React.FC = () => {
                         const candEduDisplay = !isNoValueRequirement(rawCandEdu) ? rawCandEdu : "None provided";
                         const reqEduDisplay = candidate.required_degree || serverComparison?.reference_job?.education_requirements || selectedJob?.education_requirements;
                         return (
-                          <td key={candidate.id} className={`p-3 sm:p-5 text-[11px] sm:text-xs text-slate-700 leading-relaxed ${idx === 0 ? 'bg-rose-50/15' : ''}`}>
+                          <td key={candidate.id} className={`p-3 sm:p-5 text-xs text-slate-700 leading-relaxed ${idx === 0 ? 'bg-rose-50/15' : ''}`}>
                             <div className="flex items-center justify-between gap-2 mb-1">
                               <span className="font-bold text-slate-900">{candEduDisplay}</span>
-                              <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold border shrink-0 ${getCriterionStatusBadgeStyle(eduStatus).badgeClass}`}>
+                              <span className={`px-2 py-0.5 rounded-full text-xs font-bold border shrink-0 ${getCriterionStatusBadgeStyle(eduStatus).badgeClass}`}>
                                 {eduStatus}
                               </span>
                             </div>
                             {!isNoValueRequirement(reqEduDisplay) && (
-                              <span className="text-[10px] font-semibold text-slate-400 block mb-0.5">
+                              <span className="text-xs font-semibold text-slate-500 block mb-0.5">
                                 Required: {reqEduDisplay}
                               </span>
                             )}
-                            <p className="line-clamp-3 text-slate-500 text-[10px] sm:text-[11px]">
+                            <p className="line-clamp-3 text-slate-500 text-xs">
                               {candidate.education_reason || "No education evaluation details provided"}
                             </p>
                           </td>
@@ -1450,7 +1316,7 @@ const CompareCandidates: React.FC = () => {
 
                     {/* Row 8: Certifications */}
                     <tr className="hover:bg-slate-50/40 transition-colors">
-                      <td className="sticky left-0 z-20 bg-slate-50/95 backdrop-blur-md p-3 sm:p-5 text-[11px] sm:text-xs font-black text-slate-700 uppercase tracking-wider w-[125px] min-w-[125px] max-w-[125px] sm:w-56 sm:min-w-[220px] sm:max-w-[220px] shrink-0 border-r-2 border-slate-200 shadow-[3px_0_8px_rgba(0,0,0,0.05)]">
+                      <td className="sticky left-0 z-20 bg-slate-50/95 backdrop-blur-md p-3 sm:p-5 text-xs font-semibold text-slate-700 uppercase tracking-wider w-[125px] min-w-[125px] max-w-[125px] sm:w-56 sm:min-w-[220px] sm:max-w-[220px] shrink-0 border-r-2 border-slate-200 shadow-[3px_0_8px_rgba(0,0,0,0.05)]">
                         <div className="flex items-center gap-1.5 sm:gap-2">
                           <Award size={13} className="text-amber-500 shrink-0" />
                           <span>Certifications</span>
@@ -1465,14 +1331,14 @@ const CompareCandidates: React.FC = () => {
                           score: candidate.certificationsScore ?? candidate.certifications_score ?? 0,
                         });
                         return (
-                          <td key={candidate.id} className={`p-3 sm:p-5 text-[11px] sm:text-xs text-slate-700 ${idx === 0 ? 'bg-rose-50/15' : ''}`}>
+                          <td key={candidate.id} className={`p-3 sm:p-5 text-xs text-slate-700 ${idx === 0 ? 'bg-rose-50/15' : ''}`}>
                             <div className="flex items-center justify-between gap-2 mb-1">
                               <p className="font-bold text-slate-900">{displayCert}</p>
-                              <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold border shrink-0 ${getCriterionStatusBadgeStyle(certStatus).badgeClass}`}>
+                              <span className={`px-2 py-0.5 rounded-full text-xs font-bold border shrink-0 ${getCriterionStatusBadgeStyle(certStatus).badgeClass}`}>
                                 {certStatus}
                               </span>
                             </div>
-                            <p className="text-[10px] text-slate-500 mt-0.5">{candidate.certifications_reason}</p>
+                            <p className="text-xs text-slate-500 mt-0.5">{candidate.certifications_reason}</p>
                           </td>
                         );
                       })}
@@ -1480,24 +1346,24 @@ const CompareCandidates: React.FC = () => {
 
                     {/* Row 9: Contact Details */}
                     <tr className="hover:bg-slate-50/40 transition-colors">
-                      <td className="sticky left-0 z-20 bg-slate-50/95 backdrop-blur-md p-3 sm:p-5 text-[11px] sm:text-xs font-black text-slate-700 uppercase tracking-wider w-[125px] min-w-[125px] max-w-[125px] sm:w-56 sm:min-w-[220px] sm:max-w-[220px] shrink-0 border-r-2 border-slate-200 shadow-[3px_0_8px_rgba(0,0,0,0.05)]">
+                      <td className="sticky left-0 z-20 bg-slate-50/95 backdrop-blur-md p-3 sm:p-5 text-xs font-semibold text-slate-700 uppercase tracking-wider w-[125px] min-w-[125px] max-w-[125px] sm:w-56 sm:min-w-[220px] sm:max-w-[220px] shrink-0 border-r-2 border-slate-200 shadow-[3px_0_8px_rgba(0,0,0,0.05)]">
                         <div className="flex items-center gap-1.5 sm:gap-2">
                           <Mail size={13} className="text-slate-500 shrink-0" />
                           <span>Contact Info</span>
                         </div>
                       </td>
                       {selectedCandidatesData.map((candidate, idx) => (
-                        <td key={candidate.id} className={`p-3 sm:p-5 space-y-1.5 text-[11px] sm:text-xs text-slate-600 ${idx === 0 ? 'bg-rose-50/15' : ''}`}>
+                        <td key={candidate.id} className={`p-3 sm:p-5 space-y-1.5 text-xs text-slate-600 ${idx === 0 ? 'bg-rose-50/15' : ''}`}>
                           <div className="flex items-center gap-1.5 truncate">
-                            <Mail className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                            <Mail className="w-3.5 h-3.5 text-slate-500 shrink-0" />
                             <span className="truncate">{candidate.email || 'N/A'}</span>
                           </div>
                           <div className="flex items-center gap-1.5 truncate">
-                            <Phone className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                            <Phone className="w-3.5 h-3.5 text-slate-500 shrink-0" />
                             <span className="truncate">{candidate.phone || 'N/A'}</span>
                           </div>
                           <div className="flex items-center gap-1.5 truncate">
-                            <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                            <MapPin className="w-3.5 h-3.5 text-slate-500 shrink-0" />
                             <span className="truncate">{candidate.location || 'N/A'}</span>
                           </div>
                         </td>
@@ -1506,7 +1372,7 @@ const CompareCandidates: React.FC = () => {
 
                     {/* Row 10: Profile Completeness (REQ058) */}
                     <tr className="hover:bg-slate-50/40 transition-colors">
-                      <td className="sticky left-0 z-20 bg-slate-50/95 backdrop-blur-md p-3 sm:p-5 text-[11px] sm:text-xs font-black text-slate-700 uppercase tracking-wider w-[125px] min-w-[125px] max-w-[125px] sm:w-56 sm:min-w-[220px] sm:max-w-[220px] shrink-0 border-r-2 border-slate-200 shadow-[3px_0_8px_rgba(0,0,0,0.05)]">
+                      <td className="sticky left-0 z-20 bg-slate-50/95 backdrop-blur-md p-3 sm:p-5 text-xs font-semibold text-slate-700 uppercase tracking-wider w-[125px] min-w-[125px] max-w-[125px] sm:w-56 sm:min-w-[220px] sm:max-w-[220px] shrink-0 border-r-2 border-slate-200 shadow-[3px_0_8px_rgba(0,0,0,0.05)]">
                         <div className="flex items-center gap-1.5 sm:gap-2">
                           <CheckCircle2 size={13} className="text-emerald-600 shrink-0" />
                           <span>Completeness</span>
@@ -1515,21 +1381,21 @@ const CompareCandidates: React.FC = () => {
                       {selectedCandidatesData.map((candidate, idx) => {
                         const isIncomplete = candidate.completeness_status === 'Incomplete' || (candidate.completeness_score !== undefined && candidate.completeness_score < 70);
                         return (
-                          <td key={candidate.id} className={`p-3 sm:p-5 text-[11px] sm:text-xs ${idx === 0 ? 'bg-rose-50/15' : ''}`}>
+                          <td key={candidate.id} className={`p-3 sm:p-5 text-xs ${idx === 0 ? 'bg-rose-50/15' : ''}`}>
                             {isIncomplete ? (
                               <div className="space-y-1">
-                                <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-amber-50 text-amber-800 border border-amber-200 font-bold text-[10px] sm:text-[11px]">
+                                <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-amber-50 text-amber-800 border border-amber-200 font-bold text-xs">
                                   <AlertTriangle className="w-3 h-3 text-amber-600 shrink-0" />
                                   <span>Incomplete Profile ({candidate.completeness_score || 0}%)</span>
                                 </div>
                                 {candidate.missing_sections && candidate.missing_sections.length > 0 && (
-                                  <p className="text-[10px] text-amber-700 font-medium">
+                                  <p className="text-xs text-amber-700 font-medium">
                                     Missing: {candidate.missing_sections.join(', ')}
                                   </p>
                                 )}
                               </div>
                             ) : (
-                              <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-200 font-bold text-[10px] sm:text-[11px]">
+                              <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-200 font-bold text-xs">
                                 <CheckCircle2 className="w-3 h-3 text-emerald-600 shrink-0" />
                                 <span>Complete Profile ({candidate.completeness_score || 100}%)</span>
                               </div>
@@ -1541,14 +1407,14 @@ const CompareCandidates: React.FC = () => {
 
                     {/* Row 11: HR Shortlisting Notes (REQ056) */}
                     <tr className="hover:bg-slate-50/40 transition-colors bg-slate-50/20">
-                      <td className="sticky left-0 z-20 bg-slate-50/95 backdrop-blur-md p-3 sm:p-5 text-[11px] sm:text-xs font-black text-slate-700 uppercase tracking-wider w-[125px] min-w-[125px] max-w-[125px] sm:w-56 sm:min-w-[220px] sm:max-w-[220px] shrink-0 border-r-2 border-slate-200 shadow-[3px_0_8px_rgba(0,0,0,0.05)]">
+                      <td className="sticky left-0 z-20 bg-slate-50/95 backdrop-blur-md p-3 sm:p-5 text-xs font-semibold text-slate-700 uppercase tracking-wider w-[125px] min-w-[125px] max-w-[125px] sm:w-56 sm:min-w-[220px] sm:max-w-[220px] shrink-0 border-r-2 border-slate-200 shadow-[3px_0_8px_rgba(0,0,0,0.05)]">
                         <div className="flex items-center gap-1.5 sm:gap-2">
                           <FileText size={13} className="text-[#D60041] shrink-0" />
                           <span>HR Notes</span>
                         </div>
                       </td>
                       {selectedCandidatesData.map((candidate, idx) => (
-                        <td key={candidate.id} className={`p-3 sm:p-5 text-[11px] sm:text-xs ${idx === 0 ? 'bg-rose-50/15' : ''}`}>
+                        <td key={candidate.id} className={`p-3 sm:p-5 text-xs ${idx === 0 ? 'bg-rose-50/15' : ''}`}>
                           <div className="space-y-1.5">
                             <textarea
                               rows={3}
@@ -1559,17 +1425,17 @@ const CompareCandidates: React.FC = () => {
                             />
                             <div className="flex items-center justify-between">
                               {savedSuccess[candidate.id] ? (
-                                <span className="text-[10px] font-bold text-emerald-600 flex items-center gap-1">
+                                <span className="text-xs font-bold text-emerald-600 flex items-center gap-1">
                                   <Check className="w-3 h-3" /> Saved to profile
                                 </span>
                               ) : (
-                                <span className="text-[10px] text-slate-400">Inline shortlisting note</span>
+                                <span className="text-xs text-slate-500">Inline shortlisting note</span>
                               )}
                               <button
                                 type="button"
                                 disabled={savingNotes[candidate.id]}
                                 onClick={() => handleSaveNote(candidate.id)}
-                                className="px-2.5 py-1 bg-slate-900 hover:bg-[#D60041] text-white rounded-md text-[10px] font-bold transition-colors flex items-center gap-1 shadow-2xs cursor-pointer disabled:opacity-50"
+                                className="px-2.5 py-1 bg-slate-900 hover:bg-[#D60041] text-white rounded-md text-xs font-bold transition-colors flex items-center gap-1 shadow-2xs cursor-pointer disabled:opacity-50"
                               >
                                 <Save size={10} />
                                 <span>{savingNotes[candidate.id] ? 'Saving...' : 'Save Note'}</span>
@@ -1614,14 +1480,14 @@ const CompareCandidates: React.FC = () => {
                     >
                       {isTop && <Trophy size={11} className={scorecardFilter === cand.id ? 'text-amber-300' : 'text-amber-500'} />}
                       <span>{cand.name.split(' ')[0]}</span>
-                      <span className="text-[10px] opacity-80 font-black">({cand.matchScore}%)</span>
+                      <span className="text-xs opacity-80 font-semibold">({cand.matchScore}%)</span>
                     </button>
                   );
                 })}
               </div>
             )}
 
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 sm:gap-6">
+            <div className={styles.scorecardGrid}>
               {displayedCandidatesInScorecards.map((candidate) => {
                 const actualRank = selectedCandidatesData.findIndex(c => c.id === candidate.id) + 1;
                 const isTopMatch = !isAllZero && (candidate.matchScore || 0) > 0 && candidate.matchScore === selectedCandidatesData[0].matchScore;
@@ -1630,7 +1496,7 @@ const CompareCandidates: React.FC = () => {
                 return (
                   <div
                     key={candidate.id}
-                    className={`bg-white border rounded-2xl sm:rounded-3xl p-4 sm:p-6 shadow-xs flex flex-col justify-between transition-all ${isTopMatch ? 'border-rose-200 ring-2 ring-rose-100 shadow-md' : 'border-slate-200/90'
+                    className={`bg-white border rounded-2xl p-4 sm:p-6 shadow-xs flex flex-col justify-between transition-all ${isTopMatch ? 'border-rose-200 ring-2 ring-rose-100 shadow-md' : 'border-slate-200/90'
                       }`}
                   >
                     <div className="space-y-4">
@@ -1654,7 +1520,7 @@ const CompareCandidates: React.FC = () => {
                         </div>
 
                         <div className="text-right shrink-0">
-                          <span className={`inline-flex items-center gap-1 text-[10px] font-black uppercase px-2 py-0.5 rounded-full ${isTopMatch
+                          <span className={`inline-flex items-center gap-1 text-xs font-semibold uppercase px-2 py-0.5 rounded-full ${isTopMatch
                             ? 'bg-amber-100 text-amber-800'
                             : isZeroScore
                               ? 'bg-slate-100 text-slate-500'
@@ -1663,7 +1529,7 @@ const CompareCandidates: React.FC = () => {
                             {isTopMatch && <Trophy size={11} className="text-amber-600" />}
                             {isZeroScore ? 'No Match' : `Rank #${actualRank}`}
                           </span>
-                          <p className={`text-2xl font-black mt-0.5 leading-tight ${isZeroScore ? 'text-slate-400' : 'text-[#D60041]'}`}>
+                          <p className={`text-2xl font-semibold mt-0.5 leading-tight ${isZeroScore ? 'text-slate-500' : 'text-[#D60041]'}`}>
                             {candidate.matchScore}%
                           </p>
                         </div>
@@ -1671,32 +1537,32 @@ const CompareCandidates: React.FC = () => {
 
                       {/* 4 Pillar Breakdown Cards */}
                       <div>
-                        <p className="text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1.5">Pillar Scores</p>
+                        <p className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1.5">Pillar Scores</p>
                         <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 sm:gap-2">
                           <div className="bg-blue-50/60 border border-blue-100/80 rounded-xl p-2 text-center">
-                            <p className="text-xs font-black text-blue-700">{candidate.skillsScore}%</p>
-                            <p className="text-[9px] font-bold text-slate-400 uppercase mt-0.5">Skills</p>
+                            <p className="text-xs font-semibold text-blue-700">{candidate.skillsScore}%</p>
+                            <p className="text-xs font-bold text-slate-500 uppercase mt-0.5">Skills</p>
                             <div className="w-full bg-blue-100 rounded-full h-1 mt-1">
                               <div className="h-1 rounded-full bg-blue-500" style={{ width: `${candidate.skillsScore}%` }} />
                             </div>
                           </div>
                           <div className="bg-purple-50/60 border border-purple-100/80 rounded-xl p-2 text-center">
-                            <p className="text-xs font-black text-purple-700">{candidate.experienceScore}%</p>
-                            <p className="text-[9px] font-bold text-slate-400 uppercase mt-0.5">Exp</p>
+                            <p className="text-xs font-semibold text-purple-700">{candidate.experienceScore}%</p>
+                            <p className="text-xs font-bold text-slate-500 uppercase mt-0.5">Exp</p>
                             <div className="w-full bg-purple-100 rounded-full h-1 mt-1">
                               <div className="h-1 rounded-full bg-purple-500" style={{ width: `${candidate.experienceScore}%` }} />
                             </div>
                           </div>
                           <div className="bg-emerald-50/60 border border-emerald-100/80 rounded-xl p-2 text-center">
-                            <p className="text-xs font-black text-emerald-700">{candidate.education_score ?? candidate.educationScore ?? 0}%</p>
-                            <p className="text-[9px] font-bold text-slate-400 uppercase mt-0.5">Edu</p>
+                            <p className="text-xs font-semibold text-emerald-700">{candidate.education_score ?? candidate.educationScore ?? 0}%</p>
+                            <p className="text-xs font-bold text-slate-500 uppercase mt-0.5">Edu</p>
                             <div className="w-full bg-emerald-100 rounded-full h-1 mt-1">
                               <div className="h-1 rounded-full bg-emerald-500" style={{ width: `${candidate.education_score ?? candidate.educationScore ?? 0}%` }} />
                             </div>
                           </div>
                           <div className="bg-amber-50/60 border border-amber-100/80 rounded-xl p-2 text-center">
-                            <p className="text-xs font-black text-amber-700">{candidate.certificationsScore || 0}%</p>
-                            <p className="text-[9px] font-bold text-slate-400 uppercase mt-0.5">Certs</p>
+                            <p className="text-xs font-semibold text-amber-700">{candidate.certificationsScore || 0}%</p>
+                            <p className="text-xs font-bold text-slate-500 uppercase mt-0.5">Certs</p>
                             <div className="w-full bg-amber-100 rounded-full h-1 mt-1">
                               <div className="h-1 rounded-full bg-amber-500" style={{ width: `${candidate.certificationsScore || 0}%` }} />
                             </div>
@@ -1707,14 +1573,14 @@ const CompareCandidates: React.FC = () => {
                       {/* AI Summary / Quote if present */}
                       {candidate.ai_summary && (
                         <div className="bg-rose-50/40 border border-rose-100/80 rounded-xl p-3 text-xs text-slate-700 italic leading-relaxed">
-                          <span className="font-bold text-[#D60041] not-italic block text-[10px] uppercase tracking-wider mb-0.5">AI Summary</span>
+                          <span className="font-bold text-[#D60041] not-italic block text-xs uppercase tracking-wider mb-0.5">AI Summary</span>
                           "{candidate.ai_summary}"
                         </div>
                       )}
 
                       {/* Core Strengths */}
                       <div>
-                        <p className="text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1.5">Key Strengths</p>
+                        <p className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1.5">Key Strengths</p>
                         <div className="bg-slate-50/70 border border-slate-100 rounded-xl p-2.5 space-y-1.5">
                           {candidate.strengths && candidate.strengths.length > 0 ? (
                             candidate.strengths.slice(0, 3).map((strength, i) => (
@@ -1724,14 +1590,14 @@ const CompareCandidates: React.FC = () => {
                               </div>
                             ))
                           ) : (
-                            <p className="text-xs text-slate-400 italic">No specific strengths listed</p>
+                            <p className="text-xs text-slate-500 italic">No specific strengths listed</p>
                           )}
                         </div>
                       </div>
 
                       {/* Areas for Improvement / Gaps */}
                       <div>
-                        <p className="text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1.5">Identified Gaps</p>
+                        <p className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1.5">Identified Gaps</p>
                         <div className="bg-slate-50/70 border border-slate-100 rounded-xl p-2.5 space-y-1.5">
                           {candidate.weaknesses && candidate.weaknesses.length > 0 ? (
                             candidate.weaknesses.slice(0, 3).map((gap, i) => (
@@ -1749,30 +1615,30 @@ const CompareCandidates: React.FC = () => {
                       {/* Matched & Missing Skills */}
                       <div className="space-y-2.5 pt-1">
                         <div>
-                          <p className="text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1">Matched Skills</p>
+                          <p className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1">Matched Skills</p>
                           <div className="flex flex-wrap gap-1">
                             {candidate.matched_skills && candidate.matched_skills.length > 0 ? (
                               candidate.matched_skills.map((skill, i) => (
-                                <span key={i} className="px-2 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-100 rounded text-[10px] font-bold">
+                                <span key={i} className="px-2 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-100 rounded text-xs font-bold">
                                   {skill}
                                 </span>
                               ))
                             ) : (
-                              <span className="text-slate-400 italic text-[11px]">None</span>
+                              <span className="text-slate-500 italic text-xs">None</span>
                             )}
                           </div>
                         </div>
 
                         {candidate.transferable_skills && candidate.transferable_skills.length > 0 && (
                           <div>
-                            <p className="text-[10px] font-black uppercase tracking-wider text-purple-700 mb-1 flex items-center gap-1">
+                            <p className="text-xs font-semibold uppercase tracking-wider text-purple-700 mb-1 flex items-center gap-1">
                               <Zap size={10} /> Transferable Skills
                             </p>
                             <div className="flex flex-wrap gap-1">
                               {candidate.transferable_skills.map((skill, i) => (
-                                <span key={i} className="px-2 py-0.5 bg-purple-50 text-purple-700 border border-purple-200 rounded text-[10px] font-bold">
+                                <span key={i} className="px-2 py-0.5 bg-purple-50 text-purple-700 border border-purple-200 rounded text-xs font-bold">
                                   {skill}
-                                  <span className="text-[8px] bg-purple-100 text-purple-800 ml-1 px-1 rounded uppercase font-black">Transferable</span>
+                                  <span className="text-xs bg-purple-100 text-purple-800 ml-1 px-1 rounded uppercase font-semibold">Transferable</span>
                                 </span>
                               ))}
                             </div>
@@ -1780,16 +1646,16 @@ const CompareCandidates: React.FC = () => {
                         )}
 
                         <div>
-                          <p className="text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1">Missing Skills</p>
+                          <p className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1">Missing Skills</p>
                           <div className="flex flex-wrap gap-1">
                             {candidate.missing_skills && candidate.missing_skills.length > 0 ? (
                               candidate.missing_skills.map((skill, i) => (
-                                <span key={i} className="px-2 py-0.5 bg-rose-50 text-rose-700 border border-rose-100 rounded text-[10px] font-bold">
+                                <span key={i} className="px-2 py-0.5 bg-rose-50 text-rose-700 border border-rose-100 rounded text-xs font-bold">
                                   {skill}
                                 </span>
                               ))
                             ) : (
-                              <span className="text-emerald-600 font-bold text-[11px]">All Required Skills Met</span>
+                              <span className="text-emerald-600 font-bold text-xs">All Required Skills Met</span>
                             )}
                           </div>
                         </div>
@@ -1797,12 +1663,12 @@ const CompareCandidates: React.FC = () => {
 
                       {/* Work Experience Summary */}
                       <div>
-                        <p className="text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1">Experience</p>
+                        <p className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1">Experience</p>
                         <div className="bg-slate-50/70 border border-slate-100 rounded-xl p-2.5 text-xs text-slate-700">
                           <p className="font-bold text-slate-900">{!isNoValueRequirement(candidate.company) ? candidate.company : "Company Unspecified"}</p>
-                          <p className="text-[10px] uppercase font-bold text-slate-400">{!isNoValueRequirement(candidate.relevance) ? candidate.relevance : "Role unspecified"}</p>
+                          <p className="text-xs uppercase font-bold text-slate-500">{!isNoValueRequirement(candidate.relevance) ? candidate.relevance : "Role unspecified"}</p>
                           {candidate.experience_reason && (
-                            <p className="text-[11px] text-slate-500 mt-1 line-clamp-2 leading-relaxed">{candidate.experience_reason}</p>
+                            <p className="text-xs text-slate-500 mt-1 line-clamp-2 leading-relaxed">{candidate.experience_reason}</p>
                           )}
                         </div>
                       </div>
@@ -1810,7 +1676,7 @@ const CompareCandidates: React.FC = () => {
                       {/* Education Summary */}
                       <div>
                         <div className="flex items-center justify-between mb-1">
-                          <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">Education</p>
+                          <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Education</p>
                           {(() => {
                             const eduSt = resolveCriterionStatus({
                               explicitStatus: candidate.education_status,
@@ -1818,7 +1684,7 @@ const CompareCandidates: React.FC = () => {
                               score: candidate.education_score ?? candidate.educationScore ?? 0,
                             });
                             return (
-                              <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-bold border ${getCriterionStatusBadgeStyle(eduSt).badgeClass}`}>
+                              <span className={`px-1.5 py-0.5 rounded-full text-xs font-bold border ${getCriterionStatusBadgeStyle(eduSt).badgeClass}`}>
                                 {eduSt}
                               </span>
                             );
@@ -1831,17 +1697,17 @@ const CompareCandidates: React.FC = () => {
                               : "None provided"}
                           </p>
                           {!isNoValueRequirement(candidate.required_degree) && (
-                            <p className="text-[10px] font-semibold text-slate-400 mt-0.5">Required: {candidate.required_degree}</p>
+                            <p className="text-xs font-semibold text-slate-500 mt-0.5">Required: {candidate.required_degree}</p>
                           )}
                           {candidate.education_reason && (
-                            <p className="text-[10px] text-slate-500 mt-0.5 line-clamp-2 leading-relaxed">{candidate.education_reason}</p>
+                            <p className="text-xs text-slate-500 mt-0.5 line-clamp-2 leading-relaxed">{candidate.education_reason}</p>
                           )}
                         </div>
                       </div>
 
                       {/* Certifications Summary */}
                       <div>
-                        <p className="text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1">Certifications</p>
+                        <p className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1">Certifications</p>
                         <div className="bg-slate-50/70 border border-slate-100 rounded-xl p-2.5 text-xs text-slate-700">
                           <p className="font-bold text-slate-900">
                             {!isNoValueRequirement(candidate.candidate_certifications || candidate.certifications)
@@ -1849,24 +1715,24 @@ const CompareCandidates: React.FC = () => {
                               : "None provided"}
                           </p>
                           {candidate.certifications_reason && (
-                            <p className="text-[10px] text-slate-500 mt-0.5">{candidate.certifications_reason}</p>
+                            <p className="text-xs text-slate-500 mt-0.5">{candidate.certifications_reason}</p>
                           )}
                         </div>
                       </div>
                     </div>
 
                     {/* Contact Footer */}
-                    <div className="pt-3 mt-4 border-t border-slate-100 text-[11px] text-slate-500 space-y-1">
+                    <div className="pt-3 mt-4 border-t border-slate-100 text-xs text-slate-500 space-y-1">
                       <div className="flex items-center gap-1.5 truncate">
-                        <Mail size={12} className="text-slate-400 shrink-0" />
+                        <Mail size={12} className="text-slate-500 shrink-0" />
                         <span className="truncate">{candidate.email || 'N/A'}</span>
                       </div>
                       <div className="flex items-center gap-1.5 truncate">
-                        <Phone size={12} className="text-slate-400 shrink-0" />
+                        <Phone size={12} className="text-slate-500 shrink-0" />
                         <span className="truncate">{candidate.phone || 'N/A'}</span>
                       </div>
                       <div className="flex items-center gap-1.5 truncate">
-                        <MapPin size={12} className="text-slate-400 shrink-0" />
+                        <MapPin size={12} className="text-slate-500 shrink-0" />
                         <span className="truncate">{candidate.location || 'N/A'}</span>
                       </div>
                     </div>
@@ -1887,7 +1753,7 @@ const CompareCandidates: React.FC = () => {
             <ArrowLeft size={14} />
             <span>Back to Candidate Selection</span>
           </button>
-          <p className="text-center sm:text-right text-[11px] text-slate-400 font-medium">
+          <p className="text-center sm:text-right text-xs text-slate-500 font-medium">
             Comparing {selectedCandidatesData.length} selected candidates
           </p>
         </div>
@@ -1902,89 +1768,35 @@ const CompareCandidates: React.FC = () => {
     const hasMultiple = person.applications.length > 1;
 
     return (
-      <div
-        key={person.personKey}
-        onClick={() => {
-          setActiveCandidateId(effectiveApp.id);
-          if (window.innerWidth < 1024) setMobileTab('profile');
-        }}
-        className={`p-3 rounded-xl border transition-all duration-200 cursor-pointer flex flex-col gap-2 relative group ${isActive
-          ? 'bg-rose-50/30 border-[#D60041]/30 shadow-2xs'
-          : 'bg-white border-transparent hover:bg-slate-50'
-          }`}
-      >
-        <div className="flex items-center gap-2.5 sm:gap-3">
-          {/* Checkbox for Selection */}
-          <div
-            className="shrink-0 cursor-pointer"
-            onClick={(e) => {
-              e.stopPropagation();
-              togglePersonSelection(person, effectiveApp.id);
-            }}
-          >
-            <div className={`w-5 h-5 sm:w-6 sm:h-6 rounded-lg border-2 flex items-center justify-center transition-all ${isSelected
-              ? 'bg-[#D60041] border-[#D60041] shadow-xs'
-              : 'border-slate-300 bg-white group-hover:border-[#D60041]'
-              }`}>
-              {isSelected && <Check className="w-3 h-3 text-white stroke-[3.5px]" />}
-            </div>
-          </div>
-
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-1.5 flex-wrap">
-              <h4 className="text-xs sm:text-sm font-bold text-slate-900 truncate tracking-tight">{person.name}</h4>
-              {appliedToSelectedJob && (
-                <span className="px-1.5 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 text-[9px] font-black uppercase tracking-wider shrink-0">
-                  Applied
-                </span>
-              )}
-              {hasMultiple && (
-                <span className="text-[9px] font-bold px-1.5 py-0.2 rounded-md bg-blue-50 text-blue-700 border border-blue-200">
-                  {person.applications.length} applications
-                </span>
-              )}
-            </div>
-
-            {!hasMultiple ? (
-              <p className="text-[11px] text-slate-500 font-semibold truncate mt-0.5">
-                {effectiveApp.applied_job_title || effectiveApp.preferredJob}
-              </p>
-            ) : null}
-
-            {effectiveApp.skills && effectiveApp.skills.length > 0 && (
-              <div className="flex gap-1 overflow-hidden mt-1">
-                {effectiveApp.skills.slice(0, 3).map((skill, idx) => (
-                  <span key={idx} className="px-1.5 py-0.2 bg-slate-50 text-slate-500 border border-slate-100 rounded text-[9px] font-bold truncate">
-                    {skill}
-                  </span>
-                ))}
-              </div>
-            )}
-          </div>
-
-          <div className="text-right shrink-0">
-            <span className={`text-xs font-black px-2 py-0.5 rounded-lg ${displayScore >= 85
-              ? 'bg-emerald-50 text-emerald-700 border border-emerald-100'
-              : displayScore >= 70
-                ? 'bg-amber-50 text-amber-700 border border-amber-100'
-                : displayScore > 0
-                  ? 'bg-slate-50 text-slate-600 border border-slate-100'
-                  : 'bg-slate-100 text-slate-400 border border-slate-200'
-              }`}>
-              {displayScore}%
+      <div key={person.personKey} className={styles.personRow} data-active={isActive} data-selected={isSelected}>
+        <div className={styles.personRowMain}>
+          <input
+            type="checkbox"
+            checked={isSelected}
+            onChange={() => togglePersonSelection(person, effectiveApp.id)}
+            aria-label={`Select ${person.name} for comparison`}
+            className={styles.candidateCheckbox}
+          />
+          <button type="button" className={styles.personPreview} aria-pressed={isActive} onClick={() => {
+            setActiveCandidateId(effectiveApp.id);
+            if (window.innerWidth < 1024) setMobileTab('profile');
+          }}>
+            <span className={styles.personAvatar} aria-hidden="true">{person.name.split(' ').filter(Boolean).slice(0, 2).map(part => part[0]).join('')}</span>
+            <span className={styles.personIdentity}>
+              <strong>{person.name}</strong>
+              <span>{effectiveApp.applied_job_title || effectiveApp.preferredJob || 'Position not specified'}</span>
+              <span className={styles.personMeta}>{appliedToSelectedJob ? 'Applied to this role' : 'View profile'}{hasMultiple ? ` · ${person.applications.length} applications` : ''}</span>
             </span>
-          </div>
-
-          {isActive && (
-            <div className="absolute right-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-[#D60041] rounded-l-full" />
-          )}
+            <span className={styles.personScore}>{displayScore}%<small>match</small></span>
+          </button>
         </div>
 
         {/* Position selector when person applied for multiple roles */}
         {hasMultiple && (
           <div className="pl-8 pt-1 flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
-            <span className="text-[10px] font-bold text-slate-400 whitespace-nowrap">Compare for:</span>
+            <span className="text-xs font-bold text-slate-500 whitespace-nowrap">Compare for:</span>
             <select
+              aria-label={`Application to compare for ${person.name}`}
               value={effectiveApp.id}
               onChange={(e) => {
                 const newId = parseInt(e.target.value, 10);
@@ -1995,7 +1807,7 @@ const CompareCandidates: React.FC = () => {
                 }
                 setActiveCandidateId(newId);
               }}
-              className="w-full text-[11px] font-semibold bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg px-2 py-0.5 text-slate-800 cursor-pointer focus:outline-none focus:ring-1 focus:ring-rose-500/30 truncate"
+              className="w-full text-xs font-semibold bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg px-2 py-0.5 text-slate-800 cursor-pointer focus:outline-none focus:ring-1 focus:ring-rose-500/30 truncate"
             >
               {person.applications.map((app) => (
                 <option key={app.id} value={app.id}>
@@ -2010,62 +1822,47 @@ const CompareCandidates: React.FC = () => {
   };
 
   const renderSelectionView = () => (
-    <div className="animate-in fade-in duration-500 flex flex-col min-h-0 lg:h-[calc(100vh-140px)]">
-      {/* Top Search and Comparison Info */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4 mb-4 sm:mb-6 shrink-0">
+    <div className={styles.selectionView}>
+      <header className={styles.pageHeader}>
         <div>
-          <h1 className="text-xl sm:text-2xl md:text-3xl font-black text-slate-900 tracking-tight leading-tight">
-            Compare Candidates
-          </h1>
-          <p className="text-xs sm:text-sm text-slate-500 font-medium mt-0.5 sm:mt-1">
-            Select candidates from the list to view their full resume details, then compare side-by-side.
-          </p>
+          <p className={styles.eyebrow}>MARIWASA / TALENT ACQUISITION</p>
+          <h1>Compare candidates</h1>
+          <p className={styles.intro}>Bring the right people into focus. Explore profiles and compare their fit for your role.</p>
         </div>
+        <span className={styles.workspaceBadge}><Scale size={17} /> Talent assessment</span>
+      </header>
 
-        {/* Counter & Compare Button */}
-        <div className="flex items-center gap-2.5 sm:gap-3 w-full sm:w-auto">
-          <div className="bg-white border border-slate-200/90 rounded-xl sm:rounded-2xl px-3.5 sm:px-5 py-2 sm:py-3 shadow-2xs flex items-center justify-between sm:justify-start gap-2.5 sm:gap-3 flex-1 sm:flex-initial">
-            <div className="flex items-center gap-2.5 sm:gap-3">
-              <div className="w-7 h-7 sm:w-8 sm:h-8 bg-rose-50 border border-rose-100 text-[#D60041] rounded-xl flex items-center justify-center font-black text-xs sm:text-sm shrink-0">
-                {selectedCandidateIds.length}
-              </div>
-              <div>
-                <p className="text-[9px] sm:text-[10px] font-black text-slate-400 uppercase tracking-wider leading-none">Ready</p>
-                <p className="text-xs font-bold text-slate-900 leading-tight">Selected</p>
-              </div>
+      <section className={styles.selectionTray} aria-label="Candidates selected for comparison">
+        <div className={styles.trayContent}>
+          <div className={styles.trayHeading}>
+            <span className={styles.trayIcon}><Users size={20} /></span>
+            <div><h2>Your comparison shortlist <span>({selectedCandidateIds.length})</span></h2>
+              <p aria-live="polite">{selectedCandidateIds.length < 2 ? `Select ${2 - selectedCandidateIds.length} more ${selectedCandidateIds.length === 1 ? 'candidate' : 'candidates'} to start comparing.` : 'Ready to explore their strengths side by side.'}</p>
             </div>
-            {selectedCandidateIds.length > 0 && (
-              <button
-                type="button"
-                onClick={clearSelected}
-                className="p-1 hover:bg-rose-50 text-rose-500 rounded-lg hover:text-rose-600 transition-colors ml-1 cursor-pointer"
-                title="Clear Selection"
-                aria-label="Clear Selection"
-              >
-                <Trash2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-              </button>
-            )}
           </div>
-
-          <button
-            type="button"
-            disabled={selectedCandidateIds.length < 2}
-            onClick={() => setIsComparing(true)}
-            className={`flex items-center justify-center gap-2 px-4 sm:px-6 py-2.5 sm:py-3.5 rounded-xl sm:rounded-2xl font-bold text-xs sm:text-sm transition-all shadow-xs flex-1 sm:flex-initial text-center cursor-pointer ${selectedCandidateIds.length >= 2
-              ? 'bg-slate-900 hover:bg-black text-white hover:scale-[1.02] active:scale-[0.98]'
-              : 'bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200/60'
-              }`}
-          >
-            <TrendingUp className="w-4 h-4 text-[#D60041] shrink-0" />
-            <span className="whitespace-nowrap">Compare ({selectedCandidateIds.length})</span>
+          {selectedCandidateIds.length > 0 && (
+            <div className={styles.selectedChips}>
+              {(candidates as CandidateComparisonData[]).filter(candidate => selectedCandidateIds.includes(candidate.id)).map(candidate => (
+                <button type="button" key={candidate.id} onClick={() => toggleSelection(candidate.id)} aria-label={`Remove ${candidate.name} from comparison`}>
+                  <span>{candidate.name}</span><X size={14} />
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+        <div className={styles.trayActions}>
+          {selectedCandidateIds.length > 0 && <button type="button" className={styles.clearButton} onClick={clearSelected}>Clear selection</button>}
+          <button type="button" disabled={selectedCandidateIds.length < 2} onClick={() => setIsComparing(true)} className={styles.primaryButton}>
+            <Scale size={17} /> Compare candidates
           </button>
         </div>
-      </div>
+      </section>
 
       {/* Mobile Tab Switcher (< 1024px) */}
       <div className="lg:hidden flex bg-slate-100 p-1 rounded-2xl mb-4 border border-slate-200/80 shadow-2xs shrink-0">
         <button
           type="button"
+          aria-pressed={mobileTab === 'list'}
           onClick={() => setMobileTab('list')}
           className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${mobileTab === 'list'
             ? 'bg-white text-slate-900 shadow-xs'
@@ -2077,6 +1874,7 @@ const CompareCandidates: React.FC = () => {
         </button>
         <button
           type="button"
+          aria-pressed={mobileTab === 'profile'}
           onClick={() => setMobileTab('profile')}
           className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${mobileTab === 'profile'
             ? 'bg-white text-slate-900 shadow-xs'
@@ -2089,25 +1887,27 @@ const CompareCandidates: React.FC = () => {
       </div>
 
       {/* Split-Screen Selection Area */}
-      <div className="flex flex-col lg:flex-row flex-1 gap-4 sm:gap-6 min-h-0 mb-6 lg:overflow-hidden">
+      <div className={styles.selectionGrid}>
 
         {/* LEFT COLUMN: Candidate Search and List */}
         <div
-          className={`w-full lg:w-[380px] bg-white border border-slate-200/90 rounded-2xl sm:rounded-3xl shadow-xs flex flex-col shrink-0 overflow-hidden ${mobileTab === 'list' ? 'flex' : 'hidden lg:flex'
+          data-panel="candidate-list"
+          className={`w-full lg:w-[380px] bg-white border border-slate-200/90 rounded-2xl shadow-xs flex flex-col shrink-0 overflow-hidden ${mobileTab === 'list' ? 'flex' : 'hidden lg:flex'
             } max-h-[560px] lg:max-h-none`}
         >
-          <div className="p-3.5 sm:p-4 border-b border-slate-100 bg-slate-50/50 shrink-0 space-y-3">
+          <div className={styles.listControls}>
+            <div className={styles.panelHeading}><h2>Candidate directory</h2><span>{personGroups.length} found</span></div>
             {/* Job Profile Filter */}
             <div>
               <div className="flex items-center justify-between gap-2 mb-1.5">
-                <label htmlFor="compare-against-job-select" className="text-[10px] sm:text-xs font-black uppercase tracking-wider text-slate-500 block">
-                  Compare Against Job Profile
+                <label htmlFor="compare-against-job-select" className="text-xs font-semibold uppercase tracking-wider text-slate-500 block">
+                  Reference position
                 </label>
                 {selectedJobId && (
                   <button
                     type="button"
                     onClick={() => handleSelectedJobChange("")}
-                    className="text-[10px] font-bold text-[#D60041] hover:underline cursor-pointer"
+                    className="text-xs font-bold text-[#D60041] hover:underline cursor-pointer"
                   >
                     Clear
                   </button>
@@ -2119,7 +1919,7 @@ const CompareCandidates: React.FC = () => {
                 onChange={(e) => handleSelectedJobChange(e.target.value)}
                 className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-rose-500/20 focus:border-[#D60041] transition-all font-semibold text-xs sm:text-sm text-slate-800 cursor-pointer"
               >
-                <option value="">-- Use Original AI Match Scores --</option>
+                <option value="">Original application scores</option>
                 {(jobs as Job[]).map(job => (
                   <option key={job.id} value={job.id}>{job.title || job.job_title}</option>
                 ))}
@@ -2128,16 +1928,18 @@ const CompareCandidates: React.FC = () => {
 
             {/* Evaluation Criteria Checklist */}
             <div>
-              <label className="text-[10px] sm:text-xs font-black uppercase tracking-wider text-slate-500 mb-1.5 block">
+              <label className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1.5 block">
                 Evaluation Criteria
               </label>
               <div className="grid grid-cols-3 gap-1.5 sm:gap-2">
                 <button
                   type="button"
+                  aria-pressed={evaluationFilters.skills}
+                  data-control="criterion"
                   onClick={() => setEvaluationFilters(prev => ({ ...prev, skills: !prev.skills }))}
-                  className={`flex items-center justify-center gap-1.5 px-2 py-1.5 sm:py-2 rounded-xl border text-[10px] sm:text-xs font-bold transition-all cursor-pointer ${evaluationFilters.skills
+                  className={`flex items-center justify-center gap-1.5 px-2 py-1.5 sm:py-2 rounded-xl border text-xs font-bold transition-all cursor-pointer ${evaluationFilters.skills
                     ? 'bg-blue-50 text-blue-700 border-blue-200 shadow-2xs'
-                    : 'bg-white text-slate-400 border-slate-200 hover:text-slate-600'
+                    : 'bg-white text-slate-500 border-slate-200 hover:text-slate-600'
                     }`}
                 >
                   <div className={`w-3.5 h-3.5 rounded flex items-center justify-center transition-all ${evaluationFilters.skills ? 'bg-blue-600 text-white' : 'border border-slate-300'
@@ -2149,10 +1951,12 @@ const CompareCandidates: React.FC = () => {
 
                 <button
                   type="button"
+                  aria-pressed={evaluationFilters.experience}
+                  data-control="criterion"
                   onClick={() => setEvaluationFilters(prev => ({ ...prev, experience: !prev.experience }))}
-                  className={`flex items-center justify-center gap-1.5 px-2 py-1.5 sm:py-2 rounded-xl border text-[10px] sm:text-xs font-bold transition-all cursor-pointer ${evaluationFilters.experience
+                  className={`flex items-center justify-center gap-1.5 px-2 py-1.5 sm:py-2 rounded-xl border text-xs font-bold transition-all cursor-pointer ${evaluationFilters.experience
                     ? 'bg-purple-50 text-purple-700 border-purple-200 shadow-2xs'
-                    : 'bg-white text-slate-400 border-slate-200 hover:text-slate-600'
+                    : 'bg-white text-slate-500 border-slate-200 hover:text-slate-600'
                     }`}
                 >
                   <div className={`w-3.5 h-3.5 rounded flex items-center justify-center transition-all ${evaluationFilters.experience ? 'bg-purple-600 text-white' : 'border border-slate-300'
@@ -2164,10 +1968,12 @@ const CompareCandidates: React.FC = () => {
 
                 <button
                   type="button"
+                  aria-pressed={evaluationFilters.certifications}
+                  data-control="criterion"
                   onClick={() => setEvaluationFilters(prev => ({ ...prev, certifications: !prev.certifications }))}
-                  className={`flex items-center justify-center gap-1.5 px-2 py-1.5 sm:py-2 rounded-xl border text-[10px] sm:text-xs font-bold transition-all cursor-pointer ${evaluationFilters.certifications
+                  className={`flex items-center justify-center gap-1.5 px-2 py-1.5 sm:py-2 rounded-xl border text-xs font-bold transition-all cursor-pointer ${evaluationFilters.certifications
                     ? 'bg-amber-50 text-amber-700 border-amber-200 shadow-2xs'
-                    : 'bg-white text-slate-400 border-slate-200 hover:text-slate-600'
+                    : 'bg-white text-slate-500 border-slate-200 hover:text-slate-600'
                     }`}
                 >
                   <div className={`w-3.5 h-3.5 rounded flex items-center justify-center transition-all ${evaluationFilters.certifications ? 'bg-amber-600 text-white' : 'border border-slate-300'
@@ -2181,23 +1987,31 @@ const CompareCandidates: React.FC = () => {
 
             {/* Candidate Search Box */}
             <div className="relative">
-              <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+              <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500" />
               <input
                 type="text"
-                placeholder="Search candidates or skills..."
+                aria-label="Search candidates by name, role, or skill"
+                placeholder="Search name, role, or skill…"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-rose-500/20 focus:border-[#D60041] transition-all font-semibold text-xs sm:text-sm text-slate-800"
+                className="w-full pl-10 pr-10 py-2 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-rose-500/20 focus:border-[#D60041] transition-all font-semibold text-xs sm:text-sm text-slate-800"
               />
+              {searchQuery && <button type="button" className={styles.clearSearch} onClick={() => setSearchQuery('')} aria-label="Clear candidate search"><X size={16} /></button>}
             </div>
           </div>
 
           {/* Scrollable Candidate Items List */}
-          <div ref={listScrollRef} className="flex-1 overflow-y-auto p-2 space-y-1 custom-scrollbar">
+          <div ref={listScrollRef} className={styles.candidateList}>
             {isLoading ? (
-              <div className="flex flex-col items-center justify-center py-16">
+              <div role="status" className="flex flex-col items-center justify-center py-16">
                 <div className="w-8 h-8 border-3 border-rose-100 border-t-[#D60041] rounded-full animate-spin mb-2"></div>
-                <p className="text-slate-400 text-xs font-bold">Loading applicants...</p>
+                <p className="text-slate-500 text-xs font-bold">Loading applicants...</p>
+              </div>
+            ) : candidatesError ? (
+              <div className={styles.emptyState} role="alert">
+                <AlertTriangle size={24} /><h3>Couldn’t load candidates</h3>
+                <p>Please try again to continue your comparison.</p>
+                <button type="button" onClick={() => refetchCandidates()}>Try again</button>
               </div>
             ) : personGroups.length === 0 ? (
               <div className="text-center py-12 px-4">
@@ -2205,12 +2019,13 @@ const CompareCandidates: React.FC = () => {
                   <Users className="w-5 h-5 text-slate-300" />
                 </div>
                 <h4 className="text-xs sm:text-sm font-bold text-slate-800">No candidates found</h4>
-                <p className="text-[11px] text-slate-400 mt-0.5">Try searching another name or skill.</p>
+                <p className="text-xs text-slate-500 mt-0.5">{searchQuery ? 'Try another name, role, or skill.' : 'Candidates will appear here once applications are available.'}</p>
+                {searchQuery && <button type="button" className="text-sm text-[#9b2346] mt-4 hover:underline" onClick={() => setSearchQuery('')}>Clear search</button>}
               </div>
             ) : selectedJob ? (
               <>
                 <div className="px-2.5 py-1.5 bg-emerald-50/70 border border-emerald-100 rounded-xl flex items-center justify-between">
-                  <span className="text-[10px] font-black uppercase tracking-wider text-emerald-800">
+                  <span className="text-xs font-semibold uppercase tracking-wider text-emerald-800">
                     Applied to this job ({appliedToJob.length})
                   </span>
                 </div>
@@ -2220,7 +2035,7 @@ const CompareCandidates: React.FC = () => {
                     {appliedToJob.map(renderPersonRow)}
                   </div>
                 ) : (
-                  <p className="px-3 py-3 text-[11px] font-medium text-slate-400 italic">
+                  <p className="px-3 py-3 text-xs font-medium text-slate-500 italic">
                     No applicants applied to this job yet.
                   </p>
                 )}
@@ -2230,7 +2045,7 @@ const CompareCandidates: React.FC = () => {
                     <div className="pt-2 pb-1">
                       <div className="border-t border-slate-200 mb-2" />
                       <div className="px-2.5 py-1.5 bg-slate-100/80 border border-slate-200/70 rounded-xl flex items-center justify-between">
-                        <span className="text-[10px] font-black uppercase tracking-wider text-slate-600">
+                        <span className="text-xs font-semibold uppercase tracking-wider text-slate-600">
                           Other applicants ({otherApplicants.length})
                         </span>
                       </div>
@@ -2251,26 +2066,28 @@ const CompareCandidates: React.FC = () => {
 
         {/* RIGHT COLUMN: Full Resume Details (Detailed Profile View) */}
         <div
-          className={`flex-1 bg-white border border-slate-200/90 rounded-2xl sm:rounded-3xl shadow-xs flex flex-col min-h-0 ${mobileTab === 'profile' ? 'flex' : 'hidden lg:flex'
+          data-panel="profile"
+          className={`flex-1 bg-white border border-slate-200/90 rounded-2xl shadow-xs flex flex-col min-h-0 ${mobileTab === 'profile' ? 'flex' : 'hidden lg:flex'
             } overflow-hidden`}
         >
           {/* Mobile Back to List Button (< 1024px) */}
           <div className="lg:hidden p-3 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between shrink-0">
             <button
               type="button"
-              onClick={() => setMobileTab('list')}
+              aria-pressed={mobileTab === 'list'}
+          onClick={() => setMobileTab('list')}
               className="flex items-center gap-1.5 text-xs font-bold text-slate-600 hover:text-[#D60041] transition-colors cursor-pointer"
             >
               <ArrowLeft size={14} />
               <span>Back to Candidates List</span>
             </button>
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Candidate Details</span>
+            <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Candidate Details</span>
           </div>
 
           {activeCandidate ? (
             <div className="flex-grow flex flex-col min-h-0 overflow-y-auto lg:overflow-hidden lg:h-full">
               {/* Profile Card Header */}
-              <div className="p-4 sm:p-6 lg:p-7 border-b border-slate-100 bg-slate-50/20 flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-6 shrink-0">
+              <div className={styles.profileHeader}>
                 <div className="flex items-center gap-3 sm:gap-4">
                   <div className="w-12 h-12 sm:w-16 sm:h-16 rounded-xl sm:rounded-2xl overflow-hidden border border-rose-100 shadow-2xs shrink-0 bg-rose-50">
                     <img
@@ -2284,23 +2101,23 @@ const CompareCandidates: React.FC = () => {
                   </div>
                   <div className="min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <h2 className="text-base sm:text-2xl font-black text-slate-900 tracking-tight leading-tight truncate">
+                      <h2 className="text-base sm:text-2xl font-semibold text-slate-900 tracking-tight leading-tight truncate">
                         {activeCandidate.name}
                       </h2>
                       {activeCandidateAppliedToSelectedJob && (
-                        <span className="px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-black uppercase tracking-wider shrink-0">
+                        <span className="px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-semibold uppercase tracking-wider shrink-0">
                           Applied
                         </span>
                       )}
                     </div>
                     <p className="text-xs sm:text-sm text-slate-500 font-semibold mt-0.5 truncate">{activeCandidate.applied_job_title || activeCandidate.preferredJob}</p>
                     <div className="flex flex-wrap items-center gap-2 mt-1 sm:mt-1.5">
-                      <div className="flex items-center gap-1 text-[10px] sm:text-[11px] text-slate-400 font-bold uppercase truncate">
+                      <div className="flex items-center gap-1 text-xs text-slate-500 font-bold uppercase truncate">
                         <MapPin className="w-3.5 h-3.5 shrink-0" />
                         <span className="truncate">{activeCandidate.location || 'N/A'}</span>
                       </div>
                       <div className="w-1 h-1 rounded-full bg-slate-300"></div>
-                      <div className="flex items-center gap-1 text-[10px] sm:text-[11px] text-slate-400 font-bold uppercase truncate">
+                      <div className="flex items-center gap-1 text-xs text-slate-500 font-bold uppercase truncate">
                         <Mail className="w-3.5 h-3.5 shrink-0" />
                         <span className="truncate">{activeCandidate.email || "N/A"}</span>
                       </div>
@@ -2311,11 +2128,11 @@ const CompareCandidates: React.FC = () => {
                 {/* Score & Add/Remove to Comparison Button */}
                 <div className="flex items-center justify-between sm:justify-end gap-3 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-100">
                   <div className="text-left sm:text-right">
-                    <p className="text-[9px] sm:text-[10px] font-black text-slate-400 uppercase tracking-wider">Suitability</p>
+                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Suitability</p>
                     {(() => {
                       const activeScore = activeCandidateEvaluated?.matchScore || 0;
                       return (
-                        <p className={`text-xl sm:text-2xl font-black leading-none mt-0.5 ${activeScore > 0 ? 'text-[#D60041]' : 'text-slate-400'}`}>
+                        <p className={`text-xl sm:text-2xl font-semibold leading-none mt-0.5 ${activeScore > 0 ? 'text-[#D60041]' : 'text-slate-500'}`}>
                           {activeScore}%
                         </p>
                       );
@@ -2365,52 +2182,52 @@ const CompareCandidates: React.FC = () => {
               </div>
 
               {/* Scrollable Detail Body */}
-              <div className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-7 space-y-5 sm:space-y-6 custom-scrollbar">
+              <div className={styles.profileBody}>
                 {/* 4 Pillar Score Breakdown Cards */}
                 <div>
-                  <h4 className="text-[10px] sm:text-xs font-black uppercase tracking-wider text-slate-400 mb-2 sm:mb-3">Score Breakdown</h4>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-4">
+                  <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-2 sm:mb-3">Score Breakdown</h4>
+                  <div data-section="profile-scores" className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-4">
                     <div className={`p-2.5 sm:p-4 border rounded-xl sm:rounded-2xl text-center transition-all ${evaluationFilters.skills ? 'bg-blue-50/50 border-blue-100' : 'bg-slate-50/50 border-slate-100 opacity-60'
                       }`}>
                       <div className="flex justify-center mb-1">
-                        <Zap className={`w-3.5 h-3.5 sm:w-4 sm:h-4 ${evaluationFilters.skills ? 'text-blue-500' : 'text-slate-400'}`} />
+                        <Zap className={`w-3.5 h-3.5 sm:w-4 sm:h-4 ${evaluationFilters.skills ? 'text-blue-500' : 'text-slate-500'}`} />
                       </div>
-                      <p className={`text-base sm:text-xl font-black ${evaluationFilters.skills ? 'text-blue-700' : 'text-slate-500'}`}>
+                      <p className={`text-base sm:text-xl font-semibold ${evaluationFilters.skills ? 'text-blue-700' : 'text-slate-500'}`}>
                         {activeCandidateEvaluated?.skillsScore || 0}%
                       </p>
-                      <p className="text-[9px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-wider mt-0.5">Skills</p>
+                      <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mt-0.5">Skills</p>
                     </div>
 
                     <div className={`p-2.5 sm:p-4 border rounded-xl sm:rounded-2xl text-center transition-all ${evaluationFilters.experience ? 'bg-purple-50/50 border-purple-100' : 'bg-slate-50/50 border-slate-100 opacity-60'
                       }`}>
                       <div className="flex justify-center mb-1">
-                        <Briefcase className={`w-3.5 h-3.5 sm:w-4 sm:h-4 ${evaluationFilters.experience ? 'text-purple-500' : 'text-slate-400'}`} />
+                        <Briefcase className={`w-3.5 h-3.5 sm:w-4 sm:h-4 ${evaluationFilters.experience ? 'text-purple-500' : 'text-slate-500'}`} />
                       </div>
-                      <p className={`text-base sm:text-xl font-black ${evaluationFilters.experience ? 'text-purple-700' : 'text-slate-500'}`}>
+                      <p className={`text-base sm:text-xl font-semibold ${evaluationFilters.experience ? 'text-purple-700' : 'text-slate-500'}`}>
                         {activeCandidateEvaluated?.experienceScore || 0}%
                       </p>
-                      <p className="text-[9px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-wider mt-0.5">Experience</p>
+                      <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mt-0.5">Experience</p>
                     </div>
 
                     <div className="p-2.5 sm:p-4 border rounded-xl sm:rounded-2xl text-center transition-all bg-emerald-50/50 border-emerald-100">
                       <div className="flex justify-center mb-1">
                         <GraduationCap className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-500" />
                       </div>
-                      <p className="text-base sm:text-xl font-black text-emerald-700">
+                      <p className="text-base sm:text-xl font-semibold text-emerald-700">
                         {activeCandidateEvaluated?.education_score ?? activeCandidateEvaluated?.educationScore ?? 0}%
                       </p>
-                      <p className="text-[9px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-wider mt-0.5">Education</p>
+                      <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mt-0.5">Education</p>
                     </div>
 
                     <div className={`p-2.5 sm:p-4 border rounded-xl sm:rounded-2xl text-center transition-all ${evaluationFilters.certifications ? 'bg-amber-50/50 border-amber-100' : 'bg-slate-50/50 border-slate-100 opacity-60'
                       }`}>
                       <div className="flex justify-center mb-1">
-                        <Award className={`w-3.5 h-3.5 sm:w-4 sm:h-4 ${evaluationFilters.certifications ? 'text-amber-500' : 'text-slate-400'}`} />
+                        <Award className={`w-3.5 h-3.5 sm:w-4 sm:h-4 ${evaluationFilters.certifications ? 'text-amber-500' : 'text-slate-500'}`} />
                       </div>
-                      <p className={`text-base sm:text-xl font-black ${evaluationFilters.certifications ? 'text-amber-700' : 'text-slate-500'}`}>
+                      <p className={`text-base sm:text-xl font-semibold ${evaluationFilters.certifications ? 'text-amber-700' : 'text-slate-500'}`}>
                         {activeCandidateEvaluated?.certificationsScore || 0}%
                       </p>
-                      <p className="text-[9px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-wider mt-0.5">Certs</p>
+                      <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mt-0.5">Certs</p>
                     </div>
                   </div>
                 </div>
@@ -2420,7 +2237,7 @@ const CompareCandidates: React.FC = () => {
                   <div className="bg-gradient-to-r from-rose-50/40 to-pink-50/30 border border-rose-100/80 rounded-2xl p-4 sm:p-5 shadow-2xs">
                     <div className="flex items-center gap-1.5 mb-2">
                       <Sparkles className="w-3.5 h-3.5 text-[#D60041]" />
-                      <h4 className="text-[10px] sm:text-xs font-black uppercase tracking-wider text-[#D60041]">AI Evaluation Summary</h4>
+                      <h4 className="text-xs font-semibold uppercase tracking-wider text-[#D60041]">AI Evaluation Summary</h4>
                     </div>
                     <p className="text-xs sm:text-sm text-slate-700 leading-relaxed font-medium italic">
                       "{activeCandidate.ai_summary}"
@@ -2432,7 +2249,7 @@ const CompareCandidates: React.FC = () => {
                 {activeCandidateEvaluated && (
                   <div>
                     <div className="flex items-center justify-between mb-2">
-                      <h4 className="text-[10px] sm:text-xs font-black uppercase tracking-wider text-slate-400">Education Alignment</h4>
+                      <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-500">Education Alignment</h4>
                       {(() => {
                         const eduSt = resolveCriterionStatus({
                           explicitStatus: activeCandidateEvaluated.education_status,
@@ -2440,7 +2257,7 @@ const CompareCandidates: React.FC = () => {
                           score: activeCandidateEvaluated.education_score ?? activeCandidateEvaluated.educationScore ?? 0,
                         });
                         return (
-                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${getCriterionStatusBadgeStyle(eduSt).badgeClass}`}>
+                          <span className={`px-2 py-0.5 rounded-full text-xs font-bold border ${getCriterionStatusBadgeStyle(eduSt).badgeClass}`}>
                             {eduSt}
                           </span>
                         );
@@ -2462,19 +2279,19 @@ const CompareCandidates: React.FC = () => {
                 {/* Work Experience & Certifications Details */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
                   <div>
-                    <h4 className="text-[10px] sm:text-xs font-black uppercase tracking-wider text-slate-400 mb-2">Work Experience</h4>
+                    <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-2">Work Experience</h4>
                     <div className="bg-slate-50/60 border border-slate-100 rounded-2xl p-4 space-y-3">
                       <div>
-                        <p className="text-[9px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Company / Last Position</p>
+                        <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-0.5">Company / Last Position</p>
                         <p className="text-xs sm:text-sm font-bold text-slate-800">{activeCandidate.company || "Not Specified"}</p>
                       </div>
                       <div>
-                        <p className="text-[9px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Relevance</p>
+                        <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-0.5">Relevance</p>
                         <p className="text-xs font-semibold text-slate-600 leading-relaxed">{activeCandidate.relevance || "No parsed work history details"}</p>
                       </div>
                       {activeCandidate.experience_reason && (
                         <div className="pt-2.5 border-t border-slate-200/60">
-                          <p className="text-[9px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Experience Analysis</p>
+                          <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-0.5">Experience Analysis</p>
                           <p className="text-xs text-slate-600 leading-relaxed">{activeCandidate.experience_reason}</p>
                         </div>
                       )}
@@ -2482,15 +2299,15 @@ const CompareCandidates: React.FC = () => {
                   </div>
 
                   <div>
-                    <h4 className="text-[10px] sm:text-xs font-black uppercase tracking-wider text-slate-400 mb-2">Certifications</h4>
+                    <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-2">Certifications</h4>
                     <div className="bg-slate-50/60 border border-slate-100 rounded-2xl p-4 space-y-3">
                       <div>
-                        <p className="text-[9px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Certifications Held</p>
+                        <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-0.5">Certifications Held</p>
                         <p className="text-xs sm:text-sm font-bold text-slate-800">{activeCandidate.candidate_certifications || activeCandidate.certifications || "None Specified"}</p>
                       </div>
                       {activeCandidate.certifications_reason && (
                         <div className="pt-2.5 border-t border-slate-200/60">
-                          <p className="text-[9px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Certifications Analysis</p>
+                          <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-0.5">Certifications Analysis</p>
                           <p className="text-xs text-slate-600 leading-relaxed">{activeCandidate.certifications_reason}</p>
                         </div>
                       )}
@@ -2500,36 +2317,36 @@ const CompareCandidates: React.FC = () => {
 
                 {/* Skills Analysis */}
                 <div className="space-y-3">
-                  <h4 className="text-[10px] sm:text-xs font-black uppercase tracking-wider text-slate-400">Skills Evaluation</h4>
+                  <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-500">Skills Evaluation</h4>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
                     <div className="bg-emerald-50/40 border border-emerald-100 rounded-2xl p-3.5 sm:p-4">
-                      <h5 className="flex items-center gap-1.5 text-[10px] font-black text-emerald-800 uppercase tracking-wider mb-2.5">
+                      <h5 className="flex items-center gap-1.5 text-xs font-semibold text-emerald-800 uppercase tracking-wider mb-2.5">
                         <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
                         <span>Matched Required Skills</span>
                       </h5>
                       <div className="flex flex-wrap gap-1.5">
                         {activeCandidate.matched_skills && activeCandidate.matched_skills.length > 0 ? (
                           activeCandidate.matched_skills.map((skill, i) => (
-                            <span key={i} className="px-2 py-0.5 sm:px-2.5 sm:py-1 bg-white text-emerald-700 border border-emerald-200/80 rounded-md text-[10px] font-bold">
+                            <span key={i} className="px-2 py-0.5 sm:px-2.5 sm:py-1 bg-white text-emerald-700 border border-emerald-200/80 rounded-md text-xs font-bold">
                               {skill}
                             </span>
                           ))
                         ) : (
-                          <span className="text-xs text-slate-400 italic">No exact matches stored</span>
+                          <span className="text-xs text-slate-500 italic">No exact matches stored</span>
                         )}
                       </div>
                     </div>
 
                     <div className="bg-rose-50/40 border border-rose-100 rounded-2xl p-3.5 sm:p-4">
-                      <h5 className="flex items-center gap-1.5 text-[10px] font-black text-rose-800 uppercase tracking-wider mb-2.5">
+                      <h5 className="flex items-center gap-1.5 text-xs font-semibold text-rose-800 uppercase tracking-wider mb-2.5">
                         <XCircle className="w-3.5 h-3.5 text-rose-500" />
                         <span>Missing Required Skills</span>
                       </h5>
                       <div className="flex flex-wrap gap-1.5">
                         {activeCandidate.missing_skills && activeCandidate.missing_skills.length > 0 ? (
                           activeCandidate.missing_skills.map((skill, i) => (
-                            <span key={i} className="px-2 py-0.5 sm:px-2.5 sm:py-1 bg-white text-rose-700 border border-rose-200/80 rounded-md text-[10px] font-bold">
+                            <span key={i} className="px-2 py-0.5 sm:px-2.5 sm:py-1 bg-white text-rose-700 border border-rose-200/80 rounded-md text-xs font-bold">
                               {skill}
                             </span>
                           ))
@@ -2542,7 +2359,7 @@ const CompareCandidates: React.FC = () => {
 
                   {activeCandidate.skills_reason && (
                     <div className="bg-slate-50/60 border border-slate-100 rounded-2xl p-3.5 sm:p-4">
-                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Skills Justification</p>
+                      <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Skills Justification</p>
                       <p className="text-xs text-slate-600 leading-relaxed font-semibold">{activeCandidate.skills_reason}</p>
                     </div>
                   )}
@@ -2551,7 +2368,7 @@ const CompareCandidates: React.FC = () => {
                 {/* Key Strengths & Weaknesses */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
                   <div>
-                    <h4 className="text-[10px] sm:text-xs font-black uppercase tracking-wider text-slate-400 mb-2">Core Strengths</h4>
+                    <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-2">Core Strengths</h4>
                     <div className="bg-slate-50/60 border border-slate-100 rounded-2xl p-3.5 sm:p-4 space-y-2">
                       {activeCandidate.strengths && activeCandidate.strengths.length > 0 ? (
                         activeCandidate.strengths.map((str, i) => (
@@ -2561,13 +2378,13 @@ const CompareCandidates: React.FC = () => {
                           </div>
                         ))
                       ) : (
-                        <p className="text-xs text-slate-400 italic">No specific strengths listed</p>
+                        <p className="text-xs text-slate-500 italic">No specific strengths listed</p>
                       )}
                     </div>
                   </div>
 
                   <div>
-                    <h4 className="text-[10px] sm:text-xs font-black uppercase tracking-wider text-slate-400 mb-2">Areas for Improvement</h4>
+                    <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-2">Areas for Improvement</h4>
                     <div className="bg-slate-50/60 border border-slate-100 rounded-2xl p-3.5 sm:p-4 space-y-2">
                       {activeCandidate.weaknesses && activeCandidate.weaknesses.length > 0 ? (
                         activeCandidate.weaknesses.map((weak, i) => (
@@ -2577,7 +2394,7 @@ const CompareCandidates: React.FC = () => {
                           </div>
                         ))
                       ) : (
-                        <p className="text-xs text-slate-400 italic">No specific gaps identified</p>
+                        <p className="text-xs text-slate-500 italic">No specific gaps identified</p>
                       )}
                     </div>
                   </div>
@@ -2586,7 +2403,7 @@ const CompareCandidates: React.FC = () => {
                 {/* AI Recommendations */}
                 {activeCandidate.recommendations && activeCandidate.recommendations.length > 0 && (
                   <div>
-                    <h4 className="text-[10px] sm:text-xs font-black uppercase tracking-wider text-slate-400 mb-2">AI Recommendations</h4>
+                    <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-2">AI Recommendations</h4>
                     <div className="bg-emerald-50/30 border border-emerald-100 rounded-2xl p-3.5 sm:p-4 space-y-2">
                       {activeCandidate.recommendations.map((rec, i) => (
                         <div key={i} className="flex gap-2 items-start text-xs text-slate-700 font-medium">
@@ -2605,7 +2422,7 @@ const CompareCandidates: React.FC = () => {
                 <Users className="w-6 h-6 text-slate-300" />
               </div>
               <h3 className="text-sm sm:text-base font-bold text-slate-900">No Candidate Selected</h3>
-              <p className="text-xs text-slate-400 mt-1 max-w-sm">
+              <p className="text-xs text-slate-500 mt-1 max-w-sm">
                 Select an applicant from the list to see their complete resume information and score breakdown.
               </p>
             </div>
@@ -2617,12 +2434,12 @@ const CompareCandidates: React.FC = () => {
       {selectedCandidateIds.length >= 2 && (
         <div className="lg:hidden fixed bottom-4 inset-x-3.5 z-40 bg-slate-900/95 backdrop-blur-md text-white p-3 rounded-2xl shadow-2xl border border-slate-800 flex items-center justify-between animate-in slide-in-from-bottom-4">
           <div className="flex items-center gap-2.5">
-            <span className="w-7 h-7 rounded-xl bg-[#D60041] text-white flex items-center justify-center font-black text-xs shadow-xs">
+            <span className="w-7 h-7 rounded-xl bg-[#D60041] text-white flex items-center justify-center font-semibold text-xs shadow-xs">
               {selectedCandidateIds.length}
             </span>
             <div>
               <p className="text-xs font-bold leading-none text-white">Candidates Ready</p>
-              <p className="text-[10px] text-slate-400 leading-none mt-0.5">Tap to compare side-by-side</p>
+              <p className="text-xs text-slate-500 leading-none mt-0.5">Tap to compare side-by-side</p>
             </div>
           </div>
           <button
@@ -2639,7 +2456,7 @@ const CompareCandidates: React.FC = () => {
   );
 
   return (
-    <div className="bg-[#FCFCFC] text-slate-800 antialiased min-h-screen font-sans flex flex-col selection:bg-rose-100 selection:text-[#D60041]">
+    <div className="bg-[#F8FAFC] text-slate-800 antialiased min-h-screen font-sans flex flex-col selection:bg-rose-100 selection:text-[#D60041]">
       <Helmet>
         <title>Candidate Comparison | Mariwasa Recruitment HR Portal</title>
       </Helmet>
@@ -2648,7 +2465,7 @@ const CompareCandidates: React.FC = () => {
 
       <div className="flex flex-1 min-h-0">
         <Sidebar />
-        <main className="flex-1 w-full max-w-full px-3.5 sm:px-6 md:px-8 lg:px-10 py-4 sm:py-6 flex flex-col min-h-0 overflow-y-auto lg:overflow-hidden">
+        <main className={styles.workspace}>
           {isComparing ? renderComparisonView() : renderSelectionView()}
         </main>
       </div>

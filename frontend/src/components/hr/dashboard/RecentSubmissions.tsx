@@ -394,7 +394,7 @@ const RecentSubmissions: React.FC<RecentSubmissionsProps> = ({ candidates = [] }
       : filteredCandidates.slice(0, 6);
 
   return (
-    <div className="bg-white border border-slate-200/80 rounded-2xl shadow-xs p-4 sm:p-6 lg:p-7 mb-6 sm:mb-8 relative">
+    <div className="bg-white border border-slate-200/80 rounded-2xl shadow-xs p-4 sm:p-6 lg:p-8 relative">
       {/* Toast Notification */}
       {toastMessage && (
         <div className="fixed bottom-8 right-8 bg-slate-900 text-white px-5 py-3.5 rounded-2xl shadow-2xl flex items-center gap-3 text-xs font-bold z-50 border border-slate-800 animate-in fade-in slide-in-from-bottom-4 duration-300">
@@ -405,18 +405,23 @@ const RecentSubmissions: React.FC<RecentSubmissionsProps> = ({ candidates = [] }
 
       {/* Header Bar */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center pb-4 mb-4 sm:pb-5 sm:mb-5 border-b border-slate-100 gap-3 sm:gap-4">
-        <div>
-          <div className="flex items-center gap-2.5 flex-wrap">
-            <h3 className="text-base sm:text-lg md:text-xl font-semibold text-slate-900 tracking-tight">
-              Recent Submissions
-            </h3>
-            <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-rose-50 text-[#D60041] border border-rose-100/90">
-              {candidates.length} Total
-            </span>
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-rose-50 text-[#D60041] border border-rose-100 flex items-center justify-center shrink-0">
+            <Users size={18} />
           </div>
-          <p className="text-xs sm:text-xs text-slate-500 font-medium mt-0.5">
-            Incoming candidate applications evaluated by Mariwasa automated ATS matching
-          </p>
+          <div>
+            <div className="flex items-center gap-2.5 flex-wrap">
+              <h3 className="text-base sm:text-lg md:text-xl font-semibold text-slate-900 tracking-tight">
+                Recent Submissions
+              </h3>
+              <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-rose-50 text-[#D60041] border border-rose-100/90">
+                {candidates.length} Total
+              </span>
+            </div>
+            <p className="text-xs sm:text-xs text-slate-500 font-medium mt-0.5">
+              Incoming candidate applications evaluated by Mariwasa automated ATS matching
+            </p>
+          </div>
         </div>
 
         <button
@@ -562,7 +567,7 @@ const RecentSubmissions: React.FC<RecentSubmissionsProps> = ({ candidates = [] }
           )}
         </div>
       ) : (
-        <div className="space-y-3">
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-3.5 sm:gap-4">
           {displayedList.map((can) => (
             <CandidateCard
               key={can.id}

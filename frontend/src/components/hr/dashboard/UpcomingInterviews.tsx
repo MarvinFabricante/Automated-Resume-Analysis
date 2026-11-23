@@ -51,63 +51,77 @@ const UpcomingInterviews: React.FC<UpcomingInterviewsProps> = ({ onScheduleClick
   return (
     <div
       data-testid="upcoming-interviews-card"
-      className="bg-white border border-slate-200/80 rounded-2xl p-4 sm:p-5 lg:p-6 shadow-xs flex flex-col justify-between"
+      className="bg-white border border-slate-200/80 rounded-2xl p-4 sm:p-6 lg:p-8 shadow-xs flex flex-col justify-between"
     >
       {/* Header */}
       <div>
-        <div className="flex items-center justify-between pb-3.5 sm:pb-4 border-b border-slate-100 mb-3.5 sm:mb-4">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-pink-50 text-[#D60041] flex items-center justify-center font-bold shrink-0">
-              <Calendar size={16} />
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center pb-4 mb-4 sm:pb-5 sm:mb-5 border-b border-slate-100 gap-3 sm:gap-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-rose-50 text-[#D60041] border border-rose-100 flex items-center justify-center font-bold shrink-0">
+              <Calendar size={18} />
             </div>
             <div>
-              <h3 className="text-sm sm:text-base font-semibold text-slate-900 tracking-tight flex items-center gap-1.5 sm:gap-2">
+              <h3 className="text-base sm:text-lg md:text-xl font-semibold text-slate-900 tracking-tight flex items-center gap-2 flex-wrap">
                 <span>Upcoming Interviews</span>
                 {upcomingInterviews.length > 0 && (
-                  <span className="text-xs sm:text-xs font-semibold px-2 py-0.5 rounded-full bg-pink-50 text-[#D60041] border border-pink-100">
-                    {upcomingInterviews.length}
+                  <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-rose-50 text-[#D60041] border border-rose-100/90">
+                    {upcomingInterviews.length} Scheduled
                   </span>
                 )}
               </h3>
-              <p className="text-xs sm:text-xs text-slate-500 font-medium">Candidate evaluation schedule</p>
+              <p className="text-xs sm:text-xs text-slate-500 font-medium mt-0.5">
+                Candidate evaluation schedule and upcoming panel sessions
+              </p>
             </div>
           </div>
 
-          <button
-            onClick={() => navigate('/hr/scheduling')}
-            className="text-xs font-bold text-[#D60041] hover:text-[#b50037] flex items-center gap-1 transition-colors"
-          >
-            <span>Calendar</span>
-            <ChevronRight size={14} />
-          </button>
+          <div className="flex items-center gap-3 self-end sm:self-auto">
+            <button
+              type="button"
+              onClick={() => onScheduleClick ? onScheduleClick() : navigate('/hr/scheduling')}
+              className="px-3.5 py-2 bg-rose-50 hover:bg-rose-100 text-[#D60041] border border-rose-200/90 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-2xs active:scale-95 cursor-pointer"
+            >
+              <Plus size={14} />
+              <span>Schedule Session</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => navigate('/hr/scheduling')}
+              className="text-xs font-bold text-[#D60041] hover:text-[#b50037] flex items-center gap-1 transition-colors cursor-pointer"
+            >
+              <span>Calendar</span>
+              <ChevronRight size={14} />
+            </button>
+          </div>
         </div>
 
         {/* Content */}
         {isLoading ? (
-          <div className="space-y-3 py-2 animate-pulse">
-            {[1, 2, 3].map(i => (
-              <div key={i} className="h-16 bg-slate-50 rounded-2xl"></div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 py-2 animate-pulse">
+            {[1, 2, 3, 4].map(i => (
+              <div key={i} className="h-20 bg-slate-50 rounded-2xl"></div>
             ))}
           </div>
         ) : upcomingInterviews.length === 0 ? (
-          <div className="py-8 px-4 text-center flex flex-col items-center justify-center">
-            <div className="w-12 h-12 rounded-2xl bg-slate-50 border border-slate-100 flex items-center justify-center text-slate-500 mb-3 shadow-inner">
+          <div className="py-10 px-4 text-center flex flex-col items-center justify-center bg-slate-50/50 rounded-2xl border border-slate-100">
+            <div className="w-12 h-12 rounded-2xl bg-white border border-slate-200 flex items-center justify-center text-slate-500 mb-3 shadow-inner">
               <Clock size={22} />
             </div>
             <h4 className="text-sm font-bold text-slate-800">No upcoming interviews</h4>
-            <p className="text-xs text-slate-500 mt-1 max-w-[240px]">
+            <p className="text-xs text-slate-500 mt-1 max-w-xs">
               No upcoming interview sessions found in the queue.
             </p>
             <button
+              type="button"
               onClick={() => onScheduleClick ? onScheduleClick() : navigate('/hr/scheduling')}
-              className="mt-4 px-3.5 py-1.5 bg-slate-900 hover:bg-[#D60041] text-white text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 shadow-sm active:scale-95"
+              className="mt-4 px-4 py-2 bg-slate-900 hover:bg-[#D60041] text-white text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 shadow-sm active:scale-95 cursor-pointer"
             >
               <Plus size={14} />
               <span>Schedule Session</span>
             </button>
           </div>
         ) : (
-          <div className="space-y-3">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 sm:gap-4">
             {upcomingInterviews.map((item) => {
               const { dateStr, timeStr, isToday } = formatInterviewTime(item.start_time);
               return (
@@ -115,40 +129,45 @@ const UpcomingInterviews: React.FC<UpcomingInterviewsProps> = ({ onScheduleClick
                   key={item.id}
                   data-testid="upcoming-interview-item"
                   onClick={() => navigate('/hr/scheduling')}
-                  className="p-3 sm:p-3.5 rounded-2xl border border-slate-100 hover:border-pink-200/80 bg-slate-50/50 hover:bg-white hover:shadow-md transition-all duration-200 group flex items-center justify-between gap-3 cursor-pointer"
+                  className="p-4 sm:p-4.5 rounded-2xl border border-slate-200/90 hover:border-rose-200/90 bg-white hover:shadow-md transition-all duration-200 group flex items-center justify-between gap-3.5 cursor-pointer"
                 >
-                  <div className="flex items-center gap-3 min-w-0">
+                  <div className="flex items-center gap-3.5 min-w-0">
                     {/* Time Badge */}
-                    <div className={`w-14 shrink-0 text-center py-1.5 px-1 rounded-xl flex flex-col justify-center ${
+                    <div className={`w-15 shrink-0 text-center py-2 px-1.5 rounded-xl flex flex-col justify-center ${
                       isToday 
                         ? 'bg-gradient-to-br from-rose-500 to-[#D60041] text-white shadow-xs' 
-                        : 'bg-white border border-slate-200/90 text-slate-700'
+                        : 'bg-slate-50 border border-slate-200/90 text-slate-700'
                     }`}>
-                      <span className={`text-xs font-semibold uppercase tracking-wider ${isToday ? 'text-rose-100' : 'text-slate-500'}`}>
+                      <span className={`text-[10.5px] font-semibold uppercase tracking-wider ${isToday ? 'text-rose-100' : 'text-slate-500'}`}>
                         {dateStr}
                       </span>
-                      <span className="text-xs font-semibold leading-tight">
+                      <span className="text-xs sm:text-sm font-bold leading-tight mt-0.5">
                         {timeStr.split(' ')[0]}
                       </span>
-                      <span className={`text-xs font-bold ${isToday ? 'text-rose-100' : 'text-slate-500'}`}>
+                      <span className={`text-[10.5px] font-bold ${isToday ? 'text-rose-100' : 'text-slate-500'}`}>
                         {timeStr.split(' ')[1] || ''}
                       </span>
                     </div>
 
                     {/* Candidate & Role Info */}
                     <div className="min-w-0">
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        <h4 className="text-xs sm:text-sm font-bold text-slate-900 group-hover:text-[#D60041] transition-colors truncate">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h4 className="text-sm sm:text-base font-semibold text-slate-900 group-hover:text-[#D60041] transition-colors truncate">
                           {item.candidate_name || item.title || 'Applicant'}
                         </h4>
+                        {isToday && (
+                          <span className="text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-md bg-rose-50 text-[#D60041] border border-rose-200/80">
+                            Today
+                          </span>
+                        )}
                       </div>
-                      <p className="text-xs text-slate-500 truncate mt-0.5">
+                      <p className="text-xs font-semibold text-slate-600 truncate mt-0.5">
                         {item.job_title || 'Position Interview'}
                       </p>
                       {item.interviewer_name && (
-                        <p className="text-xs text-slate-500 font-medium truncate flex items-center gap-1 mt-0.5">
-                          <User size={10} />
-                          <span>Panel: {item.interviewer_name}</span>
+                        <p className="text-xs text-slate-500 font-medium truncate flex items-center gap-1 mt-1">
+                          <User size={11} className="text-slate-400 shrink-0" />
+                          <span className="truncate">Panel: {item.interviewer_name}</span>
                         </p>
                       )}
                     </div>
@@ -162,11 +181,11 @@ const UpcomingInterviews: React.FC<UpcomingInterviewsProps> = ({ onScheduleClick
                         target="_blank"
                         rel="noopener noreferrer"
                         onClick={(e) => e.stopPropagation()}
-                        className="px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200/80 rounded-xl text-xs font-semibold flex items-center gap-1 transition-colors"
+                        className="px-3 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200/80 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors shadow-2xs"
                         title="Join Virtual Room"
                       >
-                        <Video size={13} />
-                        <span className="hidden sm:inline">Join</span>
+                        <Video size={14} />
+                        <span>Join</span>
                       </a>
                     ) : (
                       <button
@@ -175,7 +194,7 @@ const UpcomingInterviews: React.FC<UpcomingInterviewsProps> = ({ onScheduleClick
                           e.stopPropagation();
                           navigate('/hr/scheduling');
                         }}
-                        className="p-1.5 text-slate-500 hover:text-[#D60041] hover:bg-pink-50 rounded-lg transition-colors"
+                        className="p-2 text-slate-500 hover:text-[#D60041] bg-slate-50 hover:bg-rose-50 border border-slate-200/80 hover:border-rose-200 rounded-xl transition-colors cursor-pointer"
                         title="View Interview in Calendar"
                       >
                         <ArrowUpRight size={15} />
@@ -190,14 +209,14 @@ const UpcomingInterviews: React.FC<UpcomingInterviewsProps> = ({ onScheduleClick
       </div>
 
       {/* Footer link */}
-      <div className="pt-4 mt-3 border-t border-slate-100 flex items-center justify-between text-xs">
+      <div className="pt-4 mt-5 border-t border-slate-100 flex items-center justify-between text-xs">
         <span className="text-slate-500 font-medium text-xs">Syncs with Google Calendar</span>
         <button
           onClick={() => navigate('/hr/scheduling')}
-          className="font-bold text-[#D60041] hover:underline flex items-center gap-1 text-xs"
+          className="font-bold text-[#D60041] hover:underline flex items-center gap-1 text-xs cursor-pointer"
         >
           <span>Open Calendar</span>
-          <ChevronRight size={13} />
+          <ChevronRight size={14} />
         </button>
       </div>
     </div>
