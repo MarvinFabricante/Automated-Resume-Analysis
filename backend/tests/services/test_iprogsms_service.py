@@ -16,7 +16,71 @@ from app.services.interview_service import (
     send_iprogsms_sync,
     send_sms_notification_sync,
     validate_iprogsms_content,
+    _extract_phone_from_parsed_payload,
 )
+
+
+@pytest.mark.parametrize("phone", [None, "N/A", "1234567", "0917123456", "091712345678", "(02) 8123-4567", "+1 202 555 0123", "ID: 09171234567"])
+def test_sms_rejects_invalid_or_non_mobile_recipients(phone):
+    with patch("app.services.interview_service.requests.post") as post:
+        assert format_phone_for_iprogsms(phone) == ""
+        assert not send_iprogsms_sync(phone, "Test")
+        post.assert_not_called()
+
+
+def test_sms_selects_mobile_after_landline_and_reads_nested_contact():
+    assert format_phone_for_iprogsms("(02) 8123-4567 / (+63) 917 555 8899") == "639175558899"
+    assert _extract_phone_from_parsed_payload({"phone": "1234567", "personal": {"phone": "0917-555-8899"}}) == "0917-555-8899"
+    assert _extract_phone_from_parsed_payload({"references": [{"phone": "09175558899"}], "all_phones": ["09175558899"]}) is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("phone", [None, "N/A", "(02) 8123-4567"])
+async def test_missing_sms_recipient_is_logged_without_sending(phone):
+    with patch("app.services.interview_service.requests.post") as post, \
+         patch("app.services.interview_service.InterviewRepository.add_interview_log", new_callable=AsyncMock) as log, \
+         patch("app.services.interview_service.InterviewRepository.commit_changes", new_callable=AsyncMock):
+        assert not await _dispatch_candidate_sms(AsyncMock(), 1, phone, "Interview", "SMS_SENT", "SMS queued")
+        post.assert_not_called()
+        assert log.call_args.args[2] == "SMS_FAILED"
+        assert "Missing or invalid Philippine mobile" in log.call_args.args[3]
+
+
+@pytest.mark.parametrize("body", [None, [], "upstream error", {"status": 500, "message": "Insufficient credits"}])
+def test_sms_handles_malformed_and_error_responses(body):
+    response = MagicMock(status_code=200, text="upstream error")
+    response.json.return_value = body
+    with patch.dict("os.environ", {"IPROG_SMS_API_TOKEN": "test-token"}), \
+         patch("app.services.interview_service.requests.post", return_value=response):
+        assert not send_iprogsms_sync("09175558899", "Test")
+
+
+@pytest.mark.asyncio
+async def test_resume_extraction_to_sms_payload_and_queue_log(tmp_path):
+    """Exercise extraction, recipient resolution, dispatch, and logging without real messages."""
+    import fitz
+    from app.extractors.resume_processor import process_resume
+
+    resume_path = tmp_path / "sample-resume.pdf"
+    with fitz.open() as document:
+        page = document.new_page()
+        page.insert_text((72, 72), "Sample Applicant\nMobile: (+63) 917 555 8899\napplicant@example.com\nSkills: Python")
+        document.save(resume_path)
+    parsed = process_resume(str(resume_path), "pdf")
+    application = SimpleNamespace(phone=parsed["candidate_phone"])
+    resolved = await _resolve_candidate_phone(AsyncMock(), application)
+    response = MagicMock(status_code=200, text="{}")
+    response.json.return_value = {"status": 200, "message_id": "iSms-test"}
+    with patch.dict("os.environ", {"IPROG_SMS_API_TOKEN": "test-token", "IPROG_SMS_API_URL": "https://www.iprogsms.com/api/v1/"}), \
+         patch("app.services.interview_service.requests.post", return_value=response) as post, \
+         patch("app.services.interview_service.InterviewRepository.add_interview_log", new_callable=AsyncMock) as log, \
+         patch("app.services.interview_service.InterviewRepository.commit_changes", new_callable=AsyncMock):
+        assert await _dispatch_candidate_sms(AsyncMock(), 1, resolved, "Interview test", "SMS_SENT", "SMS delivered")
+        assert post.call_args.args[0] == "https://www.iprogsms.com/api/v1/sms_messages"
+        assert post.call_args.kwargs["json"]["phone_number"] == "639175558899"
+        assert "queued" in log.call_args.args[3]
+        assert "delivered" not in log.call_args.args[3]
+        assert "[message_id=iSms-test]" in log.call_args.args[3]
 
 
 def test_format_phone_for_iprogsms_normalizes_ph_formats():
@@ -145,7 +209,8 @@ async def test_dispatch_candidate_sms_logs_iprogsms_rejection_reason():
 
 
 @pytest.mark.asyncio
-async def test_resolve_candidate_phone_falls_back_to_physical_resume_parsed_data(db_session):
+@pytest.mark.parametrize("stored_phone", ["N/A", "1234567", "(02) 8123-4567"])
+async def test_resolve_candidate_phone_falls_back_to_physical_resume_parsed_data(db_session, stored_phone):
     """Resolves phone from PhysicalResume.parsed_data when JobApplication.phone is blank or N/A."""
     from app.models.physical_resume import PhysicalResume
 
@@ -161,7 +226,7 @@ async def test_resolve_candidate_phone_falls_back_to_physical_resume_parsed_data
     await db_session.commit()
 
     app_obj = SimpleNamespace(
-        phone="N/A",
+        phone=stored_phone,
         candidate_email="walkin_resume_phone@gmail.com",
         resume_url="/uploads/physical_resumes/test_walkin.pdf",
     )

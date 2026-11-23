@@ -257,7 +257,7 @@ const ScheduleInterviewModal: React.FC<ScheduleInterviewModalProps> = ({ isOpen,
       return;
     }
 
-    setSuccessMsg(`Interview scheduled successfully! Candidate marked as Reviewed and notification sent.`);
+    setSuccessMsg(`Interview scheduled successfully! Candidate marked as Reviewed. Check the interview notification logs for SMS status.`);
     try {
       if (candidate && !Object.isFrozen(candidate)) {
         candidate.status = 'Reviewed';

@@ -161,14 +161,27 @@ def _normalize_ph_digits(digits: str) -> str:
 
 
 def format_phone_for_iprogsms(phone: str) -> str:
-    """Normalize phone number into IPROG SMS digits format (e.g., 639771331871)."""
-    cleaned = _clean_phone_candidate(phone)
-    if not cleaned:
+    """Return a valid Philippine mobile recipient; never submit landlines or partial numbers."""
+    if not isinstance(phone, str):
         return ""
-    digits = re.sub(r"\D", "", cleaned)
-    if not digits:
-        return ""
-    return _normalize_ph_digits(digits)
+    for part in re.split(r"[/|,;\n]+", phone):
+        cleaned = re.sub(r"^(?:tel|callto):\s*", "", part.strip(), flags=re.I)
+        if not re.fullmatch(r"[+()0-9\s.\-–—]+", cleaned):
+            continue
+        digits = _normalize_ph_digits(re.sub(r"[^0-9]", "", cleaned))
+        if re.fullmatch(r"639[0-9]{9}", digits):
+            return digits
+    return ""
+
+
+def _sms_phone_candidate(phone: object) -> Optional[str]:
+    """Keep a single readable mobile number for storage and display."""
+    if not isinstance(phone, str):
+        return None
+    for part in re.split(r"[/|,;\n]+", phone):
+        if format_phone_for_iprogsms(part):
+            return part.strip()
+    return None
 
 
 def format_phone_for_iprogsms_detect(phone: str) -> str:
@@ -211,7 +224,7 @@ def send_iprogsms_sync(to_phone: str, message: str) -> bool:
     _sms_thread_state.last_error = None
     _sms_thread_state.last_message_id = None
     api_token = (os.getenv("IPROG_SMS_API_TOKEN") or "").strip()
-    api_url = (os.getenv("IPROG_SMS_API_URL") or IPROG_SMS_DEFAULT_URL).strip()
+    api_url = f"{_get_iprogsms_base_url()}/sms_messages"
     recipient = format_phone_for_iprogsms(to_phone)
     clean_message = (message or "").strip()
     if not api_token or not recipient or not clean_message:
@@ -236,6 +249,8 @@ def send_iprogsms_sync(to_phone: str, message: str) -> bool:
         try:
             data = resp.json()
         except ValueError:
+            data = {}
+        if not isinstance(data, dict):
             data = {}
 
         api_status = data.get("status")
@@ -463,7 +478,12 @@ def _extract_phone_from_parsed_payload(parsed_data: object) -> Optional[str]:
     if not isinstance(parsed_data, dict):
         return None
     for key in ("phone", "candidate_phone", "mobile", "contact_number"):
-        val = _clean_phone_candidate(parsed_data.get(key))
+        val = _sms_phone_candidate(parsed_data.get(key))
+        if val:
+            return val
+    # Only candidate contact sections, never references or arbitrary all_phones lists.
+    for key in ("personal", "contact", "personal_information", "contact_information"):
+        val = _extract_phone_from_parsed_payload(parsed_data.get(key))
         if val:
             return val
     return None
@@ -477,7 +497,7 @@ async def _resolve_candidate_phone(db: AsyncSession, application) -> Optional[st
     if not application:
         return None
 
-    direct_phone = _clean_phone_candidate(getattr(application, "phone", None))
+    direct_phone = _sms_phone_candidate(getattr(application, "phone", None))
     if direct_phone:
         return direct_phone
 
@@ -498,7 +518,7 @@ async def _resolve_candidate_phone(db: AsyncSession, application) -> Optional[st
             )
             pr = (await db.execute(pr_stmt)).scalars().first()
             if pr:
-                resolved_phone = _clean_phone_candidate(getattr(pr, "candidate_phone", None)) or _extract_phone_from_parsed_payload(getattr(pr, "parsed_data", None))
+                resolved_phone = _sms_phone_candidate(getattr(pr, "candidate_phone", None)) or _extract_phone_from_parsed_payload(getattr(pr, "parsed_data", None))
 
         if not resolved_phone and candidate_email and not candidate_email.lower().endswith(".local"):
             pr_stmt = (
@@ -508,7 +528,7 @@ async def _resolve_candidate_phone(db: AsyncSession, application) -> Optional[st
             )
             pr = (await db.execute(pr_stmt)).scalars().first()
             if pr:
-                resolved_phone = _clean_phone_candidate(getattr(pr, "candidate_phone", None)) or _extract_phone_from_parsed_payload(getattr(pr, "parsed_data", None))
+                resolved_phone = _sms_phone_candidate(getattr(pr, "candidate_phone", None)) or _extract_phone_from_parsed_payload(getattr(pr, "parsed_data", None))
     except Exception as e:
         logger.debug(f"PhysicalResume phone lookup skipped: {e}")
 
@@ -543,7 +563,7 @@ async def _resolve_candidate_phone(db: AsyncSession, application) -> Optional[st
         try:
             from app.repositories.auth_repository import AuthRepository
             cand_user = await AuthRepository.get_user_by_email(db, candidate_email)
-            resolved_phone = _clean_phone_candidate(getattr(cand_user, "phone", None))
+            resolved_phone = _sms_phone_candidate(getattr(cand_user, "phone", None))
         except Exception as e:
             logger.warning(f"Could not resolve fallback candidate phone for {candidate_email}: {e}")
 
@@ -588,17 +608,19 @@ async def _dispatch_candidate_sms(
     success_desc_prefix: str,
 ) -> bool:
     """Format phone number, send SMS notification via configured provider, and log actual outcome."""
-    clean_phone = _clean_phone_candidate(phone)
-    if not clean_phone:
-        return False
-
-    formatted_phone = format_to_e164(clean_phone) or clean_phone
-    sms_sent, failure_reason, message_id = await asyncio.to_thread(_send_sms_with_reason_sync, formatted_phone, message)
+    recipient = format_phone_for_iprogsms(phone)
+    formatted_phone = f"+{recipient}" if recipient else "candidate (no valid Philippine mobile number)"
+    if recipient:
+        sms_sent, failure_reason, message_id = await asyncio.to_thread(_send_sms_with_reason_sync, formatted_phone, message)
+    else:
+        sms_sent, failure_reason, message_id = False, "Missing or invalid Philippine mobile number in application, resume, and profile.", None
 
     event_name = success_event if sms_sent else "SMS_FAILED"
     if sms_sent:
         id_suffix = f" [message_id={message_id}]" if message_id else ""
-        log_desc = f"{success_desc_prefix} to {formatted_phone}{id_suffix}: {message}"
+        # API acceptance is a queue acknowledgement, not proof of handset delivery.
+        queued_prefix = success_desc_prefix.replace("delivered", "queued")
+        log_desc = f"{queued_prefix} to {formatted_phone}{id_suffix}: {message}"
     elif failure_reason:
         log_desc = f"Failed to deliver SMS notification to {formatted_phone} ({failure_reason}): {message}"
     else:
@@ -1257,32 +1279,31 @@ async def schedule_interview(db: AsyncSession, data: InterviewCreateSchema, user
             except Exception as e:
                 print(f"Warning: Could not send interview invitation email to panelist: {e}")
 
-        # 5. Send SMS Notification (if phone configured)
-        if candidate_phone:
-            message = await _build_interview_sms_message(
-                db,
-                "interview_scheduled",
-                custom_sms_message=getattr(data, "custom_sms_message", None),
-                candidate_name=candidate_name,
-                job_title=job_name,
-                interview_title=data.title,
-                start_time=data.start_time,
-                end_time=data.end_time,
-                interviewer_name=interviewer_name,
-                interviewer_email=interviewer_email,
-                location=interview_location,
-                meeting_link=interview_meeting_link,
-                notes=data.description or "",
-                candidate_email=candidate_email,
-            )
-            await _dispatch_candidate_sms(
-                db,
-                interview.id,
-                candidate_phone,
-                message,
-                "SMS_SENT",
-                "SMS interview notification delivered",
-            )
+        # 5. Send SMS notification, or log why no valid recipient could be found.
+        message = await _build_interview_sms_message(
+            db,
+            "interview_scheduled",
+            custom_sms_message=getattr(data, "custom_sms_message", None),
+            candidate_name=candidate_name,
+            job_title=job_name,
+            interview_title=data.title,
+            start_time=data.start_time,
+            end_time=data.end_time,
+            interviewer_name=interviewer_name,
+            interviewer_email=interviewer_email,
+            location=interview_location,
+            meeting_link=interview_meeting_link,
+            notes=data.description or "",
+            candidate_email=candidate_email,
+        )
+        await _dispatch_candidate_sms(
+            db,
+            interview.id,
+            candidate_phone,
+            message,
+            "SMS_SENT",
+            "SMS interview notification queued",
+        )
 
         # 6. In-App Notifications
         try:
@@ -1638,31 +1659,30 @@ async def update_interview(db: AsyncSession, interview_id: int, data: InterviewU
 
         # 4. SMS Notification to Candidate
         candidate_phone = await _resolve_candidate_phone(db, application)
-        if candidate_phone:
-            message = await _build_interview_sms_message(
-                db,
-                "interview_rescheduled",
-                custom_sms_message=getattr(data, "custom_sms_message", None),
-                candidate_name=application.candidate_name or "Candidate",
-                job_title=job_name,
-                interview_title=interview.title,
-                start_time=interview.start_time,
-                end_time=interview.end_time,
-                interviewer_name=interviewer_name,
-                interviewer_email=interviewer_email,
-                location=iv_location,
-                meeting_link=iv_meeting_link,
-                notes=interview.description or "",
-                candidate_email=application.candidate_email,
-            )
-            await _dispatch_candidate_sms(
-                db,
-                interview.id,
-                candidate_phone,
-                message,
-                "SMS_RESCHEDULED",
-                "Reschedule SMS notification delivered",
-            )
+        message = await _build_interview_sms_message(
+            db,
+            "interview_rescheduled",
+            custom_sms_message=getattr(data, "custom_sms_message", None),
+            candidate_name=application.candidate_name or "Candidate",
+            job_title=job_name,
+            interview_title=interview.title,
+            start_time=interview.start_time,
+            end_time=interview.end_time,
+            interviewer_name=interviewer_name,
+            interviewer_email=interviewer_email,
+            location=iv_location,
+            meeting_link=iv_meeting_link,
+            notes=interview.description or "",
+            candidate_email=application.candidate_email,
+        )
+        await _dispatch_candidate_sms(
+            db,
+            interview.id,
+            candidate_phone,
+            message,
+            "SMS_RESCHEDULED",
+            "Reschedule SMS notification queued",
+        )
 
         # 5. In-App Notifications for Candidate, HR, and Panel
         try:
@@ -2072,30 +2092,29 @@ async def cancel_interview(
                 print(f"Warning: Could not send cancellation email to candidate: {e}")
 
         candidate_phone = await _resolve_candidate_phone(db, application)
-        if candidate_phone:
-            message = await _build_interview_sms_message(
-                db,
-                "interview_canceled",
-                custom_sms_message=custom_sms_message,
-                candidate_name=application.candidate_name or "Candidate",
-                job_title=job_name,
-                interview_title=interview.title,
-                start_time=interview.start_time,
-                end_time=interview.end_time,
-                interviewer_name=interviewer_name,
-                interviewer_email=interviewer_email,
-                location=iv_location,
-                reason=reason or "",
-                candidate_email=application.candidate_email,
-            )
-            await _dispatch_candidate_sms(
-                db,
-                interview.id,
-                candidate_phone,
-                message,
-                "SMS_CANCELED",
-                "Cancellation SMS notification delivered",
-            )
+        message = await _build_interview_sms_message(
+            db,
+            "interview_canceled",
+            custom_sms_message=custom_sms_message,
+            candidate_name=application.candidate_name or "Candidate",
+            job_title=job_name,
+            interview_title=interview.title,
+            start_time=interview.start_time,
+            end_time=interview.end_time,
+            interviewer_name=interviewer_name,
+            interviewer_email=interviewer_email,
+            location=iv_location,
+            reason=reason or "",
+            candidate_email=application.candidate_email,
+        )
+        await _dispatch_candidate_sms(
+            db,
+            interview.id,
+            candidate_phone,
+            message,
+            "SMS_CANCELED",
+            "Cancellation SMS notification queued",
+        )
 
         # (d) In-App Notifications
         try:
@@ -2302,30 +2321,29 @@ async def candidate_reschedule_interview(
             logger.warning(f"Could not send reschedule confirmation email to candidate: {email_err}")
 
     candidate_phone = await _resolve_candidate_phone(db, application)
-    if candidate_phone:
-        message = await _build_interview_sms_message(
-            db,
-            "candidate_rescheduled",
-            candidate_name=application.candidate_name or "Candidate",
-            job_title=job_name,
-            interview_title=interview.title,
-            start_time=interview.start_time,
-            end_time=interview.end_time,
-            interviewer_name=interviewer_name,
-            interviewer_email=interviewer_email,
-            location=iv_location,
-            meeting_link=iv_meeting_link,
-            notes=data.reason.strip() if data.reason and data.reason.strip() else "",
-            candidate_email=application.candidate_email,
-        )
-        await _dispatch_candidate_sms(
-            db,
-            interview.id,
-            candidate_phone,
-            message,
-            "SMS_RESCHEDULED",
-            "Candidate reschedule confirmation SMS delivered",
-        )
+    message = await _build_interview_sms_message(
+        db,
+        "candidate_rescheduled",
+        candidate_name=application.candidate_name or "Candidate",
+        job_title=job_name,
+        interview_title=interview.title,
+        start_time=interview.start_time,
+        end_time=interview.end_time,
+        interviewer_name=interviewer_name,
+        interviewer_email=interviewer_email,
+        location=iv_location,
+        meeting_link=iv_meeting_link,
+        notes=data.reason.strip() if data.reason and data.reason.strip() else "",
+        candidate_email=application.candidate_email,
+    )
+    await _dispatch_candidate_sms(
+        db,
+        interview.id,
+        candidate_phone,
+        message,
+        "SMS_RESCHEDULED",
+        "Candidate reschedule confirmation SMS queued",
+    )
 
     fresh_interview = await InterviewRepository.get_interview_by_id(db, interview.id)
     if fresh_interview:
