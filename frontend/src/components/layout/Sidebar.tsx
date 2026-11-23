@@ -10,7 +10,7 @@ import { toggleSidebar, closeSidebar } from '../../redux/slices/uiSlice';
 import { logout as logoutAction } from '../../redux/slices/authSlice';
 import { RootState } from '../../redux/store';
 import { clearAllAuthSessions, performUserLogout } from '../../utils/token';
-import { useGetJobsQuery } from '../../redux/api/apiSlice';
+import { apiSlice, useGetJobsQuery } from '../../redux/api/apiSlice';
 import styles from './Sidebar.module.css';
 
 export interface NavItem {
@@ -50,6 +50,7 @@ const Sidebar: React.FC = () => {
   );
 
   const handleLogout = () => {
+    dispatch(apiSlice.util.resetApiState());
     dispatch(logoutAction());
     performUserLogout();
   };

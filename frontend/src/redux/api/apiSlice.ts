@@ -425,7 +425,7 @@ export const apiSlice = createApi({
       invalidatesTags: ['Interviews', 'CalendarEvents'],
     }),
 
-    getGoogleCalendarStatus: builder.query<any, void>({
+    getGoogleCalendarStatus: builder.query<any, string | number | void>({
       query: () => '/interviews/google-status',
       providesTags: ['CalendarEvents'],
     }),
