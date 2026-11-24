@@ -7,5 +7,6 @@ REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 limiter = Limiter(
     key_func=get_remote_address,
     storage_uri=REDIS_URL,
+    in_memory_fallback_enabled=True,
     enabled=True
 )

@@ -22,7 +22,7 @@ async def check_email_exists_raw(db: AsyncSession, email: str) -> bool:
         return False
 
     existing = await db.execute(
-        text("SELECT id FROM users WHERE LOWER(email) = :email"), {"email": email_clean}
+        text("SELECT id FROM users WHERE LOWER(TRIM(email)) = :email"), {"email": email_clean}
     )
     exists = existing.fetchone() is not None
     cache_key = f"user:exists:{email_clean}"
@@ -88,7 +88,8 @@ async def get_raw_user_by_email(db: AsyncSession, email: str):
         text(
             "SELECT id, email, password, role, fullname, profile_image_url, is_archived, is_online, "
             "is_deactivated, deactivated_at, token_version, is_anonymized "
-            "FROM users WHERE LOWER(email) = :email"
+            "FROM users WHERE LOWER(TRIM(email)) = :email AND is_anonymized IS NOT TRUE "
+            "ORDER BY is_deactivated ASC, id DESC LIMIT 1"
         ),
         {"email": email_clean}
     )
@@ -223,6 +224,7 @@ async def invalidate_user_cache(user=None, *, user_id: Optional[int] = None, ema
     try:
         if uid is not None:
             await delete_cache(f"user:id:{uid}")
+            await delete_cache(f"candidate:id:{uid}")
         if uemail:
             email_clean = uemail.strip().lower()
             await delete_cache(f"user:email:{email_clean}")

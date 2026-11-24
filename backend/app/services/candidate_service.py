@@ -1,7 +1,6 @@
 import sys
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.schemas.candidate_schema import CandidateCreate, CandidateUpdate
-from app.utils.auth import hash_password
 from app.repositories.candidate_repository import CandidateRepository
 from app.services.notification_service import create_notification
 
@@ -34,17 +33,11 @@ async def create_candidate_profile(db: AsyncSession, candidate_in: CandidateCrea
     Creates a new Candidate profile.
     SQLAlchemy handles the polymorphic 'users' table entry automatically.
     """
-    email_lower = candidate_in.email.strip().lower()
-    candidate_data = {
-        "fullname": candidate_in.fullname,
-        "email": email_lower,
-        "password": hash_password(candidate_in.password),
-        "role": "CANDIDATE",
-        "resume_url": candidate_in.resume_url,
-        "experience_years": candidate_in.experience_years
-    }
-
-    new_candidate = await CandidateRepository.create(db, candidate_data)
+    from app.services.auth_service import register_user
+    new_candidate = await register_user(
+        db, candidate_in.email, candidate_in.password, "CANDIDATE", candidate_in.fullname,
+        candidate_fields={"resume_url": candidate_in.resume_url, "experience_years": candidate_in.experience_years or 0},
+    )
 
     # Trigger notification for HR and Admin
     await create_notification(

@@ -39,6 +39,20 @@ class DeactivatedAccountExistsError(Exception):
 
 OTP_EXPIRY_MINUTES = 10
 OTP_MAX_ATTEMPTS = 5
+OTP_RESEND_SECONDS = 60
+
+
+async def lock_account_email(db: AsyncSession, email: str) -> None:
+    """Serialize recovery/registration for one address across PostgreSQL workers."""
+    if db.get_bind().dialect.name == "postgresql":
+        key = int.from_bytes(hashlib.sha256(email.strip().lower().encode()).digest()[:8], "big", signed=True)
+        await db.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": key})
+
+
+def deactivated_account_detail(message: str, code: str = "ACCOUNT_DEACTIVATED"):
+    return {"code": code, "message": message, "can_reactivate": True,
+            "can_fresh_start": True, "allowed_actions": ["reactivate", "fresh_start"]}
+
 
 
 def _hash_otp(code: str) -> str:
@@ -71,7 +85,7 @@ async def check_email_registration_status(db: AsyncSession, email: str) -> Dict[
         return {"status": "available", "can_reactivate": False, "can_fresh_start": False}
 
     row = await AuthRepository.get_raw_user_by_email(db, clean_email)
-    if not row:
+    if not row or getattr(row, "is_anonymized", False):
         return {"status": "available", "can_reactivate": False, "can_fresh_start": False}
 
     is_deactivated = bool(getattr(row, "is_deactivated", False))
@@ -102,6 +116,9 @@ async def register_user(
     role: str,
     fullname: str = "",
     fresh_start: bool = False,
+    verification_token: Optional[str] = None,
+    confirm_fresh_start: bool = False,
+    candidate_fields: Optional[dict] = None,
 ):
     email = (email or "").strip().lower()
     if not email:
@@ -110,6 +127,9 @@ async def register_user(
     if role not in ["CANDIDATE", "HR", "ADMIN"]:
         raise Exception("Invalid role")
 
+    # Hash and validate before any irreversible file deletion.
+    password_hash = hash_password(password)
+    await lock_account_email(db, email)
     # Check existence case-insensitively and trimmed
     row = await AuthRepository.get_raw_user_by_email(db, email)
     if row:
@@ -121,35 +141,39 @@ async def register_user(
                     "An account with this email was previously deactivated and has not yet been purged. "
                     "You can reactivate your account with email verification or choose a fresh start."
                 )
-            # Fresh start before purge: immediately anonymize the old deactivated account & records
-            # so its email is cleanly released while preserving the salted email_hash for repeat detection.
+            if not confirm_fresh_start:
+                raise ValueError("Please confirm that you want to start fresh. This cannot be undone.")
+            await verify_account_otp(db, email, "fresh_start_confirm", verification_token or "", commit=False)
+            await db.execute(select(User.id).where(User.id == row.id).with_for_update())
             old_user = await AuthRepository.get_user_by_id_fresh(db, row.id)
-            if old_user:
-                await anonymize_user_and_records(
-                    db, old_user, dry_run=False, force_skip_active_check=True
-                )
-                await db.commit()
-                await AuthRepository.invalidate_user_cache(email=email)
-                await record_activity(
-                    db=db,
-                    user_id=old_user.id,
-                    action="FRESH_START_ANONYMIZED_OLD_ACCOUNT",
-                    target=f"User ID: {old_user.id}",
-                    details="Previous deactivated account was anonymized immediately upon applicant choosing fresh start.",
-                )
+            if not old_user or not old_user.is_deactivated:
+                raise DuplicateEmailError("An account with this email is already registered. Please sign in instead.")
+            await anonymize_user_and_records(db, old_user, dry_run=False, force_skip_active_check=True, strict_files=True)
+            # Release the unique email in the same transaction as creating its replacement.
+            await db.flush()
         else:
             raise DuplicateEmailError("An account with this email is already registered. Please sign in instead.")
 
     # Create the correct subclass so both users + subclass table rows are inserted
     common_fields = dict(
         email=email,
-        password=hash_password(password),
+        password=password_hash,
         role=role,
         fullname=fullname,
         email_hash=compute_email_hash(email),
     )
 
-    return await AuthRepository.create_user(db, role, common_fields)
+    if candidate_fields and role == "CANDIDATE":
+        common_fields.update(candidate_fields)
+    new_user = await AuthRepository.create_user(db, role, common_fields)
+    if row and fresh_start:
+        await AuthRepository.invalidate_user_cache(user_id=row.id, email=email)
+        from app.utils.cache import clear_cache_pattern
+        await clear_cache_pattern("candidate_profile:")
+        await clear_cache_pattern("applicant_profile:")
+        await record_activity(db=db, user_id=row.id, action="FRESH_START_ANONYMIZED_OLD_ACCOUNT",
+                              target=f"User ID: {row.id}", details="Email verified; applicant confirmed a fresh start.")
+    return new_user
 
 
 async def _ensure_role_subclass_row(db: AsyncSession, user_id: int, role: str) -> None:
@@ -235,7 +259,7 @@ async def login_user(db: AsyncSession, email: str, password: str):
         raise Exception("Invalid credentials")
 
     pw_matched = verify_password(password, user.password)
-    if not pw_matched and password and password.strip():
+    if not pw_matched and password and password.strip() and not getattr(row, "is_deactivated", False):
         has_default_pw = verify_password("password", user.password) or verify_password("password123", user.password)
         if has_default_pw:
             pw_matched = True
@@ -693,13 +717,29 @@ async def request_account_otp(
     if not clean_email:
         raise ValueError("Email is required")
 
+    await lock_account_email(db, clean_email)
     row = await AuthRepository.get_raw_user_by_email(db, clean_email)
-    if purpose == "reactivate_account":
-        if not row or not getattr(row, "is_deactivated", False) or getattr(row, "is_anonymized", False):
-            raise ValueError("No deactivated account eligible for reactivation was found for this email.")
-    elif purpose == "delete_account":
-        if not row or getattr(row, "is_deactivated", False):
-            raise ValueError("No active account found for this email.")
+    recovery = purpose in {"reactivate_account", "fresh_start"}
+    response = {
+        "message": "If this account is eligible, a 6-digit code will be sent. It expires in 10 minutes.",
+        "expires_in_minutes": OTP_EXPIRY_MINUTES, "max_attempts": OTP_MAX_ATTEMPTS,
+        "resend_after_seconds": OTP_RESEND_SECONDS,
+    }
+    if recovery and (not row or not row.is_deactivated or row.is_anonymized):
+        return response
+    if purpose == "delete_account" and (not row or row.is_deactivated):
+        raise ValueError("No active account found for this email.")
+    latest = (await db.execute(select(AccountOTP).where(
+        AccountOTP.email == clean_email, AccountOTP.purpose == purpose
+    ).order_by(AccountOTP.created_at.desc()).limit(1))).scalar_one_or_none()
+    if latest:
+        remaining = OTP_RESEND_SECONDS - (datetime.utcnow() - latest.created_at).total_seconds()
+        if remaining > 0:
+            from fastapi import HTTPException
+            wait = int(remaining) + 1
+            raise HTTPException(status_code=429, detail={"code": "OTP_COOLDOWN",
+                "message": "Please wait before requesting another code.", "retry_after_seconds": wait},
+                headers={"Retry-After": str(wait)})
 
     # Invalidate prior unused OTPs for this email & purpose
     now = datetime.utcnow()
@@ -725,13 +765,9 @@ async def request_account_otp(
     db.add(otp_entry)
     await db.commit()
 
-    await send_otp_email(clean_email, code, purpose=purpose)
-
-    return {
-        "message": "A 6-digit verification code has been sent to your email. It expires in 10 minutes.",
-        "expires_in_minutes": OTP_EXPIRY_MINUTES,
-        "max_attempts": OTP_MAX_ATTEMPTS,
-    }
+    if not await send_otp_email(clean_email, code, purpose=purpose):
+        raise ValueError("We couldn't send the code right now. Please wait a minute and try again.")
+    return response
 
 
 async def verify_account_otp(
@@ -739,13 +775,17 @@ async def verify_account_otp(
     email: str,
     purpose: str,
     otp_code: str,
+    *, commit: bool = True,
 ) -> bool:
     """
     Verify a 6-digit OTP checking expiration (10 min) and attempt limit (max 5).
     """
     clean_email = (email or "").strip().lower()
     clean_code = (otp_code or "").strip()
-    if not clean_code or len(clean_code) != 6 or not clean_code.isdigit():
+    if purpose == "fresh_start_confirm":
+        if not clean_code or len(clean_code) > 128:
+            raise ValueError("Please verify your email before starting fresh.")
+    elif not clean_code or len(clean_code) != 6 or not clean_code.isdigit():
         raise ValueError("Please enter a valid 6-digit verification code.")
 
     res = await db.execute(
@@ -757,6 +797,7 @@ async def verify_account_otp(
         )
         .order_by(AccountOTP.created_at.desc())
         .limit(1)
+        .with_for_update()
     )
     otp_entry = res.scalar_one_or_none()
     if not otp_entry:
@@ -773,7 +814,7 @@ async def verify_account_otp(
         await db.commit()
         raise ValueError("Maximum verification attempts exceeded. Please request a new code.")
 
-    if otp_entry.code_hash != _hash_otp(clean_code):
+    if not secrets.compare_digest(otp_entry.code_hash, _hash_otp(clean_code)):
         otp_entry.attempts += 1
         remaining = max(0, otp_entry.max_attempts - otp_entry.attempts)
         if otp_entry.attempts >= otp_entry.max_attempts:
@@ -786,8 +827,22 @@ async def verify_account_otp(
         )
 
     otp_entry.used_at = now
-    await db.commit()
+    if commit:
+        await db.commit()
     return True
+
+
+async def verify_fresh_start_otp(db: AsyncSession, email: str, otp_code: str):
+    email = email.strip().lower()
+    await lock_account_email(db, email)
+    await verify_account_otp(db, email, "fresh_start", otp_code, commit=False)
+    # A short-lived, single-use proof allows final confirmation AFTER email verification.
+    proof = secrets.token_urlsafe(32)
+    await db.execute(delete(AccountOTP).where(AccountOTP.email == email, AccountOTP.purpose == "fresh_start_confirm"))
+    db.add(AccountOTP(email=email, purpose="fresh_start_confirm", code_hash=_hash_otp(proof),
+                      expires_at=datetime.utcnow() + timedelta(minutes=10)))
+    await db.commit()
+    return {"verification_token": proof, "expires_in_minutes": 10}
 
 
 async def _cancel_interviews_for_application(
@@ -1004,6 +1059,7 @@ async def request_account_deletion(
         )
 
     # Step 3: Deactivate account immediately & invalidate all active JWT tokens everywhere
+    await db.execute(delete(AccountOTP).where(func.lower(func.trim(AccountOTP.email)) == norm_email))
     user.is_deactivated = True
     user.deactivated_at = now
     user.is_archived = True
@@ -1074,7 +1130,8 @@ async def reactivate_account_with_otp(
     Restores profile and history, while withdrawn applications remain withdrawn.
     """
     clean_email = (email or "").strip().lower()
-    await verify_account_otp(db, clean_email, "reactivate_account", otp_code)
+    await lock_account_email(db, clean_email)
+    await verify_account_otp(db, clean_email, "reactivate_account", otp_code, commit=False)
 
     row = await AuthRepository.get_raw_user_by_email(db, clean_email)
     if not row:
@@ -1084,10 +1141,12 @@ async def reactivate_account_with_otp(
     if not getattr(row, "is_deactivated", False):
         raise ValueError("This account is already active. Please sign in normally.")
 
+    await db.execute(select(User.id).where(User.id == row.id).with_for_update())
     user = await AuthRepository.get_user_by_id_fresh(db, row.id)
-    if not user:
-        raise ValueError("Account not found.")
+    if not user or user.is_anonymized:
+        raise ValueError("This account has already been removed. Please register a new account.")
 
+    await db.execute(delete(AccountOTP).where(AccountOTP.email == clean_email))
     user.is_deactivated = False
     user.deactivated_at = None
     user.is_archived = False

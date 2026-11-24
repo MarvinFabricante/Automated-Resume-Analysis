@@ -20,7 +20,7 @@ from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Set
 from urllib.parse import unquote, urlparse
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, or_, select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.candidate import Candidate
@@ -96,7 +96,7 @@ def make_anonymous_token(seed_key: str) -> str:
     return f"Anonymized applicant #{digest}"
 
 
-async def delete_stored_file(file_ref: Optional[str]) -> bool:
+async def delete_stored_file(file_ref: Optional[str], *, strict: bool = False) -> bool:
     """
     Remove a stored resume/profile file from local disk and/or Supabase Storage.
     Returns True if a file was deleted (or confirmed removed), False if nothing to delete.
@@ -133,6 +133,8 @@ async def delete_stored_file(file_ref: Optional[str]) -> bool:
                 break
         except Exception as exc:
             logger.warning(f"[Retention] Could not delete local file {local_path}: {exc}")
+            if strict:
+                raise ValueError("We couldn't remove an old file. Please try again before starting fresh.") from exc
 
     # 2. Supabase Storage check (URL contains /storage/v1/object/ or looks like resumes/...)
     try:
@@ -152,8 +154,14 @@ async def delete_stored_file(file_ref: Optional[str]) -> bool:
             from app.utils.supabase_storage import delete_resume as sb_delete_resume
             if await sb_delete_resume(storage_path):
                 deleted = True
+            elif strict:
+                raise ValueError("Old file removal could not be confirmed.")
+        elif storage_path and not deleted and strict:
+            raise ValueError("Old file storage is unavailable.")
     except Exception as exc:
         logger.warning(f"[Retention] Could not delete remote storage file {cleaned}: {exc}")
+        if strict:
+            raise ValueError("We couldn't remove an old file. Please try again before starting fresh.") from exc
 
     return deleted
 
@@ -183,6 +191,7 @@ async def _anonymize_single_application(
     email_hash_val: Optional[str],
     now: datetime,
     dry_run: bool = False,
+    strict_files: bool = False,
 ) -> int:
     """
     Anonymize a single JobApplication while preserving audit & statistical fields:
@@ -197,7 +206,11 @@ async def _anonymize_single_application(
         return 1 if app.resume_url else 0
 
     if app.resume_url:
-        if await delete_stored_file(app.resume_url):
+        if await delete_stored_file(app.resume_url, strict=strict_files):
+            files_deleted += 1
+
+    if app.profile_image_url:
+        if await delete_stored_file(app.profile_image_url, strict=strict_files):
             files_deleted += 1
 
     # Preserve hash before scrubbing email
@@ -234,10 +247,42 @@ async def _anonymize_single_application(
     app.recommendations = None
     app.hr_shortlist_notes = None
     app.review_flag_reason = None
+    app.skills_reason = None
+    app.experience_reason = None
+    app.education_reason = None
+    app.certifications_reason = None
+    app.requirement_evaluations = None
+    app.highest_educational_attainment = None
+    app.hold_reason = None
     app.is_anonymized = True
     app.anonymized_token = anon_token
     app.email_hash = computed_hash
     app.messaging_closed_at = app.messaging_closed_at or now
+
+    # Preserve state changes and dates, but remove applicant identifiers and free text.
+    from app.models.status_history import ApplicationStatusHistory
+    from app.models.interview import Interview, InterviewLog, VoiceCallRecord
+    histories = await db.execute(select(ApplicationStatusHistory).where(ApplicationStatusHistory.application_id == app.id))
+    for history in histories.scalars().all():
+        if compute_email_hash(history.changed_by) == computed_hash:
+            history.changed_by = anon_token
+        history.reason = "[Anonymized per data retention policy]"
+        history.can_undo = False
+    interviews = await db.execute(select(Interview).where(Interview.job_application_id == app.id))
+    for interview in interviews.scalars().all():
+        interview.title = "Interview with anonymized applicant"
+        interview.description = None
+        interview.instructions = None
+        interview.verbal_notes = None
+        logs = await db.execute(select(InterviewLog).where(InterviewLog.interview_id == interview.id))
+        for log in logs.scalars().all():
+            log.details = "[Anonymized per data retention policy]"
+        calls = await db.execute(select(VoiceCallRecord).where(VoiceCallRecord.interview_id == interview.id))
+        for call in calls.scalars().all():
+            call.phone_number = "[anonymized]"
+            call.candidate_verbal_response = None
+            call.notes = None
+            call.call_sid = None
 
     # Scrub application thread messages, attachments, previews, and reports per retention rules
     thread_res = await db.execute(
@@ -260,7 +305,7 @@ async def _anonymize_single_application(
     )
     for msg in app_msgs_res.scalars().all():
         if getattr(msg, "attachment_url", None):
-            if await delete_stored_file(msg.attachment_url):
+            if await delete_stored_file(msg.attachment_url, strict=strict_files):
                 files_deleted += 1
         msg.content = "[Anonymized per data retention policy]"
         msg.attachment_url = None
@@ -276,11 +321,20 @@ async def anonymize_user_and_records(
     user: User,
     dry_run: bool = False,
     force_skip_active_check: bool = False,
+    strict_files: bool = False,
 ) -> Dict[str, Any]:
     """
     Anonymize a user account and all associated applications, resumes, messages, and HR notes.
     Used by both the retention job AND the fresh-start-before-purge registration flow.
     """
+    was_deactivated = bool(user.is_deactivated)
+    if not dry_run:
+        # Recovery and retention must never resurrect a concurrently purged account.
+        await db.execute(select(User.id).where(User.id == user.id).with_for_update())
+        await db.refresh(user)
+        if was_deactivated and not user.is_deactivated:
+            return {"anonymized": False, "skipped_already_anonymized": False,
+                    "skipped_active": True, "applications_anonymized": 0, "files_deleted": 0}
     now = datetime.utcnow()
     if getattr(user, "is_anonymized", False):
         return {
@@ -322,7 +376,7 @@ async def anonymize_user_and_records(
     for app in apps:
         if not getattr(app, "is_anonymized", False):
             files_deleted += await _anonymize_single_application(
-                db, app, anon_token, email_hash_val, now, dry_run=dry_run
+                db, app, anon_token, email_hash_val, now, dry_run=dry_run, strict_files=strict_files
             )
             apps_anonymized += 1
 
@@ -344,7 +398,7 @@ async def anonymize_user_and_records(
     # Delete resume files & scrub resume extracted text/metadata
     for r in resumes:
         if r.file_url:
-            if await delete_stored_file(r.file_url):
+            if await delete_stored_file(r.file_url, strict=strict_files):
                 files_deleted += 1
         r.filename = "[anonymized]"
         r.file_url = None
@@ -352,7 +406,7 @@ async def anonymize_user_and_records(
 
     # Delete profile image file if stored
     if user.profile_image_url:
-        if await delete_stored_file(user.profile_image_url):
+        if await delete_stored_file(user.profile_image_url, strict=strict_files):
             files_deleted += 1
 
     # Scrub candidate subclass profile PII
@@ -360,7 +414,7 @@ async def anonymize_user_and_records(
     cand = cand_res.scalar_one_or_none()
     if cand:
         if cand.resume_url:
-            if await delete_stored_file(cand.resume_url):
+            if await delete_stored_file(cand.resume_url, strict=strict_files):
                 files_deleted += 1
         cand.resume_url = None
         cand.current_job_title = None
@@ -378,7 +432,7 @@ async def anonymize_user_and_records(
     )
     for msg in msg_res.scalars().all():
         if getattr(msg, "attachment_url", None):
-            if await delete_stored_file(msg.attachment_url):
+            if await delete_stored_file(msg.attachment_url, strict=strict_files):
                 files_deleted += 1
         msg.content = "[Anonymized per data retention policy]"
         msg.attachment_url = None
@@ -407,6 +461,44 @@ async def anonymize_user_and_records(
         for note in notes_res.scalars().all():
             note.candidate_email = f"{anon_token.lower().replace(' ', '_').replace('#', '')}@anonymized.local"
             note.content = "[Anonymized per data retention policy]"
+
+    from app.models.audit_log import AuditLog
+    from app.models.notification import Notification
+    from app.models.account_otp import AccountOTP
+    from app.models.password_reset import PasswordReset
+    from app.utils.auth import hash_password
+    import secrets
+
+    notices = await db.execute(select(Notification).where(or_(
+        func.lower(func.trim(Notification.target_email)) == norm_email,
+        Notification.message.contains(user.email, autoescape=True),
+        Notification.message == f"{user.fullname} has joined the platform.",
+    )))
+    for notice in notices.scalars().all():
+        notice.target_email = None
+        notice.title = "Anonymized applicant activity"
+        notice.message = "[Anonymized per data retention policy]"
+
+    logs = await db.execute(select(AuditLog).where(or_(
+        AuditLog.user_id == user.id,
+        AuditLog.target.contains(user.email, autoescape=True),
+        AuditLog.details.contains(user.email, autoescape=True),
+        AuditLog.target.in_([f"Application ID: {app.id}" for app in apps]),
+    )))
+    for log in logs.scalars().all():
+        log.target = anon_token
+        log.details = "[Anonymized per data retention policy]"
+        log.ip_address = None
+    await db.execute(delete(AccountOTP).where(func.lower(func.trim(AccountOTP.email)) == norm_email))
+    from app.utils.cache import delete_cache, clear_cache_pattern
+    resets = await db.execute(select(PasswordReset).where(func.lower(func.trim(PasswordReset.email)) == norm_email))
+    for reset in resets.scalars().all():
+        await delete_cache(f"pwd_reset:{reset.token}")
+        await db.delete(reset)
+    await delete_cache(f"candidate:id:{user.id}")
+    await clear_cache_pattern("candidate_profile:")
+    await clear_cache_pattern("applicant_profile:")
+    user.password = hash_password(secrets.token_urlsafe(48))
 
     # Scrub User PII and release the email address for potential fresh re-registration
     anon_slug = anon_token.lower().replace(" ", "_").replace("#", "")

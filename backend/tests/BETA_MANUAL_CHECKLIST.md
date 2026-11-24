@@ -59,3 +59,15 @@ node node_modules/typescript/bin/tsc --noEmit
 ```
 
 The automated sample uses the supplied text; the original PDF and the browser checklist require separate manual verification. The existing startup migration `add_requirement_confirmations` supplies the two nullable JSON columns when absent. This patch adds no new API fields or migrations and performs no bulk updates to applications.
+
+## Deactivated account recovery
+
+- Register using a deactivated email with different capitalization/spaces: both recovery choices appear. Repeat via password login and Google registration.
+- With an active email, registration shows the usual already-registered message and sign-in link. Wrong login passwords do not show recovery choices.
+- Reactivate: paste a six-digit code; test a wrong code, expired code, five wrong attempts, and resend countdown. A valid code signs in to the original profile; withdrawn applications remain withdrawn.
+- Start fresh from login: the registration form retains the email and asks for new name/password. Both recovery choices remain available after submitting.
+- Start fresh: before verification and before clicking **Yes, start fresh**, the old data remains. Cancel at either step without deleting anything.
+- Confirm fresh start: old resume files, extracted text, contact details and personal history are removed; the new account is empty. HR sees only **Previous application on record (anonymized)** when the new applicant applies.
+- Check keyboard focus, code paste/autofill, loading/error/success states, and the dialog on a narrow mobile screen.
+- Deployment: from `backend`, run `python -m migrations.add_active_email_uniqueness` after the lifecycle migration. Roll back this index with `--downgrade` before rolling back lifecycle columns. Existing active emails that collide after trimming/lowercasing must be resolved before the index can be created; the migration never merges or deletes accounts.
+- API compatibility: existing registration success bodies and error-code aliases remain supported. Purging through `/auth/fresh-start` or `/auth/register` with `fresh_start: true` now requires `verification_token` from `/auth/fresh-start/verify` and `confirm_fresh_start: true`. Request the code through `/auth/fresh-start/request-otp`; unverified legacy purge requests are intentionally rejected.
