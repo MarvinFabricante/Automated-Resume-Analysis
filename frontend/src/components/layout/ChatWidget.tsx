@@ -400,11 +400,10 @@ const ChatWidget: React.FC = () => {
                             </span>
                           )}
                           <div
-                            className={`max-w-[85%] px-3.5 py-2 rounded-2xl text-xs whitespace-pre-wrap break-words ${
-                              isMe
-                                ? 'bg-[#D60041] text-white rounded-br-sm'
-                                : 'bg-white text-gray-800 border border-gray-200 rounded-bl-sm'
-                            }`}
+                            className={`max-w-[85%] px-3.5 py-2 rounded-2xl text-xs whitespace-pre-wrap break-words ${isMe
+                              ? 'bg-[#D60041] text-white rounded-br-sm'
+                              : 'bg-white text-gray-800 border border-gray-200 rounded-bl-sm'
+                              }`}
                           >
                             {msg.content || (msg.attachment_name ? `Attachment: ${msg.attachment_name}` : '')}
                           </div>
@@ -474,9 +473,8 @@ const ChatWidget: React.FC = () => {
           type="button"
           onClick={() => setIsOpen(!isOpen)}
           aria-label="Open messaging"
-          className={`${isOpen ? 'scale-0 opacity-0 pointer-events-none' : 'scale-100 opacity-100'} ${
-            isMobileScrolling ? 'translate-y-24 opacity-0 pointer-events-none' : 'translate-y-0'
-          } fixed bottom-5 right-5 sm:bottom-6 sm:right-6 transition-all duration-300 bg-gradient-to-tr from-[#B50037] via-[#D60041] to-[#FF2E63] text-white p-3.5 sm:p-4 rounded-2xl shadow-xl shadow-[#D60041]/25 flex items-center justify-center z-[999] cursor-pointer`}
+          className={`${isOpen ? 'scale-0 opacity-0 pointer-events-none' : 'scale-100 opacity-100'} ${isMobileScrolling ? 'translate-y-24 opacity-0 pointer-events-none' : 'translate-y-0'
+            } fixed bottom-5 right-5 sm:bottom-6 sm:right-6 transition-all duration-300 bg-gradient-to-tr from-[#B50037] via-[#D60041] to-[#FF2E63] text-white p-3.5 sm:p-4 rounded-2xl shadow-xl shadow-[#D60041]/25 flex items-center justify-center z-[999] cursor-pointer`}
         >
           <MessageSquare className="h-6 w-6" />
           {totalUnread > 0 && (

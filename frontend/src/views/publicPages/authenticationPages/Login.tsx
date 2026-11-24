@@ -232,12 +232,30 @@ const Login: React.FC = () => {
       handleRedirect(verifiedRole);
 
     } catch (err: any) {
-      const message = err.response?.data?.detail || "Invalid email or password";
+      const fallbackMessage = "We couldn't sign you in right now. Please try again in a few minutes.";
+      const status = err?.response?.status;
+      const detail = err?.response?.data?.detail;
+      const rawMessage =
+        typeof detail === 'string'
+          ? detail
+          : typeof detail?.message === 'string'
+            ? detail.message
+            : '';
+
+      const looksTechnical =
+        !err?.response ||
+        (typeof status === 'number' && status >= 500) ||
+        /sql|sqlalchemy|asyncpg|psycopg|undefinedtable|relation\s+"|column\s+"|syntax\s+error|traceback|exception|select\s+.*\s+from|insert\s+into|update\s+.*\s+set|delete\s+from|connection\s+refused|econnrefused/i.test(rawMessage);
+
+      const message = looksTechnical
+        ? fallbackMessage
+        : rawMessage || (status === 401 ? "Invalid email or password" : fallbackMessage);
+
       setModalState({
         isOpen: true,
         type: 'error',
         title: 'Login Failed',
-        message: message
+        message,
       });
     } finally {
       setLoading(false);
