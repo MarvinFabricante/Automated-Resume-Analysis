@@ -128,6 +128,8 @@ def evaluate_requirements(resume, job, normalize=normalize_skill_key, related_te
                 row.update(answer=answer, details=response.get("details", ""), years=response.get("years"))
                 row["status"] = "Does not meet" if answer == "no" else "Meets requirement"
                 row["source"] = "Confirmed by applicant"
+                if response.get("confirmed_at"):
+                    row["confirmed_at"] = response.get("confirmed_at")
             elif key in candidate_keys:
                 row.update(status="Meets requirement", source="Resume")
             else:

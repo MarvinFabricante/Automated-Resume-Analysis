@@ -26,10 +26,12 @@ import {
   useCancelInterviewMutation,
   useGetAvailableSlotsMutation,
   useGetHRInterviewersQuery,
+  useGetApplicationByIdQuery,
 } from '../../../redux/api/apiSlice';
 import { formatUtcLogTimestamp, extractMessageLogs } from '../../../utils/interviewUtils';
 import CustomMessagePreviewSection, { CustomMessageValues } from '../../notifications/CustomMessagePreviewSection';
 import MessageApplicantModal from './MessageApplicantModal';
+import RequirementEvidence from '../../common/RequirementEvidence';
 
 interface InterviewDetailsModalProps {
   isOpen: boolean;
@@ -58,6 +60,10 @@ const InterviewDetailsModal: React.FC<InterviewDetailsModalProps> = ({ isOpen, o
   const [cancelInterview, { isLoading: isCanceling }] = useCancelInterviewMutation();
   const [getSlots, { isLoading: isFetchingSlots }] = useGetAvailableSlotsMutation();
   const { data: interviewers = [] } = useGetHRInterviewersQuery();
+  const linkedApplicationId = interview?.job_application_id || interview?.application_id;
+  const { data: applicationDetails } = useGetApplicationByIdQuery(linkedApplicationId, {
+    skip: !isOpen || !interview || Boolean(interview.isGoogleEvent) || !linkedApplicationId,
+  });
 
   const [isEditing, setIsEditing] = useState<boolean>(false);
   const [isCancelConfirmOpen, setIsCancelConfirmOpen] = useState<boolean>(false);
@@ -431,6 +437,17 @@ const InterviewDetailsModal: React.FC<InterviewDetailsModalProps> = ({ isOpen, o
                     </div>
                   </div>
                 </div>
+              )}
+
+              {/* Applicant Clarification Answers for Interview Reference */}
+              {!isGoogleOnlyEvent && applicationDetails && (
+                <RequirementEvidence
+                  items={applicationDetails.requirement_evaluations}
+                  clarificationResponses={applicationDetails.clarification_responses}
+                  confirmedAt={applicationDetails.created_at || applicationDetails.date}
+                  title="Applicant Clarification Answers (Interview Reference)"
+                  interviewHint="Review these applicant-confirmed answers to ask follow-up questions during the interview."
+                />
               )}
 
               {/* Assigned HR Interviewer / Panelist Card */}

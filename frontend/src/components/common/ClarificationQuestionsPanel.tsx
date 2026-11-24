@@ -1,6 +1,23 @@
 import React from 'react';
-import { HelpCircle, AlertTriangle } from 'lucide-react';
+import { HelpCircle, AlertTriangle, Info } from 'lucide-react';
 import { ClarificationQuestion, parseRequirementAnswers } from '../../utils/clarificationQuestions';
+
+export const CLARIFICATION_HONESTY_REMINDER =
+  "Please answer honestly. Your answers may be used to guide your interview, so it is best to share only what is true. It's okay to answer 'No' or 'Some experience'. That will not automatically disqualify you.";
+
+export const CLARIFICATION_SUBMIT_CONFIRMATION =
+  'By submitting, you confirm your answers are true to the best of your knowledge.';
+
+export const ClarificationSubmitConfirmation: React.FC<{ className?: string }> = ({ className = '' }) => (
+  <p
+    role="note"
+    data-testid="clarification-submit-confirmation"
+    className={`flex items-start gap-2 text-xs sm:text-sm text-slate-700 bg-sky-50/80 border border-sky-200/80 rounded-xl px-3.5 py-2.5 leading-relaxed ${className}`.trim()}
+  >
+    <Info size={16} className="text-sky-700 shrink-0 mt-0.5" aria-hidden="true" />
+    <span>{CLARIFICATION_SUBMIT_CONFIRMATION}</span>
+  </p>
+);
 
 interface ClarificationQuestionsPanelProps {
   questions: ClarificationQuestion[];
@@ -52,6 +69,19 @@ const ClarificationQuestionsPanel: React.FC<ClarificationQuestionsPanelProps> = 
         <span className="self-start sm:self-center px-3 py-1 bg-amber-100 text-amber-800 rounded-full text-[10px] font-black uppercase tracking-wider border border-amber-200">
           Clarification Requested ({questions.length})
         </span>
+      </div>
+
+      <div
+        role="note"
+        aria-label="Honesty reminder"
+        data-testid="clarification-honesty-reminder"
+        className="mb-5 p-3.5 sm:p-4 bg-sky-50 border border-sky-200 rounded-2xl flex items-start gap-3 text-slate-800"
+      >
+        <Info size={18} className="text-sky-700 shrink-0 mt-0.5" aria-hidden="true" />
+        <p className="text-xs sm:text-sm leading-relaxed font-medium">
+          <span className="font-bold text-slate-900">Friendly reminder: </span>
+          {CLARIFICATION_HONESTY_REMINDER}
+        </p>
       </div>
 
       {reasons && reasons.length > 0 && (

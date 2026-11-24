@@ -14,7 +14,7 @@ import {
 import Header from '../../../components/layout/Header';
 import Footer from '../../../components/layout/Footer';
 import ApplicationProgressBar from '../../../components/common/ApplicationProgressBar';
-import ClarificationQuestionsPanel from '../../../components/common/ClarificationQuestionsPanel';
+import ClarificationQuestionsPanel, { ClarificationSubmitConfirmation } from '../../../components/common/ClarificationQuestionsPanel';
 import ExperienceGapAlert from '../../../components/common/ExperienceGapAlert';
 import ResumeTipsPanel, {
   ResumeReadabilityBanner,
@@ -547,6 +547,10 @@ const ApplicationForm: React.FC = () => {
                     Your background covers the key details for this role. You are ready to review and submit your application.
                   </p>
                 </div>
+              )}
+
+              {clarificationQuestions && clarificationQuestions.length > 0 && (
+                <ClarificationSubmitConfirmation />
               )}
 
               <div className="flex flex-col sm:flex-row justify-between items-center gap-4 pt-6 border-t border-slate-200">

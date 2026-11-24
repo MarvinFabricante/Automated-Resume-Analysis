@@ -196,6 +196,8 @@ async def get_applicant_comprehensive_profile(
             "match_score": app.match_score,
             "matched_skills": app.matched_skills or [],
             "missing_skills": app.missing_skills or [],
+            "requirement_evaluations": app.requirement_evaluations or [],
+            "clarification_responses": app.clarification_responses or [],
             "strengths": app.strengths or [],
             "weaknesses": app.weaknesses or [],
             "skills_score": app.skills_score,
