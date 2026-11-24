@@ -584,7 +584,8 @@ function parseGradedCertClient(text: string): { family: string; level: number; s
       const m = pat.exec(norm);
       if (m) {
         const rem = `${norm.slice(0, m.index)} ${norm.slice(m.index + m[0].length)}`.toLowerCase();
-        const subj = (rem.match(/[a-z0-9]+/g) || []).filter((t) => t.length >= 2 && !CLIENT_CERT_STOP.has(t)).join(' ');
+        const tokens: string[] = rem.match(/[a-z0-9]+/g) ?? [];
+        const subj = tokens.filter((t) => t.length >= 2 && !CLIENT_CERT_STOP.has(t)).join(' ');
         return { family: spec.family, level: lvl, subject: subj };
       }
     }
