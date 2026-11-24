@@ -373,7 +373,7 @@ async def create_tables():
     from app.models.resume import Resume
     from app.models.job_application import JobApplication
     from app.models.notification import Notification
-    from app.models.message import Message, ArchivedConversation
+    from app.models.message import Message, ArchivedConversation, ApplicationThread, MessageReport, ArchivedThread
     from app.models.password_reset import PasswordReset
     from app.models.interview import Interview, InterviewLog, VoiceCallRecord
     from app.models.system_config import SystemConfig, FormTemplate
@@ -394,6 +394,8 @@ async def create_tables():
             await upgrade_requirement_confirmations(conn)
             from migrations.add_interview_details import upgrade as upgrade_interview_details
             await upgrade_interview_details(conn)
+            from migrations.add_two_way_chat_threads import upgrade as upgrade_two_way_chat
+            await upgrade_two_way_chat(conn)
             await ensure_cascade_delete_constraints(conn)
             await ensure_performance_indexes(conn)
     except Exception as e:

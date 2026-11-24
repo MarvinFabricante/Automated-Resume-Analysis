@@ -49,6 +49,10 @@ celery_app.conf.update(
             "schedule": 86400.0,
             "kwargs": {"dry_run": False, "triggered_by": "scheduled"},
         },
+        "periodic_chat_email_digest": {
+            "task": "send_chat_email_digest_task",
+            "schedule": 900.0,
+        },
     },
 )
 

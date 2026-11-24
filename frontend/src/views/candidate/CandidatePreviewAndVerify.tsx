@@ -17,6 +17,9 @@ import ApplicationProgressBar from '../../components/common/ApplicationProgressB
 import ApplicationSuccessModal from '../../components/modals/shared/ApplicationSuccessModal';
 import ResumePreviewModal from '../../components/modals/shared/ResumePreviewModal';
 import ExperienceGapAlert from '../../components/common/ExperienceGapAlert';
+import ResumeTipsPanel, {
+  ResumeReadabilityBanner,
+} from '../../components/common/ResumeTipsPanel';
 import { useSubmitApplicationMutation } from '../../redux/api/apiSlice';
 import { formatApiErrorDetail, formatUploadOrParseError, toPositiveIntOrUndefined, toStringArray } from '../../utils/errorUtils';
 import {
@@ -506,6 +509,12 @@ const CandidatePreviewAndVerify: React.FC = () => {
           </div>
 
           <div className="space-y-6">
+
+            {/* Shared ATS Resume Tips & Non-Blocking Readability Check */}
+            {activeData?.readability_check && (
+              <ResumeReadabilityBanner readabilityCheck={activeData.readability_check} />
+            )}
+            <ResumeTipsPanel />
 
             {/* Uploaded Resume Document Review Card (REQ003 / TC-RES-009) */}
             <section className="bg-white p-6 sm:p-8 rounded-[32px] shadow-sm border border-slate-100 hover:shadow-md transition-shadow">

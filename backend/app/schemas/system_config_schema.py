@@ -191,3 +191,23 @@ class NotificationTemplatesUpdate(BaseModel):
 
 class NotificationTemplatesResetRequest(BaseModel):
     template_key: Optional[str] = None
+
+
+# ─── ATS-Friendly Resume Tips Configuration ──────────────────────────────────
+
+class ResumeTipsConfigResponse(BaseModel):
+    title: str
+    tooltip: str
+    intro: str
+    bullets: List[str]
+    honesty_reminder: str
+    apply_skills_reminder: str
+
+
+class ResumeTipsConfigUpdate(BaseModel):
+    title: Optional[str] = None
+    tooltip: Optional[str] = None
+    intro: Optional[str] = None
+    bullets: Optional[List[str]] = None
+    honesty_reminder: Optional[str] = None
+    apply_skills_reminder: Optional[str] = None

@@ -24,6 +24,10 @@ import RecruitmentTermsModal from '../../../components/modals/shared/Recruitment
 import ResumePreviewModal from '../../../components/modals/shared/ResumePreviewModal';
 import ApplicationProgressBar from '../../../components/common/ApplicationProgressBar';
 import ExperienceGapAlert from '../../../components/common/ExperienceGapAlert';
+import ResumeTipsPanel, {
+  ResumeReadabilityBanner,
+  ApplySkillsReminder,
+} from '../../../components/common/ResumeTipsPanel';
 import { Job } from '../../../types';
 import { formatUploadOrParseError } from '../../../utils/errorUtils';
 
@@ -556,6 +560,18 @@ const ApplyForJobPage: React.FC = () => {
 
         {/* Multi-step Application Progress Bar */}
         <ApplicationProgressBar currentStep={1} />
+
+        {/* ATS-Friendly Resume Tips, Required Skills Reminder & Readability Check */}
+        <div className="space-y-3 mb-6">
+          <ApplySkillsReminder
+            requiredSkills={job?.skills_requirements}
+            jobTitle={job?.title || job?.job_title}
+          />
+          <ResumeTipsPanel isNewUploadStep uploadResetKey={file?.name || ''} />
+          {extractedData?.readability_check && (
+            <ResumeReadabilityBanner readabilityCheck={extractedData.readability_check} />
+          )}
+        </div>
 
         <div className="bg-white rounded-[40px] shadow-xl shadow-slate-200/60 border border-slate-100 overflow-hidden relative">
           <div className="absolute top-0 right-0 w-64 h-64 bg-red-50 rounded-bl-[200px] -mr-20 -mt-20 opacity-50"></div>

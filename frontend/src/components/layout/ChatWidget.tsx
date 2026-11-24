@@ -1,10 +1,24 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { MessageSquare, Send, Search, ArrowLeft, X, Lock, CheckCheck, Clock } from 'lucide-react';
-import chatService from '../../services/chatService';
-import { useSelector, useDispatch } from 'react-redux';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import {
+  MessageSquare,
+  Send,
+  Search,
+  ArrowLeft,
+  X,
+  Lock,
+  CheckCheck,
+  Check,
+  Briefcase,
+} from 'lucide-react';
+import toast from 'react-hot-toast';
+import chatService, {
+  ApplicationThreadItem,
+  ThreadMessageItem,
+} from '../../services/chatService';
+import { useDispatch } from 'react-redux';
 import { WS_BASE_URL } from '../../services/api';
-import { RootState } from '../../redux/store';
 import { setUnreadMessagesCount } from '../../redux/slices/notificationSlice';
+import { decodeToken } from '../../utils/token';
 
 export interface ChatContactItem {
   id: number;
@@ -29,563 +43,451 @@ export interface ChatMessageItem {
 }
 
 const ChatWidget: React.FC = () => {
-    const dispatch = useDispatch();
-    const { profileImageUrl: myProfileImage } = useSelector((state: RootState) => state.auth);
-    const [isOpen, setIsOpen] = useState(false);
-    const [view, setView] = useState<'contacts' | 'chat'>('contacts');
-    const [contacts, setContacts] = useState<ChatContactItem[]>([]);
-    const [search, setSearch] = useState('');
-    const [activeContact, setActiveContact] = useState<ChatContactItem | null>(null);
-    const [messages, setMessages] = useState<ChatMessageItem[]>([]);
-    const [inputMessage, setInputMessage] = useState('');
-    const [loading, setLoading] = useState(false);
-    const [isMobileScrolling, setIsMobileScrolling] = useState(false);
-    const wsRef = useRef<WebSocket | null>(null);
-    const reconnectTimeoutRef = useRef<any>(null);
-    const messagesEndRef = useRef<HTMLDivElement>(null);
-    const activeContactRef = useRef<ChatContactItem | null>(null);
+  const dispatch = useDispatch();
+  const [isOpen, setIsOpen] = useState(false);
+  const [view, setView] = useState<'threads' | 'chat'>('threads');
+  const [threads, setThreads] = useState<ApplicationThreadItem[]>([]);
+  const [search, setSearch] = useState('');
+  const [activeThread, setActiveThread] = useState<ApplicationThreadItem | null>(null);
+  const [messages, setMessages] = useState<ThreadMessageItem[]>([]);
+  const [threadStatus, setThreadStatus] = useState<{
+    is_closed: boolean;
+    can_reply: boolean;
+    reason?: string | null;
+  }>({ is_closed: false, can_reply: true, reason: null });
+  const [inputMessage, setInputMessage] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [isSending, setIsSending] = useState(false);
+  const [isMobileScrolling, setIsMobileScrolling] = useState(false);
 
-    // Auto-close on mobile scroll/touch and smooth hide floater during active scrolling
-    useEffect(() => {
-        let scrollTimeout: any = null;
-        let lastScrollY = window.scrollY || window.pageYOffset || 0;
-        let touchStartY = 0;
+  const wsRef = useRef<WebSocket | null>(null);
+  const reconnectTimeoutRef = useRef<any>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const activeThreadRef = useRef<ApplicationThreadItem | null>(null);
 
-        const handleScroll = () => {
-            const currentScrollY = window.scrollY || window.pageYOffset || 0;
-            const diff = Math.abs(currentScrollY - lastScrollY);
+  const token = typeof localStorage !== 'undefined' ? localStorage.getItem('token') : null;
+  const decoded = decodeToken(token);
+  const currentUserRole = (
+    (typeof localStorage !== 'undefined' ? localStorage.getItem('role') : '') ||
+    decoded?.role ||
+    'Guest'
+  ).toUpperCase();
+  const currentUserId =
+    typeof localStorage !== 'undefined'
+      ? parseInt(localStorage.getItem('user_id') || '0', 10) || decoded?.id || 0
+      : decoded?.id || 0;
+  const isCandidate = currentUserRole === 'CANDIDATE';
 
-            if (window.innerWidth < 768) {
-                // If chat modal is open on mobile and user scrolls, close it immediately
-                if (isOpen && diff > 5) {
-                    setIsOpen(false);
-                }
+  useEffect(() => {
+    activeThreadRef.current = activeThread;
+  }, [activeThread]);
 
-                // Smoothly tuck floater button away during active mobile scroll
-                if (diff > 8) {
-                    setIsMobileScrolling(true);
-                    clearTimeout(scrollTimeout);
-                    scrollTimeout = setTimeout(() => {
-                        setIsMobileScrolling(false);
-                    }, 800);
-                }
-            }
-            lastScrollY = currentScrollY;
-        };
-
-        const handleTouchStart = (e: TouchEvent) => {
-            if (e.touches && e.touches[0]) {
-                touchStartY = e.touches[0].clientY;
-            }
-        };
-
-        const handleTouchMove = (e: TouchEvent) => {
-            if (window.innerWidth < 768 && isOpen) {
-                const target = e.target as HTMLElement | null;
-                const isInsideChat = target && target.closest && target.closest('.chat-window-container');
-                // Touching or swiping outside the chat window closes it immediately
-                if (!isInsideChat) {
-                    setIsOpen(false);
-                } else if (e.touches && e.touches[0]) {
-                    const currentY = e.touches[0].clientY;
-                    const isDragHeader = target && target.closest && target.closest('.chat-drag-header');
-                    // Swipe down gesture on drag header closes it
-                    if (isDragHeader && (currentY - touchStartY > 35)) {
-                        setIsOpen(false);
-                    }
-                }
-            }
-        };
-
-        window.addEventListener('scroll', handleScroll, { passive: true });
-        window.addEventListener('touchstart', handleTouchStart, { passive: true });
-        window.addEventListener('touchmove', handleTouchMove, { passive: true });
-
-        return () => {
-            window.removeEventListener('scroll', handleScroll);
-            window.removeEventListener('touchstart', handleTouchStart);
-            window.removeEventListener('touchmove', handleTouchMove);
-            if (scrollTimeout) clearTimeout(scrollTimeout);
-        };
-    }, [isOpen]);
-
-    // Sync ref with state
-    useEffect(() => {
-        activeContactRef.current = activeContact;
-    }, [activeContact]);
-
-    const token = typeof localStorage !== 'undefined' ? localStorage.getItem('token') : null;
-    const currentUserRole = typeof localStorage !== 'undefined' ? (localStorage.getItem('role') || 'Guest') : 'Guest';
-    const currentUserId = typeof localStorage !== 'undefined' ? parseInt(localStorage.getItem('user_id') || '0', 10) : 0;
-
-    const scrollToBottom = () => {
-        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-    };
-
-    useEffect(() => {
-        scrollToBottom();
-    }, [messages]);
-
-    // WebSocket Connection
-    useEffect(() => {
-        if (!token) return;
-
-        let shouldReconnect = true;
-
-        const connectWebSocket = () => {
-            if (!shouldReconnect) return;
-
-            const ws = new WebSocket(`${WS_BASE_URL}/chat/ws?token=${encodeURIComponent(token)}`);
-            wsRef.current = ws;
-            
-            ws.onmessage = (event) => {
-                const data = JSON.parse(event.data);
-                
-                if (data.type === 'new_message') {
-                    setMessages(prev => {
-                        if (data.client_id) {
-                            const index = prev.findIndex(m => m.client_id === data.client_id);
-                            if (index !== -1) {
-                                const newMessages = [...prev];
-                                newMessages[index] = { ...data, is_optimistic: false };
-                                return newMessages;
-                            }
-                        }
-
-                        if (prev.find(m => m.id === data.id)) return prev;
-                        
-                        const currentActive = activeContactRef.current;
-                        const isRelevant = currentActive && (
-                            data.sender_id === currentActive.id || 
-                            data.receiver_id === currentActive.id ||
-                            data.sender_id === currentUserId
-                        );
-                        
-                        if (isRelevant) {
-                            return [...prev, data];
-                        }
-                        return prev;
-                    });
-                    
-                    fetchContacts();
-                } else if (data.type === 'status') {
-                    setContacts(prev => prev.map(c => 
-                        c.id === data.user_id ? { ...c, is_online: data.is_online } : c
-                    ));
-                    const currentActive = activeContactRef.current;
-                    if (currentActive && currentActive.id === data.user_id) {
-                        setActiveContact(prev => prev ? ({ ...prev, is_online: data.is_online }) : null);
-                    }
-                }
-            };
-
-            ws.onclose = () => {
-                if (shouldReconnect) {
-                    reconnectTimeoutRef.current = setTimeout(connectWebSocket, 5000);
-                }
-            };
-        };
-
-        connectWebSocket();
-
-        return () => {
-            shouldReconnect = false;
-            if (reconnectTimeoutRef.current) {
-                clearTimeout(reconnectTimeoutRef.current);
-                reconnectTimeoutRef.current = null;
-            }
-            if (wsRef.current) {
-                const socket = wsRef.current;
-                socket.onmessage = null;
-                socket.onclose = null;
-                socket.onerror = null;
-
-                if (socket.readyState === WebSocket.CONNECTING) {
-                    socket.onopen = () => socket.close();
-                } else if (socket.readyState === WebSocket.OPEN) {
-                    socket.close();
-                }
-            }
-            wsRef.current = null;
-        };
-    }, [token, currentUserId]);
-
-    const fetchContacts = async () => {
-        try {
-            const res = await chatService.getContacts(token, search);
-            const userList: ChatContactItem[] = res.data.users || [];
-            setContacts(userList);
-            const totalUnread = userList.reduce((acc, c) => acc + (c.unread_count || 0), 0);
-            dispatch(setUnreadMessagesCount(totalUnread));
-        } catch (error) {
-            console.error("Failed to fetch contacts", error);
+  useEffect(() => {
+    let scrollTimeout: any = null;
+    let lastScrollY = window.scrollY || window.pageYOffset || 0;
+    const handleScroll = () => {
+      const currentScrollY = window.scrollY || window.pageYOffset || 0;
+      const diff = Math.abs(currentScrollY - lastScrollY);
+      if (window.innerWidth < 768) {
+        if (isOpen && diff > 5) setIsOpen(false);
+        if (diff > 8) {
+          setIsMobileScrolling(true);
+          clearTimeout(scrollTimeout);
+          scrollTimeout = setTimeout(() => setIsMobileScrolling(false), 800);
         }
+      }
+      lastScrollY = currentScrollY;
     };
-
-    useEffect(() => {
-        if (token) {
-            fetchContacts();
-        }
-    }, [token, isOpen, search]);
-
-    const openChat = async (contact: ChatContactItem) => {
-        setActiveContact(contact);
-        setView('chat');
-        setLoading(true);
-        try {
-            const res = await chatService.getMessages(contact.id, token);
-            setMessages(res.data || []);
-            
-            // Mark as read locally in contacts list and sync Redux unread counter
-            setContacts(prev => {
-                const updated = prev.map(c =>
-                    c.id === contact.id ? { ...c, unread_count: 0 } : c
-                );
-                const totalUnread = updated.reduce((acc, c) => acc + (c.unread_count || 0), 0);
-                dispatch(setUnreadMessagesCount(totalUnread));
-                return updated;
-            });
-        } catch (error) {
-            console.error("Failed to fetch messages", error);
-        } finally {
-            setLoading(false);
-        }
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => {
+      window.removeEventListener('scroll', handleScroll);
+      if (scrollTimeout) clearTimeout(scrollTimeout);
     };
+  }, [isOpen]);
 
-    const sendMessage = async () => {
-        if (!inputMessage.trim() || !activeContact) return;
-        
-        const content = inputMessage;
-        const clientId = `client_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-        
-        // Clear input immediately for "smooth" feel
-        setInputMessage('');
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages.length]);
 
-        const optimisticMessage: ChatMessageItem = {
-            sender_id: currentUserId,
-            receiver_id: activeContact.id,
-            content: content,
-            timestamp: new Date().toISOString(),
-            is_optimistic: true,
-            client_id: clientId
-        };
-
-        // Add to messages state immediately (Optimistic Update)
-        setMessages(prev => [...prev, optimisticMessage]);
-
-        const messageData = {
-            type: 'send_message',
-            receiver_id: activeContact.id,
-            content: content,
-            client_id: clientId
-        };
-
-        // Try sending via WebSocket
-        if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-            wsRef.current.send(JSON.stringify(messageData));
-        } else {
-            // Fallback to HTTP if WebSocket is not connected
-            try {
-                const res = await chatService.sendMessage(activeContact.id, content, token);
-                
-                // Replace optimistic message with real one
-                setMessages(prev => prev.map(m => 
-                    m.client_id === clientId ? { ...res.data, is_optimistic: false } : m
-                ));
-                fetchContacts();
-            } catch (error) {
-                console.error("Failed to send message via HTTP", error);
-                // Optionally remove the optimistic message if it failed
-                setMessages(prev => prev.filter(m => m.client_id !== clientId));
-            }
-        }
-    };
-
-    const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-        if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault();
-            sendMessage();
-        }
-    };
-
-    // Don't render chat for guests
-    if (!token || currentUserRole.toUpperCase() === 'GUEST') {
-        return null;
+  const fetchThreads = useCallback(async () => {
+    if (!token) return;
+    try {
+      const res = await chatService.getThreads(token, search);
+      const list: ApplicationThreadItem[] = res.data?.threads || [];
+      setThreads(list);
+      const totalUnread = Number(
+        res.data?.total_unread ?? list.reduce((acc, t) => acc + (t.unread_count || 0), 0)
+      );
+      dispatch(setUnreadMessagesCount(totalUnread));
+    } catch (error) {
+      console.error('Failed to fetch threads:', error);
     }
+  }, [token, search, dispatch]);
 
-    return (
-        <>
-            {/* Mobile Backdrop Overlay - closes modal when tapped or scrolled outside */}
-            {isOpen && (
-                <div 
-                    className="md:hidden fixed inset-0 bg-black/40 backdrop-blur-[2px] z-[998] transition-opacity animate-in fade-in duration-200"
-                    onClick={() => setIsOpen(false)}
-                    onTouchMove={() => setIsOpen(false)}
-                    onTouchStart={() => setIsOpen(false)}
-                    aria-label="Close messaging overlay"
-                />
-            )}
+  useEffect(() => {
+    if (token) fetchThreads();
+  }, [token, isOpen, search, fetchThreads]);
 
-            <div className="fixed bottom-3 right-3 sm:bottom-6 sm:right-6 z-[999] font-['Inter'] pointer-events-auto">
-                {/* Chat Window */}
-                {isOpen && (
-                    <div className="chat-window-container bg-white w-[calc(100vw-1.5rem)] sm:w-[360px] h-[75vh] sm:h-[520px] max-h-[560px] rounded-[24px] shadow-2xl border border-gray-100 flex flex-col overflow-hidden mb-3 sm:mb-4 animate-in slide-in-from-bottom-5 duration-300">
-                        {/* Mobile Pull / Swipe Indicator */}
-                        <div 
-                            className="chat-drag-header md:hidden bg-gray-50 hover:bg-gray-100 py-1.5 flex justify-center cursor-pointer border-b border-gray-100 transition-colors"
-                            onClick={() => setIsOpen(false)}
-                            title="Tap to close"
-                        >
-                            <div className="w-10 h-1 bg-gray-300 rounded-full" />
-                        </div>
-                        
-                        {view === 'contacts' ? (
-                            <>
-                                {/* Contacts Header */}
-                                <div className="bg-gradient-to-r from-[#B50037] to-[#D60041] p-3.5 sm:p-4 flex justify-between items-center shadow-sm text-white">
-                                    <div className="flex items-center gap-2.5">
-                                        <div className="w-8 h-8 rounded-xl bg-white/20 flex items-center justify-center shadow-xs">
-                                            <MessageSquare className="h-4 w-4 text-white" />
-                                        </div>
-                                        <div>
-                                            <h3 className="text-white font-bold text-sm tracking-tight leading-none">Messages</h3>
-                                            <span className="text-[10px] text-pink-100 font-medium">Recruiter Inbox</span>
-                                        </div>
-                                    </div>
-                                    <div className="flex items-center gap-1">
-                                        <button 
-                                            onClick={() => setIsOpen(false)} 
-                                            className="p-1.5 hover:bg-white/20 active:scale-95 rounded-xl text-white transition-all cursor-pointer"
-                                            title="Close messages"
-                                            aria-label="Close messages"
-                                        >
-                                            <X className="h-4 w-4" />
-                                        </button>
-                                    </div>
-                                </div>
-                                
-                                {/* Search */}
-                                <div className="p-3 bg-gray-50 border-b border-gray-100">
-                                    <div className="relative">
-                                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 h-4 w-4" />
-                                        <input 
-                                            type="text" 
-                                            placeholder="Search contacts..." 
-                                            value={search}
-                                            onChange={(e) => setSearch(e.target.value)}
-                                            className="w-full bg-white border border-gray-200 rounded-full py-2 pl-9 pr-4 text-sm focus:outline-none focus:border-[#D60041] focus:ring-1 focus:ring-[#D60041] transition-all"
-                                        />
-                                    </div>
-                                </div>
+  useEffect(() => {
+    if (!token) return;
+    let shouldReconnect = true;
 
-                                {/* Contacts List */}
-                                <div className="flex-1 overflow-y-auto">
-                                    {contacts.filter(c => !c.is_archived).length > 0 ? (
-                                        contacts.filter(c => !c.is_archived).map(contact => (
-                                            <div 
-                                                key={contact.id} 
-                                                onClick={() => openChat(contact)}
-                                                className="p-3 border-b border-gray-50 flex items-center gap-3 hover:bg-gray-50 cursor-pointer transition-colors relative"
-                                            >
-                                                <div className="relative shrink-0">
-                                                    {contact.profile_image_url ? (
-                                                        <img src={contact.profile_image_url} alt={contact.fullname} className="w-12 h-12 rounded-full object-cover border border-gray-100" />
-                                                    ) : (
-                                                        <div className="w-12 h-12 bg-pink-50 rounded-full flex items-center justify-center text-[#D60041] font-bold text-lg">
-                                                            {contact.fullname ? contact.fullname.charAt(0).toUpperCase() : 'U'}
-                                                        </div>
-                                                    )}
-                                                    <div className={`absolute bottom-0 right-0 w-3 h-3 border-2 border-white rounded-full ${contact.is_online ? 'bg-green-500' : 'bg-gray-300'}`}></div>
-                                                </div>
-                                                <div className="flex-1 min-w-0">
-                                                    <div className="flex items-center justify-between gap-1 mb-0.5">
-                                                        <div className="flex items-center gap-1.5 min-w-0">
-                                                            <h4 className="text-sm font-bold text-gray-900 truncate">{contact.fullname}</h4>
-                                                            {contact.role && (
-                                                                <span className="shrink-0 text-[9px] font-bold px-1.5 py-0.2 rounded uppercase tracking-wider bg-pink-50 text-[#D60041] border border-pink-100">
-                                                                    {contact.role}
-                                                                </span>
-                                                            )}
-                                                        </div>
-                                                        {contact.last_message_time && (
-                                                            <span className="text-[10px] text-gray-400 font-medium shrink-0 ml-1">
-                                                                {new Date(contact.last_message_time).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
-                                                            </span>
-                                                        )}
-                                                    </div>
-                                                    <p className="text-xs text-gray-500 truncate">{contact.last_message || <span className="italic text-gray-400">No messages yet</span>}</p>
-                                                </div>
-                                                {Boolean(contact.unread_count && contact.unread_count > 0) && (
-                                                    <div className="w-5 h-5 bg-[#D60041] rounded-full flex items-center justify-center text-[10px] text-white font-bold shadow-sm">
-                                                        {contact.unread_count}
-                                                    </div>
-                                                )}
-                                            </div>
-                                        ))
-                                    ) : (
-                                        <div className="p-8 text-center text-gray-500 text-sm">
-                                            No contacts found.
-                                        </div>
-                                    )}
-                                </div>
-                            </>
-                        ) : (
-                            <>
-                                {/* Chat Header */}
-                                <div className="bg-white border-b border-gray-100 p-3.5 sm:p-4 flex justify-between items-center shadow-xs">
-                                    <div className="flex items-center gap-2.5 min-w-0">
-                                        <button 
-                                            onClick={() => setView('contacts')} 
-                                            className="p-1.5 hover:bg-gray-100 active:scale-95 rounded-xl text-gray-500 transition-colors shrink-0 cursor-pointer"
-                                            title="Back to contacts"
-                                        >
-                                            <ArrowLeft className="h-4 w-4" />
-                                        </button>
-                                        <div className="relative shrink-0">
-                                            {activeContact?.profile_image_url ? (
-                                                <img src={activeContact.profile_image_url} alt={activeContact.fullname} className="w-8 h-8 rounded-full object-cover border border-gray-100" />
-                                            ) : (
-                                                <div className="w-8 h-8 bg-pink-50 rounded-full flex items-center justify-center text-[#D60041] font-bold text-xs">
-                                                    {activeContact?.fullname?.charAt(0).toUpperCase()}
-                                                </div>
-                                            )}
-                                            <div className={`absolute bottom-0 right-0 w-2.5 h-2.5 border-2 border-white rounded-full ${activeContact?.is_online ? 'bg-green-500' : 'bg-gray-300'}`}></div>
-                                        </div>
-                                        <div className="min-w-0">
-                                            <div className="flex items-center gap-1.5">
-                                                <h4 className="text-sm font-bold text-gray-900 leading-tight truncate">{activeContact?.fullname}</h4>
-                                                {activeContact?.role && (
-                                                    <span className="shrink-0 text-[9px] font-bold px-1.5 py-0.2 rounded uppercase tracking-wider bg-pink-50 text-[#D60041] border border-pink-100">
-                                                        {activeContact.role}
-                                                    </span>
-                                                )}
-                                            </div>
-                                            <div className="flex items-center gap-1 mt-0.5">
-                                                <span className={`w-1.5 h-1.5 rounded-full ${activeContact?.is_online ? 'bg-emerald-500 animate-pulse' : 'bg-gray-300'}`} />
-                                                <p className={`text-[11px] font-semibold ${activeContact?.is_online ? 'text-emerald-600' : 'text-gray-400'}`}>
-                                                    {activeContact?.is_online ? 'Active Now' : 'Offline'}
-                                                </p>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div className="flex items-center gap-1">
-                                        <button 
-                                            onClick={() => setIsOpen(false)} 
-                                            className="p-1.5 hover:bg-gray-100 active:scale-95 rounded-xl text-gray-400 hover:text-gray-600 transition-colors cursor-pointer"
-                                            title="Close chat"
-                                            aria-label="Close chat"
-                                        >
-                                            <X className="h-4 w-4" />
-                                        </button>
-                                    </div>
-                                </div>
+    const connectWebSocket = () => {
+      if (!shouldReconnect) return;
+      const ws = new WebSocket(`${WS_BASE_URL}/chat/ws?token=${encodeURIComponent(token)}`);
+      wsRef.current = ws;
 
-                                {/* Messages Area */}
-                                <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-[#F8F9FA]">
-                                    {loading ? (
-                                        <div className="text-center text-gray-400 text-xs mt-4">Loading messages...</div>
-                                    ) : messages.length === 0 ? (
-                                        <div className="text-center text-gray-400 text-xs mt-4">No messages yet. Send a message to start the conversation!</div>
-                                    ) : (
-                                        messages.map((msg, idx) => {
-                                            const isMe = msg.sender_id === currentUserId;
-                                            const showAvatar = idx === 0 || messages[idx - 1].sender_id !== msg.sender_id;
+      ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (data.type === 'new_message') {
+            const cur = activeThreadRef.current;
+            if (cur && String(cur.id) === String(data.thread_id)) {
+              setMessages((prev) =>
+                prev.some((m) => String(m.id) === String(data.id)) ? prev : [...prev, data]
+              );
+            }
+            fetchThreads();
+          } else if (data.type === 'messages_seen') {
+            const seenIds = new Set((data.message_ids || []).map((id: any) => String(id)));
+            setMessages((prev) =>
+              prev.map((m) =>
+                seenIds.has(String(m.id)) ? { ...m, is_read: true, read_at: data.read_at } : m
+              )
+            );
+          }
+        } catch {
+          // ignore
+        }
+      };
 
-                                            return (
-                                                <div key={idx} className={`flex ${isMe ? 'justify-end' : 'justify-start'} ${showAvatar ? 'mt-4' : 'mt-1'} animate-in fade-in slide-in-from-bottom-2 duration-300`}>
-                                                    <div className={`flex items-end gap-1.5 max-w-[90%] ${isMe ? 'flex-row-reverse' : 'flex-row'}`}>
-                                                        {/* Avatar */}
-                                                        <div className={`w-6 h-6 rounded-lg overflow-hidden shrink-0 shadow-sm border border-gray-100 flex items-center justify-center bg-gray-50 ${!showAvatar ? 'opacity-0' : 'opacity-100'}`}>
-                                                            {isMe ? (
-                                                                myProfileImage ? <img src={myProfileImage} className="w-full h-full object-cover" /> : <div className="text-[8px] font-bold text-[#D60041]">{localStorage.getItem('fullname')?.charAt(0) || 'M'}</div>
-                                                            ) : (
-                                                                activeContact?.profile_image_url ? <img src={activeContact.profile_image_url} className="w-full h-full object-cover" /> : <div className="text-[8px] font-bold text-gray-400">{activeContact?.fullname?.charAt(0)}</div>
-                                                            )}
-                                                        </div>
+      ws.onclose = () => {
+        if (shouldReconnect) {
+          reconnectTimeoutRef.current = setTimeout(connectWebSocket, 5000);
+        }
+      };
+    };
 
-                                                        <div className="group flex flex-col">
-                                                            <div className={`px-4 py-2 rounded-[18px] text-[13px] font-medium shadow-2xs transition-all hover:shadow-xs ${isMe
-                                                                    ? 'bg-[#D60041] text-white rounded-tr-none'
-                                                                    : 'bg-white text-gray-800 border border-gray-100 rounded-tl-none'
-                                                                }`}>
-                                                                {msg.content}
-                                                            </div>
-                                                            <div className={`flex items-center gap-1 mt-1 px-1 ${isMe ? 'justify-end' : 'justify-start'}`}>
-                                                                <span className="text-[10px] sm:text-[11px] font-medium text-gray-400">
-                                                                    {new Date(msg.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
-                                                                </span>
-                                                                {isMe && (
-                                                                    msg.is_optimistic ? (
-                                                                        <span className="text-[10px] font-semibold text-pink-600 flex items-center gap-0.5">
-                                                                            <Clock size={10} className="animate-spin" />
-                                                                            <span>Sending</span>
-                                                                        </span>
-                                                                    ) : (
-                                                                        <CheckCheck size={11} className="text-[#D60041]" />
-                                                                    )
-                                                                )}
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            );
-                                        })
-                                    )}
-                                    <div ref={messagesEndRef} />
-                                </div>
+    connectWebSocket();
 
-                                {/* Input Area */}
-                                {currentUserRole.toUpperCase() !== 'CANDIDATE' ? (
-                                    <div className="p-3.5 sm:p-4 bg-white border-t border-gray-100">
-                                        <div className="relative flex items-center gap-2">
-                                            <input
-                                                type="text"
-                                                value={inputMessage}
-                                                onChange={(e) => setInputMessage(e.target.value)}
-                                                onKeyDown={handleKeyDown}
-                                                placeholder="Type a message..."
-                                                aria-label="Type a message"
-                                                className="w-full bg-gray-50 border border-gray-200/80 rounded-2xl py-2.5 px-3.5 text-xs sm:text-sm focus:ring-2 focus:ring-pink-100 focus:bg-white transition-all outline-none font-medium placeholder:text-gray-400"
-                                            />
-                                            <button 
-                                                onClick={sendMessage}
-                                                disabled={!inputMessage.trim()}
-                                                aria-label="Send message"
-                                                className="p-2.5 bg-[#D60041] hover:bg-[#b50037] text-white rounded-xl transition-all shadow-md shadow-pink-100 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer shrink-0"
-                                            >
-                                                <Send className="h-4 w-4" />
-                                            </button>
-                                        </div>
-                                    </div>
-                                ) : (
-                                    <div className="p-3 bg-gray-50/80 border-t border-gray-100 flex items-center justify-center">
-                                        <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white border border-gray-200/80 text-gray-600 text-xs font-semibold shadow-2xs">
-                                            <Lock className="w-3.5 h-3.5 text-[#D60041] shrink-0" />
-                                            <span>Read-only conversation. Only HR can message.</span>
-                                        </div>
-                                    </div>
-                                )}
-                            </>
-                        )}
+    return () => {
+      shouldReconnect = false;
+      if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
+      if (wsRef.current) {
+        try {
+          wsRef.current.close();
+        } catch {
+          // ignore
+        }
+      }
+    };
+  }, [token, fetchThreads]);
+
+  const openThread = async (thread: ApplicationThreadItem) => {
+    setActiveThread(thread);
+    setView('chat');
+    setLoading(true);
+    try {
+      const res = await chatService.getThreadMessages(thread.id, token, true);
+      setMessages(res.data?.messages || []);
+      if (res.data?.thread_status) {
+        setThreadStatus(res.data.thread_status);
+      } else {
+        setThreadStatus({
+          is_closed: thread.is_closed,
+          can_reply: thread.can_reply,
+          reason: thread.closure_reason,
+        });
+      }
+      setThreads((prev) => {
+        const updated = prev.map((t) => (t.id === thread.id ? { ...t, unread_count: 0 } : t));
+        dispatch(
+          setUnreadMessagesCount(updated.reduce((acc, t) => acc + (t.unread_count || 0), 0))
+        );
+        return updated;
+      });
+    } catch {
+      toast.error('Failed to load messages.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const sendMessage = async () => {
+    const trimmed = inputMessage.trim();
+    if (!trimmed || !activeThread || isSending) return;
+    setIsSending(true);
+    try {
+      const res = await chatService.sendThreadMessage(activeThread.id, trimmed, null, 'general', token);
+      setMessages((prev) =>
+        prev.some((m) => String(m.id) === String(res.data?.id)) ? prev : [...prev, res.data]
+      );
+      setInputMessage('');
+      fetchThreads();
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail || 'Could not send reply.');
+    } finally {
+      setIsSending(false);
+    }
+  };
+
+  if (!token || currentUserRole === 'GUEST') {
+    return null;
+  }
+
+  const visibleThreads = threads.filter((t) => !t.is_archived);
+  const totalUnread = visibleThreads.reduce((sum, t) => sum + (t.unread_count || 0), 0);
+
+  return (
+    <>
+      {isOpen && (
+        <div
+          className="md:hidden fixed inset-0 bg-black/40 backdrop-blur-[2px] z-[998]"
+          onClick={() => setIsOpen(false)}
+          aria-label="Close messaging overlay"
+        />
+      )}
+
+      <div className="fixed bottom-3 right-3 sm:bottom-6 sm:right-6 z-[999] font-['Inter'] pointer-events-auto">
+        {isOpen && (
+          <div className="chat-window-container bg-white w-[calc(100vw-1.5rem)] sm:w-[360px] h-[75vh] sm:h-[520px] max-h-[560px] rounded-[24px] shadow-2xl border border-gray-100 flex flex-col overflow-hidden mb-3 sm:mb-4">
+            {view === 'threads' ? (
+              <>
+                <div className="bg-gradient-to-r from-[#B50037] to-[#D60041] p-3.5 sm:p-4 flex justify-between items-center text-white">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-xl bg-white/20 flex items-center justify-center">
+                      <MessageSquare className="h-4 w-4 text-white" />
                     </div>
+                    <div>
+                      <h3 className="text-white font-bold text-sm leading-none">Messages</h3>
+                      <span className="text-[10px] text-pink-100 font-medium">
+                        {isCandidate ? 'Messages from HR' : 'Applicant Threads'}
+                      </span>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setIsOpen(false)}
+                    className="p-1.5 hover:bg-white/20 rounded-xl text-white cursor-pointer"
+                    aria-label="Close messages"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+
+                {visibleThreads.length > 0 && (
+                  <div className="p-3 bg-gray-50 border-b border-gray-100">
+                    <div className="relative">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 h-4 w-4" />
+                      <input
+                        type="text"
+                        placeholder={isCandidate ? 'Search position...' : 'Search applicant or position...'}
+                        value={search}
+                        onChange={(e) => setSearch(e.target.value)}
+                        className="w-full bg-white border border-gray-200 rounded-full py-1.5 pl-9 pr-4 text-xs focus:outline-none focus:border-[#D60041]"
+                      />
+                    </div>
+                  </div>
                 )}
 
-                {/* Toggle Button */}
-                <button
-                    onClick={() => setIsOpen(!isOpen)}
-                    aria-label="Open messaging"
-                    className={`${isOpen ? 'scale-0 opacity-0 pointer-events-none' : 'scale-100 opacity-100'} 
-                        ${isMobileScrolling ? 'translate-y-24 opacity-0 pointer-events-none' : 'translate-y-0'}
-                        fixed bottom-5 right-5 sm:bottom-6 sm:right-6 transition-all duration-300 ease-out bg-gradient-to-tr from-[#B50037] via-[#D60041] to-[#FF2E63] text-white p-3.5 sm:p-4 rounded-2xl shadow-xl shadow-[#D60041]/25 flex items-center justify-center group z-[999] active:scale-95 hover:shadow-2xl hover:shadow-[#D60041]/35 cursor-pointer`}
-                >
-                    <MessageSquare className="h-6 w-6 group-hover:rotate-6 transition-transform" />
-                    {contacts.some(c => (c.unread_count || 0) > 0) && (
-                        <span className="absolute -top-1 -right-1 w-4 h-4 bg-[#D60041] border-2 border-white rounded-full animate-pulse"></span>
-                    )}
-                </button>
-            </div>
-        </>
-    );
+                <div className="flex-1 overflow-y-auto">
+                  {visibleThreads.length > 0 ? (
+                    visibleThreads.map((thr) => (
+                      <div
+                        key={thr.id}
+                        onClick={() => openThread(thr)}
+                        className="p-3 border-b border-gray-50 flex items-center gap-3 hover:bg-gray-50 cursor-pointer"
+                      >
+                        <div className="w-10 h-10 bg-pink-50 rounded-xl flex items-center justify-center text-[#D60041] font-bold text-sm shrink-0">
+                          {isCandidate ? (
+                            <Briefcase size={16} />
+                          ) : (
+                            (thr.candidate_name || 'A').charAt(0).toUpperCase()
+                          )}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between gap-1">
+                            <h4 className="text-xs font-bold text-gray-900 truncate">
+                              {isCandidate ? thr.job_title : thr.candidate_name}
+                            </h4>
+                            {thr.last_message_time && (
+                              <span className="text-[10px] text-gray-400 shrink-0">
+                                {new Date(thr.last_message_time).toLocaleTimeString([], {
+                                  hour: '2-digit',
+                                  minute: '2-digit',
+                                })}
+                              </span>
+                            )}
+                          </div>
+                          {!isCandidate && (
+                            <p className="text-[10px] font-semibold text-[#D60041] truncate">
+                              {thr.job_title}
+                            </p>
+                          )}
+                          <p className="text-xs text-gray-500 truncate mt-0.5">
+                            {thr.last_message || 'Conversation started'}
+                          </p>
+                        </div>
+                        {thr.unread_count > 0 && (
+                          <span className="min-w-[20px] h-5 bg-[#D60041] rounded-full flex items-center justify-center text-[10px] text-white font-bold px-1.5">
+                            {thr.unread_count}
+                          </span>
+                        )}
+                      </div>
+                    ))
+                  ) : (
+                    <div className="p-8 text-center text-gray-500 text-xs space-y-2">
+                      <MessageSquare className="w-8 h-8 mx-auto text-gray-300" />
+                      <p className="font-bold text-gray-700">
+                        {isCandidate ? 'No messages from HR yet' : 'No active threads'}
+                      </p>
+                      <p className="leading-relaxed">
+                        {isCandidate
+                          ? 'HR will message you here if they need anything. You will get a notification.'
+                          : 'Use "Message applicant" on any applicant profile, application, shortlist, or interview to start a thread.'}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="bg-white border-b border-gray-100 p-3.5 flex justify-between items-center">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <button
+                      type="button"
+                      onClick={() => setView('threads')}
+                      className="p-1.5 hover:bg-gray-100 rounded-xl text-gray-500 cursor-pointer shrink-0"
+                    >
+                      <ArrowLeft className="h-4 w-4" />
+                    </button>
+                    <div className="min-w-0">
+                      <h4 className="text-xs font-black text-gray-900 truncate">
+                        {isCandidate ? activeThread?.job_title : activeThread?.candidate_name}
+                      </h4>
+                      <p className="text-[10px] text-gray-500 truncate">
+                        {isCandidate ? 'Message from HR' : activeThread?.job_title}
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setIsOpen(false)}
+                    className="p-1.5 hover:bg-gray-100 rounded-xl text-gray-400 cursor-pointer"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+
+                <div className="flex-1 overflow-y-auto p-3.5 space-y-3 bg-[#F8F9FA]">
+                  {loading ? (
+                    <div className="text-center text-gray-400 text-xs mt-4">Loading...</div>
+                  ) : (
+                    messages.map((msg, idx) => {
+                      const isMe = msg.sender_id === currentUserId;
+                      const isFromHR = ['HR', 'ADMIN', 'SUPERADMIN'].includes(
+                        (msg.sender_role || '').toUpperCase()
+                      );
+                      return (
+                        <div
+                          key={msg.id || idx}
+                          className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}
+                        >
+                          {(isFromHR || !isMe) && msg.sender_name && (
+                            <span className="text-[10px] font-bold text-slate-500 mb-0.5 px-1">
+                              {msg.sender_name}
+                              {isFromHR ? ' • HR' : ''}
+                            </span>
+                          )}
+                          <div
+                            className={`max-w-[85%] px-3.5 py-2 rounded-2xl text-xs whitespace-pre-wrap break-words ${
+                              isMe
+                                ? 'bg-[#D60041] text-white rounded-br-sm'
+                                : 'bg-white text-gray-800 border border-gray-200 rounded-bl-sm'
+                            }`}
+                          >
+                            {msg.content || (msg.attachment_name ? `Attachment: ${msg.attachment_name}` : '')}
+                          </div>
+                          <div className="flex items-center gap-1 mt-0.5 px-1 text-[10px] text-gray-400">
+                            <span>
+                              {new Date(msg.timestamp).toLocaleTimeString([], {
+                                hour: '2-digit',
+                                minute: '2-digit',
+                              })}
+                            </span>
+                            {isMe && (
+                              msg.is_read ? (
+                                <span className="inline-flex items-center gap-0.5 text-emerald-600 font-semibold">
+                                  <CheckCheck size={10} /> Seen
+                                </span>
+                              ) : (
+                                <Check size={10} />
+                              )
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                  <div ref={messagesEndRef} />
+                </div>
+
+                {!threadStatus.is_closed && threadStatus.can_reply ? (
+                  <div className="p-3 bg-white border-t border-gray-100 flex items-center gap-2">
+                    <input
+                      type="text"
+                      value={inputMessage}
+                      maxLength={2000}
+                      onChange={(e) => setInputMessage(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && !e.shiftKey) {
+                          e.preventDefault();
+                          sendMessage();
+                        }
+                      }}
+                      placeholder="Write a reply..."
+                      className="flex-1 bg-gray-50 border border-gray-200 rounded-xl py-2 px-3 text-xs outline-none focus:bg-white focus:border-[#D60041]"
+                    />
+                    <button
+                      type="button"
+                      onClick={sendMessage}
+                      disabled={!inputMessage.trim() || isSending}
+                      className="p-2 bg-[#D60041] text-white rounded-xl disabled:opacity-40 cursor-pointer"
+                    >
+                      <Send className="h-4 w-4" />
+                    </button>
+                  </div>
+                ) : (
+                  <div className="p-3 bg-gray-50 border-t border-gray-100 flex items-center justify-center">
+                    <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white border border-gray-200 text-gray-600 text-xs font-semibold">
+                      <Lock className="w-3.5 h-3.5 text-[#D60041]" />
+                      <span>{threadStatus.reason || 'This conversation is closed'}</span>
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        )}
+
+        <button
+          type="button"
+          onClick={() => setIsOpen(!isOpen)}
+          aria-label="Open messaging"
+          className={`${isOpen ? 'scale-0 opacity-0 pointer-events-none' : 'scale-100 opacity-100'} ${
+            isMobileScrolling ? 'translate-y-24 opacity-0 pointer-events-none' : 'translate-y-0'
+          } fixed bottom-5 right-5 sm:bottom-6 sm:right-6 transition-all duration-300 bg-gradient-to-tr from-[#B50037] via-[#D60041] to-[#FF2E63] text-white p-3.5 sm:p-4 rounded-2xl shadow-xl shadow-[#D60041]/25 flex items-center justify-center z-[999] cursor-pointer`}
+        >
+          <MessageSquare className="h-6 w-6" />
+          {totalUnread > 0 && (
+            <span className="absolute -top-1.5 -right-1.5 min-w-[20px] h-5 px-1 bg-slate-900 border-2 border-white rounded-full text-[10px] font-black flex items-center justify-center">
+              {totalUnread}
+            </span>
+          )}
+        </button>
+      </div>
+    </>
+  );
 };
 
 export default ChatWidget;

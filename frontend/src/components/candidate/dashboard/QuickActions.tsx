@@ -36,7 +36,7 @@ const QuickActions: React.FC = () => {
     {
       icon: MessageSquare,
       label: 'Messages',
-      desc: 'Chat with our hiring team',
+      desc: 'Messages from HR',
       path: '/candidate/messages',
       iconColor: 'text-purple-600',
       iconBg: 'bg-purple-50 border-purple-100',

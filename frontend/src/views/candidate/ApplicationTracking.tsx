@@ -41,6 +41,8 @@ import Header from '../../components/layout/Header';
 import Sidebar from '../../components/layout/Sidebar';
 import HelpTooltip from '../../components/common/HelpTooltip';
 import CandidateRescheduleModal, { isInterviewMissed } from '../../components/modals/candidate/CandidateRescheduleModal';
+import ApplicationThreadPanel from '../../components/chat/ApplicationThreadPanel';
+import { ApplicationThreadItem } from '../../services/chatService';
 
 interface TimelineStep {
   label: string;
@@ -66,6 +68,7 @@ const ApplicationTracking: React.FC = () => {
   const [withdrawReason, setWithdrawReason] = useState('');
   const [withdrawFeedback, setWithdrawFeedback] = useState<string | null>(null);
   const [withdrawApplication, { isLoading: isWithdrawing }] = useWithdrawApplicationMutation();
+  const [activeAppThread, setActiveAppThread] = useState<ApplicationThreadItem | null>(null);
 
   const { user, userId } = useSelector((state: RootState) => state.auth);
   const email = typeof user === 'string' ? user : (user as any)?.email;
@@ -440,14 +443,25 @@ const ApplicationTracking: React.FC = () => {
                     jobDetails.status === 'Reviewed' ? 'bg-blue-500 shadow-[0_0_10px_rgba(59,130,246,0.5)]' :
                       'bg-amber-500 shadow-[0_0_10px_rgba(245,158,11,0.5)] animate-pulse'
                   }`} />
-                <button
-                  type="button"
-                  onClick={() => navigate('/candidate/messages')}
-                  title="Message Talent Acquisition Coordinator"
-                  className="p-3 bg-white hover:bg-[#D10043] hover:text-white rounded-xl shadow-2xs border border-slate-200 text-slate-600 transition-all active:scale-95 cursor-pointer"
-                >
-                  <MessageSquare size={18} />
-                </button>
+                {activeAppThread && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      document
+                        .getElementById('application-messages-section')
+                        ?.scrollIntoView({ behavior: 'smooth' });
+                    }}
+                    className="inline-flex items-center gap-1.5 px-3 py-2 bg-rose-50 hover:bg-[#D10043] text-[#D10043] hover:text-white rounded-xl border border-rose-200 text-xs font-bold transition-all cursor-pointer"
+                  >
+                    <MessageSquare size={14} />
+                    <span>Message from HR</span>
+                    {(activeAppThread.unread_count || 0) > 0 && (
+                      <span className="px-1.5 py-0.2 rounded-full bg-[#D10043] text-white text-[10px] font-black">
+                        {activeAppThread.unread_count}
+                      </span>
+                    )}
+                  </button>
+                )}
               </div>
             </div>
 
@@ -831,6 +845,19 @@ const ApplicationTracking: React.FC = () => {
                   </div>
                 )}
               </div>
+
+              {/* Per-Application Two-Way Thread (HR-initiated only) */}
+              {activeApplication?.id && (
+                <ApplicationThreadPanel
+                  applicationId={activeApplication.id}
+                  jobTitle={jobDetails.role}
+                  viewerRole="CANDIDATE"
+                  onThreadUpdated={(thr) => setActiveAppThread(thr)}
+                  onOpenFullInbox={(threadId) =>
+                    navigate(threadId ? `/candidate/messages?thread=${threadId}` : '/candidate/messages')
+                  }
+                />
+              )}
             </div>
 
             {/* Sidebar Cards */}
@@ -931,14 +958,20 @@ const ApplicationTracking: React.FC = () => {
                       </button>
                     )}
 
-                    <button
-                      type="button"
-                      onClick={() => navigate('/candidate/messages')}
-                      className="w-full py-2.5 px-4 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl font-bold text-xs uppercase tracking-wider transition-all flex items-center justify-center gap-2 cursor-pointer"
-                    >
-                      <MessageSquare size={13} />
-                      <span>Contact Recruiter</span>
-                    </button>
+                    {activeAppThread && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          document
+                            .getElementById('application-messages-section')
+                            ?.scrollIntoView({ behavior: 'smooth' })
+                        }
+                        className="w-full py-2.5 px-4 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl font-bold text-xs uppercase tracking-wider transition-all flex items-center justify-center gap-2 cursor-pointer"
+                      >
+                        <MessageSquare size={13} />
+                        <span>View Message from HR</span>
+                      </button>
+                    )}
                   </div>
 
                   <div className="flex items-center justify-center gap-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-wider pt-1">

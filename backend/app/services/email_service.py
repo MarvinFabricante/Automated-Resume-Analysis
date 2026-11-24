@@ -1190,6 +1190,89 @@ async def send_hr_message_notification_email(
     return await _send_email_redis_first(to_email, subject, body, "hr_message_notification")
 
 
+async def send_chat_digest_email(
+    to_email: str,
+    recipient_name: str,
+    items: list,
+    is_hr: bool = False,
+) -> bool:
+    """
+    Send ONE consolidated email digest summarizing unread chat messages across
+    one or more application threads (not one email per message).
+    Each item in `items` is a dict:
+      { "job_title": str, "unread_count": int, "latest_sender": str, "latest_preview": str }
+    """
+    if not to_email or not items:
+        return False
+
+    total_unread = sum(int(i.get("unread_count", 1)) for i in items)
+    base_url = (
+        os.getenv("PUBLIC_BASE_URL")
+        or os.getenv("PUBLIC_FRONTEND_URL")
+        or os.getenv("FRONTEND_URL", "http://localhost:5173").split(",")[0].strip()
+    ).rstrip("/")
+    inbox_path = "/hr/messages" if is_hr else "/candidate/messages"
+    inbox_url = f"{base_url}{inbox_path}"
+
+    subject = (
+        f"You have {total_unread} unread message{'s' if total_unread != 1 else ''} | Mariwasa Recruitment"
+    )
+
+    rows_html = ""
+    for item in items:
+        job_title = html.escape(str(item.get("job_title") or "Application"))
+        sender = html.escape(str(item.get("latest_sender") or ("Applicant" if is_hr else "Mariwasa HR")))
+        count = int(item.get("unread_count", 1))
+        preview = html.escape(str(item.get("latest_preview") or ""))
+        if len(preview) > 160:
+            preview = preview[:157] + "..."
+        rows_html += f"""
+        <div style="background:#f8fafc;border:1px solid #e2e8f0;border-left:4px solid #D60041;border-radius:10px;padding:14px 16px;margin-bottom:12px;">
+            <div style="font-size:13px;font-weight:700;color:#0f172a;margin-bottom:4px;">
+                {job_title} <span style="font-size:11px;font-weight:700;color:#D60041;">({count} new)</span>
+            </div>
+            <div style="font-size:12px;color:#64748b;margin-bottom:6px;">Latest from <strong>{sender}</strong></div>
+            <div style="font-size:13px;color:#334155;line-height:1.5;">{preview}</div>
+        </div>
+        """
+
+    safe_recipient = html.escape(recipient_name or ("HR Team" if is_hr else "Applicant"))
+    body = f"""
+    <!DOCTYPE html>
+    <html>
+    <head><meta charset="utf-8"></head>
+    <body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;background-color:#f1f5f9;margin:0;padding:20px;color:#1e293b;">
+        <div style="max-width:580px;margin:0 auto;background:#ffffff;border-radius:14px;overflow:hidden;border:1px solid #e2e8f0;">
+            <div style="background:linear-gradient(135deg,#D60041 0%,#900028 100%);color:#ffffff;padding:24px 28px;">
+                <p style="margin:0 0 4px 0;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;opacity:0.9;">
+                    Message Digest
+                </p>
+                <h2 style="margin:0;font-size:20px;font-weight:800;">
+                    {total_unread} Unread Message{'s' if total_unread != 1 else ''} in Mariwasa Recruitment
+                </h2>
+            </div>
+            <div style="padding:28px;">
+                <p style="margin:0 0 16px 0;font-size:15px;">Hello <strong>{safe_recipient}</strong>,</p>
+                <p style="margin:0 0 18px 0;font-size:14px;color:#475569;">
+                    Here is a summary of your unread messages. Sign in to the recruitment portal to view the full conversation and reply.
+                </p>
+                {rows_html}
+                <div style="text-align:center;margin:24px 0 8px 0;">
+                    <a href="{inbox_url}" style="display:inline-block;background-color:#D60041;color:#ffffff;padding:12px 28px;border-radius:24px;text-decoration:none;font-weight:700;font-size:14px;">
+                        Open Messages &rarr;
+                    </a>
+                </div>
+            </div>
+            <div style="background:#f8fafc;border-top:1px solid #e2e8f0;padding:16px 28px;text-align:center;font-size:11px;color:#94a3b8;">
+                Mariwasa Siam Ceramics, Inc. &bull; Recruitment Portal Message Digest
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+    return await _send_email_redis_first(to_email, subject, body, "chat_email_digest")
+
+
 async def send_otp_email(to_email: str, otp_code: str, purpose: str = "reactivate_account") -> bool:
     """Send a 6-digit verification OTP code valid for 10 minutes."""
     if purpose == "delete_account":

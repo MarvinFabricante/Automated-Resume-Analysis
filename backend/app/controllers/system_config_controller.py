@@ -12,7 +12,8 @@ from app.schemas.system_config_schema import (
     UserRoleResponse, RoleUpdate,
     FormTemplateResponse, FormTemplateCreate, FormTemplateUpdate,
     SystemPerformanceResponse,
-    NotificationTemplatesUpdate, NotificationTemplatesResetRequest
+    NotificationTemplatesUpdate, NotificationTemplatesResetRequest,
+    ResumeTipsConfigResponse, ResumeTipsConfigUpdate
 )
 from app.services.system_config_service import system_config_service
 from app.services import message_template_service
@@ -365,6 +366,52 @@ async def reset_notification_templates(
         details=f"Reset notification templates ({payload.template_key or 'all'}) to defaults",
     )
     return {"templates": templates}
+
+
+# ─── ATS-Friendly Resume Tips (Public Read, Admin Edit) ──────────────────────
+
+@router.get("/resume-tips", response_model=ResumeTipsConfigResponse)
+async def get_resume_tips(db: AsyncSession = Depends(get_db)):
+    """Public endpoint returning applicant-facing ATS-friendly resume tips."""
+    return await system_config_service.get_resume_tips_config(db)
+
+
+@router.put("/resume-tips", response_model=ResumeTipsConfigResponse)
+async def update_resume_tips(
+    payload: ResumeTipsConfigUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(require_role("ADMIN")),
+):
+    """Admin-only endpoint to customize applicant-facing ATS resume tips."""
+    updates = payload.model_dump(exclude_unset=True)
+    result = await system_config_service.update_resume_tips_config(
+        db, updates, user_id=current_user.get("id")
+    )
+    await audit_service.record_activity(
+        db=db,
+        user_id=current_user.get("id"),
+        action="UPDATE_RESUME_TIPS",
+        target="ATS Resume Tips",
+        details="Admin updated applicant-facing ATS-friendly resume tips",
+    )
+    return result
+
+
+@router.post("/resume-tips/reset", response_model=ResumeTipsConfigResponse)
+async def reset_resume_tips(
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(require_role("ADMIN")),
+):
+    """Admin-only endpoint to restore default ATS resume tips."""
+    result = await system_config_service.reset_resume_tips_config(db, user_id=current_user.get("id"))
+    await audit_service.record_activity(
+        db=db,
+        user_id=current_user.get("id"),
+        action="RESET_RESUME_TIPS",
+        target="ATS Resume Tips",
+        details="Admin reset applicant-facing ATS-friendly resume tips to defaults",
+    )
+    return result
 
 
 # ─── System Performance ───────────────────────────────────────────────────────

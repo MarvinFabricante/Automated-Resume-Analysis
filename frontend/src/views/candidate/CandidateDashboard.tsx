@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Helmet } from 'react-helmet-async';
 import { useNavigate } from '@/utils/navigation';
 import { useSelector } from 'react-redux';
@@ -10,8 +10,10 @@ import {
   Bookmark,
   TrendingUp,
   Search,
-  X
+  X,
+  MessageSquare
 } from 'lucide-react';
+import chatService, { ApplicationThreadItem } from '../../services/chatService';
 
 import Header from '../../components/layout/Header';
 import Sidebar from '../../components/layout/Sidebar';
@@ -45,6 +47,38 @@ const CandidateDashboard: React.FC = () => {
     candidateIdentifier,
     { skip: !candidateIdentifier, pollingInterval: 10000 }
   );
+
+  // HR-started message threads for applicant's applications
+  const [hrThreads, setHrThreads] = useState<ApplicationThreadItem[]>([]);
+  const [totalUnreadFromHR, setTotalUnreadFromHR] = useState<number>(0);
+
+  useEffect(() => {
+    const token = typeof localStorage !== 'undefined' ? localStorage.getItem('token') : null;
+    if (!token) return;
+    let active = true;
+    chatService
+      .getThreads(token)
+      .then((res) => {
+        if (!active) return;
+        const list: ApplicationThreadItem[] = res.data?.threads || [];
+        setHrThreads(list);
+        setTotalUnreadFromHR(
+          Number(res.data?.total_unread ?? list.reduce((sum, t) => sum + (t.unread_count || 0), 0))
+        );
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [applications.length]);
+
+  const threadsByAppId = useMemo(() => {
+    const map: Record<string, ApplicationThreadItem> = {};
+    hrThreads.forEach((t) => {
+      map[String(t.application_id)] = t;
+    });
+    return map;
+  }, [hrThreads]);
 
   // Active Interviews calculation
   const activeInterviews = useMemo(() => {
@@ -232,6 +266,38 @@ const CandidateDashboard: React.FC = () => {
 
           </div>
 
+          {/* MESSAGE FROM HR BANNER (only shown when HR has started at least one thread) */}
+          {hrThreads.length > 0 && (
+            <div className="bg-white border border-rose-200/80 rounded-2xl sm:rounded-3xl p-4 sm:p-5 shadow-xs mb-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+              <div className="flex items-start gap-3.5 min-w-0">
+                <div className="w-10 h-10 rounded-xl bg-rose-50 text-[#D10043] border border-rose-100 flex items-center justify-center shrink-0">
+                  <MessageSquare size={18} />
+                </div>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-sm font-black text-slate-900">Message from HR</span>
+                    {totalUnreadFromHR > 0 && (
+                      <span className="px-2 py-0.5 rounded-full bg-[#D10043] text-white text-[10px] font-black">
+                        {totalUnreadFromHR} unread
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-slate-600 mt-0.5 truncate">
+                    {hrThreads[0].job_title}: {hrThreads[0].last_message || 'HR sent you a message.'}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => navigate(`/candidate/messages?thread=${hrThreads[0].id}`)}
+                className="px-4 py-2 rounded-xl bg-[#D10043] hover:bg-slate-900 text-white font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer shrink-0 self-end sm:self-auto"
+              >
+                <span>View Message</span>
+                <ChevronRight size={14} />
+              </button>
+            </div>
+          )}
+
           {/* NEXT ACTION PROMINENT CARD */}
           {activeInterviews.length > 0 ? (
             <div className="bg-gradient-to-r from-purple-900 via-slate-900 to-slate-900 text-white rounded-2xl sm:rounded-3xl p-5 sm:p-6 shadow-md mb-6 sm:mb-8 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border border-purple-800/40">
@@ -350,7 +416,7 @@ const CandidateDashboard: React.FC = () => {
                   <div className="h-24 bg-slate-50 rounded-2xl" />
                 </div>
               ) : applications.length > 0 ? (
-                <ApplicationList applications={applications} />
+                <ApplicationList applications={applications} threadsByAppId={threadsByAppId} />
               ) : (
                 <div className="bg-white border border-slate-200/80 rounded-2xl sm:rounded-3xl p-6 sm:p-10 shadow-xs text-center space-y-4">
                   <div className="w-14 h-14 bg-slate-50 rounded-2xl flex items-center justify-center mx-auto text-slate-300 border border-slate-100">

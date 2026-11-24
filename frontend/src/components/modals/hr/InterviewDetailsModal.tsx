@@ -29,6 +29,7 @@ import {
 } from '../../../redux/api/apiSlice';
 import { formatUtcLogTimestamp, extractMessageLogs } from '../../../utils/interviewUtils';
 import CustomMessagePreviewSection, { CustomMessageValues } from '../../notifications/CustomMessagePreviewSection';
+import MessageApplicantModal from './MessageApplicantModal';
 
 interface InterviewDetailsModalProps {
   isOpen: boolean;
@@ -62,6 +63,7 @@ const InterviewDetailsModal: React.FC<InterviewDetailsModalProps> = ({ isOpen, o
   const [isCancelConfirmOpen, setIsCancelConfirmOpen] = useState<boolean>(false);
   const [cancelReason, setCancelReason] = useState<string>('');
   const [errorMsg, setErrorMsg] = useState<string>('');
+  const [showMessageModal, setShowMessageModal] = useState<boolean>(false);
   const [customMsg, setCustomMsg] = useState<CustomMessageValues>({
     customEmailSubject: '',
     customEmailMessage: '',
@@ -406,6 +408,16 @@ const InterviewDetailsModal: React.FC<InterviewDetailsModalProps> = ({ isOpen, o
                         {interview.job_title || 'Application Position'}
                       </p>
                     </div>
+                    {(interview.job_application_id || interview.application_id) && (
+                      <button
+                        type="button"
+                        onClick={() => setShowMessageModal(true)}
+                        className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-900 hover:bg-[#D60041] text-white text-xs font-bold transition-colors cursor-pointer shrink-0"
+                      >
+                        <MessageSquare size={13} />
+                        <span>Message applicant</span>
+                      </button>
+                    )}
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4 pt-4 border-t border-gray-200/60">
@@ -954,6 +966,14 @@ const InterviewDetailsModal: React.FC<InterviewDetailsModalProps> = ({ isOpen, o
           )}
         </div>
       </div>
+
+      <MessageApplicantModal
+        isOpen={showMessageModal}
+        onClose={() => setShowMessageModal(false)}
+        applicationId={interview.job_application_id || interview.application_id || null}
+        candidateName={interview.candidate_name}
+        jobTitle={interview.job_title}
+      />
     </div>
   );
 };

@@ -26,7 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.candidate import Candidate
 from app.models.candidate_note import HRCandidateNote
 from app.models.job_application import JobApplication
-from app.models.message import Message
+from app.models.message import Message, ApplicationThread, MessageReport
 from app.models.resume import Resume
 from app.models.retention_run_log import RetentionRunLog
 from app.models.user import User
@@ -239,6 +239,35 @@ async def _anonymize_single_application(
     app.email_hash = computed_hash
     app.messaging_closed_at = app.messaging_closed_at or now
 
+    # Scrub application thread messages, attachments, previews, and reports per retention rules
+    thread_res = await db.execute(
+        select(ApplicationThread).where(ApplicationThread.application_id == app.id)
+    )
+    thread = thread_res.scalar_one_or_none()
+    if thread:
+        thread.last_message_preview = "[Anonymized per data retention policy]"
+        rep_res = await db.execute(select(MessageReport).where(MessageReport.thread_id == thread.id))
+        for rep in rep_res.scalars().all():
+            rep.reason = "[Anonymized per data retention policy]"
+
+    app_msgs_res = await db.execute(
+        select(Message).where(
+            or_(
+                Message.application_id == app.id,
+                Message.thread_id == thread.id if thread else False,
+            )
+        )
+    )
+    for msg in app_msgs_res.scalars().all():
+        if getattr(msg, "attachment_url", None):
+            if await delete_stored_file(msg.attachment_url):
+                files_deleted += 1
+        msg.content = "[Anonymized per data retention policy]"
+        msg.attachment_url = None
+        msg.attachment_name = None
+        msg.attachment_type = None
+        msg.attachment_size = None
+
     return files_deleted
 
 
@@ -348,7 +377,27 @@ async def anonymize_user_and_records(
         select(Message).where(or_(Message.sender_id == user.id, Message.receiver_id == user.id))
     )
     for msg in msg_res.scalars().all():
+        if getattr(msg, "attachment_url", None):
+            if await delete_stored_file(msg.attachment_url):
+                files_deleted += 1
         msg.content = "[Anonymized per data retention policy]"
+        msg.attachment_url = None
+        msg.attachment_name = None
+        msg.attachment_type = None
+        msg.attachment_size = None
+
+    # Scrub previews on threads owned by this user and any message reports
+    user_threads_res = await db.execute(
+        select(ApplicationThread).where(ApplicationThread.candidate_id == user.id)
+    )
+    for thr in user_threads_res.scalars().all():
+        thr.last_message_preview = "[Anonymized per data retention policy]"
+
+    user_reports_res = await db.execute(
+        select(MessageReport).where(MessageReport.reporter_id == user.id)
+    )
+    for rep in user_reports_res.scalars().all():
+        rep.reason = "[Anonymized per data retention policy]"
 
     # Scrub HR candidate notes containing PII
     if norm_email:

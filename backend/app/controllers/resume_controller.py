@@ -12,6 +12,23 @@ from app.utils.cache import cache_response, clear_cache_pattern
 
 router = APIRouter(prefix="/resumes", tags=["Resumes"])
 
+
+@router.get("/ats-template", tags=["Resumes"])
+async def download_ats_resume_template():
+    """
+    Public endpoint: download a one-page, ATS-friendly DOCX resume template
+    (single column, standard font, no tables or images, fictional placeholder content).
+    """
+    from app.services.ats_template_service import build_ats_friendly_resume_docx
+    docx_bytes = build_ats_friendly_resume_docx()
+    return StreamingResponse(
+        io.BytesIO(docx_bytes),
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        headers={
+            "Content-Disposition": 'attachment; filename="ATS_Friendly_Resume_Guide_Template.docx"'
+        },
+    )
+
 @router.post("/", response_model=ResumeResponse, status_code=status.HTTP_201_CREATED)
 async def create_resume(resume_in: ResumeCreate, db: AsyncSession = Depends(get_db)):
     """

@@ -15,6 +15,9 @@ import Footer from '../../../components/layout/Footer';
 import ResumePreviewModal from '../../../components/modals/shared/ResumePreviewModal';
 import ApplicationProgressBar from '../../../components/common/ApplicationProgressBar';
 import ExperienceGapAlert from '../../../components/common/ExperienceGapAlert';
+import ResumeTipsPanel, {
+  ResumeReadabilityBanner,
+} from '../../../components/common/ResumeTipsPanel';
 import { broadcastAtsUpdate } from '../../../utils/realtimeSync';
 import { formatApiErrorDetail, formatUploadOrParseError, toPositiveIntOrUndefined, toStringArray } from '../../../utils/errorUtils';
 import {
@@ -524,6 +527,12 @@ const PreviewAndVerifyPage: React.FC = () => {
         </div>
 
         <div className="space-y-6">
+
+          {/* Shared ATS Resume Tips & Post-Upload Readability Check */}
+          {activeData?.readability_check && (
+            <ResumeReadabilityBanner readabilityCheck={activeData.readability_check} />
+          )}
+          <ResumeTipsPanel />
 
           {/* Uploaded Resume Document Review Card (REQ003 / TC-RES-009) */}
           <section className="bg-white p-6 sm:p-8 rounded-[32px] shadow-sm border border-slate-100 hover:shadow-md transition-shadow">
