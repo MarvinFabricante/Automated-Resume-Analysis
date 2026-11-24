@@ -82,7 +82,7 @@ async def async_analyze_application(application_id: int):
         hash_resume = {k: v for k, v in resume_data.items() if k not in ("id", "application_id")}
         hash_payload = json.dumps({"resume": hash_resume, "job": job_data}, sort_keys=True).encode("utf-8")
         content_hash = hashlib.sha256(hash_payload).hexdigest()
-        cache_key = f"ai_analysis:v7:{content_hash}"
+        cache_key = f"ai_analysis:v8:{content_hash}"
         
         cached_result = await get_cache(cache_key)
         
@@ -475,6 +475,39 @@ def retrain_ml_model_task(min_new_samples: int = 5, force: bool = False) -> dict
     except Exception as e:
         logger.error(f"[Celery] ML Retraining task failed: {e}")
         return {"status": "error", "error": str(e)}
+
+
+@celery_app.task(name="run_retention_anonymization_task")
+def run_retention_anonymization_task(dry_run: bool = False, triggered_by: str = "scheduled") -> dict:
+    """
+    Scheduled Celery job to anonymize/purge personal data past the configured retention window
+    (default 12 months), preserving audit/statistics without PII and skipping active applicants.
+    """
+    async def _run():
+        from app.services.retention_service import run_retention_anonymization
+        async with async_session() as db:
+            log = await run_retention_anonymization(
+                db=db,
+                dry_run=dry_run,
+                triggered_by=triggered_by,
+            )
+            return {
+                "run_log_id": log.id,
+                "dry_run": log.dry_run,
+                "retention_months": log.retention_months,
+                "candidates_evaluated": log.candidates_evaluated,
+                "candidates_anonymized": log.candidates_anonymized,
+                "applications_anonymized": log.applications_anonymized,
+                "files_deleted": log.files_deleted,
+                "skipped_active": log.skipped_active,
+                "status": log.status,
+            }
+
+    try:
+        return _run_async_task(_run())
+    except Exception as e:
+        logger.error(f"[Celery] Retention anonymization task failed: {e}")
+        return {"status": "FAILED", "error": str(e)}
 
 
 def get_task_session_maker():

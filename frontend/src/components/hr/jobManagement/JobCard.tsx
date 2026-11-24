@@ -12,6 +12,8 @@ import {
   Users,
   Wallet,
   Calendar,
+  Lock,
+  Play,
 } from 'lucide-react';
 import { Job, DEFAULT_JOB_SCORING_WEIGHTS } from '../../../types';
 import {
@@ -24,6 +26,9 @@ interface JobCardProps {
   job: Job;
   onEdit: (job: Job) => void;
   onView: (job: Job) => void;
+  onCloseJob?: (jobId: string | number | undefined, title: string) => void;
+  onReopenJob?: (jobId: string | number | undefined, title: string) => void;
+  onPublishJob?: (jobId: string | number | undefined, title: string) => void;
   onArchive: (jobId: string | number | undefined, title: string) => void;
   onUnarchive: (jobId: string | number | undefined, title: string) => void;
   onDelete: (jobId: string | number | undefined, title: string) => void;
@@ -44,10 +49,22 @@ const JobCard: React.FC<JobCardProps> = ({
   job,
   onEdit,
   onView,
+  onCloseJob,
+  onReopenJob,
+  onPublishJob,
   onArchive,
   onUnarchive,
   onDelete,
 }) => {
+  const lifecycleStatus = (job.status || (job.is_active ? 'ACTIVE' : 'ARCHIVED')).toUpperCase();
+  const statusBadge =
+    lifecycleStatus === 'ACTIVE'
+      ? { label: 'Active', cls: 'bg-emerald-50 text-emerald-700 border-emerald-200/80', dot: 'bg-emerald-500' }
+      : lifecycleStatus === 'CLOSED'
+      ? { label: 'Closed', cls: 'bg-amber-50 text-amber-800 border-amber-200', dot: 'bg-amber-500' }
+      : lifecycleStatus === 'DRAFT'
+      ? { label: 'Draft', cls: 'bg-blue-50 text-blue-700 border-blue-200', dot: 'bg-blue-500' }
+      : { label: 'Archived', cls: 'bg-slate-100 text-slate-600 border-slate-200', dot: 'bg-slate-400' };
   const skillsArray =
     typeof job.skills_requirements === 'string'
       ? job.skills_requirements.split(',').map((s: string) => s.trim()).filter(Boolean)
@@ -93,18 +110,10 @@ const JobCard: React.FC<JobCardProps> = ({
               )}
 
               <span
-                className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-semibold border ${
-                  job.is_active
-                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200/80'
-                    : 'bg-slate-100 text-slate-600 border-slate-200'
-                }`}
+                className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-semibold border ${statusBadge.cls}`}
               >
-                <span
-                  className={`w-1.5 h-1.5 rounded-full ${
-                    job.is_active ? 'bg-emerald-500' : 'bg-slate-400'
-                  }`}
-                />
-                {job.is_active ? 'Active' : 'Archived'}
+                <span className={`w-1.5 h-1.5 rounded-full ${statusBadge.dot}`} />
+                {statusBadge.label}
               </span>
             </div>
 
@@ -174,25 +183,51 @@ const JobCard: React.FC<JobCardProps> = ({
                 <span>Edit</span>
               </button>
 
-              {job.is_active ? (
+              {lifecycleStatus === 'DRAFT' && onPublishJob && (
+                <button
+                  type="button"
+                  onClick={() => onPublishJob(job.job_id || job.id, jobTitle)}
+                  className="inline-flex items-center justify-center gap-1.5 h-8 px-2.5 bg-white border border-emerald-200 text-emerald-700 rounded-lg text-xs font-semibold hover:bg-emerald-50 transition-colors cursor-pointer"
+                  title="Publish job opening to Active"
+                >
+                  <Play size={13} className="shrink-0" />
+                  <span className="hidden sm:inline">Publish</span>
+                </button>
+              )}
+
+              {lifecycleStatus === 'ACTIVE' && onCloseJob && (
+                <button
+                  type="button"
+                  onClick={() => onCloseJob(job.job_id || job.id, jobTitle)}
+                  className="inline-flex items-center justify-center gap-1.5 h-8 px-2.5 bg-white border border-amber-200 text-amber-700 rounded-lg text-xs font-semibold hover:bg-amber-50 transition-colors cursor-pointer"
+                  title="Close job opening (stops new applications)"
+                >
+                  <Lock size={13} className="shrink-0" />
+                  <span className="hidden sm:inline">Close job</span>
+                </button>
+              )}
+
+              {lifecycleStatus === 'CLOSED' && (
+                <button
+                  type="button"
+                  onClick={() => (onReopenJob || onUnarchive)(job.job_id || job.id, jobTitle)}
+                  className="inline-flex items-center justify-center gap-1.5 h-8 px-2.5 bg-white border border-emerald-200 text-emerald-700 rounded-lg text-xs font-semibold hover:bg-emerald-50 transition-colors cursor-pointer"
+                  title="Reopen closed job opening"
+                >
+                  <ArchiveRestore size={13} className="shrink-0" />
+                  <span className="hidden sm:inline">Reopen</span>
+                </button>
+              )}
+
+              {lifecycleStatus !== 'ARCHIVED' && (
                 <button
                   type="button"
                   onClick={() => onArchive(job.job_id || job.id, jobTitle)}
-                  className="inline-flex items-center justify-center gap-1.5 h-8 px-2.5 bg-white border border-slate-200 text-amber-700 rounded-lg text-xs font-semibold hover:bg-amber-50 hover:border-amber-200 transition-colors cursor-pointer"
-                  title="Archive job posting"
+                  className="inline-flex items-center justify-center gap-1.5 h-8 px-2.5 bg-white border border-slate-200 text-slate-600 rounded-lg text-xs font-semibold hover:bg-slate-50 hover:border-slate-300 transition-colors cursor-pointer"
+                  title="Archive job opening (permanent; hidden from active lists)"
                 >
                   <Archive size={13} className="shrink-0" />
                   <span className="hidden sm:inline">Archive</span>
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => onUnarchive(job.job_id || job.id, jobTitle)}
-                  className="inline-flex items-center justify-center gap-1.5 h-8 px-2.5 bg-white border border-slate-200 text-emerald-700 rounded-lg text-xs font-semibold hover:bg-emerald-50 hover:border-emerald-200 transition-colors cursor-pointer"
-                  title="Restore job posting"
-                >
-                  <ArchiveRestore size={13} className="shrink-0" />
-                  <span className="hidden sm:inline">Restore</span>
                 </button>
               )}
 

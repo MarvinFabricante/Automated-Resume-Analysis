@@ -6,6 +6,7 @@ import {
   ClarificationQuestion,
   deriveClarificationQuestions,
   getJobScopedState,
+  hasCompleteJobRequirements,
   mergeInitialJobMatch,
 } from '../utils/clarificationQuestions';
 
@@ -48,7 +49,7 @@ export function useJobClarifications({
       onJobChangedRef.current?.(scoped.match);
     } else {
       if (scoped.job) {
-        setActiveJob((prev: any) => (prev?.skills_requirements ? prev : scoped.job));
+        setActiveJob((prev: any) => (hasCompleteJobRequirements(prev) ? prev : scoped.job));
       }
       if (scoped.match) {
         setInitialJobMatch((prev: any) => mergeInitialJobMatch(prev, scoped.match, jobId));
@@ -60,7 +61,7 @@ export function useJobClarifications({
       if (scoped.job?.job_title || scoped.job?.title) {
         setJobTitle(scoped.job.job_title || scoped.job.title);
       }
-      if (scoped.job?.skills_requirements) return;
+      if (hasCompleteJobRequirements(scoped.job)) return;
 
       try {
         const response = await jobService.getJobById(jobId);

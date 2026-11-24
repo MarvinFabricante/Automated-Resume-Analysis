@@ -193,3 +193,92 @@ def test_extract_content_preserves_hyphenated_skills_without_fragments():
     assert "problem solving" in keys
     assert "problem" not in keys
     assert "solving" not in keys
+
+
+@pytest.mark.parametrize("start", ["Started June 2023", "Start year: 2023", "Enrolled 2023", "Since 2023"])
+def test_explicit_start_date_with_degree_does_not_imply_graduation(start):
+    entries = extract_structured_education(
+        f"EDUCATION\nSTI Colleges Ortigas-Cainta\nBachelor of Science in Computer Science\n{start}"
+    )["education_entries"]
+    assert len(entries) == 1
+    assert entries[0]["start_year"] == "2023"
+    assert entries[0]["end_year"] is None
+    assert entries[0]["status"] != "Graduated"
+
+
+def test_missing_degree_stays_empty_instead_of_using_dates_or_status():
+    entry, = extract_structured_education(
+        "EDUCATION\nDegree / Course\nSTI Colleges Ortigas-Cainta\nJune 2023 - Expected 2027\n4th Year College Student"
+    )["education_entries"]
+    assert not entry["degree_or_course"]
+    assert not entry["raw_degree_or_course"]
+    assert not entry["degree"]
+    assert entry["institution_name"] == "STI Colleges Ortigas-Cainta"
+    assert "June" not in education_display_label("", [entry])
+
+
+@pytest.mark.parametrize("prefix", ["BS", "B.S.", "Bachelor of Science"])
+def test_degree_prefix_and_course_on_separate_lines(prefix):
+    entries = extract_structured_education(
+        f"EDUCATION\nSTI Colleges Ortigas-Cainta\n{prefix}\nComputer Science\nGraduated 2020"
+    )["education_entries"]
+    assert len(entries) == 1
+    assert education_display_label("", entries) == "Bachelor's degree in Computer Science"
+
+
+def test_inline_education_preserves_expected_graduation_and_year_level():
+    entries = extract_structured_education(
+        "EDUCATION\nBachelor of Science in Computer Science | STI Colleges Ortigas-Cainta | June 2023 - Expected 2027 | 4th Year College Student"
+    )["education_entries"]
+    assert len(entries) == 1
+    assert education_display_label("", entries) == "Bachelor's degree in Computer Science (4th year, expected 2027)"
+
+
+def test_undated_role_does_not_suppress_experience_confirmation():
+    target = job(experience="3 years")
+    resume = {"work_experiences": [{"job_title": "Support Specialist"}]}
+    rows = evaluate_requirements(resume, target)
+    assert next(r for r in rows if r["field"] == "experience")["status"] == "Not confirmed"
+    assert any(q["field"] == "experience" for q in confirmation_questions(rows, target))
+    assert score(resume, target)["experience_status"] == "Not confirmed"
+
+
+def test_denied_certification_clears_all_candidate_aliases():
+    target = job(certifications="BOSH")
+    resume = {
+        "certifications_list": ["BOSH"], "candidate_certifications": "BOSH",
+        "clarification_responses": [{"field": "certifications", "requirement": "BOSH", "answer": "no"}],
+    }
+    resolved = apply_confirmations(resume, evaluate_requirements(resume, target))
+    assert resolved["certifications_list"] == []
+    assert resolved["candidate_certifications"] == ""
+    result = score(resume, target)
+    assert result["certifications_score"] == 0
+    assert result["certifications_status"] == "Does not meet"
+
+
+def test_denied_certification_cannot_receive_credit_from_a_synonym():
+    result = score({
+        "certifications": "BOSH Certified",
+        "clarification_responses": [{"field": "certifications", "requirement": "BOSH", "answer": "no"}],
+    }, job(certifications="BOSH"))
+    assert result["certifications_score"] == 0
+    assert result["certifications_status"] == "Does not meet"
+
+
+def test_certification_names_with_slash_survive_confirmation_scoring():
+    target = job(certifications="OSHA / BOSH")
+    resume = {"certifications": "OSHA / BOSH"}
+    resolved = apply_confirmations(resume, evaluate_requirements(resume, target))
+    assert resolved["certifications"] == "OSHA / BOSH"
+
+
+def test_wrapped_skills_are_repaired_before_requirement_coverage_and_scoring():
+    target = job(skills="Problem-Solving")
+    result = score({"skills": "problem-\nsolving"}, target)
+    assert result["skills_score"] == 100
+    assert result["matched_skills"] == ["Problem-Solving"]
+    assert not any(q["field"] == "skills" for q in result["followup_questions"])
+    target.skills_requirements = "problem-\nsolving"
+    rows = evaluate_requirements({}, target)
+    assert [r["requirement"] for r in rows] == ["problem-solving"]

@@ -188,13 +188,12 @@ async def delete_physical_resume(
     current_user: Optional[dict] = Depends(get_optional_current_user),
 ):
     """
-    Permanently delete a physical resume record and its stored file.
+    Hard-deleting physical applicant resume records via API is prohibited.
     """
-    hr_id = current_user.get("id") if current_user else None
-    deleted = await physical_resume_service.delete_physical_resume(db, resume_id, hr_id=hr_id)
-    if not deleted:
-        raise HTTPException(status_code=404, detail="Physical resume record not found")
-    return None
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Applicant resumes cannot be hard-deleted by HR or Admins. Files are managed under the data retention policy.",
+    )
 
 
 @router.get("/{resume_id}/view")

@@ -1,16 +1,48 @@
+import hashlib
+import secrets
 import sys
 import uuid
 from datetime import datetime, timedelta
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import text
+from sqlalchemy import text, select, func, or_, delete
 
 from app.models.password_reset import PasswordReset
+from app.models.account_otp import AccountOTP
+from app.models.user import User
+from app.models.job_application import JobApplication
+from app.models.job_description import JobDescription
+from app.models.shortlist_roster import ShortlistRosterItem
+from app.models.interview import Interview
 from app.utils.auth import hash_password, verify_password, create_access_token
 from app.services.notification_service import create_notification
-from app.services.email_service import send_reset_password_email
+from app.services.email_service import send_reset_password_email, send_otp_email
 from app.services.audit_service import record_activity
+from app.services.retention_service import (
+    compute_email_hash,
+    is_application_active,
+    anonymize_user_and_records,
+)
+from app.services.status_management_service import apply_application_status_change
 from app.repositories.auth_repository import AuthRepository
+
+
+class DuplicateEmailError(Exception):
+    """Raised when registering with an email that already belongs to an active account."""
+    pass
+
+
+class DeactivatedAccountExistsError(Exception):
+    """Raised when registering with an email belonging to a deactivated, not-yet-purged account."""
+    pass
+
+
+OTP_EXPIRY_MINUTES = 10
+OTP_MAX_ATTEMPTS = 5
+
+
+def _hash_otp(code: str) -> str:
+    return hashlib.sha256((code or "").strip().encode("utf-8")).hexdigest()
 
 KNOWN_ADMIN_EMAILS = {
     "marvinfabricante@gmail.com",
@@ -32,15 +64,81 @@ KNOWN_HR_EMAILS = {
 }
 
 
-async def register_user(db: AsyncSession, email: str, password: str, role: str, fullname: str = ""):
-    email = email.strip().lower()
+async def check_email_registration_status(db: AsyncSession, email: str) -> Dict[str, Any]:
+    """Check whether an email is available, active, or belongs to a deactivated (reactivable) account."""
+    clean_email = (email or "").strip().lower()
+    if not clean_email:
+        return {"status": "available", "can_reactivate": False, "can_fresh_start": False}
 
-    # Check existence using raw text to avoid polymorphic JOIN issues
-    if await AuthRepository.check_email_exists_raw(db, email):
-        raise Exception("Email already registered")
+    row = await AuthRepository.get_raw_user_by_email(db, clean_email)
+    if not row:
+        return {"status": "available", "can_reactivate": False, "can_fresh_start": False}
+
+    is_deactivated = bool(getattr(row, "is_deactivated", False))
+    is_anonymized = bool(getattr(row, "is_anonymized", False))
+    if is_deactivated and not is_anonymized:
+        return {
+            "status": "deactivated",
+            "can_reactivate": True,
+            "can_fresh_start": True,
+            "message": (
+                "An account with this email was previously deactivated and has not yet been purged. "
+                "You can reactivate your account via email OTP or start fresh with a new empty account."
+            ),
+        }
+
+    return {
+        "status": "active",
+        "can_reactivate": False,
+        "can_fresh_start": False,
+        "message": "An account with this email is already registered. Please sign in instead.",
+    }
+
+
+async def register_user(
+    db: AsyncSession,
+    email: str,
+    password: str,
+    role: str,
+    fullname: str = "",
+    fresh_start: bool = False,
+):
+    email = (email or "").strip().lower()
+    if not email:
+        raise Exception("Email is required")
 
     if role not in ["CANDIDATE", "HR", "ADMIN"]:
         raise Exception("Invalid role")
+
+    # Check existence case-insensitively and trimmed
+    row = await AuthRepository.get_raw_user_by_email(db, email)
+    if row:
+        is_deactivated = bool(getattr(row, "is_deactivated", False))
+        is_anonymized = bool(getattr(row, "is_anonymized", False))
+        if is_deactivated and not is_anonymized:
+            if not fresh_start:
+                raise DeactivatedAccountExistsError(
+                    "An account with this email was previously deactivated and has not yet been purged. "
+                    "You can reactivate your account with email verification or choose a fresh start."
+                )
+            # Fresh start before purge: immediately anonymize the old deactivated account & records
+            # so its email is cleanly released while preserving the salted email_hash for repeat detection.
+            old_user = await AuthRepository.get_user_by_id_fresh(db, row.id)
+            if old_user:
+                await anonymize_user_and_records(
+                    db, old_user, dry_run=False, force_skip_active_check=True
+                )
+                await db.commit()
+                await AuthRepository.invalidate_user_cache(email=email)
+                await record_activity(
+                    db=db,
+                    user_id=old_user.id,
+                    action="FRESH_START_ANONYMIZED_OLD_ACCOUNT",
+                    target=f"User ID: {old_user.id}",
+                    details="Previous deactivated account was anonymized immediately upon applicant choosing fresh start.",
+                )
+        else:
+            raise DuplicateEmailError("An account with this email is already registered. Please sign in instead.")
 
     # Create the correct subclass so both users + subclass table rows are inserted
     common_fields = dict(
@@ -48,6 +146,7 @@ async def register_user(db: AsyncSession, email: str, password: str, role: str, 
         password=hash_password(password),
         role=role,
         fullname=fullname,
+        email_hash=compute_email_hash(email),
     )
 
     return await AuthRepository.create_user(db, role, common_fields)
@@ -151,6 +250,13 @@ async def login_user(db: AsyncSession, email: str, password: str):
     if not pw_matched:
         raise Exception("Invalid credentials")
 
+    if getattr(row, "is_deactivated", False) or getattr(user, "is_deactivated", False):
+        if getattr(row, "is_anonymized", False) or getattr(user, "is_anonymized", False):
+            raise Exception("This account has been anonymized and cannot be accessed.")
+        raise DeactivatedAccountExistsError(
+            "This account has been deactivated. You can reactivate it with email OTP or register with a fresh start."
+        )
+
     if user.is_archived:
         raise Exception("Account has been archived. Please contact administration.")
 
@@ -161,10 +267,12 @@ async def login_user(db: AsyncSession, email: str, password: str):
     else:
         await AuthRepository.update_online_status_orm(db, user, now)
 
+    token_version = int(getattr(user, "token_version", None) or getattr(row, "token_version", None) or 0)
     token = create_access_token({
         "sub": user.email,
         "role": user.role,
-        "id": user.id
+        "id": user.id,
+        "tv": token_version,
     })
 
     # Trigger notification for logins (Candidate and HR)
@@ -378,6 +486,10 @@ async def login_with_google(
     # Load a session-attached user (NOT the Redis-cached copy) so changes are persisted
     user = await AuthRepository.get_user_by_id_fresh(db, user_id)
     if user:
+        if getattr(user, 'is_deactivated', False) or (row and getattr(row, 'is_deactivated', False)):
+            raise DeactivatedAccountExistsError(
+                "This account has been deactivated. Please reactivate it with email OTP or register with a fresh start."
+            )
         if getattr(user, 'is_archived', False) or (row and getattr(row, 'is_archived', False)):
             raise Exception("Account has been archived. Please contact administration.")
         
@@ -440,7 +552,8 @@ async def login_with_google(
     token = create_access_token({
         "sub": email,
         "role": role,
-        "id": user_id
+        "id": user_id,
+        "tv": int(getattr(user, "token_version", 0) or 0) if user else 0,
     })
 
     if role in ["CANDIDATE", "HR"]:
@@ -525,7 +638,8 @@ async def register_candidate_with_google(db: AsyncSession, email: str, fullname:
     token = create_access_token({
         "sub": email,
         "role": role,
-        "id": user_id
+        "id": user_id,
+        "tv": int(getattr(user, "token_version", 0) or 0) if user else 0,
     })
 
     title = "New Candidate Registered via Google"
@@ -565,6 +679,403 @@ async def register_candidate_with_google(db: AsyncSession, email: str, fullname:
 async def register_with_google(db: AsyncSession, email: str, fullname: str, picture: str, google_credentials: str = None):
     """Backward-compatible proxy to register_candidate_with_google."""
     return await register_candidate_with_google(db, email, fullname, picture)
+
+
+async def request_account_otp(
+    db: AsyncSession,
+    email: str,
+    purpose: str = "reactivate_account",
+) -> Dict[str, Any]:
+    """
+    Generate a 6-digit email OTP valid for 10 minutes with limited verification attempts.
+    """
+    clean_email = (email or "").strip().lower()
+    if not clean_email:
+        raise ValueError("Email is required")
+
+    row = await AuthRepository.get_raw_user_by_email(db, clean_email)
+    if purpose == "reactivate_account":
+        if not row or not getattr(row, "is_deactivated", False) or getattr(row, "is_anonymized", False):
+            raise ValueError("No deactivated account eligible for reactivation was found for this email.")
+    elif purpose == "delete_account":
+        if not row or getattr(row, "is_deactivated", False):
+            raise ValueError("No active account found for this email.")
+
+    # Invalidate prior unused OTPs for this email & purpose
+    now = datetime.utcnow()
+    old_res = await db.execute(
+        select(AccountOTP).where(
+            func.lower(AccountOTP.email) == clean_email,
+            AccountOTP.purpose == purpose,
+            AccountOTP.used_at.is_(None),
+        )
+    )
+    for old_otp in old_res.scalars().all():
+        old_otp.used_at = now
+
+    code = f"{secrets.randbelow(1000000):06d}"
+    otp_entry = AccountOTP(
+        email=clean_email,
+        purpose=purpose,
+        code_hash=_hash_otp(code),
+        attempts=0,
+        max_attempts=OTP_MAX_ATTEMPTS,
+        expires_at=now + timedelta(minutes=OTP_EXPIRY_MINUTES),
+    )
+    db.add(otp_entry)
+    await db.commit()
+
+    await send_otp_email(clean_email, code, purpose=purpose)
+
+    return {
+        "message": "A 6-digit verification code has been sent to your email. It expires in 10 minutes.",
+        "expires_in_minutes": OTP_EXPIRY_MINUTES,
+        "max_attempts": OTP_MAX_ATTEMPTS,
+    }
+
+
+async def verify_account_otp(
+    db: AsyncSession,
+    email: str,
+    purpose: str,
+    otp_code: str,
+) -> bool:
+    """
+    Verify a 6-digit OTP checking expiration (10 min) and attempt limit (max 5).
+    """
+    clean_email = (email or "").strip().lower()
+    clean_code = (otp_code or "").strip()
+    if not clean_code or len(clean_code) != 6 or not clean_code.isdigit():
+        raise ValueError("Please enter a valid 6-digit verification code.")
+
+    res = await db.execute(
+        select(AccountOTP)
+        .where(
+            func.lower(AccountOTP.email) == clean_email,
+            AccountOTP.purpose == purpose,
+            AccountOTP.used_at.is_(None),
+        )
+        .order_by(AccountOTP.created_at.desc())
+        .limit(1)
+    )
+    otp_entry = res.scalar_one_or_none()
+    if not otp_entry:
+        raise ValueError("No active verification code found. Please request a new code.")
+
+    now = datetime.utcnow()
+    if otp_entry.expires_at < now:
+        otp_entry.used_at = now
+        await db.commit()
+        raise ValueError("Verification code has expired. Please request a new code.")
+
+    if otp_entry.attempts >= otp_entry.max_attempts:
+        otp_entry.used_at = now
+        await db.commit()
+        raise ValueError("Maximum verification attempts exceeded. Please request a new code.")
+
+    if otp_entry.code_hash != _hash_otp(clean_code):
+        otp_entry.attempts += 1
+        remaining = max(0, otp_entry.max_attempts - otp_entry.attempts)
+        if otp_entry.attempts >= otp_entry.max_attempts:
+            otp_entry.used_at = now
+        await db.commit()
+        raise ValueError(
+            f"Invalid verification code. {remaining} attempt(s) remaining."
+            if remaining > 0
+            else "Maximum verification attempts exceeded. Please request a new code."
+        )
+
+    otp_entry.used_at = now
+    await db.commit()
+    return True
+
+
+async def _cancel_interviews_for_application(
+    db: AsyncSession,
+    application_id: int,
+    reason: str,
+) -> int:
+    """
+    Cancel any scheduled/pending interviews referencing application_id.
+    If an interview is combined with other active applications, removes this application_id
+    from the combined list instead of cancelling interviews for other positions; cancels
+    entirely when no positions remain.
+    """
+    res = await db.execute(
+        select(Interview).where(
+            Interview.status.notin_(["CANCELLED", "CANCELED", "COMPLETED"])
+        )
+    )
+    interviews = list(res.scalars().all())
+    cancelled_count = 0
+
+    for iv in interviews:
+        combined_ids = list(iv.combined_application_ids or [])
+        matches_primary = iv.job_application_id == application_id
+        matches_combined = application_id in combined_ids
+        if not matches_primary and not matches_combined:
+            continue
+
+        remaining_ids = [aid for aid in combined_ids if aid != application_id]
+        if iv.is_combined and remaining_ids:
+            iv.combined_application_ids = remaining_ids
+            if iv.job_application_id == application_id:
+                iv.job_application_id = remaining_ids[0]
+            if len(remaining_ids) == 1:
+                iv.is_combined = False
+            iv.notes = ((iv.notes or "") + f"\n[Updated: Application #{application_id} removed - {reason}]").strip()
+            cancelled_count += 1
+        else:
+            iv.status = "CANCELLED"
+            iv.notes = ((iv.notes or "") + f"\n[Cancelled: {reason}]").strip()
+            cancelled_count += 1
+            # Best-effort Google Calendar cleanup if linked
+            if iv.google_event_id and iv.interviewer_id:
+                try:
+                    from app.services.interview_service import _get_valid_credentials
+                    from app.services.google_calendar_service import delete_calendar_event
+                    interviewer = await AuthRepository.get_user_by_id_fresh(db, iv.interviewer_id)
+                    if interviewer:
+                        creds = _get_valid_credentials(interviewer)
+                        if creds:
+                            delete_calendar_event(creds, iv.google_event_id)
+                except Exception:
+                    pass
+
+    return cancelled_count
+
+
+async def request_account_deletion(
+    db: AsyncSession,
+    user_id: int,
+    password: Optional[str] = None,
+    otp_code: Optional[str] = None,
+    reason: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    Applicant-initiated account deletion:
+    1. Confirm with password OR email OTP.
+    2. Deactivate account immediately and bump token_version (logs out everywhere).
+    3. Withdraw all active applications ("Withdrawn by applicant", reason "Account deletion requested"),
+       cancel scheduled interviews, remove from shortlist rosters.
+    4. Notify HR with the list of affected applications.
+    5. Audit log every step.
+    """
+    user = await AuthRepository.get_user_by_id_fresh(db, user_id)
+    if not user:
+        raise ValueError("Account not found.")
+    if (user.role or "").upper() != "CANDIDATE":
+        raise PermissionError("Account deletion via self-service is only available for applicant accounts.")
+    if getattr(user, "is_deactivated", False):
+        raise ValueError("This account is already deactivated.")
+
+    # Step 1: Verify identity via password OR OTP
+    verified = False
+    verification_method = None
+    if otp_code and otp_code.strip():
+        await verify_account_otp(db, user.email, "delete_account", otp_code)
+        verified = True
+        verification_method = "otp"
+    elif password is not None and password != "":
+        if not verify_password(password, user.password):
+            raise ValueError("Incorrect password. Please try again or confirm using an email OTP code.")
+        verified = True
+        verification_method = "password"
+
+    if not verified:
+        raise ValueError("Please confirm account deletion with your password or a 6-digit email OTP code.")
+
+    now = datetime.utcnow()
+    norm_email = (user.email or "").strip().lower()
+    user_fullname = user.fullname or user.email
+
+    await record_activity(
+        db=db,
+        user_id=user.id,
+        action="ACCOUNT_DELETION_REQUESTED",
+        target=f"User: {user.email}",
+        details=f"Applicant requested account deletion (verified via {verification_method}). Reason: {reason or 'Not specified'}",
+    )
+
+    # Step 2: Withdraw all active applications, cancel interviews, remove from rosters
+    apps_res = await db.execute(
+        select(JobApplication).where(
+            or_(
+                JobApplication.user_id == user.id,
+                func.lower(JobApplication.candidate_email) == norm_email,
+            )
+        )
+    )
+    apps = list(apps_res.scalars().all())
+
+    affected_apps: List[Dict[str, Any]] = []
+    cancelled_interviews_total = 0
+
+    for app in apps:
+        if not is_application_active(app.status):
+            continue
+
+        # Fetch job title cleanly
+        j_title = app.job_title or "Position"
+        if app.job_id:
+            jt_res = await db.execute(select(JobDescription.job_title).where(JobDescription.id == app.job_id))
+            fetched = jt_res.scalar_one_or_none()
+            if fetched:
+                j_title = fetched
+
+        # Cancel scheduled interviews for this application
+        cancelled_interviews_total += await _cancel_interviews_for_application(
+            db, app.id, reason="Account deletion requested"
+        )
+
+        # Remove from any shortlist rosters
+        await db.execute(
+            delete(ShortlistRosterItem).where(ShortlistRosterItem.application_id == app.id)
+        )
+
+        # Transition status server-side with audit history & notification
+        await apply_application_status_change(
+            db=db,
+            application=app,
+            new_status="Withdrawn by applicant",
+            changed_by=user.email,
+            change_type="auto",
+            reason="Account deletion requested",
+            send_email=False,
+            send_notification=True,
+        )
+
+        affected_apps.append({
+            "application_id": app.id,
+            "job_id": app.job_id,
+            "job_title": j_title,
+        })
+
+        await record_activity(
+            db=db,
+            user_id=user.id,
+            action="APPLICATION_WITHDRAWN",
+            target=f"Application ID: {app.id}",
+            details=f"Application for '{j_title}' automatically withdrawn due to account deletion request.",
+        )
+
+    # Step 3: Deactivate account immediately & invalidate all active JWT tokens everywhere
+    user.is_deactivated = True
+    user.deactivated_at = now
+    user.is_archived = True
+    user.is_online = False
+    user.token_version = int(user.token_version or 0) + 1
+    user.email_hash = user.email_hash or compute_email_hash(norm_email)
+    user.google_credentials = None
+    user.google_access_token = None
+    user.google_refresh_token = None
+    user.google_token_expiry = None
+    await db.commit()
+    await AuthRepository.invalidate_user_cache(user)
+
+    await record_activity(
+        db=db,
+        user_id=user.id,
+        action="ACCOUNT_DEACTIVATED",
+        target=f"User: {user.email}",
+        details=(
+            f"Account deactivated immediately; all sessions invalidated (token_version={user.token_version}); "
+            f"{len(affected_apps)} active application(s) withdrawn; {cancelled_interviews_total} interview(s) cancelled."
+        ),
+    )
+
+    # Step 4: Notify HR with list of affected applications
+    if affected_apps:
+        app_list_text = ", ".join(
+            f"#{a['application_id']} ({a['job_title']})" for a in affected_apps
+        )
+        hr_message = (
+            f"Applicant {user_fullname} ({user.email}) requested account deletion. "
+            f"{len(affected_apps)} active application(s) were withdrawn (Account deletion requested): {app_list_text}."
+        )
+    else:
+        hr_message = (
+            f"Applicant {user_fullname} ({user.email}) requested account deletion. "
+            "No active applications were affected."
+        )
+
+    await create_notification(
+        db=db,
+        title="Applicant Account Deletion Request",
+        message=hr_message,
+        type="account_deletion",
+        target_role="HR",
+        sender_role="SYSTEM",
+    )
+
+    from app.utils.cache import invalidate_application_dashboard_caches
+    await invalidate_application_dashboard_caches()
+
+    return {
+        "message": "Your account has been deactivated and you have been signed out on all devices.",
+        "deactivated_at": now.isoformat(),
+        "withdrawn_applications": affected_apps,
+        "withdrawn_count": len(affected_apps),
+        "cancelled_interviews": cancelled_interviews_total,
+    }
+
+
+async def reactivate_account_with_otp(
+    db: AsyncSession,
+    email: str,
+    otp_code: str,
+) -> Dict[str, Any]:
+    """
+    Reactivate a deactivated (not-yet-purged) account after verifying email OTP.
+    Restores profile and history, while withdrawn applications remain withdrawn.
+    """
+    clean_email = (email or "").strip().lower()
+    await verify_account_otp(db, clean_email, "reactivate_account", otp_code)
+
+    row = await AuthRepository.get_raw_user_by_email(db, clean_email)
+    if not row:
+        raise ValueError("Account not found.")
+    if getattr(row, "is_anonymized", False):
+        raise ValueError("This account has already been anonymized under our retention policy. Please register a new account.")
+    if not getattr(row, "is_deactivated", False):
+        raise ValueError("This account is already active. Please sign in normally.")
+
+    user = await AuthRepository.get_user_by_id_fresh(db, row.id)
+    if not user:
+        raise ValueError("Account not found.")
+
+    user.is_deactivated = False
+    user.deactivated_at = None
+    user.is_archived = False
+    user.is_online = True
+    user.last_active = datetime.utcnow()
+    await db.commit()
+    await AuthRepository.invalidate_user_cache(user)
+
+    await record_activity(
+        db=db,
+        user_id=user.id,
+        action="ACCOUNT_REACTIVATED",
+        target=f"User: {user.email}",
+        details="Applicant verified email OTP and reactivated deactivated account. Withdrawn applications remain withdrawn.",
+    )
+
+    token = create_access_token({
+        "sub": user.email,
+        "role": user.role,
+        "id": user.id,
+        "tv": int(user.token_version or 0),
+    })
+
+    return {
+        "message": "Your account has been reactivated. Your profile and history are restored; previously withdrawn applications remain withdrawn.",
+        "access_token": token,
+        "token_type": "bearer",
+        "role": user.role,
+        "fullname": user.fullname,
+        "user_id": user.id,
+        "profile_image_url": user.profile_image_url,
+    }
 
 
 auth_service = sys.modules[__name__]

@@ -57,6 +57,22 @@ async def get_messages(
 ):
     return await chat_service.get_messages(db, current_user, other_user_id)
 
+@router.get("/thread-status/{other_user_id}")
+async def get_thread_status_endpoint(
+    other_user_id: int,
+    application_id: Optional[int] = None,
+    current_user: User = Depends(get_current_user_obj),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return whether a conversation thread is open or closed (read-only)."""
+    return await chat_service.get_thread_status(
+        db=db,
+        current_user=current_user,
+        other_user_id=other_user_id,
+        application_id=application_id,
+    )
+
+
 @router.post("/messages/{other_user_id}", response_model=MessageResponse)
 async def send_message(
     other_user_id: int,
@@ -64,14 +80,17 @@ async def send_message(
     current_user: User = Depends(get_current_user_obj),
     db: AsyncSession = Depends(get_db)
 ):
-    new_msg = await chat_service.send_message(
-        db, 
-        current_user, 
-        other_user_id, 
-        msg_in.content,
-        message_type=msg_in.message_type or "general",
-        application_id=msg_in.application_id
-    )
+    try:
+        new_msg = await chat_service.send_message(
+            db, 
+            current_user, 
+            other_user_id, 
+            msg_in.content,
+            message_type=msg_in.message_type or "general",
+            application_id=msg_in.application_id
+        )
+    except chat_service.ConversationClosedError as e:
+        raise HTTPException(status_code=403, detail=str(e))
     if not new_msg:
         raise HTTPException(status_code=403, detail="You cannot message this user.")
     return new_msg

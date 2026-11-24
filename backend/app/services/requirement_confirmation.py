@@ -2,7 +2,7 @@
 import re
 import json
 from pathlib import Path
-from app.extractors.text_normalization import SKILL_SEPARATOR, normalize_skill_key
+from app.extractors.text_normalization import SKILL_SEPARATOR, normalize_skill_key, repair_line_hyphenation
 from app.services.requirement_rules import is_no_value
 
 # Override/extend through matching_config['related_terms']; related evidence always
@@ -23,7 +23,7 @@ def requirement_items(value, split_slash: bool = True):
     for value in values:
         if not isinstance(value, str) or is_no_value(value):
             continue
-        for item in re.split(separator, value):
+        for item in re.split(separator, repair_line_hyphenation(value)):
             item = item.strip()
             key = normalize_skill_key(item)
             if key and key not in seen and not is_no_value(item):
@@ -60,10 +60,15 @@ def has_explicit_experience_evidence(resume: dict) -> bool:
     except (ValueError, TypeError):
         pass
     for we in resume.get("work_experiences") or []:
-        if isinstance(we, dict) and (
-            int(we.get("duration_months") or 0) > 0
-            or str(we.get("job_title") or "").strip()
-            or str(we.get("start_date") or "").strip()
+        if not isinstance(we, dict):
+            continue
+        try:
+            months = float(we.get("duration_months") or 0)
+        except (ValueError, TypeError):
+            months = 0
+        if months > 0 or (
+            str(we.get("start_date") or "").strip()
+            and (str(we.get("end_date") or "").strip() or we.get("is_current"))
         ):
             return True
     exp_text = " ".join(
@@ -143,7 +148,7 @@ def apply_confirmations(resume, rows):
             if field == "skills"
             else (result.get("certifications"), result.get("certifications_list"), result.get("candidate_certifications"))
         )
-        items = _merge_candidate_items(*existing_sources)
+        items = _merge_candidate_items(*existing_sources, split_slash=(field != "certifications"))
         denied = {normalize_skill_key(r["requirement"]) for r in rows if r["field"] == field and r.get("answer") == "no"}
         items = [item for item in items if normalize_skill_key(item) not in denied]
         for row in rows:
@@ -155,6 +160,13 @@ def apply_confirmations(resume, rows):
         result[target] = " | ".join(deduped)
         if field == "skills" and "skills_list" in result:
             result["skills_list"] = deduped
+        if field == "certifications":
+            # Keep aliases in sync so fallback scoring cannot resurrect an item
+            # that the applicant explicitly denied.
+            if "certifications_list" in result:
+                result["certifications_list"] = deduped
+            if "candidate_certifications" in result:
+                result["candidate_certifications"] = result[target]
 
     # Preserve existing work experience entries intact (never split prose on commas into fake entries).
     exp_rows = [r for r in rows if r["field"] == "experience" and r.get("answer") in ("yes", "some")]

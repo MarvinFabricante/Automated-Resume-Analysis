@@ -44,6 +44,11 @@ celery_app.conf.update(
             "task": "refresh_active_comparisons_task",
             "schedule": 1800.0,
         },
+        "daily_data_retention_anonymization": {
+            "task": "run_retention_anonymization_task",
+            "schedule": 86400.0,
+            "kwargs": {"dry_run": False, "triggered_by": "scheduled"},
+        },
     },
 )
 

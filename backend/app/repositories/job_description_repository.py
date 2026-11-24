@@ -76,19 +76,33 @@ async def get_by_id(db: AsyncSession, job_id: int) -> Optional[JobDescription]:
 
 
 async def get_all_active(
-    db: AsyncSession, skip: int = 0, limit: int = 100, include_inactive: bool = False
+    db: AsyncSession,
+    skip: int = 0,
+    limit: int = 100,
+    include_inactive: bool = False,
+    include_archived: bool = False,
 ) -> List[JobDescription]:
-    """Get all job descriptions (checks Redis cache first)."""
-    cache_key = f"job_desc:active:{skip}:{limit}:{include_inactive}"
+    """
+    Get job descriptions respecting lifecycle status:
+    - include_inactive=False, include_archived=False: only ACTIVE jobs (applicant view & Smart Matches).
+    - include_inactive=True, include_archived=False: DRAFT, ACTIVE, and CLOSED jobs (default HR/Admin view).
+    - include_archived=True: includes ARCHIVED jobs (when 'Show archived' is toggled or for reports).
+    """
+    cache_key = f"job_desc:active:{skip}:{limit}:{include_inactive}:{include_archived}"
     cached = await get_cache(cache_key)
     if cached is not None:
         return cached
 
     query = select(JobDescription)
-    if not include_inactive:
-        query = query.filter(JobDescription.is_active == True)
+    if not include_inactive and not include_archived:
+        query = query.filter(
+            JobDescription.is_active == True,
+            JobDescription.status == "ACTIVE",
+        )
+    elif not include_archived:
+        query = query.filter(JobDescription.status != "ARCHIVED")
     query = query.order_by(desc(JobDescription.id)).offset(skip).limit(limit)
-        
+
     result = await db.execute(query)
     jobs = result.scalars().all()
     await set_cache(cache_key, jobs, ttl=600)
@@ -138,19 +152,42 @@ async def update(db: AsyncSession, job: JobDescription, update_data: dict) -> Jo
 
 
 async def set_status(db: AsyncSession, job: JobDescription, is_active: bool) -> JobDescription:
-    """Set job status (Redis-first transaction)."""
+    """Set job status (Redis-first transaction), keeping status and is_active in sync."""
+    new_lifecycle = "ACTIVE" if is_active else "ARCHIVED"
+    return await set_lifecycle_status(db, job, new_lifecycle)
+
+
+async def set_lifecycle_status(
+    db: AsyncSession,
+    job: JobDescription,
+    lifecycle_status: str,
+    closed_at=None,
+    archived_at=None,
+) -> JobDescription:
+    """Set job opening lifecycle status (DRAFT, ACTIVE, CLOSED, ARCHIVED)."""
+    norm_status = (lifecycle_status or "ACTIVE").strip().upper()
+    is_active = norm_status == "ACTIVE"
     tx_id = await redis_tx_manager.stage_transaction(
         target="job_description",
         action="SET_STATUS",
-        payload={"id": job.id, "is_active": is_active},
+        payload={"id": job.id, "status": norm_status, "is_active": is_active},
     )
     try:
         job = await _ensure_persistent(db, job)
+        job.status = norm_status
         job.is_active = is_active
+        if closed_at is not None:
+            job.closed_at = closed_at
+        elif norm_status == "ACTIVE":
+            job.closed_at = None
+        if archived_at is not None:
+            job.archived_at = archived_at
         await db.commit()
         await db.refresh(job)
 
-        await redis_tx_manager.commit_transaction(tx_id, {"id": job.id, "is_active": is_active})
+        await redis_tx_manager.commit_transaction(
+            tx_id, {"id": job.id, "status": norm_status, "is_active": is_active}
+        )
 
         await delete_cache(f"job_desc:id:{job.id}")
         if job.job_id:
@@ -161,7 +198,7 @@ async def set_status(db: AsyncSession, job: JobDescription, is_active: bool) -> 
         return job
     except Exception as e:
         await redis_tx_manager.fail_transaction(tx_id, str(e))
-        logger.error(f"[Redis-First] JobDescription set_status failed: {e}")
+        logger.error(f"[Redis-First] JobDescription set_lifecycle_status failed: {e}")
         raise
 
 

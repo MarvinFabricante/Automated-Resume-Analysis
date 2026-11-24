@@ -450,6 +450,9 @@ def _extract_years(text: str) -> Tuple[Optional[str], Optional[str]]:
         return (years[0] if len(years) > 1 else None), (years[-1] if years else None)
     if re.search(r'\b(?:Present|Ongoing|Current)\b', text, re.I):
         return (years[0] if years else None), "Present"
+    # An explicitly labelled start date is not evidence of completion.
+    if len(years) == 1 and re.search(r'\b(?:started|start(?:\s+date|\s+year)?|since|enrolled|admitted|entered)\b', text, re.I) and not re.search(r'\b(?:graduated|completed|finished)\b', text, re.I):
+        return years[0], None
     # Pattern 1: AY 2022 - 2026 or 2020 - 2022 or (2019 - 2021)
     m = re.search(r'(?:(?:A\.?Y\.?|S\.?Y\.?)\s*)?((?:19|20)\d{2})\s*[-–—to]+\s*((?:19|20)\d{2}|Present)', text, re.I)
     if m:
@@ -776,7 +779,8 @@ def _normalize_degree_or_course(text: str, level: str) -> Tuple[Optional[str], O
         or clean.startswith(('•', '-', '*', '▪', '►', '✓'))
         or _is_skills_text(clean)
         or _has_school_keyword(clean)
-        or re.fullmatch(r'[\s\d\-–—()/.,A-Za-z]{0,4}(?:19|20)\d{2}[\s\d\-–—()/.,A-Za-z]*', clean)
+        or any(_extract_years(clean))
+        or re.search(r'\b(?:Expected|Ongoing|Currently\s+Enrolled|Present|In\s+Progress|Undergraduate|\d+(?:st|nd|rd|th)\s+Year)\b', clean, re.I)
     ):
         return None, None, None
 
@@ -941,7 +945,7 @@ def extract_structured_education(text: str) -> Dict[str, Any]:
                 continue
             if (
                 not nxt_l.startswith(('•', '-', '*', '▪', '►', '✓'))
-                and re.search(r'\b(?:bachelor|master|doctor|associate|diploma)\b', curr_l, re.I)
+                and re.search(r'\b(?:bachelor|master|doctor|associate|diploma)\b|\b(?:B\.?S\.?|B\.?A\.?|M\.?S\.?|M\.?A\.?)\s*$', curr_l, re.I)
                 and len(nxt_clean.split()) <= 4
                 and not _has_school_keyword(nxt_l)
                 and not any(_extract_years(nxt_l))
@@ -1026,6 +1030,9 @@ def extract_structured_education(text: str) -> Dict[str, Any]:
                 "honors_and_awards": honors,
                 "honors": honors_str
             })
+            year_level = re.search(r'\b(\d+(?:st|nd|rd|th))\s+Year\b', line, re.I)
+            entries[-1]["year_level"] = year_level.group(1).lower() if year_level else None
+            entries[-1]["expected_graduation_year"] = e_yr if re.search(r'\bExpected\b', line, re.I) else None
 
     else:
         # Block-based format with sub-tier headers or multi-line entries

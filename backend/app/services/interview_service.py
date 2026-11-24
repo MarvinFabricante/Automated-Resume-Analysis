@@ -1075,6 +1075,75 @@ def _get_scheduling_lock() -> asyncio.Lock:
     return _scheduling_lock
 
 
+async def get_candidate_shortlisted_applications(
+    db: AsyncSession,
+    application_id: int,
+) -> dict:
+    """
+    Return all shortlisted (not yet scheduled) applications for the same candidate as
+    `application_id`, so the scheduler can offer one combined interview slot with
+    each position listed (HR can untick any position).
+    """
+    from sqlalchemy import func, or_, select
+    from app.models.job_application import JobApplication
+    from app.models.job_description import JobDescription
+    from app.services.status_management_service import normalize_status
+
+    primary = await InterviewRepository.get_job_application(db, application_id)
+    if not primary:
+        raise ValueError("Application not found")
+
+    conditions = []
+    if getattr(primary, "user_id", None):
+        conditions.append(JobApplication.user_id == primary.user_id)
+    norm_email = (primary.candidate_email or "").strip().lower()
+    if norm_email:
+        conditions.append(func.lower(JobApplication.candidate_email) == norm_email)
+
+    if not conditions:
+        return {
+            "primary_application_id": application_id,
+            "candidate_name": primary.candidate_name,
+            "shortlisted_applications": [],
+            "can_combine": False,
+        }
+
+    apps_res = await db.execute(select(JobApplication).where(or_(*conditions)))
+    all_apps = list(apps_res.scalars().all())
+
+    shortlisted_items = []
+    for app in all_apps:
+        norm = normalize_status(app.status)
+        if app.id != application_id and norm != "Shortlisted":
+            continue
+        existing_ivs = await InterviewRepository.get_interviews_for_application(db, app.id)
+        has_active_iv = any((iv.status or "").upper() not in INACTIVE_INTERVIEW_STATUSES for iv in existing_ivs)
+        if app.id != application_id and has_active_iv:
+            continue
+
+        j_title = app.job_title or "Position"
+        if app.job_id:
+            jt_res = await db.execute(select(JobDescription.job_title).where(JobDescription.id == app.job_id))
+            fetched = jt_res.scalar_one_or_none()
+            if fetched:
+                j_title = fetched
+
+        shortlisted_items.append({
+            "application_id": app.id,
+            "job_id": app.job_id,
+            "job_title": j_title,
+            "status": norm,
+            "is_primary": app.id == application_id,
+        })
+
+    return {
+        "primary_application_id": application_id,
+        "candidate_name": primary.candidate_name,
+        "shortlisted_applications": shortlisted_items,
+        "can_combine": len(shortlisted_items) > 1,
+    }
+
+
 async def schedule_interview(db: AsyncSession, data: InterviewCreateSchema, user_id: int):
     async with _get_scheduling_lock():
         # 1. Fetch Candidate
@@ -1162,6 +1231,60 @@ async def schedule_interview(db: AsyncSession, data: InterviewCreateSchema, user
         if not job_name:
             job_name = getattr(application, "job_title", None) or "Job Position"
 
+        # Resolve optional combined applications (same candidate shortlisted for >1 position)
+        included_apps = [application]
+        included_job_names = [job_name]
+        raw_combined_ids = getattr(data, "combined_application_ids", None) or []
+        extra_ids = []
+        for raw_id in raw_combined_ids:
+            try:
+                int_id = int(raw_id)
+            except (TypeError, ValueError):
+                continue
+            if int_id != data.job_application_id and int_id not in extra_ids:
+                extra_ids.append(int_id)
+
+        primary_norm_email = (application.candidate_email or "").strip().lower()
+        for extra_id in extra_ids:
+            extra_app = await InterviewRepository.get_job_application(db, extra_id)
+            if not extra_app:
+                continue
+            same_user = (
+                getattr(application, "user_id", None)
+                and getattr(extra_app, "user_id", None)
+                and int(application.user_id) == int(extra_app.user_id)
+            )
+            same_email = (
+                primary_norm_email
+                and (extra_app.candidate_email or "").strip().lower() == primary_norm_email
+            )
+            if not same_user and not same_email:
+                raise ValueError(f"Application #{extra_id} does not belong to the same candidate.")
+            extra_ivs = await InterviewRepository.get_interviews_for_application(db, extra_id)
+            if any((iv.status or "").upper() not in INACTIVE_INTERVIEW_STATUSES for iv in extra_ivs):
+                raise ValueError(f"Application #{extra_id} already has an active scheduled interview.")
+
+            extra_job_title = None
+            if getattr(extra_app, "job_id", None):
+                from app.repositories.job_description_repository import JobDescriptionRepository
+                try:
+                    ej = await JobDescriptionRepository.get_by_id(db, extra_app.job_id)
+                    if ej and getattr(ej, "job_title", None):
+                        extra_job_title = ej.job_title
+                except Exception:
+                    pass
+            if not extra_job_title:
+                extra_job_title = getattr(extra_app, "job_title", None) or "Job Position"
+
+            included_apps.append(extra_app)
+            if extra_job_title not in included_job_names:
+                included_job_names.append(extra_job_title)
+
+        is_combined_interview = len(included_apps) > 1
+        combined_app_id_list = [a.id for a in included_apps] if is_combined_interview else None
+        if is_combined_interview:
+            job_name = " & ".join(included_job_names)
+
         # 2. Create Interview Record
         start = data.start_time.replace(tzinfo=None)
         end = data.end_time.replace(tzinfo=None)
@@ -1181,50 +1304,75 @@ async def schedule_interview(db: AsyncSession, data: InterviewCreateSchema, user
         interview_meeting_link = (getattr(data, "meeting_link", None) or "").strip() or None
         interviewer_email = getattr(interviewer_user, "email", None) if interviewer_user else scheduler_email
 
+        effective_description = data.description or ""
+        if is_combined_interview:
+            positions_bullet = "Combined interview covering positions: " + ", ".join(included_job_names)
+            effective_description = (
+                f"{positions_bullet}\n{effective_description}".strip()
+                if effective_description
+                else positions_bullet
+            )
+
         interview_data = {
             "job_application_id": data.job_application_id,
             "interviewer_id": interviewer_id,
             "title": data.title,
-            "description": data.description,
+            "description": effective_description,
             "start_time": start,
             "end_time": end,
             "location": interview_location,
             "meeting_link": interview_meeting_link,
+            "is_combined": is_combined_interview,
+            "combined_application_ids": combined_app_id_list,
         }
         if hasattr(data, "call_language") and data.call_language:
             interview_data["call_language"] = data.call_language
         interview = await InterviewRepository.create_interview(db, interview_data)
         await InterviewRepository.commit_changes(db)
 
-        # Automatically update candidate application status to Interview Scheduled upon booking (Item 1b)
+        # Automatically update ALL included applications to Interview Scheduled upon booking
         current_app_status = (getattr(application, "status", None) or "PENDING").upper()
         try:
             from app.services.status_management_service import apply_application_status_change, normalize_status
             from app.models.shortlist_roster import ShortlistRosterItem
             from sqlalchemy import select
 
-            current_norm = normalize_status(application.status)
-            if current_norm != "Interview Scheduled":
-                await apply_application_status_change(
-                    db=db,
-                    application=application,
-                    new_status="Interview Scheduled",
-                    changed_by=getattr(scheduler_user, "email", "HR") if scheduler_user else "HR",
-                    change_type="auto",
-                    reason=f"auto: interview scheduled for {data.title}",
-                    send_email=True
-                )
+            for inc_app in included_apps:
+                inc_norm = normalize_status(inc_app.status)
+                if inc_norm != "Interview Scheduled":
+                    # Avoid sending duplicate status emails — single combined interview invite email is sent below
+                    await apply_application_status_change(
+                        db=db,
+                        application=inc_app,
+                        new_status="Interview Scheduled",
+                        changed_by=getattr(scheduler_user, "email", "HR") if scheduler_user else "HR",
+                        change_type="auto",
+                        reason=(
+                            f"auto: combined interview scheduled ({job_name})"
+                            if is_combined_interview
+                            else f"auto: interview scheduled for {data.title}"
+                        ),
+                        send_email=False,
+                        send_notification=False,
+                    )
 
-            # Sync with any shortlist roster items for this application
-            roster_items_stmt = select(ShortlistRosterItem).where(ShortlistRosterItem.application_id == application.id)
-            roster_items_res = await db.execute(roster_items_stmt)
-            for r_item in roster_items_res.scalars().all():
-                r_item.stage = "Interview Scheduled"
-                r_item.updated_at = datetime.utcnow()
+                # Sync with any shortlist roster items for this application
+                roster_items_stmt = select(ShortlistRosterItem).where(ShortlistRosterItem.application_id == inc_app.id)
+                roster_items_res = await db.execute(roster_items_stmt)
+                for r_item in roster_items_res.scalars().all():
+                    r_item.stage = "Interview Scheduled"
+                    r_item.updated_at = datetime.utcnow()
             await db.commit()
 
             await InterviewRepository.add_interview_log(
-                db, interview.id, "STATUS_UPDATE", f"Candidate application status automatically updated from {current_app_status} to Interview Scheduled upon scheduling"
+                db,
+                interview.id,
+                "STATUS_UPDATE",
+                (
+                    f"Combined interview scheduled for {len(included_apps)} position(s): {job_name}"
+                    if is_combined_interview
+                    else f"Candidate application status automatically updated from {current_app_status} to Interview Scheduled upon scheduling"
+                ),
             )
             await InterviewRepository.commit_changes(db)
         except Exception as e_status:

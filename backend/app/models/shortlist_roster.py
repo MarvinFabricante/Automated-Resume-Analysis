@@ -12,6 +12,9 @@ class ShortlistRoster(Base):
     created_by = Column(String, nullable=False) # HR email
     notes = Column(Text, nullable=True)
     is_archived = Column(Boolean, default=False, nullable=True)
+    non_shortlisted_action = Column(String, default="keep_under_review", nullable=False)  # notify_on_finalize, keep_under_review, decide_later
+    is_finalized = Column(Boolean, default=False, nullable=False)
+    finalized_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

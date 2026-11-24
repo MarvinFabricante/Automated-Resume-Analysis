@@ -131,12 +131,13 @@ async def get_interview_by_id(db: AsyncSession, interview_id: int) -> Optional[I
 
 
 async def get_interviews_for_application(db: AsyncSession, application_id: int) -> List[Interview]:
-    """Get interviews for job application (checks Redis cache first)."""
+    """Get interviews for job application including combined interviews referencing it."""
     cache_key = f"interviews:app:{application_id}"
     cached = await get_cache(cache_key)
     if cached is not None:
         return cached
 
+    # Direct matches
     result = await db.execute(
         select(Interview)
         .options(*_interview_load_options())
@@ -144,7 +145,24 @@ async def get_interviews_for_application(db: AsyncSession, application_id: int) 
         .order_by(Interview.start_time.asc())
         .execution_options(populate_existing=True)
     )
-    interviews = result.scalars().all()
+    interviews = list(result.scalars().all())
+    seen_ids = {iv.id for iv in interviews}
+
+    # Combined interviews where application_id is in combined_application_ids
+    comb_result = await db.execute(
+        select(Interview)
+        .options(*_interview_load_options())
+        .filter(Interview.is_combined == True)
+        .order_by(Interview.start_time.asc())
+        .execution_options(populate_existing=True)
+    )
+    for iv in comb_result.scalars().all():
+        if iv.id not in seen_ids and iv.combined_application_ids:
+            if application_id in [int(x) for x in iv.combined_application_ids]:
+                interviews.append(iv)
+                seen_ids.add(iv.id)
+
+    interviews.sort(key=lambda x: x.start_time or datetime.min)
     await set_cache(cache_key, interviews, ttl=300)
     return interviews
 

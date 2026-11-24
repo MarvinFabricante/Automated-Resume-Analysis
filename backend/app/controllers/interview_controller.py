@@ -141,6 +141,19 @@ async def get_available_slots(
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@router.get("/candidate-shortlisted/{application_id}")
+async def get_candidate_shortlisted_for_combined(
+    application_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """Return other shortlisted applications for the same candidate so HR can schedule one combined slot."""
+    try:
+        return await interview_service.get_candidate_shortlisted_applications(db, application_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
 @router.post("/schedule", response_model=InterviewResponseSchema)
 async def schedule_interview(
     data: InterviewCreateSchema,

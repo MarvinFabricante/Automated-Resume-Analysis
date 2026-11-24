@@ -22,6 +22,11 @@ export interface ClarificationResponse {
   details?: string;
 }
 
+export function hasCompleteJobRequirements(job: any): boolean {
+  return Boolean(job) && ['skills_requirements', 'certifications_requirements', 'experience_requirements']
+    .every(field => Object.prototype.hasOwnProperty.call(job, field) && job[field] !== undefined);
+}
+
 export function parseRequirementAnswers(value: string): Record<string, Omit<ClarificationResponse, 'field' | 'requirement'>> {
   try {
     const parsed = JSON.parse(value || '{}');
@@ -352,17 +357,44 @@ export function deriveClarificationQuestions(
     extractedYears
   );
 
-  const rawJobQuestions: ClarificationQuestion[] =
-    backendJobQuestionsRaw.length > 0
-      ? backendJobQuestionsRaw.map((q, i) => normalizeQ(q, i, 'clarify_job'))
-      : buildFallbackJobQuestions(
-          activeJob,
-          activeMatch,
-          candSkills,
-          extractedYears,
-          relevanceStr,
-          state?.extractedData
-        );
+  const fallbackQuestions = buildFallbackJobQuestions(
+    activeJob,
+    activeMatch,
+    candSkills,
+    extractedYears,
+    relevanceStr,
+    state?.extractedData
+  );
+  const rawJobQuestions: ClarificationQuestion[] = backendJobQuestionsRaw.length > 0
+    ? backendJobQuestionsRaw.map((q, i) => normalizeQ(q, i, 'clarify_job'))
+    : fallbackQuestions;
+
+  // Older/cached match responses may contain only some of the questions. A
+  // nonempty response must never suppress coverage of the full job requirements.
+  if (backendJobQuestionsRaw.length > 0) {
+    const evidence = Array.isArray(activeMatch?.requirement_evaluations)
+      ? activeMatch.requirement_evaluations : [];
+    for (const fallback of fallbackQuestions.filter(q => q.type === 'requirement_group')) {
+      const covered = new Set(rawJobQuestions
+        .filter(q => q.field === fallback.field && q.type === 'requirement_group')
+        .flatMap(q => (q.items || []).map(item => skillKey(item.requirement))));
+      const items = (fallback.items || []).filter(item => !covered.has(skillKey(item.requirement)))
+        .filter(item => !evidence.some((row: any) => row.field === fallback.field &&
+          skillKey(String(row.requirement || '')) === skillKey(item.requirement) &&
+          row.source === 'Resume' && row.status === 'Meets requirement'));
+      if (!items.length) continue;
+      const index = rawJobQuestions.findIndex(q => q.id === fallback.id && q.type === 'requirement_group');
+      if (index >= 0) {
+        rawJobQuestions[index] = { ...rawJobQuestions[index], items: [...(rawJobQuestions[index].items || []), ...items] };
+      } else {
+        // Legacy text prompts sometimes use the same id as the new group.
+        // Keep their saved text separate from the group's JSON answers.
+        const id = rawJobQuestions.some(q => q.id === fallback.id)
+          ? `${fallback.id}_requirements` : fallback.id;
+        rawJobQuestions.push({ ...fallback, id, items });
+      }
+    }
+  }
 
   const jobQuestions = hasExplicitYears
     ? rawJobQuestions.filter((q) => q.field !== 'years_experience')
@@ -515,16 +547,13 @@ export function finalizeFormWithClarifications<
     if (!ans || isNoValueRequirement(ans)) continue;
     updated = applyClarificationAnswerToFormData(q, ans, updated);
     if (q.field === 'skills') {
-      const newSkills = ans
-        .split(/[,;\n|]+/)
-        .map((s) => s.trim())
-        .filter((s) => Boolean(s) && !isNoValueRequirement(s));
-      const existingLower = new Set(updated.skills.map((s) => s.toLowerCase()));
+      const newSkills = requirementItems(ans);
+      const existingLower = new Set(updated.skills.map(skillKey));
       const merged = [...updated.skills];
       for (const sk of newSkills) {
-        if (!existingLower.has(sk.toLowerCase())) {
+        if (!existingLower.has(skillKey(sk))) {
           merged.push(sk);
-          existingLower.add(sk.toLowerCase());
+          existingLower.add(skillKey(sk));
         }
       }
       updated = { ...updated, skills: merged };

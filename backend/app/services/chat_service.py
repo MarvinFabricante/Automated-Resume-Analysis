@@ -129,6 +129,111 @@ async def get_messages(db: AsyncSession, current_user: User, other_user_id: int)
     return await ChatRepository.get_chat_history(db, current_user.id, other_user_id)
 
 
+class ConversationClosedError(Exception):
+    """Raised when attempting to send a message in a closed or read-only conversation."""
+    pass
+
+
+async def get_thread_status(
+    db: AsyncSession,
+    current_user: User,
+    other_user_id: int,
+    application_id: Optional[int] = None,
+) -> dict:
+    """
+    Determine whether a conversation thread is open or closed (read-only):
+    - HR <-> HR / Admin threads are always open.
+    - For Candidate <-> HR threads:
+      - If a specific application_id is given, evaluate that application;
+        otherwise evaluate the candidate's applications collectively.
+      - Active application(s) -> open.
+      - Withdrawn application -> read-only immediately ('This conversation is closed').
+      - Finished (Passed / Not Selected) -> open for configurable `messaging_closure_days`
+        (default 30 days) after `resolved_at`, then read-only ('This conversation is closed').
+    """
+    from datetime import timedelta
+    from sqlalchemy import func, or_, select
+    from app.models.job_application import JobApplication
+    from app.services.retention_service import is_application_active
+    from app.services.status_management_service import is_withdrawn_status
+    from app.services.system_config_service import system_config_service
+
+    other_user = await ChatRepository.get_user_by_id(db, other_user_id)
+    if not other_user:
+        return {"is_closed": True, "can_reply": False, "reason": "User not found", "closes_at": None}
+
+    cand_user = None
+    if (current_user.role or "").upper() == "CANDIDATE":
+        cand_user = current_user
+    elif (other_user.role or "").upper() == "CANDIDATE":
+        cand_user = other_user
+
+    if not cand_user:
+        return {"is_closed": False, "can_reply": True, "reason": None, "closes_at": None}
+
+    if getattr(cand_user, "is_deactivated", False) or getattr(cand_user, "is_anonymized", False):
+        return {
+            "is_closed": True,
+            "can_reply": False,
+            "reason": "This conversation is closed",
+            "closes_at": None,
+        }
+
+    if application_id is not None:
+        apps_res = await db.execute(select(JobApplication).where(JobApplication.id == application_id))
+        apps = list(apps_res.scalars().all())
+    else:
+        norm_email = (cand_user.email or "").strip().lower()
+        apps_res = await db.execute(
+            select(JobApplication).where(
+                or_(
+                    JobApplication.user_id == cand_user.id,
+                    func.lower(JobApplication.candidate_email) == norm_email,
+                )
+            )
+        )
+        apps = list(apps_res.scalars().all())
+
+    if not apps:
+        return {"is_closed": False, "can_reply": True, "reason": None, "closes_at": None}
+
+    # If any relevant application is still active, thread stays open
+    if any(is_application_active(a.status) for a in apps):
+        return {"is_closed": False, "can_reply": True, "reason": None, "closes_at": None}
+
+    now = datetime.utcnow()
+    closure_days = await system_config_service.get_messaging_closure_days(db)
+
+    latest_closes_at = None
+    for app in apps:
+        if is_withdrawn_status(app.status):
+            # Withdrawn applications are read-only immediately
+            continue
+        if app.messaging_closed_at and app.messaging_closed_at <= now:
+            continue
+        resolved_ref = app.resolved_at or app.updated_at or app.created_at
+        if resolved_ref:
+            closes_at = resolved_ref + timedelta(days=int(closure_days))
+            if closes_at > now:
+                if latest_closes_at is None or closes_at > latest_closes_at:
+                    latest_closes_at = closes_at
+
+    if latest_closes_at is not None:
+        return {
+            "is_closed": False,
+            "can_reply": True,
+            "reason": None,
+            "closes_at": latest_closes_at.isoformat(),
+        }
+
+    return {
+        "is_closed": True,
+        "can_reply": False,
+        "reason": "This conversation is closed",
+        "closes_at": None,
+    }
+
+
 async def send_message(
     db: AsyncSession, 
     current_user: User, 
@@ -139,19 +244,27 @@ async def send_message(
     application_id: Optional[int] = None
 ) -> Optional[Message]:
     """
-    Sends a message to another user if the roles are compatible,
-    and broadcasts it via WebSocket.
+    Sends a message to another user if the roles are compatible and the conversation
+    thread has not closed, then broadcasts it via WebSocket.
+    Applicants can view and reply until the thread closes (withdrawn = immediate;
+    finished = after configured messaging closure period, default 30 days).
     """
-    # Candidates are restricted from sending messages (REQ060: One-way HR-to-Applicant)
-    if current_user.role.upper() == "CANDIDATE":
-        return None
-
     # Verify allowed to message
     allowed_roles = await get_allowed_roles(current_user.role)
     receiver = await ChatRepository.get_user_by_id(db, other_user_id)
 
     if not receiver or receiver.role not in allowed_roles:
         return None
+
+    # Enforce thread closure window for Candidate <-> HR conversations
+    thread_status = await get_thread_status(
+        db=db,
+        current_user=current_user,
+        other_user_id=other_user_id,
+        application_id=application_id,
+    )
+    if thread_status.get("is_closed"):
+        raise ConversationClosedError(thread_status.get("reason") or "This conversation is closed")
 
     new_msg = await ChatRepository.create_message(
         db, 
@@ -238,7 +351,25 @@ async def handle_websocket_message(db_factory, sender_id: int, data: dict):
                 return
 
             # Use existing send_message logic
-            await send_message(db, sender, receiver_id, content, client_id=client_id)
+            try:
+                await send_message(
+                    db,
+                    sender,
+                    receiver_id,
+                    content,
+                    client_id=client_id,
+                    application_id=data.get("application_id"),
+                )
+            except ConversationClosedError as closed_err:
+                await manager.send_personal_message(
+                    {
+                        "type": "conversation_closed",
+                        "receiver_id": receiver_id,
+                        "detail": str(closed_err),
+                        "client_id": client_id,
+                    },
+                    sender_id,
+                )
 
     except Exception as e:
         # Log error but don't crash the WS loop

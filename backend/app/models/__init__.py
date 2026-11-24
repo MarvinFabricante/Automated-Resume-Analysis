@@ -15,6 +15,8 @@ from app.models.status_history import ApplicationStatusHistory
 from app.models.shortlist_roster import ShortlistRoster, ShortlistRosterItem
 from app.models.candidate_note import HRCandidateNote
 from app.models.profile_access_log import ApplicantProfileAccessLog
+from app.models.account_otp import AccountOTP
+from app.models.retention_run_log import RetentionRunLog
 
 __all__ = [
     "User",
@@ -38,6 +40,8 @@ __all__ = [
     "ShortlistRoster",
     "ShortlistRosterItem",
     "HRCandidateNote",
-    "ApplicantProfileAccessLog"
+    "ApplicantProfileAccessLog",
+    "AccountOTP",
+    "RetentionRunLog",
 ]
 

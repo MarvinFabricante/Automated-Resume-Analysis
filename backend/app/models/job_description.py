@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Boolean, Enum, JSON
+from sqlalchemy import Column, Integer, String, Boolean, Enum, JSON, DateTime
 import enum
 from app.utils.database import Base
 from sqlalchemy.orm import relationship
@@ -9,6 +9,12 @@ class JobType(str, enum.Enum):
     FREELANCE = "Freelance"
     CONTRACT = "Contract"
     INTERNSHIP = "Internship"
+
+class JobLifecycleStatus(str, enum.Enum):
+    DRAFT = "DRAFT"
+    ACTIVE = "ACTIVE"
+    CLOSED = "CLOSED"
+    ARCHIVED = "ARCHIVED"
 
 class JobDescription(Base):
     __tablename__ = "job_descriptions"
@@ -26,6 +32,9 @@ class JobDescription(Base):
     certifications_requirements = Column(String, nullable=True)
     experience_requirements = Column(String, nullable=True)
     is_active = Column(Boolean, default=True)
+    status = Column(String, default="ACTIVE", nullable=False, index=True)  # DRAFT, ACTIVE, CLOSED, ARCHIVED
+    closed_at = Column(DateTime, nullable=True)
+    archived_at = Column(DateTime, nullable=True)
     # Per-job scoring priorities (fractions summing to 1.0). NULL = inherit the
     # global default weights from System Settings.
     scoring_weights = Column(JSON, nullable=True)

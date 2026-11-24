@@ -369,6 +369,8 @@ async def create_tables():
     from app.models.interview import Interview, InterviewLog, VoiceCallRecord
     from app.models.system_config import SystemConfig, FormTemplate
     from app.models.physical_resume import PhysicalResume
+    from app.models.account_otp import AccountOTP
+    from app.models.retention_run_log import RetentionRunLog
 
     try:
         async with engine.begin() as conn:
@@ -377,6 +379,8 @@ async def create_tables():
             await ensure_archived_conversations_table(conn)
             await ensure_interview_voice_columns(conn)
             await ensure_physical_resumes_table(conn)
+            from migrations.add_recruitment_lifecycle_rules import upgrade as upgrade_lifecycle_rules
+            await upgrade_lifecycle_rules(conn)
             await ensure_cascade_delete_constraints(conn)
             await ensure_performance_indexes(conn)
     except Exception as e:

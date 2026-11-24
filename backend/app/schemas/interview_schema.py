@@ -26,6 +26,7 @@ class InterviewCreateSchema(BaseModel):
     custom_email_subject: Optional[str] = None
     custom_email_message: Optional[str] = None
     custom_sms_message: Optional[str] = None
+    combined_application_ids: Optional[List[int]] = None
 
 class InterviewUpdateSchema(BaseModel):
     title: Optional[str] = None
@@ -41,6 +42,7 @@ class InterviewUpdateSchema(BaseModel):
     custom_email_subject: Optional[str] = None
     custom_email_message: Optional[str] = None
     custom_sms_message: Optional[str] = None
+    combined_application_ids: Optional[List[int]] = None
 
 
 class InterviewCancelSchema(BaseModel):
@@ -48,6 +50,7 @@ class InterviewCancelSchema(BaseModel):
     custom_email_subject: Optional[str] = None
     custom_email_message: Optional[str] = None
     custom_sms_message: Optional[str] = None
+    combined_application_ids: Optional[List[int]] = None
 
 
 class CandidateRescheduleSchema(BaseModel):
@@ -104,6 +107,9 @@ class InterviewResponseSchema(BaseModel):
     interviewer_id: Optional[int] = None
     interviewer_name: Optional[str] = None
     interviewer_email: Optional[str] = None
+    is_combined: Optional[bool] = False
+    combined_application_ids: Optional[List[int]] = None
+    combined_positions: Optional[List[Dict[str, Any]]] = None
     
     # AI Voice Notification fields
     call_status: Optional[str] = "PENDING"

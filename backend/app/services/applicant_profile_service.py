@@ -361,7 +361,37 @@ async def get_applicant_comprehensive_profile(
         for n in notes_records
     ]
 
-    # 7. Generate top summary strip (e.g. "Applied to 2 positions • Shortlisted for 1 • Interview: Nov 15 at 2:00 PM")
+    # 7. Generate top summary strip + multi-application & anonymized repeat-applicant flags
+    from app.services.retention_service import is_application_active, has_previous_anonymized_application
+
+    active_apps_list = [
+        {
+            "id": a["id"],
+            "job_id": a["job_id"],
+            "job_title": a["job_title"],
+            "status": a["status"],
+        }
+        for a in apps_data
+        if is_application_active(a["status"])
+    ]
+    active_applications_count = len(active_apps_list)
+    other_active_count = max(0, active_applications_count - 1)
+    other_active_flag = (
+        f"This applicant has {other_active_count} other active {'application' if other_active_count == 1 else 'applications'}"
+        if other_active_count > 0
+        else None
+    )
+
+    # Repeat-applicant detection strictly from salted one-way email_hash (zero PII exposed)
+    repeat_anon = await has_previous_anonymized_application(
+        db=db,
+        email=account_email or chosen_contact_email,
+        exclude_user_id=matched_user_id,
+    )
+    previous_application_flag = (
+        "Previous application on record (anonymized)" if repeat_anon else None
+    )
+
     total_apps_count = len(applications)
     shortlisted_count = len(shortlisted_positions)
     summary_parts = [f"Applied to {total_apps_count} {'position' if total_apps_count == 1 else 'positions'}"]
@@ -390,7 +420,13 @@ async def get_applicant_comprehensive_profile(
         "status_history": all_status_history,
         "summary_strip": summary_strip,
         "total_applications": total_apps_count,
-        "shortlisted_count": shortlisted_count
+        "shortlisted_count": shortlisted_count,
+        "active_applications_count": active_applications_count,
+        "active_applications": active_apps_list,
+        "other_active_count": other_active_count,
+        "other_active_flag": other_active_flag,
+        "has_previous_anonymized_application": repeat_anon,
+        "previous_application_flag": previous_application_flag,
     }
 
 async def add_candidate_hr_note(

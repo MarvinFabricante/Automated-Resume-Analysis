@@ -44,10 +44,42 @@ class MatchingWeightsUpdate(BaseModel):
 
 class RecruitmentConfigResponse(BaseModel):
     max_active_applications: int = 3
+    retention_months: int = 12
+    reapplication_cooldown_days: int = 0
+    messaging_closure_days: int = 30
+    allow_hired_elsewhere_withdrawal: bool = False
 
 
 class RecruitmentConfigUpdate(BaseModel):
-    max_active_applications: int = 3
+    max_active_applications: Optional[int] = None
+    retention_months: Optional[int] = None
+    reapplication_cooldown_days: Optional[int] = None
+    messaging_closure_days: Optional[int] = None
+    allow_hired_elsewhere_withdrawal: Optional[bool] = None
+
+
+class RetentionRunRequest(BaseModel):
+    dry_run: bool = True
+    retention_months: Optional[int] = None
+
+
+class RetentionRunLogResponse(BaseModel):
+    id: int
+    dry_run: bool
+    retention_months: int
+    triggered_by: str
+    started_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+    candidates_evaluated: int = 0
+    candidates_anonymized: int = 0
+    applications_anonymized: int = 0
+    files_deleted: int = 0
+    skipped_active: int = 0
+    status: str = "COMPLETED"
+    details: Optional[Any] = None
+
+    class Config:
+        from_attributes = True
 
 
 class MatchingThresholdsUpdate(BaseModel):

@@ -17,6 +17,8 @@ export type JobViewMode = 'cards' | 'table';
 interface StatusCounts {
   all: number;
   active: number;
+  closed?: number;
+  draft?: number;
   archived: number;
   customWeights: number;
 }
@@ -38,6 +40,8 @@ interface JobSearchAndFilterProps {
   setViewMode?: (mode: JobViewMode) => void;
   customWeightsOnly?: boolean;
   setCustomWeightsOnly?: (val: boolean) => void;
+  showArchived?: boolean;
+  setShowArchived?: (val: boolean) => void;
   totalFiltered?: number;
   totalCount?: number;
   statusCounts?: StatusCounts;
@@ -47,7 +51,8 @@ interface JobSearchAndFilterProps {
 const STATUS_TABS: Array<{ value: string; label: string; countKey: keyof StatusCounts }> = [
   { value: 'All Status', label: 'All Positions', countKey: 'all' },
   { value: 'Active', label: 'Active', countKey: 'active' },
-  { value: 'Inactive', label: 'Archived', countKey: 'archived' },
+  { value: 'Closed', label: 'Closed', countKey: 'closed' },
+  { value: 'Draft', label: 'Draft', countKey: 'draft' },
 ];
 
 const JobSearchAndFilter: React.FC<JobSearchAndFilterProps> = ({
@@ -67,6 +72,8 @@ const JobSearchAndFilter: React.FC<JobSearchAndFilterProps> = ({
   setViewMode,
   customWeightsOnly = false,
   setCustomWeightsOnly,
+  showArchived = false,
+  setShowArchived,
   totalFiltered,
   totalCount,
   statusCounts,
@@ -123,6 +130,17 @@ const JobSearchAndFilter: React.FC<JobSearchAndFilterProps> = ({
 
         {/* Right Quick Controls */}
         <div className="flex flex-wrap items-center justify-between sm:justify-end gap-2.5">
+          {setShowArchived && (
+            <label className="inline-flex items-center gap-2 h-8 px-3 rounded-lg text-xs font-semibold border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={showArchived}
+                onChange={(e) => setShowArchived(e.target.checked)}
+                className="rounded border-slate-300 text-[#D10043] focus:ring-[#D10043]"
+              />
+              <span>Show archived</span>
+            </label>
+          )}
           {setCustomWeightsOnly && (
             <button
               type="button"

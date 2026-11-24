@@ -24,6 +24,9 @@ interface JobListProps {
   viewMode?: JobViewMode;
   onEdit: (job: Job) => void;
   onView: (job: Job) => void;
+  onCloseJob?: (jobId: string | number | undefined, title: string) => void;
+  onReopenJob?: (jobId: string | number | undefined, title: string) => void;
+  onPublishJob?: (jobId: string | number | undefined, title: string) => void;
   onArchive: (jobId: string | number | undefined, title: string) => void;
   onUnarchive: (jobId: string | number | undefined, title: string) => void;
   onDelete: (jobId: string | number | undefined, title: string) => void;
@@ -35,6 +38,9 @@ const JobList: React.FC<JobListProps> = ({
   viewMode = 'cards',
   onEdit,
   onView,
+  onCloseJob,
+  onReopenJob,
+  onPublishJob,
   onArchive,
   onUnarchive,
   onDelete,
@@ -245,6 +251,9 @@ const JobList: React.FC<JobListProps> = ({
           job={job}
           onEdit={onEdit}
           onView={onView}
+          onCloseJob={onCloseJob}
+          onReopenJob={onReopenJob}
+          onPublishJob={onPublishJob}
           onArchive={onArchive}
           onUnarchive={onUnarchive}
           onDelete={onDelete}

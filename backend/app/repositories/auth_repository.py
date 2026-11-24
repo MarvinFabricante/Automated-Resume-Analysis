@@ -85,7 +85,11 @@ async def get_raw_user_by_email(db: AsyncSession, email: str):
         return None
 
     raw = await db.execute(
-        text("SELECT id, email, password, role, fullname, profile_image_url, is_archived, is_online FROM users WHERE LOWER(email) = :email"),
+        text(
+            "SELECT id, email, password, role, fullname, profile_image_url, is_archived, is_online, "
+            "is_deactivated, deactivated_at, token_version, is_anonymized "
+            "FROM users WHERE LOWER(email) = :email"
+        ),
         {"email": email_clean}
     )
     row = raw.fetchone()

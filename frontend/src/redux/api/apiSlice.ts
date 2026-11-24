@@ -126,24 +126,51 @@ export const apiSlice = createApi({
     }),
 
     // --- JOBS ---
-    getJobs: builder.query<any[], { include_inactive?: boolean } | void>({
+    getJobs: builder.query<any[], { include_inactive?: boolean; include_archived?: boolean } | void>({
       query: (params) => {
-        const includeInactive = (params as { include_inactive?: boolean } | undefined)?.include_inactive ?? false;
-        return `/admins/read-jobs?include_inactive=${includeInactive}`;
+        const p = params as { include_inactive?: boolean; include_archived?: boolean } | undefined;
+        const includeInactive = p?.include_inactive ?? false;
+        const includeArchived = p?.include_archived ?? false;
+        return `/admins/read-jobs?include_inactive=${includeInactive}&include_archived=${includeArchived}`;
       },
       providesTags: ['Jobs'],
       keepUnusedDataFor: 300,
       transformResponse: (response: any) => {
         const rawData = Array.isArray(response) ? response : [];
-        return rawData.map((job: any) => ({
-          ...job,
-          title: job.job_title || "Untitled Position",
-          department: job.department || "General",
-          location: job.location || "Remote / Not Specified",
-          salary_range: job.salary_range || "Competitive / TBD",
-          is_active: Boolean(job.is_active)
-        }));
+        return rawData.map((job: any) => {
+          const normalizedStatus = (job.status || (job.is_active ? 'ACTIVE' : 'ARCHIVED')).toUpperCase();
+          return {
+            ...job,
+            title: job.job_title || "Untitled Position",
+            department: job.department || "General",
+            location: job.location || "Remote / Not Specified",
+            salary_range: job.salary_range || "Competitive / TBD",
+            status: normalizedStatus,
+            is_active: normalizedStatus === 'ACTIVE',
+          };
+        });
       },
+    }),
+
+    getJobClosePreview: builder.query<any, number | string>({
+      query: (jobId) => `/admins/jobs/${jobId}/close-preview`,
+    }),
+
+    changeJobStatus: builder.mutation<any, { jobId: number | string; status: string }>({
+      query: ({ jobId, status }) => ({
+        url: `/admins/jobs/${jobId}/status`,
+        method: 'PATCH',
+        body: { status },
+      }),
+      async onQueryStarted(_arg, { queryFulfilled }) {
+        try {
+          await queryFulfilled;
+          broadcastAtsUpdate('job_update');
+        } catch {
+          // status transition failed
+        }
+      },
+      invalidatesTags: ['Jobs', 'Applications', 'Dashboard', 'Shortlists'],
     }),
 
     createJob: builder.mutation<any, any>({
@@ -263,40 +290,97 @@ export const apiSlice = createApi({
       transformResponse: (response: any) => {
         if (!Array.isArray(response)) return [];
         return response.map((app: any) => {
-          const uStatus = app.status ? app.status.toUpperCase() : 'PENDING';
-          const isRejected = uStatus === 'REJECTED';
-          const isInterview = uStatus.includes('INTERVIEW') || uStatus === 'SCHEDULED' || uStatus === 'ACCEPTED';
-          const isShortlisted = uStatus === 'SHORTLISTED';
-          const isReviewed = uStatus === 'REVIEWED';
+          const uStatus = (app.status || 'SUBMITTED').trim().toUpperCase();
+          const isPassed =
+            uStatus === 'PASSED INITIAL INTERVIEW' ||
+            uStatus === 'PASSED' ||
+            uStatus === 'ACCEPTED' ||
+            uStatus.includes('ENDORSED');
+          const isWithdrawnHired =
+            uStatus.includes('HIRED ELSEWHERE') || uStatus === 'WITHDRAWN_HIRED_ELSEWHERE';
+          const isWithdrawn = uStatus.startsWith('WITHDRAWN');
+          const isNotSelected =
+            uStatus === 'NOT SELECTED' ||
+            uStatus === 'NOT_SELECTED' ||
+            uStatus === 'REJECTED' ||
+            uStatus === 'ARCHIVED' ||
+            uStatus === 'PASSED_OVER';
+          const isOnHold = uStatus === 'ON HOLD' || uStatus === 'ON_HOLD';
+          const isInterviewed = uStatus === 'INTERVIEWED';
+          const isInterviewScheduled =
+            uStatus === 'INTERVIEW SCHEDULED' ||
+            uStatus === 'TECHNICAL INTERVIEW' ||
+            uStatus === 'INTERVIEW' ||
+            uStatus === 'SCHEDULED';
+          const isShortlisted = uStatus === 'SHORTLISTED' || uStatus === 'SHORTLIST';
+          const isReviewed =
+            uStatus === 'UNDER REVIEW' || uStatus === 'REVIEWED' || uStatus === 'SCREENED';
 
-          const formattedStatus = isRejected
-            ? 'Not Selected'
-            : isInterview
-              ? 'Initial Interview'
-              : isShortlisted
-                ? 'Shortlisted'
-                : isReviewed
-                  ? 'Under Review'
-                  : 'Submitted';
+          let formattedStatus = 'Submitted';
+          let statusColor = 'text-amber-700 bg-amber-50 border-amber-200';
+          let step = 1;
+          let group: 'active' | 'completed' | 'withdrawn' = 'active';
+          let isReadOnly = false;
 
-          const statusColor = isRejected
-            ? "text-rose-600 bg-rose-50 border-rose-100"
-            : isInterview
-              ? "text-purple-600 bg-purple-50 border-purple-100"
-              : isShortlisted
-                ? "text-emerald-600 bg-emerald-50 border-emerald-100"
-                : isReviewed
-                  ? "text-blue-600 bg-blue-50 border-blue-100"
-                  : "text-amber-600 bg-amber-50 border-amber-100";
-
-          const step = isRejected ? 0 : isInterview ? 4 : isShortlisted ? 3 : isReviewed ? 2 : 1;
+          if (isPassed) {
+            formattedStatus = 'Passed Initial Interview – Endorsed for next stage';
+            statusColor = 'text-emerald-700 bg-emerald-50 border-emerald-200';
+            step = 4;
+            group = 'completed';
+            isReadOnly = true;
+          } else if (isNotSelected) {
+            formattedStatus = 'Not selected';
+            statusColor = 'text-rose-700 bg-rose-50 border-rose-200';
+            step = 0;
+            group = 'completed';
+          } else if (isWithdrawnHired) {
+            formattedStatus = 'Withdrawn – hired elsewhere in company';
+            statusColor = 'text-slate-600 bg-slate-100 border-slate-200';
+            step = 0;
+            group = 'withdrawn';
+            isReadOnly = true;
+          } else if (isWithdrawn) {
+            formattedStatus = 'Withdrawn by applicant';
+            statusColor = 'text-slate-600 bg-slate-100 border-slate-200';
+            step = 0;
+            group = 'withdrawn';
+            isReadOnly = true;
+          } else if (isOnHold) {
+            formattedStatus = 'On Hold';
+            statusColor = 'text-amber-800 bg-amber-50 border-amber-300';
+            step = 3;
+            group = 'active';
+          } else if (isInterviewed) {
+            formattedStatus = 'Interviewed';
+            statusColor = 'text-indigo-700 bg-indigo-50 border-indigo-200';
+            step = 4;
+            group = 'active';
+          } else if (isInterviewScheduled) {
+            formattedStatus = 'Interview Scheduled';
+            statusColor = 'text-purple-700 bg-purple-50 border-purple-200';
+            step = 4;
+            group = 'active';
+          } else if (isShortlisted) {
+            formattedStatus = 'Shortlisted';
+            statusColor = 'text-emerald-700 bg-emerald-50 border-emerald-200';
+            step = 3;
+            group = 'active';
+          } else if (isReviewed) {
+            formattedStatus = 'Under Review';
+            statusColor = 'text-blue-700 bg-blue-50 border-blue-200';
+            step = 2;
+            group = 'active';
+          }
 
           return {
             id: app.id,
-            role: app.job?.job_title || "Unknown Position",
+            role: app.job?.job_title || app.job_title || "Unknown Position",
             company: app.company || "Mariwasa Siam Ceramics",
             appliedDate: new Date(app.created_at).toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }),
             status: formattedStatus,
+            rawStatus: uStatus,
+            group,
+            isReadOnly,
             statusColor,
             step,
             totalSteps: 4,
@@ -304,6 +388,47 @@ export const apiSlice = createApi({
           };
         });
       },
+    }),
+
+    withdrawApplication: builder.mutation<any, { applicationId: number | string; reason?: string }>({
+      query: ({ applicationId, reason }) => ({
+        url: `/applications/${applicationId}/withdraw`,
+        method: 'POST',
+        body: { reason },
+      }),
+      invalidatesTags: ['Applications', 'Dashboard', 'Interviews', 'Shortlists', 'ApplicantProfile'],
+    }),
+
+    postPassAction: builder.mutation<any, { applicationId: number | string; action: 'on_hold' | 'continue'; target_application_ids: number[]; note?: string }>({
+      query: ({ applicationId, ...body }) => ({
+        url: `/applications/${applicationId}/post-pass-action`,
+        method: 'POST',
+        body,
+      }),
+      invalidatesTags: ['Applications', 'Dashboard', 'Shortlists', 'ApplicantProfile'],
+    }),
+
+    resumeApplication: builder.mutation<any, { applicationId: number | string; note?: string }>({
+      query: ({ applicationId, note }) => ({
+        url: `/applications/${applicationId}/resume`,
+        method: 'POST',
+        body: { note },
+      }),
+      invalidatesTags: ['Applications', 'Dashboard', 'Shortlists', 'ApplicantProfile'],
+    }),
+
+    withdrawHiredElsewhere: builder.mutation<any, { applicationId: number | string; note?: string }>({
+      query: ({ applicationId, note }) => ({
+        url: `/applications/${applicationId}/withdraw-hired-elsewhere`,
+        method: 'POST',
+        body: { note },
+      }),
+      invalidatesTags: ['Applications', 'Dashboard', 'Interviews', 'Shortlists', 'ApplicantProfile'],
+    }),
+
+    getCandidateShortlistedForCombined: builder.query<any, number | string>({
+      query: (applicationId) => `/interviews/candidate-shortlisted/${applicationId}`,
+      providesTags: ['Applications', 'Interviews'],
     }),
 
     submitApplication: builder.mutation<any, any>({
@@ -880,13 +1005,71 @@ export const apiSlice = createApi({
       providesTags: (_result, _error, id) => [{ type: 'Shortlists', id }],
     }),
 
-    createShortlistRoster: builder.mutation<any, { job_id: number; name: string; notes?: string; application_ids?: number[] }>({
+    createShortlistRoster: builder.mutation<any, { job_id: number; name: string; notes?: string; application_ids?: number[]; non_shortlisted_action?: string; finalize?: boolean; confirm_notify_non_shortlisted?: boolean }>({
       query: (body) => ({
         url: '/hr/shortlists',
         method: 'POST',
         body,
       }),
       invalidatesTags: ['Shortlists', 'Applications', 'Dashboard', 'Candidates'],
+    }),
+
+    previewShortlistNonShortlisted: builder.mutation<any, { job_id: number; shortlisted_application_ids?: number[]; roster_id?: number }>({
+      query: (body) => ({
+        url: '/hr/shortlists/preview-non-shortlisted',
+        method: 'POST',
+        body,
+      }),
+    }),
+
+    getRosterFinalizePreview: builder.query<any, number | string>({
+      query: (rosterId) => `/hr/shortlists/${rosterId}/finalize-preview`,
+    }),
+
+    updateRosterNonShortlistedPolicy: builder.mutation<any, { rosterId: number | string; non_shortlisted_action: string }>({
+      query: ({ rosterId, non_shortlisted_action }) => ({
+        url: `/hr/shortlists/${rosterId}/non-shortlisted-policy`,
+        method: 'PATCH',
+        body: { non_shortlisted_action },
+      }),
+      invalidatesTags: ['Shortlists'],
+    }),
+
+    finalizeShortlistRoster: builder.mutation<any, { rosterId: number | string; non_shortlisted_action?: string; confirm?: boolean }>({
+      query: ({ rosterId, non_shortlisted_action, confirm = true }) => ({
+        url: `/hr/shortlists/${rosterId}/finalize`,
+        method: 'POST',
+        body: { non_shortlisted_action, confirm },
+      }),
+      invalidatesTags: ['Shortlists', 'Applications', 'Dashboard', 'Candidates'],
+    }),
+
+    getRecruitmentConfig: builder.query<any, void>({
+      query: () => '/system-config/recruitment',
+      providesTags: ['SystemConfig'],
+    }),
+
+    updateRecruitmentConfig: builder.mutation<any, Record<string, any>>({
+      query: (body) => ({
+        url: '/system-config/recruitment',
+        method: 'PUT',
+        body,
+      }),
+      invalidatesTags: ['SystemConfig'],
+    }),
+
+    runRetentionAnonymization: builder.mutation<any, { dry_run: boolean; retention_months?: number }>({
+      query: (body) => ({
+        url: '/system-config/retention/run',
+        method: 'POST',
+        body,
+      }),
+      invalidatesTags: ['SystemConfig', 'Applications', 'Users'],
+    }),
+
+    getRetentionLogs: builder.query<any[], number | void>({
+      query: (limit = 25) => `/system-config/retention/logs?limit=${limit}`,
+      providesTags: ['SystemConfig'],
     }),
 
     addCandidateToRoster: builder.mutation<any, { rosterId: number | string; applicationId: number | string }>({
@@ -986,11 +1169,18 @@ export const {
   useGetResumeCountQuery,
   useGetDashboardTrendsQuery,
   useGetJobsQuery,
+  useLazyGetJobClosePreviewQuery,
+  useChangeJobStatusMutation,
   useGetApplicationsQuery,
   useGetApplicationsSummaryQuery,
   useGetApplicationByIdQuery,
   useGetCandidateApplicationsQuery,
   useSubmitApplicationMutation,
+  useWithdrawApplicationMutation,
+  usePostPassActionMutation,
+  useResumeApplicationMutation,
+  useWithdrawHiredElsewhereMutation,
+  useGetCandidateShortlistedForCombinedQuery,
   useDeleteApplicationMutation,
   useCreateJobMutation,
   useUpdateJobMutation,
@@ -1054,6 +1244,15 @@ export const {
   useGetShortlistRostersQuery,
   useGetShortlistRosterByIdQuery,
   useCreateShortlistRosterMutation,
+  usePreviewShortlistNonShortlistedMutation,
+  useGetRosterFinalizePreviewQuery,
+  useLazyGetRosterFinalizePreviewQuery,
+  useUpdateRosterNonShortlistedPolicyMutation,
+  useFinalizeShortlistRosterMutation,
+  useGetRecruitmentConfigQuery,
+  useUpdateRecruitmentConfigMutation,
+  useRunRetentionAnonymizationMutation,
+  useGetRetentionLogsQuery,
   useAddCandidateToRosterMutation,
   useRemoveCandidateFromRosterMutation,
   useUpdateRosterStageMutation,
