@@ -1,6 +1,8 @@
 import asyncio
 import pytest
 import pytest_asyncio
+from unittest.mock import patch
+from app.utils.limiter import limiter
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.pool import StaticPool
 from httpx import ASGITransport, AsyncClient
@@ -42,3 +44,13 @@ async def client(db_session):
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
         yield ac
     app.dependency_overrides.clear()
+
+
+@pytest.fixture(autouse=True)
+def isolate_rate_limits():
+    # Use deterministic per-test memory storage, never the deployment's Redis buckets.
+    from limits.storage import MemoryStorage
+    from limits.strategies import FixedWindowRateLimiter
+    storage = MemoryStorage()
+    with patch.object(limiter, '_storage', storage), patch.object(limiter, '_limiter', FixedWindowRateLimiter(storage)):
+        yield

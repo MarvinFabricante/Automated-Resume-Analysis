@@ -35,3 +35,10 @@ class User(Base):
         "polymorphic_on": role,
         "polymorphic_identity": "user"
     }
+
+# Retain exact-email uniqueness; also protect normalized active identities.
+Index(
+    "uq_users_active_normalized_email", func.lower(func.trim(User.email)), unique=True,
+    postgresql_where=and_(User.is_deactivated.is_not(True), User.is_anonymized.is_not(True)),
+    sqlite_where=and_(User.is_deactivated.is_not(True), User.is_anonymized.is_not(True)),
+)

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import authService from '../../../services/authService';
+import AccountRecoveryDialog, { isDeactivatedAccount } from '../../../components/auth/AccountRecoveryDialog';
 import { API_BASE_URL } from '../../../services/api';
 import { useDispatch } from 'react-redux';
 import { setCredentials } from '../../../redux/slices/authSlice';
@@ -38,6 +39,7 @@ const Login: React.FC = () => {
     const token = localStorage.getItem('token');
     return token && !isTokenExpired(token) ? (localStorage.getItem('saved_email') || '') : '';
   });
+  const [recoveryOpen, setRecoveryOpen] = useState(false);
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -61,6 +63,11 @@ const Login: React.FC = () => {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const errorParam = params.get('error');
+    if (params.get('code') === 'ACCOUNT_DEACTIVATED' || isDeactivatedAccount(errorParam)) {
+      setRecoveryOpen(true);
+      window.history.replaceState({}, document.title, window.location.pathname);
+      return;
+    }
     if (errorParam) {
       setModalState({
         isOpen: true,
@@ -235,6 +242,7 @@ const Login: React.FC = () => {
       const fallbackMessage = "We couldn't sign you in right now. Please try again in a few minutes.";
       const status = err?.response?.status;
       const detail = err?.response?.data?.detail;
+      if (isDeactivatedAccount(detail)) { setRecoveryOpen(true); return; }
       const rawMessage =
         typeof detail === 'string'
           ? detail
@@ -287,6 +295,8 @@ const Login: React.FC = () => {
         <ArrowLeft size={14} className="group-hover:-translate-x-1 transition-transform sm:w-4 sm:h-4" />
         Back to Home
       </a>
+
+      {recoveryOpen && <AccountRecoveryDialog email={email} onClose={() => setRecoveryOpen(false)} />}
 
       {modalState.isOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/40 backdrop-blur-sm animate-in fade-in duration-200">
@@ -439,11 +449,7 @@ const Login: React.FC = () => {
                 <a href="/forgot-password" className="text-xs font-medium text-[#D60041] hover:underline transition-colors inline-flex items-center min-h-[44px] cursor-pointer touch-manipulation">
                   Forgot password?
                 </a>
-                {detectedRoleInfo && detectedRoleInfo.exists && (
-                  <span className="text-[11px] text-emerald-600 font-medium flex items-center gap-1">
-                    ✓ Recognized as <strong className="uppercase">{detectedRoleInfo.roleName}</strong>
-                  </span>
-                )}
+
               </div>
 
               <div className="flex flex-col-reverse sm:flex-row justify-between items-center gap-4 sm:gap-0 mt-6">

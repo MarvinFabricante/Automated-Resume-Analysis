@@ -8,6 +8,8 @@ class UserCreate(BaseModel):
     role: str = "CANDIDATE"
     fullname: str
     fresh_start: Optional[bool] = False
+    verification_token: Optional[str] = None
+    confirm_fresh_start: bool = False
 
 class UserUpdate(BaseModel):
     fullname: Optional[str] = None
@@ -80,3 +82,5 @@ class FreshStartRegisterRequest(BaseModel):
     email: EmailStr
     password: str
     fullname: str
+    verification_token: Optional[str] = None
+    confirm_fresh_start: bool = False

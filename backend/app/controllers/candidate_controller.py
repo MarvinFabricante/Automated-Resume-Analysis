@@ -8,6 +8,7 @@ from app.utils.database import get_db
 from app.schemas.candidate_schema import CandidateCreate, CandidateResponse, CandidateUpdate
 from app.services import candidate_service, resume_service
 from app.utils.limiter import limiter
+from app.services import auth_service
 from app.utils.cache import cache_response, clear_cache_pattern, delete_cache
 
 
@@ -112,13 +113,22 @@ async def upload_profile_image(
 
 
 @router.post("/register", response_model=CandidateResponse, status_code=status.HTTP_200_OK)
+@limiter.limit("10/minute")
 async def register_candidate(
+    request: Request,
     candidate_in: CandidateCreate, 
     db: AsyncSession = Depends(get_db)
 ):
     try:
         return await candidate_service.create_candidate_profile(db, candidate_in)
         
+    except (auth_service.DeactivatedAccountExistsError, auth_service.DuplicateEmailError) as e:
+        await db.rollback()
+        detail = (auth_service.deactivated_account_detail(str(e))
+                  if isinstance(e, auth_service.DeactivatedAccountExistsError) else str(e))
+        raise HTTPException(status_code=409, detail=detail)
+    except HTTPException:
+        raise
     except IntegrityError as e:
         await db.rollback()
         raise HTTPException(

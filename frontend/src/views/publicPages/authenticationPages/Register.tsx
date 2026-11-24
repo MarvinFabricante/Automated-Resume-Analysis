@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import authService from '../../../services/authService';
-import api, { API_BASE_URL } from '../../../services/api';
+import AccountRecoveryDialog, { isDeactivatedAccount } from '../../../components/auth/AccountRecoveryDialog';
+import { API_BASE_URL } from '../../../services/api';
 import { Users, Eye, EyeOff, Loader2, CheckCircle2, XCircle, ArrowLeft } from 'lucide-react';
 import { Helmet } from 'react-helmet-async';
 import logo from '../../../assets/logo.png';
@@ -28,11 +29,6 @@ const Register: React.FC = () => {
   const [agreedToTerms, setAgreedToTerms] = useState(false);
   const [showTermsModal, setShowTermsModal] = useState(false);
   const [deactivatedModalOpen, setDeactivatedModalOpen] = useState(false);
-  const [reactivateStep, setReactivateStep] = useState<'choose' | 'otp'>('choose');
-  const [reactivateOtp, setReactivateOtp] = useState('');
-  const [reactivateStatus, setReactivateStatus] = useState<string | null>(null);
-  const [reactivateBusy, setReactivateBusy] = useState(false);
-
   const [modalState, setModalState] = useState<ModalState>({
     isOpen: false,
     type: 'success',
@@ -42,9 +38,18 @@ const Register: React.FC = () => {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
+    if (params.get('fresh_start')) {
+      setFormData(previous => ({ ...previous, email: sessionStorage.getItem('recovery_email') || '' }));
+      sessionStorage.removeItem('recovery_email');
+    }
     const errorParam = params.get('error');
+    if (params.get('code') === 'ACCOUNT_DEACTIVATED' || isDeactivatedAccount(errorParam)) {
+      setDeactivatedModalOpen(true);
+      window.history.replaceState({}, document.title, window.location.pathname);
+      return;
+    }
     if (errorParam) {
-      const decoded = decodeURIComponent(errorParam);
+      const decoded = errorParam;
       const isExisting = decoded.toLowerCase().includes('already') || decoded.toLowerCase().includes('exists') || decoded.toLowerCase().includes('registered');
       setModalState({
         isOpen: true,
@@ -167,10 +172,7 @@ const Register: React.FC = () => {
       }
     } catch (error: any) {
       const errorData = error.response?.data?.detail;
-      if (errorData && typeof errorData === 'object' && errorData.code === 'DEACTIVATED_ACCOUNT_EXISTS') {
-        setReactivateStep('choose');
-        setReactivateOtp('');
-        setReactivateStatus(null);
+      if (isDeactivatedAccount(errorData)) {
         setDeactivatedModalOpen(true);
         return;
       }
@@ -185,6 +187,11 @@ const Register: React.FC = () => {
         errorMessage = errorData.message;
       }
 
+      if (!error.response || error.response.status >= 500 || /sql|traceback|exception|constraint/i.test(errorMessage)) {
+        errorMessage = "We couldn't create your account right now. Please try again in a moment.";
+      } else if (error.response.status === 429) {
+        errorMessage = 'Too many attempts. Please wait a minute and try again.';
+      }
       const isExistingAccount = errorMessage.toLowerCase().includes('already') ||
         errorMessage.toLowerCase().includes('exists') ||
         errorMessage.toLowerCase().includes('registered');
@@ -216,136 +223,11 @@ const Register: React.FC = () => {
         <title>Candidate Registration | Mariwasa Recruitment</title>
       </Helmet>
 
-      {/* Deactivated Account Reactivation vs Fresh Start Modal */}
-      {deactivatedModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4">
-            <h3 className="text-lg font-black text-slate-900">
-              {reactivateStep === 'choose' ? 'Previously Deactivated Account Found' : 'Verify Email OTP to Reactivate'}
-            </h3>
-            {reactivateStep === 'choose' ? (
-              <>
-                <p className="text-xs text-slate-600 leading-relaxed">
-                  The email <strong>{formData.email.trim().toLowerCase()}</strong> belongs to a deactivated account that has not yet been purged. Choose how you would like to continue:
-                </p>
-                <div className="space-y-2.5">
-                  <button
-                    type="button"
-                    disabled={reactivateBusy}
-                    onClick={async () => {
-                      setReactivateBusy(true);
-                      setReactivateStatus(null);
-                      try {
-                        await api.post('/auth/reactivate/request-otp', { email: formData.email.trim().toLowerCase() });
-                        setReactivateStep('otp');
-                        setReactivateStatus('A 6-digit verification code has been sent to your email (expires in 10 minutes).');
-                      } catch (err: any) {
-                        setReactivateStatus(err?.response?.data?.detail || 'Could not send verification code.');
-                      } finally {
-                        setReactivateBusy(false);
-                      }
-                    }}
-                    className="w-full p-3.5 rounded-2xl bg-[#D10043] hover:bg-[#b50039] text-white text-left space-y-0.5 cursor-pointer disabled:opacity-50"
-                  >
-                    <p className="text-xs font-black">Reactivate Account (Email OTP)</p>
-                    <p className="text-[11px] opacity-90">Restores your profile and history. Previously withdrawn applications stay withdrawn.</p>
-                  </button>
-
-                  <button
-                    type="button"
-                    disabled={reactivateBusy}
-                    onClick={async () => {
-                      setReactivateBusy(true);
-                      setReactivateStatus(null);
-                      try {
-                        await api.post('/auth/fresh-start', {
-                          email: formData.email.trim().toLowerCase(),
-                          password: formData.password,
-                          fullname: formData.fullName,
-                        });
-                        setDeactivatedModalOpen(false);
-                        setModalState({
-                          isOpen: true,
-                          type: 'success',
-                          title: 'Fresh Account Created!',
-                          message: 'Your new empty account is ready. Nothing from the previous deactivated account was restored.',
-                        });
-                      } catch (err: any) {
-                        setReactivateStatus(err?.response?.data?.detail || 'Fresh start registration failed.');
-                      } finally {
-                        setReactivateBusy(false);
-                      }
-                    }}
-                    className="w-full p-3.5 rounded-2xl bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-900 text-left space-y-0.5 cursor-pointer disabled:opacity-50"
-                  >
-                    <p className="text-xs font-black">Start Fresh (New Empty Account)</p>
-                    <p className="text-[11px] text-slate-500">Immediately anonymizes the old account data and registers a brand-new empty account.</p>
-                  </button>
-                </div>
-              </>
-            ) : (
-              <div className="space-y-3">
-                <p className="text-xs text-slate-600">
-                  Enter the 6-digit verification code sent to <strong>{formData.email.trim().toLowerCase()}</strong>.
-                </p>
-                <input
-                  type="text"
-                  maxLength={6}
-                  value={reactivateOtp}
-                  onChange={(e) => setReactivateOtp(e.target.value.replace(/\D/g, ''))}
-                  placeholder="6-digit OTP"
-                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-center font-mono text-lg font-black tracking-widest outline-none focus:border-[#D10043]"
-                />
-                <button
-                  type="button"
-                  disabled={reactivateBusy || reactivateOtp.length !== 6}
-                  onClick={async () => {
-                    setReactivateBusy(true);
-                    setReactivateStatus(null);
-                    try {
-                      const res = await api.post('/auth/reactivate/verify', {
-                        email: formData.email.trim().toLowerCase(),
-                        otp_code: reactivateOtp,
-                      });
-                      const d = res.data;
-                      if (d?.access_token) {
-                        localStorage.setItem('token', d.access_token);
-                        localStorage.setItem('role', d.role || 'CANDIDATE');
-                        localStorage.setItem('fullname', d.fullname || '');
-                        if (d.user_id) localStorage.setItem('userId', String(d.user_id));
-                        window.location.href = '/candidate/dashboard';
-                      }
-                    } catch (err: any) {
-                      setReactivateStatus(err?.response?.data?.detail || 'Invalid or expired code.');
-                    } finally {
-                      setReactivateBusy(false);
-                    }
-                  }}
-                  className="w-full py-2.5 rounded-xl bg-[#D10043] hover:bg-[#b50039] text-white text-xs font-black disabled:opacity-50 cursor-pointer"
-                >
-                  {reactivateBusy ? 'Verifying...' : 'Verify & Reactivate Account'}
-                </button>
-              </div>
-            )}
-
-            {reactivateStatus && (
-              <p className="text-xs font-semibold text-slate-700 bg-slate-50 border border-slate-200 rounded-xl p-2.5">
-                {reactivateStatus}
-              </p>
-            )}
-
-            <div className="flex justify-end">
-              <button
-                type="button"
-                onClick={() => setDeactivatedModalOpen(false)}
-                className="px-4 py-1.5 rounded-xl text-xs font-bold text-slate-500 hover:bg-slate-100 cursor-pointer"
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {deactivatedModalOpen && <AccountRecoveryDialog
+        email={formData.email}
+        registration={formData.fullName && formData.password && agreedToTerms ? { fullname: formData.fullName, password: formData.password } : undefined}
+        onClose={() => setDeactivatedModalOpen(false)}
+      />}
 
       <a
         href="/"

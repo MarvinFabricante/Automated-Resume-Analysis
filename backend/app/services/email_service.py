@@ -1280,6 +1280,11 @@ async def send_otp_email(to_email: str, otp_code: str, purpose: str = "reactivat
         subtitle = "Account Deletion Verification Code"
         intro = "You requested to deactivate and delete your Mariwasa Recruitment account. Enter the 6-digit verification code below to confirm."
         subject = "Verification Code: Confirm Account Deletion | Mariwasa Siam Ceramics"
+    elif purpose == "fresh_start":
+        title = "Start Fresh"
+        subtitle = "Verify Your Email"
+        intro = "You requested a new, empty Mariwasa Recruitment account. Enter this code to verify your email. You will be asked to confirm before your old profile and history are permanently removed."
+        subject = "Verification Code: Start Fresh | Mariwasa Siam Ceramics"
     else:
         title = "Reactivate Your Account"
         subtitle = "Account Reactivation Verification Code"

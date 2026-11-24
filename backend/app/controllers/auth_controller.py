@@ -6,6 +6,8 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.utils.database import get_db
+from app.utils.limiter import limiter
+from sqlalchemy.exc import IntegrityError
 
 from app.schemas.user_schema import (
     Token, UserCreate, UserLogin, ForgotPasswordRequest, 
@@ -28,13 +30,15 @@ _SAFE_LOGIN_ERROR_MESSAGES = {
 }
 
 @router.get("/check-email-status")
-async def check_email_status(email: str, db: AsyncSession = Depends(get_db)):
+@limiter.limit("10/minute")
+async def check_email_status(request: Request, email: str, db: AsyncSession = Depends(get_db)):
     """Check whether an email is available, active, or belongs to a deactivated (reactivable) account."""
     return await auth_service.check_email_registration_status(db, email)
 
 
 @router.post("/register")
-async def register(user: UserCreate, db: AsyncSession = Depends(get_db)):
+@limiter.limit("10/minute")
+async def register(request: Request, user: UserCreate, db: AsyncSession = Depends(get_db)):
     try:
         requested_role = (user.role or "CANDIDATE").strip().upper()
         if requested_role != "CANDIDATE":
@@ -49,6 +53,8 @@ async def register(user: UserCreate, db: AsyncSession = Depends(get_db)):
             "CANDIDATE",
             user.fullname,
             fresh_start=bool(getattr(user, "fresh_start", False)),
+            verification_token=user.verification_token,
+            confirm_fresh_start=user.confirm_fresh_start,
         )
         return {"message": "User registered successfully"}
     except HTTPException:
@@ -61,15 +67,25 @@ async def register(user: UserCreate, db: AsyncSession = Depends(get_db)):
                 "message": str(e),
                 "can_reactivate": True,
                 "can_fresh_start": True,
+                "allowed_actions": ["reactivate", "fresh_start"],
             },
         )
     except DuplicateEmailError as e:
         raise HTTPException(status_code=409, detail=str(e))
-    except Exception as e:
+    except ValueError as e:
+        await db.rollback()
         raise HTTPException(status_code=400, detail=str(e))
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(status_code=409, detail="An account with this email is already registered. Please sign in instead.")
+    except Exception:
+        await db.rollback()
+        logger.exception("Registration failed")
+        raise HTTPException(status_code=503, detail="We couldn't create your account right now. Please try again.")
 
 @router.post("/login", response_model=Token)
-async def login(user: UserLogin, db: AsyncSession = Depends(get_db)):
+@limiter.limit("20/minute")
+async def login(request: Request, user: UserLogin, db: AsyncSession = Depends(get_db)):
     try:
         data = await auth_service.login_user(
             db, user.email, user.password
@@ -92,6 +108,7 @@ async def login(user: UserLogin, db: AsyncSession = Depends(get_db)):
                 "message": str(e),
                 "can_reactivate": True,
                 "can_fresh_start": True,
+                "allowed_actions": ["reactivate", "fresh_start"],
             },
         )
     except Exception as e:
@@ -148,7 +165,9 @@ async def delete_own_account(
 
 
 @router.post("/reactivate/request-otp")
+@limiter.limit("5/minute")
 async def request_reactivation_otp(
+    request: Request,
     payload: ReactivateRequestOTP,
     db: AsyncSession = Depends(get_db),
 ):
@@ -160,7 +179,9 @@ async def request_reactivation_otp(
 
 
 @router.post("/reactivate/verify")
+@limiter.limit("10/minute")
 async def verify_reactivation_otp(
+    request: Request,
     payload: ReactivateVerifyRequest,
     db: AsyncSession = Depends(get_db),
 ):
@@ -171,8 +192,28 @@ async def verify_reactivation_otp(
         raise HTTPException(status_code=400, detail=str(e))
 
 
+@router.post("/fresh-start/request-otp")
+@limiter.limit("5/minute")
+async def request_fresh_start_otp(request: Request, payload: ReactivateRequestOTP, db: AsyncSession = Depends(get_db)):
+    try:
+        return await auth_service.request_account_otp(db, payload.email, purpose="fresh_start")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/fresh-start/verify")
+@limiter.limit("10/minute")
+async def verify_fresh_start_otp(request: Request, payload: ReactivateVerifyRequest, db: AsyncSession = Depends(get_db)):
+    try:
+        return await auth_service.verify_fresh_start_otp(db, payload.email, payload.otp_code)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
 @router.post("/fresh-start")
+@limiter.limit("10/minute")
 async def register_fresh_start(
+    request: Request,
     payload: FreshStartRegisterRequest,
     db: AsyncSession = Depends(get_db),
 ):
@@ -188,12 +229,24 @@ async def register_fresh_start(
             role="CANDIDATE",
             fullname=payload.fullname,
             fresh_start=True,
+            verification_token=payload.verification_token,
+            confirm_fresh_start=payload.confirm_fresh_start,
         )
         return {"message": "Fresh account registered successfully. No data from the previous account was restored."}
     except DuplicateEmailError as e:
         raise HTTPException(status_code=409, detail=str(e))
-    except Exception as e:
+    except HTTPException:
+        raise
+    except ValueError as e:
+        await db.rollback()
         raise HTTPException(status_code=400, detail=str(e))
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(status_code=409, detail="An account with this email is already registered. Please sign in instead.")
+    except Exception:
+        await db.rollback()
+        logger.exception("Fresh-start registration failed")
+        raise HTTPException(status_code=503, detail="We couldn't finish creating your account. Please try again.")
 
 @router.post("/forgot-password")
 async def forgot_password(request: ForgotPasswordRequest, db: AsyncSession = Depends(get_db)):
@@ -488,7 +541,8 @@ def _redirect_uri_for_origin(origin: str) -> str:
     return f"{clean}/api/auth/google/callback"
 
 @router.get("/check-role")
-async def check_email_role(email: str, db: AsyncSession = Depends(get_db)):
+@limiter.limit("30/minute")
+async def check_email_role(request: Request, email: str, db: AsyncSession = Depends(get_db)):
     """
     Check the role associated with an email to detect if it is registered as
     CANDIDATE, HR, or ADMIN. Helps frontend adapt the Google login portal
@@ -795,6 +849,8 @@ async def google_callback(
     except Exception as e:
         import traceback
         traceback.print_exc()
+        if isinstance(e, DeactivatedAccountExistsError):
+            return RedirectResponse(f"{base_url}/register?recovery=1&code=ACCOUNT_DEACTIVATED")
         error_msg = urllib.parse.quote(str(e))
         target_path = "/register" if flow_type in ["candidate_register", "register"] else "/login"
         return RedirectResponse(f"{base_url}{target_path}?error={error_msg}")

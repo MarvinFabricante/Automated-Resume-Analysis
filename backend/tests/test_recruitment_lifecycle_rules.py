@@ -140,6 +140,9 @@ async def test_migration_is_idempotent_and_reversible():
         cols = {row[1] for row in (await conn.execute(text("PRAGMA table_info(job_descriptions)"))).fetchall()}
         assert {"status", "closed_at", "archived_at"}.issubset(cols)
 
+        # Reverse newer migrations before removing their referenced columns.
+        from migrations.add_active_email_uniqueness import downgrade as downgrade_email_index
+        await downgrade_email_index(conn)
         # Downgrade must cleanly remove added columns & tables
         await downgrade(conn)
         cols_after = {row[1] for row in (await conn.execute(text("PRAGMA table_info(job_descriptions)"))).fetchall()}
@@ -612,7 +615,7 @@ async def test_otp_reactivation_duplicate_email_and_fresh_start(client, db_sessi
     assert otp_req.status_code == 200
     assert len(captured_code["code"]) == 6
 
-    bad_otp = await client.post("/auth/reactivate/verify", json={"email": "alice.smith@example.com", "otp_code": "000000"})
+    bad_otp = await client.post("/auth/reactivate/verify", json={"email": "alice.smith@example.com", "otp_code": "000000" if captured_code["code"] != "000000" else "111111"})
     assert bad_otp.status_code == 400
 
     good_otp = await client.post(
@@ -635,9 +638,13 @@ async def test_otp_reactivation_duplicate_email_and_fresh_start(client, db_sessi
         json={"password": "Password123!"},
         headers={"Authorization": f"Bearer {fresh_token}"},
     )
+    with patch("app.services.auth_service.send_otp_email", side_effect=_capture_otp):
+        await client.post("/auth/fresh-start/request-otp", json={"email": "alice.smith@example.com"})
+    verified = await client.post("/auth/fresh-start/verify", json={"email": "alice.smith@example.com", "otp_code": captured_code["code"]})
+    assert verified.status_code == 200
     fs_resp = await client.post(
         "/auth/fresh-start",
-        json={"email": "alice.smith@example.com", "password": "BrandNewPassword1!", "fullname": "Alice Fresh"},
+        json={"email": "alice.smith@example.com", "password": "BrandNewPassword1!", "fullname": "Alice Fresh", "verification_token": verified.json()["verification_token"], "confirm_fresh_start": True},
     )
     assert fs_resp.status_code == 200
 
