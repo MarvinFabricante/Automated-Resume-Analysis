@@ -1,10 +1,40 @@
 import pytest
+import pytest_asyncio
 from datetime import datetime
 from app.models.user import User
 from app.models.job_description import JobDescription, JobType
 from app.models.job_application import JobApplication
 from unittest.mock import patch, AsyncMock
 from app.utils.auth import create_access_token
+
+
+@pytest_asyncio.fixture
+async def concurrent_db_session(tmp_path, client):
+    # Concurrent requests need independent connections. StaticPool's single
+    # in-memory SQLite connection interleaves commits/rollbacks across sessions.
+    from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
+    from app.utils.database import Base, get_db
+    from main import app as fastapi_app
+
+    engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'interviews.db'}")
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+    async def get_test_db():
+        async with session_factory() as session:
+            yield session
+
+    original_override = fastapi_app.dependency_overrides.get(get_db)
+    fastapi_app.dependency_overrides[get_db] = get_test_db
+    try:
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+        async with session_factory() as session:
+            yield session
+    finally:
+        if original_override is not None:
+            fastapi_app.dependency_overrides[get_db] = original_override
+        else:
+            fastapi_app.dependency_overrides.pop(get_db, None)
+        await engine.dispose()
 
 @pytest.fixture(autouse=True)
 def mock_interview_emails():
@@ -1097,7 +1127,7 @@ async def test_interview_controller_calendar_fully_booked_offers_alternative_dat
 
 
 @pytest.mark.asyncio
-async def test_interview_controller_concurrent_scheduling_five_candidates(client, db_session):
+async def test_interview_controller_concurrent_scheduling_five_candidates(client, concurrent_db_session):
     """
     TEST-ID: 10
     Module: Interview Scheduling
@@ -1107,6 +1137,7 @@ async def test_interview_controller_concurrent_scheduling_five_candidates(client
     Priority: M
     """
     import asyncio
+    db_session = concurrent_db_session
 
     hr_user = User(
         email="hr_concurrent_ctrl@example.com",

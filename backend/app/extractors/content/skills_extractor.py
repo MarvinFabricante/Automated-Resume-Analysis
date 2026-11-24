@@ -22,7 +22,7 @@ Principal NLP & Information Extraction Architecture for the Philippine workforce
 - Deterministic, local Python execution without external LLM dependencies.
 """
 
-from app.extractors.text_normalization import repair_line_hyphenation
+from app.extractors.text_normalization import SKILL_SEPARATOR, repair_line_hyphenation
 
 import os
 import re
@@ -746,7 +746,7 @@ class PhilippineSkillsExtractor:
         for m in _COMPETENCY_PREFIX_RE.finditer(text):
             sec = self._get_section(m.start(), section_spans)
             phrase = m.group(1).strip()
-            items = re.split(r'[,;|]|\band\b|\bwith\b', phrase)
+            items = re.split(SKILL_SEPARATOR, phrase)
             for item in items:
                 clean_item = item.strip().strip("-•*►▪()")
                 if not clean_item or len(clean_item) < 2:

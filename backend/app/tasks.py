@@ -82,7 +82,7 @@ async def async_analyze_application(application_id: int):
         hash_resume = {k: v for k, v in resume_data.items() if k not in ("id", "application_id")}
         hash_payload = json.dumps({"resume": hash_resume, "job": job_data}, sort_keys=True).encode("utf-8")
         content_hash = hashlib.sha256(hash_payload).hexdigest()
-        cache_key = f"ai_analysis:v7:{content_hash}"
+        cache_key = f"ai_analysis:v8:{content_hash}"
         
         cached_result = await get_cache(cache_key)
         

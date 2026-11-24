@@ -2819,6 +2819,26 @@ def calculate_match_score(
                     STATUS_MEETS,
                     f"Confirmed required certification(s): {', '.join(r['requirement'] for r in confirmed_certs)}.",
                 )
+        denied_certs = [r for r in cert_rows if r.get("answer") == "no"]
+        if denied_certs:
+            # A remaining alias (e.g. "BOSH Certified") must not override an
+            # explicit No to "BOSH". Retain graded credit for other requirements.
+            credits = [
+                0.0 if r.get("answer") == "no" else
+                1.0 if r["status"] == STATUS_MEETS else
+                calculate_certifications_match(
+                    raw_certs, job_desc, r["requirement"],
+                    fuzzy_threshold=fuzzy_th, job_title=getattr(job, "job_title", "") or "",
+                )["score"]
+                for r in cert_rows
+            ]
+            certs_result["score"] = sum(credits) / len(cert_rows)
+            certs_result["status"] = STATUS_PARTIAL if any(credits) else STATUS_DOES_NOT_MEET
+            certs_result["is_relevant"] = False
+            certs_result["reason"] = format_criterion_reason(
+                certs_result["status"],
+                f"Applicant answered No: {', '.join(r['requirement'] for r in denied_certs)}.",
+            )
 
     for field, result in (("experience", experience_result), ("certifications", certs_result)):
         rows = [r for r in requirement_evaluations if r["field"] == field]
