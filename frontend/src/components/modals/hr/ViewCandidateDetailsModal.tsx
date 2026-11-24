@@ -1792,7 +1792,11 @@ const ViewCandidateDetailsModal: React.FC<ViewCandidateDetailsModalProps> = ({
                     </div>
                   </div>
 
-                  <RequirementEvidence items={candidate.requirement_evaluations} />
+                  <RequirementEvidence
+                    items={candidate.requirement_evaluations}
+                    clarificationResponses={candidate.clarification_responses}
+                    confirmedAt={candidate.created_at || candidate.date}
+                  />
                   {/* Matched Skills Found */}
                   <div className="bg-emerald-50/40 border border-emerald-100 rounded-2xl p-5">
                     <div className="flex items-center gap-2 mb-3">

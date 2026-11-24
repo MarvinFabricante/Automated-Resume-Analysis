@@ -2368,7 +2368,11 @@ const CompareCandidates: React.FC = () => {
                     </div>
                   </div>
 
-                  <RequirementEvidence items={activeCandidate.requirement_evaluations} />
+                  <RequirementEvidence
+                    items={activeCandidate.requirement_evaluations}
+                    clarificationResponses={activeCandidate.clarification_responses}
+                    confirmedAt={activeCandidate.created_at || activeCandidate.date}
+                  />
 
                   {activeCandidate.skills_reason && (
                     <div className="bg-slate-50/60 border border-slate-100 rounded-2xl p-3.5 sm:p-4">

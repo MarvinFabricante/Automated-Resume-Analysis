@@ -15,6 +15,7 @@ import Footer from '../../../components/layout/Footer';
 import ResumePreviewModal from '../../../components/modals/shared/ResumePreviewModal';
 import ApplicationProgressBar from '../../../components/common/ApplicationProgressBar';
 import ExperienceGapAlert from '../../../components/common/ExperienceGapAlert';
+import { ClarificationSubmitConfirmation } from '../../../components/common/ClarificationQuestionsPanel';
 import ResumeTipsPanel, {
   ResumeReadabilityBanner,
 } from '../../../components/common/ResumeTipsPanel';
@@ -420,8 +421,18 @@ const PreviewAndVerifyPage: React.FC = () => {
 
       const cleanedCerts = cleanRequirementInput(certString) || cleanRequirementInput(String(data?.candidate_certifications || ""));
 
+      const confirmationTimestamp = new Date().toISOString();
+      const rawClarificationResponses = activeData?.clarification_responses || data?.clarification_responses || [];
+      const stampedClarificationResponses = Array.isArray(rawClarificationResponses)
+        ? rawClarificationResponses.map((item: any) =>
+            item && typeof item === 'object'
+              ? { ...item, confirmed_at: item.confirmed_at || confirmationTimestamp }
+              : item
+          )
+        : [];
+
       const payload = {
-        clarification_responses: activeData?.clarification_responses || data?.clarification_responses || [],
+        clarification_responses: stampedClarificationResponses,
         job_id: String(effectiveJobId),
         user_id: effectiveUserId || undefined,
         candidate_name: candidateName,
@@ -918,6 +929,11 @@ const PreviewAndVerifyPage: React.FC = () => {
               )}
             </section>
           </div>
+
+          {/* Short honesty confirmation near the final Submit button */}
+          {effectiveJobId && effectiveJobId !== 'smart' && (
+            <ClarificationSubmitConfirmation />
+          )}
 
           {/* Action Buttons: Reversal of Action (Back) + Resume Preview + Final Submission */}
           <div className="flex flex-col sm:flex-row gap-3 pt-6 border-t border-slate-200">

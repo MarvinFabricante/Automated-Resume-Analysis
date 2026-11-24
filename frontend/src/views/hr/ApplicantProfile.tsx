@@ -44,6 +44,7 @@ import {
   getCriterionStatusBadgeStyle,
 } from '../../utils/criterionStatus';
 import MessageApplicantModal from '../../components/modals/hr/MessageApplicantModal';
+import RequirementEvidence from '../../components/common/RequirementEvidence';
 
 interface ApplicantProfileProps {
   emailProp?: string;
@@ -482,6 +483,15 @@ const ApplicantProfile: React.FC<ApplicantProfileProps> = ({
                     )}
                   </div>
                 </div>
+
+                {/* Applicant Clarification Answers & Confirmations for Interview */}
+                <RequirementEvidence
+                  items={app.requirement_evaluations}
+                  clarificationResponses={app.clarification_responses}
+                  confirmedAt={app.created_at || app.applied_date}
+                  title="Applicant Clarification Answers & Evidence"
+                  interviewHint="Review these applicant-confirmed answers to ask follow-up questions during the interview."
+                />
               </div>
             ))}
           </div>

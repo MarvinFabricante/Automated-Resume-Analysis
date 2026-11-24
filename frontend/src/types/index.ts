@@ -78,7 +78,7 @@ export interface Application {
   skills: string[];
   matched_skills?: string[];
   missing_skills?: string[];
-  requirement_evaluations?: Array<{ field: string; requirement: string; status: string; source?: string; answer?: string; evidence?: string[]; years?: number; details?: string }>;
+  requirement_evaluations?: Array<{ field: string; requirement: string; status: string; source?: string; answer?: string; evidence?: string[]; years?: number; details?: string; confirmed_at?: string | null }>;
   clarification_responses?: Array<Record<string, unknown>>;
   profileImage?: string | null;
   profile_image_url?: string | null;

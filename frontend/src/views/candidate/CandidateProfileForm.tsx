@@ -15,7 +15,7 @@ import Header from '../../components/layout/Header';
 import Sidebar from '../../components/layout/Sidebar';
 import ApplicationProgressBar from '../../components/common/ApplicationProgressBar';
 import ApplicationSuccessModal from '../../components/modals/shared/ApplicationSuccessModal';
-import ClarificationQuestionsPanel from '../../components/common/ClarificationQuestionsPanel';
+import ClarificationQuestionsPanel, { ClarificationSubmitConfirmation } from '../../components/common/ClarificationQuestionsPanel';
 import ExperienceGapAlert from '../../components/common/ExperienceGapAlert';
 import ResumeTipsPanel, {
   ResumeReadabilityBanner,
@@ -483,6 +483,10 @@ const CandidateProfileForm: React.FC = () => {
                       All necessary qualifications were detected from your resume. You're ready to review and submit your application.
                     </p>
                   </div>
+                )}
+
+                {clarificationQuestions && clarificationQuestions.length > 0 && (
+                  <ClarificationSubmitConfirmation />
                 )}
 
                 <div className="flex flex-col sm:flex-row justify-between items-center gap-4 pt-6 border-t border-slate-200">

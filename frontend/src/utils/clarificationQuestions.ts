@@ -20,6 +20,7 @@ export interface ClarificationResponse {
   answer: 'yes' | 'some' | 'no';
   years?: number;
   details?: string;
+  confirmed_at?: string;
 }
 
 export function hasCompleteJobRequirements(job: any): boolean {
@@ -35,13 +36,14 @@ export function parseRequirementAnswers(value: string): Record<string, Omit<Clar
 }
 
 export function collectClarificationResponses(questions: ClarificationQuestion[], answers: Record<string, string>): ClarificationResponse[] {
+  const confirmedAt = new Date().toISOString();
   return questions.flatMap(q => {
     if (q.type !== 'requirement_group') return [];
     const values = parseRequirementAnswers(answers[q.id]);
     return (q.items || []).flatMap(item => {
       const value = values[item.requirement];
       return value && ['yes', 'some', 'no'].includes(value.answer)
-        ? [{ ...value, field: q.field, requirement: item.requirement }] : [];
+        ? [{ ...value, field: q.field, requirement: item.requirement, confirmed_at: value.confirmed_at || confirmedAt }] : [];
     });
   });
 }
