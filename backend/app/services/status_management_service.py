@@ -31,12 +31,35 @@ STATUS_RANK = {
     "TECHNICAL INTERVIEW": 4,
     "INTERVIEW": 4,
     "INTERVIEWED": 5,
+    "ON HOLD": 3,
+    "ON_HOLD": 3,
     "NOT SELECTED": 0,
+    "NOT_SELECTED": 0,
     "REJECTED": 0,
     "ARCHIVED": 0,
+    "WITHDRAWN": 0,
+    "WITHDRAWN BY APPLICANT": 0,
+    "WITHDRAWN – HIRED ELSEWHERE IN COMPANY": 0,
+    "WITHDRAWN - HIRED ELSEWHERE IN COMPANY": 0,
+    "WITHDRAWN_HIRED_ELSEWHERE": 0,
     "PASSED INITIAL INTERVIEW": 6,
+    "PASSED INITIAL INTERVIEW – ENDORSED FOR NEXT STAGE": 6,
+    "PASSED": 6,
     "ACCEPTED": 6,
 }
+
+RESOLVED_CANONICAL_STATUSES = {
+    "Passed initial interview",
+    "Not Selected",
+    "Withdrawn by applicant",
+    "Withdrawn – hired elsewhere in company",
+}
+
+WITHDRAWN_CANONICAL_STATUSES = {
+    "Withdrawn by applicant",
+    "Withdrawn – hired elsewhere in company",
+}
+
 
 def normalize_status(status: Optional[str]) -> str:
     if not status:
@@ -52,11 +75,48 @@ def normalize_status(status: Optional[str]) -> str:
         return "Interview Scheduled"
     if s == "INTERVIEWED":
         return "Interviewed"
-    if s in ("NOT SELECTED", "REJECTED", "ARCHIVED", "PASSED_OVER"):
+    if s in ("ON HOLD", "ON_HOLD"):
+        return "On Hold"
+    if s in ("NOT SELECTED", "NOT_SELECTED", "REJECTED", "ARCHIVED", "PASSED_OVER"):
         return "Not Selected"
-    if s in ("PASSED INITIAL INTERVIEW", "ACCEPTED"):
+    if s in (
+        "WITHDRAWN – HIRED ELSEWHERE IN COMPANY",
+        "WITHDRAWN - HIRED ELSEWHERE IN COMPANY",
+        "WITHDRAWN_HIRED_ELSEWHERE",
+    ):
+        return "Withdrawn – hired elsewhere in company"
+    if s in ("WITHDRAWN", "WITHDRAWN BY APPLICANT"):
+        return "Withdrawn by applicant"
+    if s in (
+        "PASSED INITIAL INTERVIEW",
+        "PASSED INITIAL INTERVIEW – ENDORSED FOR NEXT STAGE",
+        "PASSED INITIAL INTERVIEW - ENDORSED FOR NEXT STAGE",
+        "PASSED",
+        "ACCEPTED",
+    ):
         return "Passed initial interview"
     return status.title()
+
+
+def get_status_display_label(status: Optional[str]) -> str:
+    norm = normalize_status(status)
+    if norm == "Passed initial interview":
+        return "Passed Initial Interview – Endorsed for next stage"
+    if norm == "Not Selected":
+        return "Not selected"
+    return norm
+
+
+def is_resolved_status(status: Optional[str]) -> bool:
+    return normalize_status(status) in RESOLVED_CANONICAL_STATUSES
+
+
+def is_withdrawn_status(status: Optional[str]) -> bool:
+    return normalize_status(status) in WITHDRAWN_CANONICAL_STATUSES
+
+
+def is_passed_status(status: Optional[str]) -> bool:
+    return normalize_status(status) == "Passed initial interview"
 
 async def record_status_history(
     db: AsyncSession,
@@ -99,7 +159,10 @@ async def apply_application_status_change(
     changed_by: str = "auto",
     change_type: str = "auto",
     reason: Optional[str] = None,
-    send_email: bool = True
+    send_email: bool = True,
+    send_notification: bool = True,
+    custom_email_subject: Optional[str] = None,
+    custom_email_message: Optional[str] = None,
 ) -> JobApplication:
     old_raw = application.status
     old_norm = normalize_status(old_raw)
@@ -108,8 +171,23 @@ async def apply_application_status_change(
     if old_norm == new_norm:
         return application
 
+    now = datetime.utcnow()
     # Save to application
     application.status = new_norm.upper()
+    if new_norm in RESOLVED_CANONICAL_STATUSES:
+        application.resolved_at = now
+    else:
+        # If resumed or reverted back to an active stage, clear resolved_at
+        application.resolved_at = None
+
+    if new_norm in WITHDRAWN_CANONICAL_STATUSES:
+        application.messaging_closed_at = now
+
+    if new_norm == "On Hold" and reason:
+        application.hold_reason = reason
+    elif new_norm != "On Hold":
+        application.hold_reason = None
+
     await db.commit()
     await db.refresh(application)
 
@@ -122,43 +200,104 @@ async def apply_application_status_change(
         changed_by=changed_by,
         change_type=change_type,
         reason=reason,
-        can_undo=(change_type == "auto")
+        can_undo=(change_type == "auto" and new_norm == "Under Review"),
     )
 
-    # Dispatch email only once per distinct status change (always to account login email when linked)
-    if send_email and (getattr(application, "user_id", None) or application.candidate_email):
-        target_email = application.candidate_email
-        if getattr(application, "user_id", None):
-            try:
-                from app.models.user import User
-                u_res = await db.execute(select(User.email).where(User.id == application.user_id))
-                acc_email = u_res.scalar_one_or_none()
-                if acc_email:
-                    target_email = acc_email.strip()
-            except Exception:
-                pass
-        if target_email:
-            try:
-                from app.services.email_service import send_application_status_update_email
-                job_title = getattr(application, "job_title", "Position")
-                if application.job and getattr(application.job, "job_title", None):
-                    job_title = application.job.job_title
+    # Resolve recipient email and job title safely without triggering lazy-load MissingGreenlet
+    target_email = application.candidate_email
+    if getattr(application, "user_id", None):
+        try:
+            from app.models.user import User
+            u_res = await db.execute(select(User.email).where(User.id == application.user_id))
+            acc_email = u_res.scalar_one_or_none()
+            if acc_email:
+                target_email = acc_email.strip()
+        except Exception:
+            pass
 
-                await send_application_status_update_email(
-                    to_email=target_email,
-                    candidate_name=application.candidate_name or "Candidate",
-                    job_title=job_title,
-                    new_status=new_norm,
-                    previous_status=old_norm,
-                    notes=reason,
-                    db=db,
+    job_title = getattr(application, "job_title", None) or "Position"
+    try:
+        loaded_job = getattr(application, "__dict__", {}).get("job")
+        if loaded_job and getattr(loaded_job, "job_title", None):
+            job_title = loaded_job.job_title
+        elif application.job_id:
+            j_res = await db.execute(
+                select(JobDescription.job_title).where(JobDescription.id == application.job_id)
+            )
+            fetched_title = j_res.scalar_one_or_none()
+            if fetched_title:
+                job_title = fetched_title
+    except Exception:
+        pass
+
+    # Send in-system notification to applicant once per distinct status change
+    if send_notification and target_email:
+        try:
+            display_label = get_status_display_label(new_norm)
+            if new_norm == "Passed initial interview":
+                notif_title = "Passed Initial Interview – Endorsed for next stage"
+                notif_msg = (
+                    f"Congratulations! Your application for {job_title} passed the initial interview and has been endorsed for the next stage. "
+                    "HR will contact you outside the system for the next steps."
                 )
-            except Exception as e:
-                logger.warning(f"Could not send status email to {target_email}: {e}")
+            elif new_norm == "Not Selected":
+                notif_title = f"Application Update: {job_title}"
+                reason_suffix = f" ({reason})" if reason else ""
+                notif_msg = (
+                    f"Your application for {job_title} was marked as Not selected{reason_suffix}. "
+                    "Your feedback report remains viewable in your portal."
+                )
+            elif new_norm == "On Hold":
+                notif_title = f"Application Placed On Hold: {job_title}"
+                notif_msg = (
+                    f"Your application for {job_title} has been placed On Hold"
+                    + (f": {reason}" if reason else ". HR will keep you updated.")
+                )
+            elif new_norm in WITHDRAWN_CANONICAL_STATUSES:
+                notif_title = f"Application Withdrawn: {job_title}"
+                notif_msg = (
+                    f"Your application for {job_title} is now '{display_label}'."
+                    + (f" Reason: {reason}." if reason else "")
+                )
+            else:
+                notif_title = f"Application Status Updated: {display_label}"
+                notif_msg = f"Your application for {job_title} has moved from {old_norm} to {display_label}."
+
+            await create_notification(
+                db=db,
+                title=notif_title,
+                message=notif_msg,
+                type="status_update",
+                target_role="CANDIDATE",
+                target_email=target_email,
+                sender_role="SYSTEM" if change_type == "auto" else "HR",
+            )
+        except Exception as exc:
+            logger.warning(f"Could not create in-app notification for {target_email}: {exc}")
+
+    # Dispatch email only once per distinct status change (always to account login email when linked)
+    if send_email and target_email:
+        try:
+            from app.services.email_service import send_application_status_update_email
+            await send_application_status_update_email(
+                to_email=target_email,
+                candidate_name=application.candidate_name or "Candidate",
+                job_title=job_title,
+                new_status=new_norm,
+                previous_status=old_norm,
+                notes=reason,
+                custom_subject=custom_email_subject,
+                custom_message=custom_email_message,
+                db=db,
+            )
+        except Exception as e:
+            logger.warning(f"Could not send status email to {target_email}: {e}")
 
     # Invalidate cache
     try:
         await clear_cache_pattern("job_applications*")
+        await clear_cache_pattern("all_apps*")
+        await clear_cache_pattern("job_apps*")
     except Exception:
         pass
 

@@ -10,6 +10,7 @@ from app.schemas.hr_schema import (
     HRCreate, HRResponse, HRUpdate,
     ShortlistRosterCreate, ShortlistRosterResponse,
     ShortlistRosterItemCreate, ShortlistRosterItemStageUpdate,
+    ShortlistNonShortlistedPreviewRequest, ShortlistPolicyUpdateRequest, ShortlistFinalizeRequest,
     HRCandidateNoteCreate, HRCandidateNoteResponse,
     UniversalSearchResponse, CandidateCompareRequest
 )
@@ -23,7 +24,10 @@ from app.services.shortlist_roster_service import (
     remove_application_from_roster,
     update_roster_item_stage,
     toggle_archive_shortlist_roster,
-    delete_shortlist_roster
+    delete_shortlist_roster,
+    preview_non_shortlisted_for_job,
+    update_roster_non_shortlisted_action,
+    finalize_shortlist_roster,
 )
 from app.services.applicant_profile_service import (
     get_applicant_comprehensive_profile,
@@ -227,24 +231,105 @@ async def get_hr_interviewers(db: AsyncSession = Depends(get_db)):
 
 # ─── SHORTLIST ROSTERS (Item 2c, 2d, 2e) ────────────────────────────────────
 
+@router.post("/shortlists/preview-non-shortlisted")
+async def preview_shortlist_non_shortlisted(
+    payload: ShortlistNonShortlistedPreviewRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Preview affected non-shortlisted applicant count and rendered message before applying."""
+    return await preview_non_shortlisted_for_job(
+        db=db,
+        job_id=payload.job_id,
+        shortlisted_application_ids=payload.shortlisted_application_ids,
+        roster_id=payload.roster_id,
+    )
+
+
 @router.post("/shortlists", response_model=ShortlistRosterResponse, status_code=status.HTTP_201_CREATED)
 async def create_new_shortlist_roster(
     roster_in: ShortlistRosterCreate,
     db: AsyncSession = Depends(get_db),
     current_user: Optional[dict] = Depends(get_optional_current_user)
 ):
-    """Create a new named shortlist roster and add applicants."""
-    hr_email = (current_user.get("email") if current_user else None) or "HR"
-    roster = await create_shortlist_roster(
-        db=db,
-        job_id=roster_in.job_id,
-        name=roster_in.name,
-        created_by=hr_email,
-        notes=roster_in.notes,
-        application_ids=roster_in.application_ids
-    )
+    """Create a new named shortlist roster with a saved non-shortlisted handling choice."""
+    hr_email = (current_user.get("sub") or current_user.get("email") if current_user else None) or "HR"
+    try:
+        roster = await create_shortlist_roster(
+            db=db,
+            job_id=roster_in.job_id,
+            name=roster_in.name,
+            created_by=hr_email,
+            notes=roster_in.notes,
+            application_ids=roster_in.application_ids,
+            non_shortlisted_action=roster_in.non_shortlisted_action,
+            finalize=bool(roster_in.finalize),
+            confirm_notify_non_shortlisted=bool(roster_in.confirm_notify_non_shortlisted),
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     details = await get_shortlist_roster_by_id(db, roster.id)
     return details
+
+
+@router.get("/shortlists/{roster_id}/finalize-preview")
+async def get_roster_finalize_preview(
+    roster_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    """Preview affected non-shortlisted applicants and rendered message for an existing roster."""
+    roster = await get_shortlist_roster_by_id(db, roster_id)
+    if not roster:
+        raise HTTPException(status_code=404, detail="Shortlist roster not found")
+    return await preview_non_shortlisted_for_job(
+        db=db,
+        job_id=roster["job_id"],
+        roster_id=roster_id,
+    )
+
+
+@router.patch("/shortlists/{roster_id}/non-shortlisted-policy")
+async def change_roster_non_shortlisted_policy(
+    roster_id: int,
+    payload: ShortlistPolicyUpdateRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: Optional[dict] = Depends(get_optional_current_user),
+):
+    """Update the non-shortlisted handling choice for a roster before finalizing."""
+    hr_email = (current_user.get("sub") or current_user.get("email") if current_user else None) or "HR"
+    try:
+        return await update_roster_non_shortlisted_action(
+            db=db,
+            roster_id=roster_id,
+            non_shortlisted_action=payload.non_shortlisted_action,
+            updated_by=hr_email,
+        )
+    except LookupError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/shortlists/{roster_id}/finalize")
+async def finalize_roster_endpoint(
+    roster_id: int,
+    payload: ShortlistFinalizeRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: Optional[dict] = Depends(get_optional_current_user),
+):
+    """Finalize a shortlist roster and apply its confirmed non-shortlisted policy."""
+    hr_email = (current_user.get("sub") or current_user.get("email") if current_user else None) or "HR"
+    try:
+        return await finalize_shortlist_roster(
+            db=db,
+            roster_id=roster_id,
+            finalized_by=hr_email,
+            non_shortlisted_action=payload.non_shortlisted_action,
+            confirm=payload.confirm,
+        )
+    except LookupError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.get("/shortlists")

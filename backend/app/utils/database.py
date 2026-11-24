@@ -125,6 +125,8 @@ async def init_db():
             await conn.run_sync(Base.metadata.create_all)
             from migrations.add_requirement_confirmations import upgrade as upgrade_requirement_confirmations
             await upgrade_requirement_confirmations(conn)
+            from migrations.add_recruitment_lifecycle_rules import upgrade as upgrade_lifecycle_rules
+            await upgrade_lifecycle_rules(conn)
 
             # Auto-migrate newly added columns if they don't exist yet
             def _check_and_add_columns(sync_conn):

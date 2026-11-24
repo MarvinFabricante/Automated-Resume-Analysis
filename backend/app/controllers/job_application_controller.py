@@ -9,7 +9,11 @@ from app.schemas.job_application_schema import (
     JobApplicationStatusUpdate,
     JobApplicationNotesUpdate,
     JobApplicationViewedEvent,
-    StatusHistoryResponse
+    StatusHistoryResponse,
+    ApplicationWithdrawRequest,
+    PostPassActionRequest,
+    ApplicationResumeRequest,
+    HiredElsewhereWithdrawRequest,
 )
 from app.services import job_application_service
 from app.services.status_management_service import (
@@ -42,10 +46,21 @@ async def create_job_application(
 
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
-    if getattr(job, "is_active", True) is False:
+    job_status = (getattr(job, "status", None) or ("ACTIVE" if getattr(job, "is_active", True) else "ARCHIVED")).strip().upper()
+    if job_status == "CLOSED":
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="This job posting has been archived and is no longer accepting applications."
+            detail="This position is closed",
+        )
+    if job_status == "ARCHIVED" or getattr(job, "is_active", True) is False:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This position is archived and is no longer accepting applications.",
+        )
+    if job_status == "DRAFT":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This position is not yet open for applications.",
         )
         
     res = await job_application_service.create_job_application(
@@ -373,26 +388,21 @@ async def delete_application(
     current_user: Optional[dict] = Depends(get_optional_current_user)
 ):
     """
-    Remove/delete a job application.
+    Hard-deleting job applications is prohibited by recruitment audit & privacy policy.
     """
-    db_application = await job_application_service.delete_application(db, application_id)
-    if not db_application:
-        raise HTTPException(status_code=404, detail="Application not found")
-    
-    # Record in audit log
     user_id = current_user.get("id") if current_user else None
-    await record_activity(
-        db=db,
-        user_id=user_id,
-        action="DELETE_APPLICATION",
-        target=f"Application ID: {application_id}",
-        details=f"HR deleted application for {db_application.candidate_name}"
+    if user_id:
+        await record_activity(
+            db=db,
+            user_id=user_id,
+            action="DELETE_APPLICATION_BLOCKED",
+            target=f"Application ID: {application_id}",
+            details="Blocked attempt to hard-delete job application record.",
+        )
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Applications cannot be hard-deleted. Use status transitions, applicant withdrawal, or the retention anonymization policy.",
     )
-    
-    # Invalidate cache since stats and lists changed
-    await invalidate_application_dashboard_caches(application_id)
-    
-    return None
 
 
 @router.patch("/{application_id}/notes", response_model=JobApplicationResponse)
@@ -468,6 +478,122 @@ async def undo_automatic_status(
         raise HTTPException(status_code=400, detail=result.get("message", "Cannot undo status change"))
     await invalidate_application_dashboard_caches(application_id)
     return result
+
+
+@router.post("/{application_id}/withdraw")
+async def withdraw_application_endpoint(
+    application_id: int,
+    payload: Optional[ApplicationWithdrawRequest] = None,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """Applicant withdraws a single active application at any time (slot freed immediately)."""
+    try:
+        result = await job_application_service.withdraw_single_application(
+            db=db,
+            application_id=application_id,
+            actor_user_id=int(current_user.get("id")),
+            actor_email=current_user.get("sub") or current_user.get("email") or "",
+            reason=payload.reason if payload else None,
+        )
+    except LookupError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    await invalidate_application_dashboard_caches(application_id)
+    return {
+        "message": result["message"],
+        "cancelled_interviews": result["cancelled_interviews"],
+        "application": JobApplicationResponse.model_validate(result["application"]).model_dump(mode="json"),
+    }
+
+
+@router.post("/{application_id}/post-pass-action")
+async def post_pass_action_endpoint(
+    application_id: int,
+    payload: PostPassActionRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """HR chooses 'on_hold' or 'continue' for remaining active applications after a Pass."""
+    if (current_user.get("role") or "").upper() not in ("HR", "ADMIN"):
+        raise HTTPException(status_code=403, detail="Only HR or Admin users may perform this action.")
+    try:
+        result = await job_application_service.handle_post_pass_other_applications(
+            db=db,
+            passed_application_id=application_id,
+            action=payload.action,
+            target_application_ids=payload.target_application_ids,
+            actor_id=current_user.get("id"),
+            actor_email=current_user.get("sub") or current_user.get("email") or "HR",
+            note=payload.note,
+        )
+    except LookupError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    await invalidate_application_dashboard_caches(application_id)
+    return result
+
+
+@router.post("/{application_id}/resume", response_model=JobApplicationResponse)
+async def resume_application_endpoint(
+    application_id: int,
+    payload: Optional[ApplicationResumeRequest] = None,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """HR resumes an On Hold application back to its previous active stage."""
+    if (current_user.get("role") or "").upper() not in ("HR", "ADMIN"):
+        raise HTTPException(status_code=403, detail="Only HR or Admin users may resume applications.")
+    try:
+        updated = await job_application_service.resume_on_hold_application(
+            db=db,
+            application_id=application_id,
+            actor_id=current_user.get("id"),
+            actor_email=current_user.get("sub") or current_user.get("email") or "HR",
+            note=payload.note if payload else None,
+        )
+    except LookupError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    await invalidate_application_dashboard_caches(application_id)
+    return updated
+
+
+@router.post("/{application_id}/withdraw-hired-elsewhere", response_model=JobApplicationResponse)
+async def withdraw_hired_elsewhere_endpoint(
+    application_id: int,
+    payload: Optional[HiredElsewhereWithdrawRequest] = None,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """HR marks another active application as 'Withdrawn – hired elsewhere in company' (if enabled in System Config)."""
+    if (current_user.get("role") or "").upper() not in ("HR", "ADMIN"):
+        raise HTTPException(status_code=403, detail="Only HR or Admin users may perform this action.")
+    try:
+        updated = await job_application_service.withdraw_hired_elsewhere(
+            db=db,
+            application_id=application_id,
+            actor_id=current_user.get("id"),
+            actor_email=current_user.get("sub") or current_user.get("email") or "HR",
+            note=payload.note if payload else None,
+        )
+    except LookupError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    await invalidate_application_dashboard_caches(application_id)
+    return updated
 
 
 

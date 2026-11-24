@@ -22,19 +22,48 @@ from app.services.job_matching_service import (
 
 logger = logging.getLogger(__name__)
 
+VALID_NON_SHORTLISTED_ACTIONS = {
+    "keep_under_review",   # Default: Keep them under review until the job is closed
+    "notify_on_finalize",  # Notify them as Not Selected when the shortlist is finalized
+    "decide_later",        # Decide later (no automatic action on finalize)
+}
+
+
+def _validate_non_shortlisted_action(action: Optional[str]) -> str:
+    norm = (action or "keep_under_review").strip().lower()
+    if norm not in VALID_NON_SHORTLISTED_ACTIONS:
+        raise ValueError(
+            f"Invalid non_shortlisted_action '{action}'. "
+            f"Allowed values: {', '.join(sorted(VALID_NON_SHORTLISTED_ACTIONS))}."
+        )
+    return norm
+
+
 async def create_shortlist_roster(
     db: AsyncSession,
     job_id: int,
     name: str,
     created_by: str,
     notes: Optional[str] = None,
-    application_ids: Optional[List[int]] = None
+    application_ids: Optional[List[int]] = None,
+    non_shortlisted_action: Optional[str] = "keep_under_review",
+    finalize: bool = False,
+    confirm_notify_non_shortlisted: bool = False,
 ) -> ShortlistRoster:
+    policy = _validate_non_shortlisted_action(non_shortlisted_action)
+    if finalize and policy == "notify_on_finalize" and not confirm_notify_non_shortlisted:
+        raise ValueError(
+            "Explicit confirmation is required before notifying non-shortlisted applicants as Not Selected."
+        )
+
     roster = ShortlistRoster(
         job_id=job_id,
         name=name,
         created_by=created_by,
         notes=notes,
+        non_shortlisted_action=policy,
+        is_finalized=False,
+        finalized_at=None,
         created_at=datetime.utcnow(),
         updated_at=datetime.utcnow()
     )
@@ -51,8 +80,200 @@ async def create_shortlist_roster(
                 added_by=created_by
             )
 
+    if finalize:
+        await finalize_shortlist_roster(
+            db=db,
+            roster_id=roster.id,
+            finalized_by=created_by,
+            non_shortlisted_action=policy,
+            confirm=confirm_notify_non_shortlisted or (policy != "notify_on_finalize"),
+        )
+
     await db.refresh(roster)
     return roster
+
+
+async def preview_non_shortlisted_for_job(
+    db: AsyncSession,
+    job_id: int,
+    shortlisted_application_ids: Optional[List[int]] = None,
+    roster_id: Optional[int] = None,
+) -> Dict[str, Any]:
+    """
+    Show how many non-shortlisted applicants would be affected and a preview of the
+    Not Selected message before applying. Never applies any change.
+    """
+    from app.services.job_description_service import get_non_shortlisted_applications_for_job
+    from app.services.message_template_service import render_not_selected_preview
+
+    job_res = await db.execute(select(JobDescription).where(JobDescription.id == job_id))
+    job = job_res.scalar_one_or_none()
+    job_title = job.job_title if job else "Position"
+
+    extra_ids = list(shortlisted_application_ids or [])
+    policy = "keep_under_review"
+    is_finalized = False
+
+    if roster_id is not None:
+        r_res = await db.execute(select(ShortlistRoster).where(ShortlistRoster.id == roster_id))
+        roster = r_res.scalar_one_or_none()
+        if roster:
+            policy = getattr(roster, "non_shortlisted_action", None) or "keep_under_review"
+            is_finalized = bool(getattr(roster, "is_finalized", False))
+
+    breakdown = await get_non_shortlisted_applications_for_job(
+        db=db,
+        job_pk=job_id,
+        extra_shortlisted_ids=extra_ids,
+    )
+    affected = breakdown["affected"]
+    sample_name = affected[0].candidate_name if affected else "Applicant Name"
+    preview = await render_not_selected_preview(
+        db=db,
+        job_title=job_title,
+        candidate_name=sample_name or "Applicant Name",
+    )
+
+    return {
+        "job_id": job_id,
+        "job_title": job_title,
+        "roster_id": roster_id,
+        "non_shortlisted_action": policy,
+        "is_finalized": is_finalized,
+        "affected_count": len(affected),
+        "protected_count": breakdown["protected_count"],
+        "affected_applications": [
+            {
+                "id": a.id,
+                "candidate_name": a.candidate_name,
+                "candidate_email": a.candidate_email,
+                "status": a.status,
+            }
+            for a in affected
+        ],
+        "message_preview": preview,
+    }
+
+
+async def update_roster_non_shortlisted_action(
+    db: AsyncSession,
+    roster_id: int,
+    non_shortlisted_action: str,
+    updated_by: str = "HR",
+) -> Dict[str, Any]:
+    """Allow changing a roster's non-shortlisted handling choice before finalizing."""
+    policy = _validate_non_shortlisted_action(non_shortlisted_action)
+    res = await db.execute(select(ShortlistRoster).where(ShortlistRoster.id == roster_id))
+    roster = res.scalar_one_or_none()
+    if not roster:
+        raise LookupError("Shortlist roster not found")
+    if getattr(roster, "is_finalized", False):
+        raise ValueError("Cannot change non-shortlisted policy after the shortlist has already been finalized.")
+
+    old_policy = getattr(roster, "non_shortlisted_action", "keep_under_review")
+    roster.non_shortlisted_action = policy
+    roster.updated_at = datetime.utcnow()
+    await db.commit()
+    await db.refresh(roster)
+
+    from app.services.audit_service import record_activity
+    await record_activity(
+        db=db,
+        user_id=None,
+        action="UPDATE_SHORTLIST_POLICY",
+        target=f"Shortlist Roster #{roster.id} ({roster.name})",
+        details=f"{updated_by} changed non-shortlisted action from '{old_policy}' to '{policy}'.",
+    )
+
+    return {
+        "roster_id": roster.id,
+        "non_shortlisted_action": roster.non_shortlisted_action,
+        "is_finalized": bool(roster.is_finalized),
+    }
+
+
+async def finalize_shortlist_roster(
+    db: AsyncSession,
+    roster_id: int,
+    finalized_by: str = "HR",
+    non_shortlisted_action: Optional[str] = None,
+    confirm: bool = True,
+) -> Dict[str, Any]:
+    """
+    Finalize a shortlist roster.
+    - If non_shortlisted_action == 'notify_on_finalize', requires explicit confirm=True,
+      and marks non-shortlisted applications (Submitted / Under Review not in any roster for this job)
+      as Not Selected with reason 'Not shortlisted when shortlist was finalized' (idempotent, once only).
+    - If 'keep_under_review' (default) or 'decide_later', leaves non-shortlisted applicants untouched.
+    """
+    from app.services.job_description_service import get_non_shortlisted_applications_for_job
+    from app.services.audit_service import record_activity
+
+    res = await db.execute(select(ShortlistRoster).where(ShortlistRoster.id == roster_id))
+    roster = res.scalar_one_or_none()
+    if not roster:
+        raise LookupError("Shortlist roster not found")
+
+    if getattr(roster, "is_finalized", False):
+        return {
+            "roster_id": roster.id,
+            "is_finalized": True,
+            "non_shortlisted_action": roster.non_shortlisted_action,
+            "notified_count": 0,
+            "already_finalized": True,
+        }
+
+    policy = _validate_non_shortlisted_action(
+        non_shortlisted_action if non_shortlisted_action is not None else getattr(roster, "non_shortlisted_action", "keep_under_review")
+    )
+
+    if policy == "notify_on_finalize" and not confirm:
+        raise ValueError(
+            "Explicit confirmation is required before notifying non-shortlisted applicants as Not Selected."
+        )
+
+    now = datetime.utcnow()
+    roster.non_shortlisted_action = policy
+    roster.is_finalized = True
+    roster.finalized_at = now
+    roster.updated_at = now
+    await db.commit()
+
+    notified_count = 0
+    if policy == "notify_on_finalize":
+        breakdown = await get_non_shortlisted_applications_for_job(db, roster.job_id)
+        for app in breakdown["affected"]:
+            await apply_application_status_change(
+                db=db,
+                application=app,
+                new_status="Not Selected",
+                changed_by=finalized_by,
+                change_type="auto",
+                reason="Not shortlisted when shortlist was finalized",
+                send_email=True,
+                send_notification=True,
+            )
+            notified_count += 1
+
+    await record_activity(
+        db=db,
+        user_id=None,
+        action="FINALIZE_SHORTLIST",
+        target=f"Shortlist Roster #{roster.id} ({roster.name})",
+        details=(
+            f"{finalized_by} finalized shortlist with policy '{policy}'. "
+            f"Non-shortlisted applicants notified as Not Selected: {notified_count}."
+        ),
+    )
+
+    return {
+        "roster_id": roster.id,
+        "is_finalized": True,
+        "finalized_at": now.isoformat(),
+        "non_shortlisted_action": policy,
+        "notified_count": notified_count,
+        "already_finalized": False,
+    }
 
 async def get_shortlist_rosters(
     db: AsyncSession,
@@ -99,6 +320,9 @@ async def get_shortlist_rosters(
             "created_by": r.created_by,
             "notes": r.notes,
             "is_archived": bool(getattr(r, "is_archived", False)),
+            "non_shortlisted_action": getattr(r, "non_shortlisted_action", None) or "keep_under_review",
+            "is_finalized": bool(getattr(r, "is_finalized", False)),
+            "finalized_at": r.finalized_at.isoformat() if getattr(r, "finalized_at", None) else None,
             "created_at": r.created_at.isoformat() if r.created_at else None,
             "updated_at": r.updated_at.isoformat() if r.updated_at else None,
             "total_candidates": counts["total"],
@@ -274,6 +498,9 @@ async def get_shortlist_roster_by_id(
         "created_by": roster.created_by,
         "notes": roster.notes,
         "is_archived": bool(getattr(roster, "is_archived", False)),
+        "non_shortlisted_action": getattr(roster, "non_shortlisted_action", None) or "keep_under_review",
+        "is_finalized": bool(getattr(roster, "is_finalized", False)),
+        "finalized_at": roster.finalized_at.isoformat() if getattr(roster, "finalized_at", None) else None,
         "created_at": roster.created_at.isoformat() if roster.created_at else None,
         "updated_at": roster.updated_at.isoformat() if roster.updated_at else None,
         "total_candidates": counts["total"],

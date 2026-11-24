@@ -56,15 +56,12 @@ async def update_resume(resume_id: int, resume_in: ResumeUpdate, db: AsyncSessio
 @router.delete("/{resume_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_resume(resume_id: int, db: AsyncSession = Depends(get_db)):
     """
-    Delete a resume from the database and Supabase Storage.
+    Hard-deleting applicant resumes via API is prohibited. Resume files are purged automatically by the retention job.
     """
-    success = await resume_service.delete_resume(db, resume_id)
-    if not success:
-        raise HTTPException(status_code=404, detail="Resume not found")
-    await clear_cache_pattern(f"resume:*resume_id\": {resume_id}*")
-    await clear_cache_pattern("cand_resumes*")
-    await clear_cache_pattern("storage_resumes*")
-    return None
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Resumes cannot be hard-deleted via API. Files are retained for audit and purged automatically under the data retention policy.",
+    )
 
 
 # ── Supabase Storage Endpoints ──────────────────────────────────────

@@ -84,7 +84,13 @@ class JobApplication(Base):
     source = Column(String, default="Online", nullable=True) # "Online" or "Imported"
     import_origin = Column(String, nullable=True) # "Job site", "Email", "Walk-in", "Other"
     imported_by = Column(String, nullable=True) # HR email
-    status = Column(String, default="PENDING", index=True) # PENDING, REVIEWED, REJECTED, ACCEPTED
+    status = Column(String, default="PENDING", index=True) # PENDING, REVIEWED, REJECTED, ACCEPTED, etc.
+    resolved_at = Column(DateTime, nullable=True, index=True)
+    messaging_closed_at = Column(DateTime, nullable=True)
+    hold_reason = Column(String, nullable=True)
+    is_anonymized = Column(Boolean, default=False, index=True)
+    anonymized_token = Column(String, nullable=True)
+    email_hash = Column(String, nullable=True, index=True)
     
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

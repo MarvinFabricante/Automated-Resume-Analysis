@@ -5,8 +5,9 @@ from pydantic import BaseModel, EmailStr
 class UserCreate(BaseModel):
     email: EmailStr
     password: str
-    role: str
+    role: str = "CANDIDATE"
     fullname: str
+    fresh_start: Optional[bool] = False
 
 class UserUpdate(BaseModel):
     fullname: Optional[str] = None
@@ -58,3 +59,24 @@ class ChangePasswordRequest(BaseModel):
 
 class SetPasswordRequest(BaseModel):
     new_password: str
+
+
+class AccountDeleteRequest(BaseModel):
+    password: Optional[str] = None
+    otp_code: Optional[str] = None
+    reason: Optional[str] = None
+
+
+class ReactivateRequestOTP(BaseModel):
+    email: EmailStr
+
+
+class ReactivateVerifyRequest(BaseModel):
+    email: EmailStr
+    otp_code: str
+
+
+class FreshStartRegisterRequest(BaseModel):
+    email: EmailStr
+    password: str
+    fullname: str

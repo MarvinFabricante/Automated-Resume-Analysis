@@ -538,8 +538,11 @@ async def create_job_application(
             )
 
     # ── Active Applications Limit Check (REQ081 & REQ082) ───────────────────
+    # Resolved applications (Passed, Not Selected, Withdrawn) do NOT count toward the limit;
+    # On Hold still counts as active.
     try:
         from app.services.system_config_service import system_config_service
+        from app.services.retention_service import is_application_active, compute_email_hash
         max_active = await system_config_service.get_max_active_applications(db)
         if auth_user_id:
             candidate_apps = await JobApplicationRepository.get_by_user_id(
@@ -547,20 +550,39 @@ async def create_job_application(
             )
         else:
             candidate_apps = await JobApplicationRepository.get_by_email(db, application_in.candidate_email)
-        inactive_statuses = {
-            "NOT SELECTED", "NOT_SELECTED", "REJECTED", "WITHDRAWN",
-            "HIRED", "ACCEPTED", "OFFER_ACCEPTED", "CLOSED"
-        }
         active_apps = [
-            a for a in candidate_apps 
-            if (getattr(a, 'status', '') or '').upper() not in inactive_statuses
+            a for a in candidate_apps
+            if is_application_active(getattr(a, 'status', None))
         ]
         if len(active_apps) >= max_active:
             from fastapi import HTTPException, status
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Active application limit reached: You currently have {len(active_apps)} active applications (maximum allowed: {max_active}). You cannot submit a new application until one of your active applications is closed or withdrawn."
+                detail=f"Active application limit reached: You currently have {len(active_apps)} active applications (maximum allowed: {max_active}). You cannot submit a new application until one of your active applications is resolved or withdrawn."
             )
+
+        # Optional configurable reapplication cooldown (default 0 = none)
+        cooldown_days = await system_config_service.get_reapplication_cooldown_days(db)
+        if cooldown_days and cooldown_days > 0:
+            from datetime import datetime, timedelta
+            from sqlalchemy import select
+            ehash = compute_email_hash(account_email or application_in.candidate_email)
+            if ehash:
+                cutoff = datetime.utcnow() - timedelta(days=int(cooldown_days))
+                recent_res = await db.execute(
+                    select(JobApplication).where(
+                        JobApplication.job_id == db_job_id,
+                        JobApplication.email_hash == ehash,
+                        JobApplication.resolved_at.isnot(None),
+                        JobApplication.resolved_at >= cutoff,
+                    ).limit(1)
+                )
+                if recent_res.scalar_one_or_none() is not None:
+                    from fastapi import HTTPException, status
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=f"Reapplication cooldown active: please wait {cooldown_days} day(s) after a previous decision before reapplying to this position.",
+                    )
     except HTTPException:
         raise
     except Exception as limit_err:
@@ -592,6 +614,9 @@ async def create_job_application(
 
     _sanitize_application_payload(data)
     _apply_experience_gap_evaluation(data, job_desc)
+
+    from app.services.retention_service import compute_email_hash
+    data["email_hash"] = compute_email_hash(account_email or data.get("candidate_email") or submitted_email)
 
     # Create the application via repository
     new_application = await JobApplicationRepository.create(db, {
@@ -1078,27 +1103,65 @@ async def update_application_status(
         if not job_title:
             job_title = getattr(db_application, "job_title", None) or "Position"
 
-        if status_upper == "ACCEPTED":
-            title = "Application Accepted 🎉"
-            message = f"Congratulations! Your application for the position of {job_title} has been accepted."
-        elif status_upper in ("REJECTED", "ARCHIVED", "PASSED_OVER"):
+        if status_upper in (
+            "PASSED INITIAL INTERVIEW",
+            "PASSED",
+            "PASSED INITIAL INTERVIEW – ENDORSED FOR NEXT STAGE",
+            "ACCEPTED",
+        ):
+            title = "Passed Initial Interview – Endorsed for next stage"
+            message = (
+                f"Congratulations! Your application for {job_title} passed the initial interview and has been endorsed for the next stage. "
+                "HR will contact you outside the system for the next steps."
+            )
+        elif status_upper in ("REJECTED", "ARCHIVED", "PASSED_OVER", "NOT SELECTED", "NOT_SELECTED"):
             title = "Application Update"
-            message = f"Thank you for your interest. Unfortunately, your application for the position of {job_title} was not selected."
-        elif status_upper in ("TECHNICAL INTERVIEW", "INTERVIEW"):
-            title = "Technical Interview Scheduled 💻"
-            message = f"You have advanced to the Technical Interview stage for the {job_title} position!"
-        elif status_upper == "FINAL INTERVIEW":
-            title = "Final Interview Scheduled 🤝"
-            message = f"Great news! You have reached the Final Interview stage for the {job_title} position!"
-        elif status_upper in ("REVIEWED", "SCREENED"):
+            message = f"Your application for {job_title} was marked as Not selected. Your feedback report remains viewable in your portal."
+        elif status_upper in ("ON HOLD", "ON_HOLD"):
+            title = f"Application On Hold: {job_title}"
+            message = f"Your application for {job_title} has been placed On Hold." + (f" Note: {notes}" if notes else "")
+        elif status_upper in ("TECHNICAL INTERVIEW", "INTERVIEW", "INTERVIEW SCHEDULED"):
+            title = "Interview Scheduled"
+            message = f"An interview has been scheduled for your {job_title} application."
+        elif status_upper in ("REVIEWED", "SCREENED", "UNDER REVIEW"):
             title = "Application Under Review"
-            message = f"Great news! Your application for the position of {job_title} has been reviewed."
-        elif status_upper in ("HIRED", "OFFER"):
-            title = "Selection & Job Offer 🎉"
-            message = f"Congratulations! You have been selected for hire for the {job_title} position!"
+            message = f"Your application for {job_title} is currently under review."
         else:
             title = "Application Status Update"
-            message = f"Your application for the position of {job_title} is currently marked as {status_upper}."
+            message = f"Your application for {job_title} is currently marked as {status_upper}."
+
+        # Update resolved_at / messaging_closed_at & record status history for manual status updates
+        try:
+            from datetime import datetime
+            from app.services.status_management_service import (
+                is_resolved_status,
+                is_withdrawn_status,
+                record_status_history,
+                normalize_status,
+            )
+            now_ts = datetime.utcnow()
+            if is_resolved_status(status_upper):
+                if not getattr(db_application, "resolved_at", None):
+                    db_application.resolved_at = now_ts
+            else:
+                db_application.resolved_at = None
+            if is_withdrawn_status(status_upper):
+                db_application.messaging_closed_at = now_ts
+            if normalize_status(status_upper) == "On Hold" and notes:
+                db_application.hold_reason = notes
+            await db.commit()
+            await record_status_history(
+                db=db,
+                application_id=db_application.id,
+                old_status=previous_status,
+                new_status=status_upper,
+                changed_by="HR",
+                change_type="manual",
+                reason=notes or f"Status updated to {normalize_status(status_upper)}",
+                can_undo=False,
+            )
+        except Exception as hist_err:
+            logger.warning(f"Could not record status history for app {db_application.id}: {hist_err}")
 
         # Resolve account notification email (login email takes priority over resume/contact email)
         notif_email = await resolve_application_notification_email(db, db_application)
@@ -1218,6 +1281,329 @@ async def delete_application(db: AsyncSession, application_id: int) -> Optional[
 
     await JobApplicationRepository.delete(db, db_application)
     return db_application
+
+
+async def withdraw_single_application(
+    db: AsyncSession,
+    application_id: int,
+    actor_user_id: int,
+    actor_email: str,
+    reason: Optional[str] = None,
+) -> dict:
+    """
+    Allow an applicant to withdraw any single active application at any time.
+    - Immediately frees a slot toward the 3-active-application maximum.
+    - Cancels any scheduled interviews for this application.
+    - Removes the application from shortlist rosters.
+    - Marks messaging thread read-only immediately (messaging_closed_at = now).
+    - Writes ApplicationStatusHistory, notifies HR, and audit logs.
+    """
+    from sqlalchemy import delete, select
+    from app.models.job_description import JobDescription
+    from app.models.shortlist_roster import ShortlistRosterItem
+    from app.services.status_management_service import (
+        apply_application_status_change,
+        is_passed_status,
+        is_resolved_status,
+    )
+    from app.services.auth_service import _cancel_interviews_for_application
+    from app.services.audit_service import record_activity
+
+    res = await db.execute(select(JobApplication).where(JobApplication.id == application_id))
+    app = res.scalar_one_or_none()
+    if not app:
+        raise LookupError("Application not found")
+
+    # Verify ownership
+    norm_actor = (actor_email or "").strip().lower()
+    owns_by_id = app.user_id is not None and int(app.user_id) == int(actor_user_id)
+    owns_by_email = (app.candidate_email or "").strip().lower() == norm_actor
+    if not owns_by_id and not owns_by_email:
+        raise PermissionError("You can only withdraw your own applications.")
+
+    if is_passed_status(app.status):
+        raise ValueError("This application has already passed initial interview and is read-only.")
+    if is_resolved_status(app.status):
+        raise ValueError("This application is already resolved or withdrawn.")
+
+    job_title = app.job_title or "Position"
+    if app.job_id:
+        j_res = await db.execute(select(JobDescription.job_title).where(JobDescription.id == app.job_id))
+        fetched = j_res.scalar_one_or_none()
+        if fetched:
+            job_title = fetched
+
+    withdraw_reason = (reason or "").strip() or "Withdrawn by applicant"
+
+    cancelled_interviews = await _cancel_interviews_for_application(
+        db, app.id, reason=withdraw_reason
+    )
+    await db.execute(
+        delete(ShortlistRosterItem).where(ShortlistRosterItem.application_id == app.id)
+    )
+
+    updated = await apply_application_status_change(
+        db=db,
+        application=app,
+        new_status="Withdrawn by applicant",
+        changed_by=actor_email,
+        change_type="manual",
+        reason=withdraw_reason,
+        send_email=True,
+        send_notification=True,
+    )
+
+    await create_notification(
+        db=db,
+        title="Application Withdrawn by Applicant",
+        message=(
+            f"{app.candidate_name or actor_email} withdrew their application (#{app.id}) for '{job_title}'."
+            + (f" {cancelled_interviews} scheduled interview(s) were cancelled." if cancelled_interviews else "")
+        ),
+        type="application_withdrawn",
+        target_role="HR",
+        sender_role="CANDIDATE",
+    )
+
+    await record_activity(
+        db=db,
+        user_id=actor_user_id,
+        action="WITHDRAW_APPLICATION",
+        target=f"Application ID: {app.id}",
+        details=f"Applicant {actor_email} withdrew application for '{job_title}'. Cancelled interviews: {cancelled_interviews}.",
+    )
+
+    return {
+        "application": updated,
+        "cancelled_interviews": cancelled_interviews,
+        "message": f"Your application for {job_title} has been withdrawn and your application slot is now free.",
+    }
+
+
+async def handle_post_pass_other_applications(
+    db: AsyncSession,
+    passed_application_id: int,
+    action: str,
+    target_application_ids: list,
+    actor_id: Optional[int],
+    actor_email: str,
+    note: Optional[str] = None,
+) -> dict:
+    """
+    When an applicant passes the initial interview for one position, HR chooses for the
+    remaining active applications either 'on_hold' or 'continue'. The applicant is notified
+    so they are never left guessing. 'On Hold' still counts as active and can be resumed.
+    """
+    from sqlalchemy import select
+    from app.models.job_description import JobDescription
+    from app.services.retention_service import is_application_active
+    from app.services.status_management_service import apply_application_status_change
+    from app.services.audit_service import record_activity
+
+    norm_action = (action or "").strip().lower()
+    if norm_action not in ("on_hold", "continue"):
+        raise ValueError("Action must be 'on_hold' or 'continue'.")
+
+    passed_res = await db.execute(select(JobApplication).where(JobApplication.id == passed_application_id))
+    passed_app = passed_res.scalar_one_or_none()
+    if not passed_app:
+        raise LookupError("Passed application not found")
+
+    passed_job_title = passed_app.job_title or "another position"
+    if passed_app.job_id:
+        jt_res = await db.execute(select(JobDescription.job_title).where(JobDescription.id == passed_app.job_id))
+        fetched = jt_res.scalar_one_or_none()
+        if fetched:
+            passed_job_title = fetched
+
+    updated_ids = []
+    for tid in target_application_ids:
+        if int(tid) == int(passed_application_id):
+            continue
+        t_res = await db.execute(select(JobApplication).where(JobApplication.id == int(tid)))
+        other_app = t_res.scalar_one_or_none()
+        if not other_app or not is_application_active(other_app.status):
+            continue
+
+        other_job_title = other_app.job_title or "Position"
+        if other_app.job_id:
+            oj_res = await db.execute(select(JobDescription.job_title).where(JobDescription.id == other_app.job_id))
+            oj = oj_res.scalar_one_or_none()
+            if oj:
+                other_job_title = oj
+
+        if norm_action == "on_hold":
+            hold_reason = (note or "").strip() or (
+                f"Placed on hold while progressing with {passed_job_title} after passing initial interview"
+            )
+            await apply_application_status_change(
+                db=db,
+                application=other_app,
+                new_status="On Hold",
+                changed_by=actor_email,
+                change_type="manual",
+                reason=hold_reason,
+                send_email=True,
+                send_notification=True,
+            )
+            await record_activity(
+                db=db,
+                user_id=actor_id,
+                action="APPLICATION_ON_HOLD",
+                target=f"Application ID: {other_app.id}",
+                details=f"HR placed application for '{other_job_title}' On Hold after Pass on '{passed_job_title}'.",
+            )
+            updated_ids.append(other_app.id)
+        else:
+            # Continue: keep active and send reassuring message to applicant
+            notif_email = await resolve_application_notification_email(db, other_app)
+            continue_msg = (
+                f"Your application for {other_job_title} will continue independently alongside your progression for {passed_job_title}."
+                + (f" Note from HR: {note}" if note else "")
+            )
+            if notif_email:
+                await create_notification(
+                    db=db,
+                    title=f"Application Continuing: {other_job_title}",
+                    message=continue_msg,
+                    type="status_update",
+                    target_role="CANDIDATE",
+                    target_email=notif_email,
+                    sender_role="HR",
+                )
+            await record_activity(
+                db=db,
+                user_id=actor_id,
+                action="APPLICATION_CONTINUE_AFTER_PASS",
+                target=f"Application ID: {other_app.id}",
+                details=f"HR chose to continue application for '{other_job_title}' after Pass on '{passed_job_title}'.",
+            )
+            updated_ids.append(other_app.id)
+
+    return {
+        "action": norm_action,
+        "affected_application_ids": updated_ids,
+        "count": len(updated_ids),
+    }
+
+
+async def resume_on_hold_application(
+    db: AsyncSession,
+    application_id: int,
+    actor_id: Optional[int],
+    actor_email: str,
+    note: Optional[str] = None,
+) -> JobApplication:
+    """Resume an 'On Hold' application back to its previous active status."""
+    from sqlalchemy import select
+    from app.models.status_history import ApplicationStatusHistory
+    from app.services.status_management_service import (
+        apply_application_status_change,
+        normalize_status,
+    )
+    from app.services.audit_service import record_activity
+
+    res = await db.execute(select(JobApplication).where(JobApplication.id == application_id))
+    app = res.scalar_one_or_none()
+    if not app:
+        raise LookupError("Application not found")
+    if normalize_status(app.status) != "On Hold":
+        raise ValueError("Only applications currently On Hold can be resumed.")
+
+    # Look up prior active status from status history
+    hist_res = await db.execute(
+        select(ApplicationStatusHistory)
+        .where(
+            ApplicationStatusHistory.application_id == application_id,
+            ApplicationStatusHistory.new_status == "On Hold",
+        )
+        .order_by(ApplicationStatusHistory.created_at.desc())
+        .limit(1)
+    )
+    last_hold = hist_res.scalar_one_or_none()
+    resume_target = (last_hold.old_status if last_hold and last_hold.old_status and last_hold.old_status != "On Hold" else "Under Review")
+
+    resume_reason = (note or "").strip() or f"Resumed from On Hold to {resume_target}"
+    updated = await apply_application_status_change(
+        db=db,
+        application=app,
+        new_status=resume_target,
+        changed_by=actor_email,
+        change_type="manual",
+        reason=resume_reason,
+        send_email=True,
+        send_notification=True,
+    )
+
+    await record_activity(
+        db=db,
+        user_id=actor_id,
+        action="RESUME_APPLICATION",
+        target=f"Application ID: {app.id}",
+        details=f"HR resumed application #{app.id} from On Hold to {resume_target}.",
+    )
+    return updated
+
+
+async def withdraw_hired_elsewhere(
+    db: AsyncSession,
+    application_id: int,
+    actor_id: Optional[int],
+    actor_email: str,
+    note: Optional[str] = None,
+) -> JobApplication:
+    """
+    Mark an active application as 'Withdrawn – hired elsewhere in company'.
+    Controlled by System Configuration setting `allow_hired_elsewhere_withdrawal`.
+    """
+    from sqlalchemy import delete, select
+    from app.models.shortlist_roster import ShortlistRosterItem
+    from app.services.system_config_service import system_config_service
+    from app.services.status_management_service import (
+        apply_application_status_change,
+        is_resolved_status,
+    )
+    from app.services.auth_service import _cancel_interviews_for_application
+    from app.services.audit_service import record_activity
+
+    allowed = await system_config_service.get_allow_hired_elsewhere_withdrawal(db)
+    if not allowed:
+        raise PermissionError(
+            "Marking applications as 'Withdrawn – hired elsewhere in company' is currently disabled in System Configuration."
+        )
+
+    res = await db.execute(select(JobApplication).where(JobApplication.id == application_id))
+    app = res.scalar_one_or_none()
+    if not app:
+        raise LookupError("Application not found")
+    if is_resolved_status(app.status):
+        raise ValueError("This application is already resolved or withdrawn.")
+
+    reason = (note or "").strip() or "Applicant accepted another role at Mariwasa"
+    await _cancel_interviews_for_application(db, app.id, reason="Withdrawn – hired elsewhere in company")
+    await db.execute(
+        delete(ShortlistRosterItem).where(ShortlistRosterItem.application_id == app.id)
+    )
+
+    updated = await apply_application_status_change(
+        db=db,
+        application=app,
+        new_status="Withdrawn – hired elsewhere in company",
+        changed_by=actor_email,
+        change_type="manual",
+        reason=reason,
+        send_email=True,
+        send_notification=True,
+    )
+
+    await record_activity(
+        db=db,
+        user_id=actor_id,
+        action="WITHDRAW_HIRED_ELSEWHERE",
+        target=f"Application ID: {app.id}",
+        details=f"HR marked application #{app.id} as 'Withdrawn – hired elsewhere in company'. Note: {reason}",
+    )
+    return updated
 
 
 async def get_and_validate_job(db: AsyncSession, job_id: str):

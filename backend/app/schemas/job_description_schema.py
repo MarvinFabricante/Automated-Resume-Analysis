@@ -1,3 +1,4 @@
+from datetime import datetime
 from pydantic import BaseModel, Field, field_validator, model_validator
 from typing import Any, Optional
 from app.models.job_description import JobType
@@ -43,6 +44,7 @@ class JobBase(BaseModel):
     certifications_requirements: Optional[str] = None
     experience_requirements: Optional[str] = None
     is_active: bool = True
+    status: Optional[str] = "ACTIVE"
 
     @field_validator(
         "skills_requirements",
@@ -70,6 +72,15 @@ class JobResponse(JobBase):
     # None = job has no custom weights and inherits the global default.
     scoring_weights: Optional[dict] = None
     applicant_count: Optional[int] = None
+    closed_at: Optional[datetime] = None
+    archived_at: Optional[datetime] = None
+
+    @field_validator("status", mode="before")
+    @classmethod
+    def _default_status(cls, value: Any):
+        if not value:
+            return "ACTIVE"
+        return str(value).strip().upper()
 
     @field_validator("scoring_weights", mode="before")
     @classmethod
@@ -79,6 +90,10 @@ class JobResponse(JobBase):
 
     class Config:
         from_attributes = True
+
+
+class JobStatusUpdateRequest(BaseModel):
+    status: str = Field(..., description="Target lifecycle status: DRAFT, ACTIVE, CLOSED, or ARCHIVED")
 
 
 class JobUpdate(BaseModel):

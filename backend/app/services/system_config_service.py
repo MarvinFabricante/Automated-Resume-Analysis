@@ -40,25 +40,43 @@ DEFAULT_THRESHOLDS = {
 }
 
 DEFAULT_RECRUITMENT_CONFIG = {
-    "max_active_applications": 3
+    "max_active_applications": 3,
+    "retention_months": 12,
+    "reapplication_cooldown_days": 0,
+    "messaging_closure_days": 30,
+    "allow_hired_elsewhere_withdrawal": False,
 }
 
 
 # ─── Matching Parameters & Recruitment Rules ────────────────────────────
 
-async def get_max_active_applications(db: AsyncSession) -> int:
-    """Retrieve maximum number of active applications allowed per candidate (REQ081, REQ082)."""
-    config = await SystemConfigRepository.get_config_by_key(db, "max_active_applications")
-    if config and config.value:
+async def _get_int_config(db: AsyncSession, key: str, default: int, min_val: int, max_val: int) -> int:
+    config = await SystemConfigRepository.get_config_by_key(db, key)
+    if config and config.value is not None:
         try:
             raw_val = config.value
             if isinstance(raw_val, str) and (raw_val.startswith('"') or raw_val.startswith('{')):
-                parsed = json.loads(raw_val)
-                return max(1, int(parsed))
-            return max(1, int(raw_val))
+                raw_val = json.loads(raw_val)
+            return max(min_val, min(max_val, int(raw_val)))
         except Exception:
             pass
-    return 3
+    return default
+
+
+async def _get_bool_config(db: AsyncSession, key: str, default: bool) -> bool:
+    config = await SystemConfigRepository.get_config_by_key(db, key)
+    if config and config.value is not None:
+        raw = str(config.value).strip().lower()
+        if raw in ("true", "1", "yes", "on"):
+            return True
+        if raw in ("false", "0", "no", "off"):
+            return False
+    return default
+
+
+async def get_max_active_applications(db: AsyncSession) -> int:
+    """Retrieve maximum number of active applications allowed per candidate (REQ081, REQ082)."""
+    return await _get_int_config(db, "max_active_applications", 3, 1, 20)
 
 
 async def update_max_active_applications(db: AsyncSession, limit: int, user_id: int = None):
@@ -72,6 +90,58 @@ async def update_max_active_applications(db: AsyncSession, limit: int, user_id: 
         description="Maximum active applications allowed per candidate",
         user_id=user_id
     )
+
+
+async def get_retention_months(db: AsyncSession) -> int:
+    """Data retention window in months (default 12)."""
+    return await _get_int_config(db, "retention_months", 12, 1, 120)
+
+
+async def get_reapplication_cooldown_days(db: AsyncSession) -> int:
+    """Reapplication cooldown in days after decision (default 0 = none)."""
+    return await _get_int_config(db, "reapplication_cooldown_days", 0, 0, 365)
+
+
+async def get_messaging_closure_days(db: AsyncSession) -> int:
+    """Days after application resolution before messaging thread closes (default 30)."""
+    return await _get_int_config(db, "messaging_closure_days", 30, 1, 365)
+
+
+async def get_allow_hired_elsewhere_withdrawal(db: AsyncSession) -> bool:
+    """Whether HR can mark remaining applications as 'Withdrawn – hired elsewhere in company' (default False)."""
+    return await _get_bool_config(db, "allow_hired_elsewhere_withdrawal", False)
+
+
+async def get_recruitment_config(db: AsyncSession) -> Dict[str, Any]:
+    return {
+        "max_active_applications": await get_max_active_applications(db),
+        "retention_months": await get_retention_months(db),
+        "reapplication_cooldown_days": await get_reapplication_cooldown_days(db),
+        "messaging_closure_days": await get_messaging_closure_days(db),
+        "allow_hired_elsewhere_withdrawal": await get_allow_hired_elsewhere_withdrawal(db),
+    }
+
+
+async def update_recruitment_config(
+    db: AsyncSession,
+    updates: Dict[str, Any],
+    user_id: Optional[int] = None,
+) -> Dict[str, Any]:
+    if updates.get("max_active_applications") is not None:
+        await update_max_active_applications(db, int(updates["max_active_applications"]), user_id=user_id)
+    if updates.get("retention_months") is not None:
+        val = max(1, min(120, int(updates["retention_months"])))
+        await update_config(db, "retention_months", str(val), "recruitment", "Data retention window in months before anonymization", user_id)
+    if updates.get("reapplication_cooldown_days") is not None:
+        val = max(0, min(365, int(updates["reapplication_cooldown_days"])))
+        await update_config(db, "reapplication_cooldown_days", str(val), "recruitment", "Reapplication cooldown period in days (0 = none)", user_id)
+    if updates.get("messaging_closure_days") is not None:
+        val = max(1, min(365, int(updates["messaging_closure_days"])))
+        await update_config(db, "messaging_closure_days", str(val), "recruitment", "Days after resolution before application messaging closes", user_id)
+    if updates.get("allow_hired_elsewhere_withdrawal") is not None:
+        val = "true" if bool(updates["allow_hired_elsewhere_withdrawal"]) else "false"
+        await update_config(db, "allow_hired_elsewhere_withdrawal", val, "recruitment", "Allow HR to mark remaining apps as Withdrawn – hired elsewhere in company", user_id)
+    return await get_recruitment_config(db)
 
 async def get_matching_parameters(db: AsyncSession) -> dict:
     weights_config = await SystemConfigRepository.get_config_by_key(db, "matching_weights")

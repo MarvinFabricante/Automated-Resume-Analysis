@@ -53,6 +53,24 @@ class ShortlistRosterCreate(BaseModel):
     name: str
     notes: Optional[str] = None
     application_ids: Optional[List[int]] = []
+    non_shortlisted_action: Optional[str] = "keep_under_review"  # keep_under_review | notify_on_finalize | decide_later
+    finalize: Optional[bool] = False
+    confirm_notify_non_shortlisted: Optional[bool] = False
+
+
+class ShortlistNonShortlistedPreviewRequest(BaseModel):
+    job_id: int
+    shortlisted_application_ids: Optional[List[int]] = []
+    roster_id: Optional[int] = None
+
+
+class ShortlistPolicyUpdateRequest(BaseModel):
+    non_shortlisted_action: str  # keep_under_review | notify_on_finalize | decide_later
+
+
+class ShortlistFinalizeRequest(BaseModel):
+    non_shortlisted_action: Optional[str] = None
+    confirm: bool = True
 
 class ShortlistRosterItemResponse(BaseModel):
     id: int
@@ -75,6 +93,9 @@ class ShortlistRosterResponse(BaseModel):
     name: str
     created_by: str
     notes: Optional[str] = None
+    non_shortlisted_action: Optional[str] = "keep_under_review"
+    is_finalized: bool = False
+    finalized_at: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
     total_candidates: int = 0

@@ -9,14 +9,16 @@ from jose import jwt
 from app.utils.database import get_db
 from app.schemas.admin_schema import AdminCreate, AdminResponse, AdminUpdate
 from app.schemas.user_schema import UserResponse, UserCreate, UserUpdate
-from app.schemas.job_description_schema import JobCreate, JobResponse, JobUpdate
+from app.schemas.job_description_schema import JobCreate, JobResponse, JobUpdate, JobStatusUpdateRequest
 from app.services import admin_service, audit_service
 from app.services.job_description_service import (
     create_job,
     delete_job,
     get_all_active_jobs,
+    get_close_job_preview,
     get_job,
     set_job_status,
+    transition_job_lifecycle_status,
     update_job,
 )
 from app.utils.auth import get_current_user
@@ -209,6 +211,19 @@ async def delete_user(
         raise HTTPException(status_code=404, detail="User not found")
     if target_user.role == "ADMIN":
         raise HTTPException(status_code=400, detail="Administrator accounts cannot be deleted from the user directory.")
+    if (target_user.role or "").upper() == "CANDIDATE":
+        if current_user and current_user.get("id"):
+            await audit_service.record_activity(
+                db=db,
+                user_id=current_user.get("id"),
+                action="DELETE_APPLICANT_BLOCKED",
+                target=f"User: {target_user.email}",
+                details="Blocked attempt to hard-delete an applicant profile. Only applicant-initiated deletion requests and retention anonymization are permitted.",
+            )
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Applicant profiles cannot be hard-deleted by HR or Admins. Only the applicant may request account deletion, and personal data is anonymized per retention policy.",
+        )
 
     user_email = target_user.email if target_user else f"ID: {user_id}"
 
@@ -381,18 +396,34 @@ async def create_job_description(
     
     return result
 
+def _require_hr_or_admin(current_user: Optional[dict]) -> dict:
+    if not current_user or (current_user.get("role") or "").upper() not in ("ADMIN", "HR"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only HR or Admin users may change job opening status.",
+        )
+    return current_user
+
+
 @router.get("/read-jobs", response_model=List[JobResponse])
 @cache_response("active_jobs", ttl=600)
 async def read_active_jobs(
     skip: int = 0, 
     limit: int = 100, 
     include_inactive: bool = False,
+    include_archived: bool = False,
     db: AsyncSession = Depends(get_db)
 ):
     from sqlalchemy import func, select
     from app.models.job_application import JobApplication
 
-    jobs = await get_all_active_jobs(db, skip=skip, limit=limit, include_inactive=include_inactive)
+    jobs = await get_all_active_jobs(
+        db,
+        skip=skip,
+        limit=limit,
+        include_inactive=include_inactive,
+        include_archived=include_archived,
+    )
     if jobs:
         job_ids = [j.id for j in jobs]
         counts_res = await db.execute(
@@ -504,28 +535,147 @@ async def recalculate_single_job_scores(
             "message": f"Updated match scores for {updated} application(s).",
         }
 
+@router.get("/jobs/{job_id}/close-preview")
+async def preview_close_job(
+    job_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """Preview how many non-shortlisted applicants will be set to Not Selected when closing this job."""
+    _require_hr_or_admin(current_user)
+    preview = await get_close_job_preview(db, job_id)
+    if not preview:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Job {job_id} not found")
+    return preview
+
+
+@router.patch("/jobs/{job_id}/status")
+async def change_job_lifecycle_status(
+    job_id: str,
+    payload: JobStatusUpdateRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """
+    Transition job opening lifecycle status (DRAFT -> ACTIVE -> CLOSED -> ARCHIVED).
+    Only HR/Admin may change job status; every change is audit logged.
+    """
+    _require_hr_or_admin(current_user)
+    try:
+        result = await transition_job_lifecycle_status(
+            db=db,
+            job_id=job_id,
+            target_status=payload.status,
+            actor_id=current_user.get("id"),
+            actor_email=current_user.get("sub") or current_user.get("email") or "HR",
+        )
+    except LookupError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+    await _invalidate_job_caches(job_id)
+    from app.utils.cache import invalidate_application_dashboard_caches
+    await invalidate_application_dashboard_caches()
+
+    job_resp = JobResponse.model_validate(result["job"]).model_dump(mode="json")
+    return {
+        "job": job_resp,
+        "old_status": result["old_status"],
+        "new_status": result["new_status"],
+        "auto_not_selected_count": result["auto_not_selected_count"],
+        "changed": result["changed"],
+    }
+
+
+@router.post("/jobs/{job_id}/close")
+async def close_job_opening(
+    job_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    return await change_job_lifecycle_status(
+        job_id=job_id,
+        payload=JobStatusUpdateRequest(status="CLOSED"),
+        db=db,
+        current_user=current_user,
+    )
+
+
+@router.post("/jobs/{job_id}/reopen")
+async def reopen_job_opening(
+    job_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    _require_hr_or_admin(current_user)
+    existing = await get_job(db, job_id)
+    if not existing:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Job {job_id} not found")
+    current_st = (getattr(existing, "status", None) or ("ACTIVE" if existing.is_active else "ARCHIVED")).upper()
+    if current_st != "CLOSED":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only Closed job openings can be reopened. Archived jobs cannot be reopened.",
+        )
+    return await change_job_lifecycle_status(
+        job_id=job_id,
+        payload=JobStatusUpdateRequest(status="ACTIVE"),
+        db=db,
+        current_user=current_user,
+    )
+
+
+@router.post("/jobs/{job_id}/archive")
+async def archive_job_opening(
+    job_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    return await change_job_lifecycle_status(
+        job_id=job_id,
+        payload=JobStatusUpdateRequest(status="ARCHIVED"),
+        db=db,
+        current_user=current_user,
+    )
+
+
+@router.post("/jobs/{job_id}/publish")
+async def publish_draft_job(
+    job_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    return await change_job_lifecycle_status(
+        job_id=job_id,
+        payload=JobStatusUpdateRequest(status="ACTIVE"),
+        db=db,
+        current_user=current_user,
+    )
+
+
 @router.patch("/archive-job/{job_id}", response_model=JobResponse)
 async def archive_job(
     job_id: str,
     db: AsyncSession = Depends(get_db),
     current_user: Optional[dict] = Depends(get_optional_current_user),
 ):
-    db_job = await set_job_status(db=db, job_id=job_id, active_status=False)
-    if db_job:
-        await _invalidate_job_caches(job_id)
-        await audit_service.record_activity(
+    _require_hr_or_admin(current_user)
+    try:
+        res = await transition_job_lifecycle_status(
             db=db,
-            user_id=current_user.get("id") if current_user else None,
-            action="ARCHIVE_JOB",
-            target=f"Job: {db_job.job_title}",
-            details=f"Admin archived job posting {db_job.job_id} ({db_job.job_title})",
+            job_id=job_id,
+            target_status="ARCHIVED",
+            actor_id=current_user.get("id") if current_user else None,
+            actor_email=(current_user.get("sub") or current_user.get("email") or "HR") if current_user else "HR",
         )
-    if not db_job:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, 
-            detail=f"Job {job_id} not found"
-        )
-    return db_job
+    except LookupError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+    await _invalidate_job_caches(job_id)
+    return res["job"]
 
 @router.patch("/unarchive-job/{job_id}", response_model=JobResponse)
 async def unarchive_job(
@@ -533,22 +683,22 @@ async def unarchive_job(
     db: AsyncSession = Depends(get_db),
     current_user: Optional[dict] = Depends(get_optional_current_user),
 ):
-    db_job = await set_job_status(db=db, job_id=job_id, active_status=True)
-    if db_job:
-        await _invalidate_job_caches(job_id)
-        await audit_service.record_activity(
+    _require_hr_or_admin(current_user)
+    try:
+        res = await transition_job_lifecycle_status(
             db=db,
-            user_id=current_user.get("id") if current_user else None,
-            action="UNARCHIVE_JOB",
-            target=f"Job: {db_job.job_title}",
-            details=f"Admin unarchived job posting {db_job.job_id} ({db_job.job_title})",
+            job_id=job_id,
+            target_status="ACTIVE",
+            actor_id=current_user.get("id") if current_user else None,
+            actor_email=(current_user.get("sub") or current_user.get("email") or "HR") if current_user else "HR",
         )
-    if not db_job:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, 
-            detail=f"Job {job_id} not found"
-        )
-    return db_job
+    except LookupError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+    await _invalidate_job_caches(job_id)
+    return res["job"]
 
 @router.delete("/delete-job/{job_id}", response_model=JobResponse)
 async def delete_job_endpoint(
@@ -615,10 +765,17 @@ async def recover_data(db: AsyncSession = Depends(get_db), current_user: dict = 
     return {"message": "Data recovery initiated successfully"}
 
 @router.get("/retention-policy")
-@cache_response("retention_policy", ttl=3600)
 async def get_retention_policy(db: AsyncSession = Depends(get_db)):
-    # Mock retrieval of retention policy
-    return {"retention_days": 90, "auto_delete": True}
+    from app.services.system_config_service import system_config_service
+    cfg = await system_config_service.get_recruitment_config(db)
+    months = cfg["retention_months"]
+    return {
+        "retention_months": months,
+        "retention_days": months * 30,
+        "reapplication_cooldown_days": cfg["reapplication_cooldown_days"],
+        "messaging_closure_days": cfg["messaging_closure_days"],
+        "auto_delete": True,
+    }
 
 @router.put("/retention-policy")
 async def update_retention_policy(
@@ -626,15 +783,34 @@ async def update_retention_policy(
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
-    # Mock update of retention policy
+    from app.services.system_config_service import system_config_service
+    updates = {}
+    if policy.get("retention_months") is not None:
+        updates["retention_months"] = int(policy["retention_months"])
+    elif policy.get("retention_days") is not None:
+        updates["retention_months"] = max(1, round(int(policy["retention_days"]) / 30))
+    if policy.get("reapplication_cooldown_days") is not None:
+        updates["reapplication_cooldown_days"] = int(policy["reapplication_cooldown_days"])
+    if policy.get("messaging_closure_days") is not None:
+        updates["messaging_closure_days"] = int(policy["messaging_closure_days"])
+
+    cfg = await system_config_service.update_recruitment_config(db, updates, user_id=current_user.get("id"))
     await audit_service.record_activity(
         db=db,
         user_id=current_user.get("id"),
         action="UPDATE_RETENTION",
         target="System Config",
-        details=f"Admin updated data retention policy to {policy.get('retention_days', 90)} days"
+        details=f"Admin updated data retention policy: {cfg}",
     )
-    return {"message": "Retention policy updated successfully", "policy": policy}
+    return {
+        "message": "Retention policy updated successfully",
+        "policy": {
+            "retention_months": cfg["retention_months"],
+            "retention_days": cfg["retention_months"] * 30,
+            "reapplication_cooldown_days": cfg["reapplication_cooldown_days"],
+            "messaging_closure_days": cfg["messaging_closure_days"],
+        },
+    }
 
 # ===================== ML Engine & Continuous Retraining Endpoints
 

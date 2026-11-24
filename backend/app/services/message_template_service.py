@@ -150,18 +150,56 @@ DEFAULT_TEMPLATES: Dict[str, Dict[str, Any]] = {
     },
     "application_status_rejected": {
         "key": "application_status_rejected",
-        "label": "Application Status: Not Selected / Rejected",
-        "description": "Email sent when an application is marked as Not Selected / Rejected.",
+        "label": "Application Status: Not Selected",
+        "description": "Email sent when an application is marked as Not Selected (must not include scores, weights, or formulas). Feedback report stays viewable.",
         "supports_sms": False,
         "placeholders": list(STATUS_PLACEHOLDERS),
         "email_subject": "Application Update: {job_title} | Mariwasa Siam Ceramics",
         "email_message": (
-            "Thank you for your interest in joining {company_name} and for the time, energy, and dedication "
-            "you invested in applying for the position of {job_title}."
+            "Thank you for your interest in joining {company_name} and for the time and effort "
+            "you invested in applying for the position of {job_title}. After careful review, we will not be "
+            "moving forward with your application for this opening. You may continue to view your feedback report "
+            "and apply for other open positions in your candidate portal."
         ),
         "sms_message": "",
     },
 }
+
+_FORBIDDEN_NOT_SELECTED_TOKENS = re.compile(
+    r"(\{[^}]*(score|weight|formula|percent|ratio)[^}]*\}|\b(match\s*score|scoring\s*formula|scoring\s*weights?|weight\s*distribution|algorithm\s*score)\b)",
+    re.IGNORECASE,
+)
+
+
+def validate_not_selected_template_text(subject: str, message: str) -> None:
+    """Reject scores, weights, or scoring formulas inside the Not Selected template."""
+    combined = f"{subject or ''}\n{message or ''}"
+    match = _FORBIDDEN_NOT_SELECTED_TOKENS.search(combined)
+    if match:
+        raise ValueError(
+            "The Not Selected message template must not contain scores, weights, or scoring formulas."
+        )
+
+
+async def render_not_selected_preview(
+    db: Optional[AsyncSession],
+    job_title: str,
+    candidate_name: str = "Applicant Name",
+    reason: Optional[str] = None,
+) -> Dict[str, str]:
+    """Render the editable Not Selected template for HR confirmation previews."""
+    tmpl = await get_template(db, "application_status_rejected")
+    ctx = {
+        "candidate_name": candidate_name,
+        "job_title": job_title or "Position",
+        "status": "Not selected",
+        "notes": (reason or "").strip(),
+        "company_name": COMPANY_NAME,
+    }
+    return {
+        "subject": render_template(tmpl.get("email_subject", ""), ctx),
+        "message": render_template(tmpl.get("email_message", ""), ctx),
+    }
 
 
 def is_real_email(email: Optional[str]) -> bool:
@@ -320,6 +358,11 @@ async def update_templates(
             for field in ("email_subject", "email_message", "sms_message"):
                 if field in patch and patch[field] is not None:
                     entry[field] = str(patch[field]).strip()
+        if key == "application_status_rejected":
+            validate_not_selected_template_text(
+                entry.get("email_subject", ""),
+                entry.get("email_message", ""),
+            )
         overrides_to_save[key] = entry
 
     await SystemConfigRepository.upsert_config(

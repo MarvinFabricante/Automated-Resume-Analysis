@@ -55,6 +55,9 @@ export interface Job {
   qualifications?: string;
   description?: string;
   is_active: boolean;
+  status?: 'DRAFT' | 'ACTIVE' | 'CLOSED' | 'ARCHIVED' | string;
+  closed_at?: string | null;
+  archived_at?: string | null;
   scoring_weights?: JobScoringWeights | null;
   created_at?: string;
   updated_at?: string;
@@ -155,6 +158,9 @@ export interface CandidateApplicationView {
   company: string;
   appliedDate: string;
   status: string;
+  rawStatus?: string;
+  group?: 'active' | 'completed' | 'withdrawn';
+  isReadOnly?: boolean;
   statusColor: string;
   step: number;
   totalSteps: number;

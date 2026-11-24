@@ -99,6 +99,24 @@ class JobApplicationStatusUpdate(BaseModel):
 class JobApplicationNotesUpdate(BaseModel):
     hr_shortlist_notes: str
 
+
+class ApplicationWithdrawRequest(BaseModel):
+    reason: Optional[str] = None
+
+
+class PostPassActionRequest(BaseModel):
+    action: str  # "on_hold" | "continue"
+    target_application_ids: List[int] = []
+    note: Optional[str] = None
+
+
+class ApplicationResumeRequest(BaseModel):
+    note: Optional[str] = None
+
+
+class HiredElsewhereWithdrawRequest(BaseModel):
+    note: Optional[str] = None
+
 class JobApplicationViewedEvent(BaseModel):
     view_duration_seconds: float
     visible_focused: bool = True
@@ -156,11 +174,28 @@ class JobApplicationResponse(JobApplicationBase):
     status: str
     created_at: datetime
     updated_at: datetime
+    resolved_at: Optional[datetime] = None
+    messaging_closed_at: Optional[datetime] = None
+    hold_reason: Optional[str] = None
+    is_anonymized: Optional[bool] = False
+    anonymized_token: Optional[str] = None
     job: Optional[JobInfo] = None
     active_applications_count: Optional[int] = 0
     has_other_active_applications: Optional[bool] = False
     other_applications: Optional[List[OtherApplicationSummary]] = None
     recommended_positions: Optional[List[RecommendedPositionSummary]] = None
+
+    @computed_field
+    @property
+    def status_display(self) -> str:
+        from app.services.status_management_service import get_status_display_label
+        return get_status_display_label(self.status)
+
+    @computed_field
+    @property
+    def is_read_only(self) -> bool:
+        from app.services.status_management_service import is_passed_status, is_withdrawn_status
+        return is_passed_status(self.status) or is_withdrawn_status(self.status)
 
     @computed_field
     @property

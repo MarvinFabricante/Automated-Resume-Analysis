@@ -8,13 +8,22 @@ from app.utils.database import get_db
 
 from app.schemas.user_schema import (
     Token, UserCreate, UserLogin, ForgotPasswordRequest, 
-    ResetPasswordRequest, ChangePasswordRequest, SetPasswordRequest
+    ResetPasswordRequest, ChangePasswordRequest, SetPasswordRequest,
+    AccountDeleteRequest, ReactivateRequestOTP, ReactivateVerifyRequest,
+    FreshStartRegisterRequest,
 )
 from app.utils.auth import get_current_user, get_optional_current_user, verify_password
 from app.services import auth_service
+from app.services.auth_service import DuplicateEmailError, DeactivatedAccountExistsError
 
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
+
+@router.get("/check-email-status")
+async def check_email_status(email: str, db: AsyncSession = Depends(get_db)):
+    """Check whether an email is available, active, or belongs to a deactivated (reactivable) account."""
+    return await auth_service.check_email_registration_status(db, email)
+
 
 @router.post("/register")
 async def register(user: UserCreate, db: AsyncSession = Depends(get_db)):
@@ -25,12 +34,29 @@ async def register(user: UserCreate, db: AsyncSession = Depends(get_db)):
                 status_code=400,
                 detail="Public registration is only available for Candidate accounts. HR and Admin accounts must be created by an Administrator."
             )
-        new_user = await auth_service.register_user(
-            db, user.email, user.password, "CANDIDATE", user.fullname
+        await auth_service.register_user(
+            db,
+            user.email,
+            user.password,
+            "CANDIDATE",
+            user.fullname,
+            fresh_start=bool(getattr(user, "fresh_start", False)),
         )
         return {"message": "User registered successfully"}
     except HTTPException:
         raise
+    except DeactivatedAccountExistsError as e:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "DEACTIVATED_ACCOUNT_EXISTS",
+                "message": str(e),
+                "can_reactivate": True,
+                "can_fresh_start": True,
+            },
+        )
+    except DuplicateEmailError as e:
+        raise HTTPException(status_code=409, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -48,8 +74,109 @@ async def login(user: UserLogin, db: AsyncSession = Depends(get_db)):
             "user_id": data["user_id"],
             "profile_image_url": data.get("profile_image_url")
         }
+    except DeactivatedAccountExistsError as e:
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "code": "ACCOUNT_DEACTIVATED",
+                "message": str(e),
+                "can_reactivate": True,
+                "can_fresh_start": True,
+            },
+        )
     except Exception as e:
         raise HTTPException(status_code=401, detail=str(e))
+
+
+@router.post("/account/request-delete-otp")
+async def request_delete_account_otp(
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """Send a 6-digit OTP email to confirm applicant account deletion."""
+    email = current_user.get("sub")
+    if not email:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    try:
+        return await auth_service.request_account_otp(db, email, purpose="delete_account")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/account/delete")
+async def delete_own_account(
+    payload: AccountDeleteRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """
+    Applicant-initiated account deletion: confirms via password or OTP, deactivates immediately,
+    invalidates all tokens, withdraws active applications, cancels interviews, and notifies HR.
+    """
+    user_id = current_user.get("id")
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    try:
+        return await auth_service.request_account_deletion(
+            db=db,
+            user_id=int(user_id),
+            password=payload.password,
+            otp_code=payload.otp_code,
+            reason=payload.reason,
+        )
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/reactivate/request-otp")
+async def request_reactivation_otp(
+    payload: ReactivateRequestOTP,
+    db: AsyncSession = Depends(get_db),
+):
+    """Request a 6-digit email OTP (valid 10 minutes) to reactivate a deactivated account."""
+    try:
+        return await auth_service.request_account_otp(db, payload.email, purpose="reactivate_account")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/reactivate/verify")
+async def verify_reactivation_otp(
+    payload: ReactivateVerifyRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Verify the 6-digit email OTP and restore the deactivated account (withdrawn apps stay withdrawn)."""
+    try:
+        return await auth_service.reactivate_account_with_otp(db, payload.email, payload.otp_code)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/fresh-start")
+async def register_fresh_start(
+    payload: FreshStartRegisterRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Re-register with a fresh start when the email belongs to a deactivated (not-yet-purged) account.
+    Immediately anonymizes the old account & records and creates a brand-new empty account.
+    """
+    try:
+        await auth_service.register_user(
+            db=db,
+            email=payload.email,
+            password=payload.password,
+            role="CANDIDATE",
+            fullname=payload.fullname,
+            fresh_start=True,
+        )
+        return {"message": "Fresh account registered successfully. No data from the previous account was restored."}
+    except DuplicateEmailError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 @router.post("/forgot-password")
 async def forgot_password(request: ForgotPasswordRequest, db: AsyncSession = Depends(get_db)):

@@ -722,6 +722,98 @@ async def send_application_status_update_email(
         ]
         cta_label = "Track Application Status &rarr;"
 
+    elif status_clean in (
+        "PASSED INITIAL INTERVIEW",
+        "PASSED",
+        "PASSED INITIAL INTERVIEW – ENDORSED FOR NEXT STAGE",
+        "PASSED INITIAL INTERVIEW - ENDORSED FOR NEXT STAGE",
+    ):
+        badge_text = "ENDORSED FOR NEXT STAGE"
+        badge_style = "background-color: #ecfdf5; color: #065f46; border: 1px solid #a7f3d0;"
+        header_gradient = "linear-gradient(135deg, #059669 0%, #064e3b 100%)"
+        header_title = "Passed Initial Interview – Endorsed for Next Stage"
+        header_sub = "Initial Interview Outcome"
+        subject = f"Congratulations: Passed Initial Interview for {job_title} | Mariwasa Siam Ceramics"
+        status_pill_label = "Passed Initial Interview – Endorsed for next stage"
+        intro_paragraph = f"""
+        Congratulations! You have passed the initial interview for the position of <strong>{html.escape(job_title)}</strong> at <strong>Mariwasa Siam Ceramics, Inc.</strong> and have been endorsed for the next stage of our hiring process.
+        """
+        body_content = """
+        <p style="font-size: 15px; color: #334155; margin: 0 0 16px 0; line-height: 1.6;">
+            Our HR team will contact you directly outside the system regarding the next steps, schedule, and any additional requirements.
+        </p>
+        <p style="font-size: 15px; color: #334155; margin: 0 0 16px 0; line-height: 1.6;">
+            This application record is now read-only in your portal, while your history and message thread remain viewable.
+        </p>
+        """
+        next_steps_title = "What Happens Next"
+        next_steps = [
+            "HR will reach out to you directly outside the recruitment portal via email or phone.",
+            "Keep your contact information accessible so our team can coordinate smoothly.",
+            "You can continue viewing your application history and messages in your portal."
+        ]
+        cta_label = "View Application History &rarr;"
+
+    elif status_clean in ("ON HOLD", "ON_HOLD"):
+        badge_text = "APPLICATION ON HOLD"
+        badge_style = "background-color: #fffbeb; color: #92400e; border: 1px solid #fde68a;"
+        header_gradient = "linear-gradient(135deg, #d97706 0%, #92400e 100%)"
+        header_title = "Your Application Is Currently On Hold"
+        header_sub = "Application Status Update"
+        subject = f"Application Update (On Hold): {job_title} | Mariwasa Siam Ceramics"
+        status_pill_label = "On Hold"
+        intro_paragraph = f"""
+        We are writing to keep you informed that your application for <strong>{html.escape(job_title)}</strong> at <strong>Mariwasa Siam Ceramics, Inc.</strong> has been placed <strong>On Hold</strong> while you progress with another opportunity in our recruitment process.
+        """
+        body_content = """
+        <p style="font-size: 15px; color: #334155; margin: 0 0 16px 0; line-height: 1.6;">
+            Your application remains active on file and HR may resume it at any time. You may also withdraw it from your dashboard whenever you wish.
+        </p>
+        """
+        next_steps_title = "What This Means"
+        next_steps = [
+            "No action is needed from you right now.",
+            "HR will notify you if this application is resumed or updated.",
+            "You can review or manage your applications anytime in your portal."
+        ]
+        cta_label = "View Application Portal &rarr;"
+
+    elif status_clean in (
+        "WITHDRAWN",
+        "WITHDRAWN BY APPLICANT",
+        "WITHDRAWN – HIRED ELSEWHERE IN COMPANY",
+        "WITHDRAWN - HIRED ELSEWHERE IN COMPANY",
+        "WITHDRAWN_HIRED_ELSEWHERE",
+    ):
+        is_hired_elsewhere = "HIRED" in status_clean
+        badge_text = "APPLICATION WITHDRAWN"
+        badge_style = "background-color: #f1f5f9; color: #475569; border: 1px solid #cbd5e1;"
+        header_gradient = "linear-gradient(135deg, #475569 0%, #1e293b 100%)"
+        header_title = "Application Withdrawn"
+        header_sub = "Mariwasa Recruitment Portal"
+        subject = f"Application Withdrawn: {job_title} | Mariwasa Siam Ceramics"
+        status_pill_label = (
+            "Withdrawn – hired elsewhere in company"
+            if is_hired_elsewhere
+            else "Withdrawn by applicant"
+        )
+        intro_paragraph = (
+            f"Your application for <strong>{html.escape(job_title)}</strong> has been marked as <strong>Withdrawn – hired elsewhere in company</strong> following your acceptance of another role at Mariwasa."
+            if is_hired_elsewhere
+            else f"This confirms that your application for <strong>{html.escape(job_title)}</strong> at <strong>Mariwasa Siam Ceramics, Inc.</strong> has been withdrawn."
+        )
+        body_content = """
+        <p style="font-size: 15px; color: #334155; margin: 0 0 16px 0; line-height: 1.6;">
+            Any upcoming scheduled interviews for this position have been canceled, and your application slot has been released.
+        </p>
+        """
+        next_steps_title = "Important Notes"
+        next_steps = [
+            "This application and its message thread are now read-only.",
+            "Your active application slot is available immediately for other open positions."
+        ]
+        cta_label = "Explore Open Positions &rarr;"
+
     elif status_clean in ("ACCEPTED", "SHORTLISTED"):
         template_key = "application_status_shortlisted"
         badge_text = "APPLICATION ACCEPTED"
@@ -1086,6 +1178,46 @@ async def send_hr_message_notification_email(
     </html>
     """
     return await _send_email_redis_first(to_email, subject, body, "hr_message_notification")
+
+
+async def send_otp_email(to_email: str, otp_code: str, purpose: str = "reactivate_account") -> bool:
+    """Send a 6-digit verification OTP code valid for 10 minutes."""
+    if purpose == "delete_account":
+        title = "Confirm Account Deletion"
+        subtitle = "Account Deletion Verification Code"
+        intro = "You requested to deactivate and delete your Mariwasa Recruitment account. Enter the 6-digit verification code below to confirm."
+        subject = "Verification Code: Confirm Account Deletion | Mariwasa Siam Ceramics"
+    else:
+        title = "Reactivate Your Account"
+        subtitle = "Account Reactivation Verification Code"
+        intro = "You requested to reactivate your Mariwasa Recruitment account. Enter the 6-digit verification code below to verify your email and restore your profile."
+        subject = "Verification Code: Reactivate Your Account | Mariwasa Siam Ceramics"
+
+    body = f"""
+    <!DOCTYPE html>
+    <html>
+    <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif; background-color: #f1f5f9; padding: 24px; color: #1e293b;">
+        <div style="max-width: 520px; margin: 0 auto; background: #ffffff; border-radius: 16px; overflow: hidden; border: 1px solid #e2e8f0;">
+            <div style="background: linear-gradient(135deg, #D60041 0%, #830027 100%); padding: 28px 32px; color: #ffffff;">
+                <p style="margin: 0 0 6px 0; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; opacity: 0.85;">{subtitle}</p>
+                <h1 style="margin: 0; font-size: 22px; font-weight: 800;">{title}</h1>
+            </div>
+            <div style="padding: 32px;">
+                <p style="font-size: 15px; color: #334155; margin: 0 0 20px 0;">{intro}</p>
+                <div style="text-align: center; margin: 24px 0;">
+                    <span style="display: inline-block; padding: 14px 32px; font-size: 32px; font-weight: 800; letter-spacing: 0.25em; background: #f8fafc; border: 2px dashed #D60041; border-radius: 12px; color: #0f172a;">
+                        {html.escape(otp_code)}
+                    </span>
+                </div>
+                <p style="font-size: 13px; color: #64748b; margin: 0;">
+                    This code expires in <strong>10 minutes</strong> and has a limited number of verification attempts. If you did not request this, you can safely ignore this email.
+                </p>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+    return await _send_email_redis_first(to_email, subject, body, f"otp_{purpose}")
 
 
 email_service = sys.modules[__name__]

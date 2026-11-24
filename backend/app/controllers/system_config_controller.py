@@ -8,6 +8,7 @@ from app.schemas.system_config_schema import (
     SystemConfigResponse, SystemConfigCreate, SystemConfigUpdate,
     MatchingConfigResponse, MatchingWeightsUpdate, MatchingThresholdsUpdate,
     RecruitmentConfigResponse, RecruitmentConfigUpdate,
+    RetentionRunRequest, RetentionRunLogResponse,
     UserRoleResponse, RoleUpdate,
     FormTemplateResponse, FormTemplateCreate, FormTemplateUpdate,
     SystemPerformanceResponse,
@@ -100,10 +101,12 @@ async def update_matching_thresholds(
 @router.get("/recruitment", response_model=RecruitmentConfigResponse)
 async def get_recruitment_config(
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(require_role("ADMIN"))
+    current_user: dict = Depends(get_current_user)
 ):
-    limit = await system_config_service.get_max_active_applications(db)
-    return RecruitmentConfigResponse(max_active_applications=limit)
+    if (current_user.get("role") or "").upper() not in ("ADMIN", "HR"):
+        raise HTTPException(status_code=403, detail="Forbidden")
+    cfg = await system_config_service.get_recruitment_config(db)
+    return RecruitmentConfigResponse(**cfg)
 
 
 @router.put("/recruitment", response_model=RecruitmentConfigResponse)
@@ -112,15 +115,61 @@ async def update_recruitment_config(
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(require_role("ADMIN"))
 ):
-    await system_config_service.update_max_active_applications(db, payload.max_active_applications, user_id=current_user.get("id"))
+    updates = payload.model_dump(exclude_unset=True)
+    cfg = await system_config_service.update_recruitment_config(
+        db, updates, user_id=current_user.get("id")
+    )
     await audit_service.record_activity(
         db=db,
         user_id=current_user.get("id"),
         action="UPDATE_CONFIG",
         target="Recruitment Config",
-        details=f"Admin updated maximum active applications limit to {payload.max_active_applications} (REQ082)"
+        details=f"Admin updated recruitment settings: {updates}",
     )
-    return RecruitmentConfigResponse(max_active_applications=payload.max_active_applications)
+    return RecruitmentConfigResponse(**cfg)
+
+
+@router.post("/retention/run", response_model=RetentionRunLogResponse)
+async def trigger_retention_anonymization(
+    payload: RetentionRunRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(require_role("ADMIN")),
+):
+    """Run data retention anonymization in dry-run (default) or live mode (Admin only)."""
+    from app.services.retention_service import run_retention_anonymization
+    actor_email = current_user.get("sub") or current_user.get("email") or "admin"
+    run_log = await run_retention_anonymization(
+        db=db,
+        dry_run=payload.dry_run,
+        retention_months=payload.retention_months,
+        triggered_by=f"manual:{actor_email}",
+    )
+    await audit_service.record_activity(
+        db=db,
+        user_id=current_user.get("id"),
+        action="RETENTION_ANONYMIZATION_RUN",
+        target="Data Retention Job",
+        details=(
+            f"Admin executed retention job (dry_run={payload.dry_run}, months={run_log.retention_months}): "
+            f"evaluated={run_log.candidates_evaluated}, candidates_anonymized={run_log.candidates_anonymized}, "
+            f"applications_anonymized={run_log.applications_anonymized}, files_deleted={run_log.files_deleted}, "
+            f"skipped_active={run_log.skipped_active}."
+        ),
+    )
+    if not payload.dry_run:
+        await invalidate_application_dashboard_caches()
+    return run_log
+
+
+@router.get("/retention/logs", response_model=List[RetentionRunLogResponse])
+async def list_retention_logs(
+    limit: int = 25,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(require_role("ADMIN")),
+):
+    """Return historical run logs for the retention anonymization job (Admin only)."""
+    from app.services.retention_service import get_retention_run_logs
+    return await get_retention_run_logs(db, limit=limit)
 
 
 @router.post("/matching/recalculate")

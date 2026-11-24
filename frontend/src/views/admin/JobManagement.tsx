@@ -31,7 +31,12 @@ import EditJobModal from '../../components/modals/hr/EditJobModal';
 import ViewJobDetailsModal from '../../components/modals/hr/ViewJobDetailsModal';
 import { areWeightsEqual } from '../../components/modals/hr/JobScoringWeightsEditor';
 
-import { useGetJobsQuery, useArchiveJobMutation, useUnarchiveJobMutation, useDeleteJobMutation } from '../../redux/api/apiSlice';
+import {
+  useGetJobsQuery,
+  useLazyGetJobClosePreviewQuery,
+  useChangeJobStatusMutation,
+  useDeleteJobMutation,
+} from '../../redux/api/apiSlice';
 import { Job, DEFAULT_JOB_SCORING_WEIGHTS } from '../../types';
 import { filterAndRankJobs } from '../../utils/jobSearch';
 
@@ -55,12 +60,16 @@ interface ModalState {
 }
 
 const JobManagementPage: React.FC = () => {
+  const [showArchived, setShowArchived] = useState<boolean>(false);
   // RTK Query hook handles fetching, loading, error, and caching!
-  const { data: jobs = [], isLoading, error: queryError } = useGetJobsQuery({ include_inactive: true });
+  const { data: jobs = [], isLoading, error: queryError } = useGetJobsQuery({
+    include_inactive: true,
+    include_archived: showArchived,
+  });
   const error = queryError ? "Failed to sync with database. Please try again later." : null;
 
-  const [archiveJob] = useArchiveJobMutation();
-  const [unarchiveJob] = useUnarchiveJobMutation();
+  const [triggerClosePreview] = useLazyGetJobClosePreviewQuery();
+  const [changeJobStatus] = useChangeJobStatusMutation();
   const [deleteJob] = useDeleteJobMutation();
 
   // Custom Toast Notification State
@@ -81,33 +90,91 @@ const JobManagementPage: React.FC = () => {
     }, 4000);
   };
 
-  const handleArchiveJob = async (jobId: number | string, jobTitle: string) => {
+  const handleCloseJob = async (jobId: number | string | undefined, jobTitle: string) => {
+    if (!jobId) return;
+    let affectedCount = 0;
+    let protectedCount = 0;
+    try {
+      const preview = await triggerClosePreview(jobId).unwrap();
+      affectedCount = Number(preview?.affected_count ?? 0);
+      protectedCount = Number(preview?.protected_count ?? 0);
+    } catch {
+      // fallback if preview fails
+    }
+    const impactLine =
+      affectedCount > 0
+        ? `${affectedCount} non-shortlisted applicant(s) will automatically be set to Not Selected (reason: "Position closed") and notified once.`
+        : 'No non-shortlisted applicants will be set to Not Selected.';
+    const protectedLine =
+      protectedCount > 0
+        ? ` ${protectedCount} shortlisted or in-interview applicant(s) will continue undisturbed.`
+        : '';
+
+    setConfirmModal({
+      isOpen: true,
+      title: `Close "${jobTitle}"`,
+      message: `Closing this position stops new applications immediately. ${impactLine}${protectedLine} You can still reopen a Closed job later.`,
+      confirmLabel: 'Close Job Opening',
+      variant: 'archive',
+      onConfirm: async () => {
+        try {
+          const res = await changeJobStatus({ jobId, status: 'CLOSED' }).unwrap();
+          const count = Number(res?.auto_not_selected_count ?? 0);
+          showToastMessage(
+            count > 0
+              ? `Closed "${jobTitle}". ${count} non-shortlisted applicant(s) set to Not Selected.`
+              : `Job "${jobTitle}" closed successfully.`,
+            'success'
+          );
+        } catch (err: any) {
+          showToastMessage(err?.data?.detail || "Failed to close job.", 'error');
+        }
+      },
+    });
+  };
+
+  const handleReopenJob = async (jobId: number | string | undefined, jobTitle: string) => {
+    if (!jobId) return;
+    try {
+      await changeJobStatus({ jobId, status: 'ACTIVE' }).unwrap();
+      showToastMessage(`Job "${jobTitle}" reopened and is now Active.`, 'success');
+    } catch (err: any) {
+      showToastMessage(err?.data?.detail || "Failed to reopen job.", 'error');
+    }
+  };
+
+  const handlePublishJob = async (jobId: number | string | undefined, jobTitle: string) => {
+    if (!jobId) return;
+    try {
+      await changeJobStatus({ jobId, status: 'ACTIVE' }).unwrap();
+      showToastMessage(`Job "${jobTitle}" published and is now Active.`, 'success');
+    } catch (err: any) {
+      showToastMessage(err?.data?.detail || "Failed to publish job.", 'error');
+    }
+  };
+
+  const handleArchiveJob = async (jobId: number | string | undefined, jobTitle: string) => {
+    if (!jobId) return;
     setConfirmModal({
       isOpen: true,
       title: 'Archive Position',
-      message: `Are you sure you want to archive "${jobTitle}"? This will close new applications on the careers portal, and you can restore it anytime.`,
+      message: `Are you sure you want to archive "${jobTitle}"? Archived jobs are hidden from normal lists and applicant views (kept in reports and analytics) and cannot be reopened.`,
       confirmLabel: 'Archive Position',
       variant: 'archive',
       onConfirm: async () => {
         try {
-          await archiveJob(jobId).unwrap();
-          showToastMessage(`Job "${jobTitle}" archived successfully!`, 'success');
-        } catch (error) {
-          console.error("Failed to archive job:", error);
-          showToastMessage("Failed to archive job. Please try again.", 'error');
+          await changeJobStatus({ jobId, status: 'ARCHIVED' }).unwrap();
+          showToastMessage(`Job "${jobTitle}" archived successfully.`, 'success');
+        } catch (err: any) {
+          console.error("Failed to archive job:", err);
+          showToastMessage(err?.data?.detail || "Failed to archive job. Please try again.", 'error');
         }
       }
     });
   };
 
-  const handleUnarchiveJob = async (jobId: number | string, jobTitle: string) => {
-    try {
-      await unarchiveJob(jobId).unwrap();
-      showToastMessage(`Job "${jobTitle}" unarchived successfully!`, 'success');
-    } catch (error) {
-      console.error("Failed to unarchive job:", error);
-      showToastMessage("Failed to unarchive job. Please try again.", 'error');
-    }
+  const handleUnarchiveJob = async (jobId: number | string | undefined, jobTitle: string) => {
+    return handleReopenJob(jobId, jobTitle);
   };
 
   const handleDeleteJob = async (jobId: number | string, jobTitle: string) => {
@@ -210,14 +277,17 @@ const JobManagementPage: React.FC = () => {
 
   const metrics = useMemo(() => {
     const allJobs = jobs as Job[];
+    const getSt = (j: Job) => (j.status || (j.is_active ? 'ACTIVE' : 'ARCHIVED')).toUpperCase();
     const total = allJobs.length;
-    const active = allJobs.filter((j) => j.is_active).length;
-    const archived = total - active;
+    const active = allJobs.filter((j) => getSt(j) === 'ACTIVE').length;
+    const closed = allJobs.filter((j) => getSt(j) === 'CLOSED').length;
+    const draft = allJobs.filter((j) => getSt(j) === 'DRAFT').length;
+    const archived = allJobs.filter((j) => getSt(j) === 'ARCHIVED').length;
     const totalApplicants = allJobs.reduce((sum, j) => sum + Number(j.applicant_count ?? 0), 0);
     const customWeighted = allJobs.filter(
       (j) => Boolean(j.scoring_weights) && !areWeightsEqual(j.scoring_weights!, DEFAULT_JOB_SCORING_WEIGHTS)
     ).length;
-    return { total, active, archived, totalApplicants, customWeighted };
+    return { total, active, closed, draft, archived, totalApplicants, customWeighted };
   }, [jobs]);
 
   const departments = useMemo(() => {
@@ -288,8 +358,13 @@ const JobManagementPage: React.FC = () => {
       : rankedBySearch;
 
     const list = searchMatched.filter(job => {
-      const matchesStatus = statusFilter === "All Status" ||
-        (statusFilter === "Active" ? job.is_active : !job.is_active);
+      const st = (job.status || (job.is_active ? 'ACTIVE' : 'ARCHIVED')).toUpperCase();
+      const matchesStatus =
+        statusFilter === "All Status" ||
+        (statusFilter === "Active" && st === 'ACTIVE') ||
+        (statusFilter === "Closed" && st === 'CLOSED') ||
+        (statusFilter === "Draft" && st === 'DRAFT') ||
+        (statusFilter === "Inactive" && (st === 'ARCHIVED' || st === 'CLOSED'));
 
       const matchesDept = deptFilter === "All Departments" ||
         job.department === deptFilter;
@@ -566,11 +641,15 @@ const JobManagementPage: React.FC = () => {
             setViewMode={setViewMode}
             customWeightsOnly={customWeightsOnly}
             setCustomWeightsOnly={setCustomWeightsOnly}
+            showArchived={showArchived}
+            setShowArchived={setShowArchived}
             totalFiltered={filteredJobs.length}
             totalCount={(jobs as Job[]).length}
             statusCounts={{
               all: metrics.total,
               active: metrics.active,
+              closed: metrics.closed,
+              draft: metrics.draft,
               archived: metrics.archived,
               customWeights: metrics.customWeighted,
             }}
@@ -639,6 +718,9 @@ const JobManagementPage: React.FC = () => {
                 viewMode={viewMode}
                 onEdit={(job) => setModalState({ type: 'edit', selectedJob: job })}
                 onView={(job) => setModalState({ type: 'view', selectedJob: job })}
+                onCloseJob={handleCloseJob}
+                onReopenJob={handleReopenJob}
+                onPublishJob={handlePublishJob}
                 onArchive={handleArchiveJob}
                 onUnarchive={handleUnarchiveJob}
                 onDelete={handleDeleteJob}
