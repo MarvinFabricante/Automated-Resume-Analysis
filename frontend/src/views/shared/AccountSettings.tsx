@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import profileService from '../../services/profileService';
 import authService from '../../services/authService';
-import { API_BASE_URL } from '../../services/api';
+import api, { API_BASE_URL } from '../../services/api';
 import { Helmet } from 'react-helmet-async';
 import {
   User,
@@ -121,6 +121,14 @@ const AccountSettings: React.FC = () => {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [passwordLoading, setPasswordLoading] = useState(false);
+  const [showDeleteAccountModal, setShowDeleteAccountModal] = useState(false);
+  const [deleteVerifyMethod, setDeleteVerifyMethod] = useState<'password' | 'otp'>('password');
+  const [deletePassword, setDeletePassword] = useState('');
+  const [deleteOtp, setDeleteOtp] = useState('');
+  const [deleteReason, setDeleteReason] = useState('');
+  const [deleteOtpSent, setDeleteOtpSent] = useState(false);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<StatusMessage | null>(null);
 
   const [passwordData, setPasswordData] = useState({
@@ -1524,6 +1532,157 @@ const AccountSettings: React.FC = () => {
                       </div>
                     </div>
                   </div>
+
+                  {/* APPLICANT SELF-SERVICE ACCOUNT DELETION */}
+                  {userRole.toUpperCase() === 'CANDIDATE' && (
+                    <div className="bg-white border border-rose-200/80 rounded-2xl sm:rounded-3xl p-5 sm:p-7 md:p-8 shadow-xl shadow-rose-100/30">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                        <div className="space-y-1">
+                          <h3 className="text-base sm:text-lg font-black text-rose-900 tracking-tight">
+                            Delete Account
+                          </h3>
+                          <p className="text-xs text-slate-600 leading-relaxed max-w-xl">
+                            Requesting account deletion immediately deactivates your account, signs you out on all devices, withdraws all active applications, cancels scheduled interviews, and notifies HR. You may reactivate via email OTP before the retention window ends.
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setDeleteError(null);
+                            setDeletePassword('');
+                            setDeleteOtp('');
+                            setDeleteOtpSent(false);
+                            setShowDeleteAccountModal(true);
+                          }}
+                          className="px-5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-black uppercase tracking-wider shrink-0 cursor-pointer"
+                        >
+                          Request Account Deletion
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {showDeleteAccountModal && (
+                    <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4">
+                      <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4">
+                        <h3 className="text-lg font-black text-rose-900">Confirm Account Deletion</h3>
+                        <p className="text-xs text-slate-600 leading-relaxed">
+                          Confirm using your password or a 6-digit email verification code. All active applications will be set to <strong>Withdrawn by applicant</strong> and scheduled interviews will be cancelled.
+                        </p>
+
+                        <div className="flex gap-2 bg-slate-100 p-1 rounded-xl text-xs font-bold">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setDeleteVerifyMethod('password');
+                              setDeleteError(null);
+                            }}
+                            className={`flex-1 py-1.5 rounded-lg cursor-pointer ${deleteVerifyMethod === 'password' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-500'}`}
+                          >
+                            Confirm with Password
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setDeleteVerifyMethod('otp');
+                              setDeleteError(null);
+                            }}
+                            className={`flex-1 py-1.5 rounded-lg cursor-pointer ${deleteVerifyMethod === 'otp' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-500'}`}
+                          >
+                            Confirm with Email OTP
+                          </button>
+                        </div>
+
+                        {deleteVerifyMethod === 'password' ? (
+                          <input
+                            type="password"
+                            value={deletePassword}
+                            onChange={(e) => setDeletePassword(e.target.value)}
+                            placeholder="Enter your account password"
+                            className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium outline-none focus:border-rose-500"
+                          />
+                        ) : (
+                          <div className="space-y-2">
+                            <button
+                              type="button"
+                              disabled={deleteLoading}
+                              onClick={async () => {
+                                setDeleteLoading(true);
+                                setDeleteError(null);
+                                try {
+                                  await api.post('/auth/account/request-delete-otp');
+                                  setDeleteOtpSent(true);
+                                } catch (err: any) {
+                                  setDeleteError(err?.response?.data?.detail || 'Failed to send verification code.');
+                                } finally {
+                                  setDeleteLoading(false);
+                                }
+                              }}
+                              className="w-full py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold cursor-pointer"
+                            >
+                              {deleteOtpSent ? 'Resend 6-Digit OTP to Email' : 'Send 6-Digit OTP to Email'}
+                            </button>
+                            <input
+                              type="text"
+                              maxLength={6}
+                              value={deleteOtp}
+                              onChange={(e) => setDeleteOtp(e.target.value.replace(/\D/g, ''))}
+                              placeholder="Enter 6-digit email OTP"
+                              className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-mono font-bold tracking-widest text-center outline-none focus:border-rose-500"
+                            />
+                          </div>
+                        )}
+
+                        <textarea
+                          value={deleteReason}
+                          onChange={(e) => setDeleteReason(e.target.value)}
+                          placeholder="Optional reason..."
+                          rows={2}
+                          className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs outline-none focus:border-rose-500"
+                        />
+
+                        {deleteError && (
+                          <p className="text-xs font-semibold text-rose-600 bg-rose-50 border border-rose-200 rounded-xl p-2.5">
+                            {deleteError}
+                          </p>
+                        )}
+
+                        <div className="flex justify-end gap-2 pt-2">
+                          <button
+                            type="button"
+                            onClick={() => setShowDeleteAccountModal(false)}
+                            className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 cursor-pointer"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="button"
+                            disabled={deleteLoading}
+                            onClick={async () => {
+                              setDeleteLoading(true);
+                              setDeleteError(null);
+                              try {
+                                await api.post('/auth/account/delete', {
+                                  password: deleteVerifyMethod === 'password' ? deletePassword : undefined,
+                                  otp_code: deleteVerifyMethod === 'otp' ? deleteOtp : undefined,
+                                  reason: deleteReason.trim() || undefined,
+                                });
+                                localStorage.clear();
+                                window.location.href = '/login';
+                              } catch (err: any) {
+                                setDeleteError(err?.response?.data?.detail || 'Could not confirm account deletion.');
+                              } finally {
+                                setDeleteLoading(false);
+                              }
+                            }}
+                            className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold disabled:opacity-50 cursor-pointer"
+                          >
+                            {deleteLoading ? 'Deactivating...' : 'Confirm & Delete Account'}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
 
                 </div>
               )}

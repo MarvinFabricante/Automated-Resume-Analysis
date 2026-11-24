@@ -15,7 +15,8 @@ import {
   useGetAvailableSlotsMutation, 
   useScheduleInterviewMutation,
   useGetHRInterviewersQuery,
-  useGetAllInterviewsQuery
+  useGetAllInterviewsQuery,
+  useGetCandidateShortlistedForCombinedQuery,
 } from '../../../redux/api/apiSlice';
 import { getAssetUrl } from '../../../services/api';
 import { isInactiveInterviewStatus, isUpcomingInterview } from '../../../utils/interviewUtils';
@@ -72,9 +73,23 @@ const ScheduleInterviewModal: React.FC<ScheduleInterviewModalProps> = ({ isOpen,
     selectedSlot: null
   });
 
-  const [callLanguage, setCallLanguage] = useState<string>('fil');
   const [location, setLocation] = useState<string>('');
   const [meetingLink, setMeetingLink] = useState<string>('');
+  const [selectedCombinedIds, setSelectedCombinedIds] = useState<number[]>([]);
+  const { data: combinedShortlisted } = useGetCandidateShortlistedForCombinedQuery(
+    candidate?.id ?? 0,
+    { skip: !isOpen || !candidate?.id }
+  );
+
+  useEffect(() => {
+    if (combinedShortlisted?.shortlisted_applications?.length > 1) {
+      setSelectedCombinedIds(
+        combinedShortlisted.shortlisted_applications.map((a: any) => Number(a.application_id))
+      );
+    } else if (candidate?.id) {
+      setSelectedCombinedIds([Number(candidate.id)]);
+    }
+  }, [combinedShortlisted, candidate?.id]);
   const [customMsg, setCustomMsg] = useState<CustomMessageValues>({
     customEmailSubject: '',
     customEmailMessage: '',
@@ -241,9 +256,9 @@ const ScheduleInterviewModal: React.FC<ScheduleInterviewModalProps> = ({ isOpen,
         description: formData.description,
         start_time: finalStart,
         end_time: finalEnd,
-        call_language: callLanguage,
         location: location.trim() || undefined,
         meeting_link: meetingLink.trim() || undefined,
+        ...(selectedCombinedIds.length > 1 ? { combined_application_ids: selectedCombinedIds } : {}),
         ...(customMsg.isCustomized
           ? {
               custom_email_subject: customMsg.customEmailSubject || undefined,
@@ -441,18 +456,52 @@ const ScheduleInterviewModal: React.FC<ScheduleInterviewModalProps> = ({ isOpen,
                       />
                     </div>
                   </div>
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">AI Voice Notification Language</label>
-                    <select
-                      value={callLanguage}
-                      onChange={(e) => setCallLanguage(e.target.value)}
-                      className="w-full px-4 py-2.5 bg-gray-50 border border-gray-100 rounded-xl text-sm font-medium text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#d81159]/20 focus:border-[#d81159] transition-all cursor-pointer"
-                    >
-                      <option value="fil">🇵🇭 Filipino (Tagalog) - Recommended</option>
-                      <option value="bilingual">🌐 Bilingual (Filipino & English)</option>
-                      <option value="en">🇺🇸 English</option>
-                    </select>
-                  </div>
+                  {combinedShortlisted?.can_combine && (
+                    <div className="p-4 rounded-2xl bg-indigo-50/70 border border-indigo-200 space-y-2.5">
+                      <div>
+                        <p className="text-xs font-bold text-indigo-900">
+                          Combined Interview Available ({combinedShortlisted.shortlisted_applications.length} Shortlisted Positions)
+                        </p>
+                        <p className="text-[11px] text-indigo-700 mt-0.5">
+                          Send one combined invite, calendar event, email, and SMS covering the checked positions. Each position keeps its own pass/fail result.
+                        </p>
+                      </div>
+                      <div className="space-y-1.5">
+                        {combinedShortlisted.shortlisted_applications.map((item: any) => {
+                          const appIdNum = Number(item.application_id);
+                          const isPrimary = Boolean(item.is_primary);
+                          const checked = selectedCombinedIds.includes(appIdNum);
+                          return (
+                            <label
+                              key={appIdNum}
+                              className="flex items-center gap-2.5 p-2 rounded-xl bg-white border border-indigo-100 text-xs font-semibold text-slate-800 cursor-pointer"
+                            >
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                disabled={isPrimary}
+                                onChange={(e) => {
+                                  if (isPrimary) return;
+                                  setSelectedCombinedIds((prev) =>
+                                    e.target.checked
+                                      ? Array.from(new Set([...prev, appIdNum]))
+                                      : prev.filter((id) => id !== appIdNum)
+                                  );
+                                }}
+                                className="rounded border-indigo-300 text-indigo-600 focus:ring-indigo-500"
+                              />
+                              <span className="flex-1">{item.job_title}</span>
+                              {isPrimary && (
+                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700 font-bold">
+                                  Primary
+                                </span>
+                              )}
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
 

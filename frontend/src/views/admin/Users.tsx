@@ -971,17 +971,19 @@ const UsersPage: React.FC = () => {
                                           </button>
                                         )}
 
-                                        <button
-                                          type="button"
-                                          onClick={() => {
-                                            setActiveMenu(null);
-                                            handleDeleteConfirm(user);
-                                          }}
-                                          className="w-full px-4 py-2 text-xs font-bold text-red-600 hover:bg-red-50 flex items-center gap-2.5 transition-colors cursor-pointer"
-                                        >
-                                          <Trash2 size={14} className="text-red-500" />
-                                          Delete Permanently
-                                        </button>
+                                        {(user.role || '').toUpperCase() !== 'CANDIDATE' && (
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              setActiveMenu(null);
+                                              handleDeleteConfirm(user);
+                                            }}
+                                            className="w-full px-4 py-2 text-xs font-bold text-red-600 hover:bg-red-50 flex items-center gap-2.5 transition-colors cursor-pointer"
+                                          >
+                                            <Trash2 size={14} className="text-red-500" />
+                                            Delete Permanently
+                                          </button>
+                                        )}
                                       </>
                                     ) : (
                                       <div className="px-4 py-2 text-[11px] text-gray-400 italic">
@@ -1258,14 +1260,16 @@ const UsersPage: React.FC = () => {
                     </button>
                   )}
 
-                  <button
-                    type="button"
-                    onClick={() => handleDeleteConfirm(viewingUser)}
-                    className="p-2.5 rounded-xl bg-red-50 hover:bg-red-100 text-red-600 text-xs font-bold transition-colors cursor-pointer"
-                    title="Delete Permanently"
-                  >
-                    <Trash2 size={16} />
-                  </button>
+                  {(viewingUser.role || '').toUpperCase() !== 'CANDIDATE' && (
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteConfirm(viewingUser)}
+                      className="p-2.5 rounded-xl bg-red-50 hover:bg-red-100 text-red-600 text-xs font-bold transition-colors cursor-pointer"
+                      title="Delete Permanently"
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  )}
                 </>
               )}
             </div>

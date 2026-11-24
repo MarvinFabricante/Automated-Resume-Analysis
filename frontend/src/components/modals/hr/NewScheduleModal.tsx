@@ -844,21 +844,6 @@ const NewScheduleModal: React.FC<NewScheduleModalProps> = ({
             </div>
           </div>
 
-          <div>
-            <label className="block text-xs font-black text-gray-700 uppercase tracking-wider mb-2">
-              AI Voice Notification Language
-            </label>
-            <select
-              value={callLanguage}
-              onChange={(e) => setCallLanguage(e.target.value)}
-              className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-2xl text-xs font-bold text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#D60041]/20 focus:border-[#D60041] cursor-pointer"
-            >
-              <option value="fil">🇵🇭 Filipino (Tagalog) - Recommended</option>
-              <option value="bilingual">🌐 Bilingual (Filipino & English)</option>
-              <option value="en">🇺🇸 English</option>
-            </select>
-          </div>
-
           {/* Editable Email & SMS Message Preview */}
           {(() => {
             const previewStart = useCustomTime

@@ -24,7 +24,12 @@ import {
   useGetShortlistRosterByIdQuery,
   useUpdateRosterStageMutation,
   useRemoveCandidateFromRosterMutation,
+  useUpdateRosterNonShortlistedPolicyMutation,
+  useFinalizeShortlistRosterMutation,
+  useLazyGetRosterFinalizePreviewQuery,
+  usePostPassActionMutation,
 } from '../../../redux/api/apiSlice';
+import api from '../../../services/api';
 import {
   resolveCriterionStatus,
   getCriterionStatusBadgeStyle,
@@ -58,10 +63,21 @@ const RosterPipelineModal: React.FC<RosterPipelineModalProps> = ({
 
   const [updateStage] = useUpdateRosterStageMutation();
   const [removeCandidate] = useRemoveCandidateFromRosterMutation();
+  const [updatePolicy] = useUpdateRosterNonShortlistedPolicyMutation();
+  const [finalizeRoster, { isLoading: isFinalizing }] = useFinalizeShortlistRosterMutation();
+  const [fetchFinalizePreview] = useLazyGetRosterFinalizePreviewQuery();
+  const [postPassAction, { isLoading: isApplyingPostPass }] = usePostPassActionMutation();
 
   const [search, setSearch] = useState<string>('');
   const [stageFilter, setStageFilter] = useState<string>('All');
   const [reminderPrompt, setReminderPrompt] = useState<any | null>(null);
+  const [postPassPrompt, setPostPassPrompt] = useState<{
+    passedAppId: number | string;
+    candidateName: string;
+    otherActiveApps: Array<{ id: number; job_title: string; status: string }>;
+  } | null>(null);
+  const [finalizePreview, setFinalizePreview] = useState<any | null>(null);
+  const [finalizeConfirmChecked, setFinalizeConfirmChecked] = useState<boolean>(false);
 
   if (!isOpen) return null;
 
@@ -84,6 +100,29 @@ const RosterPipelineModal: React.FC<RosterPipelineModalProps> = ({
         stage,
       }).unwrap();
       refetch();
+
+      // If marked Passed initial interview, check whether applicant has other active applications
+      if (stage === 'Passed initial interview') {
+        const matchedItem = items.find((i: any) => String(i.application_id) === String(applicationId));
+        const lookupKey = matchedItem?.user_id || matchedItem?.candidate_email || matchedItem?.application?.candidate_email;
+        if (lookupKey) {
+          try {
+            const profRes = await api.get(`/hr/applicant-profile/${encodeURIComponent(String(lookupKey))}`);
+            const activeApps = (profRes.data?.active_applications || []).filter(
+              (a: any) => String(a.id) !== String(applicationId)
+            );
+            if (activeApps.length > 0) {
+              setPostPassPrompt({
+                passedAppId: applicationId,
+                candidateName: matchedItem?.candidate_name || 'Applicant',
+                otherActiveApps: activeApps,
+              });
+            }
+          } catch {
+            // non-fatal
+          }
+        }
+      }
     } catch (err) {
       console.error('Failed to update stage:', err);
     }
@@ -143,6 +182,152 @@ const RosterPipelineModal: React.FC<RosterPipelineModalProps> = ({
             </button>
           </div>
         </div>
+
+        {/* Non-Shortlisted Policy Bar (editable before finalizing) */}
+        {roster && (
+          <div className="px-6 py-2.5 bg-slate-50 border-b border-slate-100 flex flex-wrap items-center justify-between gap-3 text-xs">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="font-bold text-slate-600 uppercase tracking-wider text-[11px]">
+                Non-Shortlisted Policy:
+              </span>
+              {roster.is_finalized ? (
+                <span className="px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 font-bold">
+                  Finalized ({roster.non_shortlisted_action || 'keep_under_review'})
+                </span>
+              ) : (
+                <select
+                  value={roster.non_shortlisted_action || 'keep_under_review'}
+                  onChange={async (e) => {
+                    await updatePolicy({ rosterId, non_shortlisted_action: e.target.value }).unwrap();
+                    refetch();
+                  }}
+                  className="px-2.5 py-1 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-800"
+                >
+                  <option value="keep_under_review">Keep under review until job closes (Default)</option>
+                  <option value="notify_on_finalize">Notify as Not Selected on finalize</option>
+                  <option value="decide_later">Decide later</option>
+                </select>
+              )}
+            </div>
+            {!roster.is_finalized && (
+              <button
+                type="button"
+                onClick={async () => {
+                  const prev = await fetchFinalizePreview(rosterId).unwrap();
+                  setFinalizePreview(prev);
+                  setFinalizeConfirmChecked(false);
+                }}
+                className="px-3 py-1.5 rounded-lg bg-purple-700 hover:bg-purple-800 text-white text-xs font-bold cursor-pointer"
+              >
+                Preview &amp; Finalize Shortlist
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Finalize Preview Confirmation Banner */}
+        {finalizePreview && !roster?.is_finalized && (
+          <div className="px-6 py-3 bg-purple-50 border-b border-purple-200 space-y-2 text-xs">
+            <p className="font-bold text-purple-900">
+              Finalize Shortlist — {finalizePreview.affected_count} non-shortlisted applicant(s) would be affected if set to Notify on Finalize.
+            </p>
+            {roster?.non_shortlisted_action === 'notify_on_finalize' && finalizePreview.message_preview && (
+              <div className="bg-white rounded-xl p-2.5 border border-purple-200">
+                <p className="font-bold text-slate-900">Preview Subject: {finalizePreview.message_preview.subject}</p>
+                <p className="text-slate-600 mt-1">{finalizePreview.message_preview.message}</p>
+              </div>
+            )}
+            {roster?.non_shortlisted_action === 'notify_on_finalize' && (
+              <label className="flex items-center gap-2 font-semibold text-purple-900 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={finalizeConfirmChecked}
+                  onChange={(e) => setFinalizeConfirmChecked(e.target.checked)}
+                />
+                <span>I confirm notifying {finalizePreview.affected_count} non-shortlisted applicant(s) as Not Selected.</span>
+              </label>
+            )}
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                disabled={isFinalizing || (roster?.non_shortlisted_action === 'notify_on_finalize' && !finalizeConfirmChecked)}
+                onClick={async () => {
+                  await finalizeRoster({
+                    rosterId,
+                    non_shortlisted_action: roster?.non_shortlisted_action,
+                    confirm: roster?.non_shortlisted_action === 'notify_on_finalize' ? finalizeConfirmChecked : true,
+                  }).unwrap();
+                  setFinalizePreview(null);
+                  refetch();
+                }}
+                className="px-3 py-1.5 rounded-lg bg-purple-700 text-white font-bold disabled:opacity-50 cursor-pointer"
+              >
+                Confirm Finalize
+              </button>
+              <button
+                type="button"
+                onClick={() => setFinalizePreview(null)}
+                className="px-3 py-1.5 rounded-lg bg-white border border-slate-200 text-slate-600 font-semibold cursor-pointer"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Post-Pass Multi-Application Prompt (On Hold vs Continue) */}
+        {postPassPrompt && (
+          <div className="px-6 py-3.5 bg-emerald-50 border-b border-emerald-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+            <div>
+              <p className="font-bold text-emerald-900">
+                {postPassPrompt.candidateName} passed initial interview and has {postPassPrompt.otherActiveApps.length} other active application(s):
+              </p>
+              <p className="text-emerald-800 mt-0.5">
+                {postPassPrompt.otherActiveApps.map((a) => `${a.job_title} (${a.status})`).join(', ')}
+              </p>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                type="button"
+                disabled={isApplyingPostPass}
+                onClick={async () => {
+                  await postPassAction({
+                    applicationId: postPassPrompt.passedAppId,
+                    action: 'on_hold',
+                    target_application_ids: postPassPrompt.otherActiveApps.map((a) => a.id),
+                  }).unwrap();
+                  setPostPassPrompt(null);
+                  refetch();
+                }}
+                className="px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-bold cursor-pointer"
+              >
+                Place Remaining On Hold
+              </button>
+              <button
+                type="button"
+                disabled={isApplyingPostPass}
+                onClick={async () => {
+                  await postPassAction({
+                    applicationId: postPassPrompt.passedAppId,
+                    action: 'continue',
+                    target_application_ids: postPassPrompt.otherActiveApps.map((a) => a.id),
+                  }).unwrap();
+                  setPostPassPrompt(null);
+                }}
+                className="px-3 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white font-bold cursor-pointer"
+              >
+                Continue Remaining
+              </button>
+              <button
+                type="button"
+                onClick={() => setPostPassPrompt(null)}
+                className="px-2 py-1 text-emerald-800 hover:underline cursor-pointer"
+              >
+                Dismiss
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Reminder Prompt Banner (if a scheduled interview time passed) */}
         {reminderPrompt && (

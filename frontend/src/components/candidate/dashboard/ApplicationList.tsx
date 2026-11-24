@@ -26,26 +26,46 @@ interface ApplicationListProps {
 
 const ApplicationList: React.FC<ApplicationListProps> = ({ applications = [] }) => {
   const navigate = useNavigate();
-  const [filterTab, setFilterTab] = useState('ALL');
+  const [filterTab, setFilterTab] = useState<'ACTIVE' | 'COMPLETED' | 'WITHDRAWN' | 'ALL'>('ACTIVE');
 
-  // Tab counts
+  const getGroup = (app: any): 'active' | 'completed' | 'withdrawn' => {
+    if (app.group === 'active' || app.group === 'completed' || app.group === 'withdrawn') {
+      return app.group;
+    }
+    const s = (app.rawStatus || app.status || '').toUpperCase();
+    if (s.includes('WITHDRAWN')) return 'withdrawn';
+    if (
+      s.includes('PASSED') ||
+      s.includes('ENDORSED') ||
+      s === 'NOT SELECTED' ||
+      s === 'NOT_SELECTED' ||
+      s === 'REJECTED' ||
+      s === 'ARCHIVED' ||
+      app.step === 0
+    ) {
+      return 'completed';
+    }
+    return 'active';
+  };
+
+  // Tab counts: Active, Completed, Withdrawn
   const counts = useMemo(() => {
-    let review = 0;
-    let interviews = 0;
-    let notSelected = 0;
+    let active = 0;
+    let completed = 0;
+    let withdrawn = 0;
 
     applications.forEach((app) => {
-      const s = (app.status || '').toUpperCase();
-      if (s === 'NOT SELECTED' || s === 'REJECTED') notSelected++;
-      else if (s.includes('INTERVIEW') || app.step === 4) interviews++;
-      else review++;
+      const grp = getGroup(app);
+      if (grp === 'withdrawn') withdrawn++;
+      else if (grp === 'completed') completed++;
+      else active++;
     });
 
     return {
       all: applications.length,
-      review,
-      interviews,
-      notSelected
+      active,
+      completed,
+      withdrawn,
     };
   }, [applications]);
 
@@ -53,17 +73,7 @@ const ApplicationList: React.FC<ApplicationListProps> = ({ applications = [] }) 
   const filteredApps = useMemo(() => {
     return applications.filter((app) => {
       if (filterTab === 'ALL') return true;
-      const statusUpper = (app.status || '').toUpperCase();
-      if (filterTab === 'REVIEW') {
-        return statusUpper !== 'NOT SELECTED' && statusUpper !== 'REJECTED' && !statusUpper.includes('INTERVIEW') && app.step !== 4;
-      }
-      if (filterTab === 'INTERVIEWS') {
-        return statusUpper.includes('INTERVIEW') || app.step === 4;
-      }
-      if (filterTab === 'NOT_SELECTED') {
-        return statusUpper === 'NOT SELECTED' || statusUpper === 'REJECTED' || app.step === 0;
-      }
-      return true;
+      return getGroup(app).toUpperCase() === filterTab;
     });
   }, [applications, filterTab]);
 
@@ -77,11 +87,11 @@ const ApplicationList: React.FC<ApplicationListProps> = ({ applications = [] }) 
             <Briefcase size={20} className="text-[#D10043]" />
           </div>
           <div>
-            <div className="flex items-center gap-2">
-              <h3 className="text-lg sm:text-xl font-black text-slate-900 tracking-tight">Active Applications</h3>
-              <HelpTooltip text="Jobs you have applied for and their current stage in the hiring process." />
-              <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-800 font-mono text-xs font-black">
-                {applications.length}
+            <div className="flex items-center gap-2 flex-wrap">
+              <h3 className="text-lg sm:text-xl font-black text-slate-900 tracking-tight">My Applications</h3>
+              <HelpTooltip text="Active applications count toward the 3-active-application limit. Passed, Not selected, and Withdrawn applications free your slot immediately." />
+              <span className="px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 font-mono text-xs font-black">
+                {counts.active} / 3 active slots
               </span>
             </div>
             <p className="text-xs text-slate-400 font-medium mt-0.5">Real-time status updates from Mariwasa Talent Acquisition</p>
@@ -98,14 +108,14 @@ const ApplicationList: React.FC<ApplicationListProps> = ({ applications = [] }) 
         </button>
       </div>
 
-      {/* FILTER TABS */}
+      {/* FILTER TABS: Active, Completed, Withdrawn, All */}
       <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
-        {[
+        {([
+          { key: 'ACTIVE', label: 'Active', count: counts.active },
+          { key: 'COMPLETED', label: 'Completed', count: counts.completed },
+          { key: 'WITHDRAWN', label: 'Withdrawn', count: counts.withdrawn },
           { key: 'ALL', label: 'All', count: counts.all },
-          { key: 'REVIEW', label: 'In Review', count: counts.review },
-          { key: 'INTERVIEWS', label: 'Interview', count: counts.interviews },
-          { key: 'NOT_SELECTED', label: 'Not Selected', count: counts.notSelected }
-        ].map((tab) => (
+        ] as const).map((tab) => (
           <button
             key={tab.key}
             type="button"
@@ -133,10 +143,36 @@ const ApplicationList: React.FC<ApplicationListProps> = ({ applications = [] }) 
       {/* APPLICATIONS LIST */}
       <div className="space-y-4">
         {filteredApps.length === 0 ? (
-          <div className="py-10 text-center bg-slate-50/60 rounded-2xl border border-dashed border-slate-200 p-6">
-            <Layers size={26} className="mx-auto text-slate-300 mb-2" />
-            <p className="text-sm font-bold text-slate-700">No applications in this category</p>
-            <p className="text-xs text-slate-400 mt-0.5">Switch filter tabs to review your other submissions.</p>
+          <div className="py-10 text-center bg-slate-50/60 rounded-2xl border border-dashed border-slate-200 p-6 space-y-2.5">
+            <Layers size={26} className="mx-auto text-slate-300" />
+            <p className="text-sm font-bold text-slate-700">
+              {filterTab === 'ACTIVE'
+                ? 'You have no active applications right now'
+                : filterTab === 'COMPLETED'
+                ? 'No completed applications yet'
+                : filterTab === 'WITHDRAWN'
+                ? 'No withdrawn applications'
+                : 'You have not applied to any positions yet'}
+            </p>
+            <p className="text-xs text-slate-500 max-w-sm mx-auto">
+              {filterTab === 'ACTIVE'
+                ? 'Your account stays active and ready—explore open roles at Mariwasa whenever you are ready to apply.'
+                : filterTab === 'COMPLETED'
+                ? 'Passed and Not Selected outcomes along with your feedback reports will appear here.'
+                : filterTab === 'WITHDRAWN'
+                ? 'Any application you withdraw appears here for your records.'
+                : 'Browse open roles and submit your resume to start tracking your progress.'}
+            </p>
+            {filterTab === 'ACTIVE' && (
+              <button
+                type="button"
+                onClick={() => navigate('/candidate/findjobs')}
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#D10043] hover:bg-slate-900 text-white text-xs font-bold transition-colors cursor-pointer"
+              >
+                <span>Browse Open Positions</span>
+                <ArrowUpRight size={13} />
+              </button>
+            )}
           </div>
         ) : (
           filteredApps.map((app) => {

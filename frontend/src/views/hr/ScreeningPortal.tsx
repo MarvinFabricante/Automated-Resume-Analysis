@@ -107,16 +107,27 @@ const ScreeningPortal: React.FC = () => {
   }, [rawJobs, screeningConfig, searchParams]);
 
   // Handle finalization of a shortlist roster
-  const handleFinalizeShortlist = async (name: string, notes: string) => {
+  const handleFinalizeShortlist = async (
+    name: string,
+    notes: string,
+    options?: {
+      non_shortlisted_action: 'keep_under_review' | 'notify_on_finalize' | 'decide_later';
+      finalize: boolean;
+      confirm_notify_non_shortlisted: boolean;
+    }
+  ) => {
     if (!screeningConfig) return;
     await createShortlistRoster({
       job_id: Number(screeningConfig.jobId),
       name,
       notes,
       application_ids: finalizeCandidateIds.map(Number),
+      non_shortlisted_action: options?.non_shortlisted_action ?? 'keep_under_review',
+      finalize: options?.finalize ?? true,
+      confirm_notify_non_shortlisted: options?.confirm_notify_non_shortlisted ?? false,
     }).unwrap();
 
-    showToastMessage(`Shortlist roster "${name}" created with ${finalizeCandidateIds.length} candidates!`, 'success');
+    showToastMessage(`Shortlist roster "${name}" saved with ${finalizeCandidateIds.length} candidates!`, 'success');
     refetch();
     setActiveTab('shortlists');
   };
@@ -567,22 +578,11 @@ const ScreeningPortal: React.FC = () => {
     }
   };
 
-  const handleDeleteApplication = async (candidateId: string | number) => {
-    setConfirmModal({
-      isOpen: true,
-      title: 'Remove Candidate Application',
-      message: 'Are you sure you want to permanently remove this candidate application? This action cannot be undone.',
-      onConfirm: async () => {
-        try {
-          await deleteApplication(candidateId).unwrap();
-          setSelectedIds(prev => prev.filter(id => id !== candidateId));
-          showToastMessage("Candidate application removed successfully!", 'success');
-        } catch (error) {
-          console.error("Failed to delete application:", error);
-          showToastMessage("Failed to delete application. Please try again.", 'error');
-        }
-      }
-    });
+  const handleDeleteApplication = async (_candidateId: string | number) => {
+    showToastMessage(
+      'Applicant records cannot be hard-deleted by HR or Admins. Use status updates or the retention policy.',
+      'error'
+    );
   };
 
   // Batch actions
@@ -620,23 +620,10 @@ const ScreeningPortal: React.FC = () => {
   };
 
   const handleBatchDelete = () => {
-    setConfirmModal({
-      isOpen: true,
-      title: `Delete ${selectedIds.length} Candidates`,
-      message: `Are you sure you want to permanently remove ${selectedIds.length} selected applications? This cannot be undone.`,
-      onConfirm: async () => {
-        try {
-          for (const id of selectedIds) {
-            await deleteApplication(id).unwrap();
-          }
-          showToastMessage(`Successfully removed ${selectedIds.length} applications!`, 'success');
-          setSelectedIds([]);
-        } catch (error) {
-          console.error("Batch delete error:", error);
-          showToastMessage("Failed to delete some applications.", 'error');
-        }
-      }
-    });
+    showToastMessage(
+      'Applicant applications cannot be hard-deleted by HR or Admins.',
+      'error'
+    );
   };
 
   return (

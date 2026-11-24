@@ -6,7 +6,7 @@ import {
 import toast from 'react-hot-toast';
 import chatService from '../../services/chatService';
 import { useSelector, useDispatch } from 'react-redux';
-import { WS_BASE_URL } from '../../services/api';
+import { API_BASE_URL, WS_BASE_URL } from '../../services/api';
 import { RootState } from '../../redux/store';
 import { setUnreadMessagesCount } from '../../redux/slices/notificationSlice';
 import { ChatContactItem, ChatMessageItem } from '../layout/ChatWidget';
@@ -197,10 +197,38 @@ const ChatLayout: React.FC<ChatLayoutProps> = ({ isFullPage = true }) => {
         }
     };
 
-    // Sync ref with state
+    const [threadStatus, setThreadStatus] = useState<{ is_closed: boolean; can_reply: boolean; reason?: string | null; closes_at?: string | null }>({
+        is_closed: false,
+        can_reply: true,
+        reason: null,
+        closes_at: null,
+    });
+
+    // Sync ref with state & fetch thread closure status
     useEffect(() => {
         activeContactRef.current = activeContact;
-    }, [activeContact]);
+        if (!activeContact || !token) {
+            setThreadStatus({ is_closed: false, can_reply: true, reason: null, closes_at: null });
+            return;
+        }
+        fetch(`${API_BASE_URL}/chat/thread-status/${activeContact.id}`, {
+            headers: { Authorization: `Bearer ${token}` },
+        })
+            .then((r) => (r.ok ? r.json() : null))
+            .then((data) => {
+                if (data) {
+                    setThreadStatus({
+                        is_closed: Boolean(data.is_closed),
+                        can_reply: data.can_reply !== false,
+                        reason: data.reason || null,
+                        closes_at: data.closes_at || null,
+                    });
+                }
+            })
+            .catch(() => {
+                setThreadStatus({ is_closed: false, can_reply: true, reason: null, closes_at: null });
+            });
+    }, [activeContact, token]);
 
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -830,9 +858,14 @@ const ChatLayout: React.FC<ChatLayoutProps> = ({ isFullPage = true }) => {
                             <div ref={messagesEndRef} />
                         </div>
 
-                        {/* Input Area (Clean & focused: dummy emoji and paperclip removed) */}
-                        {currentUserRole.toUpperCase() !== 'CANDIDATE' ? (
+                        {/* Input Area: Applicants can view & reply until thread closes (withdrawn = immediate; finished = 30 days) */}
+                        {!threadStatus.is_closed && threadStatus.can_reply ? (
                             <div className="p-2.5 sm:p-4 md:p-5 bg-white border-t border-gray-100">
+                                {threadStatus.closes_at && (
+                                    <p className="max-w-4xl mx-auto text-[11px] text-slate-400 mb-1.5 px-2">
+                                        Messaging stays open until {new Date(threadStatus.closes_at).toLocaleDateString()}.
+                                    </p>
+                                )}
                                 <div className="max-w-4xl mx-auto bg-gray-50 rounded-2xl sm:rounded-3xl p-1.5 sm:p-2 flex items-center gap-2 border border-gray-200/80 focus-within:bg-white focus-within:border-[#D60041] focus-within:ring-2 focus-within:ring-pink-100/50 transition-all">
                                     <input
                                         type="text"
@@ -859,7 +892,7 @@ const ChatLayout: React.FC<ChatLayoutProps> = ({ isFullPage = true }) => {
                                 <div className="inline-flex items-center gap-2 px-3.5 py-2 sm:px-4 sm:py-2.5 rounded-2xl bg-white border border-gray-200/80 shadow-2xs text-gray-600 max-w-md text-center">
                                     <Lock size={14} className="text-[#D60041] shrink-0" />
                                     <span className="text-xs sm:text-sm font-semibold text-gray-600">
-                                        This conversation is read-only. Only HR team members can post messages.
+                                        {threadStatus.reason || 'This conversation is closed'}
                                     </span>
                                 </div>
                             </div>

@@ -823,11 +823,11 @@ async def _cancel_interviews_for_application(
                 iv.job_application_id = remaining_ids[0]
             if len(remaining_ids) == 1:
                 iv.is_combined = False
-            iv.notes = ((iv.notes or "") + f"\n[Updated: Application #{application_id} removed - {reason}]").strip()
+            iv.description = ((iv.description or "") + f"\n[Updated: Application #{application_id} removed - {reason}]").strip()
             cancelled_count += 1
         else:
             iv.status = "CANCELLED"
-            iv.notes = ((iv.notes or "") + f"\n[Cancelled: {reason}]").strip()
+            iv.description = ((iv.description or "") + f"\n[Cancelled: {reason}]").strip()
             cancelled_count += 1
             # Best-effort Google Calendar cleanup if linked
             if iv.google_event_id and iv.interviewer_id:
