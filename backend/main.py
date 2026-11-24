@@ -106,6 +106,11 @@ async def ensure_application_analysis_columns(conn):
         "applied_weights": "JSON",
         "import_origin": "VARCHAR",
         "imported_by": "VARCHAR",
+        "user_id": "INTEGER REFERENCES users(id) ON DELETE SET NULL",
+        "resume_email": "VARCHAR",
+        "contact_email": "VARCHAR",
+        "clarification_responses": "JSON",
+        "requirement_evaluations": "JSON",
     }
 
     dialect = conn.dialect.name
@@ -205,6 +210,9 @@ async def ensure_interview_voice_columns(conn):
         "is_combined": "BOOLEAN DEFAULT FALSE",
         "combined_application_ids": "JSON",
         "location": "VARCHAR",
+        "interview_type": "VARCHAR DEFAULT 'Not specified'",
+        "instructions": "TEXT",
+        "platform": "VARCHAR",
     }
     dialect = conn.dialect.name
     for column_name, column_type in columns.items():
@@ -213,7 +221,7 @@ async def ensure_interview_voice_columns(conn):
                 existing = await conn.execute(text("PRAGMA table_info(interviews)"))
                 existing_names = {row[1] for row in existing.fetchall()}
                 if column_name not in existing_names:
-                    sqlite_type = "TEXT" if "VARCHAR" in column_type or "TIMESTAMP" in column_type or "JSON" in column_type else ("INTEGER" if "INTEGER" in column_type else "BOOLEAN")
+                    sqlite_type = "TEXT" if ("VARCHAR" in column_type or "TEXT" in column_type or "TIMESTAMP" in column_type or "JSON" in column_type) else ("INTEGER" if "INTEGER" in column_type else "BOOLEAN")
                     await conn.execute(text(f"ALTER TABLE interviews ADD COLUMN {column_name} {sqlite_type}"))
             else:
                 await conn.execute(text(
@@ -342,6 +350,7 @@ async def ensure_performance_indexes(conn):
     index_ddls = [
         "CREATE INDEX IF NOT EXISTS idx_job_applications_created_at ON job_applications (created_at)",
         "CREATE INDEX IF NOT EXISTS idx_job_applications_job_id ON job_applications (job_id)",
+        "CREATE INDEX IF NOT EXISTS idx_job_applications_user_id ON job_applications (user_id)",
         "CREATE INDEX IF NOT EXISTS idx_job_applications_status ON job_applications (status)",
         "CREATE INDEX IF NOT EXISTS idx_job_applications_match_score ON job_applications (match_score)",
         "CREATE INDEX IF NOT EXISTS idx_job_applications_candidate_email ON job_applications (candidate_email)",
@@ -381,6 +390,10 @@ async def create_tables():
             await ensure_physical_resumes_table(conn)
             from migrations.add_recruitment_lifecycle_rules import upgrade as upgrade_lifecycle_rules
             await upgrade_lifecycle_rules(conn)
+            from migrations.add_requirement_confirmations import upgrade as upgrade_requirement_confirmations
+            await upgrade_requirement_confirmations(conn)
+            from migrations.add_interview_details import upgrade as upgrade_interview_details
+            await upgrade_interview_details(conn)
             await ensure_cascade_delete_constraints(conn)
             await ensure_performance_indexes(conn)
     except Exception as e:
