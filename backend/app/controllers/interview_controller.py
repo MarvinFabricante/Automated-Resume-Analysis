@@ -226,6 +226,18 @@ async def schedule_interview(
     if not application:
         raise HTTPException(status_code=404, detail="Job application not found")
 
+    from app.services.status_management_service import is_withdrawn_status, is_resolved_status
+    if is_withdrawn_status(application.status):
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot schedule an interview for a withdrawn application."
+        )
+    if is_resolved_status(application.status):
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot schedule an interview for an already resolved application."
+        )
+
     # Check if this application already has an active interview
     app_interviews = await InterviewRepository.get_interviews_for_application(db, data.job_application_id)
     active_app_ivs = [iv for iv in app_interviews if (iv.status or "").upper() not in INACTIVE_INTERVIEW_STATUSES]
@@ -302,6 +314,8 @@ async def update_interview(
         await clear_cache_pattern("app_interviews*")
         await clear_cache_pattern("cand_interviews*")
         await clear_cache_pattern("calendar_events*")
+        from app.utils.cache import invalidate_application_dashboard_caches
+        await invalidate_application_dashboard_caches()
         return result
     except PermissionError as e:
         raise HTTPException(status_code=403, detail=str(e))
@@ -333,6 +347,8 @@ async def candidate_reschedule_interview(
         await clear_cache_pattern("app_interviews*")
         await clear_cache_pattern("cand_interviews*")
         await clear_cache_pattern("calendar_events*")
+        from app.utils.cache import invalidate_application_dashboard_caches
+        await invalidate_application_dashboard_caches()
         return result
     except PermissionError as e:
         raise HTTPException(status_code=403, detail=str(e))
@@ -357,6 +373,8 @@ async def delete_interview(
         await clear_cache_pattern("app_interviews*")
         await clear_cache_pattern("cand_interviews*")
         await clear_cache_pattern("calendar_events*")
+        from app.utils.cache import invalidate_application_dashboard_caches
+        await invalidate_application_dashboard_caches()
         return {"message": "Interview deleted successfully and removed from Google Calendar"}
     except PermissionError as e:
         raise HTTPException(status_code=403, detail=str(e))
@@ -396,6 +414,8 @@ async def update_interview_status(
         await clear_cache_pattern("app_interviews*")
         await clear_cache_pattern("cand_interviews*")
         await clear_cache_pattern("calendar_events*")
+        from app.utils.cache import invalidate_application_dashboard_caches
+        await invalidate_application_dashboard_caches()
         return result
     except PermissionError as e:
         raise HTTPException(status_code=403, detail=str(e))
@@ -430,6 +450,8 @@ async def cancel_interview(
         await clear_cache_pattern("app_interviews*")
         await clear_cache_pattern("cand_interviews*")
         await clear_cache_pattern("calendar_events*")
+        from app.utils.cache import invalidate_application_dashboard_caches
+        await invalidate_application_dashboard_caches()
         return result
     except PermissionError as e:
         raise HTTPException(status_code=403, detail=str(e))

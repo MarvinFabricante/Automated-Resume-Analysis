@@ -20,6 +20,7 @@ import {
 } from '../../../redux/api/apiSlice';
 import { getAssetUrl } from '../../../services/api';
 import { isInactiveInterviewStatus, isUpcomingInterview } from '../../../utils/interviewUtils';
+import { isWithdrawnStatus, isResolvedStatus } from '../../../utils/applicationTracker';
 import CustomMessagePreviewSection, { CustomMessageValues } from '../../notifications/CustomMessagePreviewSection';
 
 interface NewScheduleModalProps {
@@ -221,6 +222,7 @@ const NewScheduleModal: React.FC<NewScheduleModalProps> = ({
   };
 
   const filteredCandidates = candidates.filter((c: any) => {
+    if (isWithdrawnStatus(c.status) || isResolvedStatus(c.status)) return false;
     const name = c.candidate_name || c.name || '';
     const job = c.job_title || c.preferredJob || '';
     const email = c.candidate_email || c.email || '';
@@ -239,6 +241,16 @@ const NewScheduleModal: React.FC<NewScheduleModalProps> = ({
 
     if (!selectedCandidate) {
       setErrorMsg('Please select a candidate application.');
+      return;
+    }
+
+    if (isWithdrawnStatus(selectedCandidate.status)) {
+      setErrorMsg('This application has been withdrawn and cannot be scheduled for an interview.');
+      return;
+    }
+
+    if (isResolvedStatus(selectedCandidate.status)) {
+      setErrorMsg('This application is already resolved and cannot be scheduled for a new interview.');
       return;
     }
 
@@ -325,7 +337,7 @@ const NewScheduleModal: React.FC<NewScheduleModalProps> = ({
 
     try {
       if (selectedCandidate && !Object.isFrozen(selectedCandidate)) {
-        selectedCandidate.status = 'Reviewed';
+        selectedCandidate.status = 'Interview Scheduled';
       }
     } catch {
       // Ignore read-only property assignment on RTK Query frozen state objects

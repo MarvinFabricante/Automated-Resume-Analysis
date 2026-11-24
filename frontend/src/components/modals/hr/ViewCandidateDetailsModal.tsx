@@ -30,6 +30,12 @@ import {
   resolveCriterionStatus,
   getCriterionStatusBadgeStyle,
 } from '../../../utils/criterionStatus';
+import {
+  computeApplicationTracker,
+  getStageIndexForNormalizedStatus,
+  normalizeAppStatus,
+} from '../../../utils/applicationTracker';
+import ApplicationStageTracker from '../../common/ApplicationStageTracker';
 import MessageApplicantModal from './MessageApplicantModal';
 
 /* ─── Types & Interfaces ─── */
@@ -376,6 +382,35 @@ const ViewCandidateDetailsModal: React.FC<ViewCandidateDetailsModalProps> = ({
   const candidatePhone = candidate.phone || 'Not provided';
   const candidateCompany = candidate.company || 'Not provided';
   const currentStatus = candidate.status || 'Pending';
+  const normalizedStatus = normalizeAppStatus(currentStatus);
+  const tracker = computeApplicationTracker({
+    status: currentStatus,
+    statusHistory,
+    interviews: allCandidateInterviews,
+    createdAt: candidate.created_at || candidate.date,
+    resolvedAt: candidate.resolved_at || candidate.updated_at,
+  });
+  const isWithdrawn = tracker.isWithdrawn;
+  const isPassed = tracker.isPassed;
+  const isNotSelected = tracker.isNotSelected;
+  const canScheduleInterview = !isWithdrawn && !isPassed && !isNotSelected;
+  const currentStageIdx = getStageIndexForNormalizedStatus(normalizedStatus);
+  const selectStatusValue =
+    normalizedStatus === 'SUBMITTED'
+      ? 'Submitted'
+      : normalizedStatus === 'UNDER REVIEW'
+        ? 'Under Review'
+        : normalizedStatus === 'SHORTLISTED'
+          ? 'Shortlisted'
+          : normalizedStatus === 'INTERVIEW SCHEDULED'
+            ? 'Interview Scheduled'
+            : normalizedStatus === 'INTERVIEWED'
+              ? 'Interviewed'
+              : normalizedStatus === 'PASSED INITIAL INTERVIEW'
+                ? 'Passed initial interview'
+                : normalizedStatus === 'NOT SELECTED'
+                  ? 'Not Selected'
+                  : currentStatus;
 
   // Scoring Values (preserve raw precision for weighted formulation consistency)
   const rawMatchScore = Number(candidate.matchScore ?? candidate.match_score ?? 0);
@@ -882,11 +917,10 @@ const ViewCandidateDetailsModal: React.FC<ViewCandidateDetailsModalProps> = ({
                         const isFailed = ivSmsStatus === 'FAILED';
                         return (
                           <span
-                            className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase border ${
-                              isFailed
-                                ? 'bg-rose-100 text-rose-800 border-rose-200'
-                                : 'bg-emerald-100 text-emerald-800 border-emerald-200'
-                            }`}
+                            className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase border ${isFailed
+                              ? 'bg-rose-100 text-rose-800 border-rose-200'
+                              : 'bg-emerald-100 text-emerald-800 border-emerald-200'
+                              }`}
                           >
                             SMS: {ivSmsStatus}
                           </span>
@@ -996,11 +1030,10 @@ const ViewCandidateDetailsModal: React.FC<ViewCandidateDetailsModalProps> = ({
                   <div
                     key={msg.id || `msg-${idx}`}
                     data-testid="candidate-message-log-item"
-                    className={`p-3 rounded-xl border flex flex-col sm:flex-row sm:items-start justify-between gap-2 text-xs ${
-                      isFailed
-                        ? 'bg-rose-50/60 border-rose-200'
-                        : 'bg-slate-50/70 border-slate-200/70'
-                    }`}
+                    className={`p-3 rounded-xl border flex flex-col sm:flex-row sm:items-start justify-between gap-2 text-xs ${isFailed
+                      ? 'bg-rose-50/60 border-rose-200'
+                      : 'bg-slate-50/70 border-slate-200/70'
+                      }`}
                   >
                     <div className="space-y-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
@@ -1008,20 +1041,18 @@ const ViewCandidateDetailsModal: React.FC<ViewCandidateDetailsModalProps> = ({
                           {msg.label}
                         </span>
                         <span
-                          className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase border ${
-                            msg.channel === 'SMS'
-                              ? 'bg-indigo-100 text-indigo-800 border-indigo-200'
-                              : 'bg-sky-100 text-sky-800 border-sky-200'
-                          }`}
+                          className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase border ${msg.channel === 'SMS'
+                            ? 'bg-indigo-100 text-indigo-800 border-indigo-200'
+                            : 'bg-sky-100 text-sky-800 border-sky-200'
+                            }`}
                         >
                           {msg.channel}
                         </span>
                         <span
-                          className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase border inline-flex items-center gap-1 ${
-                            isFailed
-                              ? 'bg-rose-100 text-rose-800 border-rose-200'
-                              : 'bg-emerald-100 text-emerald-800 border-emerald-200'
-                          }`}
+                          className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase border inline-flex items-center gap-1 ${isFailed
+                            ? 'bg-rose-100 text-rose-800 border-rose-200'
+                            : 'bg-emerald-100 text-emerald-800 border-emerald-200'
+                            }`}
                         >
                           {isFailed ? <AlertTriangle size={10} /> : <Check size={10} />}
                           <span>{msg.status || (msg.channel === 'SMS' ? 'QUEUED' : 'DELIVERED')}</span>
@@ -1100,18 +1131,45 @@ const ViewCandidateDetailsModal: React.FC<ViewCandidateDetailsModalProps> = ({
             {onUpdateStatus && (
               <div className="flex items-center gap-2 pl-2 border-l border-gray-200 flex-wrap">
                 <span className="hidden md:inline text-[10px] font-bold text-gray-400 uppercase tracking-wider">Status:</span>
-                <select
-                  value={currentStatus}
-                  onChange={(e) => onUpdateStatus(candidate.id, e.target.value)}
-                  className="px-2.5 py-1 bg-gray-50 hover:bg-gray-100 border border-gray-200 rounded-xl text-xs font-bold text-gray-800 focus:outline-none focus:ring-2 focus:ring-[#D60041]/20 cursor-pointer transition-colors"
-                >
-                  {['Submitted', 'Under Review', 'Shortlisted', 'Interview Scheduled', 'Interviewed', 'Not Selected'].map((st) => (
-                    <option key={st} value={st}>{st}</option>
-                  ))}
-                </select>
+                {isWithdrawn ? (
+                  <span
+                    data-testid="hr-withdrawn-badge"
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-slate-200 text-slate-700 border border-slate-300 rounded-xl text-xs font-bold"
+                  >
+                    Withdrawn
+                  </span>
+                ) : (
+                  <select
+                    value={selectStatusValue}
+                    onChange={(e) => onUpdateStatus(candidate.id, e.target.value)}
+                    className="px-2.5 py-1 bg-gray-50 hover:bg-gray-100 border border-gray-200 rounded-xl text-xs font-bold text-gray-800 focus:outline-none focus:ring-2 focus:ring-[#D60041]/20 cursor-pointer transition-colors"
+                  >
+                    {[
+                      'Submitted',
+                      'Under Review',
+                      'Shortlisted',
+                      'Interview Scheduled',
+                      'Interviewed',
+                      'Passed initial interview',
+                      'Not Selected',
+                    ].map((st) => {
+                      const optIdx = getStageIndexForNormalizedStatus(normalizeAppStatus(st));
+                      const isBackward =
+                        currentStageIdx >= 0 &&
+                        optIdx >= 0 &&
+                        optIdx < currentStageIdx &&
+                        st !== 'Not Selected';
+                      return (
+                        <option key={st} value={st} disabled={isBackward}>
+                          {st}
+                        </option>
+                      );
+                    })}
+                  </select>
+                )}
 
                 {/* Undo Auto Change Button */}
-                {statusHistory.length > 0 && statusHistory[0]?.change_type === 'auto' && statusHistory[0]?.can_undo && (
+                {!isWithdrawn && statusHistory.length > 0 && statusHistory[0]?.change_type === 'auto' && statusHistory[0]?.can_undo && (
                   <button
                     onClick={async () => {
                       try {
@@ -1185,6 +1243,12 @@ const ViewCandidateDetailsModal: React.FC<ViewCandidateDetailsModalProps> = ({
                 <X size={16} />
               </button>
             </div>
+
+            {tracker.skippedStageKeys.length > 0 && (
+              <div className="mb-3 px-3 py-2 rounded-xl bg-slate-100 border border-slate-200 text-[11px] text-slate-600 font-medium">
+                Stages before the current stage are marked completed on the timeline ({tracker.skippedStageKeys.map((k) => k === 'shortlisted' ? 'Shortlisted' : k === 'under_review' ? 'Under Review' : k).join(', ')} — Skipped by HR).
+              </div>
+            )}
 
             {statusHistory.length === 0 ? (
               <p className="text-xs text-gray-500 italic py-2">No status history recorded yet.</p>
@@ -1468,7 +1532,7 @@ const ViewCandidateDetailsModal: React.FC<ViewCandidateDetailsModalProps> = ({
 
             {/* Quick Actions in Sidebar */}
             <div className="space-y-2">
-              {candidate.id && (
+              {candidate.id && !isWithdrawn && (
                 <button
                   type="button"
                   onClick={() => setShowMessageModal(true)}
@@ -1479,7 +1543,7 @@ const ViewCandidateDetailsModal: React.FC<ViewCandidateDetailsModalProps> = ({
                 </button>
               )}
 
-              {handleInterviewAction && (
+              {handleInterviewAction && canScheduleInterview && (
                 <button
                   type="button"
                   onClick={() => {
@@ -1563,6 +1627,9 @@ const ViewCandidateDetailsModal: React.FC<ViewCandidateDetailsModalProps> = ({
               {/* ══════════ TAB 1: EXECUTIVE OVERVIEW ══════════ */}
               {(activeTab === 'overview' || activeTab === 'all') && (
                 <div className="space-y-6 animate-in fade-in duration-150">
+
+                  {/* Computed 5-Stage Recruitment Tracker / Withdrawn Banner */}
+                  <ApplicationStageTracker tracker={tracker} audience="hr" compact />
 
                   {/* Hero Match Verdict Banner */}
                   <div className="bg-gradient-to-r from-slate-900 to-slate-800 text-white p-5 rounded-2xl shadow-md border border-slate-700/50">
@@ -1780,12 +1847,12 @@ const ViewCandidateDetailsModal: React.FC<ViewCandidateDetailsModalProps> = ({
                       {(candidate.requirement_evaluations || []).filter(
                         (r: any) => r.field === 'skills' && (r.status === 'Not confirmed' || r.status === 'Possible match')
                       ).length > 0 && (
-                        <span className="px-2.5 py-1 bg-slate-100 text-slate-700 border border-slate-200 rounded-lg text-xs font-bold">
-                          {(candidate.requirement_evaluations || []).filter(
-                            (r: any) => r.field === 'skills' && (r.status === 'Not confirmed' || r.status === 'Possible match')
-                          ).length} Not confirmed
-                        </span>
-                      )}
+                          <span className="px-2.5 py-1 bg-slate-100 text-slate-700 border border-slate-200 rounded-lg text-xs font-bold">
+                            {(candidate.requirement_evaluations || []).filter(
+                              (r: any) => r.field === 'skills' && (r.status === 'Not confirmed' || r.status === 'Possible match')
+                            ).length} Not confirmed
+                          </span>
+                        )}
                       <span className="px-2.5 py-1 bg-rose-50 text-rose-700 border border-rose-200 rounded-lg text-xs font-bold">
                         {missingSkills.length} Missing
                       </span>
@@ -1843,8 +1910,8 @@ const ViewCandidateDetailsModal: React.FC<ViewCandidateDetailsModalProps> = ({
                         </p>
                       </div>
                     ) : (candidate.requirement_evaluations || []).some(
-                        (r: any) => r.field === 'skills' && (r.status === 'Not confirmed' || r.status === 'Possible match')
-                      ) ? (
+                      (r: any) => r.field === 'skills' && (r.status === 'Not confirmed' || r.status === 'Possible match')
+                    ) ? (
                       <div className="flex items-center gap-2 bg-white/80 p-3 rounded-xl border border-slate-200 text-xs text-slate-600 font-semibold">
                         <span>No skills marked as failed. Unconfirmed skills remain neutral until the applicant confirms them.</span>
                       </div>
@@ -2339,7 +2406,7 @@ const ViewCandidateDetailsModal: React.FC<ViewCandidateDetailsModalProps> = ({
                   Close
                 </button>
 
-                {candidate.id && (
+                {candidate.id && !isWithdrawn && (
                   <button
                     type="button"
                     onClick={() => setShowMessageModal(true)}
@@ -2350,7 +2417,7 @@ const ViewCandidateDetailsModal: React.FC<ViewCandidateDetailsModalProps> = ({
                   </button>
                 )}
 
-                {handleInterviewAction && (
+                {handleInterviewAction && canScheduleInterview && (
                   <button
                     type="button"
                     onClick={() => {

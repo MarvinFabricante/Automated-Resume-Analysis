@@ -118,6 +118,116 @@ def is_withdrawn_status(status: Optional[str]) -> bool:
 def is_passed_status(status: Optional[str]) -> bool:
     return normalize_status(status) == "Passed initial interview"
 
+
+def is_shortlist_eligible_status(status: Optional[str]) -> bool:
+    """Withdrawn, Passed, and Not Selected applications are excluded from shortlisting."""
+    return not is_resolved_status(status)
+
+
+def validate_status_transition(
+    old_status: Optional[str],
+    new_status: str,
+    allow_revert: bool = False,
+) -> None:
+    """
+    Enforce lifecycle and forward-only status transition rules:
+    - Withdrawn applications are an end state and cannot be modified.
+    - Forward-only progression along Submitted -> Under Review -> Shortlisted ->
+      Interview Scheduled -> Interviewed -> Passed initial interview.
+    - Direct Under Review -> Interview Scheduled (skipping Shortlisted) is explicitly allowed.
+    - On Hold, Not Selected, and Withdrawn transitions are allowed from active stages.
+    - Reverts are only allowed when explicitly requested (e.g. interview cancellation, roster removal, undo, resume).
+    """
+    old_norm = normalize_status(old_status)
+    new_norm = normalize_status(new_status)
+    if old_norm == new_norm:
+        return
+
+    if is_withdrawn_status(old_norm):
+        raise ValueError("This application has been withdrawn and can no longer be updated.")
+
+    if allow_revert:
+        return
+
+    # Terminal/side transitions allowed from active stages
+    if new_norm in ("Not Selected", "On Hold") or is_withdrawn_status(new_norm):
+        return
+
+    # Resuming from On Hold is allowed
+    if old_norm == "On Hold":
+        return
+
+    # Once Passed, prevent regressing back to earlier active stages unless explicitly reverting
+    old_rank = STATUS_RANK.get(old_norm.upper(), 0)
+    new_rank = STATUS_RANK.get(new_norm.upper(), 0)
+    if old_rank > 0 and new_rank > 0 and new_rank < old_rank:
+        raise ValueError(
+            f"Application status can only move forward (cannot change from '{old_norm}' back to '{new_norm}')."
+        )
+
+
+async def sync_roster_items_for_application_status(
+    db: AsyncSession,
+    application: JobApplication,
+    new_norm: str,
+    actor: str = "SYSTEM",
+    reason: Optional[str] = None,
+) -> int:
+    """
+    Keep ShortlistRosterItem rows synchronized with the application's status:
+    - If application becomes Withdrawn: remove from all shortlist rosters and write an audit log entry.
+    - Otherwise: update existing ShortlistRosterItem.stage to match pipeline/outcome stages.
+    Returns count of affected roster items.
+    """
+    stmt = select(ShortlistRosterItem).where(ShortlistRosterItem.application_id == application.id)
+    res = await db.execute(stmt)
+    roster_items = list(res.scalars().all())
+    if not roster_items:
+        return 0
+
+    now = datetime.utcnow()
+    if is_withdrawn_status(new_norm):
+        roster_ids = [ri.roster_id for ri in roster_items]
+        for ri in roster_items:
+            await db.delete(ri)
+        await db.commit()
+        try:
+            from app.services.audit_service import record_activity
+            await record_activity(
+                db=db,
+                user_id=None,
+                action="AUTO_REMOVE_WITHDRAWN_FROM_ROSTER",
+                target=f"Application ID: {application.id}",
+                details=(
+                    f"Removed withdrawn application #{application.id} ({application.candidate_name or 'Applicant'}) "
+                    f"from shortlist roster(s) {roster_ids}. Status: {new_norm}. Reason: {reason or 'Application withdrawn'}."
+                ),
+            )
+        except Exception as audit_err:
+            logger.warning(f"Could not audit-log roster removal for withdrawn app {application.id}: {audit_err}")
+        return len(roster_items)
+
+    stage_map = {
+        "Shortlisted": "Shortlisted",
+        "Interview Scheduled": "Interview Scheduled",
+        "Interviewed": "Interviewed",
+        "Passed initial interview": "Passed initial interview",
+        "Not Selected": "Not selected",
+    }
+    target_stage = stage_map.get(new_norm)
+    if not target_stage:
+        return 0
+
+    changed = 0
+    for ri in roster_items:
+        if ri.stage != target_stage:
+            ri.stage = target_stage
+            ri.updated_at = now
+            changed += 1
+    if changed:
+        await db.commit()
+    return changed
+
 async def record_status_history(
     db: AsyncSession,
     application_id: int,
@@ -191,7 +301,8 @@ async def apply_application_status_change(
     await db.commit()
     await db.refresh(application)
 
-    # Record history
+    # Record history (always with a non-empty reason)
+    effective_reason = (reason or "").strip() or f"Status updated from {old_norm} to {new_norm}"
     await record_status_history(
         db=db,
         application_id=application.id,
@@ -199,9 +310,21 @@ async def apply_application_status_change(
         new_status=new_norm,
         changed_by=changed_by,
         change_type=change_type,
-        reason=reason,
+        reason=effective_reason,
         can_undo=(change_type == "auto" and new_norm == "Under Review"),
     )
+
+    # Keep shortlist roster items synchronized (and remove with audit entry if Withdrawn)
+    try:
+        await sync_roster_items_for_application_status(
+            db=db,
+            application=application,
+            new_norm=new_norm,
+            actor=changed_by,
+            reason=effective_reason,
+        )
+    except Exception as sync_err:
+        logger.warning(f"Could not sync roster items for app {application.id}: {sync_err}")
 
     # Resolve recipient email and job title safely without triggering lazy-load MissingGreenlet
     target_email = application.candidate_email
@@ -293,11 +416,11 @@ async def apply_application_status_change(
         except Exception as e:
             logger.warning(f"Could not send status email to {target_email}: {e}")
 
-    # Invalidate cache
+    # Invalidate caches
     try:
+        from app.utils.cache import invalidate_application_dashboard_caches
+        await invalidate_application_dashboard_caches(application.id)
         await clear_cache_pattern("job_applications*")
-        await clear_cache_pattern("all_apps*")
-        await clear_cache_pattern("job_apps*")
     except Exception:
         pass
 

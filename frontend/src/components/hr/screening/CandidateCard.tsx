@@ -1,14 +1,21 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   Calendar, MapPin, ChevronDown, CheckCircle2, XCircle, Clock, Search,
   Check, Archive, RotateCcw, FileText, Copy, Mail, Phone,
-  Zap, Briefcase, GraduationCap, Sparkles
+  Zap, Briefcase, GraduationCap, Sparkles, Ban, PauseCircle, Award
 } from 'lucide-react';
 import { getAssetUrl } from '../../../services/api';
 import {
   resolveCriterionStatus,
   getCriterionStatusBadgeStyle,
 } from '../../../utils/criterionStatus';
+import PortalDropdown, { PortalDropdownItem } from '../../common/PortalDropdown';
+import {
+  isWithdrawnStatus,
+  isPassedStatus,
+  normalizeAppStatus,
+  getStageIndexForNormalizedStatus,
+} from '../../../utils/applicationTracker';
 
 export interface CandidateItem {
   id: string | number;
@@ -59,10 +66,14 @@ const CandidateCard: React.FC<CandidateCardProps> = ({
   const [isUpdating, setIsUpdating] = useState<boolean>(false);
   const [isDropdownOpen, setIsDropdownOpen] = useState<boolean>(false);
   const [copiedField, setCopiedField] = useState<string | null>(null);
-  const dropdownRef = useRef<HTMLDivElement>(null);
+  const statusButtonRef = useRef<HTMLButtonElement>(null);
 
   const status = (candidate.status || '').toLowerCase();
+  const normStatus = normalizeAppStatus(candidate.status);
+  const isWithdrawn = isWithdrawnStatus(candidate.status);
+  const isPassed = isPassedStatus(candidate.status);
   const isArchived = status === 'archived';
+  const currentRank = getStageIndexForNormalizedStatus(normStatus);
 
   const avatarUrl = candidate.profileImage
     ? getAssetUrl(candidate.profileImage)
@@ -81,47 +92,70 @@ const CandidateCard: React.FC<CandidateCardProps> = ({
     setTimeout(() => setCopiedField(null), 2000);
   };
 
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setIsDropdownOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
   const getStatusInfo = (st?: string) => {
-    switch ((st || '').toLowerCase()) {
-      case 'submitted':
-      case 'pending':
+    const n = normalizeAppStatus(st);
+    switch (n) {
+      case 'Submitted':
         return { icon: <FileText className="w-3.5 h-3.5" />, color: 'text-sky-700', bg: 'bg-sky-50', border: 'border-sky-200', label: 'Submitted' };
-      case 'under review':
-      case 'reviewed':
-      case 'screened':
+      case 'Under Review':
         return { icon: <Search className="w-3.5 h-3.5" />, color: 'text-amber-700', bg: 'bg-amber-50', border: 'border-amber-200', label: 'Under Review' };
-      case 'shortlisted':
-      case 'shortlist':
+      case 'Shortlisted':
         return { icon: <Sparkles className="w-3.5 h-3.5" />, color: 'text-purple-700', bg: 'bg-purple-50', border: 'border-purple-200', label: 'Shortlisted' };
-      case 'interview scheduled':
-      case 'scheduled':
-      case 'technical interview':
-      case 'final interview':
+      case 'Interview Scheduled':
         return { icon: <Calendar className="w-3.5 h-3.5" />, color: 'text-blue-700', bg: 'bg-blue-50', border: 'border-blue-200', label: 'Interview Scheduled' };
-      case 'interviewed':
-        return { icon: <CheckCircle2 className="w-3.5 h-3.5" />, color: 'text-teal-700', bg: 'bg-teal-50', border: 'border-teal-200', label: 'Interviewed' };
-      case 'not selected':
-      case 'rejected':
-      case 'archived':
+      case 'Interviewed':
+        return { icon: <Clock className="w-3.5 h-3.5" />, color: 'text-teal-700', bg: 'bg-teal-50', border: 'border-teal-200', label: 'Interviewed' };
+      case 'On Hold':
+        return { icon: <PauseCircle className="w-3.5 h-3.5" />, color: 'text-amber-800', bg: 'bg-amber-50', border: 'border-amber-300', label: 'On Hold' };
+      case 'Withdrawn by applicant':
+      case 'Withdrawn – hired elsewhere in company':
+        return { icon: <Ban className="w-3.5 h-3.5" />, color: 'text-slate-600', bg: 'bg-slate-100', border: 'border-slate-300', label: 'Withdrawn' };
+      case 'Not Selected':
         return { icon: <XCircle className="w-3.5 h-3.5" />, color: 'text-rose-700', bg: 'bg-rose-50', border: 'border-rose-200', label: 'Not Selected' };
-      case 'accepted':
-      case 'passed initial interview':
-      case 'passed':
-        return { icon: <CheckCircle2 className="w-3.5 h-3.5" />, color: 'text-emerald-700', bg: 'bg-emerald-50', border: 'border-emerald-200', label: 'Passed initial interview' };
+      case 'Passed initial interview':
+        return { icon: <Award className="w-3.5 h-3.5" />, color: 'text-emerald-700', bg: 'bg-emerald-50', border: 'border-emerald-200', label: 'Passed initial interview' };
       default:
-        return { icon: <FileText className="w-3.5 h-3.5" />, color: 'text-sky-700', bg: 'bg-sky-50', border: 'border-sky-200', label: 'Submitted' };
+        return { icon: <FileText className="w-3.5 h-3.5" />, color: 'text-sky-700', bg: 'bg-sky-50', border: 'border-sky-200', label: n || 'Submitted' };
     }
   };
+
+  const statusDropdownItems: PortalDropdownItem[] = [
+    'Submitted',
+    'Under Review',
+    'Shortlisted',
+    'Interview Scheduled',
+    'Interviewed',
+    'Passed initial interview',
+    'Not Selected',
+  ].map((s) => {
+    const info = getStatusInfo(s);
+    const isCurrent = normStatus.toLowerCase() === s.toLowerCase();
+    const targetRank = getStageIndexForNormalizedStatus(normalizeAppStatus(s));
+    const isBackwardMove =
+      normStatus !== 'On Hold' &&
+      normStatus !== 'Not Selected' &&
+      currentRank >= 0 &&
+      targetRank >= 0 &&
+      targetRank < currentRank;
+
+    return {
+      id: s,
+      label: s,
+      active: isCurrent,
+      disabled: isCurrent || isBackwardMove,
+      leadingIcon: <span className={info.color}>{info.icon}</span>,
+      trailingIcon: isCurrent ? <Check className="w-3.5 h-3.5 text-[#D60041]" /> : undefined,
+      className: 'text-[11px] uppercase tracking-wider',
+      onSelect: async () => {
+        setIsUpdating(true);
+        try {
+          await onUpdateStatus(candidate.id, s);
+        } finally {
+          setTimeout(() => setIsUpdating(false), 300);
+        }
+      },
+    };
+  });
 
   const statusInfo = getStatusInfo(candidate.status);
   const match = Math.round(candidate.matchScore || 0);
@@ -147,21 +181,29 @@ const CandidateCard: React.FC<CandidateCardProps> = ({
   const matchTheme = getMatchTheme();
 
   return (
-    <div className={`bg-white p-4 sm:p-5 md:p-6 rounded-2xl sm:rounded-3xl border card-hover-smooth gpu-accelerated group ${isSelected
-        ? 'border-[#D60041] ring-2 ring-[#D60041]/10 shadow-md'
-        : 'border-gray-200/80 shadow-sm hover:border-gray-300'
-      }`}>
+    <div className={`p-4 sm:p-5 md:p-6 rounded-2xl sm:rounded-3xl border card-hover-smooth gpu-accelerated group ${
+      isWithdrawn
+        ? 'bg-slate-50/70 border-slate-200/90 opacity-90'
+        : isSelected
+          ? 'bg-white border-[#D60041] ring-2 ring-[#D60041]/10 shadow-md'
+          : 'bg-white border-gray-200/80 shadow-sm hover:border-gray-300'
+    }`}>
       <div className="flex flex-col lg:flex-row gap-4 sm:gap-6 items-start lg:items-center">
 
-        {/* Selection Checkbox & Avatar */}
+        {/* Selection Checkbox & Avatar (withdrawn applications are not selectable for bulk/shortlist/compare) */}
         <div className="flex items-center gap-3 shrink-0">
           {onToggleSelect && (
             <input
               type="checkbox"
-              checked={isSelected}
-              onChange={() => onToggleSelect(candidate.id)}
-              className="w-4 h-4 rounded border-gray-300 text-[#D60041] focus:ring-[#D60041] cursor-pointer"
-              title="Select candidate"
+              checked={!isWithdrawn && isSelected}
+              disabled={isWithdrawn}
+              onChange={() => {
+                if (!isWithdrawn) onToggleSelect(candidate.id);
+              }}
+              className={`w-4 h-4 rounded border-gray-300 text-[#D60041] focus:ring-[#D60041] ${
+                isWithdrawn ? 'opacity-35 cursor-not-allowed' : 'cursor-pointer'
+              }`}
+              title={isWithdrawn ? 'Withdrawn applications cannot be selected' : 'Select candidate'}
             />
           )}
 
@@ -377,71 +419,72 @@ const CandidateCard: React.FC<CandidateCardProps> = ({
               </button>
             )}
 
-            {/* Archive or Restore Button */}
-            {isArchived ? (
-              <button
-                type="button"
-                onClick={() => onRestoreApplication ? onRestoreApplication(candidate.id) : onUpdateStatus(candidate.id, 'Submitted')}
-                title="Restore Application"
-                className="w-9 h-9 sm:w-10 sm:h-10 flex items-center justify-center bg-emerald-50 border border-emerald-200 text-emerald-700 hover:bg-emerald-100 hover:border-emerald-300 rounded-xl transition-all cursor-pointer shadow-xs hover:shadow-sm shrink-0"
-              >
-                <RotateCcw size={15} />
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={() => onArchiveApplication(candidate.id)}
-                title="Archive Candidate"
-                className="w-9 h-9 sm:w-10 sm:h-10 flex items-center justify-center bg-gray-50 border border-gray-200 text-gray-500 hover:bg-amber-50 hover:border-amber-200 hover:text-amber-700 rounded-xl transition-all cursor-pointer shadow-xs hover:shadow-sm shrink-0"
-              >
-                <Archive size={15} />
-              </button>
+            {/* Archive or Restore Button (hidden for withdrawn applications) */}
+            {!isWithdrawn && (
+              isArchived ? (
+                <button
+                  type="button"
+                  onClick={() => onRestoreApplication ? onRestoreApplication(candidate.id) : onUpdateStatus(candidate.id, 'Submitted')}
+                  title="Restore Application"
+                  className="w-9 h-9 sm:w-10 sm:h-10 flex items-center justify-center bg-emerald-50 border border-emerald-200 text-emerald-700 hover:bg-emerald-100 hover:border-emerald-300 rounded-xl transition-all cursor-pointer shadow-xs hover:shadow-sm shrink-0"
+                >
+                  <RotateCcw size={15} />
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => onArchiveApplication(candidate.id)}
+                  title="Archive Candidate"
+                  className="w-9 h-9 sm:w-10 sm:h-10 flex items-center justify-center bg-gray-50 border border-gray-200 text-gray-500 hover:bg-amber-50 hover:border-amber-200 hover:text-amber-700 rounded-xl transition-all cursor-pointer shadow-xs hover:shadow-sm shrink-0"
+                >
+                  <Archive size={15} />
+                </button>
+              )
             )}
 
-            {/* Status Dropdown */}
-            <div className="relative flex-1 sm:flex-none sm:min-w-[130px]" ref={dropdownRef}>
-              <button
-                type="button"
-                onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-                disabled={isUpdating}
-                className={`w-full h-9 sm:h-10 flex items-center justify-between gap-1.5 px-2.5 rounded-xl border text-[11px] font-bold uppercase tracking-wider transition-all cursor-pointer ${statusInfo.bg} ${statusInfo.color} ${statusInfo.border} hover:brightness-95 hover:shadow-xs ${isUpdating ? 'opacity-50 animate-pulse' : ''}`}
+            {/* Status Badge (Withdrawn) OR Portal Status Dropdown */}
+            {isWithdrawn ? (
+              <span
+                className="flex-1 sm:flex-none sm:min-w-[130px] h-9 sm:h-10 inline-flex items-center justify-center gap-1.5 px-3 rounded-xl border text-[11px] font-black uppercase tracking-wider bg-slate-100 text-slate-600 border-slate-300"
+                title={normStatus}
               >
-                <div className="flex items-center gap-1.5 truncate">
-                  {statusInfo.icon}
-                  <span className="truncate">{statusInfo.label}</span>
-                </div>
-                <ChevronDown className={`w-3.5 h-3.5 shrink-0 transition-transform duration-200 ${isDropdownOpen ? 'rotate-180' : ''}`} />
-              </button>
+                <Ban className="w-3.5 h-3.5 shrink-0" />
+                <span>Withdrawn</span>
+              </span>
+            ) : (
+              <div className="relative flex-1 sm:flex-none sm:min-w-[140px]">
+                <button
+                  ref={statusButtonRef}
+                  type="button"
+                  aria-haspopup="menu"
+                  aria-expanded={isDropdownOpen}
+                  onClick={() => setIsDropdownOpen((prev) => !prev)}
+                  disabled={isUpdating || isPassed}
+                  title={isPassed ? 'Passed initial interview (read-only end state)' : 'Update application status'}
+                  className={`w-full h-9 sm:h-10 flex items-center justify-between gap-1.5 px-2.5 rounded-xl border text-[11px] font-bold uppercase tracking-wider transition-all ${statusInfo.bg} ${statusInfo.color} ${statusInfo.border} ${
+                    isPassed ? 'cursor-default opacity-90' : 'cursor-pointer hover:brightness-95 hover:shadow-xs'
+                  } ${isUpdating ? 'opacity-50 animate-pulse' : ''}`}
+                >
+                  <div className="flex items-center gap-1.5 truncate">
+                    {statusInfo.icon}
+                    <span className="truncate">{statusInfo.label}</span>
+                  </div>
+                  {!isPassed && (
+                    <ChevronDown className={`w-3.5 h-3.5 shrink-0 transition-transform duration-200 ${isDropdownOpen ? 'rotate-180' : ''}`} />
+                  )}
+                </button>
 
-              {isDropdownOpen && (
-                <div className="absolute top-full right-0 mt-1.5 w-48 bg-white border border-gray-100 rounded-2xl shadow-xl z-50 py-1.5 animate-in fade-in slide-in-from-top-1 duration-150">
-                  {['Submitted', 'Under Review', 'Shortlisted', 'Interview Scheduled', 'Interviewed', 'Not Selected'].map((s) => {
-                    const info = getStatusInfo(s);
-                    const isCurrent = status === s.toLowerCase();
-                    return (
-                      <button
-                        key={s}
-                        type="button"
-                        onClick={async () => {
-                          setIsDropdownOpen(false);
-                          setIsUpdating(true);
-                          await onUpdateStatus(candidate.id, s);
-                          setTimeout(() => setIsUpdating(false), 500);
-                        }}
-                        className={`w-full flex items-center justify-between px-3.5 py-2 text-[11px] font-bold uppercase tracking-wider transition-colors cursor-pointer ${isCurrent ? info.bg + ' ' + info.color : 'text-gray-600 hover:bg-pink-50 hover:text-[#D60041]'
-                          }`}
-                      >
-                        <div className="flex items-center gap-2">
-                          <span className={info.color}>{info.icon}</span>
-                          <span>{s}</span>
-                        </div>
-                        {isCurrent && <Check className="w-3.5 h-3.5" />}
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
+                <PortalDropdown
+                  isOpen={isDropdownOpen}
+                  onClose={() => setIsDropdownOpen(false)}
+                  anchorRef={statusButtonRef}
+                  align="right"
+                  minWidth={210}
+                  items={statusDropdownItems}
+                  ariaLabel={`Update status for ${candidate.name || 'candidate'}`}
+                />
+              </div>
+            )}
           </div>
 
           {/* Row 2 on mobile: Details & Schedule Buttons */}
@@ -453,13 +496,15 @@ const CandidateCard: React.FC<CandidateCardProps> = ({
             >
               Details
             </button>
-            <button
-              type="button"
-              onClick={() => onOpenInterview(candidate)}
-              className="flex-1 sm:flex-none h-9 sm:h-10 px-3.5 sm:px-4 flex items-center justify-center bg-[#D60041] hover:bg-[#B50037] text-white rounded-xl text-xs font-bold transition-all shadow-xs hover:shadow-md hover:shadow-pink-500/25 active:scale-[0.98] text-center cursor-pointer whitespace-nowrap"
-            >
-              Schedule
-            </button>
+            {!isWithdrawn && !isPassed && (
+              <button
+                type="button"
+                onClick={() => onOpenInterview(candidate)}
+                className="flex-1 sm:flex-none h-9 sm:h-10 px-3.5 sm:px-4 flex items-center justify-center bg-[#D60041] hover:bg-[#B50037] text-white rounded-xl text-xs font-bold transition-all shadow-xs hover:shadow-md hover:shadow-pink-500/25 active:scale-[0.98] text-center cursor-pointer whitespace-nowrap"
+              >
+                Schedule
+              </button>
+            )}
           </div>
 
         </div>

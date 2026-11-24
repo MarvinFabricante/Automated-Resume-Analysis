@@ -5,6 +5,7 @@ import Header from '../../components/layout/Header';
 import Sidebar from '../../components/layout/Sidebar';
 import { useGetApplicationsQuery, useGetJobsQuery } from '../../redux/api/apiSlice';
 import { getCandidateSearchRank } from '../../utils/jobSearch';
+import { isWithdrawnStatus, isPassedStatus, isNotSelectedStatus } from '../../utils/applicationTracker';
 import HelpTooltip from '../../components/common/HelpTooltip';
 import {
   Users,
@@ -192,9 +193,12 @@ const ApplicantsList: React.FC = () => {
         // Status filter
         const matchStatus =
           selectedStatus === 'ALL' ||
-          applicant.positions.some(
-            (p) => (p.status || '').toUpperCase() === selectedStatus.toUpperCase()
-          );
+          applicant.positions.some((p) => {
+            if (selectedStatus === 'WITHDRAWN') return isWithdrawnStatus(p.status);
+            if (selectedStatus === 'PASSED INITIAL INTERVIEW') return isPassedStatus(p.status);
+            if (selectedStatus === 'NOT SELECTED') return isNotSelectedStatus(p.status);
+            return (p.status || '').toUpperCase() === selectedStatus.toUpperCase();
+          });
 
         // Source filter
         const matchSource =
@@ -231,6 +235,9 @@ const ApplicantsList: React.FC = () => {
   };
 
   const getStatusBadge = (statusStr: string) => {
+    if (isWithdrawnStatus(statusStr)) {
+      return 'bg-slate-200 text-slate-700 border-slate-300';
+    }
     const s = (statusStr || '').toUpperCase();
     if (s.includes('SHORTLIST')) {
       return 'bg-purple-50 text-purple-700 border-purple-200';
@@ -238,13 +245,16 @@ const ApplicantsList: React.FC = () => {
     if (s.includes('INTERVIEW SCHEDULED') || s.includes('TECHNICAL INTERVIEW')) {
       return 'bg-blue-50 text-blue-700 border-blue-200';
     }
-    if (s.includes('INTERVIEWED') || s.includes('PASSED INITIAL')) {
+    if (isPassedStatus(statusStr)) {
+      return 'bg-emerald-50 text-emerald-700 border-emerald-200';
+    }
+    if (s.includes('INTERVIEWED')) {
       return 'bg-amber-50 text-amber-800 border-amber-200';
     }
     if (s.includes('UNDER REVIEW') || s.includes('REVIEWED') || s.includes('SCREENED')) {
       return 'bg-indigo-50 text-indigo-700 border-indigo-200';
     }
-    if (s.includes('NOT SELECTED') || s.includes('REJECTED')) {
+    if (isNotSelectedStatus(statusStr)) {
       return 'bg-rose-50 text-rose-700 border-rose-200';
     }
     return 'bg-slate-100 text-slate-700 border-slate-200';
@@ -345,7 +355,9 @@ const ApplicantsList: React.FC = () => {
                   <option value="SHORTLISTED">Shortlisted</option>
                   <option value="INTERVIEW SCHEDULED">Interview Scheduled</option>
                   <option value="INTERVIEWED">Interviewed</option>
+                  <option value="PASSED INITIAL INTERVIEW">Passed Initial Interview</option>
                   <option value="NOT SELECTED">Not Selected</option>
+                  <option value="WITHDRAWN">Withdrawn</option>
                 </select>
               </div>
 

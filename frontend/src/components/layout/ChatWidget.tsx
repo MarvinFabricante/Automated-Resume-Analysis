@@ -128,6 +128,11 @@ const ChatWidget: React.FC = () => {
     if (token) fetchThreads();
   }, [token, isOpen, search, fetchThreads]);
 
+  const fetchThreadsRef = useRef(fetchThreads);
+  useEffect(() => {
+    fetchThreadsRef.current = fetchThreads;
+  }, [fetchThreads]);
+
   useEffect(() => {
     if (!token) return;
     let shouldReconnect = true;
@@ -147,7 +152,7 @@ const ChatWidget: React.FC = () => {
                 prev.some((m) => String(m.id) === String(data.id)) ? prev : [...prev, data]
               );
             }
-            fetchThreads();
+            fetchThreadsRef.current();
           } else if (data.type === 'messages_seen') {
             const seenIds = new Set((data.message_ids || []).map((id: any) => String(id)));
             setMessages((prev) =>
@@ -181,7 +186,7 @@ const ChatWidget: React.FC = () => {
         }
       }
     };
-  }, [token, fetchThreads]);
+  }, [token]);
 
   const openThread = async (thread: ApplicationThreadItem) => {
     setActiveThread(thread);

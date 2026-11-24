@@ -9,8 +9,12 @@ from app.models.job_description import JobDescription
 from app.services.status_management_service import (
     normalize_status,
     apply_application_status_change,
-    record_status_history
+    record_status_history,
+    is_withdrawn_status,
+    is_resolved_status,
+    is_shortlist_eligible_status,
 )
+from app.models.interview import Interview
 from app.services.requirement_rules import (
     extract_criterion_status,
     STATUS_MANUAL_REVIEW,
@@ -55,6 +59,22 @@ async def create_shortlist_roster(
         raise ValueError(
             "Explicit confirmation is required before notifying non-shortlisted applicants as Not Selected."
         )
+
+    if application_ids:
+        # Validate every application BEFORE creating the roster so withdrawn/resolved apps are rejected cleanly
+        for app_id in application_ids:
+            app_res = await db.execute(select(JobApplication).where(JobApplication.id == app_id))
+            app_obj = app_res.scalar_one_or_none()
+            if not app_obj:
+                raise ValueError(f"Application #{app_id} not found.")
+            if is_withdrawn_status(app_obj.status):
+                raise ValueError(
+                    f"Cannot add withdrawn application #{app_id} ({app_obj.candidate_name or 'Applicant'}) to a shortlist roster."
+                )
+            if is_resolved_status(app_obj.status):
+                raise ValueError(
+                    f"Cannot add application #{app_id} ({app_obj.candidate_name or 'Applicant'}) with status '{normalize_status(app_obj.status)}' to a shortlist roster."
+                )
 
     roster = ShortlistRoster(
         job_id=job_id,
@@ -275,6 +295,142 @@ async def finalize_shortlist_roster(
         "already_finalized": False,
     }
 
+INACTIVE_INTERVIEW_STATUSES = {"CANCELED", "CANCELLED", "COMPLETED", "REJECTED", "NO_SHOW"}
+
+
+def _derive_effective_roster_stage(
+    stored_stage: Optional[str],
+    app: Optional[JobApplication],
+    has_active_interview: bool = False,
+) -> str:
+    """
+    Compute the canonical roster stage from the application's authoritative status and active interviews
+    so roster columns and header counts always match what is actually booked/recorded.
+    """
+    if not app:
+        return stored_stage or "Shortlisted"
+
+    norm = normalize_status(app.status)
+    if norm == "Passed initial interview":
+        return "Passed initial interview"
+    if norm == "Not Selected":
+        return "Not selected"
+    if norm == "Interviewed":
+        return "Interviewed"
+    if norm == "Interview Scheduled" or has_active_interview:
+        return "Interview Scheduled"
+    return "Shortlisted"
+
+
+async def _get_active_interview_app_ids(db: AsyncSession, app_ids: List[int]) -> set[int]:
+    """Return the set of application IDs that currently have an active (non-canceled/non-completed) interview."""
+    if not app_ids:
+        return set()
+    app_id_set = {int(aid) for aid in app_ids}
+    iv_res = await db.execute(
+        select(Interview).where(
+            Interview.status.notin_(list(INACTIVE_INTERVIEW_STATUSES))
+        )
+    )
+    active_ids: set[int] = set()
+    for iv in iv_res.scalars().all():
+        if iv.job_application_id and int(iv.job_application_id) in app_id_set:
+            active_ids.add(int(iv.job_application_id))
+        for cid in (getattr(iv, "combined_application_ids", None) or []):
+            try:
+                cid_int = int(cid)
+                if cid_int in app_id_set:
+                    active_ids.add(cid_int)
+            except (TypeError, ValueError):
+                continue
+    return active_ids
+
+
+async def _sync_and_clean_roster_items(
+    db: AsyncSession,
+    roster: ShortlistRoster,
+    job_title: str = "Position",
+) -> tuple[List[tuple[ShortlistRosterItem, Optional[JobApplication], str]], List[Dict[str, Any]], Dict[str, int]]:
+    """
+    Load items for a roster, automatically remove any withdrawn applications with an audit entry,
+    sync effective stages from JobApplication.status + active interviews, and return accurate counts.
+    """
+    item_stmt = select(ShortlistRosterItem).where(ShortlistRosterItem.roster_id == roster.id)
+    item_res = await db.execute(item_stmt)
+    items = list(item_res.scalars().all())
+
+    app_ids = [i.application_id for i in items if i.application_id is not None]
+    apps_by_id: Dict[int, JobApplication] = {}
+    if app_ids:
+        apps_res = await db.execute(select(JobApplication).where(JobApplication.id.in_(app_ids)))
+        for a in apps_res.scalars().all():
+            apps_by_id[a.id] = a
+
+    active_iv_app_ids = await _get_active_interview_app_ids(db, app_ids)
+
+    kept: List[tuple[ShortlistRosterItem, Optional[JobApplication], str]] = []
+    removed_withdrawn: List[Dict[str, Any]] = []
+    dirty = False
+    now = datetime.utcnow()
+
+    for item in items:
+        app = apps_by_id.get(item.application_id)
+        if app and is_withdrawn_status(app.status):
+            cand_name = app.candidate_name or app.candidate_email or f"Application #{app.id}"
+            status_label = normalize_status(app.status)
+            await db.delete(item)
+            dirty = True
+            notice_msg = (
+                f"{cand_name} was automatically removed from roster '{roster.name}' "
+                f"because their application is {status_label}."
+            )
+            removed_withdrawn.append({
+                "application_id": app.id,
+                "candidate_name": cand_name,
+                "status": status_label,
+                "roster_id": roster.id,
+                "roster_name": roster.name,
+                "message": notice_msg,
+            })
+            try:
+                from app.services.audit_service import record_activity
+                await record_activity(
+                    db=db,
+                    user_id=None,
+                    action="AUTO_REMOVE_WITHDRAWN_FROM_ROSTER",
+                    target=f"Shortlist Roster #{roster.id} ({roster.name})",
+                    details=notice_msg,
+                )
+            except Exception as audit_err:
+                logger.warning(f"Could not audit-log auto removal for app {app.id}: {audit_err}")
+            continue
+
+        effective_stage = _derive_effective_roster_stage(
+            item.stage,
+            app,
+            has_active_interview=(item.application_id in active_iv_app_ids),
+        )
+        if item.stage != effective_stage:
+            item.stage = effective_stage
+            item.updated_at = now
+            dirty = True
+
+        kept.append((item, app, effective_stage))
+
+    if dirty:
+        await db.commit()
+
+    counts = {
+        "total": len(kept),
+        "shortlisted": sum(1 for _, _, st in kept if st == "Shortlisted"),
+        "interview_scheduled": sum(1 for _, _, st in kept if st == "Interview Scheduled"),
+        "interviewed": sum(1 for _, _, st in kept if st == "Interviewed"),
+        "passed": sum(1 for _, _, st in kept if st == "Passed initial interview"),
+        "not_selected": sum(1 for _, _, st in kept if st in ("Not selected", "Not Selected")),
+    }
+    return kept, removed_withdrawn, counts
+
+
 async def get_shortlist_rosters(
     db: AsyncSession,
     job_id: Optional[int] = None,
@@ -293,28 +449,20 @@ async def get_shortlist_rosters(
 
     result = []
     for r in rosters:
-        # Load items
-        item_stmt = select(ShortlistRosterItem).where(ShortlistRosterItem.roster_id == r.id)
-        item_res = await db.execute(item_stmt)
-        items = list(item_res.scalars().all())
-
-        counts = {
-            "total": len(items),
-            "shortlisted": sum(1 for i in items if i.stage == "Shortlisted"),
-            "interview_scheduled": sum(1 for i in items if i.stage == "Interview Scheduled"),
-            "interviewed": sum(1 for i in items if i.stage == "Interviewed"),
-            "passed": sum(1 for i in items if i.stage == "Passed initial interview"),
-            "not_selected": sum(1 for i in items if i.stage in ("Not selected", "Not Selected")),
-        }
-
         job_stmt = select(JobDescription).where(JobDescription.id == r.job_id)
         job_res = await db.execute(job_stmt)
         job = job_res.scalar_one_or_none()
+        job_title = job.job_title if job else "Position"
+
+        _, removed_withdrawn, counts = await _sync_and_clean_roster_items(db, r, job_title=job_title)
+        cleanup_notice = (
+            " ".join(n["message"] for n in removed_withdrawn) if removed_withdrawn else None
+        )
 
         result.append({
             "id": r.id,
             "job_id": r.job_id,
-            "job_title": job.job_title if job else "Position",
+            "job_title": job_title,
             "job_department": getattr(job, "department", "General") if job else "General",
             "name": r.name,
             "created_by": r.created_by,
@@ -331,6 +479,8 @@ async def get_shortlist_rosters(
             "interviewed_count": counts["interviewed"],
             "passed_count": counts["passed"],
             "not_selected_count": counts["not_selected"],
+            "auto_removed_withdrawn": removed_withdrawn,
+            "cleanup_notice": cleanup_notice,
         })
 
     return result
@@ -348,16 +498,15 @@ async def get_shortlist_roster_by_id(
     job_stmt = select(JobDescription).where(JobDescription.id == roster.job_id)
     job_res = await db.execute(job_stmt)
     job = job_res.scalar_one_or_none()
+    job_title = job.job_title if job else "Position"
 
-    item_stmt = select(ShortlistRosterItem).where(ShortlistRosterItem.roster_id == roster_id)
-    item_res = await db.execute(item_stmt)
-    items = list(item_res.scalars().all())
+    kept_items, removed_withdrawn, counts = await _sync_and_clean_roster_items(db, roster, job_title=job_title)
+    cleanup_notice = (
+        " ".join(n["message"] for n in removed_withdrawn) if removed_withdrawn else None
+    )
 
     items_data = []
-    for item in items:
-        app_stmt = select(JobApplication).where(JobApplication.id == item.application_id)
-        app_res = await db.execute(app_stmt)
-        app = app_res.scalar_one_or_none()
+    for item, app, effective_stage in kept_items:
 
         app_info = None
         edu_score = None
@@ -456,7 +605,7 @@ async def get_shortlist_roster_by_id(
             "application_id": item.application_id,
             "user_id": getattr(app, "user_id", None) if app else None,
             "applicant_id": getattr(app, "user_id", None) if app else None,
-            "stage": item.stage,
+            "stage": effective_stage,
             "added_by": item.added_by,
             "candidate_name": candidate_name,
             "candidate_email": candidate_email,
@@ -480,19 +629,10 @@ async def get_shortlist_roster_by_id(
             "application": app_info
         })
 
-    counts = {
-        "total": len(items),
-        "shortlisted": sum(1 for i in items if i.stage == "Shortlisted"),
-        "interview_scheduled": sum(1 for i in items if i.stage == "Interview Scheduled"),
-        "interviewed": sum(1 for i in items if i.stage == "Interviewed"),
-        "passed": sum(1 for i in items if i.stage == "Passed initial interview"),
-        "not_selected": sum(1 for i in items if i.stage in ("Not selected", "Not Selected")),
-    }
-
     return {
         "id": roster.id,
         "job_id": roster.job_id,
-        "job_title": job.job_title if job else "Position",
+        "job_title": job_title,
         "job_department": getattr(job, "department", "General") if job else "General",
         "name": roster.name,
         "created_by": roster.created_by,
@@ -509,6 +649,8 @@ async def get_shortlist_roster_by_id(
         "interviewed_count": counts["interviewed"],
         "passed_count": counts["passed"],
         "not_selected_count": counts["not_selected"],
+        "auto_removed_withdrawn": removed_withdrawn,
+        "cleanup_notice": cleanup_notice,
         "items": items_data
     }
 
@@ -518,6 +660,18 @@ async def add_application_to_roster(
     application_id: int,
     added_by: str
 ) -> ShortlistRosterItem:
+    # Validate target application eligibility (reject withdrawn or resolved applications!)
+    target_app_res = await db.execute(select(JobApplication).where(JobApplication.id == application_id))
+    target_app = target_app_res.scalar_one_or_none()
+    if not target_app:
+        raise ValueError("Application not found.")
+    if is_withdrawn_status(target_app.status):
+        raise ValueError("Cannot add a withdrawn application to a shortlist roster.")
+    if is_resolved_status(target_app.status):
+        raise ValueError(
+            f"Cannot add an application with resolved status '{normalize_status(target_app.status)}' to a shortlist roster."
+        )
+
     # Check if already in this roster by application_id
     check_stmt = select(ShortlistRosterItem).where(
         and_(
@@ -531,9 +685,7 @@ async def add_application_to_roster(
         return existing
 
     # Also check if another application from the same user_id is already in this roster
-    target_app_res = await db.execute(select(JobApplication).where(JobApplication.id == application_id))
-    target_app = target_app_res.scalar_one_or_none()
-    if target_app and getattr(target_app, "user_id", None):
+    if getattr(target_app, "user_id", None):
         same_user_stmt = (
             select(ShortlistRosterItem)
             .join(JobApplication, ShortlistRosterItem.application_id == JobApplication.id)
@@ -549,10 +701,18 @@ async def add_application_to_roster(
         if existing_same_user:
             return existing_same_user
 
+    # Derive initial stage so candidates who already have an interview booked appear in Interview Scheduled immediately
+    active_iv_ids = await _get_active_interview_app_ids(db, [application_id])
+    initial_stage = _derive_effective_roster_stage(
+        "Shortlisted",
+        target_app,
+        has_active_interview=(application_id in active_iv_ids),
+    )
+
     item = ShortlistRosterItem(
         roster_id=roster_id,
         application_id=application_id,
-        stage="Shortlisted",
+        stage=initial_stage,
         added_by=added_by,
         added_at=datetime.utcnow(),
         updated_at=datetime.utcnow()
@@ -657,7 +817,7 @@ async def remove_application_from_roster(
         app_res = await db.execute(app_stmt)
         app = app_res.scalar_one_or_none()
 
-        if app:
+        if app and not is_withdrawn_status(app.status) and not is_resolved_status(app.status):
             if other_item:
                 # Remains Shortlisted because still in another roster for the same position
                 logger.info(
@@ -695,15 +855,17 @@ async def update_roster_item_stage(
     if not item:
         return None
 
+    # Sync with application status (guard against withdrawn applications)
+    app_stmt = select(JobApplication).where(JobApplication.id == application_id)
+    app_res = await db.execute(app_stmt)
+    app = app_res.scalar_one_or_none()
+    if app and is_withdrawn_status(app.status):
+        raise ValueError("Cannot update stage for a withdrawn application.")
+
     item.stage = stage
     item.updated_at = datetime.utcnow()
     await db.commit()
     await db.refresh(item)
-
-    # Sync with application status
-    app_stmt = select(JobApplication).where(JobApplication.id == application_id)
-    app_res = await db.execute(app_stmt)
-    app = app_res.scalar_one_or_none()
 
     if app:
         if stage == "Interview Scheduled":

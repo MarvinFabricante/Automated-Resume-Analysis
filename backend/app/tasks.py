@@ -166,6 +166,8 @@ async def async_compare_candidates(job_id: int):
                 return
 
             all_apps = await JobApplicationRepository.get_by_job_id(db, job_id)
+            from app.services.status_management_service import is_withdrawn_status
+            all_apps = [a for a in all_apps if not is_withdrawn_status(getattr(a, "status", None))]
             if len(all_apps) > 1:
                 logger.info(f"Multiple candidates ({len(all_apps)}) found for job {job_id}. Running comparison analysis...")
                 from app.services.ai_analysis_service import compare_candidates_with_fallback

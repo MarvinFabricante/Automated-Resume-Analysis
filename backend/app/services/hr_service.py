@@ -60,19 +60,44 @@ async def get_total_resumes_count(db: AsyncSession):
 
 
 async def get_application_stats(db: AsyncSession):
-    # Get counts grouped by status
-    db_stats = await HRRepository.get_application_stats_by_status(db)
-    stats = {str(row[0]).upper(): row[1] for row in db_stats if row[0]}
+    # Get counts grouped by status (properly normalizing all lifecycle statuses including Withdrawn)
+    from app.services.status_management_service import normalize_status, is_withdrawn_status
+    from app.services.retention_service import is_application_active
 
-    pending = stats.get("PENDING", 0)
-    reviewed = stats.get("REVIEWED", 0) + stats.get("TECHNICAL INTERVIEW", 0) + stats.get("FINAL INTERVIEW", 0)
-    accepted = stats.get("ACCEPTED", 0)
-    rejected = stats.get("REJECTED", 0)
-    archived = stats.get("ARCHIVED", 0)
+    db_stats = await HRRepository.get_application_stats_by_status(db)
+    pending = 0
+    reviewed = 0
+    accepted = 0
+    rejected = 0
+    archived = 0
+    withdrawn = 0
+    active_count = 0
+    total_all = 0
+
+    for row in db_stats:
+        raw_status = str(row[0] or "").strip().upper()
+        cnt = int(row[1] or 0)
+        total_all += cnt
+        if not raw_status:
+            continue
+        norm = normalize_status(raw_status)
+        if is_application_active(raw_status):
+            active_count += cnt
+        if is_withdrawn_status(norm):
+            withdrawn += cnt
+        elif norm == "Submitted":
+            pending += cnt
+        elif norm in ("Under Review", "Shortlisted", "Interview Scheduled", "Interviewed", "On Hold"):
+            reviewed += cnt
+        elif norm == "Passed initial interview":
+            accepted += cnt
+        elif raw_status == "ARCHIVED":
+            archived += cnt
+        elif norm == "Not Selected":
+            rejected += cnt
+
     total_archived = rejected + archived
     average_score = await HRRepository.get_average_match_score(db)
-
-    total_all = sum(int(row[1] or 0) for row in db_stats)
 
     return {
         "pending": pending,
@@ -81,6 +106,8 @@ async def get_application_stats(db: AsyncSession):
         "rejected": total_archived,
         "archived": archived,
         "raw_rejected": rejected,
+        "withdrawn": withdrawn,
+        "active": active_count,
         "total": total_all,
         "average_score": average_score,
     }

@@ -91,9 +91,30 @@ const ShortlistRostersList: React.FC<ShortlistRostersListProps> = ({
 
   const activeCount = rosters.filter((r: any) => !r.is_archived).length;
   const archivedCount = rosters.filter((r: any) => r.is_archived).length;
+  const autoRemovedNotices = useMemo(() => {
+    const notes: string[] = [];
+    rosters.forEach((r: any) => {
+      if (Array.isArray(r.auto_removed_withdrawn) && r.auto_removed_withdrawn.length > 0) {
+        r.auto_removed_withdrawn.forEach((n: any) => {
+          if (n?.message) notes.push(n.message);
+        });
+      } else if (r.cleanup_notice) {
+        notes.push(r.cleanup_notice);
+      }
+    });
+    return notes;
+  }, [rosters]);
 
   return (
     <div className="space-y-6">
+      {autoRemovedNotices.length > 0 && (
+        <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 text-xs text-amber-900 space-y-1">
+          <p className="font-black">Withdrawn applicant(s) were automatically removed from shortlist rosters:</p>
+          {autoRemovedNotices.map((msg, i) => (
+            <p key={i} className="font-medium">{msg}</p>
+          ))}
+        </div>
+      )}
       {/* Header & Controls */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>

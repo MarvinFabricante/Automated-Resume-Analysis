@@ -1093,6 +1093,9 @@ async def get_candidate_shortlisted_applications(
     primary = await InterviewRepository.get_job_application(db, application_id)
     if not primary:
         raise ValueError("Application not found")
+    from app.services.status_management_service import is_resolved_status, is_withdrawn_status
+    if is_withdrawn_status(primary.status) or is_resolved_status(primary.status):
+        raise ValueError("Cannot schedule an interview for a withdrawn or resolved application.")
 
     conditions = []
     if getattr(primary, "user_id", None):
@@ -1115,6 +1118,8 @@ async def get_candidate_shortlisted_applications(
     shortlisted_items = []
     for app in all_apps:
         norm = normalize_status(app.status)
+        if is_withdrawn_status(norm) or is_resolved_status(norm):
+            continue
         if app.id != application_id and norm != "Shortlisted":
             continue
         existing_ivs = await InterviewRepository.get_interviews_for_application(db, app.id)
@@ -1151,6 +1156,12 @@ async def schedule_interview(db: AsyncSession, data: InterviewCreateSchema, user
         application = await InterviewRepository.get_job_application(db, data.job_application_id)
         if not application:
             raise ValueError("Application not found")
+
+        from app.services.status_management_service import is_withdrawn_status, is_resolved_status
+        if is_withdrawn_status(application.status):
+            raise ValueError("Cannot schedule an interview for a withdrawn application.")
+        if is_resolved_status(application.status):
+            raise ValueError("Cannot schedule an interview for an already resolved application.")
 
         # ── Application & Candidate Conflict Checks (REQ084 & REQ085) ──────
         # Check whether an active interview already exists for this specific application
@@ -1250,6 +1261,8 @@ async def schedule_interview(db: AsyncSession, data: InterviewCreateSchema, user
             extra_app = await InterviewRepository.get_job_application(db, extra_id)
             if not extra_app:
                 continue
+            if is_withdrawn_status(extra_app.status) or is_resolved_status(extra_app.status):
+                raise ValueError(f"Application #{extra_id} is withdrawn or resolved and cannot be included in an interview.")
             same_user = (
                 getattr(application, "user_id", None)
                 and getattr(extra_app, "user_id", None)
@@ -1349,31 +1362,34 @@ async def schedule_interview(db: AsyncSession, data: InterviewCreateSchema, user
 
             for inc_app in included_apps:
                 inc_norm = normalize_status(inc_app.status)
-                if inc_norm == "Shortlisted":
-                    # Avoid sending duplicate status emails — single combined interview invite email is sent below
+                # Move to Interview Scheduled even if applicant was never shortlisted (e.g. Under Review / Submitted / On Hold)
+                if inc_norm in {"Submitted", "Under Review", "Shortlisted", "On Hold"}:
+                    if is_combined_interview:
+                        sched_reason = f"auto: combined interview scheduled ({job_name})"
+                    elif inc_norm in {"Submitted", "Under Review"}:
+                        sched_reason = f"auto: interview scheduled directly from {inc_norm} for {data.title}"
+                    else:
+                        sched_reason = f"auto: interview scheduled for {data.title}"
+
+                    # Avoid sending duplicate status emails — single interview invite email is sent below
                     await apply_application_status_change(
                         db=db,
                         application=inc_app,
                         new_status="Interview Scheduled",
                         changed_by=getattr(scheduler_user, "email", "HR") if scheduler_user else "HR",
                         change_type="auto",
-                        reason=(
-                            f"auto: combined interview scheduled ({job_name})"
-                            if is_combined_interview
-                            else f"auto: interview scheduled for {data.title}"
-                        ),
+                        reason=sched_reason,
                         send_email=False,
                         send_notification=False,
                     )
 
-                # Sync with any shortlist roster items for this application
-                if inc_norm not in {"Shortlisted", "Interview Scheduled"}:
-                    continue
+                # Always sync any shortlist roster items for this application to Interview Scheduled
                 roster_items_stmt = select(ShortlistRosterItem).where(ShortlistRosterItem.application_id == inc_app.id)
                 roster_items_res = await db.execute(roster_items_stmt)
                 for r_item in roster_items_res.scalars().all():
-                    r_item.stage = "Interview Scheduled"
-                    r_item.updated_at = datetime.utcnow()
+                    if r_item.stage not in {"Interviewed", "Passed initial interview", "Not selected", "Not Selected"}:
+                        r_item.stage = "Interview Scheduled"
+                        r_item.updated_at = datetime.utcnow()
             await db.commit()
 
             await InterviewRepository.add_interview_log(
@@ -1741,6 +1757,60 @@ async def update_interview(db: AsyncSession, interview_id: int, data: InterviewU
     await InterviewRepository.add_interview_log(db, interview.id, "UPDATED", "Interview details modified")
     interview = await InterviewRepository.update_interview(db, interview)
 
+    # Keep application(s) in Interview Scheduled and sync roster stage when rescheduling an active interview
+    if (interview.status or "").upper() not in INACTIVE_INTERVIEW_STATUSES:
+        try:
+            from sqlalchemy import select
+            from app.models.shortlist_roster import ShortlistRosterItem
+            from app.services.status_management_service import (
+                apply_application_status_change,
+                is_resolved_status,
+                is_withdrawn_status,
+                normalize_status,
+            )
+            resched_app_ids = []
+            if getattr(interview, "job_application_id", None):
+                resched_app_ids.append(int(interview.job_application_id))
+            for cid in (getattr(interview, "combined_application_ids", None) or []):
+                try:
+                    cid_int = int(cid)
+                    if cid_int not in resched_app_ids:
+                        resched_app_ids.append(cid_int)
+                except (TypeError, ValueError):
+                    continue
+            for aid in resched_app_ids:
+                a_obj = await InterviewRepository.get_job_application(db, aid)
+                if not a_obj:
+                    continue
+                if is_withdrawn_status(a_obj.status):
+                    raise ValueError("Cannot reschedule an interview for a withdrawn application.")
+                if is_resolved_status(a_obj.status):
+                    continue
+                a_norm = normalize_status(a_obj.status)
+                if a_norm in {"Submitted", "Under Review", "Shortlisted", "On Hold"}:
+                    await apply_application_status_change(
+                        db=db,
+                        application=a_obj,
+                        new_status="Interview Scheduled",
+                        changed_by="HR",
+                        change_type="auto",
+                        reason="auto: interview rescheduled",
+                        send_email=False,
+                        send_notification=False,
+                    )
+                ri_res = await db.execute(
+                    select(ShortlistRosterItem).where(ShortlistRosterItem.application_id == aid)
+                )
+                for ri in ri_res.scalars().all():
+                    if ri.stage not in {"Interviewed", "Passed initial interview", "Not selected", "Not Selected"}:
+                        ri.stage = "Interview Scheduled"
+                        ri.updated_at = datetime.utcnow()
+            await db.commit()
+        except ValueError:
+            raise
+        except Exception as sync_err:
+            logger.warning(f"Could not sync status/roster on reschedule for interview {interview.id}: {sync_err}")
+
     # Synchronize modification to Google Calendar if linked
     from app.repositories.auth_repository import AuthRepository
     scheduler_user = await AuthRepository.get_user_by_id_fresh(db, user_id)
@@ -2049,7 +2119,21 @@ async def delete_interview(db: AsyncSession, interview_id: int, user_id: int, us
         except Exception as e:
             print(f"Warning: Could not delete Google Calendar event: {e}")
 
+    iv_was_active = (interview.status or "").upper() not in INACTIVE_INTERVIEW_STATUSES
+    deleted_iv_snapshot = interview
+    actor_email = getattr(user, "email", None) or "HR"
     await InterviewRepository.delete_interview(db, interview)
+    if iv_was_active:
+        try:
+            await _revert_applications_after_interview_cancelled(
+                db=db,
+                interview=deleted_iv_snapshot,
+                actor_email=actor_email,
+                reason="Interview deleted by HR",
+                exclude_interview_id=interview_id,
+            )
+        except Exception as rev_err:
+            logger.warning(f"Could not revert application status after deleting interview {interview_id}: {rev_err}")
     return True
 
 
@@ -2292,6 +2376,109 @@ async def get_calendar_events(db: AsyncSession, user_id: int):
     return []
 
 
+async def _revert_applications_after_interview_cancelled(
+    db: AsyncSession,
+    interview,
+    actor_email: str,
+    reason: Optional[str] = None,
+    exclude_interview_id: Optional[int] = None,
+) -> None:
+    """
+    When an interview is cancelled or deleted, return affected applications that are still in
+    'Interview Scheduled' (and have no other active interview) back to their previous status
+    ('Shortlisted' if in a shortlist roster or previously shortlisted, otherwise 'Under Review'),
+    while keeping shortlist roster membership intact and syncing roster stage to 'Shortlisted'.
+    """
+    from sqlalchemy import select
+    from app.models.shortlist_roster import ShortlistRosterItem
+    from app.models.status_history import ApplicationStatusHistory
+    from app.services.status_management_service import (
+        apply_application_status_change,
+        is_resolved_status,
+        is_withdrawn_status,
+        normalize_status,
+    )
+
+    affected_ids = []
+    if getattr(interview, "job_application_id", None):
+        affected_ids.append(int(interview.job_application_id))
+    for cid in (getattr(interview, "combined_application_ids", None) or []):
+        try:
+            cid_int = int(cid)
+            if cid_int not in affected_ids:
+                affected_ids.append(cid_int)
+        except (TypeError, ValueError):
+            continue
+
+    for app_id in affected_ids:
+        app = await InterviewRepository.get_job_application(db, app_id)
+        if not app:
+            continue
+        if is_withdrawn_status(app.status) or is_resolved_status(app.status):
+            continue
+        if normalize_status(app.status) != "Interview Scheduled":
+            continue
+
+        # Only revert if no OTHER active interview remains for this application
+        app_ivs = await InterviewRepository.get_interviews_for_application(db, app_id)
+        has_other_active = any(
+            iv.id != (exclude_interview_id or interview.id)
+            and (iv.status or "").upper() not in INACTIVE_INTERVIEW_STATUSES
+            for iv in app_ivs
+        )
+        if has_other_active:
+            continue
+
+        # Check shortlist roster membership (keep roster membership!)
+        ri_res = await db.execute(
+            select(ShortlistRosterItem).where(ShortlistRosterItem.application_id == app_id)
+        )
+        roster_items = list(ri_res.scalars().all())
+
+        target_prev = "Shortlisted" if roster_items else None
+        if not target_prev:
+            # Inspect status history to find the status immediately prior to Interview Scheduled
+            hist_res = await db.execute(
+                select(ApplicationStatusHistory)
+                .where(ApplicationStatusHistory.application_id == app_id)
+                .order_by(ApplicationStatusHistory.created_at.desc(), ApplicationStatusHistory.id.desc())
+            )
+            for h in hist_res.scalars().all():
+                if normalize_status(h.new_status) == "Interview Scheduled" and h.old_status:
+                    prev_norm = normalize_status(h.old_status)
+                    if prev_norm == "Shortlisted":
+                        target_prev = "Shortlisted"
+                    elif prev_norm in ("Under Review", "Submitted"):
+                        target_prev = "Under Review"
+                    break
+            if not target_prev:
+                target_prev = "Under Review"
+
+        revert_reason = (
+            f"Interview cancelled ({reason.strip()}); returned to {target_prev}"
+            if reason and reason.strip()
+            else f"Interview cancelled; returned to {target_prev}"
+        )
+        await apply_application_status_change(
+            db=db,
+            application=app,
+            new_status=target_prev,
+            changed_by=actor_email or "HR",
+            change_type="auto",
+            reason=revert_reason,
+            send_email=False,
+            send_notification=False,
+        )
+
+        # Keep roster membership intact and move roster stage back to Shortlisted
+        if roster_items:
+            now_ts = datetime.utcnow()
+            for ri in roster_items:
+                ri.stage = "Shortlisted"
+                ri.updated_at = now_ts
+            await db.commit()
+
+
 async def cancel_interview(
     db: AsyncSession,
     interview_id: int,
@@ -2324,9 +2511,21 @@ async def cancel_interview(
     await InterviewRepository.add_interview_log(db, interview.id, "STATUS_CHANGE", "Status changed to CANCELED")
     await InterviewRepository.commit_changes(db)
 
-    # 2. Synchronize removal to Google Calendar
+    # 1b. Revert affected application(s) from Interview Scheduled back to Shortlisted or Under Review (keep roster membership)
     from app.repositories.auth_repository import AuthRepository
     scheduler_user = await AuthRepository.get_user_by_id_fresh(db, user_id)
+    try:
+        await _revert_applications_after_interview_cancelled(
+            db=db,
+            interview=interview,
+            actor_email=getattr(scheduler_user, "email", None) or "HR",
+            reason=reason,
+            exclude_interview_id=interview.id,
+        )
+    except Exception as rev_err:
+        logger.warning(f"Could not revert application status on interview cancellation {interview.id}: {rev_err}")
+
+    # 2. Synchronize removal to Google Calendar
     interviewer_to_sync = interview.interviewer_id or user_id
     user = await AuthRepository.get_user_by_id_fresh(db, interviewer_to_sync)
     credentials_json = _get_valid_credentials(user)
@@ -2614,6 +2813,10 @@ async def candidate_reschedule_interview(
     )
     if not owns_by_uid:
         raise PermissionError("You do not have permission to reschedule this interview.")
+
+    from app.services.status_management_service import is_resolved_status, is_withdrawn_status
+    if is_withdrawn_status(application.status) or is_resolved_status(application.status):
+        raise ValueError("Interviews for withdrawn or resolved applications cannot be rescheduled.")
 
     status_upper = (interview.status or "").upper()
     if status_upper in {"COMPLETED", "CANCELED", "CANCELLED"}:

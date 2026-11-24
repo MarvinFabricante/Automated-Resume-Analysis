@@ -15,9 +15,13 @@ import {
 } from 'lucide-react';
 import { useSelector } from 'react-redux';
 import { useNavigate } from '@/utils/navigation';
-import { useGetCandidateInterviewsQuery } from '../../../redux/api/apiSlice';
+import {
+  useGetCandidateApplicationsQuery,
+  useGetCandidateInterviewsQuery,
+} from '../../../redux/api/apiSlice';
 import { RootState } from '../../../redux/store';
 import CandidateRescheduleModal, { isInterviewMissed } from '../../modals/candidate/CandidateRescheduleModal';
+import { isWithdrawnStatus } from '../../../utils/applicationTracker';
 
 const UpcomingInterviews: React.FC = () => {
   const navigate = useNavigate();
@@ -26,15 +30,31 @@ const UpcomingInterviews: React.FC = () => {
   const [copiedId, setCopiedId] = useState<string | number | null>(null);
   const [rescheduleTarget, setRescheduleTarget] = useState<any | null>(null);
 
+  const { data: applications = [] } = useGetCandidateApplicationsQuery(candidateIdentifier, {
+    skip: !candidateIdentifier,
+  });
+
   const { data: interviews = [], isLoading, refetch } = useGetCandidateInterviewsQuery(candidateIdentifier, {
     skip: !candidateIdentifier,
     pollingInterval: 10000,
   });
 
+  const withdrawnAppIds = new Set(
+    (applications || [])
+      .filter((a: any) => isWithdrawnStatus(a.rawStatus || a.status))
+      .map((a: any) => String(a.id))
+  );
+
   const activeInterviews = (interviews || [])
     .filter((i: any) => {
       const st = String(i.status || '').toUpperCase();
-      return st !== 'CANCELED' && st !== 'CANCELLED' && st !== 'COMPLETED';
+      if (st === 'CANCELED' || st === 'CANCELLED' || st === 'COMPLETED' || st === 'NO_SHOW' || st === 'REJECTED') {
+        return false;
+      }
+      if (i.job_application_id && withdrawnAppIds.has(String(i.job_application_id))) {
+        return false;
+      }
+      return true;
     })
     .sort((a: any, b: any) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime());
 

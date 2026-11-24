@@ -9,17 +9,26 @@ import {
   Clock,
   CheckCircle2,
   AlertCircle,
-  MessageSquare
+  MessageSquare,
+  Ban,
+  Award,
 } from 'lucide-react';
 import { useNavigate } from '@/utils/navigation';
 import HelpTooltip from '@/components/common/HelpTooltip';
 import { ApplicationThreadItem } from '@/services/chatService';
+import {
+  isWithdrawnStatus,
+  isPassedStatus,
+  isNotSelectedStatus,
+  extractWithdrawalInfo,
+} from '@/utils/applicationTracker';
 
 const STAGE_LABELS = [
   'Submitted',
   'Under Review',
   'Shortlisted',
-  'Initial Interview'
+  'Interview Scheduled',
+  'Initial Interview Result',
 ];
 
 interface ApplicationListProps {
@@ -32,21 +41,11 @@ const ApplicationList: React.FC<ApplicationListProps> = ({ applications = [], th
   const [filterTab, setFilterTab] = useState<'ACTIVE' | 'COMPLETED' | 'WITHDRAWN' | 'ALL'>('ACTIVE');
 
   const getGroup = (app: any): 'active' | 'completed' | 'withdrawn' => {
-    if (app.group === 'active' || app.group === 'completed' || app.group === 'withdrawn') {
+    const raw = app.rawStatus || app.status || '';
+    if (isWithdrawnStatus(raw)) return 'withdrawn';
+    if (isPassedStatus(raw) || isNotSelectedStatus(raw)) return 'completed';
+    if (app.group === 'withdrawn' || app.group === 'completed' || app.group === 'active') {
       return app.group;
-    }
-    const s = (app.rawStatus || app.status || '').toUpperCase();
-    if (s.includes('WITHDRAWN')) return 'withdrawn';
-    if (
-      s.includes('PASSED') ||
-      s.includes('ENDORSED') ||
-      s === 'NOT SELECTED' ||
-      s === 'NOT_SELECTED' ||
-      s === 'REJECTED' ||
-      s === 'ARCHIVED' ||
-      app.step === 0
-    ) {
-      return 'completed';
     }
     return 'active';
   };
@@ -179,21 +178,39 @@ const ApplicationList: React.FC<ApplicationListProps> = ({ applications = [], th
           </div>
         ) : (
           filteredApps.map((app) => {
-            const currentStep = app.step || 1;
-            const totalSteps = app.totalSteps || 4;
-            const isNotSelected = app.status === 'Not Selected' || app.status === 'Rejected' || app.step === 0;
+            const rawStatus = app.rawStatus || app.status || '';
+            const isWithdrawn = isWithdrawnStatus(rawStatus);
+            const isPassed = isPassedStatus(rawStatus);
+            const isNotSelected = !isWithdrawn && isNotSelectedStatus(rawStatus);
+            const currentStep = Math.min(Math.max(app.step || 1, 1), 5);
+            const totalSteps = 5;
+            const withdrawalInfo = isWithdrawn
+              ? extractWithdrawalInfo({
+                  status: rawStatus,
+                  resolvedAt: app.originalData?.resolved_at || app.resolvedAt,
+                  updatedAt: app.originalData?.updated_at,
+                })
+              : null;
 
             return (
               <div
                 key={app.id}
                 onClick={() => navigate(`/candidate/applicationtracking/${app.id}`, { state: { application: app } })}
-                className="group relative border border-slate-200/80 bg-white hover:bg-slate-50/30 rounded-2xl p-4 sm:p-6 hover:border-[#D10043]/30 hover:shadow-md transition-all duration-200 cursor-pointer space-y-4"
+                className={`group relative border rounded-2xl p-4 sm:p-6 transition-all duration-200 cursor-pointer space-y-4 ${
+                  isWithdrawn
+                    ? 'border-slate-200 bg-slate-50/50 hover:bg-slate-50 hover:border-slate-300'
+                    : 'border-slate-200/80 bg-white hover:bg-slate-50/30 hover:border-[#D10043]/30 hover:shadow-md'
+                }`}
               >
                 {/* Header Information: Mobile-friendly stack */}
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2.5">
                   <div className="space-y-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-[10px] font-black text-[#D10043] uppercase tracking-wider font-mono bg-[#D10043]/5 px-2 py-0.5 rounded-md border border-[#D10043]/10">
+                      <span className={`text-[10px] font-black uppercase tracking-wider font-mono px-2 py-0.5 rounded-md border ${
+                        isWithdrawn
+                          ? 'text-slate-600 bg-slate-100 border-slate-200'
+                          : 'text-[#D10043] bg-[#D10043]/5 border-[#D10043]/10'
+                      }`}>
                         #ARA-88{app.id}
                       </span>
                       <span className="text-slate-300">•</span>
@@ -203,7 +220,9 @@ const ApplicationList: React.FC<ApplicationListProps> = ({ applications = [], th
                       </span>
                     </div>
 
-                    <h4 className="text-base sm:text-lg font-black text-slate-900 tracking-tight group-hover:text-[#D10043] transition-colors leading-snug">
+                    <h4 className={`text-base sm:text-lg font-black tracking-tight transition-colors leading-snug ${
+                      isWithdrawn ? 'text-slate-700' : 'text-slate-900 group-hover:text-[#D10043]'
+                    }`}>
                       {app.role}
                     </h4>
                     
@@ -215,7 +234,7 @@ const ApplicationList: React.FC<ApplicationListProps> = ({ applications = [], th
 
                   {/* Status & Message from HR Badges */}
                   <div className="flex items-center gap-2 flex-wrap self-start sm:self-auto shrink-0">
-                    {threadsByAppId[String(app.id)] && (
+                    {!isWithdrawn && threadsByAppId[String(app.id)] && (
                       <button
                         type="button"
                         onClick={(e) => {
@@ -233,102 +252,135 @@ const ApplicationList: React.FC<ApplicationListProps> = ({ applications = [], th
                         )}
                       </button>
                     )}
-                    <div className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider border flex items-center gap-1.5 ${app.statusColor || 'text-slate-600 bg-slate-50 border-slate-200'}`}>
-                      <span className="w-1.5 h-1.5 rounded-full bg-current animate-pulse" />
-                      <span>{app.status}</span>
+                    <div className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider border flex items-center gap-1.5 ${
+                      isWithdrawn
+                        ? 'text-slate-600 bg-slate-100 border-slate-300'
+                        : app.statusColor || 'text-slate-600 bg-slate-50 border-slate-200'
+                    }`}>
+                      {isWithdrawn ? (
+                        <Ban size={11} className="text-slate-500" />
+                      ) : (
+                        <span className={`w-1.5 h-1.5 rounded-full bg-current ${isPassed || isNotSelected ? '' : 'animate-pulse'}`} />
+                      )}
+                      <span>{isWithdrawn ? 'Withdrawn' : app.status}</span>
                     </div>
                   </div>
                 </div>
 
-                {/* 4-Stage Stepper Progress Tracker */}
-                <div className="pt-2 border-t border-slate-100/80 space-y-2">
-                  <div className="flex items-center justify-between text-xs font-bold gap-2 flex-wrap">
-                    <span className="text-slate-500 font-medium">Recruitment Progress</span>
-                    <span className="text-slate-900 font-black flex items-center gap-1">
-                      {isNotSelected ? (
-                        <span className="text-rose-600 font-bold">Status: Not Selected</span>
-                      ) : (
-                        <>
-                          <span>Stage {currentStep} of {totalSteps}:</span>
-                          <span className="text-[#D10043] font-bold">
-                            {STAGE_LABELS[currentStep - 1] || 'In Review'}
-                          </span>
-                        </>
-                      )}
-                    </span>
-                  </div>
-
-                  {/* Visual Stepper Nodes */}
-                  <div className="grid grid-cols-4 gap-1.5">
-                    {STAGE_LABELS.map((stageName, idx) => {
-                      const stepNumber = idx + 1;
-                      const isCompleted = !isNotSelected && stepNumber < currentStep;
-                      const isCurrent = !isNotSelected && stepNumber === currentStep;
-
-                      return (
-                        <div key={idx} className="flex flex-col gap-1">
-                          <div
-                            className={`h-2 rounded-full transition-all duration-300 ${
-                              isNotSelected
-                                ? 'bg-slate-200'
-                                : isCompleted
-                                ? 'bg-emerald-500'
-                                : isCurrent
-                                ? 'bg-[#D10043]'
-                                : 'bg-slate-100'
-                            }`}
-                          />
-                          <span
-                            className={`hidden sm:block text-[9px] font-bold uppercase tracking-wider truncate text-center ${
-                              isNotSelected
-                                ? 'text-slate-300'
-                                : isCurrent
-                                ? 'text-[#D10043]'
-                                : isCompleted
-                                ? 'text-slate-700'
-                                : 'text-slate-300'
-                            }`}
-                          >
-                            {stageName}
-                          </span>
-                        </div>
-                      );
-                    })}
-                  </div>
-
-                  {/* Post-Interview Note or Not Selected Note */}
-                  {currentStep === 4 && !isNotSelected && (
-                    <div className="p-2.5 rounded-xl bg-purple-50 border border-purple-100 text-xs text-purple-900 font-medium flex items-center gap-2">
-                      <CheckCircle2 size={14} className="text-purple-600 shrink-0" />
-                      <span>Thank you! HR will contact you directly about the next steps.</span>
+                {/* Withdrawn Banner (replaces stage tracker) OR 5-Stage Progress Tracker */}
+                {isWithdrawn ? (
+                  <div className="pt-2 border-t border-slate-200/70">
+                    <div className="p-3 rounded-xl bg-white border border-slate-200 flex items-start gap-2.5 text-xs text-slate-600">
+                      <Ban size={15} className="text-slate-500 shrink-0 mt-0.5" />
+                      <div>
+                        <p className="font-bold text-slate-800">
+                          {withdrawalInfo?.withdrawnDateLabel
+                            ? `This application was withdrawn on ${withdrawalInfo.withdrawnDateLabel}`
+                            : 'This application was withdrawn'}
+                        </p>
+                        <p className="text-[11px] text-slate-500 mt-0.5">
+                          Reason: {withdrawalInfo?.reasonCategory || 'Withdrawn by applicant'} • Does not count toward your 3-application limit.
+                        </p>
+                      </div>
                     </div>
-                  )}
-
-                  {isNotSelected && (
-                    <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-600 font-medium flex items-center gap-2">
-                      <AlertCircle size={14} className="text-slate-400 shrink-0" />
-                      <span>Thank you for your interest. We are proceeding with other applicants for this role.</span>
-                    </div>
-                  )}
-
-                  {/* Mobile-Friendly Active Stage Pill (Visible on small screens) */}
-                  {!isNotSelected && (
-                    <div className="sm:hidden flex items-center gap-2 pt-1">
-                      <span className="text-[10px] font-bold text-slate-500 bg-slate-50 border border-slate-200/60 px-2 py-0.5 rounded-md flex items-center gap-1">
-                        <Clock size={11} className="text-[#D10043]" />
-                        <span>Current: <strong>{STAGE_LABELS[currentStep - 1] || 'In Review'}</strong></span>
+                  </div>
+                ) : (
+                  <div className="pt-2 border-t border-slate-100/80 space-y-2">
+                    <div className="flex items-center justify-between text-xs font-bold gap-2 flex-wrap">
+                      <span className="text-slate-500 font-medium">Recruitment Progress</span>
+                      <span className="text-slate-900 font-black flex items-center gap-1">
+                        {isNotSelected ? (
+                          <span className="text-rose-600 font-bold">Initial Interview Result: Not selected</span>
+                        ) : isPassed ? (
+                          <span className="text-emerald-700 font-bold">Passed Initial Interview – Endorsed for next stage</span>
+                        ) : (
+                          <>
+                            <span>Stage {currentStep} of {totalSteps}:</span>
+                            <span className="text-[#D10043] font-bold">
+                              {STAGE_LABELS[currentStep - 1] || 'In Review'}
+                            </span>
+                          </>
+                        )}
                       </span>
                     </div>
-                  )}
-                </div>
+
+                    {/* Visual 5-Stage Stepper Nodes */}
+                    <div className="grid grid-cols-5 gap-1.5">
+                      {STAGE_LABELS.map((stageName, idx) => {
+                        const stepNumber = idx + 1;
+                        const isCompleted = isPassed
+                          ? true
+                          : !isNotSelected && stepNumber < currentStep;
+                        const isCurrent = !isPassed && !isNotSelected && stepNumber === currentStep;
+
+                        return (
+                          <div key={stageName} className="flex flex-col gap-1">
+                            <div
+                              className={`h-2 rounded-full transition-all duration-300 ${
+                                isNotSelected
+                                  ? idx === 4 ? 'bg-rose-400' : 'bg-slate-200'
+                                  : isCompleted
+                                  ? 'bg-emerald-500'
+                                  : isCurrent
+                                  ? 'bg-[#D10043]'
+                                  : 'bg-slate-100'
+                              }`}
+                            />
+                            <span
+                              className={`hidden sm:block text-[9px] font-bold uppercase tracking-wider truncate text-center ${
+                                isNotSelected
+                                  ? idx === 4 ? 'text-rose-600' : 'text-slate-400'
+                                  : isCurrent
+                                  ? 'text-[#D10043]'
+                                  : isCompleted
+                                  ? 'text-slate-700'
+                                  : 'text-slate-300'
+                              }`}
+                            >
+                              {stageName}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {isPassed && (
+                      <div className="p-2.5 rounded-xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-900 font-medium flex items-center gap-2">
+                        <Award size={14} className="text-emerald-600 shrink-0" />
+                        <span>Passed Initial Interview – HR will contact you outside the system for the next steps.</span>
+                      </div>
+                    )}
+
+                    {isNotSelected && (
+                      <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-600 font-medium flex items-center gap-2">
+                        <AlertCircle size={14} className="text-slate-400 shrink-0" />
+                        <span>Not selected — your feedback report remains viewable in your application details.</span>
+                      </div>
+                    )}
+
+                    {/* Mobile-Friendly Active Stage Pill (Visible on small screens) */}
+                    {!isNotSelected && !isPassed && (
+                      <div className="sm:hidden flex items-center gap-2 pt-1">
+                        <span className="text-[10px] font-bold text-slate-500 bg-slate-50 border border-slate-200/60 px-2 py-0.5 rounded-md flex items-center gap-1">
+                          <Clock size={11} className="text-[#D10043]" />
+                          <span>Current: <strong>{STAGE_LABELS[currentStep - 1] || 'In Review'}</strong></span>
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {/* Bottom Action Row */}
                 <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs">
                   <span className="text-slate-400 font-medium text-[11px] hidden sm:inline">
-                    Click to view application details & updates
+                    {isWithdrawn
+                      ? 'Click to view read-only withdrawal record & history'
+                      : 'Click to view application details & updates'}
                   </span>
-                  <div className="flex items-center gap-1 text-[#D10043] font-black uppercase tracking-wider text-[11px] ml-auto group-hover:translate-x-0.5 transition-transform">
-                    <span>View Tracking Details</span>
+                  <div className={`flex items-center gap-1 font-black uppercase tracking-wider text-[11px] ml-auto group-hover:translate-x-0.5 transition-transform ${
+                    isWithdrawn ? 'text-slate-600' : 'text-[#D10043]'
+                  }`}>
+                    <span>{isWithdrawn ? 'View History' : 'View Tracking Details'}</span>
                     <ChevronRight size={14} />
                   </div>
                 </div>

@@ -22,6 +22,7 @@ import {
 } from '../../../redux/api/apiSlice';
 import { getAssetUrl } from '../../../services/api';
 import { isInactiveInterviewStatus, isUpcomingInterview } from '../../../utils/interviewUtils';
+import { isWithdrawnStatus, isResolvedStatus } from '../../../utils/applicationTracker';
 import CustomMessagePreviewSection, { CustomMessageValues } from '../../notifications/CustomMessagePreviewSection';
 
 interface ScheduleInterviewModalProps {
@@ -205,6 +206,16 @@ const ScheduleInterviewModal: React.FC<ScheduleInterviewModalProps> = ({ isOpen,
 
     setErrorMsg('');
 
+    if (isWithdrawnStatus(candidate?.status)) {
+      setErrorMsg('This application has been withdrawn and cannot be scheduled for an interview.');
+      return;
+    }
+
+    if (isResolvedStatus(candidate?.status)) {
+      setErrorMsg('This application is already resolved and cannot be scheduled for a new interview.');
+      return;
+    }
+
     if (activeInterview) {
       setErrorMsg(`This candidate already has an active interview scheduled with ${activeInterviewerName} on ${activeFormattedDate}. Only one active interview is permitted.`);
       return;
@@ -285,13 +296,13 @@ const ScheduleInterviewModal: React.FC<ScheduleInterviewModalProps> = ({ isOpen,
     setSuccessMsg(`Interview scheduled successfully! Check the interview notification logs for SMS status.`);
     try {
       if (candidate && !Object.isFrozen(candidate)) {
-        candidate.status = 'Reviewed';
+        candidate.status = 'Interview Scheduled';
       }
     } catch {
       // Ignore read-only property assignment on RTK Query frozen state objects
     }
     if (onScheduled) {
-      onScheduled(candidate ? { ...candidate, status: 'Reviewed' } : candidate);
+      onScheduled(candidate ? { ...candidate, status: 'Interview Scheduled' } : candidate);
     }
     setTimeout(() => {
       onClose();

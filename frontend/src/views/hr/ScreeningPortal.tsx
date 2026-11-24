@@ -16,11 +16,17 @@ import Pagination from '../../components/hr/screening/Pagination';
 import { AlertCircle, CheckCircle2, X, Archive, Sliders, Layers, List, Play, Sparkles } from 'lucide-react';
 import {
   useGetApplicationsQuery,
+  useGetShortlistEligibleApplicationsQuery,
   useUpdateApplicationStatusMutation,
   useDeleteApplicationMutation,
   useGetJobsQuery,
   useCreateShortlistRosterMutation
 } from '../../redux/api/apiSlice';
+import {
+  isWithdrawnStatus,
+  isPassedStatus,
+  isNotSelectedStatus,
+} from '../../utils/applicationTracker';
 import StartScreeningModal from '../../components/hr/screening/StartScreeningModal';
 import FinalizeShortlistModal from '../../components/hr/screening/FinalizeShortlistModal';
 import ScreeningWorkflowBoard from '../../components/hr/screening/ScreeningWorkflowBoard';
@@ -49,10 +55,16 @@ const ScreeningPortal: React.FC = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { data: candidates = [], isLoading, isFetching, refetch } = useGetApplicationsQuery();
+  const { data: shortlistEligibleCandidates = [], refetch: refetchShortlistEligible } = useGetShortlistEligibleApplicationsQuery();
   const [updateStatus] = useUpdateApplicationStatusMutation();
   const [deleteApplication] = useDeleteApplicationMutation();
   const { data: rawJobs = [] } = useGetJobsQuery();
   const [createShortlistRoster] = useCreateShortlistRosterMutation();
+
+  const refreshAllCandidates = () => {
+    refetch();
+    refetchShortlistEligible();
+  };
 
   // Active Main Tab: 'workflow' | 'shortlists' | 'pool'
   const [activeTab, setActiveTab] = useState<'workflow' | 'shortlists' | 'pool'>('workflow');
@@ -128,7 +140,7 @@ const ScreeningPortal: React.FC = () => {
     }).unwrap();
 
     showToastMessage(`Shortlist roster "${name}" saved with ${finalizeCandidateIds.length} candidates!`, 'success');
-    refetch();
+    refreshAllCandidates();
     setActiveTab('shortlists');
   };
 
@@ -166,11 +178,13 @@ const ScreeningPortal: React.FC = () => {
         setStatusFilter('Shortlisted');
       } else if (upper === 'INTERVIEWED') {
         setStatusFilter('Interviewed');
-      } else if (upper === 'ACCEPTED' || upper === 'PASSED') {
-        setStatusFilter('Passed');
+      } else if (upper === 'ACCEPTED' || upper === 'PASSED' || upper === 'PASSED INITIAL INTERVIEW') {
+        setStatusFilter('Passed initial interview');
       } else if (upper === 'REJECTED' || upper === 'ARCHIVED' || upper === 'NOT SELECTED') {
         setStatusFilter('Not Selected');
-      } else if (upper === 'INTERVIEW') {
+      } else if (upper.includes('WITHDRAWN')) {
+        setStatusFilter('Withdrawn');
+      } else if (upper === 'INTERVIEW' || upper === 'INTERVIEW SCHEDULED') {
         setStatusFilter('Interview Scheduled');
       }
     }
@@ -227,11 +241,11 @@ const ScreeningPortal: React.FC = () => {
     }, 4000);
   };
 
-  // Compute overall KPI statistics
+  // Compute overall KPI statistics (exclude Withdrawn & Archived/Not Selected from active totals)
   const stats = useMemo(() => {
     const nonArchived = candidates.filter((c: any) => {
       const st = (c.status || '').toLowerCase();
-      return st !== 'archived' && st !== 'not selected';
+      return st !== 'archived' && !isNotSelectedStatus(st) && !isWithdrawnStatus(st);
     });
     return {
       total: nonArchived.length,
@@ -245,12 +259,12 @@ const ScreeningPortal: React.FC = () => {
       }).length,
       accepted: candidates.filter((c: any) => {
         const st = (c.status || '').toLowerCase();
-        return st === 'shortlisted' || st === 'accepted' || st === 'passed';
+        return st === 'shortlisted' || isPassedStatus(st);
       }).length,
       highMatch: nonArchived.filter((c: any) => (c.matchScore || 0) >= 80).length,
       archived: candidates.filter((c: any) => {
         const st = (c.status || '').toLowerCase();
-        return st === 'archived' || st === 'not selected';
+        return st === 'archived' || isNotSelectedStatus(st);
       }).length
     };
   }, [candidates]);
@@ -296,16 +310,20 @@ const ScreeningPortal: React.FC = () => {
       const rawStatus = (c.status || 'Submitted').toLowerCase();
       const normStatus = (
         rawStatus === 'pending' ? 'submitted' :
-        rawStatus === 'reviewed' || rawStatus === 'screened' ? 'under review' :
-        rawStatus === 'rejected' || rawStatus === 'archived' ? 'not selected' :
-        rawStatus
+          rawStatus === 'reviewed' || rawStatus === 'screened' ? 'under review' :
+            rawStatus === 'rejected' || rawStatus === 'archived' ? 'not selected' :
+              rawStatus
       );
 
       // Status filtering
       if (statusFilter === "Archived" || statusFilter === "Not Selected") {
         if (normStatus !== "not selected" && rawStatus !== "archived") return false;
+      } else if (statusFilter === "Withdrawn") {
+        if (!isWithdrawnStatus(c.status)) return false;
+      } else if (statusFilter === "Passed initial interview" || statusFilter === "Passed Initial Interview" || statusFilter === "Passed") {
+        if (!isPassedStatus(c.status)) return false;
       } else if (statusFilter === "All With Archived") {
-        // Show all including archived
+        // Show all including archived and withdrawn
       } else if (statusFilter === "All Status") {
         if (!includeArchived && (normStatus === "not selected" || rawStatus === "archived")) return false;
       } else if (statusFilter === "Interview" || statusFilter === "In Interview" || statusFilter === "Interview Scheduled") {
@@ -376,10 +394,10 @@ const ScreeningPortal: React.FC = () => {
     const jobPool = rawJobs.length > 0
       ? rawJobs
       : jobOptions.map((opt) => ({
-          job_title: opt.title,
-          title: opt.title,
-          applicant_count: opt.count,
-        }));
+        job_title: opt.title,
+        title: opt.title,
+        applicant_count: opt.count,
+      }));
     const matchedJobs = filterAndRankJobs(jobPool, trimmed)
       .slice(0, 5)
       .map((j: any) => {
@@ -478,20 +496,29 @@ const ScreeningPortal: React.FC = () => {
     setCurrentPage(1);
   };
 
-  // Selection toggle
+  // Selection toggle (withdrawn applications cannot be selected for bulk actions or comparison)
+  const selectableFilteredCandidates = useMemo(
+    () => filteredCandidates.filter((c: any) => !isWithdrawnStatus(c.status)),
+    [filteredCandidates]
+  );
+
   const handleToggleSelect = (candidateId: string | number) => {
+    const target = candidates.find((c: any) => String(c.id) === String(candidateId));
+    if (target && isWithdrawnStatus(target.status)) return;
     setSelectedIds(prev =>
       prev.includes(candidateId) ? prev.filter(id => id !== candidateId) : [...prev, candidateId]
     );
   };
 
-  // Select all visible on current filtered set
-  const allFilteredSelected = filteredCandidates.length > 0 && filteredCandidates.every((c: any) => selectedIds.includes(c.id));
+  // Select all selectable visible on current filtered set (excludes withdrawn applications)
+  const allFilteredSelected =
+    selectableFilteredCandidates.length > 0 &&
+    selectableFilteredCandidates.every((c: any) => selectedIds.includes(c.id));
   const handleToggleSelectAll = () => {
     if (allFilteredSelected) {
       setSelectedIds([]);
     } else {
-      setSelectedIds(filteredCandidates.map((c: any) => c.id));
+      setSelectedIds(selectableFilteredCandidates.map((c: any) => c.id));
     }
   };
 
@@ -524,10 +551,14 @@ const ScreeningPortal: React.FC = () => {
     exportCandidatesToCSV(selectedList, `Selected_Candidates_${new Date().toISOString().split('T')[0]}`);
   };
 
-  // Compare candidates navigation
+  // Compare candidates navigation (exclude any withdrawn applications)
   const handleNavigateCompare = () => {
-    if (selectedIds.length > 0) {
-      navigate(`/hr/comparecandidates?ids=${selectedIds.join(',')}`);
+    const activeSelected = selectedIds.filter((id) => {
+      const match = candidates.find((c: any) => String(c.id) === String(id));
+      return !match || !isWithdrawnStatus(match.status);
+    });
+    if (activeSelected.length > 0) {
+      navigate(`/hr/comparecandidates?ids=${activeSelected.join(',')}`);
     } else {
       navigate('/hr/comparecandidates');
     }
@@ -535,6 +566,14 @@ const ScreeningPortal: React.FC = () => {
 
   // Modals openers
   const handleOpenInterview = (candidate: any) => {
+    if (isWithdrawnStatus(candidate?.status)) {
+      showToastMessage('Withdrawn applications cannot be scheduled for interviews.', 'error');
+      return;
+    }
+    if (isPassedStatus(candidate?.status) || isNotSelectedStatus(candidate?.status)) {
+      showToastMessage('Resolved applications cannot be scheduled for new interviews.', 'error');
+      return;
+    }
     setSelectedCandidate(candidate);
     setInterviewModalOpen(true);
   };
@@ -552,19 +591,26 @@ const ScreeningPortal: React.FC = () => {
       if (selectedCandidate && selectedCandidate.id === candidateId) {
         setSelectedCandidate((prev: any) => ({ ...prev, status: newStatus }));
       }
-    } catch (error) {
+      refetchShortlistEligible();
+    } catch (error: any) {
       console.error("Failed to update status:", error);
-      showToastMessage("Failed to update status. Please try again.", 'error');
+      showToastMessage(error?.data?.detail || "Failed to update status. Please try again.", 'error');
     }
   };
 
   const handleArchiveApplication = async (candidateId: string | number) => {
+    const target = candidates.find((c: any) => String(c.id) === String(candidateId));
+    if (target && isWithdrawnStatus(target.status)) {
+      showToastMessage('Withdrawn applications cannot be modified.', 'error');
+      return;
+    }
     try {
       await updateStatus({ id: candidateId, status: "ARCHIVED" }).unwrap();
       showToastMessage("Candidate application archived successfully!", 'success');
-    } catch (error) {
+      refetchShortlistEligible();
+    } catch (error: any) {
       console.error("Failed to archive application:", error);
-      showToastMessage("Failed to archive application. Please try again.", 'error');
+      showToastMessage(error?.data?.detail || "Failed to archive application. Please try again.", 'error');
     }
   };
 
@@ -572,9 +618,10 @@ const ScreeningPortal: React.FC = () => {
     try {
       await updateStatus({ id: candidateId, status: "Pending" }).unwrap();
       showToastMessage("Candidate application restored to Pending Review!", 'success');
-    } catch (error) {
+      refetchShortlistEligible();
+    } catch (error: any) {
       console.error("Failed to restore application:", error);
-      showToastMessage("Failed to restore application. Please try again.", 'error');
+      showToastMessage(error?.data?.detail || "Failed to restore application. Please try again.", 'error');
     }
   };
 
@@ -585,35 +632,53 @@ const ScreeningPortal: React.FC = () => {
     );
   };
 
-  // Batch actions
+  // Batch actions (withdrawn applications are strictly excluded)
   const handleBatchStatusUpdate = async (newStatus: string) => {
+    const eligibleIds = selectedIds.filter((id) => {
+      const target = candidates.find((c: any) => String(c.id) === String(id));
+      return !target || !isWithdrawnStatus(target.status);
+    });
+    if (eligibleIds.length === 0) {
+      showToastMessage('No eligible active applications selected.', 'error');
+      return;
+    }
     try {
-      for (const id of selectedIds) {
+      for (const id of eligibleIds) {
         await updateStatus({ id, status: newStatus }).unwrap();
       }
-      showToastMessage(`Updated ${selectedIds.length} candidates to ${newStatus} & dispatched email notifications!`, 'success');
+      showToastMessage(`Updated ${eligibleIds.length} candidates to ${newStatus} & dispatched email notifications!`, 'success');
       setSelectedIds([]);
-    } catch (error) {
+      refetchShortlistEligible();
+    } catch (error: any) {
       console.error("Batch status update error:", error);
-      showToastMessage("Failed to update some candidates. Please retry.", 'error');
+      showToastMessage(error?.data?.detail || "Failed to update some candidates. Please retry.", 'error');
     }
   };
 
   const handleBatchArchive = () => {
+    const eligibleIds = selectedIds.filter((id) => {
+      const target = candidates.find((c: any) => String(c.id) === String(id));
+      return !target || !isWithdrawnStatus(target.status);
+    });
+    if (eligibleIds.length === 0) {
+      showToastMessage('No eligible active applications selected.', 'error');
+      return;
+    }
     setConfirmModal({
       isOpen: true,
-      title: `Archive ${selectedIds.length} Candidates`,
-      message: `Are you sure you want to archive ${selectedIds.length} selected applications? You can view or restore them under the Archived status tab.`,
+      title: `Archive ${eligibleIds.length} Candidates`,
+      message: `Are you sure you want to archive ${eligibleIds.length} selected applications? You can view or restore them under the Archived status tab.`,
       onConfirm: async () => {
         try {
-          for (const id of selectedIds) {
+          for (const id of eligibleIds) {
             await updateStatus({ id, status: "ARCHIVED" }).unwrap();
           }
-          showToastMessage(`Successfully archived ${selectedIds.length} applications!`, 'success');
+          showToastMessage(`Successfully archived ${eligibleIds.length} applications!`, 'success');
           setSelectedIds([]);
-        } catch (error) {
+          refetchShortlistEligible();
+        } catch (error: any) {
           console.error("Batch archive error:", error);
-          showToastMessage("Failed to archive some applications.", 'error');
+          showToastMessage(error?.data?.detail || "Failed to archive some applications.", 'error');
         }
       }
     });
@@ -697,7 +762,8 @@ const ScreeningPortal: React.FC = () => {
                 jobTitle={screeningConfig.jobTitle}
                 jobId={screeningConfig.jobId}
                 minThreshold={screeningConfig.minThreshold}
-                candidates={candidates}
+                statusFilters={screeningConfig.statusFilters}
+                candidates={shortlistEligibleCandidates}
                 onOpenDetails={handleOpenDetails}
                 onOpenFinalize={(ids) => {
                   setFinalizeCandidateIds(ids);
@@ -749,7 +815,7 @@ const ScreeningPortal: React.FC = () => {
                 selectedCount={selectedIds.length}
                 viewMode={viewMode}
                 setViewMode={setViewMode}
-                onRefresh={refetch}
+                onRefresh={refreshAllCandidates}
                 isRefreshing={isFetching}
               />
 
@@ -837,7 +903,7 @@ const ScreeningPortal: React.FC = () => {
               {/* Bulk Action Bar (Visible when 1+ candidates selected) */}
               <BulkActionBar
                 selectedCount={selectedIds.length}
-                totalFilteredCount={filteredCandidates.length}
+                totalFilteredCount={selectableFilteredCandidates.length}
                 allSelected={allFilteredSelected}
                 onToggleSelectAll={handleToggleSelectAll}
                 onClearSelection={() => setSelectedIds([])}
@@ -943,7 +1009,7 @@ const ScreeningPortal: React.FC = () => {
           if (selectedCandidate) {
             setSelectedCandidate((prev: any) => ({ ...prev, status: 'Interview Scheduled' }));
           }
-          refetch();
+          refreshAllCandidates();
         }}
       />
 

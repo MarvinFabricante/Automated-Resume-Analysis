@@ -443,16 +443,22 @@ async def check_duplicate(
     candidate_email: str,
     user_id: Optional[int] = None,
 ) -> Optional[JobApplication]:
-    """Check if an applicant has already applied for a specific job (by user_id first, then email)."""
+    """Check if an applicant has an existing non-withdrawn application for a specific job (by user_id first, then email)."""
     if not db_job_id:
         return None
+    from app.services.status_management_service import is_withdrawn_status
+
+    existing = None
     if user_id:
-        return await JobApplicationRepository.get_by_job_and_user_id(
+        existing = await JobApplicationRepository.get_by_job_and_user_id(
             db, db_job_id, user_id, fallback_email=candidate_email
         )
-    if not candidate_email:
+    elif candidate_email:
+        existing = await JobApplicationRepository.get_by_job_and_email(db, db_job_id, candidate_email)
+
+    if existing and is_withdrawn_status(getattr(existing, "status", None)):
         return None
-    return await JobApplicationRepository.get_by_job_and_email(db, db_job_id, candidate_email)
+    return existing
 
 
 async def create_job_application(
@@ -485,6 +491,8 @@ async def create_job_application(
                 account_email = None
 
     # ── Duplicate Detection (REQ: Limit / TC-RES-016) ───────────────────────────
+    # Withdrawn applications do NOT count as active duplicates (reapplication cooldown still applies below).
+    from app.services.status_management_service import is_withdrawn_status as _is_wd_status
     if auth_user_id:
         existing_app = await JobApplicationRepository.get_by_job_and_user_id(
             db, db_job_id, auth_user_id, fallback_email=account_email
@@ -493,6 +501,8 @@ async def create_job_application(
         existing_app = await JobApplicationRepository.get_by_job_and_email(
             db, db_job_id, application_in.candidate_email
         )
+    if existing_app and _is_wd_status(getattr(existing_app, "status", None)):
+        existing_app = None
     job_desc = None
     try:
         from app.repositories.job_description_repository import JobDescriptionRepository
@@ -807,7 +817,7 @@ async def _build_recommended_positions(
             "missing_skills": (match_res.get("missing_skills") or [])[:5],
             "strengths": strengths[:3],
             "reason": " • ".join(reason_parts) if reason_parts else (match_res.get("ai_summary") or ""),
-            "already_applied": existing is not None,
+            "already_applied": bool(existing and existing.get("is_active")),
             "existing_application_id": existing.get("id") if existing else None,
             "existing_application_status": existing.get("status") if existing else None,
         })
@@ -838,13 +848,10 @@ async def get_application_by_id(db: AsyncSession, application_id: int) -> Option
         else:
             cand_apps = []
         if cand_apps:
-            inactive_statuses = {
-                "NOT SELECTED", "NOT_SELECTED", "REJECTED", "WITHDRAWN",
-                "HIRED", "ACCEPTED", "OFFER_ACCEPTED", "CLOSED"
-            }
+            from app.services.retention_service import is_application_active
             active_count = 0
             for ca in cand_apps:
-                is_act = (getattr(ca, "status", "") or "").upper() not in inactive_statuses
+                is_act = is_application_active(getattr(ca, "status", None))
                 if is_act:
                     active_count += 1
                 if ca.id != app.id:
@@ -920,9 +927,18 @@ async def get_application_by_id(db: AsyncSession, application_id: int) -> Option
     return app
 
 
-async def get_applications_by_job(db: AsyncSession, job_id: int):
-    """Get all applications for a specific job."""
+async def get_applications_by_job(
+    db: AsyncSession,
+    job_id: int,
+    shortlist_eligible: bool = False,
+):
+    """Get all applications for a specific job (optionally excluding withdrawn & resolved statuses for shortlisting)."""
     applications = await JobApplicationRepository.get_by_job_id(db, job_id)
+    if shortlist_eligible:
+        from app.services.status_management_service import is_shortlist_eligible_status
+        applications = [
+            a for a in applications if is_shortlist_eligible_status(getattr(a, "status", None))
+        ]
     return _enrich_applications(applications, bulk_mode=len(applications) > 25)
 
 
@@ -1017,9 +1033,15 @@ async def get_all_applications(
     sort_by: Optional[str] = None,
     limit: Optional[int] = None,
     offset: int = 0,
+    shortlist_eligible: bool = False,
 ):
-    """Get all job applications, with optional position filter, score/date sorting, and pagination."""
+    """Get all job applications, with optional position filter, shortlist-eligibility filter, score/date sorting, and pagination."""
     applications = await JobApplicationRepository.get_all(db)
+    if shortlist_eligible:
+        from app.services.status_management_service import is_shortlist_eligible_status
+        applications = [
+            a for a in applications if is_shortlist_eligible_status(getattr(a, "status", None))
+        ]
     enriched = _enrich_applications(applications, bulk_mode=True)
     return _filter_sort_slice_applications(
         enriched, position=position, sort_by=sort_by, limit=limit, offset=offset
@@ -1032,9 +1054,15 @@ async def get_all_applications_summary(
     sort_by: Optional[str] = None,
     limit: Optional[int] = None,
     offset: int = 0,
+    shortlist_eligible: bool = False,
 ) -> list[dict]:
     """Return fast column-projected summary dictionaries for large HR Dashboard loads."""
     summaries = await JobApplicationRepository.get_all_summaries(db)
+    if shortlist_eligible:
+        from app.services.status_management_service import is_shortlist_eligible_status
+        summaries = [
+            s for s in summaries if is_shortlist_eligible_status(_get_item_attr(s, "status"))
+        ]
     return _filter_sort_slice_applications(
         summaries, position=position, sort_by=sort_by, limit=limit, offset=offset
     )
@@ -1047,6 +1075,7 @@ async def update_application_status(
     notes: Optional[str] = None,
     custom_email_subject: Optional[str] = None,
     custom_email_message: Optional[str] = None,
+    changed_by: str = "HR",
 ) -> Optional[JobApplication]:
     """Update application status, record in-app notifications, and dispatch professional email to candidate."""
     db_application = await JobApplicationRepository.get_by_id(db, application_id)
@@ -1054,12 +1083,33 @@ async def update_application_status(
     if not db_application:
         return None
 
+    from app.services.status_management_service import (
+        is_resolved_status,
+        is_withdrawn_status,
+        normalize_status,
+        record_status_history,
+        sync_roster_items_for_application_status,
+        validate_status_transition,
+    )
+
     status_upper = new_status.upper()
     previous_status = db_application.status
+    validate_status_transition(previous_status, status_upper, allow_revert=False)
+
     db_application.status = status_upper
     if notes:
         db_application.hr_shortlist_notes = notes
     db_application = await JobApplicationRepository.update(db, db_application)
+
+    # If moved to Withdrawn via status update, cancel interviews & remove calendar events as well
+    if is_withdrawn_status(status_upper):
+        try:
+            from app.services.auth_service import _cancel_interviews_for_application
+            await _cancel_interviews_for_application(
+                db, db_application.id, reason=(notes or "Application withdrawn")
+            )
+        except Exception as wd_iv_err:
+            logger.warning(f"Could not cancel interviews on withdrawn status update for app {db_application.id}: {wd_iv_err}")
 
     # Send notifications about status change
     try:
@@ -1130,15 +1180,9 @@ async def update_application_status(
             title = "Application Status Update"
             message = f"Your application for {job_title} is currently marked as {status_upper}."
 
-        # Update resolved_at / messaging_closed_at & record status history for manual status updates
+        # Update resolved_at / messaging_closed_at, record status history & sync shortlist rosters
         try:
             from datetime import datetime
-            from app.services.status_management_service import (
-                is_resolved_status,
-                is_withdrawn_status,
-                record_status_history,
-                normalize_status,
-            )
             now_ts = datetime.utcnow()
             if is_resolved_status(status_upper):
                 if not getattr(db_application, "resolved_at", None):
@@ -1150,15 +1194,23 @@ async def update_application_status(
             if normalize_status(status_upper) == "On Hold" and notes:
                 db_application.hold_reason = notes
             await db.commit()
+            effective_reason = (notes or "").strip() or f"Status updated to {normalize_status(status_upper)}"
             await record_status_history(
                 db=db,
                 application_id=db_application.id,
                 old_status=previous_status,
                 new_status=status_upper,
-                changed_by="HR",
+                changed_by=changed_by or "HR",
                 change_type="manual",
-                reason=notes or f"Status updated to {normalize_status(status_upper)}",
+                reason=effective_reason,
                 can_undo=False,
+            )
+            await sync_roster_items_for_application_status(
+                db=db,
+                application=db_application,
+                new_norm=normalize_status(status_upper),
+                actor=changed_by or "HR",
+                reason=effective_reason,
             )
         except Exception as hist_err:
             logger.warning(f"Could not record status history for app {db_application.id}: {hist_err}")
@@ -1206,13 +1258,10 @@ async def update_application_status(
                     )
                 else:
                     candidate_all_apps = await JobApplicationRepository.get_by_email(db, db_application.candidate_email)
-                inactive_statuses = {
-                    "NOT SELECTED", "NOT_SELECTED", "REJECTED", "WITHDRAWN",
-                    "HIRED", "ACCEPTED", "OFFER_ACCEPTED", "CLOSED"
-                }
+                from app.services.retention_service import is_application_active
                 flagged_count = 0
                 for other_app in candidate_all_apps:
-                    if other_app.id != db_application.id and (getattr(other_app, "status", "") or "").upper() not in inactive_statuses:
+                    if other_app.id != db_application.id and is_application_active(getattr(other_app, "status", None)):
                         other_app.is_flagged_for_review = True
                         other_app.review_flag_reason = f"Candidate was marked as {status_upper} for {job_title}."
                         await JobApplicationRepository.update(db, other_app)
@@ -1337,9 +1386,24 @@ async def withdraw_single_application(
     cancelled_interviews = await _cancel_interviews_for_application(
         db, app.id, reason=withdraw_reason
     )
-    await db.execute(
-        delete(ShortlistRosterItem).where(ShortlistRosterItem.application_id == app.id)
+    existing_rosters_res = await db.execute(
+        select(ShortlistRosterItem.roster_id).where(ShortlistRosterItem.application_id == app.id)
     )
+    removed_roster_ids = [r[0] for r in existing_rosters_res.fetchall()]
+    if removed_roster_ids:
+        await db.execute(
+            delete(ShortlistRosterItem).where(ShortlistRosterItem.application_id == app.id)
+        )
+        await record_activity(
+            db=db,
+            user_id=actor_user_id,
+            action="AUTO_REMOVE_WITHDRAWN_FROM_ROSTER",
+            target=f"Application ID: {app.id}",
+            details=(
+                f"Removed withdrawn application #{app.id} ({app.candidate_name or actor_email}) "
+                f"from shortlist roster(s) {removed_roster_ids}. Reason: {withdraw_reason}."
+            ),
+        )
 
     updated = await apply_application_status_change(
         db=db,
@@ -1580,9 +1644,24 @@ async def withdraw_hired_elsewhere(
 
     reason = (note or "").strip() or "Applicant accepted another role at Mariwasa"
     await _cancel_interviews_for_application(db, app.id, reason="Withdrawn – hired elsewhere in company")
-    await db.execute(
-        delete(ShortlistRosterItem).where(ShortlistRosterItem.application_id == app.id)
+    existing_rosters_res = await db.execute(
+        select(ShortlistRosterItem.roster_id).where(ShortlistRosterItem.application_id == app.id)
     )
+    removed_roster_ids = [r[0] for r in existing_rosters_res.fetchall()]
+    if removed_roster_ids:
+        await db.execute(
+            delete(ShortlistRosterItem).where(ShortlistRosterItem.application_id == app.id)
+        )
+        await record_activity(
+            db=db,
+            user_id=actor_id,
+            action="AUTO_REMOVE_WITHDRAWN_FROM_ROSTER",
+            target=f"Application ID: {app.id}",
+            details=(
+                f"Removed application #{app.id} from shortlist roster(s) {removed_roster_ids} "
+                f"(Withdrawn – hired elsewhere in company)."
+            ),
+        )
 
     updated = await apply_application_status_change(
         db=db,

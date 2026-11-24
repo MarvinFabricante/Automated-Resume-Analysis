@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import { Search, Filter, ArrowUpDown, X, Sparkles, RotateCcw, Archive, Eye, Briefcase, User, Users } from 'lucide-react';
+import PortalDropdown from '../../common/PortalDropdown';
 
 export interface JobOption {
   title: string;
@@ -59,6 +60,8 @@ const SearchAndFilter: React.FC<SearchAndFilterProps> = ({
   archivedCount = 0,
   hiddenArchivedMatchCount = 0
 }) => {
+  const searchBoxRef = useRef<HTMLDivElement>(null);
+
   // Check active state for each individual filter
   const isJobActive = jobFilter !== "All Jobs";
   const isStatusActive = statusFilter !== "All Status";
@@ -72,7 +75,7 @@ const SearchAndFilter: React.FC<SearchAndFilterProps> = ({
       {/* Top Row: Omnisearch Input + Quick Archived View Controls */}
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 sm:gap-3">
         {/* Omnisearch */}
-        <div className="relative flex-1">
+        <div className="relative flex-1" ref={searchBoxRef}>
           <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none z-10">
             <Search className="h-4 w-4 text-gray-400" />
           </div>
@@ -87,7 +90,9 @@ const SearchAndFilter: React.FC<SearchAndFilterProps> = ({
               setShowSuggestions(true);
             }}
             onFocus={() => setShowSuggestions(true)}
-            onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') setShowSuggestions(false);
+            }}
           />
 
           {searchQuery && (
@@ -101,8 +106,8 @@ const SearchAndFilter: React.FC<SearchAndFilterProps> = ({
             </button>
           )}
 
-          {/* Suggestion Dropdown — Divided into Jobs first, then Candidates */}
-          {showSuggestions && suggestions.length > 0 && (() => {
+          {/* Portal Suggestion Dropdown — never clipped or overlapped on any viewport */}
+          {(() => {
             const normalized = suggestions.map((item) =>
               typeof item === 'string' ? { type: 'candidate' as const, name: item } : item
             );
@@ -110,7 +115,17 @@ const SearchAndFilter: React.FC<SearchAndFilterProps> = ({
             const candidateSuggestions = normalized.filter((item) => item.type !== 'job');
 
             return (
-              <div className="absolute top-full left-0 w-full mt-1.5 bg-white border border-gray-200/90 rounded-xl sm:rounded-2xl shadow-xl z-50 overflow-hidden py-1.5 animate-in fade-in zoom-in-95 duration-150 max-h-80 overflow-y-auto divide-y divide-gray-100">
+              <PortalDropdown
+                isOpen={showSuggestions && suggestions.length > 0}
+                onClose={() => setShowSuggestions(false)}
+                anchorRef={searchBoxRef}
+                align="left"
+                matchAnchorWidth
+                maxWidth={680}
+                maxHeight={320}
+                className="rounded-xl sm:rounded-2xl divide-y divide-gray-100 py-0"
+                ariaLabel="Search suggestions"
+              >
                 {jobSuggestions.length > 0 && (
                   <div className="py-1.5">
                     <div className="px-3.5 sm:px-4 py-1 text-[10px] font-bold text-gray-400 uppercase tracking-wider flex items-center gap-1.5">
@@ -122,7 +137,8 @@ const SearchAndFilter: React.FC<SearchAndFilterProps> = ({
                         <li
                           key={`job-${idx}`}
                           className="px-3.5 sm:px-4 py-2 hover:bg-blue-50/70 hover:text-blue-700 cursor-pointer text-xs sm:text-sm font-semibold transition-colors flex items-center justify-between gap-2"
-                          onMouseDown={() => {
+                          onMouseDown={(e) => {
+                            e.preventDefault();
                             setJobFilter(item.name);
                             setSearchQuery('');
                             setShowSuggestions(false);
@@ -156,7 +172,8 @@ const SearchAndFilter: React.FC<SearchAndFilterProps> = ({
                           <li
                             key={`cand-${idx}`}
                             className="px-3.5 sm:px-4 py-2 hover:bg-pink-50 hover:text-[#D60041] cursor-pointer text-xs sm:text-sm font-semibold transition-colors flex items-center justify-between gap-2"
-                            onMouseDown={() => {
+                            onMouseDown={(e) => {
+                              e.preventDefault();
                               setSearchQuery(item.name);
                               setShowSuggestions(false);
                             }}
@@ -174,7 +191,7 @@ const SearchAndFilter: React.FC<SearchAndFilterProps> = ({
                     </ul>
                   </div>
                 )}
-              </div>
+              </PortalDropdown>
             );
           })()}
         </div>
@@ -314,13 +331,15 @@ const SearchAndFilter: React.FC<SearchAndFilterProps> = ({
               onChange={(e) => setStatusFilter(e.target.value)}
             >
               <option value="All Status">All Active Statuses</option>
-              <option value="All With Archived">All Applications (Include Archived)</option>
+              <option value="All With Archived">All Applications (Include Archived &amp; Withdrawn)</option>
               <option value="Submitted">Submitted</option>
               <option value="Under Review">Under Review</option>
               <option value="Shortlisted">Shortlisted</option>
               <option value="Interview Scheduled">Interview Scheduled</option>
               <option value="Interviewed">Interviewed</option>
+              <option value="Passed initial interview">Passed Initial Interview</option>
               <option value="Not Selected">Not Selected</option>
+              <option value="Withdrawn">Withdrawn</option>
               <option value="Archived">Archived Only {archivedCount > 0 ? `(${archivedCount})` : ''}</option>
             </select>
             <div className="absolute inset-y-0 right-0 pr-2 sm:pr-3 flex items-center pointer-events-none text-gray-400">

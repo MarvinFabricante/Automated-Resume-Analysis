@@ -830,17 +830,46 @@ async def _cancel_interviews_for_application(
             iv.description = ((iv.description or "") + f"\n[Cancelled: {reason}]").strip()
             cancelled_count += 1
             # Best-effort Google Calendar cleanup if linked
-            if iv.google_event_id and iv.interviewer_id:
+            old_event_id = iv.google_event_id
+            if old_event_id and iv.interviewer_id:
                 try:
+                    import asyncio
                     from app.services.interview_service import _get_valid_credentials
-                    from app.services.google_calendar_service import delete_calendar_event
+                    from app.services.google_calendar_service import delete_real_google_event
                     interviewer = await AuthRepository.get_user_by_id_fresh(db, iv.interviewer_id)
                     if interviewer:
                         creds = _get_valid_credentials(interviewer)
                         if creds:
-                            delete_calendar_event(creds, iv.google_event_id)
-                except Exception:
-                    pass
+                            await asyncio.to_thread(
+                                delete_real_google_event,
+                                credentials_json=creds,
+                                calendar_id="primary",
+                                event_id=old_event_id,
+                            )
+                except Exception as cal_err:
+                    logger.warning(f"Could not delete Google Calendar event {old_event_id} on withdrawal: {cal_err}")
+                finally:
+                    iv.google_event_id = None
+            try:
+                from app.repositories.interview_repository import InterviewRepository
+                await InterviewRepository.add_interview_log(
+                    db,
+                    iv.id,
+                    "STATUS_CHANGE",
+                    f"Interview cancelled automatically because application #{application_id} was withdrawn ({reason}).",
+                )
+            except Exception:
+                pass
+
+    if cancelled_count > 0:
+        try:
+            from app.utils.cache import clear_cache_pattern
+            await clear_cache_pattern("app_interviews*")
+            await clear_cache_pattern("cand_interviews*")
+            await clear_cache_pattern("calendar_events*")
+            await clear_cache_pattern("interviews*")
+        except Exception:
+            pass
 
     return cancelled_count
 
@@ -928,10 +957,25 @@ async def request_account_deletion(
             db, app.id, reason="Account deletion requested"
         )
 
-        # Remove from any shortlist rosters
-        await db.execute(
-            delete(ShortlistRosterItem).where(ShortlistRosterItem.application_id == app.id)
+        # Remove from any shortlist rosters with audit entry
+        roster_items_res = await db.execute(
+            select(ShortlistRosterItem.roster_id).where(ShortlistRosterItem.application_id == app.id)
         )
+        removed_roster_ids = [r[0] for r in roster_items_res.fetchall()]
+        if removed_roster_ids:
+            await db.execute(
+                delete(ShortlistRosterItem).where(ShortlistRosterItem.application_id == app.id)
+            )
+            await record_activity(
+                db=db,
+                user_id=user.id,
+                action="AUTO_REMOVE_WITHDRAWN_FROM_ROSTER",
+                target=f"Application ID: {app.id}",
+                details=(
+                    f"Removed application #{app.id} ({user_fullname}) from shortlist roster(s) {removed_roster_ids} "
+                    f"due to account deletion request."
+                ),
+            )
 
         # Transition status server-side with audit history & notification
         await apply_application_status_change(

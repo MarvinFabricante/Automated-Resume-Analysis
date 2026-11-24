@@ -12,7 +12,12 @@ from app.models.candidate_note import HRCandidateNote
 from app.models.profile_access_log import ApplicantProfileAccessLog
 from app.models.status_history import ApplicationStatusHistory
 from app.models.user import User
-from app.services.status_management_service import normalize_status
+from app.services.status_management_service import (
+    normalize_status,
+    is_withdrawn_status,
+    is_resolved_status,
+)
+from app.services.retention_service import is_application_active
 from app.services.requirement_rules import extract_criterion_status, STATUS_MANUAL_REVIEW
 
 logger = logging.getLogger(__name__)
@@ -169,6 +174,7 @@ async def get_applicant_comprehensive_profile(
     }
 
     # 3. Process all applications with job info and rosters
+    from app.services.retention_service import is_application_active, has_previous_anonymized_application
     apps_data = []
     shortlisted_positions = []
     all_status_history = []
@@ -190,7 +196,10 @@ async def get_applicant_comprehensive_profile(
         rosters_in = [{"id": r[0], "name": r[1], "stage": r[2]} for r in roster_rows]
 
         norm_status = normalize_status(app.status)
-        if norm_status in ("Shortlisted", "Interview Scheduled", "Interviewed"):
+        app_is_withdrawn = is_withdrawn_status(norm_status)
+        app_is_resolved = is_resolved_status(norm_status)
+        app_is_active = is_application_active(app.status)
+        if not app_is_withdrawn and norm_status in ("Shortlisted", "Interview Scheduled", "Interviewed"):
             shortlisted_positions.append(job_title)
 
         # Status history for this application
@@ -225,7 +234,12 @@ async def get_applicant_comprehensive_profile(
             "department": getattr(job, "department", "General") if job else "General",
             "applied_date": app.created_at.isoformat() if app.created_at else None,
             "created_at": app.created_at.isoformat() if app.created_at else None,
+            "resolved_at": app.resolved_at.isoformat() if getattr(app, "resolved_at", None) else None,
             "status": norm_status,
+            "raw_status": app.status,
+            "is_withdrawn": app_is_withdrawn,
+            "is_resolved": app_is_resolved,
+            "is_active": app_is_active,
             "match_score": app.match_score,
             "matched_skills": app.matched_skills or [],
             "missing_skills": app.missing_skills or [],
@@ -277,7 +291,8 @@ async def get_applicant_comprehensive_profile(
     now = datetime.utcnow()
 
     for item in interviews:
-        is_upcoming = item.start_time > now and item.status != "CANCELED"
+        st_upper = (item.status or "").upper()
+        is_upcoming = item.start_time > now and st_upper not in ("CANCELED", "CANCELLED", "COMPLETED", "NO_SHOW")
         if is_upcoming and not upcoming_interview_str:
             time_formatted = item.start_time.strftime("%b %d, %Y at %I:%M %p")
             upcoming_interview_str = f"{item.title} on {time_formatted}"
@@ -291,6 +306,8 @@ async def get_applicant_comprehensive_profile(
 
         interviews_data.append({
             "id": item.id,
+            "job_application_id": item.job_application_id,
+            "combined_application_ids": getattr(item, "combined_application_ids", None) or [],
             "title": item.title,
             "start_time": item.start_time.isoformat() if item.start_time else None,
             "end_time": item.end_time.isoformat() if item.end_time else None,
@@ -348,7 +365,6 @@ async def get_applicant_comprehensive_profile(
     ]
 
     # 7. Generate top summary strip + multi-application & anonymized repeat-applicant flags
-    from app.services.retention_service import is_application_active, has_previous_anonymized_application
 
     active_apps_list = [
         {
