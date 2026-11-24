@@ -1,5 +1,5 @@
-from pydantic import BaseModel, Field
-from typing import List, Optional, Any, Dict
+from pydantic import BaseModel, Field, model_validator
+from typing import List, Optional, Any, Dict, Literal
 from datetime import datetime
 
 class AvailableSlotsRequest(BaseModel):
@@ -21,12 +21,24 @@ class InterviewCreateSchema(BaseModel):
     interviewer_id: Optional[int] = None
     panelist_ids: Optional[List[int]] = None
     call_language: Optional[str] = "bilingual"
+    interview_type: Optional[Literal["Onsite", "Online"]] = None
+    instructions: Optional[str] = None
+    platform: Optional[Literal["Google Meet", "Zoom", "Microsoft Teams", "Other"]] = None
     location: Optional[str] = None
     meeting_link: Optional[str] = None
     custom_email_subject: Optional[str] = None
     custom_email_message: Optional[str] = None
     custom_sms_message: Optional[str] = None
     combined_application_ids: Optional[List[int]] = None
+
+    @model_validator(mode="after")
+    def validate_venue(self):
+        from app.services.interview_details import validate_interview_details
+        if self.interview_type is not None or self.location or self.meeting_link:
+            self.interview_type = self.interview_type or ("Online" if self.meeting_link else "Onsite")
+            validate_interview_details(self.interview_type, self.location, self.meeting_link)
+        return self
+
 
 class InterviewUpdateSchema(BaseModel):
     title: Optional[str] = None
@@ -37,6 +49,9 @@ class InterviewUpdateSchema(BaseModel):
     interviewer_id: Optional[int] = None
     call_language: Optional[str] = None
     panelist_ids: Optional[List[int]] = None
+    interview_type: Optional[Literal["Onsite", "Online"]] = None
+    instructions: Optional[str] = None
+    platform: Optional[Literal["Google Meet", "Zoom", "Microsoft Teams", "Other"]] = None
     location: Optional[str] = None
     meeting_link: Optional[str] = None
     custom_email_subject: Optional[str] = None
@@ -96,6 +111,10 @@ class InterviewResponseSchema(BaseModel):
     google_event_id: Optional[str] = None
     meeting_link: Optional[str] = None
     location: Optional[str] = None
+    interview_type: Optional[str] = "Not specified"
+    instructions: Optional[str] = None
+    platform: Optional[str] = None
+    candidate_user_id: Optional[int] = None
     status: str
     is_missed: Optional[bool] = False
     created_at: datetime

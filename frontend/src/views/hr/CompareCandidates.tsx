@@ -334,13 +334,9 @@ const EMPTY_JOBS: Job[] = [];
 
 const isSamePerson = (c1: CandidateComparisonData, c2: CandidateComparisonData): boolean => {
   if (c1.id === c2.id) return true;
-  if (c1.applicant_id && c2.applicant_id && c1.applicant_id === c2.applicant_id) return true;
-  const email1 = (c1.email || (c1 as any).candidate_email || '').trim().toLowerCase();
-  const email2 = (c2.email || (c2 as any).candidate_email || '').trim().toLowerCase();
-  if (email1 && email2 && email1 === email2) return true;
-  const phone1 = (c1.phone || '').replace(/[^0-9]/g, '');
-  const phone2 = (c2.phone || '').replace(/[^0-9]/g, '');
-  if (phone1 && phone2 && phone1.length >= 7 && phone1 === phone2) return true;
+  const uid1 = c1.applicant_id || (c1 as any).user_id;
+  const uid2 = c2.applicant_id || (c2 as any).user_id;
+  if (uid1 || uid2) return Boolean(uid1 && uid2 && String(uid1) === String(uid2));
   return false;
 };
 

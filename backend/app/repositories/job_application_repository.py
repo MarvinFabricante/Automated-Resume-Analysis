@@ -73,28 +73,10 @@ async def get_by_user_id(
     user_id: int,
     fallback_email: Optional[str] = None,
 ) -> List[JobApplication]:
-    """Get all applications linked to a specific authenticated user_id (with optional legacy email fallback for unlinked rows)."""
+    """Get applications by account ownership; fallback_email is retained for API compatibility."""
     if not user_id:
-        if fallback_email:
-            return await get_by_email(db, fallback_email)
         return []
-
-    norm_email = (fallback_email or "").strip().lower()
-    if not norm_email:
-        user_res = await db.execute(select(User.email).where(User.id == user_id))
-        u_email = user_res.scalar_one_or_none()
-        norm_email = (u_email or "").strip().lower()
-
-    if norm_email:
-        condition = or_(
-            JobApplication.user_id == user_id,
-            and_(
-                JobApplication.user_id.is_(None),
-                func.lower(JobApplication.candidate_email) == norm_email,
-            ),
-        )
-    else:
-        condition = JobApplication.user_id == user_id
+    condition = JobApplication.user_id == user_id
 
     result = await db.execute(
         select(JobApplication)
@@ -111,23 +93,10 @@ async def get_by_job_and_user_id(
     user_id: int,
     fallback_email: Optional[str] = None,
 ) -> Optional[JobApplication]:
-    """Get existing application for a logged-in user and job by user_id."""
+    """Get existing application by account ownership."""
     if not user_id:
-        if fallback_email:
-            return await get_by_job_and_email(db, job_id, fallback_email)
         return None
-
-    norm_email = (fallback_email or "").strip().lower()
-    if norm_email:
-        user_cond = or_(
-            JobApplication.user_id == user_id,
-            and_(
-                JobApplication.user_id.is_(None),
-                func.lower(JobApplication.candidate_email) == norm_email,
-            ),
-        )
-    else:
-        user_cond = JobApplication.user_id == user_id
+    user_cond = JobApplication.user_id == user_id
 
     result = await db.execute(
         select(JobApplication)
@@ -153,16 +122,12 @@ async def get_by_email(db: AsyncSession, email: str) -> List[JobApplication]:
     matched_user_id = user_res.scalar_one_or_none()
 
     if matched_user_id is not None:
-        condition = or_(
-            JobApplication.user_id == matched_user_id,
-            func.lower(JobApplication.candidate_email) == norm_email,
-            func.lower(JobApplication.contact_email) == norm_email,
-        )
-    else:
-        condition = or_(
-            func.lower(JobApplication.candidate_email) == norm_email,
-            func.lower(JobApplication.contact_email) == norm_email,
-        )
+        return await get_by_user_id(db, matched_user_id)
+    condition = and_(
+        JobApplication.user_id.is_(None),
+        or_(func.lower(JobApplication.candidate_email) == norm_email,
+            func.lower(JobApplication.contact_email) == norm_email),
+    )
 
     result = await db.execute(
         select(JobApplication)
@@ -193,6 +158,7 @@ async def get_by_job_and_email(db: AsyncSession, job_id: int, email: str) -> Opt
         .options(selectinload(JobApplication.job))
         .filter(
             JobApplication.job_id == job_id,
+            JobApplication.user_id.is_(None),
             JobApplication.candidate_email.ilike(normalized_email)
         )
         .order_by(JobApplication.created_at.desc())

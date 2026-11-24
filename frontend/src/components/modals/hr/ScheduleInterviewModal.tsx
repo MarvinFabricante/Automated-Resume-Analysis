@@ -1,3 +1,5 @@
+import InterviewVenueFields, { emptyInterviewVenue, validInterviewVenue, venuePayload } from './InterviewVenueFields';
+import { useGetInterviewDefaultsQuery } from '../../../redux/api/apiSlice';
 import React, { useState, useEffect } from 'react';
 import {
   Calendar,
@@ -15,7 +17,8 @@ import {
   useGetAvailableSlotsMutation, 
   useScheduleInterviewMutation,
   useGetHRInterviewersQuery,
-  useGetAllInterviewsQuery
+  useGetAllInterviewsQuery,
+  useGetCandidateShortlistedForCombinedQuery,
 } from '../../../redux/api/apiSlice';
 import { getAssetUrl } from '../../../services/api';
 import { isInactiveInterviewStatus, isUpcomingInterview } from '../../../utils/interviewUtils';
@@ -38,6 +41,8 @@ interface FormDataState {
 const ScheduleInterviewModal: React.FC<ScheduleInterviewModalProps> = ({ isOpen, onClose, candidate, onScheduled }) => {
   const { data: interviewers = [] } = useGetHRInterviewersQuery();
   const { data: allInterviews = [] } = useGetAllInterviewsQuery();
+  const { data: interviewDefaults } = useGetInterviewDefaultsQuery();
+  const [venue, setVenue] = useState({ ...emptyInterviewVenue });
   const [getSlots, { isLoading: isFetchingSlots }] = useGetAvailableSlotsMutation();
   const [scheduleInterview, { isLoading: isScheduling }] = useScheduleInterviewMutation();
 
@@ -72,9 +77,23 @@ const ScheduleInterviewModal: React.FC<ScheduleInterviewModalProps> = ({ isOpen,
     selectedSlot: null
   });
 
-  const [callLanguage, setCallLanguage] = useState<string>('fil');
-  const [location, setLocation] = useState<string>('');
-  const [meetingLink, setMeetingLink] = useState<string>('');
+  const location = venue.interviewType === 'Onsite' ? venue.location : '';
+  const meetingLink = venue.interviewType === 'Online' ? venue.meetingLink : '';
+  const [selectedCombinedIds, setSelectedCombinedIds] = useState<number[]>([]);
+  const { data: combinedShortlisted } = useGetCandidateShortlistedForCombinedQuery(
+    candidate?.id ?? 0,
+    { skip: !isOpen || !candidate?.id }
+  );
+
+  useEffect(() => {
+    if (combinedShortlisted?.shortlisted_applications?.length > 1) {
+      setSelectedCombinedIds(
+        combinedShortlisted.shortlisted_applications.map((a: any) => Number(a.application_id))
+      );
+    } else if (candidate?.id) {
+      setSelectedCombinedIds([Number(candidate.id)]);
+    }
+  }, [combinedShortlisted, candidate?.id]);
   const [customMsg, setCustomMsg] = useState<CustomMessageValues>({
     customEmailSubject: '',
     customEmailMessage: '',
@@ -112,14 +131,14 @@ const ScheduleInterviewModal: React.FC<ScheduleInterviewModalProps> = ({ isOpen,
         }
         defaultDate = toLocalDateString(d);
       }
+      setVenue({ ...emptyInterviewVenue });
       setFormData({
         date: defaultDate,
         title: candidate ? `Interview with ${candidate.name || candidate.candidate_name}` : 'Initial Interview',
         description: '',
         selectedSlot: null
       });
-      setLocation(candidate?.job?.location || candidate?.job_location || '');
-      setMeetingLink('');
+      setVenue({ ...emptyInterviewVenue });
       setCustomMsg({
         customEmailSubject: '',
         customEmailMessage: '',
@@ -165,7 +184,9 @@ const ScheduleInterviewModal: React.FC<ScheduleInterviewModalProps> = ({ isOpen,
     if (!isUpcomingInterview(iv)) return false;
     const ivAppId = iv.job_application_id || iv.job_application?.id;
     if (candidateAppId && ivAppId && Number(ivAppId) === Number(candidateAppId)) return true;
-    if (candidateEmail && (iv.candidate_email || iv.job_application?.candidate_email) && (iv.candidate_email || iv.job_application?.candidate_email).toLowerCase().trim() === candidateEmail) return true;
+    const uid = candidate?.user_id || candidate?.applicant_id;
+    const otherUid = iv.candidate_user_id || iv.job_application?.user_id;
+    if (uid && otherUid && String(uid) === String(otherUid)) return true;
     return false;
   });
 
@@ -177,6 +198,11 @@ const ScheduleInterviewModal: React.FC<ScheduleInterviewModalProps> = ({ isOpen,
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!validInterviewVenue(venue)) {
+      setErrorMsg('Choose an interview type and complete the required location or meeting link.');
+      return;
+    }
+
     setErrorMsg('');
 
     if (activeInterview) {
@@ -241,9 +267,8 @@ const ScheduleInterviewModal: React.FC<ScheduleInterviewModalProps> = ({ isOpen,
         description: formData.description,
         start_time: finalStart,
         end_time: finalEnd,
-        call_language: callLanguage,
-        location: location.trim() || undefined,
-        meeting_link: meetingLink.trim() || undefined,
+        ...venuePayload(venue),
+        ...(selectedCombinedIds.length > 1 ? { combined_application_ids: selectedCombinedIds } : {}),
         ...(customMsg.isCustomized
           ? {
               custom_email_subject: customMsg.customEmailSubject || undefined,
@@ -257,7 +282,7 @@ const ScheduleInterviewModal: React.FC<ScheduleInterviewModalProps> = ({ isOpen,
       return;
     }
 
-    setSuccessMsg(`Interview scheduled successfully! Candidate marked as Reviewed. Check the interview notification logs for SMS status.`);
+    setSuccessMsg(`Interview scheduled successfully! Check the interview notification logs for SMS status.`);
     try {
       if (candidate && !Object.isFrozen(candidate)) {
         candidate.status = 'Reviewed';
@@ -419,40 +444,53 @@ const ScheduleInterviewModal: React.FC<ScheduleInterviewModalProps> = ({ isOpen,
                       onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                     />
                   </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Location / Venue (Optional)</label>
-                      <input
-                        type="text"
-                        placeholder="e.g., Mariwasa HR Office or Online"
-                        value={location}
-                        onChange={(e) => setLocation(e.target.value)}
-                        className="w-full px-4 py-2.5 bg-gray-50 border border-gray-100 rounded-xl text-sm font-medium text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#d81159]/20 focus:border-[#d81159] transition-all"
-                      />
+                  <InterviewVenueFields value={venue} onChange={setVenue} companyAddress={interviewDefaults?.company_address} />
+                  {combinedShortlisted?.can_combine && (
+                    <div className="p-4 rounded-2xl bg-indigo-50/70 border border-indigo-200 space-y-2.5">
+                      <div>
+                        <p className="text-xs font-bold text-indigo-900">
+                          Combined Interview Available ({combinedShortlisted.shortlisted_applications.length} Shortlisted Positions)
+                        </p>
+                        <p className="text-[11px] text-indigo-700 mt-0.5">
+                          Send one combined invite, calendar event, email, and SMS covering the checked positions. Each position keeps its own pass/fail result.
+                        </p>
+                      </div>
+                      <div className="space-y-1.5">
+                        {combinedShortlisted.shortlisted_applications.map((item: any) => {
+                          const appIdNum = Number(item.application_id);
+                          const isPrimary = Boolean(item.is_primary);
+                          const checked = selectedCombinedIds.includes(appIdNum);
+                          return (
+                            <label
+                              key={appIdNum}
+                              className="flex items-center gap-2.5 p-2 rounded-xl bg-white border border-indigo-100 text-xs font-semibold text-slate-800 cursor-pointer"
+                            >
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                disabled={isPrimary}
+                                onChange={(e) => {
+                                  if (isPrimary) return;
+                                  setSelectedCombinedIds((prev) =>
+                                    e.target.checked
+                                      ? Array.from(new Set([...prev, appIdNum]))
+                                      : prev.filter((id) => id !== appIdNum)
+                                  );
+                                }}
+                                className="rounded border-indigo-300 text-indigo-600 focus:ring-indigo-500"
+                              />
+                              <span className="flex-1">{item.job_title}</span>
+                              {isPrimary && (
+                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700 font-bold">
+                                  Primary
+                                </span>
+                              )}
+                            </label>
+                          );
+                        })}
+                      </div>
                     </div>
-                    <div className="space-y-2">
-                      <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Meeting Link (Optional)</label>
-                      <input
-                        type="url"
-                        placeholder="https://meet.google.com/..."
-                        value={meetingLink}
-                        onChange={(e) => setMeetingLink(e.target.value)}
-                        className="w-full px-4 py-2.5 bg-gray-50 border border-gray-100 rounded-xl text-sm font-medium text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#d81159]/20 focus:border-[#d81159] transition-all"
-                      />
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">AI Voice Notification Language</label>
-                    <select
-                      value={callLanguage}
-                      onChange={(e) => setCallLanguage(e.target.value)}
-                      className="w-full px-4 py-2.5 bg-gray-50 border border-gray-100 rounded-xl text-sm font-medium text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#d81159]/20 focus:border-[#d81159] transition-all cursor-pointer"
-                    >
-                      <option value="fil">🇵🇭 Filipino (Tagalog) - Recommended</option>
-                      <option value="bilingual">🌐 Bilingual (Filipino & English)</option>
-                      <option value="en">🇺🇸 English</option>
-                    </select>
-                  </div>
+                  )}
                 </div>
               </div>
 
@@ -640,7 +678,7 @@ const ScheduleInterviewModal: React.FC<ScheduleInterviewModalProps> = ({ isOpen,
               </button>
               <button
                 type="submit"
-                disabled={isScheduling || Boolean(activeInterview) || (!useCustomTime && !formData.selectedSlot) || (useCustomTime && (!customStartTime || !customEndTime))}
+                disabled={!validInterviewVenue(venue) || isScheduling || Boolean(activeInterview) || (!useCustomTime && !formData.selectedSlot) || (useCustomTime && (!customStartTime || !customEndTime))}
                 className="w-full sm:w-auto px-6 py-2.5 bg-[#d81159] text-white rounded-xl text-xs font-bold uppercase tracking-wider hover:shadow-lg hover:shadow-pink-200 transition-all disabled:opacity-50 flex items-center justify-center gap-2 text-center"
               >
                 {isScheduling ? 'Scheduling...' : 'Confirm & Schedule'}

@@ -23,14 +23,8 @@ async def update_candidate_profile(db: AsyncSession, candidate_id: int, candidat
         return None
 
     update_data = candidate_update.dict(exclude_unset=True)
-    if "email" in update_data and update_data["email"]:
-        new_email = update_data["email"].strip().lower()
-        update_data["email"] = new_email
-        if new_email != candidate.email:
-            from app.repositories.auth_repository import AuthRepository
-            existing = await AuthRepository.get_raw_user_by_email(db, new_email)
-            if existing and existing.id != candidate_id:
-                raise Exception("This email address is already in use by another account.")
+    # Profile/resume review must never change the login identity.
+    update_data.pop("email", None)
 
     return await CandidateRepository.update(db, candidate, update_data)
 

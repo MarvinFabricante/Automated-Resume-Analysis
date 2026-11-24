@@ -1,3 +1,4 @@
+from app.services.interview_details import manila_time, ONLINE_INSTRUCTIONS
 import os
 import sys
 import html
@@ -191,7 +192,8 @@ def _build_interview_venue_rows(
     interviewer_email: Optional[str] = None,
 ) -> tuple[str, str]:
     """Build optional table rows (location, meeting link, interviewer contact) and CTA button HTML."""
-    rows: list[str] = []
+    kind = "Online" if meeting_link else "Onsite" if location else "Not specified"
+    rows: list[str] = [f'<tr><td>Interview type:</td><td>{kind}</td></tr>']
     if interviewer_email and interviewer_email.strip():
         safe_email = html.escape(interviewer_email.strip())
         rows.append(
@@ -231,6 +233,8 @@ def _build_interview_venue_rows(
                 </div>
         """
 
+    if clean_link:
+        meeting_cta += f'<p>{ONLINE_INSTRUCTIONS}</p>'
     return "".join(rows), meeting_cta
 
 
@@ -251,9 +255,11 @@ async def send_interview_invitation_email(
     db: Optional[Any] = None,
 ) -> bool:
     """Send a detailed interview invitation email to the candidate's email account."""
+    start_time = manila_time(start_time)
+    end_time = manila_time(end_time) if end_time else None
     formatted_date = start_time.strftime("%A, %B %d, %Y")
     start_str = start_time.strftime("%I:%M %p")
-    end_str = end_time.strftime("%I:%M %p")
+    end_str = end_time.strftime("%I:%M %p") + " (Philippine time)"
     interviewer_display = interviewer_name if interviewer_name else "Mariwasa HR Panel"
 
     ctx = build_interview_template_context(
@@ -406,9 +412,11 @@ async def send_interview_rescheduled_email(
     db: Optional[Any] = None,
 ) -> bool:
     """Send an interview rescheduled email to the candidate's email account."""
+    start_time = manila_time(start_time)
+    end_time = manila_time(end_time) if end_time else None
     formatted_date = start_time.strftime("%A, %B %d, %Y")
     start_str = start_time.strftime("%I:%M %p")
-    end_str = end_time.strftime("%I:%M %p")
+    end_str = end_time.strftime("%I:%M %p") + " (Philippine time)"
     interviewer_display = interviewer_name if interviewer_name else "Mariwasa HR Panel"
 
     ctx = build_interview_template_context(
@@ -547,9 +555,11 @@ async def send_interview_cancellation_email(
     db: Optional[Any] = None,
 ) -> bool:
     """Send an interview cancellation notification email to candidate, HR, or panelist."""
+    start_time = manila_time(start_time)
+    end_time = manila_time(end_time) if end_time else None
     formatted_date = start_time.strftime("%A, %B %d, %Y")
     start_str = start_time.strftime("%I:%M %p")
-    end_str = end_time.strftime("%I:%M %p") if end_time else ""
+    end_str = end_time.strftime("%I:%M %p") + " (Philippine time)" if end_time else ""
     time_display = f"{start_str} – {end_str}" if end_str else start_str
     interviewer_display = interviewer_name if interviewer_name else "Mariwasa HR Panel"
 

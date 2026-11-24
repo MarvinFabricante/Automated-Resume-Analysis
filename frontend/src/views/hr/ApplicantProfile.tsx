@@ -9,6 +9,9 @@ import {
   useGetApplicantProfileQuery,
   useAddApplicantNoteMutation,
   useRecordApplicationViewedMutation,
+  useResumeApplicationMutation,
+  useWithdrawHiredElsewhereMutation,
+  useGetRecruitmentConfigQuery,
 } from '../../redux/api/apiSlice';
 import { getAssetUrl } from '../../services/api';
 import {
@@ -73,6 +76,10 @@ const ApplicantProfile: React.FC<ApplicantProfileProps> = ({
 
   const [addNote, { isLoading: isAddingNote }] = useAddApplicantNoteMutation();
   const [recordViewed] = useRecordApplicationViewedMutation();
+  const [resumeApp] = useResumeApplicationMutation();
+  const [withdrawHiredElsewhere] = useWithdrawHiredElsewhereMutation();
+  const { data: recruitmentConfig } = useGetRecruitmentConfigQuery(undefined, { skip: !isAuthorized });
+  const [actionFeedback, setActionFeedback] = useState<string | null>(null);
 
   const secondsElapsedRef = React.useRef<number>(0);
   const hasEngagedRef = React.useRef<boolean>(false);
@@ -298,6 +305,51 @@ const ApplicantProfile: React.FC<ApplicantProfileProps> = ({
         </div>
       </div>
 
+      {/* Multi-Application & Repeat-Applicant Flags */}
+      {(profile?.other_active_flag || profile?.previous_application_flag || actionFeedback) && (
+        <div className="space-y-2.5">
+          {profile?.other_active_flag && (
+            <div className="bg-indigo-50 border border-indigo-200 rounded-2xl px-4 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div>
+                <p className="text-xs font-bold text-indigo-900">{profile.other_active_flag}</p>
+                {Array.isArray(profile.active_applications) && profile.active_applications.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 mt-1.5">
+                    {profile.active_applications.map((a: any) => (
+                      <span
+                        key={a.id}
+                        className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-white border border-indigo-200 text-indigo-800"
+                      >
+                        <span>{a.job_title}</span>
+                        <span className="text-indigo-400">•</span>
+                        <span>{a.status}</span>
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {profile?.previous_application_flag && (
+            <div className="bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3 flex items-center gap-2.5">
+              <AlertTriangle size={16} className="text-amber-600 shrink-0" />
+              <p className="text-xs font-bold text-amber-900">
+                {profile.previous_application_flag}
+                <span className="font-normal text-amber-800 ml-1.5">
+                  (Matched via salted one-way email hash — no personal data from prior records is exposed.)
+                </span>
+              </p>
+            </div>
+          )}
+
+          {actionFeedback && (
+            <div className="bg-emerald-50 border border-emerald-200 rounded-2xl px-4 py-2.5 text-xs font-semibold text-emerald-800">
+              {actionFeedback}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* ─── INTERVIEW MODE VIEW ─── */}
       {interviewMode ? (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-in fade-in duration-200">
@@ -340,6 +392,44 @@ const ApplicantProfile: React.FC<ApplicantProfileProps> = ({
                     <span className="px-2.5 py-1 text-xs font-bold rounded-full bg-slate-100 text-slate-700">
                       {app.status}
                     </span>
+                    {String(app.status || '').toLowerCase() === 'on hold' && (
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          try {
+                            await resumeApp({ applicationId: app.id }).unwrap();
+                            setActionFeedback(`Resumed application for ${app.job_title}.`);
+                            refetch();
+                          } catch (err: any) {
+                            setActionFeedback(err?.data?.detail || 'Could not resume application.');
+                          }
+                        }}
+                        className="px-2.5 py-1 text-xs font-bold rounded-full bg-emerald-600 text-white hover:bg-emerald-700 cursor-pointer"
+                      >
+                        Resume
+                      </button>
+                    )}
+                    {recruitmentConfig?.allow_hired_elsewhere_withdrawal &&
+                      !['passed initial interview', 'not selected', 'withdrawn by applicant', 'withdrawn – hired elsewhere in company'].includes(
+                        String(app.status || '').toLowerCase()
+                      ) && (
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            if (!window.confirm(`Mark "${app.job_title}" as "Withdrawn – hired elsewhere in company"?`)) return;
+                            try {
+                              await withdrawHiredElsewhere({ applicationId: app.id }).unwrap();
+                              setActionFeedback(`Marked ${app.job_title} as Withdrawn – hired elsewhere in company.`);
+                              refetch();
+                            } catch (err: any) {
+                              setActionFeedback(err?.data?.detail || 'Action failed.');
+                            }
+                          }}
+                          className="px-2.5 py-1 text-xs font-bold rounded-full bg-slate-700 text-white hover:bg-slate-800 cursor-pointer"
+                        >
+                          Withdraw – Hired Elsewhere
+                        </button>
+                      )}
                   </div>
                 </div>
 

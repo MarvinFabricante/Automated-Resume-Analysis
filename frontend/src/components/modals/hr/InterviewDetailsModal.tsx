@@ -1,3 +1,5 @@
+import InterviewVenueFields, { emptyInterviewVenue, validInterviewVenue, venuePayload } from './InterviewVenueFields';
+import { useGetInterviewDefaultsQuery } from '../../../redux/api/apiSlice';
 import React, { useState, useEffect } from 'react';
 import {
   X,
@@ -49,6 +51,8 @@ interface FormDataState {
 
 const InterviewDetailsModal: React.FC<InterviewDetailsModalProps> = ({ isOpen, onClose, interview, onStatusChanged }) => {
   const reduxUserRole = useSelector((state: RootState) => state.auth?.role);
+  const { data: interviewDefaults } = useGetInterviewDefaultsQuery();
+  const [venue, setVenue] = useState({ ...emptyInterviewVenue });
   const [updateInterview, { isLoading: isUpdating }] = useUpdateInterviewMutation();
   const [cancelInterview, { isLoading: isCanceling }] = useCancelInterviewMutation();
   const [getSlots, { isLoading: isFetchingSlots }] = useGetAvailableSlotsMutation();
@@ -115,6 +119,11 @@ const InterviewDetailsModal: React.FC<InterviewDetailsModalProps> = ({ isOpen, o
       const startStr = start ? `${String(start.getHours()).padStart(2, '0')}:${String(start.getMinutes()).padStart(2, '0')}` : '09:00';
       const endStr = end ? `${String(end.getHours()).padStart(2, '0')}:${String(end.getMinutes()).padStart(2, '0')}` : '10:00';
 
+      setVenue({
+        interviewType: ['Onsite', 'Online'].includes(interview.interview_type) ? interview.interview_type : '',
+        location: interview.location || '', meetingLink: interview.meeting_link || '',
+        instructions: interview.instructions || '', platform: interview.platform || '',
+      });
       setFormData({
         title: interview.title || '',
         description: interview.description || '',
@@ -166,6 +175,11 @@ const InterviewDetailsModal: React.FC<InterviewDetailsModalProps> = ({ isOpen, o
 
   const handleSaveEdit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!validInterviewVenue(venue)) {
+      setErrorMsg('Choose an interview type and complete the required location or meeting link.');
+      return;
+    }
+
     if (!canModify) return;
     setErrorMsg('');
 
@@ -215,8 +229,7 @@ const InterviewDetailsModal: React.FC<InterviewDetailsModalProps> = ({ isOpen, o
         end_time: endDateTime,
         status: formData.status,
         interviewer_id: formData.interviewerId || undefined,
-        location: formData.location.trim(),
-        meeting_link: formData.meetingLink.trim(),
+        ...venuePayload(venue),
         ...(customMsg.isCustomized
           ? {
               custom_email_subject: customMsg.customEmailSubject || undefined,
@@ -589,6 +602,12 @@ const InterviewDetailsModal: React.FC<InterviewDetailsModalProps> = ({ isOpen, o
               )}
 
               {/* Description / Notes & Venue / Meeting Link */}
+              <div className="text-sm text-gray-700 space-y-1">
+                <p>Interview type: {interview.interview_type || 'Not specified'}</p>
+                {interview.platform && <p>Platform: {interview.platform}</p>}
+                {interview.instructions && <p>Instructions: {interview.instructions}</p>}
+                {interview.interview_type === 'Online' && <p>Please join a few minutes early and test your camera and microphone.</p>}
+              </div>
               {(interview.location || interview.meeting_link || interview.description || interview.notes) && (
                 <div className="space-y-3">
                   {(interview.location || interview.meeting_link) && (
@@ -878,32 +897,7 @@ const InterviewDetailsModal: React.FC<InterviewDetailsModalProps> = ({ isOpen, o
                 </select>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-black text-gray-700 uppercase tracking-wider mb-2">
-                    Location / Venue (Optional)
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.location}
-                    onChange={(e) => setFormData({ ...formData, location: e.target.value })}
-                    placeholder="e.g., Mariwasa HR Office or Online"
-                    className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-2xl text-xs font-semibold text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#D60041]/20 focus:border-[#D60041]"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-black text-gray-700 uppercase tracking-wider mb-2">
-                    Meeting Link (Optional)
-                  </label>
-                  <input
-                    type="url"
-                    value={formData.meetingLink}
-                    onChange={(e) => setFormData({ ...formData, meetingLink: e.target.value })}
-                    placeholder="https://meet.google.com/..."
-                    className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-2xl text-xs font-semibold text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#D60041]/20 focus:border-[#D60041]"
-                  />
-                </div>
-              </div>
+              <InterviewVenueFields value={venue} onChange={setVenue} companyAddress={interviewDefaults?.company_address} />
 
               <div>
                 <label className="block text-xs font-black text-gray-700 uppercase tracking-wider mb-2">
@@ -931,8 +925,8 @@ const InterviewDetailsModal: React.FC<InterviewDetailsModalProps> = ({ isOpen, o
                     endTime={formData.date && formData.endTime ? `${formData.date}T${formData.endTime}:00` : undefined}
                     interviewerName={selectedHr?.fullname || interview.interviewer_name}
                     interviewerEmail={selectedHr?.email || interview.interviewer_email}
-                    location={formData.location}
-                    meetingLink={formData.meetingLink}
+                    location={venue.interviewType === 'Onsite' ? venue.location : ''}
+                    meetingLink={venue.interviewType === 'Online' ? venue.meetingLink : ''}
                     notes={formData.description}
                     reason={formData.status === 'CANCELED' ? formData.description : undefined}
                     onChange={handleCustomMsgChange}
@@ -950,7 +944,7 @@ const InterviewDetailsModal: React.FC<InterviewDetailsModalProps> = ({ isOpen, o
                 </button>
                 <button
                   type="submit"
-                  disabled={isUpdating}
+                  disabled={isUpdating || !validInterviewVenue(venue)}
                   className="w-full sm:w-auto px-6 py-2.5 bg-[#D60041] hover:bg-rose-700 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-[#D60041]/20 disabled:opacity-50 text-center"
                 >
                   {isUpdating ? 'Saving to System & Google Calendar...' : 'Save Changes'}

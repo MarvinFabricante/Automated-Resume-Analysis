@@ -14,6 +14,9 @@ class Interview(Base):
     start_time = Column(DateTime, nullable=False)
     end_time = Column(DateTime, nullable=False)
     google_event_id = Column(String, nullable=True)
+    interview_type = Column(String, nullable=True, default="Not specified", server_default="Not specified")
+    instructions = Column(Text, nullable=True)
+    platform = Column(String, nullable=True)
     meeting_link = Column(String, nullable=True)
     location = Column(String, nullable=True)
     status = Column(String, default="SCHEDULED") # SCHEDULED, CONFIRMED, RESCHEDULE_REQUESTED, COMPLETED, CANCELED, NO_SHOW

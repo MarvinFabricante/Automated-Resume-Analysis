@@ -90,26 +90,48 @@ const SystemSettings: React.FC = () => {
   const [savedMaxActiveApps, setSavedMaxActiveApps] = useState<number>(3);
   const [maxActiveAppsInput, setMaxActiveAppsInput] = useState<string>('3');
   const [maxActiveAppsError, setMaxActiveAppsError] = useState<string | null>(null);
+  const [retentionMonths, setRetentionMonths] = useState<number>(12);
+  const [reapplicationCooldownDays, setReapplicationCooldownDays] = useState<number>(0);
+  const [messagingClosureDays, setMessagingClosureDays] = useState<number>(30);
+  const [allowHiredElsewhere, setAllowHiredElsewhere] = useState<boolean>(false);
+  const [retentionLogs, setRetentionLogs] = useState<any[]>([]);
+  const [isRunningRetention, setIsRunningRetention] = useState<boolean>(false);
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [showRecalcConfirm, setShowRecalcConfirm] = useState<boolean>(false);
   const [recalcProgress, setRecalcProgress] = useState<{ percent: number; label: string } | null>(null);
+
+  const loadRetentionLogs = async () => {
+    try {
+      const res = await api.get('/system-config/retention/logs?limit=10');
+      if (Array.isArray(res.data)) setRetentionLogs(res.data);
+    } catch {
+      // ignore
+    }
+  };
 
   useEffect(() => {
     const fetchRecruitmentConfig = async () => {
       try {
         const res = await api.get('/system-config/recruitment');
-        if (res.data && res.data.max_active_applications !== undefined) {
-          const serverVal = Number(res.data.max_active_applications) || 3;
-          setMaxActiveApps(serverVal);
-          setSavedMaxActiveApps(serverVal);
-          setMaxActiveAppsInput(String(serverVal));
-          setMaxActiveAppsError(null);
+        if (res.data) {
+          if (res.data.max_active_applications !== undefined) {
+            const serverVal = Number(res.data.max_active_applications) || 3;
+            setMaxActiveApps(serverVal);
+            setSavedMaxActiveApps(serverVal);
+            setMaxActiveAppsInput(String(serverVal));
+            setMaxActiveAppsError(null);
+          }
+          if (res.data.retention_months !== undefined) setRetentionMonths(Number(res.data.retention_months) || 12);
+          if (res.data.reapplication_cooldown_days !== undefined) setReapplicationCooldownDays(Number(res.data.reapplication_cooldown_days) || 0);
+          if (res.data.messaging_closure_days !== undefined) setMessagingClosureDays(Number(res.data.messaging_closure_days) || 30);
+          if (res.data.allow_hired_elsewhere_withdrawal !== undefined) setAllowHiredElsewhere(Boolean(res.data.allow_hired_elsewhere_withdrawal));
         }
       } catch (err) {
         console.error("Failed to load recruitment config:", err);
       }
     };
     fetchRecruitmentConfig();
+    loadRetentionLogs();
   }, []);
 
   useEffect(() => {
@@ -230,7 +252,13 @@ const SystemSettings: React.FC = () => {
     try {
       await updateWeights(weights).unwrap();
       await updateThresholds(thresholds).unwrap();
-      await api.put('/system-config/recruitment', { max_active_applications: check.num });
+      await api.put('/system-config/recruitment', {
+        max_active_applications: check.num,
+        retention_months: retentionMonths,
+        reapplication_cooldown_days: reapplicationCooldownDays,
+        messaging_closure_days: messagingClosureDays,
+        allow_hired_elsewhere_withdrawal: allowHiredElsewhere,
+      });
       setSavedMaxActiveApps(check.num);
       setMaxActiveApps(check.num);
       setMaxActiveAppsInput(String(check.num));
@@ -800,6 +828,177 @@ const SystemSettings: React.FC = () => {
                       </p>
                     </div>
                   </div>
+                </div>
+
+                {/* Data Retention, Messaging Closure, Cooldown & Hired-Elsewhere Rules */}
+                <div className="mt-5 pt-5 border-t border-gray-100 grid grid-cols-1 @[620px]:grid-cols-2 gap-4">
+                  <div className="p-4 rounded-2xl bg-gray-50/70 border border-gray-100 space-y-2">
+                    <label htmlFor="retention-months" className="text-xs font-bold text-gray-900 block">
+                      Data Retention Window (Months)
+                    </label>
+                    <p className="text-[11px] text-gray-500">
+                      Default: 12 months. Counted from deactivation date (deactivated accounts) or decision date (resolved applications). Active applicants are never purged.
+                    </p>
+                    <input
+                      id="retention-months"
+                      type="number"
+                      min={1}
+                      max={120}
+                      value={retentionMonths}
+                      onChange={(e) => setRetentionMonths(Math.max(1, Math.min(120, Number(e.target.value) || 12)))}
+                      className="h-9 w-28 px-3 bg-white rounded-xl border border-gray-200 text-sm font-bold text-gray-900"
+                    />
+                  </div>
+
+                  <div className="p-4 rounded-2xl bg-gray-50/70 border border-gray-100 space-y-2">
+                    <label htmlFor="messaging-closure-days" className="text-xs font-bold text-gray-900 block">
+                      Messaging Closure Window (Days after Resolution)
+                    </label>
+                    <p className="text-[11px] text-gray-500">
+                      Default: 30 days. Message threads for finished applications become read-only after this period (withdrawn applications close immediately).
+                    </p>
+                    <input
+                      id="messaging-closure-days"
+                      type="number"
+                      min={1}
+                      max={365}
+                      value={messagingClosureDays}
+                      onChange={(e) => setMessagingClosureDays(Math.max(1, Math.min(365, Number(e.target.value) || 30)))}
+                      className="h-9 w-28 px-3 bg-white rounded-xl border border-gray-200 text-sm font-bold text-gray-900"
+                    />
+                  </div>
+
+                  <div className="p-4 rounded-2xl bg-gray-50/70 border border-gray-100 space-y-2">
+                    <label htmlFor="reapp-cooldown-days" className="text-xs font-bold text-gray-900 block">
+                      Reapplication Cooldown (Days — 0 = None)
+                    </label>
+                    <p className="text-[11px] text-gray-500">
+                      Default: 0 (no cooldown enforced). Uses salted one-way email hash without exposing anonymized personal data.
+                    </p>
+                    <input
+                      id="reapp-cooldown-days"
+                      type="number"
+                      min={0}
+                      max={365}
+                      value={reapplicationCooldownDays}
+                      onChange={(e) => setReapplicationCooldownDays(Math.max(0, Math.min(365, Number(e.target.value) || 0)))}
+                      className="h-9 w-28 px-3 bg-white rounded-xl border border-gray-200 text-sm font-bold text-gray-900"
+                    />
+                  </div>
+
+                  <div className="p-4 rounded-2xl bg-gray-50/70 border border-gray-100 flex flex-col justify-between gap-2">
+                    <div>
+                      <span className="text-xs font-bold text-gray-900 block">
+                        Allow &ldquo;Withdrawn – hired elsewhere in company&rdquo;
+                      </span>
+                      <p className="text-[11px] text-gray-500 mt-1">
+                        Switchable per Mariwasa HR policy. When enabled, HR can mark remaining active applications after an applicant accepts an offer outside the system.
+                      </p>
+                    </div>
+                    <label className="inline-flex items-center gap-2.5 text-xs font-bold text-gray-800 cursor-pointer pt-1">
+                      <input
+                        type="checkbox"
+                        checked={allowHiredElsewhere}
+                        onChange={(e) => setAllowHiredElsewhere(e.target.checked)}
+                        className="rounded border-gray-300 text-[#D10043] focus:ring-[#D10043]"
+                      />
+                      <span>{allowHiredElsewhere ? 'Enabled for HR' : 'Disabled (Default)'}</span>
+                    </label>
+                  </div>
+                </div>
+
+                {/* Retention Anonymization Job Runner & Audit Run Log */}
+                <div className="mt-5 pt-5 border-t border-gray-100 space-y-3">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <h3 className="text-xs font-bold text-gray-900 uppercase tracking-wider">
+                        Retention Anonymization Job (Dry-Run &amp; Run Logs)
+                      </h3>
+                      <p className="text-[11px] text-gray-500">
+                        Safely preview or execute PII anonymization for records older than {retentionMonths} month(s). Never purges applicants with active applications.
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        disabled={isRunningRetention}
+                        onClick={async () => {
+                          setIsRunningRetention(true);
+                          try {
+                            const res = await api.post('/system-config/retention/run', { dry_run: true });
+                            toast.success(
+                              `Dry run complete: ${res.data?.candidates_anonymized ?? 0} account(s) and ${res.data?.applications_anonymized ?? 0} application(s) eligible (${res.data?.skipped_active ?? 0} active skipped).`
+                            );
+                            loadRetentionLogs();
+                          } catch (err: any) {
+                            toast.error(err?.response?.data?.detail || 'Dry run failed.');
+                          } finally {
+                            setIsRunningRetention(false);
+                          }
+                        }}
+                        className="px-3.5 py-2 rounded-xl border border-gray-200 bg-white hover:bg-gray-50 text-xs font-bold text-gray-800 cursor-pointer disabled:opacity-50"
+                      >
+                        Run Dry Run
+                      </button>
+                      <button
+                        type="button"
+                        disabled={isRunningRetention}
+                        onClick={async () => {
+                          if (!window.confirm(`Run live anonymization for records past ${retentionMonths} month(s)? Personal identifiers and resume files will be permanently purged while preserving statistics.`)) {
+                            return;
+                          }
+                          setIsRunningRetention(true);
+                          try {
+                            const res = await api.post('/system-config/retention/run', { dry_run: false });
+                            toast.success(
+                              `Anonymization finished: ${res.data?.candidates_anonymized ?? 0} account(s), ${res.data?.applications_anonymized ?? 0} app(s), ${res.data?.files_deleted ?? 0} file(s) purged.`
+                            );
+                            loadRetentionLogs();
+                          } catch (err: any) {
+                            toast.error(err?.response?.data?.detail || 'Anonymization run failed.');
+                          } finally {
+                            setIsRunningRetention(false);
+                          }
+                        }}
+                        className="px-3.5 py-2 rounded-xl bg-[#D10043] hover:bg-[#b50039] text-white text-xs font-bold cursor-pointer disabled:opacity-50"
+                      >
+                        Run Anonymization Now
+                      </button>
+                    </div>
+                  </div>
+
+                  {retentionLogs.length > 0 && (
+                    <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white">
+                      <table className="w-full text-left text-[11px]">
+                        <thead className="bg-gray-50 text-gray-500 uppercase font-bold border-b border-gray-200">
+                          <tr>
+                            <th className="py-2 px-3">Date</th>
+                            <th className="py-2 px-3">Mode</th>
+                            <th className="py-2 px-3">Window</th>
+                            <th className="py-2 px-3">Evaluated</th>
+                            <th className="py-2 px-3">Anonymized</th>
+                            <th className="py-2 px-3">Files Deleted</th>
+                            <th className="py-2 px-3">Active Skipped</th>
+                            <th className="py-2 px-3">Status</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">
+                          {retentionLogs.slice(0, 5).map((log: any) => (
+                            <tr key={log.id}>
+                              <td className="py-2 px-3 text-gray-700">{log.started_at ? new Date(log.started_at).toLocaleString() : '—'}</td>
+                              <td className="py-2 px-3 font-bold">{log.dry_run ? 'Dry Run' : 'Live'}</td>
+                              <td className="py-2 px-3">{log.retention_months} mo</td>
+                              <td className="py-2 px-3">{log.candidates_evaluated}</td>
+                              <td className="py-2 px-3">{log.candidates_anonymized} / {log.applications_anonymized} apps</td>
+                              <td className="py-2 px-3">{log.files_deleted}</td>
+                              <td className="py-2 px-3">{log.skipped_active}</td>
+                              <td className="py-2 px-3 font-semibold text-emerald-700">{log.status}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
                 </div>
               </section>
 

@@ -193,28 +193,10 @@ async def get_interviews_for_candidate_by_user_id(
     user_id: int,
     fallback_email: Optional[str] = None,
 ) -> List[Interview]:
-    """Get interviews for a candidate by authenticated user_id (with legacy email fallback)."""
+    """Get interviews strictly by account ownership."""
     if not user_id:
-        if fallback_email:
-            return await get_interviews_for_candidate(db, fallback_email)
         return []
-
-    norm_email = (fallback_email or "").strip().lower()
-    if not norm_email:
-        u_res = await db.execute(select(User.email).where(User.id == user_id))
-        u_email = u_res.scalar_one_or_none()
-        norm_email = (u_email or "").strip().lower()
-
-    if norm_email:
-        condition = or_(
-            JobApplication.user_id == user_id,
-            and_(
-                JobApplication.user_id.is_(None),
-                func.lower(JobApplication.candidate_email) == norm_email,
-            ),
-        )
-    else:
-        condition = JobApplication.user_id == user_id
+    condition = JobApplication.user_id == user_id
 
     result = await db.execute(
         select(Interview)
@@ -242,16 +224,12 @@ async def get_interviews_for_candidate(db: AsyncSession, email: str) -> List[Int
     matched_user_id = u_res.scalar_one_or_none()
 
     if matched_user_id is not None:
-        condition = or_(
-            JobApplication.user_id == matched_user_id,
-            func.lower(JobApplication.candidate_email) == normalized_email,
-            func.lower(JobApplication.contact_email) == normalized_email,
-        )
-    else:
-        condition = or_(
-            func.lower(JobApplication.candidate_email) == normalized_email,
-            func.lower(JobApplication.contact_email) == normalized_email,
-        )
+        return await get_interviews_for_candidate_by_user_id(db, matched_user_id)
+    condition = and_(
+        JobApplication.user_id.is_(None),
+        or_(func.lower(JobApplication.candidate_email) == normalized_email,
+            func.lower(JobApplication.contact_email) == normalized_email),
+    )
 
     result = await db.execute(
         select(Interview)

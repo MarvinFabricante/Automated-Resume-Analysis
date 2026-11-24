@@ -90,7 +90,7 @@ async def check_duplicate_application(
     Uses authenticated user_id first when available.
     """
     effective_user_id = user_id
-    if effective_user_id is None and current_user and (current_user.get("role") or "CANDIDATE").upper() == "CANDIDATE":
+    if current_user and (current_user.get("role") or "CANDIDATE").upper() == "CANDIDATE":
         effective_user_id = current_user.get("id")
     existing = await job_application_service.check_duplicate(
         db, job_id, email or "", user_id=effective_user_id
@@ -177,10 +177,7 @@ async def get_applications_for_candidate(
     if current_user and (current_user.get("role") or "CANDIDATE").upper() == "CANDIDATE":
         auth_uid = current_user.get("id")
         auth_email = (current_user.get("sub") or current_user.get("email") or "").strip().lower()
-        if auth_uid and (
-            raw_param in ("me", "my", str(auth_uid))
-            or raw_param.lower() == auth_email
-        ):
+        if auth_uid:
             return await job_application_service.get_applications_for_user(
                 db, user_id=auth_uid, fallback_email=auth_email
             )

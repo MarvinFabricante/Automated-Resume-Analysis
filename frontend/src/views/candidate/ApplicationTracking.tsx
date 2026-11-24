@@ -31,7 +31,11 @@ import {
 } from 'lucide-react';
 import { useSelector } from 'react-redux';
 import { RootState } from '../../redux/store';
-import { useGetCandidateApplicationsQuery, useGetApplicationInterviewsQuery } from '../../redux/api/apiSlice';
+import {
+  useGetCandidateApplicationsQuery,
+  useGetApplicationInterviewsQuery,
+  useWithdrawApplicationMutation,
+} from '../../redux/api/apiSlice';
 import { getAssetUrl } from '../../services/api';
 import Header from '../../components/layout/Header';
 import Sidebar from '../../components/layout/Sidebar';
@@ -58,6 +62,10 @@ const ApplicationTracking: React.FC = () => {
   const [isEnvModalOpen, setIsEnvModalOpen] = useState(false);
   const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
   const [isRescheduleModalOpen, setIsRescheduleModalOpen] = useState(false);
+  const [showWithdrawModal, setShowWithdrawModal] = useState(false);
+  const [withdrawReason, setWithdrawReason] = useState('');
+  const [withdrawFeedback, setWithdrawFeedback] = useState<string | null>(null);
+  const [withdrawApplication, { isLoading: isWithdrawing }] = useWithdrawApplicationMutation();
 
   const { user, userId } = useSelector((state: RootState) => state.auth);
   const email = typeof user === 'string' ? user : (user as any)?.email;
@@ -413,11 +421,20 @@ const ApplicationTracking: React.FC = () => {
                 </div>
               </div>
 
-              <div className="flex items-center gap-3 sm:gap-4 bg-slate-50/80 p-3 sm:p-4 rounded-2xl border border-slate-200/60 self-start lg:self-center shrink-0">
+              <div className="flex flex-wrap items-center gap-3 sm:gap-4 bg-slate-50/80 p-3 sm:p-4 rounded-2xl border border-slate-200/60 self-start lg:self-center shrink-0">
                 <div className="text-right mr-1">
                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Current Stage</p>
                   <p className="text-sm font-black text-slate-900 tracking-tight">{jobDetails.status}</p>
                 </div>
+                {activeApplication?.group === 'active' && !activeApplication?.isReadOnly && (
+                  <button
+                    type="button"
+                    onClick={() => setShowWithdrawModal(true)}
+                    className="px-3.5 py-2 rounded-xl border border-rose-200 bg-white hover:bg-rose-50 text-rose-700 text-xs font-bold transition-colors cursor-pointer"
+                  >
+                    Withdraw Application
+                  </button>
+                )}
                 <div className={`w-3.5 h-3.5 rounded-full ${jobDetails.status === 'Accepted' ? 'bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.5)]' :
                   jobDetails.status === 'Rejected' ? 'bg-rose-500 shadow-[0_0_10px_rgba(244,63,94,0.5)]' :
                     jobDetails.status === 'Reviewed' ? 'bg-blue-500 shadow-[0_0_10px_rgba(59,130,246,0.5)]' :
@@ -433,6 +450,128 @@ const ApplicationTracking: React.FC = () => {
                 </button>
               </div>
             </div>
+
+            {/* Clear End-State & Hold Notices (No Empty Screen) */}
+            {(() => {
+              const rawSt = String(activeApplication?.rawStatus || jobDetails.status || '').toUpperCase();
+              const isPassedEnd = rawSt.includes('PASSED') || rawSt.includes('ENDORSED') || rawSt === 'ACCEPTED';
+              const isNotSelectedEnd = rawSt === 'NOT SELECTED' || rawSt === 'NOT_SELECTED' || rawSt === 'REJECTED';
+              const isWithdrawnEnd = rawSt.startsWith('WITHDRAWN');
+              const isOnHoldSt = rawSt === 'ON HOLD' || rawSt === 'ON_HOLD';
+
+              if (isPassedEnd) {
+                return (
+                  <div className="mt-5 p-4 rounded-2xl bg-emerald-50 border border-emerald-200 flex items-start gap-3">
+                    <CheckCircle2 size={20} className="text-emerald-600 shrink-0 mt-0.5" />
+                    <div className="space-y-1 text-xs">
+                      <p className="font-black text-emerald-900 text-sm">
+                        Passed Initial Interview – Endorsed for next stage
+                      </p>
+                      <p className="text-emerald-800 leading-relaxed">
+                        Congratulations! Our HR team will contact you outside the system regarding the next steps. This application is now read-only, while your history and messages remain viewable and you can still apply to other open positions.
+                      </p>
+                    </div>
+                  </div>
+                );
+              }
+              if (isNotSelectedEnd) {
+                return (
+                  <div className="mt-5 p-4 rounded-2xl bg-slate-50 border border-slate-200 flex items-start gap-3">
+                    <AlertCircle size={20} className="text-slate-500 shrink-0 mt-0.5" />
+                    <div className="space-y-1 text-xs">
+                      <p className="font-black text-slate-900 text-sm">Not selected</p>
+                      <p className="text-slate-600 leading-relaxed">
+                        Thank you for applying. Your feedback report remains viewable below, this application no longer counts toward your 3-active-application limit, and your account stays active to apply for other open roles.
+                      </p>
+                    </div>
+                  </div>
+                );
+              }
+              if (isWithdrawnEnd) {
+                return (
+                  <div className="mt-5 p-4 rounded-2xl bg-slate-50 border border-slate-200 flex items-start gap-3">
+                    <XCircle size={20} className="text-slate-500 shrink-0 mt-0.5" />
+                    <div className="space-y-1 text-xs">
+                      <p className="font-black text-slate-900 text-sm">{jobDetails.status} (Read-only)</p>
+                      <p className="text-slate-600 leading-relaxed">
+                        This application has been withdrawn and its messaging thread is closed. Your application slot has been released and your account remains active.
+                      </p>
+                    </div>
+                  </div>
+                );
+              }
+              if (isOnHoldSt) {
+                return (
+                  <div className="mt-5 p-4 rounded-2xl bg-amber-50 border border-amber-200 flex items-start gap-3">
+                    <Clock size={20} className="text-amber-600 shrink-0 mt-0.5" />
+                    <div className="space-y-1 text-xs">
+                      <p className="font-black text-amber-900 text-sm">Application On Hold</p>
+                      <p className="text-amber-800 leading-relaxed">
+                        {activeApplication?.originalData?.hold_reason ||
+                          'HR has placed this application on hold while you progress with another opportunity. HR can resume it anytime, or you may withdraw it whenever you choose.'}
+                      </p>
+                    </div>
+                  </div>
+                );
+              }
+              return null;
+            })()}
+
+            {withdrawFeedback && (
+              <div className="mt-4 p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-xs font-semibold text-emerald-800">
+                {withdrawFeedback}
+              </div>
+            )}
+
+            {/* Withdraw Single Application Confirmation Modal */}
+            {showWithdrawModal && (
+              <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4">
+                <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4">
+                  <h3 className="text-lg font-black text-slate-900">Withdraw Application?</h3>
+                  <p className="text-xs text-slate-600 leading-relaxed">
+                    Are you sure you want to withdraw your application for <strong>{jobDetails.role}</strong>?
+                    Any scheduled interviews for this role will be cancelled, the conversation will become read-only, and your active application slot will be freed immediately.
+                  </p>
+                  <textarea
+                    value={withdrawReason}
+                    onChange={(e) => setWithdrawReason(e.target.value)}
+                    placeholder="Optional reason for withdrawing..."
+                    rows={2}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 outline-none focus:border-[#D10043]"
+                  />
+                  <div className="flex justify-end gap-2 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowWithdrawModal(false)}
+                      className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 cursor-pointer"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isWithdrawing}
+                      onClick={async () => {
+                        try {
+                          const res = await withdrawApplication({
+                            applicationId: activeApplication.id,
+                            reason: withdrawReason.trim() || undefined,
+                          }).unwrap();
+                          setWithdrawFeedback(res?.message || 'Application withdrawn and slot freed.');
+                          setShowWithdrawModal(false);
+                          setWithdrawReason('');
+                        } catch (err: any) {
+                          setWithdrawFeedback(err?.data?.detail || 'Could not withdraw application.');
+                          setShowWithdrawModal(false);
+                        }
+                      }}
+                      className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold disabled:opacity-50 cursor-pointer"
+                    >
+                      {isWithdrawing ? 'Withdrawing...' : 'Confirm Withdrawal'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 sm:gap-8">
@@ -594,6 +733,13 @@ const ApplicationTracking: React.FC = () => {
                                 )}
                               </div>
 
+                              <div className="text-xs text-slate-700 space-y-1">
+                                <p>Interview type: {step.interviewInfo.interview_type || 'Not specified'}</p>
+                                {step.interviewInfo.location && <p>Location: {step.interviewInfo.location}</p>}
+                                {step.interviewInfo.instructions && <p>{step.interviewInfo.instructions}</p>}
+                                {step.interviewInfo.meeting_link && <p>Please join a few minutes early and test your camera and microphone.</p>}
+                                <p>All interview times are Philippine time.</p>
+                              </div>
                               <div className="pt-2 flex flex-wrap items-center gap-2">
                                 {interviewMissed ? (
                                   <button
@@ -614,13 +760,13 @@ const ApplicationTracking: React.FC = () => {
                                         className="px-3.5 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors shadow-2xs"
                                       >
                                         <Video size={13} />
-                                        <span>Join Google Meet</span>
+                                        <span>Join meeting</span>
                                         <ExternalLink size={12} />
                                       </a>
                                     ) : (
                                       <div className="flex items-center gap-1.5 text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-3 py-1.5 rounded-lg border border-emerald-200/60">
                                         <Mail size={13} className="text-emerald-600 shrink-0" />
-                                        <span>Meeting link delivered to your registered email</span>
+                                        <span>See the interview location above</span>
                                       </div>
                                     )}
 
@@ -858,14 +1004,14 @@ const ApplicationTracking: React.FC = () => {
 
             {latestInterview?.meeting_link && (
               <div className="p-3 bg-purple-50 rounded-xl border border-purple-100 flex items-center justify-between text-xs font-bold text-purple-900">
-                <span>Google Meet Link Available:</span>
+                <span>Meeting link available:</span>
                 <a
                   href={latestInterview.meeting_link}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="px-3 py-1 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors flex items-center gap-1"
                 >
-                  <span>Open Meet</span>
+                  <span>Join meeting</span>
                   <ExternalLink size={12} />
                 </a>
               </div>

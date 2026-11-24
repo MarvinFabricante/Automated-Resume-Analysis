@@ -388,13 +388,13 @@ const CandidateJobDetailsModal: React.FC<CandidateJobDetailsModalProps> = ({
                   : 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'
               }`}
             >
-              {job.is_active ? (
+              {job.is_active && (job.status || 'ACTIVE').toUpperCase() === 'ACTIVE' ? (
                 <>
                   Apply for this Position
                   <ArrowRight size={16} />
                 </>
               ) : (
-                'Applications Closed'
+                'This position is closed'
               )}
             </button>
           </div>

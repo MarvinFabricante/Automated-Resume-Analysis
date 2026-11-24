@@ -209,13 +209,17 @@ async def _anonymize_single_application(
     app.candidate_email = f"{anon_token.lower().replace(' ', '_').replace('#', '')}@anonymized.local"
     app.resume_email = None
     app.contact_email = None
-    app.phone_number = None
+    app.phone = None
     app.location = None
+    app.profile_image_url = None
     app.resume_url = None
+    app.company = None
+    app.college = None
+    app.relevance = None
     app.skills = []
-    app.experience = None
     app.degree = None
     app.certifications = None
+    app.clarification_responses = None
     app.work_experiences = None
     app.education_entries = None
     app.matched_skills = None
@@ -295,7 +299,7 @@ async def anonymize_user_and_records(
 
     if dry_run:
         for r in resumes:
-            if r.file_path:
+            if r.file_url:
                 files_deleted += 1
         if user.profile_image_url:
             files_deleted += 1
@@ -310,13 +314,12 @@ async def anonymize_user_and_records(
 
     # Delete resume files & scrub resume extracted text/metadata
     for r in resumes:
-        if r.file_path:
-            if await delete_stored_file(r.file_path):
+        if r.file_url:
+            if await delete_stored_file(r.file_url):
                 files_deleted += 1
         r.filename = "[anonymized]"
-        r.file_path = None
-        r.parsed_content = None
-        r.skills = []
+        r.file_url = None
+        r.parsed_data = None
 
     # Delete profile image file if stored
     if user.profile_image_url:
@@ -327,15 +330,18 @@ async def anonymize_user_and_records(
     cand_res = await db.execute(select(Candidate).where(Candidate.id == user.id))
     cand = cand_res.scalar_one_or_none()
     if cand:
-        cand.resume_text = None
+        if cand.resume_url:
+            if await delete_stored_file(cand.resume_url):
+                files_deleted += 1
+        cand.resume_url = None
+        cand.current_job_title = None
+        cand.current_company = None
+        cand.highest_degree = None
+        cand.university = None
         cand.skills = None
-        cand.degree = None
-        cand.job_title = None
         cand.bio = None
         cand.phone = None
         cand.location = None
-        cand.resume_url = None
-        cand.resume_filename = None
 
     # Scrub personal data in messages sent or received by this user
     msg_res = await db.execute(
@@ -343,22 +349,23 @@ async def anonymize_user_and_records(
     )
     for msg in msg_res.scalars().all():
         msg.content = "[Anonymized per data retention policy]"
-        msg.attachment_url = None
-        msg.attachment_name = None
 
     # Scrub HR candidate notes containing PII
-    notes_conditions = [HRCandidateNote.candidate_user_id == user.id]
     if norm_email:
-        notes_conditions.append(func.lower(HRCandidateNote.candidate_email) == norm_email)
-    notes_res = await db.execute(select(HRCandidateNote).where(or_(*notes_conditions)))
-    for note in notes_res.scalars().all():
-        note.candidate_email = f"{anon_token.lower().replace(' ', '_').replace('#', '')}@anonymized.local"
-        note.note_text = "[Anonymized per data retention policy]"
+        notes_res = await db.execute(
+            select(HRCandidateNote).where(func.lower(HRCandidateNote.candidate_email) == norm_email)
+        )
+        for note in notes_res.scalars().all():
+            note.candidate_email = f"{anon_token.lower().replace(' ', '_').replace('#', '')}@anonymized.local"
+            note.content = "[Anonymized per data retention policy]"
 
     # Scrub User PII and release the email address for potential fresh re-registration
     anon_slug = anon_token.lower().replace(" ", "_").replace("#", "")
     user.fullname = anon_token
     user.email = f"{anon_slug}_{user.id}@anonymized.local"
+    user.phone = None
+    user.location = None
+    user.bio = None
     user.profile_image_url = None
     user.google_credentials = None
     user.google_access_token = None

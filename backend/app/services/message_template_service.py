@@ -242,11 +242,15 @@ def build_interview_template_context(
     candidate_email: Optional[str] = None,
 ) -> Dict[str, str]:
     """Build a complete placeholder context dictionary for interview emails and SMS messages."""
+    from app.services.interview_details import manila_time
+    start_time = manila_time(start_time)
+    end_time = manila_time(end_time) if end_time else None
     formatted_date = start_time.strftime("%A, %b %d, %Y")
     start_str = start_time.strftime("%I:%M %p")
     end_str = end_time.strftime("%I:%M %p") if end_time else ""
     time_range = f"{start_str} - {end_str}" if end_str else start_str
 
+    time_range += " (Philippine time)"
     clean_location = (location or "").strip()
     clean_link = (meeting_link or "").strip()
     clean_notes = (notes or "").strip()

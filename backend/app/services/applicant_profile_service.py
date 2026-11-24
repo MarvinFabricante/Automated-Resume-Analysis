@@ -66,70 +66,21 @@ async def get_applicant_comprehensive_profile(
             matched_user_id = u_row[0]
             account_email = u_row[1]
 
-    # 1. Fetch initial matching applications by user_id or any email column
-    email_match_cond = or_(
-        func.lower(JobApplication.candidate_email) == clean_email,
-        func.lower(JobApplication.contact_email) == clean_email,
-        func.lower(JobApplication.resume_email) == clean_email,
-    )
+    # Legacy email routes resolve account emails only. Imported, unlinked records
+    # stay separate until ownership is explicitly reviewed.
     if matched_user_id is not None:
-        initial_cond = or_(
-            JobApplication.user_id == matched_user_id,
-            email_match_cond,
-        )
+        condition = JobApplication.user_id == matched_user_id
+        if not account_email:
+            result = await db.execute(select(User.email).where(User.id == matched_user_id))
+            account_email = result.scalar_one_or_none()
     else:
-        initial_cond = email_match_cond
-
-    stmt = (
-        select(JobApplication)
-        .where(initial_cond)
-        .order_by(JobApplication.created_at.desc())
-    )
-    res = await db.execute(stmt)
-    applications = list(res.scalars().all())
-
+        condition = and_(JobApplication.user_id.is_(None),
+                         func.lower(JobApplication.candidate_email) == clean_email)
+    result = await db.execute(select(JobApplication).where(condition)
+                              .order_by(JobApplication.created_at.desc()))
+    applications = list(result.scalars().all())
     if not applications:
         return None
-
-    # If any matched application has a user_id, unify all applications for that user_id
-    # so the person is never split or lost when account email and resume/contact email differ.
-    if matched_user_id is None:
-        for a in applications:
-            if getattr(a, "user_id", None) is not None:
-                matched_user_id = a.user_id
-                break
-
-    if matched_user_id is not None:
-        if not account_email:
-            u_res = await db.execute(select(User.email).where(User.id == matched_user_id))
-            account_email = u_res.scalar_one_or_none()
-        known_emails_for_query = {clean_email}
-        if account_email:
-            known_emails_for_query.add(account_email.strip().lower())
-        for a in applications:
-            for em in (a.candidate_email, getattr(a, "contact_email", None), getattr(a, "resume_email", None)):
-                if em and em.strip():
-                    known_emails_for_query.add(em.strip().lower())
-
-        unified_stmt = (
-            select(JobApplication)
-            .where(
-                or_(
-                    JobApplication.user_id == matched_user_id,
-                    and_(
-                        JobApplication.user_id.is_(None),
-                        or_(
-                            func.lower(JobApplication.candidate_email).in_(known_emails_for_query),
-                            func.lower(JobApplication.contact_email).in_(known_emails_for_query),
-                            func.lower(JobApplication.resume_email).in_(known_emails_for_query),
-                        ),
-                    ),
-                )
-            )
-            .order_by(JobApplication.created_at.desc())
-        )
-        unified_res = await db.execute(unified_stmt)
-        applications = list(unified_res.scalars().all())
 
     primary_app = applications[0]
     chosen_contact_email = getattr(primary_app, "contact_email", None) or primary_app.candidate_email
@@ -625,7 +576,7 @@ async def universal_search_hr(
         app_uid = getattr(a, "user_id", None)
         email_key = (getattr(a, "contact_email", None) or a.candidate_email or "").lower().strip()
         person_key = f"uid_{app_uid}" if app_uid else email_key
-        if (person_key and person_key in seen_people) or (email_key and email_key in seen_emails):
+        if person_key and person_key in seen_people:
             continue
         resolved_job_title = a.job_title or job_title_map.get(a.job_id, "Position") or "Position"
         candidate_emails = [
