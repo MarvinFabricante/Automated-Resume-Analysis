@@ -1,16 +1,27 @@
-import React, { ReactNode, useMemo } from 'react';
+import React, { ReactNode, useMemo, useState } from 'react';
 import { useNavigate, useLocation } from '@/utils/navigation';
 import {
   LayoutDashboard, Users, Building2, User, Settings, Search, Briefcase,
   BookOpen, MessageSquare, Scale, Sliders, Calendar, Sparkles,
-  PanelLeftClose, PanelLeftOpen, X, LogOut, FolderArchive, FileText, FileUp
+  PanelLeftClose, PanelLeftOpen, X, LogOut, FolderArchive, FileText, FileUp,
+  Bell, ChevronDown, ChevronUp, Check
 } from 'lucide-react';
 import { useSelector, useDispatch } from 'react-redux';
 import { toggleSidebar, closeSidebar } from '../../redux/slices/uiSlice';
 import { logout as logoutAction } from '../../redux/slices/authSlice';
+import { markNotificationRead, markAllRead as markAllReadAction } from '../../redux/slices/notificationSlice';
 import { RootState } from '../../redux/store';
 import { clearAllAuthSessions, performUserLogout } from '../../utils/token';
 import { apiSlice, useGetJobsQuery } from '../../redux/api/apiSlice';
+import notificationService from '../../services/notificationService';
+import {
+  isMessageNotification,
+  getMessagesPathForRole,
+  extractMessageSenderHint,
+} from '../../utils/notificationUtils';
+import { NotificationItem } from '../../types';
+import UniversalSearch from '../common/UniversalSearch';
+import NotificationDetailModal from '../modals/shared/NotificationDetailModal';
 import styles from './Sidebar.module.css';
 
 export interface NavItem {
@@ -31,9 +42,12 @@ const Sidebar: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const dispatch = useDispatch();
-  const { role: userRole } = useSelector((state: RootState) => state.auth);
+  const { user: userEmail, role: userRole } = useSelector((state: RootState) => state.auth);
   const { isSidebarOpen } = useSelector((state: RootState) => state.ui);
-  const { unreadMessagesCount } = useSelector((state: RootState) => state.notifications);
+  const { notifications, unreadCount, unreadMessagesCount } = useSelector((state: RootState) => state.notifications);
+
+  const [isMobileNotifsOpen, setIsMobileNotifsOpen] = useState(false);
+  const [selectedNotif, setSelectedNotif] = useState<NotificationItem | null>(null);
 
   const normRole = (userRole || '').toUpperCase();
   const isAdminRole = normRole === 'ADMIN';
@@ -41,6 +55,42 @@ const Sidebar: React.FC = () => {
   const isCandidateRole = normRole === 'CANDIDATE';
   const isHRPage = location.pathname.startsWith('/hr');
   const isHR = isHRRole || isHRPage;
+
+  const handleMarkAllRead = async () => {
+    if (userEmail) {
+      try {
+        await notificationService.markAllRead(userRole, userEmail);
+      } catch (err) {
+        console.error('Failed to mark all notifications as read:', err);
+      }
+    }
+    dispatch(markAllReadAction());
+  };
+
+  const handleNotificationClick = async (notif: NotificationItem) => {
+    if (!notif) return;
+    if (!notif.read) {
+      dispatch(markNotificationRead(notif.id));
+      if (notif.id !== undefined && notif.id !== null) {
+        try {
+          await notificationService.markAsRead(notif.id);
+        } catch (err) {
+          console.error('Failed to mark notification as read:', err);
+        }
+      }
+    }
+
+    if (isMessageNotification(notif)) {
+      const basePath = getMessagesPathForRole(userRole, location.pathname);
+      const senderHint = extractMessageSenderHint(notif);
+      const targetUrl = senderHint ? `${basePath}?sender=${encodeURIComponent(senderHint)}` : basePath;
+      navigate(targetUrl);
+      if (window.innerWidth < 768) dispatch(closeSidebar());
+      return;
+    }
+
+    setSelectedNotif({ ...notif, read: true });
+  };
 
   // Active jobs count for candidate sidebar badge
   const { data: rawJobs = [] } = useGetJobsQuery(undefined, { skip: !isCandidateRole });
@@ -286,6 +336,16 @@ const Sidebar: React.FC = () => {
 
         {/* NAVIGATION ITEMS */}
         <div data-slot="nav-body" className="flex-grow overflow-y-auto overflow-x-hidden custom-scrollbar px-3 py-3 space-y-5">
+          {/* Mobile Search inside Sidebar (< md) so mobile Header stays clean */}
+          {isSidebarOpen && (isCandidateRole || isHR || isAdminRole) && (
+            <div className="md:hidden pb-1">
+              <UniversalSearch
+                isMobileExpanded
+                onCloseMobile={() => dispatch(closeSidebar())}
+              />
+            </div>
+          )}
+
           {navSections.map((section, sIdx) => (
             <div key={sIdx} className="space-y-1.5">
               {isSidebarOpen ? (
@@ -392,6 +452,89 @@ const Sidebar: React.FC = () => {
               </nav>
             </div>
           ))}
+
+          {/* Mobile Notifications inside Sidebar (< md) so mobile Header stays clean */}
+          {isSidebarOpen && (isCandidateRole || isHR || isAdminRole) && (
+            <div className="md:hidden space-y-1.5">
+              <div className="px-2.5 pt-1 pb-1">
+                <p data-slot="section-label" className="text-[10px] font-black uppercase tracking-wider text-slate-400">
+                  ALERTS
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsMobileNotifsOpen((prev) => !prev)}
+                data-slot="nav-item"
+                data-active={isMobileNotifsOpen ? 'true' : undefined}
+                className="w-full flex items-center justify-between px-2.5 py-2 rounded-xl transition-all duration-150 cursor-pointer"
+              >
+                <div className="flex items-center space-x-2.5 min-w-0">
+                  <span data-slot="nav-icon" className="shrink-0">
+                    <Bell size={18} />
+                  </span>
+                  <span data-slot="nav-label" className="text-[13.5px] tracking-tight truncate leading-tight">
+                    Notifications
+                  </span>
+                </div>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  {unreadCount > 0 && (
+                    <>
+                      <span data-slot="unread-dot" className="w-2 h-2 rounded-full animate-pulse" aria-label="Unread notifications" />
+                      <span data-slot="nav-badge" className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full">
+                        {unreadCount > 99 ? '99+' : unreadCount}
+                      </span>
+                    </>
+                  )}
+                  {isMobileNotifsOpen ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
+                </div>
+              </button>
+
+              {isMobileNotifsOpen && (
+                <div className="mt-1 rounded-xl bg-white/5 border border-white/10 p-2 space-y-1.5">
+                  {unreadCount > 0 && (
+                    <div className="flex justify-end px-1 pb-1 border-b border-white/10">
+                      <button
+                        type="button"
+                        onClick={handleMarkAllRead}
+                        className="text-[11px] font-semibold text-rose-300 hover:text-white flex items-center gap-1 cursor-pointer"
+                      >
+                        <Check size={12} />
+                        <span>Mark all read</span>
+                      </button>
+                    </div>
+                  )}
+                  {notifications.length === 0 ? (
+                    <p className="text-xs text-slate-400 text-center py-3">No notifications yet.</p>
+                  ) : (
+                    <div className="max-h-56 overflow-y-auto space-y-1 pr-0.5">
+                      {notifications.slice(0, 10).map((notif: NotificationItem) => (
+                        <button
+                          key={notif.id}
+                          type="button"
+                          onClick={() => handleNotificationClick(notif)}
+                          className={`w-full text-left p-2 rounded-lg transition-colors cursor-pointer border ${
+                            notif.read
+                              ? 'bg-transparent border-transparent text-slate-300 hover:bg-white/5'
+                              : 'bg-rose-500/10 border-rose-400/25 text-white hover:bg-rose-500/20'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-xs font-bold truncate">{notif.title || 'Notification'}</span>
+                            {!notif.read && <span className="w-1.5 h-1.5 rounded-full bg-[#D60041] shrink-0" />}
+                          </div>
+                          {(notif.desc || notif.message) && (
+                            <p className="text-[11px] text-slate-300 line-clamp-2 mt-0.5">
+                              {notif.desc || notif.message}
+                            </p>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* FOOTER SECTION */}
@@ -477,6 +620,17 @@ const Sidebar: React.FC = () => {
           )}
         </div>
       </aside>
+
+      <NotificationDetailModal
+        isOpen={!!selectedNotif}
+        onClose={() => setSelectedNotif(null)}
+        notification={selectedNotif}
+        userRole={userRole}
+        onOpenMessages={(notif) => {
+          setSelectedNotif(null);
+          handleNotificationClick(notif);
+        }}
+      />
     </>
   );
 };

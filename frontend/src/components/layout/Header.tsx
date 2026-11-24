@@ -461,12 +461,12 @@ const Header: React.FC = () => {
         <div className={`w-full ${hasSidebar ? 'max-w-none' : 'max-w-[1400px] mx-auto'} flex items-center justify-between gap-2`}>
 
           <div className="flex items-center space-x-2 sm:space-x-3 min-w-0 flex-1 lg:flex-initial">
-            {/* Mobile Drawer Trigger (Mobile & Tablet only < 1024px) */}
+            {/* Mobile Drawer Trigger (Mobile only < 768px when Sidebar is present) */}
             {hasSidebar ? (
               <button
                 type="button"
                 onClick={() => dispatch(toggleSidebar())}
-                className={`lg:hidden min-w-[44px] min-h-[44px] flex items-center justify-center p-2 sm:p-2.5 rounded-xl transition-all duration-200 active:scale-95 border cursor-pointer touch-manipulation ${isSidebarOpen
+                className={`md:hidden min-w-[44px] min-h-[44px] flex items-center justify-center p-2 sm:p-2.5 rounded-xl transition-all duration-200 active:scale-95 border cursor-pointer touch-manipulation ${isSidebarOpen
                   ? 'bg-rose-50 text-[#D60041] border-rose-200'
                   : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
                   }`}
@@ -658,12 +658,12 @@ const Header: React.FC = () => {
               </div>
             ) : (
               <>
-                {/* Mobile / Tablet Universal Search Toggle */}
+                {/* Mobile / Tablet Universal Search Toggle (hidden on < md when Sidebar handles it) */}
                 {(isCandidateRole || isCandidateRoute || isApplicationPage || isHRRole || isAdminRole || location.pathname.startsWith('/hr')) && (
                   <button
                     type="button"
                     onClick={() => setIsMobileSearchOpen(!isMobileSearchOpen)}
-                    className={`lg:hidden w-11 h-11 min-w-[44px] min-h-[44px] rounded-xl sm:rounded-2xl flex items-center justify-center transition-all duration-300 border cursor-pointer touch-manipulation ${isMobileSearchOpen
+                    className={`${hasSidebar ? 'hidden md:flex' : 'flex'} lg:hidden w-11 h-11 min-w-[44px] min-h-[44px] rounded-xl sm:rounded-2xl items-center justify-center transition-all duration-300 border cursor-pointer touch-manipulation ${isMobileSearchOpen
                       ? 'bg-slate-900 border-slate-900 text-white shadow-xl'
                       : 'bg-white border-gray-200/80 text-gray-600 hover:bg-gray-50 hover:border-pink-200'
                       }`}
@@ -674,12 +674,12 @@ const Header: React.FC = () => {
                   </button>
                 )}
 
-                {/* Nav Bar Messages Button with Unread Red Dot */}
+                {/* Nav Bar Messages Button with Unread Red Dot (hidden on < md when Sidebar handles it) */}
                 {(isCandidateRole || isHRRole || isAdminRole || isHRPage) && (
                   <button
                     type="button"
                     onClick={() => navigate(getMessagesPathForRole(userRole, location.pathname))}
-                    className={`relative desktop-icon-btn w-11 h-11 min-w-[44px] min-h-[44px] rounded-xl sm:rounded-2xl flex items-center justify-center transition-all duration-300 border cursor-pointer touch-manipulation ${location.pathname.endsWith('/messages')
+                    className={`relative desktop-icon-btn w-11 h-11 min-w-[44px] min-h-[44px] rounded-xl sm:rounded-2xl ${hasSidebar ? 'hidden md:flex' : 'flex'} items-center justify-center transition-all duration-300 border cursor-pointer touch-manipulation ${location.pathname.endsWith('/messages')
                       ? 'bg-slate-900 border-slate-900 text-white shadow-xl'
                       : 'bg-white border-gray-200/80 text-gray-600 hover:bg-gray-50 hover:border-pink-200 hover:shadow-md hover:scale-105 active:scale-95'
                       }`}
@@ -698,7 +698,8 @@ const Header: React.FC = () => {
                   </button>
                 )}
 
-                <div className="relative mr-0 sm:mr-1" ref={notificationsRef}>
+                {/* Notifications Bell (hidden on < md when Sidebar handles it) */}
+                <div className={`relative mr-0 sm:mr-1 ${hasSidebar ? 'hidden md:block' : 'block'}`} ref={notificationsRef}>
                   <button
                     type="button"
                     onClick={() => setIsNotificationsOpen(!isNotificationsOpen)}
@@ -727,12 +728,53 @@ const Header: React.FC = () => {
                     />
                   )}
                 </div>
+
+                {/* Mobile Clean Actions when Sidebar is present: Profile + Logout only */}
+                {hasSidebar && (
+                  <div className="flex md:hidden items-center space-x-1.5">
+                    <button
+                      type="button"
+                      onClick={() => navigate(isAdminRole ? '/admin/profile' : (isHRRole || isHRPage) ? '/hr/profile' : '/candidate/profile')}
+                      className="w-10 h-10 min-w-[40px] min-h-[40px] rounded-full flex items-center justify-center border border-gray-200/80 bg-white hover:border-pink-200 active:scale-95 transition-all overflow-hidden cursor-pointer touch-manipulation"
+                      title="My Profile"
+                      aria-label="My Profile"
+                    >
+                      {profileImageUrl ? (
+                        <img
+                          src={profileImageUrl}
+                          alt="Profile"
+                          className="w-full h-full object-cover"
+                          onError={(e) => {
+                            const img = e.currentTarget;
+                            img.style.display = 'none';
+                            if (img.nextElementSibling) {
+                              (img.nextElementSibling as HTMLElement).style.display = 'flex';
+                            }
+                          }}
+                        />
+                      ) : null}
+                      <div className={`items-center justify-center w-full h-full ${profileImageUrl ? 'hidden' : 'flex'}`}>
+                        {isAdminRole ? <ShieldCheck className="h-4 w-4 text-gray-600" /> : <User className="h-4 w-4 text-gray-600" />}
+                      </div>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleLogout}
+                      className="w-10 h-10 min-w-[40px] min-h-[40px] rounded-xl flex items-center justify-center border border-rose-200/80 bg-rose-50/80 text-[#D60041] hover:bg-rose-100 active:scale-95 transition-all cursor-pointer touch-manipulation"
+                      title="Sign Out"
+                      aria-label="Sign Out"
+                    >
+                      <LogOut size={17} />
+                    </button>
+                  </div>
+                )}
+
                 <button
                   type="button"
                   onClick={() => setIsProfileOpen(!isProfileOpen)}
                   aria-haspopup="menu"
                   aria-expanded={isProfileOpen}
-                  className={`desktop-profile-pill min-h-[44px] min-w-[44px] flex items-center sm:space-x-3 border p-1 sm:px-2 sm:py-2 sm:pr-4 rounded-full cursor-pointer touch-manipulation transition-all duration-300 group ${isProfileOpen ? 'bg-gray-50 border-gray-200 shadow-inner' : 'hover:border-pink-200 border-gray-200/80 hover:shadow-md hover:bg-gray-50 bg-white'}`}
+                  className={`desktop-profile-pill min-h-[44px] min-w-[44px] ${hasSidebar ? 'hidden md:flex' : 'flex'} items-center sm:space-x-3 border p-1 sm:px-2 sm:py-2 sm:pr-4 rounded-full cursor-pointer touch-manipulation transition-all duration-300 group ${isProfileOpen ? 'bg-gray-50 border-gray-200 shadow-inner' : 'hover:border-pink-200 border-gray-200/80 hover:shadow-md hover:bg-gray-50 bg-white'}`}
                   title="Account menu"
                   aria-label="Account menu"
                 >
