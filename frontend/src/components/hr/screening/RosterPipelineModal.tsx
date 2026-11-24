@@ -49,7 +49,7 @@ const STAGES = [
   { id: 'Shortlisted', label: 'Shortlisted', color: 'border-purple-200 bg-purple-50/50' },
   { id: 'Interview Scheduled', label: 'Interview Scheduled', color: 'border-blue-200 bg-blue-50/50' },
   { id: 'Interviewed', label: 'Interviewed', color: 'border-amber-200 bg-amber-50/50' },
-  { id: 'Outcome', label: 'Outcome (Passed / Not Selected)', color: 'border-emerald-200 bg-emerald-50/50' },
+  { id: 'Outcome', label: 'Initial Interview Result', color: 'border-emerald-200 bg-emerald-50/50' },
 ];
 
 const RosterPipelineModal: React.FC<RosterPipelineModalProps> = ({
@@ -189,6 +189,20 @@ const RosterPipelineModal: React.FC<RosterPipelineModalProps> = ({
             </button>
           </div>
         </div>
+
+        {/* Auto-Removed Withdrawn Applicants Notice */}
+        {(roster?.cleanup_notice || (Array.isArray(roster?.auto_removed_withdrawn) && roster.auto_removed_withdrawn.length > 0)) && (
+          <div className="px-6 py-3 bg-amber-50 border-b border-amber-200 flex items-start gap-2.5 text-xs text-amber-900">
+            <AlertCircle size={16} className="text-amber-600 shrink-0 mt-0.5" />
+            <div>
+              <p className="font-bold">Withdrawn applicant(s) removed automatically</p>
+              <p className="mt-0.5">
+                {roster.cleanup_notice ||
+                  roster.auto_removed_withdrawn.map((n: any) => n.message).join(' ')}
+              </p>
+            </div>
+          </div>
+        )}
 
         {/* Non-Shortlisted Policy Bar (editable before finalizing) */}
         {roster && (
@@ -370,10 +384,11 @@ const RosterPipelineModal: React.FC<RosterPipelineModalProps> = ({
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4 min-w-[900px] h-full items-start">
             {STAGES.map((st) => {
               const stageItems = filteredItems.filter((i: any) => {
+                const stNorm = String(i.stage || '').trim().toLowerCase();
                 if (st.id === 'Outcome') {
-                  return i.stage === 'Passed initial interview' || i.stage === 'Not selected';
+                  return stNorm === 'passed initial interview' || stNorm === 'not selected';
                 }
-                return i.stage === st.id;
+                return stNorm === st.id.toLowerCase();
               });
 
               return (

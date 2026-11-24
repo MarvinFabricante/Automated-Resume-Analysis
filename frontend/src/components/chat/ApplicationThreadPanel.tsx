@@ -13,6 +13,8 @@ import {
   Download,
   Sparkles,
   ExternalLink,
+  AlertCircle,
+  RefreshCw,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import chatService, {
@@ -26,6 +28,7 @@ import { decodeToken } from '../../utils/token';
 const MAX_MSG_LEN = 2000;
 const MAX_ATT_BYTES = 5 * 1024 * 1024;
 const ALLOWED_EXTS = ['pdf', 'png', 'jpg', 'jpeg'];
+const QUIET_POLL_INTERVAL_MS = 20000;
 
 interface ApplicationThreadPanelProps {
   applicationId: number | string;
@@ -33,6 +36,8 @@ interface ApplicationThreadPanelProps {
   candidateName?: string;
   viewerRole?: 'CANDIDATE' | 'HR' | 'ADMIN';
   compact?: boolean;
+  readOnly?: boolean;
+  readOnlyReason?: string;
   onThreadUpdated?: (thread: ApplicationThreadItem | null) => void;
   onOpenFullInbox?: (threadId?: number, applicationId?: number | string) => void;
 }
@@ -64,12 +69,24 @@ const formatDateLabel = (dateStr?: string | null) => {
   }
 };
 
+const buildMessagesSignature = (list: ThreadMessageItem[]): string =>
+  list
+    .map((m) => `${m.id ?? m.client_id ?? ''}:${m.is_read ? 1 : 0}:${m.is_reported ? 1 : 0}:${m.timestamp ?? ''}`)
+    .join('|');
+
+const buildThreadSignature = (thr: ApplicationThreadItem | null): string =>
+  thr
+    ? `${thr.id}:${thr.unread_count ?? 0}:${thr.is_closed ? 1 : 0}:${thr.can_reply ? 1 : 0}:${thr.last_message_time ?? ''}`
+    : 'null';
+
 const ApplicationThreadPanel: React.FC<ApplicationThreadPanelProps> = ({
   applicationId,
   jobTitle,
   candidateName,
   viewerRole,
   compact = false,
+  readOnly = false,
+  readOnlyReason,
   onThreadUpdated,
   onOpenFullInbox,
 }) => {
@@ -87,7 +104,9 @@ const ApplicationThreadPanel: React.FC<ApplicationThreadPanelProps> = ({
   const isCandidate = resolvedRole === 'CANDIDATE';
   const isHR = resolvedRole === 'HR' || resolvedRole === 'ADMIN';
 
-  const [loading, setLoading] = useState(true);
+  // Separate initial load spinner from quiet background refreshes so messages never flicker
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [exists, setExists] = useState(false);
   const [thread, setThread] = useState<ApplicationThreadItem | null>(null);
   const [messages, setMessages] = useState<ThreadMessageItem[]>([]);
@@ -110,47 +129,205 @@ const ApplicationThreadPanel: React.FC<ApplicationThreadPanelProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
 
-  const loadThread = useCallback(async () => {
-    if (!applicationId || !token) {
-      setLoading(false);
-      return;
-    }
-    setLoading(true);
-    try {
-      const res = await chatService.getApplicationThread(applicationId, token, true);
-      const data = res.data;
-      setExists(Boolean(data.exists));
-      setThread(data.thread || null);
-      setMessages(Array.isArray(data.messages) ? data.messages : []);
-      if (data.thread_status) {
-        setThreadStatus(data.thread_status);
-      }
-      if (onThreadUpdated) {
-        onThreadUpdated(data.thread || null);
-      }
-    } catch (err) {
-      console.error('Failed to load application thread:', err);
-    } finally {
-      setLoading(false);
-    }
-  }, [applicationId, token, onThreadUpdated]);
+  // Store onThreadUpdated in a ref so parent re-renders with inline arrow callbacks NEVER retrigger fetch loops
+  const onThreadUpdatedRef = useRef(onThreadUpdated);
+  useEffect(() => {
+    onThreadUpdatedRef.current = onThreadUpdated;
+  }, [onThreadUpdated]);
+
+  const lastThreadSigRef = useRef<string>('');
+  const lastMsgsSigRef = useRef<string>('');
+  const activeRequestIdRef = useRef<number>(0);
+  const mountedRef = useRef<boolean>(true);
+  const hasLoadedAppIdRef = useRef<string | number | null>(null);
 
   useEffect(() => {
-    loadThread();
-  }, [loadThread]);
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  const fetchThreadData = useCallback(
+    async (options?: { silent?: boolean; markRead?: boolean }) => {
+      const silent = Boolean(options?.silent);
+      const markRead = options?.markRead !== undefined ? options.markRead : !silent;
+
+      if (!applicationId || !token) {
+        if (mountedRef.current) {
+          setInitialLoading(false);
+          setLoadError(null);
+        }
+        return;
+      }
+
+      const requestId = ++activeRequestIdRef.current;
+      const isFirstLoadForApp = hasLoadedAppIdRef.current !== applicationId;
+
+      if (!silent && isFirstLoadForApp) {
+        setInitialLoading(true);
+      }
+      if (!silent) {
+        setLoadError(null);
+      }
+
+      try {
+        const res = await chatService.getApplicationThread(applicationId, token, markRead);
+        if (!mountedRef.current || activeRequestIdRef.current !== requestId) return;
+
+        const data = res.data || {};
+        const nextExists = Boolean(data.exists);
+        const nextThread: ApplicationThreadItem | null = data.thread || null;
+        const nextMessages: ThreadMessageItem[] = Array.isArray(data.messages) ? data.messages : [];
+        const nextMsgsSig = buildMessagesSignature(nextMessages);
+        const nextThreadSig = buildThreadSignature(nextThread);
+
+        hasLoadedAppIdRef.current = applicationId;
+        setLoadError(null);
+        setExists(nextExists);
+
+        // Avoid redundant state updates on quiet polls when payload has not changed
+        if (!silent || nextThreadSig !== lastThreadSigRef.current) {
+          lastThreadSigRef.current = nextThreadSig;
+          setThread(nextThread);
+          onThreadUpdatedRef.current?.(nextThread);
+        }
+
+        if (!silent || nextMsgsSig !== lastMsgsSigRef.current) {
+          lastMsgsSigRef.current = nextMsgsSig;
+          setMessages(nextMessages);
+        }
+
+        if (data.thread_status) {
+          setThreadStatus((prev) => {
+            const next = data.thread_status;
+            if (
+              prev.is_closed === next.is_closed &&
+              prev.can_reply === next.can_reply &&
+              prev.reason === next.reason &&
+              prev.closes_at === next.closes_at
+            ) {
+              return prev;
+            }
+            return next;
+          });
+        }
+      } catch (err: any) {
+        if (!mountedRef.current || activeRequestIdRef.current !== requestId) return;
+        const statusCode = err?.response?.status;
+
+        // If candidate has no HR-started thread and endpoint returns 403/404,
+        // show the clean empty-thread notice instead of a spinner or error glitch.
+        if (isCandidate && (statusCode === 403 || statusCode === 404)) {
+          hasLoadedAppIdRef.current = applicationId;
+          setExists(false);
+          setThread(null);
+          setMessages([]);
+          setThreadStatus({
+            is_closed: false,
+            can_reply: false,
+            reason: 'HR will message you here if they need anything.',
+            closes_at: null,
+          });
+          setLoadError(null);
+          if (lastThreadSigRef.current !== 'null') {
+            lastThreadSigRef.current = 'null';
+            onThreadUpdatedRef.current?.(null);
+          }
+          return;
+        }
+
+        // Preserve previously loaded messages during quiet background refreshes
+        if (!silent || hasLoadedAppIdRef.current !== applicationId) {
+          setLoadError(
+            err?.response?.data?.detail ||
+              'Unable to load messages right now. Please try again.'
+          );
+        }
+      } finally {
+        if (mountedRef.current && activeRequestIdRef.current === requestId) {
+          setInitialLoading(false);
+        }
+      }
+    },
+    [applicationId, token, isCandidate]
+  );
+
+  // Reset per-application tracking and perform initial fetch when applicationId changes
+  useEffect(() => {
+    hasLoadedAppIdRef.current = null;
+    lastThreadSigRef.current = '';
+    lastMsgsSigRef.current = '';
+    setExists(false);
+    setThread(null);
+    setMessages([]);
+    setLoadError(null);
+    setInitialLoading(true);
+    fetchThreadData({ silent: false, markRead: true });
+  }, [fetchThreadData]);
+
+  // Quiet visibility-aware background polling (pauses when tab is hidden, cleans up on unmount)
+  useEffect(() => {
+    if (!applicationId || !token) return;
+    let intervalId: ReturnType<typeof setInterval> | null = null;
+
+    const startPolling = () => {
+      if (intervalId) return;
+      intervalId = setInterval(() => {
+        if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+          return;
+        }
+        fetchThreadData({ silent: true, markRead: false });
+      }, QUIET_POLL_INTERVAL_MS);
+    };
+
+    const stopPolling = () => {
+      if (intervalId) {
+        clearInterval(intervalId);
+        intervalId = null;
+      }
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        stopPolling();
+      } else {
+        fetchThreadData({ silent: true, markRead: true });
+        startPolling();
+      }
+    };
+
+    if (typeof document === 'undefined' || document.visibilityState !== 'hidden') {
+      startPolling();
+    }
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', handleVisibilityChange);
+    }
+
+    return () => {
+      stopPolling();
+      if (typeof document !== 'undefined') {
+        document.removeEventListener('visibilitychange', handleVisibilityChange);
+      }
+    };
+  }, [applicationId, token, fetchThreadData]);
 
   // Load optional plain-text HR templates
   useEffect(() => {
     if (!isHR || !token) return;
+    let active = true;
     chatService
       .getTemplates(candidateName || thread?.candidate_name, jobTitle || thread?.job_title, token)
       .then((res) => {
-        if (Array.isArray(res.data)) setTemplates(res.data);
+        if (active && Array.isArray(res.data)) setTemplates(res.data);
       })
       .catch(() => {});
+    return () => {
+      active = false;
+    };
   }, [isHR, token, candidateName, jobTitle, thread?.candidate_name, thread?.job_title]);
 
-  // Real-time WebSocket updates for this application thread
+  // Real-time WebSocket updates for this application thread (with proper cleanup, no tight reconnect loop)
   useEffect(() => {
     if (!token || !applicationId) return;
     let active = true;
@@ -166,11 +343,14 @@ const ApplicationThreadPanel: React.FC<ApplicationThreadPanelProps> = ({
             String(data.application_id) === String(applicationId)
           ) {
             setExists(true);
+            setLoadError(null);
             setMessages((prev) => {
               if (prev.some((m) => String(m.id) === String(data.id))) return prev;
-              return [...prev, data];
+              const updated = [...prev, data];
+              lastMsgsSigRef.current = buildMessagesSignature(updated);
+              return updated;
             });
-            // If HR just started the conversation, allow applicant to reply now
+            // If HR just started the conversation, allow applicant to reply now (unless closed/readOnly)
             if (isCandidate && (data.sender_role || '').toUpperCase() !== 'CANDIDATE') {
               setThreadStatus((prev) => ({
                 ...prev,
@@ -183,20 +363,22 @@ const ApplicationThreadPanel: React.FC<ApplicationThreadPanelProps> = ({
             String(data.application_id) === String(applicationId)
           ) {
             const seenIds = new Set((data.message_ids || []).map((id: any) => String(id)));
-            setMessages((prev) =>
-              prev.map((m) =>
+            setMessages((prev) => {
+              const updated = prev.map((m) =>
                 seenIds.has(String(m.id))
                   ? { ...m, is_read: true, read_at: data.read_at || new Date().toISOString() }
                   : m
-              )
-            );
+              );
+              lastMsgsSigRef.current = buildMessagesSignature(updated);
+              return updated;
+            });
           }
         } catch {
           // ignore malformed WS frames
         }
       };
     } catch {
-      // ignore WS failure; HTTP polling/send still works
+      // ignore WS failure; quiet HTTP refresh still works
     }
     return () => {
       active = false;
@@ -207,7 +389,9 @@ const ApplicationThreadPanel: React.FC<ApplicationThreadPanelProps> = ({
   }, [token, applicationId, isCandidate]);
 
   useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (messages.length > 0) {
+      endRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
   }, [messages.length]);
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -229,6 +413,7 @@ const ApplicationThreadPanel: React.FC<ApplicationThreadPanelProps> = ({
 
   const handleSend = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
+    if (readOnly) return;
     const trimmed = inputText.trim();
     if ((!trimmed && !selectedFile) || isSending) return;
     if (trimmed.length > MAX_MSG_LEN) {
@@ -244,16 +429,19 @@ const ApplicationThreadPanel: React.FC<ApplicationThreadPanelProps> = ({
 
       const created: ThreadMessageItem = res.data;
       setExists(true);
-      setMessages((prev) =>
-        prev.some((m) => String(m.id) === String(created.id)) ? prev : [...prev, created]
-      );
+      setMessages((prev) => {
+        if (prev.some((m) => String(m.id) === String(created.id))) return prev;
+        const updated = [...prev, created];
+        lastMsgsSigRef.current = buildMessagesSignature(updated);
+        return updated;
+      });
       setInputText('');
       setSelectedFile(null);
       if (fileInputRef.current) fileInputRef.current.value = '';
 
-      // Refresh thread metadata if it was just started
+      // Quietly refresh thread metadata if it was just started (no spinner flash)
       if (!thread) {
-        await loadThread();
+        await fetchThreadData({ silent: true, markRead: false });
       }
     } catch (err: any) {
       const detail = err?.response?.data?.detail || 'Could not send message. Please try again.';
@@ -303,10 +491,45 @@ const ApplicationThreadPanel: React.FC<ApplicationThreadPanelProps> = ({
   };
 
   const displayPosition = thread?.job_title || jobTitle || 'Position';
+  const effectiveIsClosed = readOnly || threadStatus.is_closed;
+  const effectiveClosedReason =
+    readOnlyReason || threadStatus.reason || 'This conversation is closed';
+
+  // Error view with Retry when initial fetch fails
+  if (!initialLoading && loadError && messages.length === 0) {
+    return (
+      <div
+        id="application-messages-section"
+        className="bg-white border border-rose-200/80 rounded-3xl p-5 sm:p-6 shadow-xs"
+      >
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex items-start gap-3">
+            <div className="w-10 h-10 rounded-xl bg-rose-50 text-rose-600 border border-rose-100 flex items-center justify-center shrink-0">
+              <AlertCircle size={18} />
+            </div>
+            <div>
+              <h3 className="text-sm font-black text-slate-900">
+                Could not load messages for {displayPosition}
+              </h3>
+              <p className="text-xs text-slate-600 mt-0.5">{loadError}</p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => fetchThreadData({ silent: false, markRead: true })}
+            className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl bg-[#D60041] hover:bg-slate-900 text-white text-xs font-bold transition-colors cursor-pointer shrink-0"
+          >
+            <RefreshCw size={13} />
+            <span>Retry</span>
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   // Applicant view BEFORE HR starts the conversation:
-  // No compose box, no empty chat, no "Message HR" button.
-  if (isCandidate && !loading && !exists) {
+  // No compose box, no empty chat, no spinner, no "Message HR" button.
+  if (isCandidate && !initialLoading && !exists) {
     return (
       <div
         id="application-messages-section"
@@ -321,7 +544,9 @@ const ApplicationThreadPanel: React.FC<ApplicationThreadPanelProps> = ({
               Messages for {displayPosition}
             </h3>
             <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
-              HR will message you here if they need anything. You will get a notification.
+              {readOnly
+                ? effectiveClosedReason
+                : 'HR will message you here if they need anything. You will get a notification.'}
             </p>
           </div>
         </div>
@@ -350,7 +575,7 @@ const ApplicationThreadPanel: React.FC<ApplicationThreadPanelProps> = ({
               <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200 truncate max-w-[220px]">
                 {displayPosition}
               </span>
-              {threadStatus.is_closed && (
+              {effectiveIsClosed && (
                 <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-200 text-slate-700">
                   Closed
                 </span>
@@ -364,7 +589,7 @@ const ApplicationThreadPanel: React.FC<ApplicationThreadPanelProps> = ({
           </div>
         </div>
 
-        {onOpenFullInbox && (
+        {onOpenFullInbox && !readOnly && (
           <button
             type="button"
             onClick={() => onOpenFullInbox(thread?.id, applicationId)}
@@ -376,13 +601,27 @@ const ApplicationThreadPanel: React.FC<ApplicationThreadPanelProps> = ({
         )}
       </div>
 
+      {/* Inline non-blocking error banner if refresh failed while messages exist */}
+      {loadError && messages.length > 0 && (
+        <div className="px-4 py-2 bg-rose-50 border-b border-rose-100 flex items-center justify-between gap-2 text-xs text-rose-700">
+          <span>{loadError}</span>
+          <button
+            type="button"
+            onClick={() => fetchThreadData({ silent: false, markRead: true })}
+            className="font-bold underline hover:text-rose-900 cursor-pointer shrink-0"
+          >
+            Retry
+          </button>
+        </div>
+      )}
+
       {/* Messages List */}
       <div
         className={`flex-1 overflow-y-auto p-4 sm:p-5 space-y-3 bg-slate-50/40 ${
           compact ? 'min-h-[220px] max-h-[300px]' : 'min-h-[240px] max-h-[420px]'
         }`}
       >
-        {loading ? (
+        {initialLoading && messages.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-10 text-slate-400 text-xs">
             <div className="w-6 h-6 border-2 border-slate-200 border-t-[#D60041] rounded-full animate-spin mb-2" />
             <span>Loading conversation...</span>
@@ -390,10 +629,14 @@ const ApplicationThreadPanel: React.FC<ApplicationThreadPanelProps> = ({
         ) : messages.length === 0 ? (
           <div className="text-center py-8 px-4 space-y-1">
             <p className="text-xs sm:text-sm font-bold text-slate-700">
-              Start the conversation for {displayPosition}
+              {isCandidate
+                ? 'HR will message you here if they need anything.'
+                : `Start the conversation for ${displayPosition}`}
             </p>
             <p className="text-xs text-slate-500 max-w-sm mx-auto">
-              Once you send the first message, the applicant will receive a notification and will be able to reply in this thread.
+              {isCandidate
+                ? 'You will get a notification once HR sends a message.'
+                : 'Once you send the first message, the applicant will receive a notification and will be able to reply in this thread.'}
             </p>
           </div>
         ) : (
@@ -405,9 +648,15 @@ const ApplicationThreadPanel: React.FC<ApplicationThreadPanelProps> = ({
             const dateGroup = formatDateLabel(msg.timestamp);
             const prevDateGroup = prev ? formatDateLabel(prev.timestamp) : null;
             const showDate = !prev || dateGroup !== prevDateGroup;
+            const stableKey =
+              msg.id != null
+                ? `msg-${msg.id}`
+                : msg.client_id
+                  ? `client-${msg.client_id}`
+                  : `msg-fallback-${msg.timestamp || 't'}-${idx}`;
 
             return (
-              <React.Fragment key={msg.id || msg.client_id || idx}>
+              <React.Fragment key={stableKey}>
                 {showDate && (
                   <div className="flex justify-center my-2">
                     <span className="px-2.5 py-0.5 bg-white border border-slate-200 rounded-full text-[10px] font-semibold text-slate-500">
@@ -467,7 +716,7 @@ const ApplicationThreadPanel: React.FC<ApplicationThreadPanelProps> = ({
                         </span>
                       )
                     )}
-                    {isCandidate && !isMe && msg.id && (
+                    {isCandidate && !isMe && msg.id && !readOnly && (
                       msg.is_reported ? (
                         <span className="text-amber-600 font-semibold">Reported</span>
                       ) : (
@@ -495,7 +744,7 @@ const ApplicationThreadPanel: React.FC<ApplicationThreadPanelProps> = ({
       </div>
 
       {/* Compose Area or Read-only Closure Banner */}
-      {!threadStatus.is_closed && (isHR || threadStatus.can_reply) ? (
+      {!effectiveIsClosed && (isHR || (exists && threadStatus.can_reply)) ? (
         <form onSubmit={handleSend} className="p-3.5 sm:p-4 bg-white border-t border-slate-100 space-y-2.5">
           {/* Optional editable plain-text templates for HR */}
           {isHR && templates.length > 0 && (
@@ -600,7 +849,7 @@ const ApplicationThreadPanel: React.FC<ApplicationThreadPanelProps> = ({
         <div className="p-3.5 bg-slate-50 border-t border-slate-100 flex items-center justify-center">
           <div className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-white border border-slate-200 text-xs font-semibold text-slate-600">
             <Lock size={13} className="text-[#D60041] shrink-0" />
-            <span>{threadStatus.reason || 'This conversation is closed'}</span>
+            <span>{effectiveClosedReason}</span>
           </div>
         </div>
       )}

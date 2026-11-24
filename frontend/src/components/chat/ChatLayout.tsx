@@ -236,6 +236,16 @@ const ChatLayout: React.FC<ChatLayoutProps> = ({ isFullPage = true }) => {
       .catch(() => {});
   }, [isStaff, token, activeThread?.id, activeThread?.candidate_name, activeThread?.job_title]);
 
+  // Keep latest fetch helpers in refs so typing in search never tears down & reconnects the WebSocket
+  const fetchThreadsRef = useRef(fetchThreads);
+  const fetchTeamContactsRef = useRef(fetchTeamContacts);
+  useEffect(() => {
+    fetchThreadsRef.current = fetchThreads;
+  }, [fetchThreads]);
+  useEffect(() => {
+    fetchTeamContactsRef.current = fetchTeamContacts;
+  }, [fetchTeamContacts]);
+
   // WebSocket live updates
   useEffect(() => {
     if (!token) return;
@@ -263,7 +273,7 @@ const ChatLayout: React.FC<ChatLayoutProps> = ({ isFullPage = true }) => {
                   return [...prev, data];
                 });
               }
-              fetchThreads();
+              fetchThreadsRef.current();
             } else {
               const curContact = activeContactRef.current;
               if (
@@ -275,7 +285,7 @@ const ChatLayout: React.FC<ChatLayoutProps> = ({ isFullPage = true }) => {
                   return [...prev, data];
                 });
               }
-              if (isStaff) fetchTeamContacts();
+              if (isStaff) fetchTeamContactsRef.current();
             }
           } else if (data.type === 'messages_seen') {
             const seenIds = new Set((data.message_ids || []).map((id: any) => String(id)));
@@ -318,7 +328,7 @@ const ChatLayout: React.FC<ChatLayoutProps> = ({ isFullPage = true }) => {
         }
       }
     };
-  }, [token, fetchThreads, fetchTeamContacts, isStaff]);
+  }, [token, isStaff]);
 
   const openThread = async (thread: ApplicationThreadItem) => {
     setInboxMode('threads');

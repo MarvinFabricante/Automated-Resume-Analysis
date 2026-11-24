@@ -31,6 +31,10 @@ import {
   useGetCandidateInterviewsQuery
 } from '../../redux/api/apiSlice';
 import { RootState } from '../../redux/store';
+import {
+  isActiveApplicationStatus,
+  isWithdrawnStatus,
+} from '../../utils/applicationTracker';
 
 const CandidateDashboard: React.FC = () => {
   const navigate = useNavigate();
@@ -80,17 +84,41 @@ const CandidateDashboard: React.FC = () => {
     return map;
   }, [hrThreads]);
 
-  // Active Interviews calculation
-  const activeInterviews = useMemo(() => {
-    return interviews.filter((i: any) => i.status !== 'CANCELED' && i.status !== 'COMPLETED');
-  }, [interviews]);
+  const withdrawnAppIdSet = useMemo(() => {
+    const ids = new Set<string>();
+    applications.forEach((app: any) => {
+      if (isWithdrawnStatus(app.rawStatus || app.status)) {
+        ids.add(String(app.id));
+      }
+    });
+    return ids;
+  }, [applications]);
 
-  // In Evaluation calculation
-  const inReviewCount = useMemo(() => {
-    return applications.filter((app: any) => {
-      const s = (app.status || '').toUpperCase();
-      return s !== 'REJECTED' && s !== 'ACCEPTED';
-    }).length;
+  // Active Interviews calculation (excludes both CANCELED & CANCELLED, COMPLETED, and withdrawn apps)
+  const activeInterviews = useMemo(() => {
+    return interviews.filter((i: any) => {
+      const st = String(i.status || '').trim().toUpperCase();
+      if (st === 'CANCELED' || st === 'CANCELLED' || st === 'COMPLETED' || st === 'NO_SHOW' || st === 'REJECTED') {
+        return false;
+      }
+      if (i.job_application_id && withdrawnAppIdSet.has(String(i.job_application_id))) {
+        return false;
+      }
+      return true;
+    });
+  }, [interviews, withdrawnAppIdSet]);
+
+  // Active applications calculation (strictly excludes Withdrawn, Passed, and Not Selected!)
+  const activeApplicationsCount = useMemo(() => {
+    return applications.filter((app: any) =>
+      isActiveApplicationStatus(app.rawStatus || app.status)
+    ).length;
+  }, [applications]);
+
+  const withdrawnApplicationsCount = useMemo(() => {
+    return applications.filter((app: any) =>
+      isWithdrawnStatus(app.rawStatus || app.status)
+    ).length;
   }, [applications]);
 
   // Bookmarked jobs state & sync
@@ -149,7 +177,7 @@ const CandidateDashboard: React.FC = () => {
 
           {/* WELCOME BANNER */}
           <WelcomeHeader
-            applicationCount={applications.length}
+            applicationCount={activeApplicationsCount}
             interviewCount={activeInterviews.length}
           />
 
@@ -164,9 +192,9 @@ const CandidateDashboard: React.FC = () => {
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-1.5">
                   <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">
-                    Applications
+                    Active Applications
                   </span>
-                  <HelpTooltip content="Total job applications you have submitted." />
+                  <HelpTooltip content="Active applications count toward the 3-application limit. Withdrawn, Passed, and Not selected applications are excluded." />
                 </div>
                 <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-slate-50 group-hover:bg-[#D10043]/10 text-slate-400 group-hover:text-[#D10043] flex items-center justify-center transition-colors">
                   <Briefcase size={16} className="sm:w-[18px] sm:h-[18px]" />
@@ -174,12 +202,16 @@ const CandidateDashboard: React.FC = () => {
               </div>
               <div className="flex items-baseline gap-1.5">
                 <span className="text-xl sm:text-3xl font-black text-slate-900 tracking-tight font-mono">
-                  {applications.length}
+                  {activeApplicationsCount}
                 </span>
-                <span className="text-[10px] sm:text-xs font-bold text-slate-400">Total</span>
+                <span className="text-[10px] sm:text-xs font-bold text-slate-400">/ 3 slots</span>
               </div>
               <p className="text-[11px] text-slate-500 font-medium mt-1 truncate">
-                {applications.length > 0 ? 'Submitted applications' : 'No submissions yet'}
+                {activeApplicationsCount > 0
+                  ? `${applications.length} total (${withdrawnApplicationsCount} withdrawn)`
+                  : withdrawnApplicationsCount > 0
+                    ? `${withdrawnApplicationsCount} withdrawn • 0 active`
+                    : 'No active applications'}
               </p>
             </div>
 
@@ -255,12 +287,12 @@ const CandidateDashboard: React.FC = () => {
               </div>
               <div className="flex items-baseline gap-1.5">
                 <span className="text-xl sm:text-3xl font-black text-slate-900 tracking-tight font-mono">
-                  {inReviewCount}
+                  {activeApplicationsCount}
                 </span>
                 <span className="text-[10px] sm:text-xs font-bold text-emerald-600">Active</span>
               </div>
               <p className="text-[11px] text-slate-500 font-medium mt-1 truncate">
-                {inReviewCount > 0 ? 'Under review by hiring team' : 'No active reviews'}
+                {activeApplicationsCount > 0 ? 'Active in hiring pipeline' : 'No active reviews'}
               </p>
             </div>
 

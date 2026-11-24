@@ -146,6 +146,9 @@ const StartScreeningModal: React.FC<StartScreeningModalProps> = ({
               );
             })}
           </div>
+          <p className="text-[11px] text-slate-400">
+            Withdrawn, Passed, and Not Selected applications are automatically excluded from shortlisting.
+          </p>
         </div>
 
         {/* Footer Actions */}

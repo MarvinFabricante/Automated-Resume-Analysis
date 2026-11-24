@@ -32,6 +32,7 @@ import {
   syncSelectedApplicationIdsForJob,
   syncActiveApplicationIdForJob,
 } from '../../utils/compareSorting';
+import { isWithdrawnStatus } from '../../utils/applicationTracker';
 
 interface CandidateComparisonData extends Partial<Application> {
   id: number;
@@ -341,7 +342,12 @@ const isSamePerson = (c1: CandidateComparisonData, c2: CandidateComparisonData):
 };
 
 const CompareCandidates: React.FC = () => {
-  const { data: candidates = EMPTY_CANDIDATES, isLoading, isError: candidatesError, refetch: refetchCandidates } = useGetApplicationsQuery();
+  const { data: rawCandidates = EMPTY_CANDIDATES, isLoading, isError: candidatesError, refetch: refetchCandidates } = useGetApplicationsQuery();
+  // Exclude withdrawn applications from comparison pool
+  const candidates = useMemo(
+    () => (rawCandidates as CandidateComparisonData[]).filter((c) => !isWithdrawnStatus(c.status)),
+    [rawCandidates]
+  );
   const { data: jobs = EMPTY_JOBS } = useGetJobsQuery();
   const listScrollRef = useRef<HTMLDivElement | null>(null);
   const [searchQuery, setSearchQuery] = useState<string>("");
@@ -365,18 +371,27 @@ const CompareCandidates: React.FC = () => {
   const [compareViewMode, setCompareViewMode] = useState<'table' | 'cards'>('table'); // 'table' | 'cards' for comparison view
   const [scorecardFilter, setScorecardFilter] = useState<string | number>('all'); // 'all' | candidateId for mobile scorecard view
 
-  // Pre-load candidates from query param (e.g., ?ids=1,2,3)
+  // Pre-load candidates from query param (e.g., ?ids=1,2,3), excluding any withdrawn applications
   useEffect(() => {
     const idsParam = searchParams.get('ids');
     if (idsParam) {
-      const ids = idsParam.split(',').map(id => parseInt(id.trim(), 10)).filter(id => !isNaN(id));
+      const rawIds = idsParam.split(',').map(id => parseInt(id.trim(), 10)).filter(id => !isNaN(id));
+      const ids = rawCandidates.length > 0
+        ? rawIds.filter(id => {
+            const match = (rawCandidates as CandidateComparisonData[]).find(c => c.id === id);
+            return !match || !isWithdrawnStatus(match.status);
+          })
+        : rawIds;
       if (ids.length > 0) {
         setSelectedCandidateIds(ids);
-        setIsComparing(true);
+        setIsComparing(ids.length >= 2);
         setActiveCandidateId(ids[0]);
+      } else {
+        setSelectedCandidateIds([]);
+        setIsComparing(false);
       }
     }
-  }, [searchParams]);
+  }, [searchParams, rawCandidates]);
 
   // Synchronize reference position from server comparison
   useEffect(() => {

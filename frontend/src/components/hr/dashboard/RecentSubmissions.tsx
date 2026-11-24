@@ -12,6 +12,7 @@ import {
   matchesPositionFilter,
   sortCandidatesByOption,
 } from '../../../utils/hrAnalytics';
+import { isWithdrawnStatus, isResolvedStatus, isPassedStatus, isNotSelectedStatus } from '../../../utils/applicationTracker';
 import ViewCandidateDetailsModal from '../../modals/hr/ViewCandidateDetailsModal';
 import NewScheduleModal from '../../modals/hr/NewScheduleModal';
 
@@ -67,40 +68,54 @@ const getRelativeTime = (dStr?: string) => {
 };
 
 const getStatusInfo = (rawStatus?: string) => {
-  const s = (rawStatus || '').toUpperCase().trim();
-  if (s === 'PENDING') {
+  if (isWithdrawnStatus(rawStatus)) {
     return {
-      label: 'Pending Review',
-      badgeClass: 'bg-amber-50 text-amber-700 border-amber-200/90',
-      dotClass: 'bg-amber-500'
+      label: 'Withdrawn',
+      badgeClass: 'bg-slate-200 text-slate-700 border-slate-300',
+      dotClass: 'bg-slate-500'
     };
   }
-  if (s === 'REVIEWED') {
+  if (isPassedStatus(rawStatus)) {
     return {
-      label: 'Screened',
-      badgeClass: 'bg-blue-50 text-blue-700 border-blue-200/90',
-      dotClass: 'bg-blue-500'
-    };
-  }
-  if (s.includes('TECHNICAL') || s.includes('INTERVIEW')) {
-    return {
-      label: s === 'FINAL INTERVIEW' ? 'Final Interview' : 'Tech Interview',
-      badgeClass: 'bg-purple-50 text-purple-700 border-purple-200/90',
-      dotClass: 'bg-purple-500'
-    };
-  }
-  if (s === 'ACCEPTED') {
-    return {
-      label: 'Accepted',
+      label: 'Passed Initial',
       badgeClass: 'bg-emerald-50 text-emerald-700 border-emerald-200/90',
       dotClass: 'bg-emerald-500'
     };
   }
-  if (s === 'REJECTED') {
+  if (isNotSelectedStatus(rawStatus)) {
     return {
       label: 'Not Selected',
       badgeClass: 'bg-rose-50 text-rose-700 border-rose-200/90',
       dotClass: 'bg-rose-500'
+    };
+  }
+  const s = (rawStatus || '').toUpperCase().trim();
+  if (s === 'PENDING' || s === 'SUBMITTED') {
+    return {
+      label: 'Submitted',
+      badgeClass: 'bg-amber-50 text-amber-700 border-amber-200/90',
+      dotClass: 'bg-amber-500'
+    };
+  }
+  if (s === 'REVIEWED' || s === 'UNDER REVIEW') {
+    return {
+      label: 'Under Review',
+      badgeClass: 'bg-blue-50 text-blue-700 border-blue-200/90',
+      dotClass: 'bg-blue-500'
+    };
+  }
+  if (s === 'SHORTLISTED') {
+    return {
+      label: 'Shortlisted',
+      badgeClass: 'bg-purple-50 text-purple-700 border-purple-200/90',
+      dotClass: 'bg-purple-500'
+    };
+  }
+  if (s.includes('TECHNICAL') || s.includes('INTERVIEW')) {
+    return {
+      label: s === 'FINAL INTERVIEW' ? 'Final Interview' : 'Interview Scheduled',
+      badgeClass: 'bg-indigo-50 text-indigo-700 border-indigo-200/90',
+      dotClass: 'bg-indigo-500'
     };
   }
   if (s === 'ARCHIVED') {
@@ -264,16 +279,18 @@ const CandidateCard: React.FC<CandidateCardProps> = ({
             <span>Inspect</span>
           </button>
 
-          {/* Schedule Interview Button */}
-          <button
-            type="button"
-            onClick={() => onSchedule(candidate)}
-            className="inline-flex items-center gap-1.5 px-3 py-2 bg-rose-50 hover:bg-rose-100 text-[#D60041] border border-rose-200/90 rounded-xl text-xs font-bold transition-all active:scale-95 cursor-pointer shadow-2xs"
-            title="Schedule interview session for this candidate"
-          >
-            <Calendar size={14} className="text-[#D60041]" />
-            <span>Schedule</span>
-          </button>
+          {/* Schedule Interview Button (hidden for withdrawn or resolved applications) */}
+          {!isWithdrawnStatus(status) && !isResolvedStatus(status) && (
+            <button
+              type="button"
+              onClick={() => onSchedule(candidate)}
+              className="inline-flex items-center gap-1.5 px-3 py-2 bg-rose-50 hover:bg-rose-100 text-[#D60041] border border-rose-200/90 rounded-xl text-xs font-bold transition-all active:scale-95 cursor-pointer shadow-2xs"
+              title="Schedule interview session for this candidate"
+            >
+              <Calendar size={14} className="text-[#D60041]" />
+              <span>Schedule</span>
+            </button>
+          )}
 
           {/* Screen Button */}
           <button

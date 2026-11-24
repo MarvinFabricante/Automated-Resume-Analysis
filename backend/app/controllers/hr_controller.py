@@ -267,6 +267,8 @@ async def create_new_shortlist_roster(
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    from app.utils.cache import invalidate_application_dashboard_caches
+    await invalidate_application_dashboard_caches()
     details = await get_shortlist_roster_by_id(db, roster.id)
     return details
 
@@ -364,12 +366,17 @@ async def add_candidate_to_roster(
 ):
     """Add an applicant to an existing shortlist roster (moves status to Shortlisted)."""
     hr_email = (current_user.get("email") if current_user else None) or "HR"
-    item = await add_application_to_roster(
-        db=db,
-        roster_id=roster_id,
-        application_id=item_in.application_id,
-        added_by=hr_email
-    )
+    try:
+        item = await add_application_to_roster(
+            db=db,
+            roster_id=roster_id,
+            application_id=item_in.application_id,
+            added_by=hr_email
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    from app.utils.cache import invalidate_application_dashboard_caches
+    await invalidate_application_dashboard_caches(item_in.application_id)
     return {"success": True, "item_id": item.id, "roster_id": roster_id}
 
 
@@ -393,6 +400,8 @@ async def remove_candidate_from_roster(
     )
     if not success:
         raise HTTPException(status_code=404, detail="Applicant not found in this roster")
+    from app.utils.cache import invalidate_application_dashboard_caches
+    await invalidate_application_dashboard_caches(application_id)
     return {"success": True, "message": "Applicant removed from roster"}
 
 
@@ -406,15 +415,20 @@ async def update_roster_stage(
 ):
     """Update applicant stage inside a roster (e.g. Interviewed, Passed initial interview, Not selected)."""
     hr_email = (current_user.get("email") if current_user else None) or "HR"
-    item = await update_roster_item_stage(
-        db=db,
-        roster_id=roster_id,
-        application_id=application_id,
-        stage=stage_update.stage,
-        updated_by=hr_email
-    )
+    try:
+        item = await update_roster_item_stage(
+            db=db,
+            roster_id=roster_id,
+            application_id=application_id,
+            stage=stage_update.stage,
+            updated_by=hr_email
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     if not item:
         raise HTTPException(status_code=404, detail="Applicant not found in this roster")
+    from app.utils.cache import invalidate_application_dashboard_caches
+    await invalidate_application_dashboard_caches(application_id)
     return {"success": True, "stage": item.stage}
 
 

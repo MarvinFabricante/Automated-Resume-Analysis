@@ -18,6 +18,10 @@ const normalizeApplicationItem = (app: any) => ({
   profileImage: app.profile_image_url || null,
   resumeUrl: app.resume_url || null,
   date: app.created_at,
+  created_at: app.created_at,
+  updated_at: app.updated_at || null,
+  resolved_at: app.resolved_at || null,
+  is_read_only: Boolean(app.is_read_only),
   location: app.location || 'N/A',
   jobLocation: app.job?.location || 'N/A',
   jobDepartment: app.job?.department || 'N/A',
@@ -270,6 +274,17 @@ export const apiSlice = createApi({
       transformResponse: (response: any[]) => (response || []).map(normalizeApplicationItem),
     }),
 
+    getShortlistEligibleApplications: builder.query<any[], { jobId?: number | string } | void>({
+      query: (params) => {
+        const jobId = params && typeof params === 'object' ? params.jobId : undefined;
+        return jobId
+          ? `/applications/job/${jobId}?shortlist_eligible=true`
+          : '/applications/?shortlist_eligible=true';
+      },
+      providesTags: ['Applications', 'Shortlists'],
+      transformResponse: (response: any[]) => (response || []).map(normalizeApplicationItem),
+    }),
+
     getApplicationsSummary: builder.query<any[], void>({
       query: () => '/applications/?summary=true',
       providesTags: ['Applications'],
@@ -325,7 +340,7 @@ export const apiSlice = createApi({
           if (isPassed) {
             formattedStatus = 'Passed Initial Interview – Endorsed for next stage';
             statusColor = 'text-emerald-700 bg-emerald-50 border-emerald-200';
-            step = 4;
+            step = 5;
             group = 'completed';
             isReadOnly = true;
           } else if (isNotSelected) {
@@ -351,9 +366,9 @@ export const apiSlice = createApi({
             step = 3;
             group = 'active';
           } else if (isInterviewed) {
-            formattedStatus = 'Interviewed';
-            statusColor = 'text-indigo-700 bg-indigo-50 border-indigo-200';
-            step = 4;
+            formattedStatus = 'Initial Interview Result';
+            statusColor = 'text-amber-700 bg-amber-50 border-amber-200';
+            step = 5;
             group = 'active';
           } else if (isInterviewScheduled) {
             formattedStatus = 'Interview Scheduled';
@@ -380,10 +395,15 @@ export const apiSlice = createApi({
             status: formattedStatus,
             rawStatus: uStatus,
             group,
+            isWithdrawn: isWithdrawn || isWithdrawnHired,
+            isPassed,
+            isNotSelected,
+            isActive: group === 'active',
             isReadOnly,
+            resolvedAt: app.resolved_at || null,
             statusColor,
             step,
-            totalSteps: 4,
+            totalSteps: 5,
             originalData: app
           };
         });
@@ -396,7 +416,63 @@ export const apiSlice = createApi({
         method: 'POST',
         body: { reason },
       }),
-      invalidatesTags: ['Applications', 'Dashboard', 'Interviews', 'Shortlists', 'ApplicantProfile'],
+      async onQueryStarted({ applicationId }, { dispatch, queryFulfilled, getState }) {
+        try {
+          const { data } = await queryFulfilled;
+          const withdrawnAt = data?.application?.resolved_at || new Date().toISOString();
+          const state = getState() as any;
+          const queries = state?.api?.queries || {};
+          // Immediately patch all cached getCandidateApplications & getCandidateInterviews queries
+          // so dashboard Active/Withdrawn tabs and counters update without a refresh.
+          Object.values(queries).forEach((entry: any) => {
+            if (!entry) return;
+            if (entry.endpointName === 'getCandidateApplications' && entry.originalArgs !== undefined) {
+              dispatch(
+                apiSlice.util.updateQueryData('getCandidateApplications', entry.originalArgs, (draft: any[]) => {
+                  const target = draft.find((item) => String(item.id) === String(applicationId));
+                  if (target) {
+                    target.status = 'Withdrawn by applicant';
+                    target.rawStatus = 'WITHDRAWN BY APPLICANT';
+                    target.group = 'withdrawn';
+                    target.isWithdrawn = true;
+                    target.isActive = false;
+                    target.isReadOnly = true;
+                    target.step = 0;
+                    target.resolvedAt = withdrawnAt;
+                    target.statusColor = 'text-slate-600 bg-slate-100 border-slate-200';
+                    if (target.originalData) {
+                      target.originalData.status = 'WITHDRAWN BY APPLICANT';
+                      target.originalData.resolved_at = withdrawnAt;
+                    }
+                  }
+                })
+              );
+            } else if (entry.endpointName === 'getCandidateInterviews' && entry.originalArgs !== undefined) {
+              dispatch(
+                apiSlice.util.updateQueryData('getCandidateInterviews', entry.originalArgs, (draft: any[]) => {
+                  draft.forEach((iv) => {
+                    if (String(iv.job_application_id) === String(applicationId)) {
+                      iv.status = 'CANCELLED';
+                    }
+                  });
+                })
+              );
+            }
+          });
+          broadcastAtsUpdate('application_update');
+        } catch {
+          // rollback handled by invalidation
+        }
+      },
+      invalidatesTags: (_res, _err, arg) => [
+        'Applications',
+        'Dashboard',
+        'Interviews',
+        'Shortlists',
+        'ApplicantProfile',
+        'CalendarEvents',
+        { type: 'StatusHistory', id: arg.applicationId },
+      ],
     }),
 
     postPassAction: builder.mutation<any, { applicationId: number | string; action: 'on_hold' | 'continue'; target_application_ids: number[]; note?: string }>({
@@ -580,7 +656,7 @@ export const apiSlice = createApi({
         method: 'POST',
         body,
       }),
-      invalidatesTags: ['Applications', 'Dashboard', 'Interviews', 'CalendarEvents'],
+      invalidatesTags: ['Applications', 'Dashboard', 'Interviews', 'CalendarEvents', 'Shortlists', 'StatusHistory', 'ApplicantProfile'],
     }),
 
     updateInterview: builder.mutation<any, { interviewId: number | string;[key: string]: any }>({
@@ -589,7 +665,7 @@ export const apiSlice = createApi({
         method: 'PUT',
         body,
       }),
-      invalidatesTags: ['Interviews', 'CalendarEvents', 'Applications'],
+      invalidatesTags: ['Interviews', 'CalendarEvents', 'Applications', 'Shortlists', 'StatusHistory', 'ApplicantProfile', 'Dashboard'],
     }),
 
     candidateRescheduleInterview: builder.mutation<
@@ -601,7 +677,7 @@ export const apiSlice = createApi({
         method: 'POST',
         body,
       }),
-      invalidatesTags: ['Interviews', 'CalendarEvents', 'Applications'],
+      invalidatesTags: ['Interviews', 'CalendarEvents', 'Applications', 'Shortlists', 'StatusHistory', 'ApplicantProfile'],
     }),
 
     deleteInterview: builder.mutation<any, number | string>({
@@ -609,7 +685,7 @@ export const apiSlice = createApi({
         url: `/interviews/${interviewId}`,
         method: 'DELETE',
       }),
-      invalidatesTags: ['Interviews', 'CalendarEvents', 'Applications'],
+      invalidatesTags: ['Interviews', 'CalendarEvents', 'Applications', 'Shortlists', 'StatusHistory', 'ApplicantProfile', 'Dashboard'],
     }),
 
     cancelInterview: builder.mutation<
@@ -627,7 +703,7 @@ export const apiSlice = createApi({
         method: 'POST',
         body,
       }),
-      invalidatesTags: ['Interviews', 'CalendarEvents', 'Applications'],
+      invalidatesTags: ['Interviews', 'CalendarEvents', 'Applications', 'Shortlists', 'StatusHistory', 'ApplicantProfile', 'Dashboard'],
     }),
 
     getApplicationInterviews: builder.query<any[], number | string>({
@@ -1005,7 +1081,7 @@ export const apiSlice = createApi({
 
     getShortlistRosterById: builder.query<any, number | string>({
       query: (id) => `/hr/shortlists/${id}`,
-      providesTags: (_result, _error, id) => [{ type: 'Shortlists', id }],
+      providesTags: (_result, _error, id) => [{ type: 'Shortlists', id }, 'Shortlists'],
     }),
 
     createShortlistRoster: builder.mutation<any, { job_id: number; name: string; notes?: string; application_ids?: number[]; non_shortlisted_action?: string; finalize?: boolean; confirm_notify_non_shortlisted?: boolean }>({
@@ -1175,6 +1251,7 @@ export const {
   useLazyGetJobClosePreviewQuery,
   useChangeJobStatusMutation,
   useGetApplicationsQuery,
+  useGetShortlistEligibleApplicationsQuery,
   useGetApplicationsSummaryQuery,
   useGetApplicationByIdQuery,
   useGetCandidateApplicationsQuery,

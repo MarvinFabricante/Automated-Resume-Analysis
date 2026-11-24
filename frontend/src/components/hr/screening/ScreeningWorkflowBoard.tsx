@@ -23,11 +23,16 @@ import {
   resolveCriterionStatus,
   getCriterionStatusBadgeStyle,
 } from '../../../utils/criterionStatus';
+import {
+  isShortlistEligibleStatus,
+  normalizeAppStatus,
+} from '../../../utils/applicationTracker';
 
 interface ScreeningWorkflowBoardProps {
   jobTitle: string;
   jobId: number | string;
   minThreshold: number;
+  statusFilters?: string[];
   candidates: any[];
   onOpenDetails: (candidate: any) => void;
   onOpenFinalize: (recommendedIds: (number | string)[]) => void;
@@ -38,6 +43,7 @@ const ScreeningWorkflowBoard: React.FC<ScreeningWorkflowBoardProps> = ({
   jobTitle,
   jobId,
   minThreshold,
+  statusFilters,
   candidates = [],
   onOpenDetails,
   onOpenFinalize,
@@ -49,9 +55,21 @@ const ScreeningWorkflowBoard: React.FC<ScreeningWorkflowBoardProps> = ({
   const [searchFilter, setSearchFilter] = useState<string>('');
   const [draggedCandidateId, setDraggedCandidateId] = useState<string | null>(null);
 
-  // Filter candidates relevant to this job
+  // Filter candidates relevant to this job AND strictly exclude Withdrawn, Passed, and Not Selected
   const jobCandidates = useMemo(() => {
+    const allowedStatuses =
+      Array.isArray(statusFilters) && statusFilters.length > 0
+        ? new Set(statusFilters.map((st) => normalizeAppStatus(st).toLowerCase()))
+        : null;
+
     return candidates.filter((c) => {
+      if (!isShortlistEligibleStatus(c.status)) return false;
+
+      if (allowedStatuses) {
+        const norm = normalizeAppStatus(c.status).toLowerCase();
+        if (!allowedStatuses.has(norm)) return false;
+      }
+
       const cJobId = c.job?.id || c.job_id || c.job?.job_id;
       const cJobTitle = (c.preferredJob || c.job_title || c.job?.job_title || '').toLowerCase();
       if (jobId && cJobId) {
@@ -59,7 +77,7 @@ const ScreeningWorkflowBoard: React.FC<ScreeningWorkflowBoardProps> = ({
       }
       return cJobTitle === (jobTitle || '').toLowerCase();
     });
-  }, [candidates, jobId, jobTitle]);
+  }, [candidates, jobId, jobTitle, statusFilters]);
 
   // Split into Recommended and Below Threshold
   const { recommended, belowThreshold } = useMemo(() => {
@@ -187,7 +205,8 @@ const ScreeningWorkflowBoard: React.FC<ScreeningWorkflowBoardProps> = ({
             </h2>
           </div>
           <p className="text-xs text-slate-500">
-            Threshold: <strong>{minThreshold}%</strong> • Total Applicants: <strong>{jobCandidates.length}</strong> • Recommended: <strong className="text-emerald-700">{recommended.length}</strong> • Talent Pool: <strong>{belowThreshold.length}</strong>
+            Threshold: <strong>{minThreshold}%</strong> • Eligible Applicants: <strong>{jobCandidates.length}</strong> • Recommended: <strong className="text-emerald-700">{recommended.length}</strong> • Talent Pool: <strong>{belowThreshold.length}</strong>{' '}
+            <span className="text-slate-400">(withdrawn &amp; resolved excluded)</span>
           </p>
         </div>
 

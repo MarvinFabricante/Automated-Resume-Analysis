@@ -45,6 +45,8 @@ import {
 } from '../../utils/criterionStatus';
 import MessageApplicantModal from '../../components/modals/hr/MessageApplicantModal';
 import RequirementEvidence from '../../components/common/RequirementEvidence';
+import ApplicationStageTracker from '../../components/common/ApplicationStageTracker';
+import { computeApplicationTracker, isWithdrawnStatus } from '../../utils/applicationTracker';
 
 interface ApplicantProfileProps {
   emailProp?: string;
@@ -366,7 +368,29 @@ const ApplicantProfile: React.FC<ApplicantProfileProps> = ({
               <span>Applications & Qualifications Summary</span>
             </h2>
 
-            {applications.map((app: any) => (
+            {applications.map((app: any) => {
+              const appIsWithdrawn = isWithdrawnStatus(app.raw_status || app.status);
+              const appInterviews = interviews.filter((iv: any) => {
+                if (Number(iv.job_application_id) === Number(app.id)) return true;
+                if (
+                  Array.isArray(iv.combined_application_ids) &&
+                  iv.combined_application_ids.some((id: any) => Number(id) === Number(app.id))
+                ) {
+                  return true;
+                }
+                return false;
+              });
+              const appHistory = statusHistory.filter(
+                (h: any) => Number(h.application_id ?? h.job_application_id) === Number(app.id)
+              );
+              const appTracker = computeApplicationTracker({
+                status: app.raw_status || app.status,
+                statusHistory: appHistory,
+                interviews: appInterviews,
+                createdAt: app.created_at || app.applied_date,
+                resolvedAt: app.resolved_at,
+              });
+              return (
               <div key={app.id} className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs space-y-3">
                 <div className="flex items-center justify-between gap-2 flex-wrap">
                   <div>
@@ -395,20 +419,22 @@ const ApplicantProfile: React.FC<ApplicantProfileProps> = ({
                         </span>
                       );
                     })()}
-                    <span className="px-2.5 py-1 text-xs font-bold rounded-full bg-slate-100 text-slate-700">
-                      {app.status}
+                    <span className={`px-2.5 py-1 text-xs font-bold rounded-full border ${appIsWithdrawn ? 'bg-slate-200 text-slate-700 border-slate-300' : 'bg-slate-100 text-slate-700 border-slate-200'}`}>
+                      {appIsWithdrawn ? 'Withdrawn' : app.status}
                     </span>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setMessageModalApp({ id: app.id, jobTitle: app.job_title || 'Position' })
-                      }
-                      className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-bold rounded-full bg-rose-50 text-[#D60041] hover:bg-[#D60041] hover:text-white border border-rose-200 transition-colors cursor-pointer"
-                    >
-                      <MessageSquare size={12} />
-                      <span>Message applicant</span>
-                    </button>
-                    {String(app.status || '').toLowerCase() === 'on hold' && (
+                    {!appIsWithdrawn && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setMessageModalApp({ id: app.id, jobTitle: app.job_title || 'Position' })
+                        }
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-bold rounded-full bg-rose-50 text-[#D60041] hover:bg-[#D60041] hover:text-white border border-rose-200 transition-colors cursor-pointer"
+                      >
+                        <MessageSquare size={12} />
+                        <span>Message applicant</span>
+                      </button>
+                    )}
+                    {!appIsWithdrawn && String(app.status || '').toLowerCase() === 'on hold' && (
                       <button
                         type="button"
                         onClick={async () => {
@@ -425,7 +451,7 @@ const ApplicantProfile: React.FC<ApplicantProfileProps> = ({
                         Resume
                       </button>
                     )}
-                    {recruitmentConfig?.allow_hired_elsewhere_withdrawal &&
+                    {!appIsWithdrawn && recruitmentConfig?.allow_hired_elsewhere_withdrawal &&
                       !['passed initial interview', 'not selected', 'withdrawn by applicant', 'withdrawn – hired elsewhere in company'].includes(
                         String(app.status || '').toLowerCase()
                       ) && (
@@ -448,6 +474,9 @@ const ApplicantProfile: React.FC<ApplicantProfileProps> = ({
                       )}
                   </div>
                 </div>
+
+                {/* Computed 5-Stage Recruitment Tracker / Withdrawn Banner */}
+                <ApplicationStageTracker tracker={appTracker} audience="hr" compact />
 
                 {/* Strengths & Missing Skills */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-slate-100">
@@ -493,7 +522,8 @@ const ApplicantProfile: React.FC<ApplicantProfileProps> = ({
                   interviewHint="Review these applicant-confirmed answers to ask follow-up questions during the interview."
                 />
               </div>
-            ))}
+              );
+            })}
           </div>
 
           {/* Quick Note Taking Box */}
@@ -610,9 +640,15 @@ const ApplicantProfile: React.FC<ApplicantProfileProps> = ({
                           })()}
                         </td>
                         <td className="py-3">
-                          <span className="font-semibold text-slate-700 bg-slate-100 px-2 py-0.5 rounded-full">
-                            {app.status}
-                          </span>
+                          {isWithdrawnStatus(app.raw_status || app.status) ? (
+                            <span className="font-bold text-slate-700 bg-slate-200 border border-slate-300 px-2 py-0.5 rounded-full">
+                              Withdrawn
+                            </span>
+                          ) : (
+                            <span className="font-semibold text-slate-700 bg-slate-100 px-2 py-0.5 rounded-full">
+                              {app.status}
+                            </span>
+                          )}
                         </td>
                         <td className="py-3 text-slate-500">
                           {Array.isArray(app.shortlist_rosters) && app.shortlist_rosters.length > 0 ? (
@@ -636,21 +672,62 @@ const ApplicantProfile: React.FC<ApplicantProfileProps> = ({
                           )}
                         </td>
                         <td className="py-3 text-right">
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setMessageModalApp({ id: app.id, jobTitle: app.job_title || 'Position' })
-                            }
-                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-rose-50 hover:bg-[#D60041] text-[#D60041] hover:text-white border border-rose-200 text-[11px] font-bold transition-colors cursor-pointer"
-                          >
-                            <MessageSquare size={12} />
-                            <span>Message applicant</span>
-                          </button>
+                          {isWithdrawnStatus(app.raw_status || app.status) ? (
+                            <span className="text-[11px] font-semibold text-slate-400 italic">Withdrawn</span>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setMessageModalApp({ id: app.id, jobTitle: app.job_title || 'Position' })
+                              }
+                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-rose-50 hover:bg-[#D60041] text-[#D60041] hover:text-white border border-rose-200 text-[11px] font-bold transition-colors cursor-pointer"
+                            >
+                              <MessageSquare size={12} />
+                              <span>Message applicant</span>
+                            </button>
+                          )}
                         </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
+              </div>
+            )}
+
+            {/* Per-Application Computed Recruitment Trackers / Withdrawn Banners */}
+            {applications.length > 0 && (
+              <div className="pt-4 border-t border-slate-100 space-y-3">
+                <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                  Recruitment Stage Progress
+                </p>
+                {applications.map((app: any) => {
+                  const appInterviews = interviews.filter((iv: any) => {
+                    if (Number(iv.job_application_id) === Number(app.id)) return true;
+                    if (
+                      Array.isArray(iv.combined_application_ids) &&
+                      iv.combined_application_ids.some((id: any) => Number(id) === Number(app.id))
+                    ) {
+                      return true;
+                    }
+                    return false;
+                  });
+                  const appHistory = statusHistory.filter(
+                    (h: any) => Number(h.application_id ?? h.job_application_id) === Number(app.id)
+                  );
+                  const appTracker = computeApplicationTracker({
+                    status: app.raw_status || app.status,
+                    statusHistory: appHistory,
+                    interviews: appInterviews,
+                    createdAt: app.created_at || app.applied_date,
+                    resolvedAt: app.resolved_at,
+                  });
+                  return (
+                    <div key={`tracker-${app.id}`} className="space-y-1.5">
+                      <p className="text-xs font-bold text-slate-700">{app.job_title}</p>
+                      <ApplicationStageTracker tracker={appTracker} audience="hr" compact />
+                    </div>
+                  );
+                })}
               </div>
             )}
           </section>
@@ -723,7 +800,11 @@ const ApplicantProfile: React.FC<ApplicantProfileProps> = ({
                         <span className="text-[10px] px-2 py-0.5 rounded bg-blue-50 text-blue-700">{iv.status}</span>
                       </div>
                       <p className="text-slate-500">
-                        {iv.scheduled_date} • {iv.scheduled_time || 'Time TBD'}
+                        {iv.scheduled_date
+                          ? `${iv.scheduled_date} • ${iv.scheduled_time || 'Time TBD'}`
+                          : iv.start_time
+                            ? `${new Date(iv.start_time).toLocaleDateString()} • ${new Date(iv.start_time).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true })}`
+                            : 'Time TBD'}
                       </p>
                       {iv.location && <p className="text-slate-400 text-[11px]">{iv.location}</p>}
                     </div>

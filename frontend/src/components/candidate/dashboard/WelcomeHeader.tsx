@@ -78,9 +78,9 @@ const WelcomeHeader: React.FC<WelcomeHeaderProps> = ({ applicationCount = 0, int
             {/* Status Pills */}
             <div className="flex flex-wrap items-center gap-2 pt-1">
               <span className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-700 bg-slate-100/90 px-3 py-1 rounded-xl">
-                <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                <span className={`w-2 h-2 rounded-full ${applicationCount > 0 ? 'bg-emerald-500' : 'bg-slate-400'}`} />
                 <strong className="text-slate-900 font-black">{applicationCount}</strong>{' '}
-                {applicationCount === 1 ? 'Application' : 'Applications'} Submitted
+                Active {applicationCount === 1 ? 'Application' : 'Applications'}
               </span>
 
               {interviewCount > 0 ? (

@@ -1,7 +1,7 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef } from 'react';
 import {
-  Calendar, MapPin, ChevronDown, CheckCircle2, XCircle, Clock, Search,
-  Check, Archive, RotateCcw, FileText, Download, Copy, Mail, Phone, Eye, Sparkles
+  Calendar, MapPin, ChevronDown,
+  Check, Archive, RotateCcw, FileText, Copy, Eye, Ban
 } from 'lucide-react';
 import { getAssetUrl } from '../../../services/api';
 import { CandidateItem } from './CandidateCard';
@@ -9,6 +9,13 @@ import {
   resolveCriterionStatus,
   getCriterionStatusBadgeStyle,
 } from '../../../utils/criterionStatus';
+import PortalDropdown, { PortalDropdownItem } from '../../common/PortalDropdown';
+import {
+  isWithdrawnStatus,
+  isPassedStatus,
+  normalizeAppStatus,
+  getStageIndexForNormalizedStatus,
+} from '../../../utils/applicationTracker';
 
 interface TableStatusDropdownProps {
   status?: string;
@@ -19,89 +26,121 @@ interface TableStatusDropdownProps {
 const TableStatusDropdown: React.FC<TableStatusDropdownProps> = ({ status, candidateId, onUpdateStatus }) => {
   const [isOpen, setIsOpen] = useState<boolean>(false);
   const [isUpdating, setIsUpdating] = useState<boolean>(false);
-  const ref = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
 
-  useEffect(() => {
-    const handleOutside = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setIsOpen(false);
-    };
-    document.addEventListener('mousedown', handleOutside);
-    return () => document.removeEventListener('mousedown', handleOutside);
-  }, []);
+  const normStatus = normalizeAppStatus(status);
+  const isWithdrawn = isWithdrawnStatus(status);
+  const isPassed = isPassedStatus(status);
+  const currentRank = getStageIndexForNormalizedStatus(normStatus);
 
   const getStatusInfo = (st?: string) => {
-    switch ((st || '').toLowerCase()) {
-      case 'submitted':
-      case 'pending':
+    const n = normalizeAppStatus(st);
+    switch (n) {
+      case 'Submitted':
         return { color: 'text-sky-700 bg-sky-50 border-sky-200', label: 'Submitted' };
-      case 'under review':
-      case 'reviewed':
-      case 'screened':
+      case 'Under Review':
         return { color: 'text-amber-700 bg-amber-50 border-amber-200', label: 'Under Review' };
-      case 'shortlisted':
-      case 'shortlist':
+      case 'Shortlisted':
         return { color: 'text-purple-700 bg-purple-50 border-purple-200', label: 'Shortlisted' };
-      case 'interview scheduled':
-      case 'scheduled':
-      case 'technical interview':
-      case 'final interview':
+      case 'Interview Scheduled':
         return { color: 'text-blue-700 bg-blue-50 border-blue-200', label: 'Interview Scheduled' };
-      case 'interviewed':
+      case 'Interviewed':
         return { color: 'text-teal-700 bg-teal-50 border-teal-200', label: 'Interviewed' };
-      case 'not selected':
-      case 'rejected':
-      case 'archived':
+      case 'On Hold':
+        return { color: 'text-amber-800 bg-amber-50 border-amber-300', label: 'On Hold' };
+      case 'Withdrawn by applicant':
+      case 'Withdrawn – hired elsewhere in company':
+        return { color: 'text-slate-600 bg-slate-100 border-slate-300', label: 'Withdrawn' };
+      case 'Not Selected':
         return { color: 'text-rose-700 bg-rose-50 border-rose-200', label: 'Not Selected' };
-      case 'accepted':
-      case 'passed initial interview':
-      case 'passed':
+      case 'Passed initial interview':
         return { color: 'text-emerald-700 bg-emerald-50 border-emerald-200', label: 'Passed initial interview' };
       default:
-        return { color: 'text-sky-700 bg-sky-50 border-sky-200', label: 'Submitted' };
+        return { color: 'text-sky-700 bg-sky-50 border-sky-200', label: n || 'Submitted' };
     }
   };
 
+  if (isWithdrawn) {
+    return (
+      <span
+        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border text-[11px] font-black uppercase tracking-wider bg-slate-100 text-slate-600 border-slate-300"
+        title={normStatus}
+      >
+        <Ban size={11} />
+        <span>Withdrawn</span>
+      </span>
+    );
+  }
+
   const currentInfo = getStatusInfo(status);
 
+  const items: PortalDropdownItem[] = [
+    'Submitted',
+    'Under Review',
+    'Shortlisted',
+    'Interview Scheduled',
+    'Interviewed',
+    'Passed initial interview',
+    'Not Selected',
+  ].map((s) => {
+    const isCurrent = normStatus.toLowerCase() === s.toLowerCase();
+    const targetRank = getStageIndexForNormalizedStatus(normalizeAppStatus(s));
+    const isBackwardMove =
+      normStatus !== 'On Hold' &&
+      normStatus !== 'Not Selected' &&
+      currentRank >= 0 &&
+      targetRank >= 0 &&
+      targetRank < currentRank;
+
+    return {
+      id: s,
+      label: s,
+      active: isCurrent,
+      disabled: isCurrent || isBackwardMove,
+      trailingIcon: isCurrent ? <Check size={11} className="text-[#D60041]" /> : undefined,
+      className: 'text-[11px] uppercase tracking-wider',
+      onSelect: async () => {
+        setIsUpdating(true);
+        try {
+          await onUpdateStatus(candidateId, s);
+        } finally {
+          setTimeout(() => setIsUpdating(false), 300);
+        }
+      },
+    };
+  });
+
   return (
-    <div className="relative inline-block" ref={ref}>
+    <div className="relative inline-block">
       <button
+        ref={buttonRef}
         type="button"
+        aria-haspopup="menu"
+        aria-expanded={isOpen}
         onClick={(e) => {
           e.stopPropagation();
-          setIsOpen(!isOpen);
+          if (!isPassed) setIsOpen((prev) => !prev);
         }}
-        disabled={isUpdating}
-        className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-[11px] font-bold uppercase tracking-wider transition-all cursor-pointer ${currentInfo.color} ${isUpdating ? 'opacity-50 animate-pulse' : 'hover:shadow-xs'}`}
+        disabled={isUpdating || isPassed}
+        className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-[11px] font-bold uppercase tracking-wider transition-all ${currentInfo.color} ${
+          isPassed ? 'cursor-default opacity-90' : 'cursor-pointer hover:shadow-xs'
+        } ${isUpdating ? 'opacity-50 animate-pulse' : ''}`}
       >
-        <span className="truncate max-w-[100px]">{currentInfo.label}</span>
-        <ChevronDown size={11} className={`transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
+        <span className="truncate max-w-[120px]">{currentInfo.label}</span>
+        {!isPassed && (
+          <ChevronDown size={11} className={`transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
+        )}
       </button>
 
-      {isOpen && (
-        <div className="absolute top-full left-0 mt-1 w-44 bg-white border border-gray-100 rounded-xl shadow-xl z-50 py-1 animate-in fade-in zoom-in-95 duration-150">
-          {['Submitted', 'Under Review', 'Shortlisted', 'Interview Scheduled', 'Interviewed', 'Not Selected'].map((s) => (
-            <button
-              key={s}
-              type="button"
-              onClick={async (e) => {
-                e.stopPropagation();
-                setIsOpen(false);
-                setIsUpdating(true);
-                await onUpdateStatus(candidateId, s);
-                setTimeout(() => setIsUpdating(false), 500);
-              }}
-              className={`w-full flex items-center justify-between px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider transition-colors cursor-pointer ${(status || '').toLowerCase() === s.toLowerCase()
-                ? 'bg-pink-50 text-[#D60041]'
-                : 'text-gray-600 hover:bg-gray-50'
-                }`}
-            >
-              <span>{s}</span>
-              {(status || '').toLowerCase() === s.toLowerCase() && <Check size={11} />}
-            </button>
-          ))}
-        </div>
-      )}
+      <PortalDropdown
+        isOpen={isOpen}
+        onClose={() => setIsOpen(false)}
+        anchorRef={buttonRef}
+        align="left"
+        minWidth={205}
+        items={items}
+        ariaLabel="Update candidate status"
+      />
     </div>
   );
 };
@@ -148,7 +187,10 @@ const CandidateTableView: React.FC<CandidateTableViewProps> = ({
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   };
 
-  const allSelected = candidates.length > 0 && candidates.every(c => selectedIds.includes(c.id));
+  const selectableCandidates = candidates.filter((c) => !isWithdrawnStatus(c.status));
+  const allSelected =
+    selectableCandidates.length > 0 &&
+    selectableCandidates.every((c) => selectedIds.includes(c.id));
 
   return (
     <div className="bg-white rounded-2xl sm:rounded-3xl border border-gray-200/80 shadow-sm overflow-hidden">
@@ -181,7 +223,9 @@ const CandidateTableView: React.FC<CandidateTableViewProps> = ({
           </thead>
           <tbody className="divide-y divide-gray-100">
             {candidates.map((c) => {
-              const isSelected = selectedIds.includes(c.id);
+              const isWithdrawn = isWithdrawnStatus(c.status);
+              const isPassed = isPassedStatus(c.status);
+              const isSelected = !isWithdrawn && selectedIds.includes(c.id);
               const isArchived = (c.status || '').toLowerCase() === 'archived';
               const match = Math.round(c.matchScore || 0);
 
@@ -198,14 +242,26 @@ const CandidateTableView: React.FC<CandidateTableViewProps> = ({
               return (
                 <tr
                   key={c.id}
-                  className={`hover:bg-pink-50/25 transition-colors ${isSelected ? 'bg-pink-50/35' : ''}`}
+                  className={`transition-colors ${
+                    isWithdrawn
+                      ? 'bg-slate-50/70 opacity-85'
+                      : isSelected
+                        ? 'bg-pink-50/35 hover:bg-pink-50/45'
+                        : 'hover:bg-pink-50/25'
+                  }`}
                 >
                   <td className="py-3 px-3.5 text-center">
                     <input
                       type="checkbox"
                       checked={isSelected}
-                      onChange={() => onToggleSelect(c.id)}
-                      className="w-4 h-4 rounded border-gray-300 text-[#D60041] focus:ring-[#D60041] cursor-pointer"
+                      disabled={isWithdrawn}
+                      onChange={() => {
+                        if (!isWithdrawn) onToggleSelect(c.id);
+                      }}
+                      title={isWithdrawn ? 'Withdrawn applications cannot be selected' : 'Select candidate'}
+                      className={`w-4 h-4 rounded border-gray-300 text-[#D60041] focus:ring-[#D60041] ${
+                        isWithdrawn ? 'opacity-35 cursor-not-allowed' : 'cursor-pointer'
+                      }`}
                     />
                   </td>
 
@@ -361,33 +417,37 @@ const CandidateTableView: React.FC<CandidateTableViewProps> = ({
                         <Eye size={14} />
                       </button>
 
-                      <button
-                        type="button"
-                        onClick={() => onOpenInterview(c)}
-                        title="Schedule Interview"
-                        className="p-1.5 hover:bg-pink-50 text-gray-500 hover:text-[#D60041] rounded-lg transition-colors cursor-pointer"
-                      >
-                        <Calendar size={14} />
-                      </button>
+                      {!isWithdrawn && !isPassed && (
+                        <button
+                          type="button"
+                          onClick={() => onOpenInterview(c)}
+                          title="Schedule Interview"
+                          className="p-1.5 hover:bg-pink-50 text-gray-500 hover:text-[#D60041] rounded-lg transition-colors cursor-pointer"
+                        >
+                          <Calendar size={14} />
+                        </button>
+                      )}
 
-                      {isArchived ? (
-                        <button
-                          type="button"
-                          onClick={() => onRestoreApplication && onRestoreApplication(c.id)}
-                          title="Restore Application"
-                          className="p-1.5 hover:bg-emerald-50 text-gray-400 hover:text-emerald-700 rounded-lg transition-colors cursor-pointer"
-                        >
-                          <RotateCcw size={14} />
-                        </button>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => onArchiveApplication(c.id)}
-                          title="Archive Application"
-                          className="p-1.5 hover:bg-amber-50 text-gray-400 hover:text-amber-700 rounded-lg transition-colors cursor-pointer"
-                        >
-                          <Archive size={14} />
-                        </button>
+                      {!isWithdrawn && (
+                        isArchived ? (
+                          <button
+                            type="button"
+                            onClick={() => onRestoreApplication && onRestoreApplication(c.id)}
+                            title="Restore Application"
+                            className="p-1.5 hover:bg-emerald-50 text-gray-400 hover:text-emerald-700 rounded-lg transition-colors cursor-pointer"
+                          >
+                            <RotateCcw size={14} />
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => onArchiveApplication(c.id)}
+                            title="Archive Application"
+                            className="p-1.5 hover:bg-amber-50 text-gray-400 hover:text-amber-700 rounded-lg transition-colors cursor-pointer"
+                          >
+                            <Archive size={14} />
+                          </button>
+                        )
                       )}
                     </div>
                   </td>

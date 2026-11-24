@@ -1,8 +1,9 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   Scale, Archive, Download, X, CheckSquare, Square,
-  ChevronDown, CheckCircle2, Clock, Check
+  ChevronDown
 } from 'lucide-react';
+import PortalDropdown, { PortalDropdownItem } from '../../common/PortalDropdown';
 
 interface BulkActionBarProps {
   selectedCount: number;
@@ -26,23 +27,26 @@ const BulkActionBar: React.FC<BulkActionBarProps> = ({
   onCompare,
   onBatchStatusUpdate,
   onBatchArchive,
-  onBatchDelete,
   onBatchExport
 }) => {
   const [statusMenuOpen, setStatusMenuOpen] = useState<boolean>(false);
-  const statusMenuRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const handleOutside = (e: MouseEvent) => {
-      if (statusMenuRef.current && !statusMenuRef.current.contains(e.target as Node)) {
-        setStatusMenuOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handleOutside);
-    return () => document.removeEventListener('mousedown', handleOutside);
-  }, []);
+  const statusButtonRef = useRef<HTMLButtonElement>(null);
 
   if (selectedCount === 0) return null;
+
+  const bulkStatusItems: PortalDropdownItem[] = [
+    'Submitted',
+    'Under Review',
+    'Shortlisted',
+    'Interview Scheduled',
+    'Interviewed',
+    'Passed initial interview',
+    'Not Selected',
+  ].map((st) => ({
+    id: st,
+    label: st,
+    onSelect: () => onBatchStatusUpdate(st),
+  }));
 
   return (
     <div className="sticky top-20 z-30 mb-5 bg-gray-900/95 backdrop-blur-md text-white px-3.5 sm:px-5 py-3 rounded-2xl shadow-xl flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 animate-in slide-in-from-top-3 duration-250 border border-gray-800">
@@ -92,37 +96,29 @@ const BulkActionBar: React.FC<BulkActionBarProps> = ({
           <span>Compare ({selectedCount})</span>
         </button>
 
-        {/* Change Status Dropdown */}
-        <div className="relative flex-1 sm:flex-none" ref={statusMenuRef}>
+        {/* Change Status Dropdown (Rendered in Portal) */}
+        <div className="relative flex-1 sm:flex-none">
           <button
+            ref={statusButtonRef}
             type="button"
-            onClick={() => setStatusMenuOpen(!statusMenuOpen)}
+            aria-haspopup="menu"
+            aria-expanded={statusMenuOpen}
+            onClick={() => setStatusMenuOpen((prev) => !prev)}
             className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 sm:py-2 bg-gray-800 hover:bg-gray-700 text-gray-200 border border-gray-700 rounded-xl text-xs font-bold transition-all cursor-pointer h-8.5 sm:h-9"
           >
             <span>Status</span>
             <ChevronDown size={12} className={`transition-transform duration-200 ${statusMenuOpen ? 'rotate-180' : ''}`} />
           </button>
 
-          {statusMenuOpen && (
-            <div className="absolute top-full right-0 mt-1.5 w-48 bg-white text-gray-800 border border-gray-100 rounded-2xl shadow-xl z-50 py-1.5 animate-in fade-in zoom-in-95 duration-150">
-              <div className="px-3 py-1 text-[10px] font-bold text-gray-400 uppercase tracking-widest border-b border-gray-100 mb-1">
-                Set status for {selectedCount} candidates:
-              </div>
-              {['Submitted', 'Under Review', 'Shortlisted', 'Interview Scheduled', 'Interviewed', 'Not Selected'].map((st) => (
-                <button
-                  key={st}
-                  type="button"
-                  onClick={() => {
-                    setStatusMenuOpen(false);
-                    onBatchStatusUpdate(st);
-                  }}
-                  className="w-full text-left px-3.5 py-1.5 text-xs font-bold hover:bg-pink-50 hover:text-[#D60041] transition-colors flex items-center justify-between cursor-pointer"
-                >
-                  <span>{st}</span>
-                </button>
-              ))}
-            </div>
-          )}
+          <PortalDropdown
+            isOpen={statusMenuOpen}
+            onClose={() => setStatusMenuOpen(false)}
+            anchorRef={statusButtonRef}
+            align="right"
+            minWidth={210}
+            items={bulkStatusItems}
+            ariaLabel={`Set status for ${selectedCount} selected candidates`}
+          />
         </div>
 
         {/* Export Selected to CSV */}

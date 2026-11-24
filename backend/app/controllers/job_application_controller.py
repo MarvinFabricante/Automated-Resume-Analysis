@@ -112,28 +112,33 @@ async def get_all_applications(
     limit: Optional[int] = None,
     offset: int = 0,
     summary: bool = False,
+    shortlist_eligible: bool = False,
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Get all job applications from all jobs, optionally filtered by position, sorted, paginated,
-    or projected as lightweight dashboard summaries (`summary=true`).
+    Get all job applications from all jobs, optionally filtered by position, shortlist-eligibility,
+    sorted, paginated, or projected as lightweight dashboard summaries (`summary=true`).
     """
     if summary:
         return await job_application_service.get_all_applications_summary(
-            db, position=position, sort_by=sort_by, limit=limit, offset=offset
+            db, position=position, sort_by=sort_by, limit=limit, offset=offset, shortlist_eligible=shortlist_eligible
         )
     apps = await job_application_service.get_all_applications(
-        db, position=position, sort_by=sort_by, limit=limit, offset=offset
+        db, position=position, sort_by=sort_by, limit=limit, offset=offset, shortlist_eligible=shortlist_eligible
     )
     return [JobApplicationResponse.model_validate(app).model_dump(mode="json") for app in apps]
 
 @router.get("/job/{job_id}", response_model=List[JobApplicationResponse])
 @cache_response("job_apps", ttl=60)
-async def get_applications_for_job(job_id: int, db: AsyncSession = Depends(get_db)):
+async def get_applications_for_job(
+    job_id: int,
+    shortlist_eligible: bool = False,
+    db: AsyncSession = Depends(get_db),
+):
     """
-    Get all applications for a specific job.
+    Get all applications for a specific job (pass shortlist_eligible=true to exclude withdrawn & resolved apps).
     """
-    return await job_application_service.get_applications_by_job(db, job_id)
+    return await job_application_service.get_applications_by_job(db, job_id, shortlist_eligible=shortlist_eligible)
 
 @router.get("/job/{job_id}/compare")
 async def get_candidate_comparison(job_id: int):
@@ -210,14 +215,21 @@ async def update_application_status(
     """
     Update the status of a job application.
     """
-    db_application = await job_application_service.update_application_status(
-        db,
-        application_id,
-        status_update.status,
-        notes=status_update.notes,
-        custom_email_subject=status_update.custom_email_subject,
-        custom_email_message=status_update.custom_email_message,
-    )
+    actor_email = (
+        (current_user.get("sub") or current_user.get("email")) if current_user else None
+    ) or "HR"
+    try:
+        db_application = await job_application_service.update_application_status(
+            db,
+            application_id,
+            status_update.status,
+            notes=status_update.notes,
+            custom_email_subject=status_update.custom_email_subject,
+            custom_email_message=status_update.custom_email_message,
+            changed_by=actor_email,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     if not db_application:
         raise HTTPException(status_code=404, detail="Application not found")
         
@@ -501,6 +513,10 @@ async def withdraw_application_endpoint(
         raise HTTPException(status_code=400, detail=str(e))
 
     await invalidate_application_dashboard_caches(application_id)
+    from app.utils.cache import clear_cache_pattern
+    await clear_cache_pattern("app_interviews*")
+    await clear_cache_pattern("cand_interviews*")
+    await clear_cache_pattern("calendar_events*")
     return {
         "message": result["message"],
         "cancelled_interviews": result["cancelled_interviews"],
@@ -561,6 +577,10 @@ async def resume_application_endpoint(
         raise HTTPException(status_code=400, detail=str(e))
 
     await invalidate_application_dashboard_caches(application_id)
+    from app.utils.cache import clear_cache_pattern
+    await clear_cache_pattern("app_interviews*")
+    await clear_cache_pattern("cand_interviews*")
+    await clear_cache_pattern("calendar_events*")
     return updated
 
 
@@ -590,6 +610,10 @@ async def withdraw_hired_elsewhere_endpoint(
         raise HTTPException(status_code=400, detail=str(e))
 
     await invalidate_application_dashboard_caches(application_id)
+    from app.utils.cache import clear_cache_pattern
+    await clear_cache_pattern("app_interviews*")
+    await clear_cache_pattern("cand_interviews*")
+    await clear_cache_pattern("calendar_events*")
     return updated
 
 

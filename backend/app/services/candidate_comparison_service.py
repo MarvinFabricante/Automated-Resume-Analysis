@@ -59,6 +59,19 @@ async def compare_candidates_service(
     app_map = {a.id: a for a in apps}
     ordered_apps = [app_map[aid] for aid in application_ids]
 
+    # 2b. Exclude withdrawn applications from comparison
+    from app.services.status_management_service import is_withdrawn_status
+    withdrawn_names = [
+        app.candidate_name or f"Application #{app.id}"
+        for app in ordered_apps
+        if is_withdrawn_status(getattr(app, "status", None))
+    ]
+    if withdrawn_names:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Withdrawn applications cannot be compared ({', '.join(withdrawn_names)}). Please select active candidates only."
+        )
+
     # 3. Enforce distinct people (applicant_id, normalized email, normalized phone)
     seen_applicant_ids = set()
     seen_emails = set()
