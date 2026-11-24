@@ -17,6 +17,9 @@ import ApplicationProgressBar from '../../components/common/ApplicationProgressB
 import ApplicationSuccessModal from '../../components/modals/shared/ApplicationSuccessModal';
 import ClarificationQuestionsPanel from '../../components/common/ClarificationQuestionsPanel';
 import ExperienceGapAlert from '../../components/common/ExperienceGapAlert';
+import ResumeTipsPanel, {
+  ResumeReadabilityBanner,
+} from '../../components/common/ResumeTipsPanel';
 import { useJobClarifications } from '../../hooks/useJobClarifications';
 import {
   ClarificationQuestion,
@@ -413,6 +416,14 @@ const CandidateProfileForm: React.FC = () => {
           </button>
 
           {jobId && <ApplicationProgressBar currentStep={currentStep} />}
+
+          {/* Shared ATS Resume Tips & Post-Upload Readability Feedback */}
+          <div className="space-y-3 mb-6">
+            {ext?.readability_check && (
+              <ResumeReadabilityBanner readabilityCheck={ext.readability_check} />
+            )}
+            <ResumeTipsPanel />
+          </div>
 
           <div className="mb-8 sm:mb-10 flex flex-col md:flex-row md:items-center justify-between gap-4 sm:gap-6">
             <div>

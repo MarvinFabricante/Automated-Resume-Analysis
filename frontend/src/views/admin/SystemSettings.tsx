@@ -23,6 +23,7 @@ import toast from 'react-hot-toast';
 import Header from '../../components/layout/Header';
 import Sidebar from '../../components/layout/Sidebar';
 import NotificationTemplatesEditor from '../../components/notifications/NotificationTemplatesEditor';
+import ResumeTipsEditor from '../../components/admin/ResumeTipsEditor';
 import api from '../../services/api';
 import { useDispatch } from 'react-redux';
 import {
@@ -1024,6 +1025,30 @@ const SystemSettings: React.FC = () => {
                 </div>
 
                 <NotificationTemplatesEditor />
+              </section>
+
+              {/* ATS-Friendly Resume Tips (Applicant Guidance) */}
+              <section aria-labelledby="resume-tips-heading" className="bg-white border border-gray-100 rounded-3xl p-5 sm:p-6 lg:p-8 shadow-xs">
+                <div className="flex flex-col @[520px]:flex-row @[520px]:items-center justify-between gap-3 pb-4 mb-6 border-b border-gray-100">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-8 h-8 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center shrink-0">
+                      <Sparkles size={18} />
+                    </div>
+                    <div className="min-w-0">
+                      <h2 id="resume-tips-heading" className="text-base font-bold text-gray-900 tracking-tight">
+                        Applicant Resume Tips (ATS-Friendly Guide)
+                      </h2>
+                      <p className="text-xs text-gray-400 mt-0.5">
+                        Edit the collapsible resume formatting tips shown to applicants on upload, review, and submission steps.
+                      </p>
+                    </div>
+                  </div>
+                  <span className="self-start @[520px]:self-center shrink-0 whitespace-nowrap px-3 py-1 bg-amber-50 text-amber-700 rounded-full text-xs font-bold border border-amber-200">
+                    Applicant Portal
+                  </span>
+                </div>
+
+                <ResumeTipsEditor />
               </section>
 
               {/* Bottom Sticky Action Bar */}

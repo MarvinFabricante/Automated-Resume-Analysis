@@ -703,13 +703,27 @@ async def test_end_states_messaging_closure_and_active_slot_limit(client, db_ses
     )
     assert apply_j4.status_code == 201
 
-    # Messaging: candidate CAN reply while application is open or within 30 days of resolution
-    with patch("app.services.email_service.send_hr_message_notification_email", new_callable=AsyncMock):
-        msg_ok = await client.post(
-            f"/chat/messages/{hr.id}",
-            json={"content": "Hello HR, thank you!", "application_id": a1.id},
-            headers=_auth_headers(cand),
-        )
+    # Messaging: applicant CANNOT start a thread before HR sends the first message (403)
+    msg_before_hr = await client.post(
+        f"/chat/messages/{hr.id}",
+        json={"content": "Trying before HR starts", "application_id": a1.id},
+        headers=_auth_headers(cand),
+    )
+    assert msg_before_hr.status_code == 403
+
+    # Once HR starts the conversation on a1, candidate CAN reply while within 30 days of resolution
+    hr_first = await client.post(
+        f"/chat/messages/{cand.id}",
+        json={"content": "Hi! Congratulations on passing the initial interview.", "application_id": a1.id},
+        headers=_auth_headers(hr),
+    )
+    assert hr_first.status_code == 200
+
+    msg_ok = await client.post(
+        f"/chat/messages/{hr.id}",
+        json={"content": "Hello HR, thank you!", "application_id": a1.id},
+        headers=_auth_headers(cand),
+    )
     assert msg_ok.status_code == 200
 
     # Simulate 31 days after resolution -> messaging thread locks with "This conversation is closed"

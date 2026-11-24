@@ -30,6 +30,7 @@ import {
   resolveCriterionStatus,
   getCriterionStatusBadgeStyle,
 } from '../../../utils/criterionStatus';
+import MessageApplicantModal from './MessageApplicantModal';
 
 /* ─── Types & Interfaces ─── */
 export interface ViewCandidateDetailsModalProps {
@@ -241,6 +242,7 @@ const ViewCandidateDetailsModal: React.FC<ViewCandidateDetailsModalProps> = ({
   const [activeTab, setActiveTab] = useState<TabType>('all');
   const [hasEngaged, setHasEngaged] = useState<boolean>(false);
   const [showStatusHistory, setShowStatusHistory] = useState<boolean>(false);
+  const [showMessageModal, setShowMessageModal] = useState<boolean>(false);
   const hasTriggeredViewedRef = React.useRef<boolean>(false);
   const secondsElapsedRef = React.useRef<number>(0);
   const hasEngagedRef = React.useRef<boolean>(false);
@@ -1466,6 +1468,17 @@ const ViewCandidateDetailsModal: React.FC<ViewCandidateDetailsModalProps> = ({
 
             {/* Quick Actions in Sidebar */}
             <div className="space-y-2">
+              {candidate.id && (
+                <button
+                  type="button"
+                  onClick={() => setShowMessageModal(true)}
+                  className="w-full py-2.5 px-4 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition-all shadow-xs active:scale-[0.98] flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  <MessageSquare size={14} />
+                  <span>Message applicant</span>
+                </button>
+              )}
+
               {handleInterviewAction && (
                 <button
                   type="button"
@@ -2322,6 +2335,17 @@ const ViewCandidateDetailsModal: React.FC<ViewCandidateDetailsModalProps> = ({
                   Close
                 </button>
 
+                {candidate.id && (
+                  <button
+                    type="button"
+                    onClick={() => setShowMessageModal(true)}
+                    className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition-all inline-flex items-center justify-center gap-2 cursor-pointer"
+                  >
+                    <MessageSquare size={14} />
+                    <span>Message applicant</span>
+                  </button>
+                )}
+
                 {handleInterviewAction && (
                   <button
                     type="button"
@@ -2340,6 +2364,14 @@ const ViewCandidateDetailsModal: React.FC<ViewCandidateDetailsModalProps> = ({
           </main>
         </div>
       </div>
+
+      <MessageApplicantModal
+        isOpen={showMessageModal}
+        onClose={() => setShowMessageModal(false)}
+        applicationId={candidate.id ?? null}
+        candidateName={candidateName}
+        jobTitle={candidate.job_title || candidate.position || 'Application'}
+      />
     </div>
   );
 };

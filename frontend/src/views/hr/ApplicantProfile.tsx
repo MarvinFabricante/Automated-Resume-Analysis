@@ -43,6 +43,7 @@ import {
   resolveCriterionStatus,
   getCriterionStatusBadgeStyle,
 } from '../../utils/criterionStatus';
+import MessageApplicantModal from '../../components/modals/hr/MessageApplicantModal';
 
 interface ApplicantProfileProps {
   emailProp?: string;
@@ -67,6 +68,10 @@ const ApplicantProfile: React.FC<ApplicantProfileProps> = ({
   const [interviewMode, setInterviewMode] = useState<boolean>(false);
   const [newNoteContent, setNewNoteContent] = useState<string>('');
   const [noteSuccess, setNoteSuccess] = useState<boolean>(false);
+  const [messageModalApp, setMessageModalApp] = useState<{
+    id: number | string;
+    jobTitle: string;
+  } | null>(null);
 
   // Fetch applicant profile
   const { data: profile, isLoading, isError, refetch } = useGetApplicantProfileQuery(
@@ -392,6 +397,16 @@ const ApplicantProfile: React.FC<ApplicantProfileProps> = ({
                     <span className="px-2.5 py-1 text-xs font-bold rounded-full bg-slate-100 text-slate-700">
                       {app.status}
                     </span>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setMessageModalApp({ id: app.id, jobTitle: app.job_title || 'Position' })
+                      }
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-bold rounded-full bg-rose-50 text-[#D60041] hover:bg-[#D60041] hover:text-white border border-rose-200 transition-colors cursor-pointer"
+                    >
+                      <MessageSquare size={12} />
+                      <span>Message applicant</span>
+                    </button>
                     {String(app.status || '').toLowerCase() === 'on hold' && (
                       <button
                         type="button"
@@ -547,6 +562,7 @@ const ApplicantProfile: React.FC<ApplicantProfileProps> = ({
                       <th className="pb-3">Education</th>
                       <th className="pb-3">Status</th>
                       <th className="pb-3">Shortlists</th>
+                      <th className="pb-3 text-right">Message</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -608,6 +624,18 @@ const ApplicantProfile: React.FC<ApplicantProfileProps> = ({
                           ) : (
                             <span className="text-slate-400 italic">None</span>
                           )}
+                        </td>
+                        <td className="py-3 text-right">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setMessageModalApp({ id: app.id, jobTitle: app.job_title || 'Position' })
+                            }
+                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-rose-50 hover:bg-[#D60041] text-[#D60041] hover:text-white border border-rose-200 text-[11px] font-bold transition-colors cursor-pointer"
+                          >
+                            <MessageSquare size={12} />
+                            <span>Message applicant</span>
+                          </button>
                         </td>
                       </tr>
                     ))}
@@ -738,6 +766,14 @@ const ApplicantProfile: React.FC<ApplicantProfileProps> = ({
           </div>
         </div>
       )}
+      {/* Message Applicant Modal (HR-initiated per-application thread) */}
+      <MessageApplicantModal
+        isOpen={Boolean(messageModalApp)}
+        onClose={() => setMessageModalApp(null)}
+        applicationId={messageModalApp?.id ?? null}
+        candidateName={candidate.name || emailParam}
+        jobTitle={messageModalApp?.jobTitle}
+      />
     </div>
   );
 

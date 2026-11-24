@@ -18,6 +18,9 @@ import Header from '../../../components/layout/Header';
 import Footer from '../../../components/layout/Footer';
 import RecruitmentTermsModal from '../../../components/modals/shared/RecruitmentTermsModal';
 import ResumePreviewModal from '../../../components/modals/shared/ResumePreviewModal';
+import ResumeTipsPanel, {
+  ResumeReadabilityBanner,
+} from '../../../components/common/ResumeTipsPanel';
 import { formatUploadOrParseError } from '../../../utils/errorUtils';
 
 const SmartUploadPage: React.FC = () => {
@@ -341,6 +344,10 @@ const SmartUploadPage: React.FC = () => {
               </div>
             )}
 
+            <div className="max-w-3xl mx-auto mb-6">
+              <ResumeTipsPanel isNewUploadStep uploadResetKey={file?.name || ''} />
+            </div>
+
             {!file ? (
               <div
                 onDragOver={handleDrag}
@@ -365,6 +372,9 @@ const SmartUploadPage: React.FC = () => {
               </div>
             ) : (
               <div className="max-w-3xl mx-auto space-y-8">
+                {extractedData?.readability_check && (
+                  <ResumeReadabilityBanner readabilityCheck={extractedData.readability_check} />
+                )}
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between p-6 sm:p-8 bg-slate-50 rounded-[32px] border border-slate-100 shadow-sm relative overflow-hidden group gap-4">
                   <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/40 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000 pointer-events-none"></div>
                   <div className="flex items-center min-w-0 relative z-10">

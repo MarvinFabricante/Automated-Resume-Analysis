@@ -213,15 +213,8 @@ const UpcomingInterviews: React.FC = () => {
       )}
 
       {/* Helpful Guidance Footer */}
-      <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-400 font-medium">
-        <span>Need to reschedule?</span>
-        <button
-          type="button"
-          onClick={() => navigate('/candidate/messages')}
-          className="text-[#D10043] hover:underline font-bold cursor-pointer"
-        >
-          Message HR Coordinator
-        </button>
+      <div className="pt-2 border-t border-slate-100 text-[11px] text-slate-400 font-medium">
+        <span>HR will message you here if any schedule update is needed.</span>
       </div>
 
       <CandidateRescheduleModal

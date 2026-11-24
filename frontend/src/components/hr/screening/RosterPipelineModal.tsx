@@ -18,7 +18,8 @@ import {
   Check,
   XCircle,
   FileText,
-  GraduationCap
+  GraduationCap,
+  MessageSquare
 } from 'lucide-react';
 import {
   useGetShortlistRosterByIdQuery,
@@ -34,6 +35,7 @@ import {
   resolveCriterionStatus,
   getCriterionStatusBadgeStyle,
 } from '../../../utils/criterionStatus';
+import MessageApplicantModal from '../../modals/hr/MessageApplicantModal';
 
 interface RosterPipelineModalProps {
   rosterId: number | string;
@@ -78,6 +80,11 @@ const RosterPipelineModal: React.FC<RosterPipelineModalProps> = ({
   } | null>(null);
   const [finalizePreview, setFinalizePreview] = useState<any | null>(null);
   const [finalizeConfirmChecked, setFinalizeConfirmChecked] = useState<boolean>(false);
+  const [messageTarget, setMessageTarget] = useState<{
+    applicationId: number | string;
+    candidateName: string;
+    jobTitle: string;
+  } | null>(null);
 
   if (!isOpen) return null;
 
@@ -476,13 +483,29 @@ const RosterPipelineModal: React.FC<RosterPipelineModalProps> = ({
 
                             {/* Quick Stage Controls */}
                             <div className="pt-2 border-t border-slate-100 flex flex-wrap items-center gap-1.5 justify-between">
-                              <button
-                                type="button"
-                                onClick={() => onOpenDetails({ id: item.application_id, name: candName, email: candEmail })}
-                                className="text-[11px] font-semibold text-slate-500 hover:text-slate-800 cursor-pointer"
-                              >
-                                Details
-                              </button>
+                              <div className="flex items-center gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => onOpenDetails({ id: item.application_id, name: candName, email: candEmail })}
+                                  className="text-[11px] font-semibold text-slate-500 hover:text-slate-800 cursor-pointer"
+                                >
+                                  Details
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setMessageTarget({
+                                      applicationId: item.application_id,
+                                      candidateName: candName,
+                                      jobTitle: roster?.job_title || 'Shortlist Position',
+                                    })
+                                  }
+                                  className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-lg bg-rose-50 text-[#D60041] hover:bg-[#D60041] hover:text-white border border-rose-200 transition-colors cursor-pointer"
+                                >
+                                  <MessageSquare size={10} />
+                                  <span>Message applicant</span>
+                                </button>
+                              </div>
 
                               <div className="flex items-center gap-1 flex-wrap">
                                 {item.stage === 'Shortlisted' && (
@@ -568,6 +591,14 @@ const RosterPipelineModal: React.FC<RosterPipelineModalProps> = ({
           </div>
         </div>
       </div>
+
+      <MessageApplicantModal
+        isOpen={Boolean(messageTarget)}
+        onClose={() => setMessageTarget(null)}
+        applicationId={messageTarget?.applicationId ?? null}
+        candidateName={messageTarget?.candidateName}
+        jobTitle={messageTarget?.jobTitle}
+      />
     </div>
   );
 };

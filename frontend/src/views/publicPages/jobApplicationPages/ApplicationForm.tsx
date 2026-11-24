@@ -16,6 +16,9 @@ import Footer from '../../../components/layout/Footer';
 import ApplicationProgressBar from '../../../components/common/ApplicationProgressBar';
 import ClarificationQuestionsPanel from '../../../components/common/ClarificationQuestionsPanel';
 import ExperienceGapAlert from '../../../components/common/ExperienceGapAlert';
+import ResumeTipsPanel, {
+  ResumeReadabilityBanner,
+} from '../../../components/common/ResumeTipsPanel';
 import { useJobClarifications } from '../../../hooks/useJobClarifications';
 import {
   ClarificationQuestion,
@@ -480,6 +483,14 @@ const ApplicationForm: React.FC = () => {
 
         {/* Multi-step Application Progress Bar */}
         <ApplicationProgressBar currentStep={currentStep} />
+
+        {/* Shared ATS Resume Tips & Post-Upload Readability Check */}
+        <div className="space-y-3 mb-6">
+          {ext?.readability_check && (
+            <ResumeReadabilityBanner readabilityCheck={ext.readability_check} />
+          )}
+          <ResumeTipsPanel />
+        </div>
 
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-10 gap-6">
           <div>

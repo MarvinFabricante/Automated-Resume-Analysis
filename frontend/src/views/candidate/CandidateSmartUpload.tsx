@@ -38,6 +38,10 @@ import RecruitmentTermsModal from '../../components/modals/shared/RecruitmentTer
 import ResumePreviewModal from '../../components/modals/shared/ResumePreviewModal';
 import ApplicationProgressBar from '../../components/common/ApplicationProgressBar';
 import ExperienceGapAlert from '../../components/common/ExperienceGapAlert';
+import ResumeTipsPanel, {
+  ResumeReadabilityBanner,
+  ApplySkillsReminder,
+} from '../../components/common/ResumeTipsPanel';
 import { formatUploadOrParseError } from '../../utils/errorUtils';
 
 
@@ -522,6 +526,18 @@ const CandidateSmartUpload: React.FC = () => {
 
           {/* Application Progress Bar (Step 1 of 4) */}
           <ApplicationProgressBar currentStep={1} />
+
+          {/* ATS-Friendly Resume Tips, Job Skills Reminder & Post-Upload Readability Check */}
+          <div className="space-y-3 mb-5">
+            <ApplySkillsReminder
+              requiredSkills={job?.skills_requirements}
+              jobTitle={jobTitle}
+            />
+            <ResumeTipsPanel isNewUploadStep uploadResetKey={file?.name || ''} />
+            {extractedData?.readability_check && (
+              <ResumeReadabilityBanner readabilityCheck={extractedData.readability_check} />
+            )}
+          </div>
 
           {/* MAIN UPLOAD CARD */}
           <div className="bg-white rounded-[32px] sm:rounded-[40px] shadow-xl shadow-slate-200/50 border border-slate-100 overflow-hidden relative">

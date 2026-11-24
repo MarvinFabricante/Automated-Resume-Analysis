@@ -47,6 +47,82 @@ DEFAULT_RECRUITMENT_CONFIG = {
     "allow_hired_elsewhere_withdrawal": False,
 }
 
+RESUME_TIPS_CONFIG_KEY = "ats_resume_tips"
+
+DEFAULT_RESUME_TIPS: Dict[str, Any] = {
+    "title": "Tips for a better match",
+    "tooltip": "Clear formatting helps our system read your resume accurately so your match reflects your actual experience.",
+    "intro": "A clean, easy-to-read resume helps the system read your details accurately.",
+    "bullets": [
+        "Use a simple one-column layout with clear headings: Education, Skills, Work Experience, Certifications.",
+        "Upload a text-based PDF or DOCX, not a photo or scanned image.",
+        "Use standard fonts and avoid text inside images, tables, text boxes, headers and footers.",
+        'Write dates and job titles clearly, for example "Customer Service Representative, June 2023 - Present".',
+        "List your skills and tools by name (for example Excel, Shopify, data entry) and use the same words as in the job posting when they truly apply to you.",
+        "Include your certifications and trainings, and keep the resume up to date.",
+    ],
+    "honesty_reminder": "Only include what is true.",
+    "apply_skills_reminder": "Review the required skills for this position and make sure your resume mentions the skills and matching experience you actually have.",
+}
+
+
+async def get_resume_tips_config(db: AsyncSession) -> Dict[str, Any]:
+    """Retrieve applicant-facing ATS resume tips, merged with Admin SystemConfig overrides."""
+    merged = {
+        **DEFAULT_RESUME_TIPS,
+        "bullets": list(DEFAULT_RESUME_TIPS["bullets"]),
+    }
+    try:
+        cfg = await SystemConfigRepository.get_config_by_key(db, RESUME_TIPS_CONFIG_KEY)
+        if cfg and cfg.value:
+            saved = json.loads(cfg.value)
+            if isinstance(saved, dict):
+                for field in ("title", "tooltip", "intro", "honesty_reminder", "apply_skills_reminder"):
+                    if isinstance(saved.get(field), str) and saved[field].strip():
+                        merged[field] = saved[field].strip()
+                if isinstance(saved.get("bullets"), list):
+                    cleaned_bullets = [str(b).strip() for b in saved["bullets"] if str(b).strip()]
+                    if cleaned_bullets:
+                        merged["bullets"] = cleaned_bullets[:10]
+    except Exception as exc:
+        logger.warning(f"Failed loading custom ATS resume tips, using defaults: {exc}")
+    return merged
+
+
+async def update_resume_tips_config(
+    db: AsyncSession,
+    updates: Dict[str, Any],
+    user_id: Optional[int] = None,
+) -> Dict[str, Any]:
+    current = await get_resume_tips_config(db)
+    for field in ("title", "tooltip", "intro", "honesty_reminder", "apply_skills_reminder"):
+        if field in updates and updates[field] is not None:
+            val = str(updates[field]).strip()
+            if val:
+                current[field] = val
+    if "bullets" in updates and updates["bullets"] is not None:
+        cleaned_bullets = [str(b).strip() for b in updates["bullets"] if str(b).strip()]
+        if cleaned_bullets:
+            current["bullets"] = cleaned_bullets[:10]
+
+    await update_config(
+        db=db,
+        key=RESUME_TIPS_CONFIG_KEY,
+        value=json.dumps(current),
+        category="resume_tips",
+        description="Applicant-facing ATS-friendly resume tips shown on upload and review screens",
+        user_id=user_id,
+    )
+    return current
+
+
+async def reset_resume_tips_config(db: AsyncSession, user_id: Optional[int] = None) -> Dict[str, Any]:
+    await SystemConfigRepository.delete_config(db, RESUME_TIPS_CONFIG_KEY)
+    return {
+        **DEFAULT_RESUME_TIPS,
+        "bullets": list(DEFAULT_RESUME_TIPS["bullets"]),
+    }
+
 
 # ─── Matching Parameters & Recruitment Rules ────────────────────────────
 

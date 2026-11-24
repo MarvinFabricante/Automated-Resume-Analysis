@@ -8,10 +8,12 @@ import {
   Layers,
   Clock,
   CheckCircle2,
-  AlertCircle
+  AlertCircle,
+  MessageSquare
 } from 'lucide-react';
 import { useNavigate } from '@/utils/navigation';
 import HelpTooltip from '@/components/common/HelpTooltip';
+import { ApplicationThreadItem } from '@/services/chatService';
 
 const STAGE_LABELS = [
   'Submitted',
@@ -22,9 +24,10 @@ const STAGE_LABELS = [
 
 interface ApplicationListProps {
   applications?: any[];
+  threadsByAppId?: Record<string, ApplicationThreadItem>;
 }
 
-const ApplicationList: React.FC<ApplicationListProps> = ({ applications = [] }) => {
+const ApplicationList: React.FC<ApplicationListProps> = ({ applications = [], threadsByAppId = {} }) => {
   const navigate = useNavigate();
   const [filterTab, setFilterTab] = useState<'ACTIVE' | 'COMPLETED' | 'WITHDRAWN' | 'ALL'>('ACTIVE');
 
@@ -210,10 +213,30 @@ const ApplicationList: React.FC<ApplicationListProps> = ({ applications = [] }) 
                     </p>
                   </div>
 
-                  {/* Status Badge */}
-                  <div className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider border flex items-center gap-1.5 self-start sm:self-auto shrink-0 ${app.statusColor || 'text-slate-600 bg-slate-50 border-slate-200'}`}>
-                    <span className="w-1.5 h-1.5 rounded-full bg-current animate-pulse" />
-                    <span>{app.status}</span>
+                  {/* Status & Message from HR Badges */}
+                  <div className="flex items-center gap-2 flex-wrap self-start sm:self-auto shrink-0">
+                    {threadsByAppId[String(app.id)] && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          navigate(`/candidate/messages?thread=${threadsByAppId[String(app.id)].id}`);
+                        }}
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black bg-rose-50 text-[#D10043] border border-rose-200 hover:bg-[#D10043] hover:text-white transition-colors cursor-pointer"
+                      >
+                        <MessageSquare size={11} />
+                        <span>Message from HR</span>
+                        {(threadsByAppId[String(app.id)].unread_count || 0) > 0 && (
+                          <span className="px-1.5 py-0.2 rounded-full bg-[#D10043] text-white text-[9px] font-black">
+                            {threadsByAppId[String(app.id)].unread_count}
+                          </span>
+                        )}
+                      </button>
+                    )}
+                    <div className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider border flex items-center gap-1.5 ${app.statusColor || 'text-slate-600 bg-slate-50 border-slate-200'}`}>
+                      <span className="w-1.5 h-1.5 rounded-full bg-current animate-pulse" />
+                      <span>{app.status}</span>
+                    </div>
                   </div>
                 </div>
 

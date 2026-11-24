@@ -1,10 +1,18 @@
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, or_, and_, desc, update, delete
+from sqlalchemy import select, or_, and_, desc, update, delete, func
+from sqlalchemy.orm import selectinload
 from typing import List, Optional
+from datetime import datetime, timezone
 import logging
 
 from app.models.user import User
-from app.models.message import Message, ArchivedConversation
+from app.models.message import (
+    Message,
+    ArchivedConversation,
+    ApplicationThread,
+    MessageReport,
+    ArchivedThread,
+)
 from app.utils.redis_client import redis_tx_manager
 from app.utils.cache import get_cache, set_cache, delete_cache, clear_cache_pattern
 
@@ -18,7 +26,7 @@ async def get_user_by_email(db: AsyncSession, email: str) -> Optional[User]:
     if cached is not None:
         return cached
 
-    result = await db.execute(select(User).where(User.email == email))
+    result = await db.execute(select(User).where(func.lower(User.email) == email.lower()))
     user = result.scalar_one_or_none()
     if user:
         await set_cache(cache_key, user, ttl=1800)
@@ -109,7 +117,6 @@ async def mark_messages_as_read(db: AsyncSession, messages: List[Message]):
     """Mark messages as read with timestamp (Redis-first transaction)."""
     if not messages:
         return
-    from datetime import datetime, timezone
     now = datetime.now(timezone.utc)
     msg_ids = [m.id for m in messages if m.id]
     tx_id = await redis_tx_manager.stage_transaction(
@@ -145,7 +152,7 @@ async def get_chat_history(db: AsyncSession, user1_id: int, user2_id: int) -> Li
             and_(Message.sender_id == user1_id, Message.receiver_id == user2_id),
             and_(Message.sender_id == user2_id, Message.receiver_id == user1_id)
         )
-    ).order_by(Message.timestamp)
+    ).options(selectinload(Message.sender)).order_by(Message.timestamp)
     result = await db.execute(query)
     messages = result.scalars().all()
     await set_cache(cache_key, messages, ttl=120)
@@ -153,32 +160,43 @@ async def get_chat_history(db: AsyncSession, user1_id: int, user2_id: int) -> Li
 
 
 async def create_message(
-    db: AsyncSession, 
-    sender_id: int, 
-    receiver_id: int, 
+    db: AsyncSession,
+    sender_id: int,
+    receiver_id: int,
     content: str,
     message_type: Optional[str] = "general",
-    application_id: Optional[int] = None
+    application_id: Optional[int] = None,
+    thread_id: Optional[int] = None,
+    attachment_url: Optional[str] = None,
+    attachment_name: Optional[str] = None,
+    attachment_type: Optional[str] = None,
+    attachment_size: Optional[int] = None,
 ) -> Message:
     """Create a new chat message (Redis-first transaction)."""
     tx_id = await redis_tx_manager.stage_transaction(
         target="chat_message",
         action="CREATE",
         payload={
-            "sender_id": sender_id, 
-            "receiver_id": receiver_id, 
-            "content_preview": content[:100],
+            "sender_id": sender_id,
+            "receiver_id": receiver_id,
+            "content_preview": (content or "")[:100],
             "message_type": message_type,
-            "application_id": application_id
+            "application_id": application_id,
+            "thread_id": thread_id,
         },
     )
     try:
         new_msg = Message(
+            thread_id=thread_id,
             sender_id=sender_id,
             receiver_id=receiver_id,
             content=content,
             message_type=message_type or "general",
-            application_id=application_id
+            application_id=application_id,
+            attachment_url=attachment_url,
+            attachment_name=attachment_name,
+            attachment_type=attachment_type,
+            attachment_size=attachment_size,
         )
         db.add(new_msg)
         await db.commit()
@@ -314,7 +332,6 @@ async def unarchive_conversation(db: AsyncSession, user_id: int, contact_id: int
 
 async def get_sent_messages(db: AsyncSession, sender_id: int) -> List[Message]:
     """Get all messages sent by sender_id, ordered by timestamp descending (REQ065)."""
-    from sqlalchemy.orm import selectinload
     query = select(Message).where(
         Message.sender_id == sender_id
     ).options(
@@ -327,7 +344,6 @@ async def get_sent_messages(db: AsyncSession, sender_id: int) -> List[Message]:
 
 async def mark_single_message_read(db: AsyncSession, message_id: int, user_id: int) -> Optional[Message]:
     """Mark a single message as read when opened by the recipient (REQ063)."""
-    from datetime import datetime, timezone
     query = select(Message).where(Message.id == message_id, Message.receiver_id == user_id)
     result = await db.execute(query)
     msg = result.scalar_one_or_none()
@@ -340,7 +356,163 @@ async def mark_single_message_read(db: AsyncSession, message_id: int, user_id: i
     return msg
 
 
+# ─── Application Thread Repository Helpers ────────────────────────────────────
+
+async def get_thread_by_id(db: AsyncSession, thread_id: int) -> Optional[ApplicationThread]:
+    res = await db.execute(
+        select(ApplicationThread)
+        .where(ApplicationThread.id == thread_id)
+        .options(
+            selectinload(ApplicationThread.job_application),
+            selectinload(ApplicationThread.candidate),
+            selectinload(ApplicationThread.started_by),
+        )
+    )
+    return res.scalar_one_or_none()
+
+
+async def get_thread_by_application_id(db: AsyncSession, application_id: int) -> Optional[ApplicationThread]:
+    res = await db.execute(
+        select(ApplicationThread)
+        .where(ApplicationThread.application_id == application_id)
+        .options(
+            selectinload(ApplicationThread.job_application),
+            selectinload(ApplicationThread.candidate),
+            selectinload(ApplicationThread.started_by),
+        )
+    )
+    return res.scalar_one_or_none()
+
+
+async def create_application_thread(
+    db: AsyncSession,
+    application_id: int,
+    candidate_id: int,
+    started_by_id: int,
+) -> ApplicationThread:
+    thread = ApplicationThread(
+        application_id=application_id,
+        candidate_id=candidate_id,
+        started_by_id=started_by_id,
+    )
+    db.add(thread)
+    await db.commit()
+    await db.refresh(thread)
+    return thread
+
+
+async def get_thread_messages(db: AsyncSession, thread_id: int) -> List[Message]:
+    res = await db.execute(
+        select(Message)
+        .where(Message.thread_id == thread_id)
+        .options(selectinload(Message.sender))
+        .order_by(Message.timestamp, Message.id)
+    )
+    return list(res.scalars().all())
+
+
+async def get_message_by_id(db: AsyncSession, message_id: int) -> Optional[Message]:
+    res = await db.execute(
+        select(Message)
+        .where(Message.id == message_id)
+        .options(selectinload(Message.sender), selectinload(Message.thread))
+    )
+    return res.scalar_one_or_none()
+
+
+async def thread_has_hr_message(db: AsyncSession, thread_id: int) -> bool:
+    """Return True if at least one message in this thread was sent by HR or Admin."""
+    res = await db.execute(
+        select(Message.id)
+        .join(User, User.id == Message.sender_id)
+        .where(
+            Message.thread_id == thread_id,
+            func.upper(User.role).in_(["HR", "ADMIN", "SUPERADMIN"]),
+        )
+        .limit(1)
+    )
+    return res.first() is not None
+
+
+async def has_hr_started_message_between(
+    db: AsyncSession,
+    candidate_id: int,
+    hr_user_id: Optional[int] = None,
+    application_id: Optional[int] = None,
+) -> bool:
+    """Return True if HR or Admin has already sent at least one message to this candidate (optionally scoped to application)."""
+    conditions = [
+        Message.receiver_id == candidate_id,
+        func.upper(User.role).in_(["HR", "ADMIN", "SUPERADMIN"]),
+    ]
+    if application_id is not None:
+        conditions.append(Message.application_id == application_id)
+    elif hr_user_id is not None:
+        conditions.append(Message.sender_id == hr_user_id)
+
+    res = await db.execute(
+        select(Message.id)
+        .join(User, User.id == Message.sender_id)
+        .where(*conditions)
+        .limit(1)
+    )
+    return res.first() is not None
+
+
+async def get_archived_thread_ids(db: AsyncSession, user_id: int) -> List[int]:
+    res = await db.execute(
+        select(ArchivedThread.thread_id).where(ArchivedThread.user_id == user_id)
+    )
+    return [row[0] for row in res.fetchall()]
+
+
+async def archive_thread(db: AsyncSession, user_id: int, thread_id: int) -> bool:
+    existing = await db.execute(
+        select(ArchivedThread).where(
+            ArchivedThread.user_id == user_id,
+            ArchivedThread.thread_id == thread_id,
+        )
+    )
+    if not existing.scalar_one_or_none():
+        db.add(ArchivedThread(user_id=user_id, thread_id=thread_id))
+        await db.commit()
+    return True
+
+
+async def unarchive_thread(db: AsyncSession, user_id: int, thread_id: int) -> bool:
+    await db.execute(
+        delete(ArchivedThread).where(
+            ArchivedThread.user_id == user_id,
+            ArchivedThread.thread_id == thread_id,
+        )
+    )
+    await db.commit()
+    return True
+
+
+async def create_message_report(
+    db: AsyncSession,
+    message_id: int,
+    thread_id: Optional[int],
+    reporter_id: int,
+    reason: str,
+) -> MessageReport:
+    report = MessageReport(
+        message_id=message_id,
+        thread_id=thread_id,
+        reporter_id=reporter_id,
+        reason=reason,
+        status="OPEN",
+    )
+    db.add(report)
+    await db.execute(
+        update(Message).where(Message.id == message_id).values(is_reported=True)
+    )
+    await db.commit()
+    await db.refresh(report)
+    return report
+
+
 import sys
 chat_repository = sys.modules[__name__]
 ChatRepository = sys.modules[__name__]
-

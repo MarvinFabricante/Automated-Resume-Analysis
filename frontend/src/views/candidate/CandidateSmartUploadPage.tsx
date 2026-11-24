@@ -31,6 +31,9 @@ import Header from '../../components/layout/Header';
 import Sidebar from '../../components/layout/Sidebar';
 import ResumePreviewModal from '../../components/modals/shared/ResumePreviewModal';
 import HelpTooltip from '../../components/common/HelpTooltip';
+import ResumeTipsPanel, {
+  ResumeReadabilityBanner,
+} from '../../components/common/ResumeTipsPanel';
 import { formatUploadOrParseError } from '../../utils/errorUtils';
 
 const DIVISIONS = [
@@ -397,6 +400,14 @@ const CandidateSmartUploadPage: React.FC = () => {
                   </p>
                 </div>
               </div>
+            </div>
+
+            {/* ATS-Friendly Resume Tips & Readability Check */}
+            <div className="relative z-10 space-y-3">
+              <ResumeTipsPanel isNewUploadStep uploadResetKey={file?.name || ''} />
+              {extractedData?.readability_check && (
+                <ResumeReadabilityBanner readabilityCheck={extractedData.readability_check} />
+              )}
             </div>
 
             {/* CANDIDATE DEPARTMENT FILTER */}

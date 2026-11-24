@@ -510,6 +510,24 @@ def run_retention_anonymization_task(dry_run: bool = False, triggered_by: str = 
         return {"status": "FAILED", "error": str(e)}
 
 
+@celery_app.task(name="send_chat_email_digest_task")
+def send_chat_email_digest_task(recipient_id: int | None = None) -> dict:
+    """
+    Periodic or debounced Celery job to send consolidated email digests of unread
+    chat messages (one digest email per recipient instead of one email per message).
+    """
+    async def _run():
+        from app.services.chat_service import dispatch_chat_email_digests
+        async with async_session() as db:
+            return await dispatch_chat_email_digests(db, recipient_id=recipient_id)
+
+    try:
+        return _run_async_task(_run())
+    except Exception as e:
+        logger.error(f"[Celery] Chat email digest task failed: {e}")
+        return {"status": "error", "error": str(e)}
+
+
 def get_task_session_maker():
     task_engine = create_async_engine(
         effective_db_url,
