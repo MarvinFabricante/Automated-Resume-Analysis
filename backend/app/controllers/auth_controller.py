@@ -1,4 +1,5 @@
 from datetime import datetime
+import logging
 import os
 from typing import Optional
 
@@ -18,6 +19,13 @@ from app.services.auth_service import DuplicateEmailError, DeactivatedAccountExi
 
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
+logger = logging.getLogger(__name__)
+
+_SAFE_LOGIN_ERROR_MESSAGES = {
+    "Invalid credentials",
+    "Account has been archived. Please contact administration.",
+    "This account has been anonymized and cannot be accessed.",
+}
 
 @router.get("/check-email-status")
 async def check_email_status(email: str, db: AsyncSession = Depends(get_db)):
@@ -74,6 +82,8 @@ async def login(user: UserLogin, db: AsyncSession = Depends(get_db)):
             "user_id": data["user_id"],
             "profile_image_url": data.get("profile_image_url")
         }
+    except HTTPException:
+        raise
     except DeactivatedAccountExistsError as e:
         raise HTTPException(
             status_code=403,
@@ -85,7 +95,14 @@ async def login(user: UserLogin, db: AsyncSession = Depends(get_db)):
             },
         )
     except Exception as e:
-        raise HTTPException(status_code=401, detail=str(e))
+        msg = str(e)
+        if msg in _SAFE_LOGIN_ERROR_MESSAGES:
+            raise HTTPException(status_code=401, detail=msg)
+        logger.exception("Unexpected error during login for %s", user.email)
+        raise HTTPException(
+            status_code=503,
+            detail="We couldn't sign you in right now. Please try again in a few minutes.",
+        )
 
 
 @router.post("/account/request-delete-otp")

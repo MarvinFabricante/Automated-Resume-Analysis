@@ -66,7 +66,7 @@ const CandidateDashboard: React.FC = () => {
           Number(res.data?.total_unread ?? list.reduce((sum, t) => sum + (t.unread_count || 0), 0))
         );
       })
-      .catch(() => {});
+      .catch(() => { });
     return () => {
       active = false;
     };
@@ -144,9 +144,9 @@ const CandidateDashboard: React.FC = () => {
 
       <div className="flex flex-1">
         <Sidebar />
-        
+
         <main className="flex-1 max-w-[1440px] mx-auto px-3.5 sm:px-6 lg:px-8 py-5 sm:py-8 w-full flex-grow min-w-0">
-          
+
           {/* WELCOME BANNER */}
           <WelcomeHeader
             applicationCount={applications.length}
@@ -155,7 +155,7 @@ const CandidateDashboard: React.FC = () => {
 
           {/* EXECUTIVE KPI STATS ROW */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4 mb-6 sm:mb-8">
-            
+
             {/* KPI 1: Active Applications */}
             <div
               onClick={() => navigate('/candidate/applicationtracking')}
@@ -407,7 +407,7 @@ const CandidateDashboard: React.FC = () => {
 
             {/* LEFT 2 COLUMNS: APPLICATIONS & RECOMMENDED JOBS */}
             <div className="lg:col-span-2 space-y-6 sm:space-y-8">
-              
+
               {/* Application List Component */}
               {isLoadingApps ? (
                 <div className="bg-white border border-slate-200/80 rounded-2xl sm:rounded-3xl p-6 shadow-xs space-y-4 animate-pulse">
@@ -448,7 +448,7 @@ const CandidateDashboard: React.FC = () => {
 
             {/* RIGHT COLUMN: INTERVIEWS, PROFILE READINESS, QUICK ACTIONS */}
             <div className="space-y-6 sm:space-y-8">
-              
+
               {/* Upcoming Interviews Schedule */}
               <UpcomingInterviews />
 

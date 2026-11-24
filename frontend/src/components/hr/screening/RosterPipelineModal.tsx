@@ -417,10 +417,10 @@ const RosterPipelineModal: React.FC<RosterPipelineModalProps> = ({
                         const hasEduSignal = Boolean(eduExplicitStatus || eduReason || eduScore !== null && eduScore !== undefined);
                         const eduStatus = hasEduSignal
                           ? resolveCriterionStatus({
-                              explicitStatus: eduExplicitStatus,
-                              reason: eduReason,
-                              score: eduScore,
-                            })
+                            explicitStatus: eduExplicitStatus,
+                            reason: eduReason,
+                            score: eduScore,
+                          })
                           : null;
                         const isImported = (item.source && !item.source.toLowerCase().includes('online')) || (item.application?.source && !item.application.source.toLowerCase().includes('online'));
 

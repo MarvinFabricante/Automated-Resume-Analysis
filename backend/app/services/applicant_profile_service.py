@@ -66,19 +66,52 @@ async def get_applicant_comprehensive_profile(
             matched_user_id = u_row[0]
             account_email = u_row[1]
 
-    # Legacy email routes resolve account emails only. Imported, unlinked records
-    # stay separate until ownership is explicitly reviewed.
+    # 1. Resolve applications by user_id (if identifier is a user id or account email with linked apps),
+    # otherwise fall back to matching candidate/contact/resume email (and unify if a user_id is linked).
+    applications: List[JobApplication] = []
     if matched_user_id is not None:
-        condition = JobApplication.user_id == matched_user_id
         if not account_email:
             result = await db.execute(select(User.email).where(User.id == matched_user_id))
             account_email = result.scalar_one_or_none()
-    else:
-        condition = and_(JobApplication.user_id.is_(None),
-                         func.lower(JobApplication.candidate_email) == clean_email)
-    result = await db.execute(select(JobApplication).where(condition)
-                              .order_by(JobApplication.created_at.desc()))
-    applications = list(result.scalars().all())
+        result = await db.execute(
+            select(JobApplication)
+            .where(JobApplication.user_id == matched_user_id)
+            .order_by(JobApplication.created_at.desc())
+        )
+        applications = list(result.scalars().all())
+
+    if not applications:
+        # Either no User matched clean_email, or that User has no linked applications
+        # (e.g., an unlinked/imported record whose candidate_email matches a staff/HR account).
+        matched_user_id = None
+        account_email = None
+        email_match_cond = or_(
+            func.lower(JobApplication.candidate_email) == clean_email,
+            func.lower(JobApplication.contact_email) == clean_email,
+            func.lower(JobApplication.resume_email) == clean_email,
+        )
+        result = await db.execute(
+            select(JobApplication)
+            .where(email_match_cond)
+            .order_by(JobApplication.created_at.desc())
+        )
+        applications = list(result.scalars().all())
+
+        for a in applications:
+            if getattr(a, "user_id", None) is not None:
+                matched_user_id = a.user_id
+                break
+
+        if matched_user_id is not None:
+            u_res = await db.execute(select(User.email).where(User.id == matched_user_id))
+            account_email = u_res.scalar_one_or_none()
+            unified_res = await db.execute(
+                select(JobApplication)
+                .where(JobApplication.user_id == matched_user_id)
+                .order_by(JobApplication.created_at.desc())
+            )
+            applications = list(unified_res.scalars().all())
+
     if not applications:
         return None
 
