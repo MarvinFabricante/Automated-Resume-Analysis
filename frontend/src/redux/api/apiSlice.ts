@@ -742,6 +742,9 @@ export const apiSlice = createApi({
     }),
 
     // --- SYSTEM CONFIGURATION ---
+    getInterviewDefaults: builder.query<{ company_address: string }, void>({
+      query: () => '/interviews/defaults',
+    }),
     getMatchingConfig: builder.query<any, void>({
       query: () => '/system-config/matching',
       providesTags: ['SystemConfig'],
@@ -1210,6 +1213,7 @@ export const {
   useUnarchiveUserMutation,
   useGetAdminSystemStatsQuery,
   useGetActiveUsersCountQuery,
+  useGetInterviewDefaultsQuery,
   useGetMatchingConfigQuery,
   useUpdateMatchingWeightsMutation,
   useUpdateMatchingThresholdsMutation,

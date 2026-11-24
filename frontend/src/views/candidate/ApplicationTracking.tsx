@@ -733,6 +733,13 @@ const ApplicationTracking: React.FC = () => {
                                 )}
                               </div>
 
+                              <div className="text-xs text-slate-700 space-y-1">
+                                <p>Interview type: {step.interviewInfo.interview_type || 'Not specified'}</p>
+                                {step.interviewInfo.location && <p>Location: {step.interviewInfo.location}</p>}
+                                {step.interviewInfo.instructions && <p>{step.interviewInfo.instructions}</p>}
+                                {step.interviewInfo.meeting_link && <p>Please join a few minutes early and test your camera and microphone.</p>}
+                                <p>All interview times are Philippine time.</p>
+                              </div>
                               <div className="pt-2 flex flex-wrap items-center gap-2">
                                 {interviewMissed ? (
                                   <button
@@ -753,13 +760,13 @@ const ApplicationTracking: React.FC = () => {
                                         className="px-3.5 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors shadow-2xs"
                                       >
                                         <Video size={13} />
-                                        <span>Join Google Meet</span>
+                                        <span>Join meeting</span>
                                         <ExternalLink size={12} />
                                       </a>
                                     ) : (
                                       <div className="flex items-center gap-1.5 text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-3 py-1.5 rounded-lg border border-emerald-200/60">
                                         <Mail size={13} className="text-emerald-600 shrink-0" />
-                                        <span>Meeting link delivered to your registered email</span>
+                                        <span>See the interview location above</span>
                                       </div>
                                     )}
 
@@ -997,14 +1004,14 @@ const ApplicationTracking: React.FC = () => {
 
             {latestInterview?.meeting_link && (
               <div className="p-3 bg-purple-50 rounded-xl border border-purple-100 flex items-center justify-between text-xs font-bold text-purple-900">
-                <span>Google Meet Link Available:</span>
+                <span>Meeting link available:</span>
                 <a
                   href={latestInterview.meeting_link}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="px-3 py-1 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors flex items-center gap-1"
                 >
-                  <span>Open Meet</span>
+                  <span>Join meeting</span>
                   <ExternalLink size={12} />
                 </a>
               </div>

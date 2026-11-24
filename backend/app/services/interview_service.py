@@ -31,6 +31,7 @@ from app.services.google_calendar_service import (
     _is_timeout_error,
 )
 from app.services import email_service
+from app.services.interview_details import validate_interview_details, details_for_interview, interview_details_text, manila_time
 
 def _populate_candidate_info(interview, app_override=None, interviewer_override=None):
     """Helper to attach candidate details and interviewer info to the interview model."""
@@ -43,6 +44,7 @@ def _populate_candidate_info(interview, app_override=None, interviewer_override=
         except Exception:
             app = None
     if app:
+        setattr(interview, "candidate_user_id", getattr(app, "user_id", None))
         setattr(interview, "candidate_name", getattr(app, "candidate_name", None))
         setattr(interview, "candidate_email", getattr(app, "candidate_email", None))
         setattr(interview, "candidate_phone", getattr(app, "phone", None))
@@ -695,9 +697,6 @@ async def _build_interview_sms_message(
     candidate_email: Optional[str] = None,
 ) -> str:
     """Render an SMS notification from custom text or saved template with complete interview details."""
-    if custom_sms_message and custom_sms_message.strip():
-        return custom_sms_message.strip()
-
     from app.services.message_template_service import (
         build_interview_template_context,
         get_template,
@@ -719,7 +718,9 @@ async def _build_interview_sms_message(
         reason=reason,
         candidate_email=candidate_email,
     )
-    return render_template(tmpl.get("sms_message") or "", ctx)
+    body = (custom_sms_message or "").strip() or render_template(tmpl.get("sms_message") or "", ctx)
+    details = interview_details_text(start_time, end_time, location=location, meeting_link=meeting_link, instructions=notes)
+    return f"{body}\n{details}"
 
 
 
@@ -1097,8 +1098,8 @@ async def get_candidate_shortlisted_applications(
     if getattr(primary, "user_id", None):
         conditions.append(JobApplication.user_id == primary.user_id)
     norm_email = (primary.candidate_email or "").strip().lower()
-    if norm_email:
-        conditions.append(func.lower(JobApplication.candidate_email) == norm_email)
+    if norm_email and not getattr(primary, "user_id", None):
+        conditions.append((JobApplication.user_id.is_(None)) & (func.lower(JobApplication.candidate_email) == norm_email))
 
     if not conditions:
         return {
@@ -1255,7 +1256,9 @@ async def schedule_interview(db: AsyncSession, data: InterviewCreateSchema, user
                 and int(application.user_id) == int(extra_app.user_id)
             )
             same_email = (
-                primary_norm_email
+                not getattr(application, "user_id", None)
+                and not getattr(extra_app, "user_id", None)
+                and primary_norm_email
                 and (extra_app.candidate_email or "").strip().lower() == primary_norm_email
             )
             if not same_user and not same_email:
@@ -1302,6 +1305,10 @@ async def schedule_interview(db: AsyncSession, data: InterviewCreateSchema, user
 
         interview_location = (getattr(data, "location", None) or "").strip() or None
         interview_meeting_link = (getattr(data, "meeting_link", None) or "").strip() or None
+        if data.interview_type == "Online":
+            interview_location = None
+        elif data.interview_type == "Onsite":
+            interview_meeting_link = None
         interviewer_email = getattr(interviewer_user, "email", None) if interviewer_user else scheduler_email
 
         effective_description = data.description or ""
@@ -1320,8 +1327,11 @@ async def schedule_interview(db: AsyncSession, data: InterviewCreateSchema, user
             "description": effective_description,
             "start_time": start,
             "end_time": end,
-            "location": interview_location,
-            "meeting_link": interview_meeting_link,
+            "interview_type": data.interview_type or "Not specified",
+            "instructions": data.instructions,
+            "platform": data.platform if data.interview_type == "Online" else None,
+            "location": interview_location if data.interview_type != "Online" else None,
+            "meeting_link": interview_meeting_link if data.interview_type != "Onsite" else None,
             "is_combined": is_combined_interview,
             "combined_application_ids": combined_app_id_list,
         }
@@ -1339,7 +1349,7 @@ async def schedule_interview(db: AsyncSession, data: InterviewCreateSchema, user
 
             for inc_app in included_apps:
                 inc_norm = normalize_status(inc_app.status)
-                if inc_norm != "Interview Scheduled":
+                if inc_norm == "Shortlisted":
                     # Avoid sending duplicate status emails — single combined interview invite email is sent below
                     await apply_application_status_change(
                         db=db,
@@ -1357,6 +1367,8 @@ async def schedule_interview(db: AsyncSession, data: InterviewCreateSchema, user
                     )
 
                 # Sync with any shortlist roster items for this application
+                if inc_norm not in {"Shortlisted", "Interview Scheduled"}:
+                    continue
                 roster_items_stmt = select(ShortlistRosterItem).where(ShortlistRosterItem.application_id == inc_app.id)
                 roster_items_res = await db.execute(roster_items_stmt)
                 for r_item in roster_items_res.scalars().all():
@@ -1380,8 +1392,8 @@ async def schedule_interview(db: AsyncSession, data: InterviewCreateSchema, user
 
         # 3. Create Google Calendar Event via centralized service if credentials exist
         attendees = []
-        if application.candidate_email:
-            attendees.append({"email": application.candidate_email})
+        if candidate_email:
+            attendees.append({"email": candidate_email})
 
         # Add HR scheduler to Google Calendar attendees
         if scheduler_user and getattr(scheduler_user, "email", None):
@@ -1395,9 +1407,7 @@ async def schedule_interview(db: AsyncSession, data: InterviewCreateSchema, user
 
         if credentials_json:
             try:
-                cal_desc = data.description or ''
-                if interview_meeting_link:
-                    cal_desc = f"{cal_desc}\n\nMeeting Link: {interview_meeting_link}".strip()
+                cal_desc = f"{interview.description or ''}\n{details_for_interview(interview)}"
                 event = await asyncio.to_thread(
                     create_real_google_event,
                     credentials_json,
@@ -1456,7 +1466,7 @@ async def schedule_interview(db: AsyncSession, data: InterviewCreateSchema, user
                     start_time=data.start_time,
                     end_time=data.end_time,
                     interviewer_name=interviewer_name,
-                    notes=data.description or "",
+                    notes="\n".join(filter(None, [data.description, data.instructions])),
                     location=interview_location,
                     meeting_link=interview_meeting_link,
                     interviewer_email=interviewer_email,
@@ -1549,7 +1559,7 @@ async def schedule_interview(db: AsyncSession, data: InterviewCreateSchema, user
             interviewer_email=interviewer_email,
             location=interview_location,
             meeting_link=interview_meeting_link,
-            notes=data.description or "",
+            notes="\n".join(filter(None, [data.description, data.instructions])),
             candidate_email=candidate_email,
         )
         await _dispatch_candidate_sms(
@@ -1571,7 +1581,7 @@ async def schedule_interview(db: AsyncSession, data: InterviewCreateSchema, user
                 await create_notification(
                     db=db,
                     title="Interview Scheduled 📅",
-                    message=f"Your interview for {job_name} has been scheduled on {time_str}.",
+                    message=f"Your interview for {job_name} has been scheduled.\n{details_for_interview(interview)}",
                     type="schedule",
                     target_role="CANDIDATE",
                     target_email=candidate_email,
@@ -1665,6 +1675,26 @@ async def update_interview(db: AsyncSession, interview_id: int, data: InterviewU
     if not is_owner and not is_admin:
         raise PermissionError("You do not have permission to modify this interview. Only the assigned HR interviewer or an administrator can make changes.")
 
+    venue_fields = {"interview_type", "location", "meeting_link", "instructions", "platform"}
+    changes = data.model_dump(exclude_unset=True)
+    merged = {key: changes.get(key, getattr(interview, key, None)) for key in venue_fields}
+    if venue_fields.intersection(changes):
+        kind = merged["interview_type"]
+        if kind not in ("Onsite", "Online"):
+            kind = "Online" if merged["meeting_link"] else "Onsite"
+        validate_interview_details(kind, merged["location"], merged["meeting_link"])
+        merged["interview_type"] = kind
+        if kind == "Online":
+            merged["location"] = None
+        else:
+            merged["meeting_link"] = None
+            merged["platform"] = None
+    details_changed = any(value != getattr(interview, key, None) for key, value in merged.items())
+    details_changed = details_changed or any(
+        key in changes and changes[key] != getattr(interview, key, None)
+        for key in ("description", "title", "interviewer_id")
+    )
+
     time_changed = False
     if data.start_time is not None or data.end_time is not None:
         start = (data.start_time or interview.start_time).replace(tzinfo=None)
@@ -1683,10 +1713,9 @@ async def update_interview(db: AsyncSession, interview_id: int, data: InterviewU
         interview.description = data.description
     if data.interviewer_id is not None:
         interview.interviewer_id = data.interviewer_id
-    if hasattr(data, "location") and data.location is not None:
-        interview.location = data.location.strip() or None
-    if hasattr(data, "meeting_link") and data.meeting_link is not None:
-        interview.meeting_link = data.meeting_link.strip() or None
+    if venue_fields.intersection(changes):
+        for key, value in merged.items():
+            setattr(interview, key, value.strip() if isinstance(value, str) else value)
     if hasattr(data, "call_language") and data.call_language is not None:
         interview.call_language = data.call_language
     if data.status is not None:
@@ -1758,8 +1787,9 @@ async def update_interview(db: AsyncSession, interview_id: int, data: InterviewU
 
             # Create new Google Calendar event for the rescheduled slot with updated attendees
             attendees = []
-            if application and getattr(application, "candidate_email", None):
-                attendees.append({"email": application.candidate_email})
+            notification_email = await _resolve_candidate_notification_email(db, application) if application else None
+            if notification_email:
+                attendees.append({"email": notification_email})
             if scheduler_user and getattr(scheduler_user, "email", None):
                 attendees.append({"email": scheduler_user.email})
             for p_user in panel_recipients:
@@ -1767,9 +1797,7 @@ async def update_interview(db: AsyncSession, interview_id: int, data: InterviewU
                     attendees.append({"email": p_user.email})
 
             try:
-                cal_desc = interview.description or ""
-                if getattr(interview, "meeting_link", None):
-                    cal_desc = f"{cal_desc}\n\nMeeting Link: {interview.meeting_link}".strip()
+                cal_desc = f"{interview.description or ''}\n{details_for_interview(interview)}"
                 new_event = await asyncio.to_thread(
                     create_real_google_event,
                     credentials_json,
@@ -1804,14 +1832,15 @@ async def update_interview(db: AsyncSession, interview_id: int, data: InterviewU
                     summary=summary_val,
                     start_dt=interview.start_time.isoformat(),
                     end_dt=interview.end_time.isoformat(),
-                    description=interview.description or "",
+                    description=f"{interview.description or ''}\n{details_for_interview(interview)}",
+                    location=interview.location or "",
                     status=cal_status,
                 )
             except Exception as e:
                 print(f"Warning: Could not modify Google Calendar event: {e}")
 
     # If rescheduled time changed, notify candidate, HR, and panel
-    if time_changed and application:
+    if (time_changed or details_changed) and application:
         # Resolve real target position title safely without triggering lazy-load on detached instance
         job_name = None
         try:
@@ -1898,7 +1927,7 @@ async def update_interview(db: AsyncSession, interview_id: int, data: InterviewU
                     start_time=interview.start_time,
                     end_time=interview.end_time,
                     interviewer_name=interviewer_name,
-                    notes=interview.description or "",
+                    notes="\n".join(filter(None, [interview.description, getattr(interview, "instructions", None)])),
                     location=iv_location,
                     meeting_link=iv_meeting_link,
                     interviewer_email=interviewer_email,
@@ -1929,7 +1958,7 @@ async def update_interview(db: AsyncSession, interview_id: int, data: InterviewU
             interviewer_email=interviewer_email,
             location=iv_location,
             meeting_link=iv_meeting_link,
-            notes=interview.description or "",
+            notes="\n".join(filter(None, [interview.description, getattr(interview, "instructions", None)])),
             candidate_email=cand_notif_email,
         )
         await _dispatch_candidate_sms(
@@ -1950,7 +1979,7 @@ async def update_interview(db: AsyncSession, interview_id: int, data: InterviewU
                 await create_notification(
                     db=db,
                     title="Interview Rescheduled 📅",
-                    message=f"Your interview for {job_name} has been rescheduled to {time_str}.",
+                    message=f"Your interview for {job_name} has been updated.\n{details_for_interview(interview)}",
                     type="schedule",
                     target_role="CANDIDATE",
                     target_email=cand_notif_email,
@@ -2074,7 +2103,7 @@ async def get_calendar_feed(
                 try:
                     _populate_candidate_info(iv)
                     attendees = []
-                    cand_em = getattr(iv, "candidate_email", None)
+                    cand_em = await _resolve_candidate_notification_email(db, iv.job_application) if iv.job_application else None
                     if cand_em:
                         attendees.append({"email": cand_em})
                     iv_em = getattr(iv, "interviewer_email", None)
@@ -2088,7 +2117,7 @@ async def get_calendar_feed(
 
                     cal_desc = getattr(iv, "description", None) or ""
                     if getattr(iv, "meeting_link", None):
-                        cal_desc = f"{cal_desc}\n\nMeeting Link: {iv.meeting_link}".strip()
+                        cal_desc = f"{cal_desc}\n{details_for_interview(iv)}".strip()
 
                     created_ev = await asyncio.to_thread(
                         create_real_google_event,
@@ -2583,7 +2612,7 @@ async def candidate_reschedule_interview(
             or (cand_notif_email or "").strip().lower() == norm_req_email
         )
     )
-    if not (owns_by_uid or owns_by_email):
+    if not owns_by_uid:
         raise PermissionError("You do not have permission to reschedule this interview.")
 
     status_upper = (interview.status or "").upper()
@@ -2642,7 +2671,8 @@ async def candidate_reschedule_interview(
                 summary=interview.title,
                 start_dt=interview.start_time.isoformat(),
                 end_dt=interview.end_time.isoformat(),
-                description=interview.description or "",
+                description=f"{interview.description or ''}\n{details_for_interview(interview)}",
+                location=interview.location or "",
                 status="confirmed",
             )
         except Exception as cal_err:

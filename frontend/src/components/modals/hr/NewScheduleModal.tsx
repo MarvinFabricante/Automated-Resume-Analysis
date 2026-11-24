@@ -1,3 +1,5 @@
+import InterviewVenueFields, { emptyInterviewVenue, validInterviewVenue, venuePayload } from './InterviewVenueFields';
+import { useGetInterviewDefaultsQuery } from '../../../redux/api/apiSlice';
 import React, { useState, useEffect } from 'react';
 import {
   X,
@@ -42,6 +44,8 @@ const NewScheduleModal: React.FC<NewScheduleModalProps> = ({
   const { data: candidates = [], isLoading: isCandidatesLoading } = useGetApplicationsQuery();
   const { data: allInterviews = [] } = useGetAllInterviewsQuery();
   const { data: interviewers = [] } = useGetHRInterviewersQuery();
+  const { data: interviewDefaults } = useGetInterviewDefaultsQuery();
+  const [venue, setVenue] = useState({ ...emptyInterviewVenue });
   const [getSlots, { isLoading: isFetchingSlots }] = useGetAvailableSlotsMutation();
   const [scheduleInterview, { isLoading: isScheduling }] = useScheduleInterviewMutation();
 
@@ -60,8 +64,8 @@ const NewScheduleModal: React.FC<NewScheduleModalProps> = ({
   const [callLanguage, setCallLanguage] = useState<string>('fil');
   const [customStartTime, setCustomStartTime] = useState<string>('09:00');
   const [customEndTime, setCustomEndTime] = useState<string>('10:00');
-  const [location, setLocation] = useState<string>('');
-  const [meetingLink, setMeetingLink] = useState<string>('');
+  const location = venue.interviewType === 'Onsite' ? venue.location : '';
+  const meetingLink = venue.interviewType === 'Online' ? venue.meetingLink : '';
   const [customMsg, setCustomMsg] = useState<CustomMessageValues>({
     customEmailSubject: '',
     customEmailMessage: '',
@@ -113,13 +117,11 @@ const NewScheduleModal: React.FC<NewScheduleModalProps> = ({
       if (initialCandidate) {
         setSelectedCandidate(initialCandidate);
         setTitle(`Interview with ${initialCandidate.candidate_name || initialCandidate.name || 'Candidate'}`);
-        setLocation(initialCandidate.job?.location || initialCandidate.job_location || '');
       } else {
         setSelectedCandidate(null);
         setTitle('Technical Interview');
-        setLocation('');
       }
-      setMeetingLink('');
+      setVenue({ ...emptyInterviewVenue });
       setCustomMsg({
         customEmailSubject: '',
         customEmailMessage: '',
@@ -211,7 +213,9 @@ const NewScheduleModal: React.FC<NewScheduleModalProps> = ({
       if (!isUpcomingInterview(iv)) return false;
       const ivAppId = iv.job_application_id || iv.job_application?.id;
       if (candidateAppId && ivAppId && Number(ivAppId) === Number(candidateAppId)) return true;
-      if (cEmail && (iv.candidate_email || iv.job_application?.candidate_email) && (iv.candidate_email || iv.job_application?.candidate_email).toLowerCase().trim() === cEmail) return true;
+    const uid = c?.user_id || c?.applicant_id;
+    const otherUid = iv.candidate_user_id || iv.job_application?.user_id;
+    if (uid && otherUid && String(uid) === String(otherUid)) return true;
       return false;
     });
   };
@@ -226,6 +230,11 @@ const NewScheduleModal: React.FC<NewScheduleModalProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!validInterviewVenue(venue)) {
+      setErrorMsg('Choose an interview type and complete the required location or meeting link.');
+      return;
+    }
+
     setErrorMsg('');
 
     if (!selectedCandidate) {
@@ -300,8 +309,7 @@ const NewScheduleModal: React.FC<NewScheduleModalProps> = ({
         start_time: finalStart,
         end_time: finalEnd,
         call_language: callLanguage,
-        location: location.trim() || undefined,
-        meeting_link: meetingLink.trim() || undefined,
+        ...venuePayload(venue),
         ...(customMsg.isCustomized
           ? {
               custom_email_subject: customMsg.customEmailSubject || undefined,
@@ -817,32 +825,7 @@ const NewScheduleModal: React.FC<NewScheduleModalProps> = ({
             />
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-black text-gray-700 uppercase tracking-wider mb-2">
-                Location / Venue (Optional)
-              </label>
-              <input
-                type="text"
-                value={location}
-                onChange={(e) => setLocation(e.target.value)}
-                placeholder="e.g., Mariwasa HR Office or Online"
-                className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-2xl text-xs font-semibold text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#D60041]/20 focus:border-[#D60041]"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-black text-gray-700 uppercase tracking-wider mb-2">
-                Meeting Link (Optional)
-              </label>
-              <input
-                type="url"
-                value={meetingLink}
-                onChange={(e) => setMeetingLink(e.target.value)}
-                placeholder="https://meet.google.com/..."
-                className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-2xl text-xs font-semibold text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#D60041]/20 focus:border-[#D60041]"
-              />
-            </div>
-          </div>
+          <InterviewVenueFields value={venue} onChange={setVenue} companyAddress={interviewDefaults?.company_address} />
 
           {/* Editable Email & SMS Message Preview */}
           {(() => {
@@ -895,7 +878,7 @@ const NewScheduleModal: React.FC<NewScheduleModalProps> = ({
             </button>
             <button
               type="submit"
-              disabled={isScheduling || !selectedCandidate || (!useCustomTime && !selectedSlot) || (useCustomTime && (!customStartTime || !customEndTime))}
+              disabled={!validInterviewVenue(venue) || isScheduling || !selectedCandidate || (!useCustomTime && !selectedSlot) || (useCustomTime && (!customStartTime || !customEndTime))}
               className="px-6 py-2.5 bg-[#D60041] hover:bg-rose-700 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-[#D60041]/20 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
             >
               {isScheduling ? (

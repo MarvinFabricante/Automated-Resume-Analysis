@@ -607,7 +607,7 @@ async def create_job_application(
         data["resume_email"] = explicit_resume_email
         chosen_contact = explicit_contact or submitted_email or account_email
         data["contact_email"] = chosen_contact
-        data["candidate_email"] = chosen_contact or account_email or submitted_email
+        data["candidate_email"] = account_email or submitted_email
     else:
         data["contact_email"] = explicit_contact or submitted_email
         data["resume_email"] = explicit_resume_email
@@ -1317,8 +1317,7 @@ async def withdraw_single_application(
     # Verify ownership
     norm_actor = (actor_email or "").strip().lower()
     owns_by_id = app.user_id is not None and int(app.user_id) == int(actor_user_id)
-    owns_by_email = (app.candidate_email or "").strip().lower() == norm_actor
-    if not owns_by_id and not owns_by_email:
+    if not owns_by_id:
         raise PermissionError("You can only withdraw your own applications.")
 
     if is_passed_status(app.status):

@@ -29,14 +29,7 @@ async def get_profile(candidate_id: int, db: AsyncSession = Depends(get_db)):
         from app.models.interview import Interview
         from sqlalchemy import select, func, or_, and_
 
-        norm_profile_email = (profile.email or "").strip().lower()
-        cand_app_filter = or_(
-            JobApplication.user_id == candidate_id,
-            and_(
-                JobApplication.user_id.is_(None),
-                func.lower(JobApplication.candidate_email) == norm_profile_email,
-            ),
-        )
+        cand_app_filter = JobApplication.user_id == candidate_id
 
         apps_res = await db.execute(
             select(func.count(JobApplication.id)).where(cand_app_filter)

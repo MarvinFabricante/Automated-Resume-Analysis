@@ -23,6 +23,19 @@ from app.utils.cache import cache_response, clear_cache_pattern
 
 router = APIRouter(prefix="/interviews", tags=["Interviews"])
 
+@router.get("/defaults")
+async def get_interview_defaults(db: AsyncSession = Depends(get_db), current_user: dict = Depends(get_current_user)):
+    import json
+    from app.repositories.system_config_repository import get_config_by_key
+    config = await get_config_by_key(db, "company_address")
+    address = config.value if config else ""
+    try:
+        address = json.loads(address)
+    except (ValueError, TypeError):
+        pass
+    return {"company_address": address if isinstance(address, str) else ""}
+
+
 @router.get("", response_model=List[InterviewResponseSchema])
 async def get_all_interviews(
     db: AsyncSession = Depends(get_db),
@@ -450,10 +463,7 @@ async def get_candidate_interviews(
     if (current_user.get("role") or "").upper() == "CANDIDATE":
         auth_uid = current_user.get("id")
         auth_email = (current_user.get("sub") or current_user.get("email") or "").strip().lower()
-        if auth_uid and (
-            raw_param in ("me", "my", str(auth_uid))
-            or raw_param.lower() == auth_email
-        ):
+        if auth_uid:
             return await interview_service.get_interviews_for_candidate(
                 db, auth_email or raw_param, user_id=auth_uid
             )
