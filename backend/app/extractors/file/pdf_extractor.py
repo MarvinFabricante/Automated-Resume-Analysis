@@ -37,7 +37,32 @@ _PDF_FULL_DATE_RANGE_HINT_RE = re.compile(
 )
 _PDF_DECORATIVE_BLOCK_RE = re.compile(r'^[\s\-–—=_*#•►◆■□▪▸▹│┃|.·~]+$')
 _PDF_BULLET_ONLY_RE = re.compile(r'^[•\-*▪►✓◆■□▸▹·]$')
-_PDF_PAGE_FOOTER_RE = re.compile(r'^\s*page\s+\d+(?:\s*(?:of|/)\s*\d+)?\s*$', re.IGNORECASE)
+_PDF_PAGE_FOOTER_RE = re.compile(
+    r'^\s*(?:'
+    r'(?:page|pg\.?|p\.?)\s*\d+(?:\s*(?:of|/)\s*\d+)?|'
+    r'\d+\s*(?:of|/)\s*\d+|'
+    r'\d+\s*\|\s*page|page\s*\|\s*\d+|'
+    r'[-–—|•·]\s*\d+\s*[-–—|•·]'
+    r')\s*$',
+    re.IGNORECASE,
+)
+_PDF_RUNNING_PAGE_MARKER_RE = re.compile(
+    r'(?:\|\s*|\-\s*|–\s*|—\s*|,\s*)?(?:page|pg\.?)\s*\d+(?:\s*(?:of|/)\s*\d+)?\b',
+    re.IGNORECASE,
+)
+
+
+def _is_pure_page_number_line(line: str) -> bool:
+    return bool(_PDF_PAGE_FOOTER_RE.match((line or "").strip()))
+
+
+def _normalize_running_line_sig(line: str) -> str:
+    s = re.sub(r'\s+', ' ', (line or "").strip()).lower()
+    if not s:
+        return ""
+    s = _PDF_RUNNING_PAGE_MARKER_RE.sub('<page>', s)
+    s = re.sub(r'\b\d+\s*(?:of|/)\s*\d+\b', '<page>', s)
+    return s.strip(' |-–—•·')
 
 
 def _is_decorative_block(txt: str) -> bool:
@@ -799,10 +824,13 @@ def extract_text_from_pdf(file_input: Union[str, bytes, io.BytesIO]) -> str:
 
         doc.close()
 
-        # Multi-page 2-column continuity: if page p+1 continues a 2-column layout and its
-        # right column starts without a section header (continuing page p's right column),
-        # emit page p+1's right column before page p+1's left sidebar.
-        page_texts: list[str] = []
+        # Multi-page assembly:
+        # 1. Preserve 2-column continuity across pages 2..N.
+        # 2. Strip pure page-number lines ("Page 2 of 4", "- 2 -", "2 / 4") so page
+        #    boundaries never break multi-page sections or work-experience entries.
+        # 3. Strip repeated running headers/footers on pages 2..N while keeping page 1
+        #    intact so name/contact extraction always sees the header on page 1.
+        assembled_page_lines: list[list[str]] = []
         for idx, p_info in enumerate(pages_parts):
             if (
                 idx > 0
@@ -828,9 +856,64 @@ def extract_text_from_pdf(file_input: Union[str, bytes, io.BytesIO]) -> str:
                         + p_info["other_lines"]
                         + p_info["footer_lines"]
                     )
-                    page_texts.append("\n".join(reordered))
+                    assembled_page_lines.append(reordered)
                     continue
-            page_texts.append(p_info["text"])
+            assembled_page_lines.append(p_info["text"].splitlines())
+
+        if len(assembled_page_lines) >= 2:
+            # Identify lines repeated in top-3 / bottom-3 margins across >= 2 pages
+            margin_sig_pages: dict[str, set[int]] = {}
+            for p_idx, p_lines in enumerate(assembled_page_lines):
+                non_empty_indices = [i for i, ln in enumerate(p_lines) if ln.strip()]
+                edge_indices = set(non_empty_indices[:3] + non_empty_indices[-3:])
+                for li in edge_indices:
+                    raw_ln = p_lines[li].strip()
+                    if not raw_ln or len(raw_ln) > 120:
+                        continue
+                    if detect_section_label_fn is not None and detect_section_label_fn(raw_ln) is not None:
+                        continue
+                    sig = _normalize_running_line_sig(raw_ln)
+                    if sig and len(sig) >= 3:
+                        margin_sig_pages.setdefault(sig, set()).add(p_idx)
+
+            repeated_sigs = {sig for sig, pset in margin_sig_pages.items() if len(pset) >= 2}
+
+            cleaned_page_texts: list[str] = []
+            for p_idx, p_lines in enumerate(assembled_page_lines):
+                non_empty_indices = [i for i, ln in enumerate(p_lines) if ln.strip()]
+                edge_indices = set(non_empty_indices[:3] + non_empty_indices[-3:])
+                kept_lines: list[str] = []
+                for li, ln in enumerate(p_lines):
+                    stripped_ln = ln.strip()
+                    if not stripped_ln:
+                        kept_lines.append(ln)
+                        continue
+                    # Always strip standalone page-number markers
+                    if _is_pure_page_number_line(stripped_ln):
+                        continue
+                    # On pages 2..N, drop repeated running headers/footers and edge lines with "Page N"
+                    if p_idx > 0 and li in edge_indices:
+                        is_sec_hdr = (
+                            detect_section_label_fn is not None
+                            and detect_section_label_fn(stripped_ln) is not None
+                        )
+                        if not is_sec_hdr:
+                            sig = _normalize_running_line_sig(stripped_ln)
+                            if sig in repeated_sigs:
+                                continue
+                            if (
+                                len(stripped_ln) <= 100
+                                and _PDF_RUNNING_PAGE_MARKER_RE.search(stripped_ln)
+                            ):
+                                continue
+                    kept_lines.append(ln)
+                cleaned_page_texts.append("\n".join(kept_lines))
+            page_texts = cleaned_page_texts
+        else:
+            page_texts = [
+                "\n".join(ln for ln in p_lines if not _is_pure_page_number_line(ln))
+                for p_lines in assembled_page_lines
+            ]
 
         fitz_text = "\n".join(page_texts).strip()
     except Exception as e:

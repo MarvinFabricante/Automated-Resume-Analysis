@@ -626,6 +626,101 @@ async def create_job_application(
     _sanitize_application_payload(data)
     _apply_experience_gap_evaluation(data, job_desc)
 
+    # ── Minimum Accepted Requirements Enforcement Gate ───────────────────────
+    # Block online candidate applications that fall below the job's accepted
+    # requirements (configured minimum_match_score / core required criteria).
+    # HR physical/walk-in imports (source='Imported') are exempt so HR can log
+    # walk-in submissions into their archive as needed.
+    if not is_imported and job_desc is not None:
+        from app.services.requirement_rules import normalize_requirement_text as _norm_req
+        has_configured_reqs = any(
+            _norm_req(getattr(job_desc, attr, None))
+            for attr in (
+                "skills_requirements",
+                "experience_requirements",
+                "education_requirements",
+                "certifications_requirements",
+            )
+        )
+        if has_configured_reqs:
+            try:
+                from app.services.job_matching_service import calculate_match_score, get_current_matching_config
+                try:
+                    from app.services.system_config_service import get_matching_parameters
+                    matching_config = await get_matching_parameters(db)
+                except Exception:
+                    matching_config = get_current_matching_config()
+
+                eval_skills = data.get("skills") or []
+                eval_degree = data.get("degree") or data.get("candidate_degree") or ""
+                eval_college = data.get("college") or ""
+                eval_certs = data.get("certifications") or data.get("candidate_certifications") or ""
+                eval_years = _resolve_application_years(
+                    total_months=data.get("total_experience_months") or 0,
+                    work_experiences=data.get("work_experiences"),
+                    relevance=data.get("relevance") or "",
+                    relevant_experience=data.get("relevant_experience") or "",
+                )
+                eval_exp_parts = []
+                if data.get("job_title") or data.get("company"):
+                    eval_exp_parts.append(
+                        f"{data.get('job_title') or ''} at {data.get('company') or ''}".strip(" at")
+                    )
+                if data.get("relevance"):
+                    eval_exp_parts.append(str(data["relevance"]))
+                if data.get("relevant_experience"):
+                    eval_exp_parts.append(str(data["relevant_experience"]))
+
+                eval_resume = {
+                    "fullname": data.get("candidate_name") or "",
+                    "email": data.get("candidate_email") or "",
+                    "phone": data.get("phone") or "",
+                    "location": data.get("location") or "",
+                    "job_title": data.get("job_title") or "",
+                    "skills": " | ".join(eval_skills) if isinstance(eval_skills, list) else str(eval_skills),
+                    "skills_list": eval_skills if isinstance(eval_skills, list) else [],
+                    "experience": " | ".join(p for p in eval_exp_parts if p),
+                    "work_experiences": data.get("work_experiences") or [],
+                    "total_experience_months": data.get("total_experience_months") or 0,
+                    "years_experience": eval_years,
+                    "education": " - ".join(p for p in [eval_degree, eval_college] if p),
+                    "degree": eval_degree,
+                    "highest_degree": eval_degree,
+                    "highest_educational_attainment": data.get("highest_educational_attainment") or eval_degree,
+                    "education_entries": data.get("education_entries") or [],
+                    "certifications": eval_certs,
+                    "candidate_certifications": eval_certs,
+                    "clarification_responses": data.get("clarification_responses") or [],
+                    "completeness_score": data.get("completeness_score"),
+                }
+
+                elig_res = calculate_match_score(
+                    eval_resume,
+                    job_desc,
+                    use_ai=False,
+                    matching_config=matching_config,
+                    log_prediction=False,
+                )
+                if not elig_res.get("eligible_to_apply", elig_res.get("meets_threshold", True)):
+                    from fastapi import HTTPException, status as http_status
+                    score_val = float(elig_res.get("match_percentage") or 0.0)
+                    min_req = float(elig_res.get("minimum_match_score") or 30.0)
+                    reasons = elig_res.get("eligibility_reasons") or [
+                        f"Your profile match score ({score_val:.1f}%) is below the minimum accepted requirement ({min_req:.1f}%)."
+                    ]
+                    raise HTTPException(
+                        status_code=http_status.HTTP_400_BAD_REQUEST,
+                        detail=(
+                            f"Application blocked — below accepted requirements for {getattr(job_desc, 'job_title', 'this position')}. "
+                            + " ".join(reasons)
+                            + " Please update your resume/qualifications or apply for a better-matched position."
+                        ),
+                    )
+            except HTTPException:
+                raise
+            except Exception as elig_err:
+                logger.warning(f"Eligibility check notice for job {db_job_id}: {elig_err}")
+
     from app.services.retention_service import compute_email_hash
     data["email_hash"] = compute_email_hash(account_email or data.get("candidate_email") or submitted_email)
 

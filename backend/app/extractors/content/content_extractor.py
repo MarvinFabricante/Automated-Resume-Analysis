@@ -268,7 +268,7 @@ def _cross_validate(data: dict, sections: dict) -> dict:
             edu_section,
             re.I,
         ):
-            data["education"] = edu_section[:300]
+            data["education"] = edu_section[:1500]
 
     # If experience is empty but section has content, fallback
     if not data.get("experience") and sections.get("EXPERIENCE"):
@@ -276,7 +276,7 @@ def _cross_validate(data: dict, sections: dict) -> dict:
         if exp_section and len(exp_section) > 10:
             lines = [l.strip() for l in exp_section.split('\n') if l.strip()]
             if lines:
-                data["experience"] = " | ".join(lines[:5])
+                data["experience"] = " | ".join(lines[:25])
 
     # If certifications empty but certifications/training/awards section exists, scan it
     if not data.get("certifications"):
@@ -297,9 +297,9 @@ def _cross_validate(data: dict, sections: dict) -> dict:
                 and not re.match(r'^(?:none|n/?a|not\s+applicable|(?:19|20)\d{2})$', item, re.I)
             ]
             if fallback_items:
-                data["certifications"] = " | ".join(fallback_items[:25])
+                data["certifications"] = " | ".join(fallback_items[:50])
                 if not data.get("certifications_list"):
-                    data["certifications_list"] = fallback_items[:25]
+                    data["certifications_list"] = fallback_items[:50]
 
     # If email is empty, re-scan PERSONAL/CONTACT section
     if not data.get("email") and sections.get("PERSONAL"):
@@ -1090,7 +1090,7 @@ def extract_content(text: str) -> dict:
     skills_list = [s["canonical_skill"] for s in skills_details.get("extracted_skills", [])]
     if sections.get("SKILLS"):
         skills_list = _supplement_skills_from_section(sections["SKILLS"], skills_details, skills_list)
-    skills_str = " | ".join(skills_list[:50]) if skills_list else ""
+    skills_str = " | ".join(skills_list[:100]) if skills_list else ""
 
     relevance = extract_relevance(text, years_experience, job_title, skills_str)
 
@@ -1100,7 +1100,7 @@ def extract_content(text: str) -> dict:
     education_str = extract_education(text)
     certifications_details = extract_structured_certifications(text)
     certifications_list = [c["canonical_name"] for c in certifications_details.get("certifications", [])]
-    certifications_str = " | ".join(certifications_list[:25]) if certifications_list else extract_certifications(text)
+    certifications_str = " | ".join(certifications_list[:50]) if certifications_list else extract_certifications(text)
 
     data = {
         # Personal Information

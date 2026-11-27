@@ -423,7 +423,12 @@ async def test_single_withdrawal_account_deletion_and_hard_delete_locks(client, 
     # Now applying to j4 succeeds because slot freed immediately!
     ok_4th = await client.post(
         "/applications/",
-        json={"job_id": j4.job_id, "candidate_name": cand.fullname, "candidate_email": cand.email},
+        json={
+            "job_id": j4.job_id,
+            "candidate_name": cand.fullname,
+            "candidate_email": cand.email,
+            "skills": ["Python", "Quality Control"],
+        },
         headers=cand_hdrs,
     )
     assert ok_4th.status_code == 201
@@ -705,7 +710,12 @@ async def test_end_states_messaging_closure_and_active_slot_limit(client, db_ses
     # Candidate can apply to j4 since a1 (Passed) and a2 (Not Selected) freed slots!
     apply_j4 = await client.post(
         "/applications/",
-        json={"job_id": j4.job_id, "candidate_name": cand.fullname, "candidate_email": cand.email},
+        json={
+            "job_id": j4.job_id,
+            "candidate_name": cand.fullname,
+            "candidate_email": cand.email,
+            "skills": ["Python", "Quality Control"],
+        },
         headers=_auth_headers(cand),
     )
     assert apply_j4.status_code == 201

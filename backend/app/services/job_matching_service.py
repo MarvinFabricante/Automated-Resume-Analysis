@@ -3242,6 +3242,38 @@ def calculate_match_score(
         },
     }
 
+    job_has_skills_req = bool(skills_result.get("has_requirement", False))
+    job_has_exp_req = bool(exp_has_requirement)
+    job_has_edu_req = bool(education_result.get("has_requirement", False))
+    job_has_certs_req = bool(certs_result.get("has_requirement", False))
+    job_has_any_requirement = any((job_has_skills_req, job_has_exp_req, job_has_edu_req, job_has_certs_req))
+
+    eligibility_reasons: list[str] = []
+    if job_has_any_requirement:
+        if not meets_threshold:
+            eligibility_reasons.append(
+                f"Overall match score ({final_match_pct:.1f}%) is below the accepted minimum requirement ({min_score:.1f}%)."
+            )
+        if job_has_skills_req and blended_skills_score <= 0 and final_match_pct < max(min_score, 45.0):
+            missing_preview = ", ".join(all_missing[:4]) if all_missing else "required role skills"
+            eligibility_reasons.append(
+                f"None of the required skills were matched (missing: {missing_preview})."
+            )
+        if below_min_exp and not meets_threshold:
+            eligibility_reasons.append(
+                f"Experience is below minimum requirement ({cand_yrs_gap} yr{'s' if cand_yrs_gap != 1 else ''} vs {req_yrs_gap} yr{'s' if req_yrs_gap != 1 else ''} required)."
+            )
+        if job_has_edu_req and edu_status == STATUS_DOES_NOT_MEET and not meets_threshold:
+            eligibility_reasons.append(
+                f"Education does not meet the required qualification ({education_result.get('required_education', 'specified degree')})."
+            )
+        if job_has_certs_req and certs_status == STATUS_DOES_NOT_MEET and not meets_threshold:
+            eligibility_reasons.append(
+                f"Missing required certification(s) ({certs_result.get('required_certifications', 'specified certification')})."
+            )
+
+    eligible_to_apply = (not job_has_any_requirement) or (meets_threshold and len(eligibility_reasons) == 0)
+
     return {
         "job_id": job.get("job_id") if isinstance(job, dict) else getattr(job, "job_id", None),
         "job_title": job.get("job_title", "Unknown Job") if isinstance(job, dict) else getattr(job, "job_title", "Unknown Job"),
@@ -3308,6 +3340,8 @@ def calculate_match_score(
         "score_explanation": score_explanation,
         "meets_threshold": meets_threshold,
         "minimum_match_score": min_score,
+        "eligible_to_apply": eligible_to_apply,
+        "eligibility_reasons": eligibility_reasons,
         "followup_questions": followup_questions,
         "clarification_questions": followup_questions,
         "applied_weights": {

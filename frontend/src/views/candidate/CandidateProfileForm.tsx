@@ -8,7 +8,7 @@ import { Helmet } from 'react-helmet-async';
 import {
   User, Mail, Phone, MapPin,
   Briefcase, GraduationCap, Building2,
-  FileText, Code, X, Plus,
+  FileText, Code,
   ArrowLeft, ArrowRight, CheckCircle2
 } from 'lucide-react';
 import Header from '../../components/layout/Header';
@@ -17,6 +17,16 @@ import ApplicationProgressBar from '../../components/common/ApplicationProgressB
 import ApplicationSuccessModal from '../../components/modals/shared/ApplicationSuccessModal';
 import ClarificationQuestionsPanel, { ClarificationSubmitConfirmation } from '../../components/common/ClarificationQuestionsPanel';
 import ExperienceGapAlert from '../../components/common/ExperienceGapAlert';
+import MinimumRequirementBlocker, { isBelowAcceptedRequirements } from '../../components/common/MinimumRequirementBlocker';
+import { SelectWithOther, MultiSelectDropdownWithOther } from '../../components/common/SelectWithOther';
+import {
+  PH_LOCATIONS,
+  COMMON_JOB_TITLES,
+  EXPERIENCE_LEVEL_OPTIONS,
+  DEGREE_OPTIONS,
+  PH_INSTITUTIONS,
+  SKILL_OPTIONS,
+} from '../../data/formOptions';
 import ResumeTipsPanel, {
   ResumeReadabilityBanner,
 } from '../../components/common/ResumeTipsPanel';
@@ -147,7 +157,6 @@ const CandidateProfileForm: React.FC = () => {
   };
 
   const [formData, setFormData] = useState<ProfileFormData>(initialFormData);
-  const [currentSkill, setCurrentSkill] = useState<string>("");
   const [showSuccessModal, setShowSuccessModal] = useState<boolean>(false);
   const [matchScore, setMatchScore] = useState<number>(location.state?.matchData?.match_percentage || 0);
   const [, setSkillsScore] = useState<number>(location.state?.matchData?.skills_score || 0);
@@ -158,6 +167,7 @@ const CandidateProfileForm: React.FC = () => {
   const [, setEducationReason] = useState<string>(location.state?.matchData?.education_reason || "");
   const [matchData, setMatchData] = useState<any>(location.state?.matchData || null);
   const [, setIsCalculating] = useState<boolean>(false);
+  const isBelowRequirements = Boolean(jobId && jobId !== 'smart' && isBelowAcceptedRequirements(matchData));
 
   const {
     activeJob,
@@ -222,31 +232,13 @@ const CandidateProfileForm: React.FC = () => {
     setFormData(prev => ({ ...prev, [name]: value }));
   };
 
-  const handleAddSkill = (e: React.FormEvent | React.KeyboardEvent) => {
-    e.preventDefault();
-    const trimmed = currentSkill.trim();
-    if (trimmed && !isNoValueRequirement(trimmed) && !formData.skills.includes(trimmed)) {
-      setFormData(prev => ({
-        ...prev,
-        skills: [...prev.skills, trimmed]
-      }));
-      setCurrentSkill("");
-    } else if (trimmed && isNoValueRequirement(trimmed)) {
-      setCurrentSkill("");
-    }
-  };
-
-  const handleRemoveSkill = (skillToRemove: string) => {
-    setFormData(prev => ({
-      ...prev,
-      skills: prev.skills.filter(skill => skill !== skillToRemove)
-    }));
-  };
-
   const [submitApplication] = useSubmitApplicationMutation();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isBelowRequirements) {
+      return;
+    }
 
     const finalForm = finalizeFormWithClarifications(clarificationQuestions, clarificationAnswers, formData);
     const clarifiedYears = resolveClarifiedYears(
@@ -489,6 +481,15 @@ const CandidateProfileForm: React.FC = () => {
                   <ClarificationSubmitConfirmation />
                 )}
 
+                {isBelowRequirements && (
+                  <MinimumRequirementBlocker
+                    matchData={matchData}
+                    jobTitle={jobTitle}
+                    onUploadDifferent={() => navigate(jobId ? `/candidate/upload-resume/${jobId}` : '/candidate/upload-resume')}
+                    onBrowseJobs={() => navigate('/candidate/job-feed')}
+                  />
+                )}
+
                 <div className="flex flex-col sm:flex-row justify-between items-center gap-4 pt-6 border-t border-slate-200">
                   <button
                     type="button"
@@ -503,10 +504,15 @@ const CandidateProfileForm: React.FC = () => {
                   </button>
                   <button
                     type="submit"
-                    className="w-full sm:w-auto px-10 py-4 bg-[#D10043] hover:bg-slate-900 text-white rounded-[20px] font-bold flex items-center justify-center gap-3 transition-all shadow-xl shadow-pink-100 active:scale-[0.98] cursor-pointer"
+                    disabled={isBelowRequirements}
+                    className={`w-full sm:w-auto px-10 py-4 rounded-[20px] font-bold flex items-center justify-center gap-3 transition-all ${
+                      isBelowRequirements
+                        ? 'bg-slate-200 text-slate-500 cursor-not-allowed shadow-none'
+                        : 'bg-[#D10043] hover:bg-slate-900 text-white shadow-xl shadow-pink-100 active:scale-[0.98] cursor-pointer'
+                    }`}
                   >
-                    <span>Next: Review & Submit</span>
-                    <ArrowRight size={20} />
+                    <span>{isBelowRequirements ? 'Below Accepted Requirements' : 'Next: Review & Submit'}</span>
+                    {!isBelowRequirements && <ArrowRight size={20} />}
                   </button>
                 </div>
               </div>
@@ -542,6 +548,15 @@ const CandidateProfileForm: React.FC = () => {
                     <span>Change resume</span>
                   </button>
                 </div>
+
+                {isBelowRequirements && (
+                  <MinimumRequirementBlocker
+                    matchData={matchData}
+                    jobTitle={jobTitle}
+                    onUploadDifferent={() => navigate(jobId ? `/candidate/upload-resume/${jobId}` : '/candidate/upload-resume')}
+                    onBrowseJobs={() => navigate('/candidate/job-feed')}
+                  />
+                )}
 
                 <section className="bg-white p-5 sm:p-8 md:p-10 rounded-2xl sm:rounded-[32px] shadow-sm border border-slate-100">
                   <div className="flex items-center gap-3 mb-8 text-[#D10043]">
@@ -620,13 +635,15 @@ const CandidateProfileForm: React.FC = () => {
                       onChange={handleChange}
                       placeholder="+1 (555) 000-0000"
                     />
-                    <InputField
+                    <SelectWithOther
                       icon={<MapPin size={18} />}
                       label="Primary Location"
                       name="location"
                       value={formData.location}
-                      onChange={handleChange}
-                      placeholder="City, State/Country"
+                      onChange={(val) => setFormData((prev) => ({ ...prev, location: val }))}
+                      options={PH_LOCATIONS}
+                      placeholder="Select city / province..."
+                      otherPlaceholder="Enter city, province or country..."
                     />
                   </div>
                 </section>
@@ -640,13 +657,15 @@ const CandidateProfileForm: React.FC = () => {
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-                    <InputField
+                    <SelectWithOther
                       icon={<Briefcase size={18} />}
                       label="Job Title"
                       name="jobTitle"
                       value={formData.jobTitle}
-                      onChange={handleChange}
-                      placeholder="e.g. Software Engineer"
+                      onChange={(val) => setFormData((prev) => ({ ...prev, jobTitle: val }))}
+                      options={COMMON_JOB_TITLES}
+                      placeholder="Select latest job title..."
+                      otherPlaceholder="Enter your job title..."
                     />
                     <InputField
                       icon={<Building2 size={18} />}
@@ -658,24 +677,16 @@ const CandidateProfileForm: React.FC = () => {
                     />
                   </div>
 
-                  <div className="w-full">
-                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
-                      Professional Bio / Experience Summary
-                    </label>
-                    <div className="relative">
-                      <div className="absolute top-4 left-4 text-slate-400">
-                        <FileText size={18} />
-                      </div>
-                      <textarea
-                        name="relevance"
-                        value={formData.relevance}
-                        onChange={handleChange}
-                        rows={3}
-                        className="w-full bg-slate-50 border border-slate-200 rounded-2xl py-3 pl-12 pr-4 text-slate-900 font-medium focus:outline-none focus:border-[#D10043] focus:ring-4 focus:ring-[#D10043]/10 transition-all resize-none"
-                        placeholder="Summarize your professional background..."
-                      ></textarea>
-                    </div>
-                  </div>
+                  <SelectWithOther
+                    icon={<FileText size={18} />}
+                    label="Experience Level / Summary"
+                    name="relevance"
+                    value={formData.relevance}
+                    onChange={(val) => setFormData((prev) => ({ ...prev, relevance: val }))}
+                    options={EXPERIENCE_LEVEL_OPTIONS}
+                    placeholder="Select years of relevant experience..."
+                    otherPlaceholder="Enter your experience level or brief summary..."
+                  />
                 </section>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 sm:gap-8">
@@ -688,21 +699,25 @@ const CandidateProfileForm: React.FC = () => {
                     </div>
 
                     <div className="space-y-6">
-                      <InputField
+                      <SelectWithOther
                         icon={<GraduationCap size={18} />}
                         label="Degree / Qualification"
                         name="degree"
                         value={formData.degree}
-                        onChange={handleChange}
-                        placeholder="e.g. B.S. Computer Science"
+                        onChange={(val) => setFormData((prev) => ({ ...prev, degree: val }))}
+                        options={DEGREE_OPTIONS}
+                        placeholder="Select degree or qualification..."
+                        otherPlaceholder="Enter specific degree or qualification..."
                       />
-                      <InputField
+                      <SelectWithOther
                         icon={<Building2 size={18} />}
                         label="University / Institution"
                         name="college"
                         value={formData.college}
-                        onChange={handleChange}
-                        placeholder="e.g. University of Technology"
+                        onChange={(val) => setFormData((prev) => ({ ...prev, college: val }))}
+                        options={PH_INSTITUTIONS}
+                        placeholder="Select university or school..."
+                        otherPlaceholder="Enter university or institution name..."
                       />
                     </div>
                   </section>
@@ -715,47 +730,20 @@ const CandidateProfileForm: React.FC = () => {
                       <h2 className="font-bold uppercase tracking-widest text-sm">Skills Portfolio</h2>
                     </div>
 
-                    <div className="mb-4 relative">
-                      <input
-                        type="text"
-                        value={currentSkill}
-                        onChange={(e) => setCurrentSkill(e.target.value)}
-                        onKeyDown={(e) => e.key === 'Enter' && handleAddSkill(e)}
-                        placeholder="Add a skill and hit Enter..."
-                        className="w-full bg-slate-50 border border-slate-200 rounded-2xl py-3 px-4 text-slate-900 font-medium focus:outline-none focus:border-[#D10043] focus:ring-4 focus:ring-[#D10043]/10 transition-all"
-                      />
-                      <button
-                        type="button"
-                        onClick={handleAddSkill}
-                        className="absolute right-2 top-2 bottom-2 bg-slate-200 hover:bg-[#D10043] hover:text-white text-slate-600 rounded-xl px-3 transition-colors flex items-center justify-center"
-                      >
-                        <Plus size={18} />
-                      </button>
-                    </div>
-
-                    <div className="flex-1 bg-slate-50 border border-slate-100 rounded-2xl p-4 overflow-y-auto max-h-[160px]">
-                      {formData.skills.length === 0 ? (
-                        <p className="text-slate-400 text-sm font-medium text-center mt-4">No skills added yet.</p>
-                      ) : (
-                        <div className="flex flex-wrap gap-2">
-                          {formData.skills.map((skill, index) => (
-                            <span
-                              key={index}
-                              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 text-slate-700 rounded-lg text-sm font-bold shadow-sm group"
-                            >
-                              {skill}
-                              <button
-                                type="button"
-                                onClick={() => handleRemoveSkill(skill)}
-                                className="text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-full p-0.5 transition-colors"
-                              >
-                                <X size={14} />
-                              </button>
-                            </span>
-                          ))}
-                        </div>
-                      )}
-                    </div>
+                    <MultiSelectDropdownWithOther
+                      id="candidate-skills-select"
+                      selectedItems={formData.skills}
+                      onChange={(items) =>
+                        setFormData((prev) => ({
+                          ...prev,
+                          skills: items.filter((s) => !isNoValueRequirement(s)),
+                        }))
+                      }
+                      options={SKILL_OPTIONS}
+                      placeholder="Select skills from dropdown..."
+                      otherPlaceholder="Enter a custom skill and click Add..."
+                      emptyStateText="No skills selected yet. Choose from the dropdown above."
+                    />
                   </section>
                 </div>
 
@@ -770,7 +758,9 @@ const CandidateProfileForm: React.FC = () => {
                   </button>
                   <button
                     type="button"
+                    disabled={isBelowRequirements}
                     onClick={() => {
+                      if (isBelowRequirements) return;
                       if (!formData.fullName.trim()) {
                         alert('Please enter your full name before continuing.');
                         return;
@@ -797,10 +787,14 @@ const CandidateProfileForm: React.FC = () => {
                         window.scrollTo({ top: 0, behavior: 'smooth' });
                       }
                     }}
-                    className="w-full sm:w-auto px-10 py-4 bg-[#D10043] hover:bg-slate-900 text-white rounded-[20px] font-bold flex items-center justify-center gap-3 transition-all shadow-xl shadow-pink-100 active:scale-[0.98] cursor-pointer"
+                    className={`w-full sm:w-auto px-10 py-4 rounded-[20px] font-bold flex items-center justify-center gap-3 transition-all ${
+                      isBelowRequirements
+                        ? 'bg-slate-200 text-slate-500 cursor-not-allowed shadow-none'
+                        : 'bg-[#D10043] hover:bg-slate-900 text-white shadow-xl shadow-pink-100 active:scale-[0.98] cursor-pointer'
+                    }`}
                   >
-                    <span>Next: Answer a few questions</span>
-                    <ArrowRight size={20} />
+                    <span>{isBelowRequirements ? 'Below Accepted Requirements' : 'Next: Answer a few questions'}</span>
+                    {!isBelowRequirements && <ArrowRight size={20} />}
                   </button>
                 </div>
               </>

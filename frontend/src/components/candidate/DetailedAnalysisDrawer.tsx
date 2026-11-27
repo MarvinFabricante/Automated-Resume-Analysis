@@ -14,6 +14,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import HelpTooltip from '../common/HelpTooltip';
+import MinimumRequirementBlocker, { isBelowAcceptedRequirements } from '../common/MinimumRequirementBlocker';
 import {
   resolveCriterionStatus,
   getCriterionStatusBadgeStyle,
@@ -267,6 +268,11 @@ const DetailedAnalysisDrawer: React.FC<DetailedAnalysisDrawerProps> = ({
           {/* Scrollable Body Content */}
           <div className="flex-1 overflow-y-auto p-5 sm:p-6 space-y-6 custom-scrollbar">
 
+            {/* Below Accepted Requirements Blocker */}
+            {isBelowAcceptedRequirements(match) && (
+              <MinimumRequirementBlocker matchData={match} jobTitle={match.job_title} compact />
+            )}
+
             {/* Overall Match Summary */}
             {aiSummary && (
               <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100 text-xs text-slate-700 leading-relaxed font-medium">
@@ -434,14 +440,20 @@ const DetailedAnalysisDrawer: React.FC<DetailedAnalysisDrawerProps> = ({
             </button>
             <button
               type="button"
+              disabled={isBelowAcceptedRequirements(match)}
               onClick={() => {
+                if (isBelowAcceptedRequirements(match)) return;
                 onClose();
                 onStartApplication();
               }}
-              className="flex-[1.5] py-3 px-5 rounded-xl bg-[#D10043] hover:bg-slate-900 text-white font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition-all shadow-sm shadow-[#D10043]/20 active:scale-[0.98] cursor-pointer"
+              className={`flex-[1.5] py-3 px-5 rounded-xl font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition-all ${
+                isBelowAcceptedRequirements(match)
+                  ? 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'
+                  : 'bg-[#D10043] hover:bg-slate-900 text-white shadow-sm shadow-[#D10043]/20 active:scale-[0.98] cursor-pointer'
+              }`}
             >
-              <span>Start Application</span>
-              <ArrowRight size={14} />
+              <span>{isBelowAcceptedRequirements(match) ? 'Below Requirements' : 'Start Application'}</span>
+              {!isBelowAcceptedRequirements(match) && <ArrowRight size={14} />}
             </button>
           </div>
 

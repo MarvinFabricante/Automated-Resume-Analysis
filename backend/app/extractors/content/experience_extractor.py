@@ -3507,7 +3507,7 @@ def extract_experience(text: str, structured: Optional[Dict[str, Any]] = None) -
         if formatted and formatted not in formatted_entries:
             formatted_entries.append(formatted)
 
-    return " | ".join(formatted_entries[:10]) if formatted_entries else ""
+    return " | ".join(formatted_entries[:25]) if formatted_entries else ""
 
 
 _EXPLICIT_DISQUALIFIER_BEFORE_RE = re.compile(

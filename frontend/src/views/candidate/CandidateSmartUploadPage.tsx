@@ -495,7 +495,9 @@ const CandidateSmartUploadPage: React.FC = () => {
                   <div className="flex items-start gap-3">
                     <AlertTriangle size={18} className="text-rose-600 shrink-0 mt-0.5" />
                     <div>
-                      <h4 className="text-xs sm:text-sm font-black text-rose-900">Resume Upload Error</h4>
+                      <h4 className="text-xs sm:text-sm font-black text-rose-900">
+                        {/wrong document detected/i.test(uploadError) ? 'Wrong Document Detected' : 'Resume Upload Error'}
+                      </h4>
                       <p className="text-xs font-medium text-rose-700 mt-0.5">{uploadError}</p>
                     </div>
                   </div>

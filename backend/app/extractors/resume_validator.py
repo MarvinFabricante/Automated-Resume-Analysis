@@ -470,13 +470,14 @@ _NON_RESUME_RULES: Dict[str, Dict[str, Any]] = {
         "title_patterns": [
             (re.compile(r"\b(?:certificate\s+of\s+(?:completion|appreciation|recognition|attendance|"
                         r"participation|achievement|employment|graduation|good\s+moral|indigency|"
-                        r"residency|live\s+birth|marriage|registration|matriculation|grades|enrollment)|"
+                        r"residency|live\s+birth|marriage|registration|matriculation|grades|enrollment|no\s+marriage)|"
                         r"barangay\s+clearance|police\s+clearance|nbi\s+clearance|medical\s+certificate|"
-                        r"birth\s+certificate|marriage\s+certificate|death\s+certificate|"
+                        r"birth\s+certificate|marriage\s+certificate|death\s+certificate|cenomar|"
                         r"transcript\s+of\s+records|official\s+transcript|report\s+card|"
                         r"grade\s+slip|assessment\s+of\s+fees|enrollment\s+form|registration\s+form|"
                         r"philippine\s+statistics\s+authority|national\s+bureau\s+of\s+investigation|"
-                        r"philippine\s+identification\s+card)\b", re.IGNORECASE), 8.5),
+                        r"philippine\s+identification\s+card|driver'?s\s+license\s+receipt|"
+                        r"social\s+security\s+system\s+member|philhealth\s+member\s+data\s+record)\b", re.IGNORECASE), 8.5),
         ],
         "body_patterns": [
             (re.compile(r"\b(?:this\s+is\s+to\s+certify\s+that|is\s+hereby\s+awarded\s+to|"
@@ -486,6 +487,37 @@ _NON_RESUME_RULES: Dict[str, Dict[str, Any]] = {
                         r"general\s+weighted\s+average|grading\s+system|tuition\s+fee|"
                         r"miscellaneous\s+fee|subject\s+code|course\s+code|units\s+earned|"
                         r"remarks\s*:\s*passed)\b", re.IGNORECASE), 3.5),
+        ],
+    },
+    "presentation_or_slides": {
+        "label": "Presentation / Slide Deck",
+        "title_patterns": [
+            (re.compile(r"\b(?:slide\s+deck|presentation\s+slides|powerpoint\s+presentation|"
+                        r"defense\s+presentation|capstone\s+defense\s+presentation|"
+                        r"thesis\s+defense\s+presentation|project\s+pitch\s+deck)\b", re.IGNORECASE), 8.5),
+        ],
+        "body_patterns": [
+            (re.compile(r"^\s*slide\s+\d+\b", re.IGNORECASE | re.MULTILINE), 3.5),
+            (re.compile(r"\b(?:thank\s+you\s+for\s+listening|questions\s*\?\s*$|q\s*&\s*a\s*$|presented\s+by\s*:)\b", re.IGNORECASE | re.MULTILINE), 3.5),
+            (re.compile(r"^\s*(?:agenda|outline|learning\s+objectives|discussion\s+points)\s*$", re.IGNORECASE | re.MULTILINE), 2.5),
+        ],
+    },
+    "school_or_course_document": {
+        "label": "School / Course Document (Syllabus, Module, Exam, or Assignment)",
+        "title_patterns": [
+            (re.compile(r"\b(?:course\s+syllabus|course\s+outline|class\s+schedule|"
+                        r"exam\s+schedule|examination\s+paper|quiz\s+paper|answer\s+key|"
+                        r"learning\s+module|self[\s\-]learning\s+module|activity\s+sheet|"
+                        r"worksheet|laboratory\s+exercise|lab\s+exercise|homework\s+assignment|"
+                        r"lesson\s+plan|lecture\s+notes|study\s+guide|class\s+handout)\b", re.IGNORECASE), 8.5),
+        ],
+        "body_patterns": [
+            (re.compile(r"\b(?:course\s+description|learning\s+outcomes|grading\s+criteria|"
+                        r"midterm\s+exam|final\s+exam|credit\s+units|pre[\s\-]?requisite|"
+                        r"instructor\s*:|professor\s*:|course\s+code\s*:)\b", re.IGNORECASE), 3.0),
+            (re.compile(r"\b(?:directions\s*:\s*(?:choose|encircle|select|write|read|answer)|"
+                        r"multiple\s+choice|true\s+or\s+false|fill\s+in\s+the\s+blanks?|"
+                        r"score\s*:\s*___|\d+\s+points\s*\))\b", re.IGNORECASE), 4.0),
         ],
     },
     "legal_or_correspondence": {
@@ -531,21 +563,16 @@ _NON_RESUME_RULES: Dict[str, Dict[str, Any]] = {
     "misc_non_resume": {
         "label": "Non-Resume Document",
         "title_patterns": [
-            (re.compile(r"\b(?:course\s+syllabus|course\s+outline|class\s+schedule|"
-                        r"exam\s+schedule|survey\s+questionnaire|product\s+catalog(?:ue)?|"
+            (re.compile(r"\b(?:survey\s+questionnaire|product\s+catalog(?:ue)?|"
                         r"price\s+list|restaurant\s+menu|event\s+program|minutes\s+of\s+the\s+meeting|"
-                        r"meeting\s+agenda|answer\s+key|examination\s+paper|quiz\s+paper|"
-                        r"lecture\s+notes|study\s+guide|from\s+wikipedia,\s+the\s+free\s+encyclopedia)\b", re.IGNORECASE), 8.5),
+                        r"meeting\s+agenda|from\s+wikipedia,\s+the\s+free\s+encyclopedia)\b", re.IGNORECASE), 8.5),
         ],
         "body_patterns": [
-            (re.compile(r"\b(?:course\s+description|learning\s+outcomes|grading\s+criteria|"
-                        r"midterm\s+exam|final\s+exam|credit\s+units|pre[\s\-]?requisite)\b", re.IGNORECASE), 2.5),
             (re.compile(r"\b(?:for\s+office\s+use\s+only|do\s+not\s+write\s+below\s+this\s+line|"
-                        r"please\s+check\s+the\s+appropriate\s+box|strongly\s+agree.*strongly\s+disagree|"
-                        r"directions\s*:\s*(?:choose|encircle|select|write|read)|multiple\s+choice)\b", re.IGNORECASE), 4.0),
+                        r"please\s+check\s+the\s+appropriate\s+box|strongly\s+agree.*strongly\s+disagree)\b", re.IGNORECASE), 4.0),
             (re.compile(r"\b(?:preheat\s+oven|tablespoons?|teaspoons?|nutrition\s+facts|"
                         r"once\s+upon\s+a\s+time|lorem\s+ipsum|this\s+page\s+was\s+last\s+edited|"
-                        r"citation\s+needed|thank\s+you\s+for\s+listening)\b", re.IGNORECASE), 4.5),
+                        r"citation\s+needed)\b", re.IGNORECASE), 4.5),
             (re.compile(r"^\s*ingredients\s*:?\s*$", re.IGNORECASE | re.MULTILINE), 5.0),
         ],
     },
@@ -671,7 +698,9 @@ _NON_RESUME_FILENAME_HINTS: List[Tuple[str, re.Pattern]] = [
     ("financial_document", re.compile(r"\b(?:invoice|receipt|payslip|payroll|quotation|billing|statement[\s_\-]?of[\s_\-]?account)\b", re.IGNORECASE)),
     ("certificate_or_official_record", re.compile(r"\b(?:clearance|transcript|diploma|grade[\s_\-]?slip|birth[\s_\-]?cert)\b", re.IGNORECASE)),
     ("legal_or_correspondence", re.compile(r"\b(?:contract|memorandum|affidavit|agreement|moa|mou|nda|resignation)\b", re.IGNORECASE)),
-    ("misc_non_resume", re.compile(r"\b(?:syllabus|questionnaire|survey|exam|quiz|recipe|menu|minutes)\b", re.IGNORECASE)),
+    ("presentation_or_slides", re.compile(r"\b(?:slides?|slide[\s_\-]?deck|presentation|pitch[\s_\-]?deck|powerpoint|defense[\s_\-]?deck)\b", re.IGNORECASE)),
+    ("school_or_course_document", re.compile(r"\b(?:syllabus|module|worksheet|assignment|homework|exam|quiz|handout|lecture[\s_\-]?notes)\b", re.IGNORECASE)),
+    ("misc_non_resume", re.compile(r"\b(?:questionnaire|survey|recipe|menu|minutes)\b", re.IGNORECASE)),
 ]
 
 _RESUME_FILENAME_HINT_RE = re.compile(r"\b(?:resume|cv|curriculum|biodata|bio[\s_\-]?data|pds)\b", re.IGNORECASE)
@@ -1147,49 +1176,65 @@ def _has_verified_education(
     return False, False
 
 
-def _build_rejection_message(detected_type: str, reason_code: str) -> str:
+def _build_rejection_message(
+    detected_type: str,
+    reason_code: str,
+    ai_reason: Optional[str] = None,
+    verified_by: Optional[str] = None,
+) -> str:
     if reason_code == "password_protected":
         return (
-            "This file is password-protected and cannot be verified as a resume. "
+            "Wrong document detected (Password-Protected File). This file is password-protected and cannot be verified as a resume. "
             "Please remove the password and upload an unprotected resume file (PDF, DOCX, DOC, or TXT)."
         )
     if reason_code == "unreadable_or_empty":
         return (
-            "We could not read enough text from this file to verify that it is a resume. "
+            "Wrong document detected (Unreadable or Blank File). We could not read enough text from this file to verify that it is a resume. "
             "Please upload a clear, text-based resume or CV (PDF, DOCX, DOC, or TXT)."
         )
     if reason_code == "blank_form":
         return (
-            "This file appears to be a blank form or template with no candidate details filled in. "
+            "Wrong document detected (Blank Form / Empty Template). This file appears to be a blank form or template with no candidate details filled in. "
             "Please upload your completed resume or CV."
         )
+
+    predictor_prefix = "AI Predicted" if verified_by == "AI" else "Predicted"
+    reason_suffix = f" Reason: {ai_reason.strip().rstrip('.')}." if (ai_reason and ai_reason.strip()) else ""
+
     if reason_code == "detected_thesis_manuscript":
         return (
-            "Only resume or CV documents are accepted. The uploaded file appears to be a thesis or "
-            "capstone manuscript, not a resume. Please upload a valid resume containing your personal "
-            "details, education, skills, or work experience."
+            f"Wrong document detected ({predictor_prefix}: Thesis / Capstone Manuscript). "
+            f"Only resume or CV documents are accepted. The uploaded file appears to be a thesis or "
+            f"capstone manuscript, not a resume.{reason_suffix} Please upload a valid resume containing your personal "
+            f"details, education, skills, or work experience."
         )
 
     type_labels = {
-        "manual_or_guide": "a user manual or guide",
-        "academic_paper": "a thesis manuscript, academic paper, or report",
-        "financial_document": "an invoice, receipt, or financial document",
-        "certificate_or_official_record": "a certificate, clearance, or official record",
-        "legal_or_correspondence": "a contract, policy, or standalone letter",
-        "job_posting": "a job posting or job description",
-        "misc_non_resume": "a non-resume document",
+        "manual_or_guide": ("User Manual / Guide", "a user manual or guide"),
+        "academic_paper": ("Thesis Manuscript / Academic Paper / Report", "a thesis manuscript, academic paper, or report"),
+        "financial_document": ("Invoice / Receipt / Financial Statement", "an invoice, receipt, or financial document"),
+        "certificate_or_official_record": ("Certificate / Clearance / Official Record", "a certificate, clearance, or official record"),
+        "legal_or_correspondence": ("Contract / Policy / Letter", "a contract, policy, or standalone letter"),
+        "cover_letter": ("Standalone Cover / Application Letter", "a standalone cover letter or application letter"),
+        "presentation_or_slides": ("Presentation / Slide Deck", "a presentation slide deck"),
+        "school_or_course_document": ("School / Course Document", "a syllabus, module, exam, or school assignment"),
+        "job_posting": ("Job Description / Job Posting", "a job posting or job description"),
+        "misc_non_resume": ("Non-Resume Document", "a non-resume document"),
     }
-    human_type = type_labels.get(detected_type)
-    if human_type:
+    entry = type_labels.get(detected_type)
+    if entry:
+        short_label, human_type = entry
         return (
+            f"Wrong document detected ({predictor_prefix}: {short_label}). "
             f"Only resume or CV documents are accepted. The uploaded file appears to be {human_type}, "
-            "not a resume. Please upload a valid resume containing your personal details, education, "
-            "skills, or work experience."
+            f"not a resume.{reason_suffix} Please upload a valid resume containing your personal details, education, "
+            f"skills, or work experience."
         )
     return (
-        "Only resume or CV documents are accepted. The uploaded file does not appear to be a valid "
-        "resume. Please upload your resume or CV containing your contact information, skills, "
-        "education, or work experience."
+        f"Wrong document detected ({predictor_prefix}: Non-Resume Document). "
+        f"Only resume or CV documents are accepted. The uploaded file does not appear to be a valid "
+        f"resume.{reason_suffix} Please upload your resume or CV containing your contact information, skills, "
+        f"education, or work experience."
     )
 
 
@@ -1563,20 +1608,25 @@ def validate_resume_document(
             category_scores["misc_non_resume"] = category_scores.get("misc_non_resume", 0.0) + 7.5
             negative_signals.append(f"misc_non_resume:source_code_or_data({code_lines}/{len(lines)})(+7.5)")
 
-    # Excessive length / page count penalty
+    # Excessive length / page count penalty (allow legitimate multi-page resumes 2-10 pages!)
+    has_strong_multipage_resume_structure = (
+        len(core_headings) >= 2
+        and (valid_name or has_personal_email or has_phone)
+        and (not academic_analysis["has_embedded_cv_appendix"])
+    )
     length_penalty = 0.0
     if page_count is not None:
-        if page_count >= 12 or (page_count >= 10 and not is_explicit_cv):
+        if page_count >= 14 or (page_count >= 11 and not is_explicit_cv and not has_strong_multipage_resume_structure):
             length_penalty += 8.0
             negative_signals.append(f"excessive_pages({page_count})(+8.0)")
-        elif page_count >= 7 and not is_explicit_cv:
+        elif page_count >= 9 and not is_explicit_cv and not has_strong_multipage_resume_structure:
             length_penalty += 4.0
             negative_signals.append(f"many_pages({page_count})(+4.0)")
 
-    if word_count >= 4500:
+    if word_count >= 5500:
         length_penalty += 8.0
         negative_signals.append(f"excessive_words({word_count})(+8.0)")
-    elif word_count >= 2800 and not is_explicit_cv:
+    elif word_count >= 3800 and not is_explicit_cv and not has_strong_multipage_resume_structure:
         length_penalty += 3.5
         negative_signals.append(f"high_word_count({word_count})(+3.5)")
 

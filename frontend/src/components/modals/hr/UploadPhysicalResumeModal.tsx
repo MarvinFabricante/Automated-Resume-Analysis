@@ -26,6 +26,15 @@ import {
 import { useUploadPhysicalResumeMutation, useGetJobsQuery, useLazyCheckImportDuplicateQuery } from '../../../redux/api/apiSlice';
 import { API_BASE_URL } from '../../../services/api';
 import HelpTooltip from '../../common/HelpTooltip';
+import { SelectWithOther, MultiSelectDropdownWithOther } from '../../common/SelectWithOther';
+import {
+  PH_LOCATIONS,
+  DEGREE_OPTIONS,
+  EXPERIENCE_LEVEL_OPTIONS,
+  SKILL_OPTIONS,
+  CERTIFICATION_OPTIONS,
+  PHYSICAL_ARCHIVE_LOCATIONS,
+} from '../../../data/formOptions';
 
 interface UploadPhysicalResumeModalProps {
   isOpen: boolean;
@@ -33,14 +42,11 @@ interface UploadPhysicalResumeModalProps {
   onSuccess?: (result: any) => void;
 }
 
-const PRESET_LOCATIONS = [
-  'Cabinet A • Shelf 1',
-  'Cabinet A • Shelf 2',
-  'Cabinet B • Walk-in Folder',
-  'Plant 2 • HR Front Desk',
-  'Administration • Box #12',
-  'Ceramics Division • HR Archive',
-];
+const splitCsvItems = (raw: string): string[] =>
+  raw
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
 
 const ALLOWED_EXTS = ['.pdf', '.docx', '.doc', '.txt'];
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
@@ -441,9 +447,14 @@ const UploadPhysicalResumeModal: React.FC<UploadPhysicalResumeModalProps> = ({
         {/* MODAL BODY: ONLY CURRENT STEP CONTENT */}
         <div className="p-5 sm:p-6 overflow-y-auto flex-1 custom-scrollbar">
           {errorMessage && (
-            <div className="mb-4 p-3 bg-rose-50 border border-rose-200 rounded-2xl flex items-center gap-2.5 text-xs text-rose-700 font-semibold animate-in shake duration-300">
-              <AlertCircle size={16} className="shrink-0 text-rose-600" />
-              <span>{errorMessage}</span>
+            <div className="mb-4 p-3 bg-rose-50 border border-rose-200 rounded-2xl flex items-start gap-2.5 text-xs text-rose-700 font-semibold animate-in shake duration-300">
+              <AlertCircle size={16} className="shrink-0 text-rose-600 mt-0.5" />
+              <div>
+                {/wrong document detected/i.test(errorMessage) && (
+                  <p className="font-black text-rose-900 mb-0.5">Wrong Document Detected</p>
+                )}
+                <span>{errorMessage}</span>
+              </div>
             </div>
           )}
 
@@ -636,12 +647,13 @@ const UploadPhysicalResumeModal: React.FC<UploadPhysicalResumeModalProps> = ({
                       </span>
                     )}
                   </div>
-                  <input
-                    type="text"
+                  <SelectWithOther
                     value={formData.location}
-                    onChange={(e) => setFormData({ ...formData, location: e.target.value })}
-                    placeholder="e.g. Sto. Tomas, Batangas"
-                    className="w-full h-10 px-3 rounded-xl border border-slate-200 text-xs font-semibold text-slate-800 focus:outline-none focus:border-[#D60041] focus:ring-1 focus:ring-[#D60041]"
+                    onChange={(val) => setFormData({ ...formData, location: val })}
+                    options={PH_LOCATIONS}
+                    placeholder="Select city / province..."
+                    otherPlaceholder="Enter address or city..."
+                    selectClassName="w-full h-10 appearance-none px-3 pr-9 rounded-xl border border-slate-200 text-xs font-semibold text-slate-800 bg-white focus:outline-none focus:border-[#D60041] focus:ring-1 focus:ring-[#D60041] cursor-pointer"
                   />
                 </div>
 
@@ -658,12 +670,13 @@ const UploadPhysicalResumeModal: React.FC<UploadPhysicalResumeModalProps> = ({
                       </span>
                     )}
                   </div>
-                  <input
-                    type="text"
+                  <SelectWithOther
                     value={formData.education}
-                    onChange={(e) => setFormData({ ...formData, education: e.target.value })}
-                    placeholder="e.g. BS Information Technology"
-                    className="w-full h-10 px-3 rounded-xl border border-slate-200 text-xs font-semibold text-slate-800 focus:outline-none focus:border-[#D60041] focus:ring-1 focus:ring-[#D60041]"
+                    onChange={(val) => setFormData({ ...formData, education: val })}
+                    options={DEGREE_OPTIONS}
+                    placeholder="Select degree / education..."
+                    otherPlaceholder="Enter specific degree..."
+                    selectClassName="w-full h-10 appearance-none px-3 pr-9 rounded-xl border border-slate-200 text-xs font-semibold text-slate-800 bg-white focus:outline-none focus:border-[#D60041] focus:ring-1 focus:ring-[#D60041] cursor-pointer"
                   />
                 </div>
 
@@ -680,12 +693,13 @@ const UploadPhysicalResumeModal: React.FC<UploadPhysicalResumeModalProps> = ({
                       </span>
                     )}
                   </div>
-                  <input
-                    type="text"
+                  <SelectWithOther
                     value={formData.experience}
-                    onChange={(e) => setFormData({ ...formData, experience: e.target.value })}
-                    placeholder="e.g. Machine Operator (2 years)"
-                    className="w-full h-10 px-3 rounded-xl border border-slate-200 text-xs font-semibold text-slate-800 focus:outline-none focus:border-[#D60041] focus:ring-1 focus:ring-[#D60041]"
+                    onChange={(val) => setFormData({ ...formData, experience: val })}
+                    options={EXPERIENCE_LEVEL_OPTIONS}
+                    placeholder="Select experience level..."
+                    otherPlaceholder="e.g. Machine Operator (2 years)"
+                    selectClassName="w-full h-10 appearance-none px-3 pr-9 rounded-xl border border-slate-200 text-xs font-semibold text-slate-800 bg-white focus:outline-none focus:border-[#D60041] focus:ring-1 focus:ring-[#D60041] cursor-pointer"
                   />
                 </div>
 
@@ -694,7 +708,7 @@ const UploadPhysicalResumeModal: React.FC<UploadPhysicalResumeModalProps> = ({
                   <div className="flex items-center justify-between">
                     <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
                       <Sparkles size={13} className="text-slate-400" />
-                      Key Skills (comma-separated)
+                      Key Skills
                     </label>
                     {!formData.skills && (
                       <span className="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">
@@ -702,12 +716,14 @@ const UploadPhysicalResumeModal: React.FC<UploadPhysicalResumeModalProps> = ({
                       </span>
                     )}
                   </div>
-                  <input
-                    type="text"
-                    value={formData.skills}
-                    onChange={(e) => setFormData({ ...formData, skills: e.target.value })}
-                    placeholder="e.g. Machine Operation, Quality Control, Safety Protocols, Packaging"
-                    className="w-full h-10 px-3 rounded-xl border border-slate-200 text-xs font-semibold text-slate-800 focus:outline-none focus:border-[#D60041] focus:ring-1 focus:ring-[#D60041]"
+                  <MultiSelectDropdownWithOther
+                    selectedItems={splitCsvItems(formData.skills)}
+                    onChange={(items) => setFormData({ ...formData, skills: items.join(', ') })}
+                    options={SKILL_OPTIONS}
+                    placeholder="Select skills from dropdown..."
+                    otherPlaceholder="Enter custom skill and click Add..."
+                    emptyStateText="No skills selected yet."
+                    selectClassName="w-full h-10 appearance-none px-3 pr-9 rounded-xl border border-slate-200 text-xs font-semibold text-slate-800 bg-white focus:outline-none focus:border-[#D60041] focus:ring-1 focus:ring-[#D60041] cursor-pointer"
                   />
                 </div>
 
@@ -717,12 +733,14 @@ const UploadPhysicalResumeModal: React.FC<UploadPhysicalResumeModalProps> = ({
                     <Award size={13} className="text-slate-400" />
                     Licenses & Certifications (optional)
                   </label>
-                  <input
-                    type="text"
-                    value={formData.certifications}
-                    onChange={(e) => setFormData({ ...formData, certifications: e.target.value })}
-                    placeholder="e.g. TESDA NC II, DOLE-BOSH Safety Officer"
-                    className="w-full h-10 px-3 rounded-xl border border-slate-200 text-xs font-semibold text-slate-800 focus:outline-none focus:border-[#D60041] focus:ring-1 focus:ring-[#D60041]"
+                  <MultiSelectDropdownWithOther
+                    selectedItems={splitCsvItems(formData.certifications)}
+                    onChange={(items) => setFormData({ ...formData, certifications: items.join(', ') })}
+                    options={CERTIFICATION_OPTIONS}
+                    placeholder="Select licenses or certifications..."
+                    otherPlaceholder="Enter custom certification and click Add..."
+                    emptyStateText="No certifications selected."
+                    selectClassName="w-full h-10 appearance-none px-3 pr-9 rounded-xl border border-slate-200 text-xs font-semibold text-slate-800 bg-white focus:outline-none focus:border-[#D60041] focus:ring-1 focus:ring-[#D60041] cursor-pointer"
                   />
                 </div>
               </div>
@@ -805,26 +823,14 @@ const UploadPhysicalResumeModal: React.FC<UploadPhysicalResumeModalProps> = ({
                 <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
                   Filing & Archive Reference (optional)
                 </label>
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={formData.physical_location}
-                    onChange={(e) => setFormData({ ...formData, physical_location: e.target.value })}
-                    placeholder="e.g. Cabinet A • Shelf 1"
-                    className="flex-1 h-10 px-3 rounded-xl border border-slate-200 text-xs font-semibold text-slate-800 focus:outline-none focus:border-[#D60041]"
-                  />
-                  <select
-                    onChange={(e) => {
-                      if (e.target.value) setFormData({ ...formData, physical_location: e.target.value });
-                    }}
-                    className="h-10 px-2 rounded-xl border border-slate-200 text-xs font-medium text-slate-600 bg-white cursor-pointer"
-                  >
-                    <option value="">Presets...</option>
-                    {PRESET_LOCATIONS.map((loc) => (
-                      <option key={loc} value={loc}>{loc}</option>
-                    ))}
-                  </select>
-                </div>
+                <SelectWithOther
+                  value={formData.physical_location}
+                  onChange={(val) => setFormData({ ...formData, physical_location: val })}
+                  options={PHYSICAL_ARCHIVE_LOCATIONS}
+                  placeholder="Select archive location..."
+                  otherPlaceholder="e.g. Cabinet A • Shelf 1 • Folder #14"
+                  selectClassName="w-full h-11 appearance-none px-3 pr-9 rounded-xl border border-slate-200 text-xs font-semibold text-slate-800 bg-white focus:outline-none focus:border-[#D60041] cursor-pointer"
+                />
               </div>
 
               {/* Notes */}
