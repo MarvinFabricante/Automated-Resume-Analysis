@@ -161,37 +161,75 @@ const UploadPhysicalResumeModal: React.FC<UploadPhysicalResumeModalProps> = ({
         body: parseData,
       });
 
-      if (res.ok) {
-        const parsed = await res.json();
-        const extractedName = parsed.fullname || parsed.name || parsed.candidate_name || '';
-        const extractedEmail = parsed.email || parsed.candidate_email || '';
-        const extractedPhone = parsed.phone || parsed.candidate_phone || '';
-        const extractedLocation = parsed.location || '';
-        const extractedDegree = parsed.degree || parsed.highest_degree || parsed.education || '';
-        const extractedExp = parsed.job_title
-          ? `${parsed.job_title}${parsed.company ? ` at ${parsed.company}` : ''}`
-          : parsed.experience || '';
-        const extractedSkills = Array.isArray(parsed.skills_list)
-          ? parsed.skills_list.join(', ')
-          : Array.isArray(parsed.skills)
-          ? parsed.skills.join(', ')
-          : parsed.skills || '';
-        const extractedCerts = parsed.certifications || parsed.candidate_certifications || '';
-
+      if (!res.ok) {
+        let detailMsg =
+          'Only resume or CV documents are accepted. Please upload a valid resume file (PDF, DOCX, DOC, or TXT).';
+        try {
+          const errPayload = await res.json();
+          if (typeof errPayload?.detail === 'string' && errPayload.detail.trim()) {
+            detailMsg = errPayload.detail;
+          } else if (typeof errPayload?.message === 'string' && errPayload.message.trim()) {
+            detailMsg = errPayload.message;
+          }
+        } catch {
+          // keep fallback message
+        }
+        setSelectedFile(null);
         setFormData((prev) => ({
           ...prev,
-          candidate_name: extractedName,
-          candidate_email: extractedEmail,
-          candidate_phone: extractedPhone,
-          location: extractedLocation,
-          education: extractedDegree,
-          experience: extractedExp,
-          skills: extractedSkills,
-          certifications: extractedCerts,
+          candidate_name: '',
+          candidate_email: '',
+          candidate_phone: '',
+          location: '',
+          education: '',
+          experience: '',
+          skills: '',
+          certifications: '',
         }));
+        if (fileInputRef.current) {
+          fileInputRef.current.value = '';
+        }
+        setErrorMessage(detailMsg);
+        setErrors({ file: detailMsg });
+        return;
       }
+
+      const parsed = await res.json();
+      const extractedName = parsed.fullname || parsed.name || parsed.candidate_name || '';
+      const extractedEmail = parsed.email || parsed.candidate_email || '';
+      const extractedPhone = parsed.phone || parsed.candidate_phone || '';
+      const extractedLocation = parsed.location || '';
+      const extractedDegree = parsed.degree || parsed.highest_degree || parsed.education || '';
+      const extractedExp = parsed.job_title
+        ? `${parsed.job_title}${parsed.company ? ` at ${parsed.company}` : ''}`
+        : parsed.experience || '';
+      const extractedSkills = Array.isArray(parsed.skills_list)
+        ? parsed.skills_list.join(', ')
+        : Array.isArray(parsed.skills)
+        ? parsed.skills.join(', ')
+        : parsed.skills || '';
+      const extractedCerts = parsed.certifications || parsed.candidate_certifications || '';
+
+      setFormData((prev) => ({
+        ...prev,
+        candidate_name: extractedName,
+        candidate_email: extractedEmail,
+        candidate_phone: extractedPhone,
+        location: extractedLocation,
+        education: extractedDegree,
+        experience: extractedExp,
+        skills: extractedSkills,
+        certifications: extractedCerts,
+      }));
     } catch (parseErr) {
-      console.warn('Resume pre-parsing completed with manual verification needed:', parseErr);
+      console.warn('Resume validation/pre-parsing failed:', parseErr);
+      setSelectedFile(null);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+      const msg = 'Could not verify the uploaded file as a resume. Please check the file and try again.';
+      setErrorMessage(msg);
+      setErrors({ file: msg });
     } finally {
       setIsExtracting(false);
     }
@@ -442,6 +480,7 @@ const UploadPhysicalResumeModal: React.FC<UploadPhysicalResumeModalProps> = ({
                     if (e.target.files && e.target.files[0]) {
                       handleFileSelected(e.target.files[0]);
                     }
+                    e.target.value = '';
                   }}
                   className="hidden"
                 />

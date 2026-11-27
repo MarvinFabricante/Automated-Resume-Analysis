@@ -218,7 +218,11 @@ def extract_file_content(file_path: str, file_extension: str) -> str:
                 raw_text = extract_text_from_pdf(file_path)
             elif (header.startswith(b'PK') or header.startswith(b'\xd0\xcf\x11\xe0') or header.startswith(b'{\\rtf')) and ext not in ('doc', 'docx'):
                 raw_text = extract_text_from_docx(file_path)
-            elif ext != 'txt' and not any(header.startswith(b) for b in (b'\x00', b'\x7fELF', b'MZ')):
+            elif (
+                ext not in ('txt', 'pdf', 'doc', 'docx')
+                and b'%PDF' not in header
+                and not header.startswith((b'\x00', b'\x7fELF', b'MZ', b'PK', b'\xd0\xcf\x11\xe0'))
+            ):
                 txt_fallback = extract_text_from_txt(file_path)
                 if len(txt_fallback.strip()) > len(raw_text.strip()):
                     raw_text = txt_fallback

@@ -63,7 +63,27 @@ async def parse_resume_file(db: AsyncSession, file: UploadFile) -> dict:
 
         if not extracted_data:
             logger.warning("process_resume returned empty data (Parsing Failed)")
-            return {}
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Only resume or CV documents are accepted. We could not read this file as a valid resume."
+            )
+
+        # Strict Resume-Only Gate: Reject non-resume documents BEFORE saving to storage or notifying HR
+        if extracted_data.get("is_valid_resume") is False:
+            validation = extracted_data.get("resume_validation") or {}
+            rejection_msg = validation.get("message") or (
+                "Only resume or CV documents are accepted. The uploaded file does not appear to be a valid resume."
+            )
+            logger.warning(
+                f"Rejected non-resume upload '{file.filename}': "
+                f"type={validation.get('detected_document_type')}, "
+                f"reason={validation.get('reason_code')}, "
+                f"score={validation.get('score')}"
+            )
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=rejection_msg
+            )
 
         logger.info(f"Successfully extracted data for {extracted_data.get('fullname', 'unknown')}")
 

@@ -3,6 +3,7 @@ import os
 from .file.file_extractor import extract_file_content
 from .content.content_extractor import extract_content, format_resume_display
 from .readability_checker import evaluate_resume_readability, inspect_file_readability_signals
+from .resume_validator import fast_precheck_non_resume, validate_resume_document
 
 logger = logging.getLogger(__name__)
 
@@ -12,15 +13,30 @@ def process_resume(file_path: str, file_extension: str) -> dict:
     Main entry point for resume processing.
 
     Pipeline:
-    1. Inspect file readability signals (non-blocking: encryption, text layer, layout).
-    2. Extract raw text from file (PDF/DOCX/TXT).
-    3. Run Philippine rule-based NLP extractors for comprehensive structured data.
-    4. Attach non-blocking applicant readability check (never stored as a penalty).
-    5. Extract profile image if available (PDF/DOCX).
+    1. Reject disguised executable binaries immediately.
+    2. Inspect file readability signals (encryption, page count, text layer, layout).
+    3. Extract raw text from file (PDF/DOCX/TXT).
+    4. Run Philippine rule-based NLP extractors for comprehensive structured data.
+    5. Run strict resume-vs-non-resume document gatekeeper (`validate_resume_document`).
+    6. Attach non-blocking applicant readability check (never stored as a penalty).
+    7. Extract profile image if available (PDF/DOCX) ONLY for validated resumes.
 
     NOTE: Resume extraction is entirely deterministic rule- and NLP-based (zero external LLM dependencies).
     """
     logger.info(f"Processing resume file at: {file_path}")
+
+    # Security gate: reject disguised executables before any extraction
+    try:
+        from app.utils.file_validator import is_executable_binary
+        with open(file_path, "rb") as _f:
+            _hdr = _f.read(64)
+        is_exe, _ = is_executable_binary(_hdr)
+        if is_exe:
+            logger.warning(f"Executable binary rejected in process_resume: {file_path}")
+            return {}
+    except Exception:
+        pass
+
     file_signals = inspect_file_readability_signals(file_path, file_extension)
 
     if file_signals.get("password_protected"):
@@ -31,6 +47,13 @@ def process_resume(file_path: str, file_extension: str) -> dict:
             raw_text="",
             extracted_data={},
             file_signals=file_signals,
+        )
+        validation = validate_resume_document(
+            raw_text="",
+            extracted_data={},
+            file_signals=file_signals,
+            page_count=file_signals.get("page_count"),
+            filename=os.path.basename(file_path),
         )
         return {
             "fullname": "",
@@ -53,6 +76,8 @@ def process_resume(file_path: str, file_extension: str) -> dict:
             "is_complete": False,
             "completeness_status": "Incomplete",
             "readability_check": readability,
+            "is_valid_resume": validation["is_resume"],
+            "resume_validation": validation,
         }
 
     text = extract_file_content(file_path, file_extension)
@@ -65,6 +90,13 @@ def process_resume(file_path: str, file_extension: str) -> dict:
             extracted_data={},
             file_signals=file_signals,
         )
+        validation = validate_resume_document(
+            raw_text="",
+            extracted_data={},
+            file_signals=file_signals,
+            page_count=file_signals.get("page_count"),
+            filename=os.path.basename(file_path),
+        )
         return {
             "fullname": "",
             "name": "",
@@ -86,9 +118,56 @@ def process_resume(file_path: str, file_extension: str) -> dict:
             "is_complete": False,
             "completeness_status": "Incomplete",
             "readability_check": readability,
+            "is_valid_resume": validation["is_resume"],
+            "resume_validation": validation,
         }
 
     logger.info(f"Successfully extracted {len(text)} characters of text from {file_path}")
+
+    # ── Fast pre-screen: immediately reject unmistakable non-resumes (e.g. 20-page manuals, invoices, theses)
+    #    before spending time on heavy spaCy NER / structured extraction.
+    fast_rejection = fast_precheck_non_resume(
+        raw_text=text,
+        file_signals=file_signals,
+        page_count=file_signals.get("page_count"),
+        filename=os.path.basename(file_path),
+    )
+    if fast_rejection is not None:
+        logger.warning(
+            f"Fast-rejected non-resume document ({fast_rejection['detected_document_type']}, "
+            f"reason={fast_rejection['reason_code']}, score={fast_rejection['score']}): {file_path}"
+        )
+        readability = evaluate_resume_readability(
+            file_path=file_path,
+            file_extension=file_extension,
+            raw_text=text,
+            extracted_data={},
+            file_signals=file_signals,
+        )
+        return {
+            "fullname": "",
+            "name": "",
+            "candidate_name": "",
+            "email": "",
+            "candidate_email": "",
+            "phone": "",
+            "candidate_phone": "",
+            "location": "",
+            "skills": [],
+            "skills_list": [],
+            "skills_array": [],
+            "work_experiences": [],
+            "education_entries": [],
+            "certifications": "",
+            "certifications_list": [],
+            "raw_text": text,
+            "is_incomplete": True,
+            "is_complete": False,
+            "completeness_status": "Incomplete",
+            "readability_check": readability,
+            "is_valid_resume": False,
+            "resume_validation": fast_rejection,
+        }
 
     # ── Step 2: Comprehensive rule-based NLP extraction ──────────────────────
     extracted_data = extract_content(text)
@@ -143,21 +222,40 @@ def process_resume(file_path: str, file_extension: str) -> dict:
         # Keep string for string consumers, but ensure array is accessible
         extracted_data["skills_array"] = extracted_data["skills_list"]
 
-    # ── Step 3: Extract profile image if PDF or DOCX ──────────────────────────
+    # ── Step 2.5: Strict Resume-Only Document Gatekeeper ─────────────────────
+    validation = validate_resume_document(
+        raw_text=text,
+        extracted_data=extracted_data,
+        file_signals=file_signals,
+        page_count=file_signals.get("page_count"),
+        filename=os.path.basename(file_path),
+    )
+    extracted_data["is_valid_resume"] = validation["is_resume"]
+    extracted_data["resume_validation"] = validation
+
+    if not validation["is_resume"]:
+        logger.warning(
+            f"Document rejected as non-resume ({validation['detected_document_type']}, "
+            f"reason={validation['reason_code']}, score={validation['score']}, "
+            f"pos={validation['positive_score']}, neg={validation['negative_score']}): {file_path}"
+        )
+
+    # ── Step 3: Extract profile image ONLY for validated resumes ─────────────
     ext = file_extension.lower().strip('.')
     image_path = None
-    if ext == 'pdf':
-        try:
-            from .file.pdf_extractor import extract_image_from_pdf
-            image_path = extract_image_from_pdf(file_path)
-        except Exception as e:
-            logger.warning(f"Error extracting image from PDF: {e}")
-    elif ext in ('docx', 'doc'):
-        try:
-            from .file.docx_extractor import extract_image_from_docx
-            image_path = extract_image_from_docx(file_path)
-        except Exception as e:
-            logger.warning(f"Error extracting image from DOCX: {e}")
+    if validation["is_resume"]:
+        if ext == 'pdf':
+            try:
+                from .file.pdf_extractor import extract_image_from_pdf
+                image_path = extract_image_from_pdf(file_path)
+            except Exception as e:
+                logger.warning(f"Error extracting image from PDF: {e}")
+        elif ext in ('docx', 'doc'):
+            try:
+                from .file.docx_extractor import extract_image_from_docx
+                image_path = extract_image_from_docx(file_path)
+            except Exception as e:
+                logger.warning(f"Error extracting image from DOCX: {e}")
 
     if image_path:
         if image_path.startswith("http://") or image_path.startswith("https://"):

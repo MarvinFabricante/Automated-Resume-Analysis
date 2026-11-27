@@ -94,21 +94,45 @@ async def upload_resume_file(
     Does NOT parse the file — use /candidate/parse-resume for parsing.
     """
     file_bytes = await file.read()
+    orig_filename = file.filename or ""
+
+    if len(file_bytes) > 10 * 1024 * 1024:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail="File size exceeds the 10MB maximum limit. Please upload a smaller PDF, Word (.docx/.doc), or text (.txt) resume."
+        )
 
     # Security: Content check (magic bytes) to reject disguised executables (.exe renamed to .pdf, etc.)
     from app.utils.file_validator import validate_file_content
-    is_valid, validation_err = validate_file_content(file_bytes, file.filename)
+    is_valid, validation_err = validate_file_content(file_bytes, orig_filename)
     if not is_valid:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=validation_err
         )
 
+    import os
+    file_ext = os.path.splitext(orig_filename)[1].lower().strip(".")
+    if file_ext not in ("pdf", "docx", "doc", "txt", "text"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Unsupported file format (.{file_ext or 'unknown'}). Only resume files in PDF, DOCX, DOC, or TXT format are accepted."
+        )
+
+    # Strict Resume-Only Gate: Reject random non-resume PDFs/DOCX/TXT before storing
+    from app.extractors.resume_validator import validate_resume_file_bytes
+    is_resume, resume_check = validate_resume_file_bytes(file_bytes, orig_filename)
+    if not is_resume:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=resume_check.get("message") or "Only resume or CV documents are accepted."
+        )
+
     try:
         from app.utils.supabase_storage import upload_resume
         result = await upload_resume(
             file_bytes=file_bytes,
-            original_filename=file.filename,
+            original_filename=orig_filename,
         )
         response_data = {
             "message": "Resume uploaded successfully",
