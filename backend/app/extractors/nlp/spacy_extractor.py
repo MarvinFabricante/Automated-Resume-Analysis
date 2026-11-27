@@ -20,6 +20,7 @@ def get_nlp():
         except Exception:
             # Fallback to spacy.load by name
             _NLP = spacy.load("en_core_web_sm")
+        _NLP.max_length = 500_000
     return _NLP
 
 
@@ -30,7 +31,7 @@ def process_text(text: str) -> Doc:
     return nlp(clean)
 
 
-def extract_skills_spacy(text: str, max_results: int = 50) -> List[str]:
+def extract_skills_spacy(text: str, max_results: int = 100) -> List[str]:
     """Use spaCy PhraseMatcher + simple context scanning to extract skills."""
     nlp = get_nlp()
     doc = nlp(text)
@@ -79,7 +80,7 @@ def extract_skills_spacy(text: str, max_results: int = 50) -> List[str]:
 _DATE_RANGE_RE = re.compile(r"(\b\d{4}\b|\bpresent\b|\bcurrent\b|\b\d{2}/\d{4}\b|\b\w{3,9}\s+\d{4}\b)", re.I)
 
 
-def extract_experience_spacy(text: str, max_entries: int = 10) -> List[str]:
+def extract_experience_spacy(text: str, max_entries: int = 25) -> List[str]:
     """Extract experience lines using sentence segmentation + NER heuristics.
 
     Returns a list of human-readable role entries (title at company; dates).
@@ -143,7 +144,7 @@ def extract_experience_spacy(text: str, max_entries: int = 10) -> List[str]:
     return entries
 
 
-def extract_education_spacy(text: str, max_entries: int = 5) -> List[str]:
+def extract_education_spacy(text: str, max_entries: int = 12) -> List[str]:
     doc = process_text(text)
     degree_keywords = ['bachelor', 'master', 'mba', 'bs', 'ba', 'phd', 'doctor', 'associate', "degree"]
     entries = []
@@ -171,7 +172,7 @@ def extract_education_spacy(text: str, max_entries: int = 5) -> List[str]:
     return entries
 
 
-def extract_certifications_spacy(text: str, max_entries: int = 10) -> List[str]:
+def extract_certifications_spacy(text: str, max_entries: int = 25) -> List[str]:
     doc = process_text(text)
     entries = []
     for sent in doc.sents:

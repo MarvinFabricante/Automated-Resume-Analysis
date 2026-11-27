@@ -63,9 +63,7 @@ DEFAULT_TEMPLATES: Dict[str, Dict[str, Any]] = {
         "placeholders": list(INTERVIEW_PLACEHOLDERS),
         "email_subject": "Interview Scheduled: {interview_title} - {job_title} | Mariwasa Siam Ceramics",
         "email_message": (
-            "We are pleased to inform you that an interview has been scheduled for your application "
-            "for the position of {job_title} at {company_name}. Please review the complete schedule "
-            "information below and be ready at least 10 minutes before your scheduled time."
+            "Your interview for {job_title} has been scheduled. Please see the details below."
         ),
         "sms_message": (
             "Mariwasa HR: Hello {candidate_name}! Your {interview_title} for {job_title} is scheduled on "
@@ -81,8 +79,7 @@ DEFAULT_TEMPLATES: Dict[str, Dict[str, Any]] = {
         "placeholders": list(INTERVIEW_PLACEHOLDERS),
         "email_subject": "Rescheduled: {interview_title} - {job_title} | Mariwasa Siam Ceramics",
         "email_message": (
-            "Please be advised that your interview schedule for the position of {job_title} has been updated. "
-            "Below are your new interview details and venue/meeting information."
+            "Your interview for {job_title} has been moved to a new schedule. Updated details are listed below."
         ),
         "sms_message": (
             "Mariwasa HR Update: Hello {candidate_name}! Your {interview_title} for {job_title} has been "
@@ -98,8 +95,7 @@ DEFAULT_TEMPLATES: Dict[str, Dict[str, Any]] = {
         "placeholders": list(INTERVIEW_PLACEHOLDERS),
         "email_subject": "Canceled: {interview_title} - {job_title} | Mariwasa Siam Ceramics",
         "email_message": (
-            "Please be advised that the scheduled interview for the position of {job_title} on {date} "
-            "at {time_range} has been canceled. The calendar event has been removed from all participant schedules."
+            "Your scheduled interview for {job_title} has been canceled and removed from the calendar."
         ),
         "sms_message": (
             "Mariwasa HR Update: Hello {candidate_name}, your {interview_title} for {job_title} scheduled on "
@@ -114,8 +110,7 @@ DEFAULT_TEMPLATES: Dict[str, Dict[str, Any]] = {
         "placeholders": list(INTERVIEW_PLACEHOLDERS),
         "email_subject": "Rescheduled: {interview_title} - {job_title} | Mariwasa Siam Ceramics",
         "email_message": (
-            "Your interview reschedule for the position of {job_title} has been confirmed for {date} "
-            "at {time_range}. Please review your updated schedule details below."
+            "Your rescheduled interview for {job_title} is confirmed. Updated details are listed below."
         ),
         "sms_message": (
             "Mariwasa HR Update: Hello {candidate_name}! Your new {interview_title} schedule for {job_title} "
@@ -130,8 +125,7 @@ DEFAULT_TEMPLATES: Dict[str, Dict[str, Any]] = {
         "placeholders": list(STATUS_PLACEHOLDERS),
         "email_subject": "Application Status Update: {job_title} | Mariwasa Siam Ceramics",
         "email_message": (
-            "Thank you for applying for the position of {job_title} at {company_name}. "
-            "We are pleased to inform you that our Talent Acquisition team has officially reviewed your resume and credentials."
+            "Our hiring team has reviewed your application for {job_title} and is currently evaluating your qualifications."
         ),
         "sms_message": "",
     },
@@ -143,8 +137,7 @@ DEFAULT_TEMPLATES: Dict[str, Dict[str, Any]] = {
         "placeholders": list(STATUS_PLACEHOLDERS),
         "email_subject": "Congratulations: Application Shortlisted for {job_title} | Mariwasa Siam Ceramics",
         "email_message": (
-            "We are thrilled to inform you that following a comprehensive evaluation of your background and credentials, "
-            "your application for the position of {job_title} at {company_name} has been officially accepted and shortlisted!"
+            "Congratulations! Your application for {job_title} has been officially accepted and shortlisted."
         ),
         "sms_message": "",
     },
@@ -156,10 +149,8 @@ DEFAULT_TEMPLATES: Dict[str, Dict[str, Any]] = {
         "placeholders": list(STATUS_PLACEHOLDERS),
         "email_subject": "Application Update: {job_title} | Mariwasa Siam Ceramics",
         "email_message": (
-            "Thank you for your interest in joining {company_name} and for the time and effort "
-            "you invested in applying for the position of {job_title}. After careful review, we will not be "
-            "moving forward with your application for this opening. You may continue to view your feedback report "
-            "and apply for other open positions in your candidate portal."
+            "Thank you for applying for {job_title}. After careful review, we have chosen to move forward with other candidates "
+            "for this opening. Your profile remains on file in our talent database for future opportunities."
         ),
         "sms_message": "",
     },

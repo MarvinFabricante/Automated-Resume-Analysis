@@ -969,7 +969,7 @@ def extract_skills(text: str) -> str:
     """
     structured = _SKILLS_EXTRACTOR.extract(text)
     names = [s["canonical_skill"] for s in structured.get("extracted_skills", [])]
-    return " | ".join(names[:50]) if names else ""
+    return " | ".join(names[:100]) if names else ""
 
 
 def extract_skills_list(text: str) -> List[str]:

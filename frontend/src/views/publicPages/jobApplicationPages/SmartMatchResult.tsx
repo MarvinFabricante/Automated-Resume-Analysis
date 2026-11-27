@@ -13,6 +13,7 @@ import Header from '../../../components/layout/Header';
 import Footer from '../../../components/layout/Footer';
 import DetailedAnalysisDrawer, { formatSecondPersonText } from '../../../components/candidate/DetailedAnalysisDrawer';
 import HelpTooltip from '../../../components/common/HelpTooltip';
+import { isBelowAcceptedRequirements } from '../../../components/common/MinimumRequirementBlocker';
 
 const SmartMatchResult: React.FC = () => {
   const location = useLocation();
@@ -45,6 +46,7 @@ const SmartMatchResult: React.FC = () => {
   };
 
   const handleStartApplication = (match: any) => {
+    if (isBelowAcceptedRequirements(match)) return;
     const effectiveJobId = match.job_id || match.id;
     if (typeof window !== 'undefined') {
       const draftData = {
@@ -248,14 +250,21 @@ const SmartMatchResult: React.FC = () => {
                     </button>
                     <button
                       type="button"
+                      disabled={isBelowAcceptedRequirements(match)}
                       onClick={(e) => {
                         e.stopPropagation();
                         handleStartApplication(match);
                       }}
-                      className="flex-[1.5] sm:flex-[2] py-3.5 px-4 rounded-full bg-slate-900 text-white font-bold text-xs sm:text-sm flex items-center justify-center gap-2 hover:bg-[#D60041] transition-colors shadow-lg active:scale-95 group/btn cursor-pointer"
+                      className={`flex-[1.5] sm:flex-[2] py-3.5 px-4 rounded-full font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition-colors group/btn ${
+                        isBelowAcceptedRequirements(match)
+                          ? 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'
+                          : 'bg-slate-900 text-white hover:bg-[#D60041] shadow-lg active:scale-95 cursor-pointer'
+                      }`}
                     >
-                      <span>Start Application</span>
-                      <ArrowRight size={16} className="group-hover/btn:translate-x-1 transition-transform" />
+                      <span>{isBelowAcceptedRequirements(match) ? 'Below Requirements' : 'Start Application'}</span>
+                      {!isBelowAcceptedRequirements(match) && (
+                        <ArrowRight size={16} className="group-hover/btn:translate-x-1 transition-transform" />
+                      )}
                     </button>
                   </div>
                 </div>

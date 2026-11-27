@@ -996,7 +996,7 @@ def extract_certifications(text: str) -> str:
     if not certs:
         return ""
     names = [c["canonical_name"] for c in certs]
-    return " | ".join(names[:25])
+    return " | ".join(names[:50])
 
 
 # ─── Demonstration & Test Block ────────────────────────────────────────────────

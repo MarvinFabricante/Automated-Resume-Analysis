@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { Helmet } from 'react-helmet-async';
-import { 
-  X, Briefcase, MapPin, Building2, DollarSign, 
-  ListChecks, FileText, Loader2, CheckCircle2, 
+import {
+  X, Briefcase, MapPin, Building2, DollarSign,
+  ListChecks, FileText, Loader2, CheckCircle2,
   AlertCircle, ChevronRight, ChevronLeft, Info,
   Trophy, Target, Sparkles, GraduationCap, Award
 } from 'lucide-react';
@@ -13,6 +13,17 @@ import api from '../../../services/api';
 import { Job, JobScoringWeights, DEFAULT_JOB_SCORING_WEIGHTS } from '../../../types';
 import { cleanRequirementInput } from '../../../utils/criterionStatus';
 import JobScoringWeightsEditor, { isWeightsBalanced, areWeightsEqual } from './JobScoringWeightsEditor';
+import { SelectWithOther, MultiSelectDropdownWithOther } from '../../common/SelectWithOther';
+import {
+  COMMON_JOB_TITLES,
+  JOB_DEPARTMENTS,
+  JOB_WORK_LOCATIONS,
+  SALARY_RANGE_OPTIONS,
+  SKILL_OPTIONS,
+  JOB_EDUCATION_REQUIREMENTS,
+  JOB_EXPERIENCE_REQUIREMENTS,
+  CERTIFICATION_OPTIONS,
+} from '../../../data/formOptions';
 
 interface EditJobModalProps {
   isOpen: boolean;
@@ -91,8 +102,8 @@ const EditJobModal: React.FC<EditJobModalProps> = ({ isOpen, onClose, onSuccess,
         job_type: jobData.job_type || 'Full-Time',
         salary_range: jobData.salary_range || '',
         description: jobData.description || '',
-        skills_requirements: Array.isArray(jobData.skills_requirements) 
-          ? jobData.skills_requirements.join(', ') 
+        skills_requirements: Array.isArray(jobData.skills_requirements)
+          ? jobData.skills_requirements.join(', ')
           : cleanRequirementInput(jobData.skills_requirements),
         education_requirements: cleanRequirementInput(jobData.education_requirements),
         experience_requirements: cleanRequirementInput(jobData.experience_requirements),
@@ -275,19 +286,18 @@ const EditJobModal: React.FC<EditJobModalProps> = ({ isOpen, onClose, onSuccess,
       <div className="px-4 sm:px-8 pt-4 sm:pt-6 pb-2">
         <div className="flex items-center justify-between relative">
           <div className="absolute top-1/2 left-0 w-full h-0.5 bg-gray-100 -translate-y-1/2 z-0" />
-          <div 
-            className="absolute top-1/2 left-0 h-0.5 bg-gradient-to-r from-[#d81159] to-pink-400 -translate-y-1/2 z-0 transition-all duration-500 ease-out" 
+          <div
+            className="absolute top-1/2 left-0 h-0.5 bg-gradient-to-r from-[#d81159] to-pink-400 -translate-y-1/2 z-0 transition-all duration-500 ease-out"
             style={{ width: `${((currentStep - 1) / (totalSteps - 1)) * 100}%` }}
           />
-          
+
           {steps.map((step) => (
             <div key={step} className="relative z-10 flex flex-col items-center">
-              <div 
-                className={`w-8 h-8 sm:w-10 sm:h-10 rounded-full flex items-center justify-center border-2 sm:border-4 transition-all duration-300 ${
-                  currentStep >= step 
-                    ? 'bg-white border-[#d81159] text-[#d81159] shadow-md sm:shadow-lg shadow-pink-100' 
-                    : 'bg-white border-gray-100 text-gray-300'
-                }`}
+              <div
+                className={`w-8 h-8 sm:w-10 sm:h-10 rounded-full flex items-center justify-center border-2 sm:border-4 transition-all duration-300 ${currentStep >= step
+                  ? 'bg-white border-[#d81159] text-[#d81159] shadow-md sm:shadow-lg shadow-pink-100'
+                  : 'bg-white border-gray-100 text-gray-300'
+                  }`}
               >
                 {currentStep > step ? <CheckCircle2 size={16} className="sm:w-5 sm:h-5 fill-[#d81159] text-white" /> : <span className="font-bold text-xs sm:text-sm">{step}</span>}
               </div>
@@ -307,7 +317,7 @@ const EditJobModal: React.FC<EditJobModalProps> = ({ isOpen, onClose, onSuccess,
         <title>Editing: {formData.job_title || 'Position'} | HR Portal</title>
       </Helmet>
       <div className="bg-white w-full max-w-2xl rounded-2xl sm:rounded-3xl shadow-[0_20px_50px_rgba(0,0,0,0.1)] overflow-hidden animate-in fade-in zoom-in duration-300 max-h-[92vh] sm:max-h-[90vh] flex flex-col relative border border-white/20">
-        
+
         {showRescoreConfirm && (
           <div
             role="dialog"
@@ -420,8 +430,8 @@ const EditJobModal: React.FC<EditJobModalProps> = ({ isOpen, onClose, onSuccess,
             </div>
             <h2 className="text-xl sm:text-2xl font-black text-gray-900 tracking-tight">Edit Position</h2>
           </div>
-          <button 
-            onClick={onClose} 
+          <button
+            onClick={onClose}
             className="group p-2 sm:p-3 hover:bg-red-50 rounded-xl sm:rounded-2xl transition-all duration-300 text-gray-400 hover:text-red-500 cursor-pointer"
           >
             <X size={20} className="group-hover:rotate-90 transition-transform duration-300" />
@@ -430,8 +440,8 @@ const EditJobModal: React.FC<EditJobModalProps> = ({ isOpen, onClose, onSuccess,
 
         {renderStepIndicator()}
 
-        <form 
-          onSubmit={handleSubmit} 
+        <form
+          onSubmit={handleSubmit}
           onKeyDown={(e) => {
             if (e.key === 'Enter' && (e.target as HTMLElement).tagName !== 'TEXTAREA') {
               e.preventDefault();
@@ -447,21 +457,22 @@ const EditJobModal: React.FC<EditJobModalProps> = ({ isOpen, onClose, onSuccess,
               <div className="space-y-4 sm:space-y-6 animate-in slide-in-from-right-4 duration-500">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
                   <div className="md:col-span-2">
-                    <label className={labelClasses}><Briefcase size={12} /> Job Title</label>
-                    <input
-                      autoFocus
-                      required
-                      type="text"
-                      placeholder="e.g. Senior Full-Stack Engineer"
-                      className={inputClasses(errors.job_title)}
+                    <SelectWithOther
+                      id="edit-job-title"
+                      label={<span className="inline-flex items-center gap-2"><Briefcase size={12} /> Job Title</span>}
+                      labelClassName={labelClasses}
+                      selectClassName={`${inputClasses(errors.job_title)} appearance-none pr-10 cursor-pointer`}
                       value={formData.job_title}
-                      onChange={(e) => {
-                        const val = e.target.value;
+                      onChange={(val) => {
                         setFormData(prev => ({ ...prev, job_title: val }));
                         setErrors(prev => (prev.job_title ? { ...prev, job_title: null } : prev));
                       }}
+                      options={COMMON_JOB_TITLES}
+                      placeholder="Select a job title..."
+                      otherPlaceholder="Enter custom job title..."
+                      required
+                      error={errors.job_title}
                     />
-                    {errors.job_title && <p className="text-[10px] text-red-500 mt-1.5 ml-1 font-bold">{errors.job_title}</p>}
                   </div>
 
                   <div>
@@ -475,30 +486,17 @@ const EditJobModal: React.FC<EditJobModalProps> = ({ isOpen, onClose, onSuccess,
                   </div>
 
                   <div>
-                    <label className={labelClasses}><Building2 size={12} /> Department</label>
-                    <select
-                      className={inputClasses()}
+                    <SelectWithOther
+                      id="edit-job-department"
+                      label={<span className="inline-flex items-center gap-2"><Building2 size={12} /> Department</span>}
+                      labelClassName={labelClasses}
+                      selectClassName={`${inputClasses()} appearance-none pr-10 cursor-pointer`}
                       value={formData.department}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        setFormData(prev => ({ ...prev, department: val }));
-                      }}
-                    >
-                      {Array.from(new Set([
-                        'Human Resources',
-                        'Engineering',
-                        'Information Technology',
-                        'Marketing',
-                        'Finance',
-                        'Operations',
-                        'Quality Assurance',
-                        'Maintenance',
-                        'Environmental',
-                        ...(formData.department ? [formData.department] : []),
-                      ])).map((dept) => (
-                        <option key={dept} value={dept}>{dept}</option>
-                      ))}
-                    </select>
+                      onChange={(val) => setFormData(prev => ({ ...prev, department: val }))}
+                      options={JOB_DEPARTMENTS}
+                      allowEmpty={false}
+                      otherPlaceholder="Enter custom department..."
+                    />
                   </div>
 
                   <div className="md:col-span-2">
@@ -509,11 +507,10 @@ const EditJobModal: React.FC<EditJobModalProps> = ({ isOpen, onClose, onSuccess,
                           key={type}
                           type="button"
                           onClick={() => setFormData(prev => ({ ...prev, job_type: type }))}
-                          className={`py-2.5 sm:py-3 px-3 sm:px-4 rounded-xl text-xs font-bold transition-all border ${
-                            formData.job_type === type 
-                              ? 'bg-[#d81159] border-[#d81159] text-white shadow-lg shadow-pink-100' 
-                              : 'bg-white border-gray-100 text-gray-500 hover:border-pink-200'
-                          }`}
+                          className={`py-2.5 sm:py-3 px-3 sm:px-4 rounded-xl text-xs font-bold transition-all border ${formData.job_type === type
+                            ? 'bg-[#d81159] border-[#d81159] text-white shadow-lg shadow-pink-100'
+                            : 'bg-white border-gray-100 text-gray-500 hover:border-pink-200'
+                            }`}
                         >
                           {type}
                         </button>
@@ -528,41 +525,41 @@ const EditJobModal: React.FC<EditJobModalProps> = ({ isOpen, onClose, onSuccess,
               <div className="space-y-4 sm:space-y-6 animate-in slide-in-from-right-4 duration-500">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
                   <div className="md:col-span-2">
-                    <label className={labelClasses}><MapPin size={12} /> Work Location</label>
-                    <input
-                      autoFocus
-                      required
-                      type="text"
-                      placeholder="e.g. BGC, Taguig City (On-site)"
-                      className={inputClasses(errors.location)}
+                    <SelectWithOther
+                      id="edit-job-location"
+                      label={<span className="inline-flex items-center gap-2"><MapPin size={12} /> Work Location</span>}
+                      labelClassName={labelClasses}
+                      selectClassName={`${inputClasses(errors.location)} appearance-none pr-10 cursor-pointer`}
                       value={formData.location}
-                      onChange={(e) => {
-                        const val = e.target.value;
+                      onChange={(val) => {
                         setFormData(prev => ({ ...prev, location: val }));
                         setErrors(prev => (prev.location ? { ...prev, location: null } : prev));
                       }}
+                      options={JOB_WORK_LOCATIONS}
+                      placeholder="Select work location..."
+                      otherPlaceholder="e.g. Sto. Tomas, Batangas (On-site)"
+                      required
+                      error={errors.location}
                     />
-                    {errors.location && <p className="text-[10px] text-red-500 mt-1.5 ml-1 font-bold">{errors.location}</p>}
                   </div>
 
                   <div className="md:col-span-2">
-                    <label className={labelClasses}><DollarSign size={12} /> Salary Range (Monthly)</label>
-                    <div className="relative">
-                      <input
-                        required
-                        type="text"
-                        placeholder="e.g. 50,000 - 80,000"
-                        className={inputClasses(errors.salary_range)}
-                        value={formData.salary_range}
-                        onChange={handleSalaryChange}
-                      />
-                      <div className="absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-1.5 pointer-events-none">
-                        <span className="text-[10px] font-black text-gray-300 uppercase">PHP</span>
-                      </div>
-                    </div>
-                    <p className="mt-2 text-[10px] text-gray-400 flex items-center gap-1.5 ml-1">
-                      <Info size={10} /> Enter as "Min - Max" for range
-                    </p>
+                    <SelectWithOther
+                      id="edit-job-salary"
+                      label={<span className="inline-flex items-center gap-2"><DollarSign size={12} /> Salary Range (Monthly PHP)</span>}
+                      labelClassName={labelClasses}
+                      selectClassName={`${inputClasses(errors.salary_range)} appearance-none pr-10 cursor-pointer`}
+                      value={formData.salary_range}
+                      onChange={(val) => {
+                        setFormData(prev => ({ ...prev, salary_range: val }));
+                        setErrors(prev => (prev.salary_range ? { ...prev, salary_range: null } : prev));
+                      }}
+                      options={SALARY_RANGE_OPTIONS}
+                      placeholder="Select monthly salary bracket..."
+                      otherPlaceholder="e.g. ₱50,000 - ₱80,000"
+                      required
+                      error={errors.salary_range}
+                    />
                   </div>
 
                   <div className="md:col-span-2 mt-2 sm:mt-4">
@@ -574,13 +571,11 @@ const EditJobModal: React.FC<EditJobModalProps> = ({ isOpen, onClose, onSuccess,
                       <button
                         type="button"
                         onClick={() => setFormData(prev => ({ ...prev, is_active: !prev.is_active }))}
-                        className={`relative inline-flex h-6 sm:h-7 w-11 sm:w-12 items-center rounded-full transition-all duration-300 ${
-                          formData.is_active ? 'bg-emerald-500 shadow-lg shadow-emerald-100' : 'bg-gray-200'
-                        }`}
+                        className={`relative inline-flex h-6 sm:h-7 w-11 sm:w-12 items-center rounded-full transition-all duration-300 ${formData.is_active ? 'bg-emerald-500 shadow-lg shadow-emerald-100' : 'bg-gray-200'
+                          }`}
                       >
-                        <span className={`inline-block h-4 sm:h-5 w-4 sm:w-5 transform rounded-full bg-white shadow-sm transition-transform duration-300 ${
-                          formData.is_active ? 'translate-x-6 sm:translate-x-6' : 'translate-x-1'
-                        }`} />
+                        <span className={`inline-block h-4 sm:h-5 w-4 sm:w-5 transform rounded-full bg-white shadow-sm transition-transform duration-300 ${formData.is_active ? 'translate-x-6 sm:translate-x-6' : 'translate-x-1'
+                          }`} />
                       </button>
                     </div>
                   </div>
@@ -608,77 +603,77 @@ const EditJobModal: React.FC<EditJobModalProps> = ({ isOpen, onClose, onSuccess,
                 </div>
 
                 <div>
-                  <label className={labelClasses}><ListChecks size={12} /> Key Skills & Requirements</label>
-                  <input
-                    required
-                    type="text"
-                    placeholder="e.g. React, Node.js, AWS, System Design (Comma separated)"
-                    className={inputClasses(errors.skills_requirements)}
-                    value={formData.skills_requirements}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      setFormData(prev => ({ ...prev, skills_requirements: val }));
+                  <MultiSelectDropdownWithOther
+                    id="edit-job-skills"
+                    label={<span className="inline-flex items-center gap-2"><ListChecks size={12} /> Key Skills &amp; Requirements</span>}
+                    labelClassName={labelClasses}
+                    selectClassName={`${inputClasses(errors.skills_requirements)} appearance-none pr-10 cursor-pointer`}
+                    selectedItems={formData.skills_requirements.split(',').map((s) => s.trim()).filter(Boolean)}
+                    onChange={(items) => {
+                      setFormData(prev => ({ ...prev, skills_requirements: items.join(', ') }));
                       setErrors(prev => (prev.skills_requirements ? { ...prev, skills_requirements: null } : prev));
                     }}
+                    options={SKILL_OPTIONS}
+                    placeholder="Select required skills from dropdown..."
+                    otherPlaceholder="Enter custom required skill..."
+                    error={errors.skills_requirements}
+                    emptyStateText="Select at least one required skill from the dropdown above."
+                    chipClassName="inline-flex items-center gap-1.5 px-2.5 py-1 bg-pink-50 text-[#d81159] text-xs font-bold rounded-full border border-pink-100"
                   />
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {formData.skills_requirements.split(',').filter(s => s.trim()).slice(0, 5).map((skill, i) => (
-                      <span key={i} className="px-2.5 sm:px-3 py-1 bg-pink-50 text-[#d81159] text-[10px] font-bold rounded-full border border-pink-100">
-                        {skill.trim()}
-                      </span>
-                    ))}
-                    {formData.skills_requirements.split(',').filter(s => s.trim()).length > 5 && (
-                      <span className="px-2.5 sm:px-3 py-1 bg-gray-50 text-gray-400 text-[10px] font-bold rounded-full">
-                        +{formData.skills_requirements.split(',').filter(s => s.trim()).length - 5} more
-                      </span>
-                    )}
-                  </div>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 sm:gap-6">
                   <div>
-                    <label className={labelClasses}><GraduationCap size={12} /> Education Requirements</label>
-                    <input
-                      type="text"
-                      placeholder="e.g. Bachelor's Degree"
-                      className={inputClasses()}
+                    <SelectWithOther
+                      id="edit-job-education"
+                      label={<span className="inline-flex items-center gap-2"><GraduationCap size={12} /> Education</span>}
+                      labelClassName={labelClasses}
+                      selectClassName={`${inputClasses()} appearance-none pr-10 cursor-pointer`}
                       value={formData.education_requirements}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        setFormData(prev => ({ ...prev, education_requirements: val }));
-                      }}
+                      onChange={(val) => setFormData(prev => ({ ...prev, education_requirements: val === 'None' ? '' : val }))}
+                      options={JOB_EDUCATION_REQUIREMENTS}
+                      placeholder="Select education..."
+                      otherPlaceholder="Specify required degree..."
+                      helperText="Select 'None' if not required."
                     />
-                    <p className="mt-1.5 ml-1 text-[11px] text-slate-500">Leave blank or type &apos;None&apos; if nothing is required.</p>
                   </div>
 
                   <div>
-                    <label className={labelClasses}><Trophy size={12} /> Experience Requirements</label>
-                    <input
-                      type="text"
-                      placeholder="e.g. 3+ years"
-                      className={inputClasses()}
+                    <SelectWithOther
+                      id="edit-job-experience"
+                      label={<span className="inline-flex items-center gap-2"><Trophy size={12} /> Experience</span>}
+                      labelClassName={labelClasses}
+                      selectClassName={`${inputClasses()} appearance-none pr-10 cursor-pointer`}
                       value={formData.experience_requirements}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        setFormData(prev => ({ ...prev, experience_requirements: val }));
-                      }}
+                      onChange={(val) =>
+                        setFormData(prev => ({
+                          ...prev,
+                          experience_requirements: val.startsWith('None') ? '' : val,
+                        }))
+                      }
+                      options={JOB_EXPERIENCE_REQUIREMENTS}
+                      placeholder="Select experience..."
+                      otherPlaceholder="e.g. 4+ years in QA"
+                      helperText="Select 'None' if open to fresh grads."
                     />
-                    <p className="mt-1.5 ml-1 text-[11px] text-slate-500">Leave blank or type &apos;None&apos; if nothing is required.</p>
                   </div>
 
                   <div className="sm:col-span-2 md:col-span-1">
-                    <label className={labelClasses}><Award size={12} /> Certifications</label>
-                    <input
-                      type="text"
-                      placeholder="e.g. PMP, AWS"
-                      className={inputClasses()}
-                      value={formData.certifications_requirements}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        setFormData(prev => ({ ...prev, certifications_requirements: val }));
-                      }}
+                    <MultiSelectDropdownWithOther
+                      id="edit-job-certifications"
+                      label={<span className="inline-flex items-center gap-2"><Award size={12} /> Certifications</span>}
+                      labelClassName={labelClasses}
+                      selectClassName={`${inputClasses()} appearance-none pr-10 cursor-pointer`}
+                      selectedItems={formData.certifications_requirements.split(',').map((s) => s.trim()).filter(Boolean)}
+                      onChange={(items) =>
+                        setFormData(prev => ({ ...prev, certifications_requirements: items.join(', ') }))
+                      }
+                      options={CERTIFICATION_OPTIONS}
+                      placeholder="Select certifications (optional)..."
+                      otherPlaceholder="Specify license/certification..."
+                      emptyStateText="None required."
+                      chipClassName="inline-flex items-center gap-1.5 px-2.5 py-1 bg-slate-100 text-slate-700 text-[11px] font-bold rounded-full border border-slate-200"
                     />
-                    <p className="mt-1.5 ml-1 text-[11px] text-slate-500">Leave blank or type &apos;None&apos; if nothing is required.</p>
                   </div>
                 </div>
 
@@ -764,7 +759,7 @@ const EditJobModal: React.FC<EditJobModalProps> = ({ isOpen, onClose, onSuccess,
           </div>
         </form>
       </div>
-      
+
       <style>{`
         .custom-scrollbar::-webkit-scrollbar {
           width: 6px;

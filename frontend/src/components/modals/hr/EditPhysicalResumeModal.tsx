@@ -12,6 +12,8 @@ import {
   Tag
 } from 'lucide-react';
 import { useUpdatePhysicalResumeMutation, useGetJobsQuery } from '../../../redux/api/apiSlice';
+import { SelectWithOther } from '../../common/SelectWithOther';
+import { PHYSICAL_ARCHIVE_LOCATIONS } from '../../../data/formOptions';
 
 interface EditPhysicalResumeModalProps {
   isOpen: boolean;
@@ -19,15 +21,6 @@ interface EditPhysicalResumeModalProps {
   resume: any;
   onSuccess?: (result: any) => void;
 }
-
-const PRESET_LOCATIONS = [
-  'Cabinet A • Shelf 1',
-  'Cabinet A • Shelf 2',
-  'Cabinet B • Walk-in Folder',
-  'Plant 2 • HR Front Desk',
-  'Administration • Box #12',
-  'Ceramics Division • HR Archive',
-];
 
 const EditPhysicalResumeModal: React.FC<EditPhysicalResumeModalProps> = ({
   isOpen,
@@ -173,30 +166,15 @@ const EditPhysicalResumeModal: React.FC<EditPhysicalResumeModalProps> = ({
             <label className="block text-xs font-black uppercase tracking-wider text-slate-800">
               Physical Storage Location Ref <span className="text-[#D60041]">*</span>
             </label>
-            <input
-              type="text"
+            <SelectWithOther
               required
               value={formData.physical_location}
-              onChange={(e) => setFormData({ ...formData, physical_location: e.target.value })}
-              className="w-full px-3.5 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#D60041]/20 focus:border-[#D60041]"
-              placeholder="e.g. Cabinet A • Shelf 2 • Folder #14"
+              onChange={(val) => setFormData({ ...formData, physical_location: val })}
+              options={PHYSICAL_ARCHIVE_LOCATIONS}
+              placeholder="Select storage location..."
+              otherPlaceholder="e.g. Cabinet A • Shelf 2 • Folder #14"
+              selectClassName="w-full appearance-none px-3.5 py-2.5 pr-9 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#D60041]/20 focus:border-[#D60041] cursor-pointer"
             />
-            <div className="flex flex-wrap items-center gap-1.5 pt-1">
-              {PRESET_LOCATIONS.map((preset, idx) => (
-                <button
-                  key={idx}
-                  type="button"
-                  onClick={() => setFormData({ ...formData, physical_location: preset })}
-                  className={`text-[10px] font-semibold px-2 py-0.5 rounded-lg border transition-all cursor-pointer ${
-                    formData.physical_location === preset
-                      ? 'bg-[#D60041] text-white border-[#D60041]'
-                      : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300'
-                  }`}
-                >
-                  {preset}
-                </button>
-              ))}
-            </div>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-3.5">

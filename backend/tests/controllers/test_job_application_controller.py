@@ -512,6 +512,7 @@ async def test_application_details_includes_recommended_positions(client, db_ses
         "/applications/",
         json={
             "job_id": "JOB-REC-APPLIED",
+            "source": "Imported",
             "candidate_name": "Marco Developer",
             "candidate_email": "marco.dev@example.com",
             "phone": "+639171234567",
@@ -585,6 +586,7 @@ async def test_application_details_upgrades_legacy_applicant_recommendations_for
         "/applications/",
         json={
             "job_id": "JOB-LEG-SALES",
+            "source": "Imported",
             "candidate_name": "Dev Applying Sales",
             "candidate_email": "dev.sales@example.com",
             "skills": ["Python", "FastAPI", "PostgreSQL"],

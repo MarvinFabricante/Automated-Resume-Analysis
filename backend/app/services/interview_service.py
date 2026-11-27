@@ -31,7 +31,14 @@ from app.services.google_calendar_service import (
     _is_timeout_error,
 )
 from app.services import email_service
-from app.services.interview_details import validate_interview_details, details_for_interview, interview_details_text, manila_time
+from app.services.interview_details import (
+    validate_interview_details,
+    details_for_interview,
+    interview_details_text,
+    manila_time,
+    detect_meeting_platform,
+    resolve_meeting_platform,
+)
 
 def _populate_candidate_info(interview, app_override=None, interviewer_override=None):
     """Helper to attach candidate details and interviewer info to the interview model."""
@@ -1333,6 +1340,11 @@ async def schedule_interview(db: AsyncSession, data: InterviewCreateSchema, user
                 else positions_bullet
             )
 
+        resolved_platform = (
+            resolve_meeting_platform(interview_meeting_link, data.platform)
+            if data.interview_type == "Online"
+            else None
+        )
         interview_data = {
             "job_application_id": data.job_application_id,
             "interviewer_id": interviewer_id,
@@ -1342,7 +1354,7 @@ async def schedule_interview(db: AsyncSession, data: InterviewCreateSchema, user
             "end_time": end,
             "interview_type": data.interview_type or "Not specified",
             "instructions": data.instructions,
-            "platform": data.platform if data.interview_type == "Online" else None,
+            "platform": resolved_platform,
             "location": interview_location if data.interview_type != "Online" else None,
             "meeting_link": interview_meeting_link if data.interview_type != "Onsite" else None,
             "is_combined": is_combined_interview,
@@ -1470,9 +1482,12 @@ async def schedule_interview(db: AsyncSession, data: InterviewCreateSchema, user
                     raise ValueError(msg)
                 print(f"Warning: Could not create event on Google Calendar: {e}")
 
-        # 4. Email Invites: Candidate, HR, and Panel
+        # 4. Email Invites: Candidate, HR, and Panel (deduplicated per recipient email)
+        notified_emails: set[str] = set()
+
         # (a) Candidate Invite
         if candidate_email:
+            notified_emails.add(candidate_email.strip().lower())
             try:
                 email_sent = await email_service.send_interview_invitation_email(
                     to_email=candidate_email,
@@ -1502,8 +1517,9 @@ async def schedule_interview(db: AsyncSession, data: InterviewCreateSchema, user
             except Exception as e:
                 print(f"Warning: Could not send interview invitation email to candidate: {e}")
 
-        # (b) HR Confirmation Invite
-        if scheduler_email:
+        # (b) HR Confirmation Invite (skip if already notified with same address)
+        if scheduler_email and scheduler_email.strip().lower() not in notified_emails:
+            notified_emails.add(scheduler_email.strip().lower())
             try:
                 email_sent = await email_service.send_interview_invitation_email(
                     to_email=scheduler_email,
@@ -1513,7 +1529,7 @@ async def schedule_interview(db: AsyncSession, data: InterviewCreateSchema, user
                     start_time=data.start_time,
                     end_time=data.end_time,
                     interviewer_name=interviewer_name,
-                    notes=f"HR Copy - Scheduled interview for candidate {candidate_name} ({candidate_email or 'N/A'}). Assigned Panelist: {interviewer_name}. Notes: {data.description or 'N/A'}",
+                    notes=f"HR Copy - Candidate: {candidate_name} ({candidate_email or 'N/A'}). Notes: {data.description or 'None'}",
                     location=interview_location,
                     meeting_link=interview_meeting_link,
                     interviewer_email=interviewer_email,
@@ -1530,12 +1546,13 @@ async def schedule_interview(db: AsyncSession, data: InterviewCreateSchema, user
             except Exception as e:
                 print(f"Warning: Could not send interview confirmation email to HR: {e}")
 
-        # (c) Panel Invite(s)
+        # (c) Panel Invite(s) (skip duplicates already notified above)
         for p_user in panel_recipients:
             try:
                 p_email = getattr(p_user, "email", None)
                 p_name = getattr(p_user, "fullname", None) or "Panelist"
-                if p_email:
+                if p_email and p_email.strip().lower() not in notified_emails:
+                    notified_emails.add(p_email.strip().lower())
                     email_sent = await email_service.send_interview_invitation_email(
                         to_email=p_email,
                         candidate_name=candidate_name,
@@ -1544,7 +1561,7 @@ async def schedule_interview(db: AsyncSession, data: InterviewCreateSchema, user
                         start_time=data.start_time,
                         end_time=data.end_time,
                         interviewer_name=p_name,
-                        notes=f"Panel Interview Assignment - Candidate: {candidate_name} ({candidate_email or 'N/A'}). Job: {job_name}. Notes: {data.description or 'N/A'}",
+                        notes=f"Panel Assignment - Candidate: {candidate_name} ({candidate_email or 'N/A'}). Notes: {data.description or 'None'}",
                         location=interview_location,
                         meeting_link=interview_meeting_link,
                         interviewer_email=interviewer_email,
@@ -1697,11 +1714,19 @@ async def update_interview(db: AsyncSession, interview_id: int, data: InterviewU
     if venue_fields.intersection(changes):
         kind = merged["interview_type"]
         if kind not in ("Onsite", "Online"):
-            kind = "Online" if merged["meeting_link"] else "Onsite"
-        validate_interview_details(kind, merged["location"], merged["meeting_link"])
+            kind = "Online" if (merged["meeting_link"] or merged["platform"]) else "Onsite"
+        if kind == "Online" and "meeting_link" in changes and "platform" not in changes:
+            merged["platform"] = detect_meeting_platform(merged["meeting_link"])
+        validate_interview_details(
+            kind,
+            merged["location"],
+            merged["meeting_link"],
+            merged["platform"] if kind == "Online" else None,
+        )
         merged["interview_type"] = kind
         if kind == "Online":
             merged["location"] = None
+            merged["platform"] = resolve_meeting_platform(merged["meeting_link"], merged["platform"])
         else:
             merged["meeting_link"] = None
             merged["platform"] = None
@@ -1937,57 +1962,13 @@ async def update_interview(db: AsyncSession, interview_id: int, data: InterviewU
         iv_location = getattr(interview, "location", None)
         iv_meeting_link = getattr(interview, "meeting_link", None)
 
-        # 1. HR Update / Confirmation Email
-        if scheduler_user and getattr(scheduler_user, "email", None):
-            try:
-                email_sent = await email_service.send_interview_rescheduled_email(
-                    to_email=scheduler_user.email,
-                    candidate_name=application.candidate_name or "Candidate",
-                    job_title=job_name,
-                    interview_title=f"[HR Update] {interview.title}",
-                    start_time=interview.start_time,
-                    end_time=interview.end_time,
-                    interviewer_name=interviewer_name,
-                    notes=f"HR Copy - Rescheduled interview for candidate {application.candidate_name or 'Candidate'} ({application.candidate_email or 'N/A'}). Assigned Interviewer: {interviewer_name}. Notes: {interview.description or 'N/A'}",
-                    location=iv_location,
-                    meeting_link=iv_meeting_link,
-                    interviewer_email=interviewer_email,
-                )
-                if email_sent:
-                    await InterviewRepository.add_interview_log(
-                        db, interview.id, "EMAIL_RESCHEDULED", f"Reschedule update email sent to HR {scheduler_user.email}"
-                    )
-                    await InterviewRepository.commit_changes(db)
-            except Exception as e:
-                print(f"Warning: Could not send reschedule email to HR: {e}")
+        # Deduplicate reschedule emails per recipient email address
+        notified_resched_emails: set[str] = set()
 
-        # 2. Panelist Update Email(s)
-        for p_user in panel_recipients:
-            try:
-                email_sent = await email_service.send_interview_rescheduled_email(
-                    to_email=p_user.email,
-                    candidate_name=application.candidate_name or "Candidate",
-                    job_title=job_name,
-                    interview_title=f"[Panel Update] {interview.title}",
-                    start_time=interview.start_time,
-                    end_time=interview.end_time,
-                    interviewer_name=p_user.fullname or interviewer_name,
-                    notes=f"Panel Interview Rescheduled - Candidate: {application.candidate_name or 'Candidate'} ({application.candidate_email or 'N/A'}). Job: {job_name}. Notes: {interview.description or 'N/A'}",
-                    location=iv_location,
-                    meeting_link=iv_meeting_link,
-                    interviewer_email=interviewer_email,
-                )
-                if email_sent:
-                    await InterviewRepository.add_interview_log(
-                        db, interview.id, "EMAIL_RESCHEDULED", f"Reschedule update email sent to panelist {p_user.email}"
-                    )
-                    await InterviewRepository.commit_changes(db)
-            except Exception as e:
-                print(f"Warning: Could not send reschedule email to panelist: {e}")
-
-        # 3. Candidate Reschedule Notification Email (always to account login email when linked)
+        # 1. Candidate Reschedule Notification Email (always to account login email when linked)
         cand_notif_email = await _resolve_candidate_notification_email(db, application)
         if cand_notif_email:
+            notified_resched_emails.add(cand_notif_email.strip().lower())
             try:
                 email_sent = await email_service.send_interview_rescheduled_email(
                     to_email=cand_notif_email,
@@ -2012,6 +1993,59 @@ async def update_interview(db: AsyncSession, interview_id: int, data: InterviewU
                     await InterviewRepository.commit_changes(db)
             except Exception as e:
                 print(f"Warning: Could not send reschedule email: {e}")
+
+        # 2. HR Update / Confirmation Email (skip if already sent to this email)
+        if scheduler_user and getattr(scheduler_user, "email", None) and scheduler_user.email.strip().lower() not in notified_resched_emails:
+            notified_resched_emails.add(scheduler_user.email.strip().lower())
+            try:
+                email_sent = await email_service.send_interview_rescheduled_email(
+                    to_email=scheduler_user.email,
+                    candidate_name=application.candidate_name or "Candidate",
+                    job_title=job_name,
+                    interview_title=f"[HR Update] {interview.title}",
+                    start_time=interview.start_time,
+                    end_time=interview.end_time,
+                    interviewer_name=interviewer_name,
+                    notes=f"HR Copy - Candidate: {application.candidate_name or 'Candidate'} ({application.candidate_email or 'N/A'}). Notes: {interview.description or 'None'}",
+                    location=iv_location,
+                    meeting_link=iv_meeting_link,
+                    interviewer_email=interviewer_email,
+                )
+                if email_sent:
+                    await InterviewRepository.add_interview_log(
+                        db, interview.id, "EMAIL_RESCHEDULED", f"Reschedule update email sent to HR {scheduler_user.email}"
+                    )
+                    await InterviewRepository.commit_changes(db)
+            except Exception as e:
+                print(f"Warning: Could not send reschedule email to HR: {e}")
+
+        # 3. Panelist Update Email(s) (skip duplicates already notified)
+        for p_user in panel_recipients:
+            p_email = getattr(p_user, "email", None)
+            if not p_email or p_email.strip().lower() in notified_resched_emails:
+                continue
+            notified_resched_emails.add(p_email.strip().lower())
+            try:
+                email_sent = await email_service.send_interview_rescheduled_email(
+                    to_email=p_email,
+                    candidate_name=application.candidate_name or "Candidate",
+                    job_title=job_name,
+                    interview_title=f"[Panel Update] {interview.title}",
+                    start_time=interview.start_time,
+                    end_time=interview.end_time,
+                    interviewer_name=p_user.fullname or interviewer_name,
+                    notes=f"Panel Update - Candidate: {application.candidate_name or 'Candidate'} ({application.candidate_email or 'N/A'}). Notes: {interview.description or 'None'}",
+                    location=iv_location,
+                    meeting_link=iv_meeting_link,
+                    interviewer_email=interviewer_email,
+                )
+                if email_sent:
+                    await InterviewRepository.add_interview_log(
+                        db, interview.id, "EMAIL_RESCHEDULED", f"Reschedule update email sent to panelist {p_email}"
+                    )
+                    await InterviewRepository.commit_changes(db)
+            except Exception as e:
+                print(f"Warning: Could not send reschedule email to panelist: {e}")
 
         # 4. SMS Notification to Candidate
         candidate_phone = await _resolve_candidate_phone(db, application)
@@ -2623,49 +2657,13 @@ async def cancel_interview(
         except Exception:
             pass
 
-        # (a) HR Notification
-        if scheduler_user and getattr(scheduler_user, "email", None):
-            try:
-                email_sent = await email_service.send_interview_cancellation_email(
-                    to_email=scheduler_user.email,
-                    candidate_name=application.candidate_name or "Candidate",
-                    job_title=job_name,
-                    interview_title=f"[HR Update] {interview.title}",
-                    start_time=interview.start_time,
-                    interviewer_name=interviewer_name,
-                    reason=reason or "Interview cancelled by HR."
-                )
-                if email_sent:
-                    await InterviewRepository.add_interview_log(
-                        db, interview.id, "EMAIL_CANCELED", f"Cancellation email sent to HR {scheduler_user.email}"
-                    )
-                    await InterviewRepository.commit_changes(db)
-            except Exception as e:
-                print(f"Warning: Could not send cancellation email to HR: {e}")
+        # Deduplicate cancellation emails per recipient email address
+        notified_cancel_emails: set[str] = set()
 
-        # (b) Panelist Notification
-        for p_user in panel_recipients:
-            try:
-                email_sent = await email_service.send_interview_cancellation_email(
-                    to_email=p_user.email,
-                    candidate_name=application.candidate_name or "Candidate",
-                    job_title=job_name,
-                    interview_title=f"[Panel Update] {interview.title}",
-                    start_time=interview.start_time,
-                    interviewer_name=p_user.fullname or interviewer_name,
-                    reason=reason or "Interview cancelled."
-                )
-                if email_sent:
-                    await InterviewRepository.add_interview_log(
-                        db, interview.id, "EMAIL_CANCELED", f"Cancellation email sent to panelist {p_user.email}"
-                    )
-                    await InterviewRepository.commit_changes(db)
-            except Exception as e:
-                print(f"Warning: Could not send cancellation email to panelist: {e}")
-
-        # (c) Candidate Notification (Email + SMS) — always to account login email when linked
+        # (a) Candidate Notification (Email + SMS) — always to account login email when linked
         cand_notif_email = await _resolve_candidate_notification_email(db, application)
         if cand_notif_email:
+            notified_cancel_emails.add(cand_notif_email.strip().lower())
             try:
                 email_sent = await email_service.send_interview_cancellation_email(
                     to_email=cand_notif_email,
@@ -2689,6 +2687,51 @@ async def cancel_interview(
                     await InterviewRepository.commit_changes(db)
             except Exception as e:
                 print(f"Warning: Could not send cancellation email to candidate: {e}")
+
+        # (b) HR Notification (skip if already sent to this email)
+        if scheduler_user and getattr(scheduler_user, "email", None) and scheduler_user.email.strip().lower() not in notified_cancel_emails:
+            notified_cancel_emails.add(scheduler_user.email.strip().lower())
+            try:
+                email_sent = await email_service.send_interview_cancellation_email(
+                    to_email=scheduler_user.email,
+                    candidate_name=application.candidate_name or "Candidate",
+                    job_title=job_name,
+                    interview_title=f"[HR Update] {interview.title}",
+                    start_time=interview.start_time,
+                    interviewer_name=interviewer_name,
+                    reason=reason or "Interview cancelled by HR."
+                )
+                if email_sent:
+                    await InterviewRepository.add_interview_log(
+                        db, interview.id, "EMAIL_CANCELED", f"Cancellation email sent to HR {scheduler_user.email}"
+                    )
+                    await InterviewRepository.commit_changes(db)
+            except Exception as e:
+                print(f"Warning: Could not send cancellation email to HR: {e}")
+
+        # (c) Panelist Notification (skip duplicates already notified)
+        for p_user in panel_recipients:
+            p_email = getattr(p_user, "email", None)
+            if not p_email or p_email.strip().lower() in notified_cancel_emails:
+                continue
+            notified_cancel_emails.add(p_email.strip().lower())
+            try:
+                email_sent = await email_service.send_interview_cancellation_email(
+                    to_email=p_email,
+                    candidate_name=application.candidate_name or "Candidate",
+                    job_title=job_name,
+                    interview_title=f"[Panel Update] {interview.title}",
+                    start_time=interview.start_time,
+                    interviewer_name=p_user.fullname or interviewer_name,
+                    reason=reason or "Interview cancelled."
+                )
+                if email_sent:
+                    await InterviewRepository.add_interview_log(
+                        db, interview.id, "EMAIL_CANCELED", f"Cancellation email sent to panelist {p_email}"
+                    )
+                    await InterviewRepository.commit_changes(db)
+            except Exception as e:
+                print(f"Warning: Could not send cancellation email to panelist: {e}")
 
         candidate_phone = await _resolve_candidate_phone(db, application)
         message = await _build_interview_sms_message(

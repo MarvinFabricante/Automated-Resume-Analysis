@@ -64,13 +64,20 @@ def _apply_gemini_verification_and_enrichment(
         "financial_document": ("financial_document", "detected_financial_document"),
         "certificate_or_official_record": ("certificate_or_official_record", "detected_certificate_or_official_record"),
         "legal_or_correspondence": ("legal_or_correspondence", "detected_legal_or_correspondence"),
-        "cover_letter": ("legal_or_correspondence", "detected_legal_or_correspondence"),
+        "cover_letter": ("cover_letter", "detected_cover_letter"),
+        "presentation_or_slides": ("presentation_or_slides", "detected_presentation_or_slides"),
+        "school_or_course_document": ("school_or_course_document", "detected_school_or_course_document"),
         "job_posting": ("job_posting", "detected_job_posting"),
         "misc_non_resume": ("misc_non_resume", "detected_misc_non_resume"),
     }
 
+    local_conf = float(validation.get("confidence") or 0.0)
+    local_neg = float(validation.get("negative_score") or 0.0)
+    local_core_headings = (validation.get("metrics") or {}).get("core_headings") or []
+    reject_conf_threshold = 0.60 if (local_conf < 0.78 or local_neg >= 2.0 or len(local_core_headings) < 2) else 0.70
+
     # Case 1: Gemini rejects a disguised/tricky non-resume that slipped past local heuristics
-    if not g_is_resume and g_conf >= 0.70:
+    if not g_is_resume and g_conf >= reject_conf_threshold:
         mapped_type, mapped_reason = type_map.get(g_doc_type, ("misc_non_resume", "gemini_rejected_non_resume"))
         validation["is_resume"] = False
         validation["verified_by"] = "gemini"
@@ -78,8 +85,13 @@ def _apply_gemini_verification_and_enrichment(
         validation["gemini_model"] = gemini_res.get("gemini_model")
         validation["detected_document_type"] = mapped_type
         validation["reason_code"] = mapped_reason
-        validation["confidence"] = round(max(float(validation.get("confidence") or 0.0), g_conf), 2)
-        base_msg = _build_rejection_message(mapped_type, mapped_reason)
+        validation["confidence"] = round(max(local_conf, g_conf), 2)
+        base_msg = _build_rejection_message(
+            mapped_type,
+            mapped_reason,
+            ai_reason=g_reason,
+            verified_by="AI",
+        )
         validation["message"] = base_msg
         validation["gemini_reason"] = g_reason
         neg_sigs = list(validation.get("negative_signals") or [])
@@ -400,7 +412,13 @@ def process_resume(file_path: str, file_extension: str) -> dict:
     # ── Step 2: Comprehensive rule-based NLP extraction ──────────────────────
     extracted_data = extract_content(text)
 
-    # Attach raw text and formatted display report
+    # Attach raw text, multi-page metadata, and formatted display report
+    detected_pages = file_signals.get("page_count")
+    if not isinstance(detected_pages, int) or detected_pages < 1:
+        detected_pages = 1
+    extracted_data["page_count"] = detected_pages
+    extracted_data["pages_parsed"] = detected_pages
+    extracted_data["is_multi_page"] = detected_pages > 1
     extracted_data["raw_text"] = text
     extracted_data["formatted_display"] = format_resume_display(extracted_data)
 

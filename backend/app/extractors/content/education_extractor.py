@@ -1473,7 +1473,7 @@ def extract_education(text: str) -> str:
         raw = e.get("raw", "").strip()
         if raw and raw not in formatted:
             formatted.append(raw)
-    return " | ".join(formatted[:6]) if formatted else ""
+    return " | ".join(formatted[:12]) if formatted else ""
 
 
 # ─── Aliases & Helper Accessors ──────────────────────────────────────────────

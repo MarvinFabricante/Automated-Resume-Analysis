@@ -17,6 +17,7 @@ import ApplicationProgressBar from '../../components/common/ApplicationProgressB
 import ApplicationSuccessModal from '../../components/modals/shared/ApplicationSuccessModal';
 import ResumePreviewModal from '../../components/modals/shared/ResumePreviewModal';
 import ExperienceGapAlert from '../../components/common/ExperienceGapAlert';
+import MinimumRequirementBlocker, { isBelowAcceptedRequirements } from '../../components/common/MinimumRequirementBlocker';
 import { ClarificationSubmitConfirmation } from '../../components/common/ClarificationQuestionsPanel';
 import ResumeTipsPanel, {
   ResumeReadabilityBanner,
@@ -243,6 +244,7 @@ const CandidatePreviewAndVerify: React.FC = () => {
 
   const activeData = dynamicExtractedData || data;
   const activeMatch = dynamicMatchData || matchData;
+  const belowRequirements = Boolean(effectiveJobId && effectiveJobId !== 'smart' && isBelowAcceptedRequirements(activeMatch));
 
   const resumeEmail = state?.resumeEmail || activeData?.email || data?.email || "";
   const chosenContactEmail =
@@ -347,6 +349,10 @@ const CandidatePreviewAndVerify: React.FC = () => {
   };
 
   const handleSubmitFinalApplication = async () => {
+    if (belowRequirements) {
+      alert("You cannot submit this application because your qualifications fall below the accepted minimum requirements for this position.");
+      return;
+    }
     if (!effectiveJobId || effectiveJobId === 'smart') {
       navigate('/candidate/smart-matches', {
         state: { matches: state?.matches || matchData, extractedData: data, fileName: state?.fileName }
@@ -721,6 +727,16 @@ const CandidatePreviewAndVerify: React.FC = () => {
                   job={state?.job}
                   yearsExperience={extractedData.years_experience}
                 />
+
+                {belowRequirements && (
+                  <MinimumRequirementBlocker
+                    matchData={activeMatch}
+                    jobTitle={state?.job?.title || state?.jobTitle}
+                    onUploadDifferent={() => replaceInputRef.current?.click()}
+                    onBrowseJobs={() => navigate('/candidate/findjobs')}
+                    compact
+                  />
+                )}
               </div>
             )}
 
@@ -939,15 +955,21 @@ const CandidatePreviewAndVerify: React.FC = () => {
                 <button
                   id="btn-candidate-confirm-submit"
                   type="button"
-                  disabled={isSubmitting}
+                  disabled={isSubmitting || belowRequirements}
                   onClick={handleSubmitFinalApplication}
-                  className="flex-[2] bg-[#D60041] hover:bg-slate-900 text-white py-5 rounded-[24px] font-bold flex items-center justify-center gap-3 transition-all shadow-xl shadow-pink-100 active:scale-95 disabled:opacity-75 disabled:cursor-not-allowed cursor-pointer"
+                  className={`flex-[2] py-5 rounded-[24px] font-bold flex items-center justify-center gap-3 transition-all ${
+                    belowRequirements
+                      ? 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'
+                      : 'bg-[#D60041] hover:bg-slate-900 text-white shadow-xl shadow-pink-100 active:scale-95 disabled:opacity-75 disabled:cursor-not-allowed cursor-pointer'
+                  }`}
                 >
                   {isSubmitting ? (
                     <div className="flex items-center gap-2">
                       <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
                       <span>Submitting Application...</span>
                     </div>
+                  ) : belowRequirements ? (
+                    <span>Below Accepted Requirements</span>
                   ) : (
                     <>
                       <CheckCircle size={22} />

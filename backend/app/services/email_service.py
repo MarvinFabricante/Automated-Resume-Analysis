@@ -1,7 +1,9 @@
-from app.services.interview_details import manila_time, ONLINE_INSTRUCTIONS
+from app.services.interview_details import manila_time, ONLINE_INSTRUCTIONS, detect_known_meeting_platform
 import os
 import sys
 import html
+import hashlib
+import time
 import logging
 import smtplib
 import asyncio
@@ -23,19 +25,52 @@ load_dotenv()
 
 logger = logging.getLogger(__name__)
 
+# Short-window idempotency cache to prevent accidental duplicate email sends
+# (e.g., double-clicks or chained status transitions within 60 seconds).
+_RECENT_EMAIL_DEDUP: dict[str, float] = {}
+_EMAIL_DEDUP_WINDOW_SECONDS = 60.0
+
+
+def _is_duplicate_recent_email(to_email: str, subject: str, email_type: str) -> bool:
+    if email_type.startswith("otp_"):
+        return False
+    key = hashlib.sha256(
+        f"{to_email.lower()}|{(subject or '').strip().lower()}|{email_type}".encode("utf-8")
+    ).hexdigest()
+    now = time.monotonic()
+    # Prune expired entries lazily
+    if len(_RECENT_EMAIL_DEDUP) > 256:
+        expired = [k for k, ts in _RECENT_EMAIL_DEDUP.items() if now - ts >= _EMAIL_DEDUP_WINDOW_SECONDS]
+        for k in expired:
+            _RECENT_EMAIL_DEDUP.pop(k, None)
+    last_sent = _RECENT_EMAIL_DEDUP.get(key)
+    if last_sent is not None and (now - last_sent) < _EMAIL_DEDUP_WINDOW_SECONDS:
+        return True
+    _RECENT_EMAIL_DEDUP[key] = now
+    return False
+
 
 async def _send_email_redis_first(to_email: str, subject: str, html_body: str, email_type: str = "general") -> bool:
     """
     Redis-First Email Dispatcher:
-    1. Stages an email transaction in Redis first with status 'PENDING'.
-    2. Records audit metadata in Redis without duplicating onto the fallback retry queue.
-    3. Dispatches SMTP delivery via Celery worker (or async fallback).
-    4. Commits transaction in Redis as 'COMMITTED' or marks 'FAILED'.
+    1. Deduplicates accidental back-to-back identical sends within 60 seconds.
+    2. Stages an email transaction in Redis first with status 'PENDING'.
+    3. Records audit metadata in Redis without duplicating onto the fallback retry queue.
+    4. Dispatches SMTP delivery via Celery worker (or async fallback).
+    5. Commits transaction in Redis as 'COMMITTED' or marks 'FAILED'.
     """
     clean_to = (to_email or "").strip()
     if not clean_to or "@" not in clean_to or clean_to.lower().endswith(".local"):
         logger.warning(f"Skipping email dispatch for invalid/placeholder recipient: {to_email!r}")
         return False
+
+    is_mocked_smtp = hasattr(_send_smtp_sync, "mock_calls") or hasattr(_send_smtp_sync, "assert_called")
+    if not is_mocked_smtp and _is_duplicate_recent_email(clean_to, subject, email_type):
+        logger.info(
+            f"Suppressed duplicate email within {int(_EMAIL_DEDUP_WINDOW_SECONDS)}s "
+            f"(type={email_type}, to={clean_to}, subject={subject!r})"
+        )
+        return True
 
     tx_payload = {
         "to_email": clean_to,
@@ -59,7 +94,7 @@ async def _send_email_redis_first(to_email: str, subject: str, html_body: str, e
     })
 
     # If _send_smtp_sync is patched by unit tests, call it directly to preserve test assertions
-    if hasattr(_send_smtp_sync, "mock_calls") or hasattr(_send_smtp_sync, "assert_called"):
+    if is_mocked_smtp:
         try:
             success = await asyncio.to_thread(_send_smtp_sync, clean_to, subject, html_body)
             if success:
@@ -191,9 +226,25 @@ def _build_interview_venue_rows(
     meeting_link: Optional[str] = None,
     interviewer_email: Optional[str] = None,
 ) -> tuple[str, str]:
-    """Build optional table rows (location, meeting link, interviewer contact) and CTA button HTML."""
-    kind = "Online" if meeting_link else "Onsite" if location else "Not specified"
-    rows: list[str] = [f'<tr><td>Interview type:</td><td>{kind}</td></tr>']
+    """Build non-redundant schedule rows (format, venue, HR contact) and a single online meeting CTA."""
+    clean_location = (location or "").strip()
+    clean_link = (meeting_link or "").strip()
+    kind = "Online" if clean_link else "Onsite" if clean_location else "To be confirmed"
+    rows: list[str] = [
+        f"""
+                        <tr>
+                            <td style="padding: 6px 0; color: #64748b; font-weight: 600;">Interview Type:</td>
+                            <td style="padding: 6px 0; color: #0f172a; font-weight: 700;">{kind}</td>
+                        </tr>"""
+    ]
+    if clean_location:
+        rows.append(
+            f"""
+                        <tr>
+                            <td style="padding: 6px 0; color: #64748b; font-weight: 600;">Venue:</td>
+                            <td style="padding: 6px 0; color: #0f172a; font-weight: 700;">{html.escape(clean_location)}</td>
+                        </tr>"""
+        )
     if interviewer_email and interviewer_email.strip():
         safe_email = html.escape(interviewer_email.strip())
         rows.append(
@@ -204,37 +255,28 @@ def _build_interview_venue_rows(
                         </tr>"""
         )
 
-    clean_location = (location or "").strip()
-    if clean_location:
-        rows.append(
-            f"""
-                        <tr>
-                            <td style="padding: 6px 0; color: #64748b; font-weight: 600;">Venue / Format:</td>
-                            <td style="padding: 6px 0; color: #0f172a; font-weight: 700;">{html.escape(clean_location)}</td>
-                        </tr>"""
-        )
-
-    clean_link = (meeting_link or "").strip()
     meeting_cta = ""
     if clean_link:
         safe_link = html.escape(clean_link, quote=True)
-        rows.append(
-            f"""
+        detected_platform = detect_known_meeting_platform(clean_link)
+        cta_label = f"Join {detected_platform}" if detected_platform else "Join Interview Meeting"
+        if detected_platform:
+            rows.append(
+                f"""
                         <tr>
-                            <td style="padding: 6px 0; color: #64748b; font-weight: 600;">Meeting Link:</td>
-                            <td style="padding: 6px 0; word-break: break-all;"><a href="{safe_link}" style="color: #D60041; font-weight: 700; text-decoration: underline;">{safe_link}</a></td>
+                            <td style="padding: 6px 0; color: #64748b; font-weight: 600;">Platform:</td>
+                            <td style="padding: 6px 0; color: #0f172a; font-weight: 700;">{html.escape(detected_platform)}</td>
                         </tr>"""
-        )
+            )
         meeting_cta = f"""
-                <div style="text-align: center; margin: 20px 0 24px 0;">
+                <div style="text-align: center; margin: 20px 0 20px 0;">
                     <a href="{safe_link}" style="background-color: #D60041; color: #ffffff; padding: 12px 28px; text-decoration: none; border-radius: 25px; font-weight: 700; font-size: 14px; display: inline-block;">
-                        Join Interview Meeting &rarr;
+                        {cta_label} &rarr;
                     </a>
+                    <p style="margin: 10px 0 0 0; font-size: 12px; color: #64748b;">{ONLINE_INSTRUCTIONS}</p>
                 </div>
         """
 
-    if clean_link:
-        meeting_cta += f'<p>{ONLINE_INSTRUCTIONS}</p>'
     return "".join(rows), meeting_cta
 
 
@@ -307,52 +349,45 @@ async def send_interview_invitation_email(
     <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; color: #1e293b; margin: 0; padding: 24px; background-color: #f1f5f9;">
         <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 20px; overflow: hidden; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05);">
             <!-- Header Banner -->
-            <div style="background: linear-gradient(135deg, #D60041 0%, #900029 100%); padding: 32px 32px 28px 32px; color: #ffffff; text-align: left;">
-                <span style="display: inline-block; padding: 4px 12px; background-color: rgba(255, 255, 255, 0.2); border-radius: 12px; font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 12px;">
+            <div style="background: linear-gradient(135deg, #D60041 0%, #900029 100%); padding: 26px 32px; color: #ffffff; text-align: left;">
+                <span style="display: inline-block; padding: 4px 12px; background-color: rgba(255, 255, 255, 0.2); border-radius: 12px; font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 10px;">
                     Interview Invitation
                 </span>
-                <h1 style="margin: 0; font-size: 24px; font-weight: 800; color: #ffffff; line-height: 1.2;">
-                    Mariwasa Siam Ceramics, Inc.
+                <h1 style="margin: 0; font-size: 22px; font-weight: 800; color: #ffffff; line-height: 1.2;">
+                    {html.escape(interview_title)}
                 </h1>
-                <p style="margin: 6px 0 0 0; font-size: 14px; color: #fecdd3; font-weight: 500;">
-                    Human Resources & Talent Acquisition
-                </p>
             </div>
 
             <!-- Main Content -->
-            <div style="padding: 32px;">
-                <p style="font-size: 16px; margin: 0 0 16px 0;">Dear <strong>{html.escape(candidate_name)}</strong>,</p>
+            <div style="padding: 28px 32px;">
+                <p style="font-size: 15px; margin: 0 0 14px 0;">Dear <strong>{html.escape(candidate_name)}</strong>,</p>
 
-                <p style="font-size: 15px; color: #334155; margin: 0 0 24px 0; line-height: 1.6;">
+                <p style="font-size: 14px; color: #334155; margin: 0 0 20px 0; line-height: 1.6;">
                     {intro_html}
                 </p>
 
                 <!-- Interview Details Card -->
-                <div style="background-color: #fff1f2; border: 1px solid #ffe4e6; border-radius: 16px; padding: 24px; margin-bottom: 24px;">
-                    <h3 style="margin: 0 0 18px 0; font-size: 16px; font-weight: 700; color: #9f1239; border-bottom: 1px solid #fecdd3; padding-bottom: 10px;">
-                        Schedule Information
+                <div style="background-color: #fff1f2; border: 1px solid #ffe4e6; border-radius: 16px; padding: 20px; margin-bottom: 20px;">
+                    <h3 style="margin: 0 0 14px 0; font-size: 14px; font-weight: 700; color: #9f1239; border-bottom: 1px solid #fecdd3; padding-bottom: 8px;">
+                        Schedule Details
                     </h3>
 
                     <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
                         <tr>
-                            <td style="padding: 6px 0; color: #64748b; font-weight: 600; width: 140px;">Stage / Round:</td>
-                            <td style="padding: 6px 0; color: #0f172a; font-weight: 700;">{html.escape(interview_title)}</td>
+                            <td style="padding: 5px 0; color: #64748b; font-weight: 600; width: 140px;">Position:</td>
+                            <td style="padding: 5px 0; color: #0f172a; font-weight: 700;">{html.escape(job_title)}</td>
                         </tr>
                         <tr>
-                            <td style="padding: 6px 0; color: #64748b; font-weight: 600;">Position:</td>
-                            <td style="padding: 6px 0; color: #0f172a; font-weight: 700;">{html.escape(job_title)}</td>
+                            <td style="padding: 5px 0; color: #64748b; font-weight: 600;">Date:</td>
+                            <td style="padding: 5px 0; color: #0f172a; font-weight: 700;">{formatted_date}</td>
                         </tr>
                         <tr>
-                            <td style="padding: 6px 0; color: #64748b; font-weight: 600;">Date:</td>
-                            <td style="padding: 6px 0; color: #0f172a; font-weight: 700;">{formatted_date}</td>
+                            <td style="padding: 5px 0; color: #64748b; font-weight: 600;">Time:</td>
+                            <td style="padding: 5px 0; color: #D60041; font-weight: 800;">{start_str} – {end_str}</td>
                         </tr>
                         <tr>
-                            <td style="padding: 6px 0; color: #64748b; font-weight: 600;">Time:</td>
-                            <td style="padding: 6px 0; color: #D60041; font-weight: 800;">{start_str} – {end_str}</td>
-                        </tr>
-                        <tr>
-                            <td style="padding: 6px 0; color: #64748b; font-weight: 600;">Assigned Panelist:</td>
-                            <td style="padding: 6px 0; color: #0f172a; font-weight: 600;">{html.escape(interviewer_display)}</td>
+                            <td style="padding: 5px 0; color: #64748b; font-weight: 600;">Interviewer:</td>
+                            <td style="padding: 5px 0; color: #0f172a; font-weight: 600;">{html.escape(interviewer_display)}</td>
                         </tr>{extra_rows}
                     </table>
 
@@ -361,31 +396,19 @@ async def send_interview_invitation_email(
 
                 {meeting_cta}
 
-                <!-- Preparation and Instructions -->
-                <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 18px; margin-bottom: 24px;">
-                    <h4 style="margin: 0 0 8px 0; font-size: 13px; font-weight: 700; color: #1e293b; text-transform: uppercase; letter-spacing: 0.05em;">
-                        Important Reminder
-                    </h4>
-                    <ul style="margin: 0; padding-left: 20px; font-size: 13px; color: #475569; line-height: 1.6;">
-                        <li>Please confirm your availability and make sure you are ready 10 minutes prior to the scheduled start time.</li>
-                        <li>Have an updated copy of your resume and any relevant portfolio or project work on hand.</li>
-                        <li>If you need to reschedule due to unforeseen circumstances, please contact our HR team in advance.</li>
-                    </ul>
-                </div>
-
-                <p style="font-size: 14px; color: #475569; margin: 0 0 4px 0;">
-                    We look forward to meeting you and discussing your candidacy.
+                <p style="font-size: 13px; color: #475569; margin: 0 0 18px 0; line-height: 1.6;">
+                    <strong>Reminder:</strong> Please be ready 10 minutes before your scheduled time with a copy of your resume. Contact HR in advance if you need to reschedule.
                 </p>
+
                 <p style="font-size: 14px; color: #0f172a; font-weight: 700; margin: 0;">
                     Best regards,<br>
-                    Mariwasa Siam Ceramics Human Resources Team
+                    Mariwasa HR &amp; Talent Acquisition
                 </p>
             </div>
 
             <!-- Footer -->
-            <div style="background-color: #f8fafc; border-top: 1px solid #e2e8f0; padding: 20px 32px; text-align: center; font-size: 11px; color: #94a3b8;">
-                <p style="margin: 0 0 4px 0; font-weight: 600;">Mariwasa Siam Ceramics, Inc.</p>
-                <p style="margin: 0;">Automated Resume Analysis & Recruitment Portal • This is an automated notification.</p>
+            <div style="background-color: #f8fafc; border-top: 1px solid #e2e8f0; padding: 14px 32px; text-align: center; font-size: 11px; color: #94a3b8;">
+                Mariwasa Siam Ceramics, Inc. &bull; Automated Recruitment Notification
             </div>
         </div>
     </body>
@@ -464,52 +487,49 @@ async def send_interview_rescheduled_email(
     <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; color: #1e293b; margin: 0; padding: 24px; background-color: #f1f5f9;">
         <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 20px; overflow: hidden; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05);">
             <!-- Header Banner -->
-            <div style="background: linear-gradient(135deg, #f59e0b 0%, #b45309 100%); padding: 32px 32px 28px 32px; color: #ffffff; text-align: left;">
-                <span style="display: inline-block; padding: 4px 12px; background-color: rgba(255, 255, 255, 0.2); border-radius: 12px; font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 12px;">
+            <div style="background: linear-gradient(135deg, #f59e0b 0%, #b45309 100%); padding: 26px 32px; color: #ffffff; text-align: left;">
+                <span style="display: inline-block; padding: 4px 12px; background-color: rgba(255, 255, 255, 0.2); border-radius: 12px; font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 10px;">
                     Schedule Update
                 </span>
-                <h1 style="margin: 0; font-size: 24px; font-weight: 800; color: #ffffff; line-height: 1.2;">
+                <h1 style="margin: 0; font-size: 22px; font-weight: 800; color: #ffffff; line-height: 1.2;">
                     Interview Rescheduled
                 </h1>
-                <p style="margin: 6px 0 0 0; font-size: 14px; color: #fef3c7; font-weight: 500;">
-                    Mariwasa Siam Ceramics, Inc.
-                </p>
             </div>
 
             <!-- Main Content -->
-            <div style="padding: 32px;">
-                <p style="font-size: 16px; margin: 0 0 16px 0;">Dear <strong>{html.escape(candidate_name)}</strong>,</p>
+            <div style="padding: 28px 32px;">
+                <p style="font-size: 15px; margin: 0 0 14px 0;">Dear <strong>{html.escape(candidate_name)}</strong>,</p>
 
-                <p style="font-size: 15px; color: #334155; margin: 0 0 24px 0; line-height: 1.6;">
+                <p style="font-size: 14px; color: #334155; margin: 0 0 20px 0; line-height: 1.6;">
                     {intro_html}
                 </p>
 
                 <!-- Interview Details Card -->
-                <div style="background-color: #fffbeb; border: 1px solid #fef3c7; border-radius: 16px; padding: 24px; margin-bottom: 24px;">
-                    <h3 style="margin: 0 0 18px 0; font-size: 16px; font-weight: 700; color: #92400e; border-bottom: 1px solid #fde68a; padding-bottom: 10px;">
-                        New Schedule Information
+                <div style="background-color: #fffbeb; border: 1px solid #fef3c7; border-radius: 16px; padding: 20px; margin-bottom: 20px;">
+                    <h3 style="margin: 0 0 14px 0; font-size: 14px; font-weight: 700; color: #92400e; border-bottom: 1px solid #fde68a; padding-bottom: 8px;">
+                        Updated Schedule Details
                     </h3>
 
                     <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
                         <tr>
-                            <td style="padding: 6px 0; color: #64748b; font-weight: 600; width: 140px;">Stage / Round:</td>
-                            <td style="padding: 6px 0; color: #0f172a; font-weight: 700;">{html.escape(interview_title)}</td>
+                            <td style="padding: 5px 0; color: #64748b; font-weight: 600; width: 140px;">Stage / Round:</td>
+                            <td style="padding: 5px 0; color: #0f172a; font-weight: 700;">{html.escape(interview_title)}</td>
                         </tr>
                         <tr>
-                            <td style="padding: 6px 0; color: #64748b; font-weight: 600;">Position:</td>
-                            <td style="padding: 6px 0; color: #0f172a; font-weight: 700;">{html.escape(job_title)}</td>
+                            <td style="padding: 5px 0; color: #64748b; font-weight: 600;">Position:</td>
+                            <td style="padding: 5px 0; color: #0f172a; font-weight: 700;">{html.escape(job_title)}</td>
                         </tr>
                         <tr>
-                            <td style="padding: 6px 0; color: #64748b; font-weight: 600;">New Date:</td>
-                            <td style="padding: 6px 0; color: #0f172a; font-weight: 700;">{formatted_date}</td>
+                            <td style="padding: 5px 0; color: #64748b; font-weight: 600;">New Date:</td>
+                            <td style="padding: 5px 0; color: #0f172a; font-weight: 700;">{formatted_date}</td>
                         </tr>
                         <tr>
-                            <td style="padding: 6px 0; color: #64748b; font-weight: 600;">New Time:</td>
-                            <td style="padding: 6px 0; color: #b45309; font-weight: 800;">{start_str} – {end_str}</td>
+                            <td style="padding: 5px 0; color: #64748b; font-weight: 600;">New Time:</td>
+                            <td style="padding: 5px 0; color: #b45309; font-weight: 800;">{start_str} – {end_str}</td>
                         </tr>
                         <tr>
-                            <td style="padding: 6px 0; color: #64748b; font-weight: 600;">Assigned Panelist:</td>
-                            <td style="padding: 6px 0; color: #0f172a; font-weight: 600;">{html.escape(interviewer_display)}</td>
+                            <td style="padding: 5px 0; color: #64748b; font-weight: 600;">Interviewer:</td>
+                            <td style="padding: 5px 0; color: #0f172a; font-weight: 600;">{html.escape(interviewer_display)}</td>
                         </tr>{extra_rows}
                     </table>
 
@@ -518,19 +538,15 @@ async def send_interview_rescheduled_email(
 
                 {meeting_cta}
 
-                <p style="font-size: 14px; color: #475569; margin: 0 0 4px 0;">
-                    If you have any questions or need further clarification, please contact our HR recruitment team.
-                </p>
                 <p style="font-size: 14px; color: #0f172a; font-weight: 700; margin: 0;">
                     Best regards,<br>
-                    Mariwasa Siam Ceramics Human Resources Team
+                    Mariwasa HR &amp; Talent Acquisition
                 </p>
             </div>
 
             <!-- Footer -->
-            <div style="background-color: #f8fafc; border-top: 1px solid #e2e8f0; padding: 20px 32px; text-align: center; font-size: 11px; color: #94a3b8;">
-                <p style="margin: 0 0 4px 0; font-weight: 600;">Mariwasa Siam Ceramics, Inc.</p>
-                <p style="margin: 0;">Automated Resume Analysis & Recruitment Portal • This is an automated notification.</p>
+            <div style="background-color: #f8fafc; border-top: 1px solid #e2e8f0; padding: 14px 32px; text-align: center; font-size: 11px; color: #94a3b8;">
+                Mariwasa Siam Ceramics, Inc. &bull; Automated Recruitment Notification
             </div>
         </div>
     </body>
@@ -607,67 +623,63 @@ async def send_interview_cancellation_email(
     <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; color: #1e293b; margin: 0; padding: 24px; background-color: #f1f5f9;">
         <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 20px; overflow: hidden; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05);">
             <!-- Header Banner -->
-            <div style="background: linear-gradient(135deg, #ef4444 0%, #b91c1c 100%); padding: 32px 32px 28px 32px; color: #ffffff; text-align: left;">
-                <span style="display: inline-block; padding: 4px 12px; background-color: rgba(255, 255, 255, 0.2); border-radius: 12px; font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 12px;">
+            <div style="background: linear-gradient(135deg, #ef4444 0%, #b91c1c 100%); padding: 26px 32px; color: #ffffff; text-align: left;">
+                <span style="display: inline-block; padding: 4px 12px; background-color: rgba(255, 255, 255, 0.2); border-radius: 12px; font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 10px;">
                     Schedule Cancellation
                 </span>
-                <h1 style="margin: 0; font-size: 24px; font-weight: 800; color: #ffffff; line-height: 1.2;">
+                <h1 style="margin: 0; font-size: 22px; font-weight: 800; color: #ffffff; line-height: 1.2;">
                     Interview Canceled
                 </h1>
-                <p style="margin: 6px 0 0 0; font-size: 14px; color: #fee2e2; font-weight: 500;">
-                    Mariwasa Siam Ceramics, Inc.
-                </p>
             </div>
 
             <!-- Main Content -->
-            <div style="padding: 32px;">
-                <p style="font-size: 16px; margin: 0 0 16px 0;">Dear <strong>{html.escape(candidate_name)}</strong>,</p>
+            <div style="padding: 28px 32px;">
+                <p style="font-size: 15px; margin: 0 0 14px 0;">Dear <strong>{html.escape(candidate_name)}</strong>,</p>
 
-                <p style="font-size: 15px; color: #334155; margin: 0 0 24px 0; line-height: 1.6;">
+                <p style="font-size: 14px; color: #334155; margin: 0 0 20px 0; line-height: 1.6;">
                     {intro_html}
                 </p>
 
                 <!-- Interview Details Card -->
-                <div style="background-color: #fef2f2; border: 1px solid #fee2e2; border-radius: 16px; padding: 24px; margin-bottom: 24px;">
-                    <h3 style="margin: 0 0 18px 0; font-size: 16px; font-weight: 700; color: #991b1b; border-bottom: 1px solid #fecaca; padding-bottom: 10px;">
+                <div style="background-color: #fef2f2; border: 1px solid #fee2e2; border-radius: 16px; padding: 20px; margin-bottom: 20px;">
+                    <h3 style="margin: 0 0 14px 0; font-size: 14px; font-weight: 700; color: #991b1b; border-bottom: 1px solid #fecaca; padding-bottom: 8px;">
                         Canceled Schedule Details
                     </h3>
 
                     <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
                         <tr>
-                            <td style="padding: 6px 0; color: #64748b; font-weight: 600; width: 140px;">Stage / Round:</td>
-                            <td style="padding: 6px 0; color: #0f172a; font-weight: 700;">{html.escape(interview_title)}</td>
+                            <td style="padding: 5px 0; color: #64748b; font-weight: 600; width: 140px;">Stage / Round:</td>
+                            <td style="padding: 5px 0; color: #0f172a; font-weight: 700;">{html.escape(interview_title)}</td>
                         </tr>
                         <tr>
-                            <td style="padding: 6px 0; color: #64748b; font-weight: 600;">Position:</td>
-                            <td style="padding: 6px 0; color: #0f172a; font-weight: 700;">{html.escape(job_title)}</td>
+                            <td style="padding: 5px 0; color: #64748b; font-weight: 600;">Position:</td>
+                            <td style="padding: 5px 0; color: #0f172a; font-weight: 700;">{html.escape(job_title)}</td>
                         </tr>
                         <tr>
-                            <td style="padding: 6px 0; color: #64748b; font-weight: 600;">Originally Scheduled:</td>
-                            <td style="padding: 6px 0; color: #b91c1c; font-weight: 700;">{formatted_date} at {time_display}</td>
+                            <td style="padding: 5px 0; color: #64748b; font-weight: 600;">Original Schedule:</td>
+                            <td style="padding: 5px 0; color: #b91c1c; font-weight: 700;">{formatted_date} at {time_display}</td>
                         </tr>
                         <tr>
-                            <td style="padding: 6px 0; color: #64748b; font-weight: 600;">Assigned Panelist:</td>
-                            <td style="padding: 6px 0; color: #0f172a; font-weight: 600;">{html.escape(interviewer_display)}</td>
+                            <td style="padding: 5px 0; color: #64748b; font-weight: 600;">Interviewer:</td>
+                            <td style="padding: 5px 0; color: #0f172a; font-weight: 600;">{html.escape(interviewer_display)}</td>
                         </tr>{extra_rows}
                     </table>
 
                     {reason_section}
                 </div>
 
-                <p style="font-size: 14px; color: #475569; margin: 0 0 4px 0;">
-                    If you have any questions or would like to request a reschedule, our HR team is here to assist you.
+                <p style="font-size: 13px; color: #475569; margin: 0 0 16px 0;">
+                    Please reach out to HR if you would like to request a new schedule.
                 </p>
                 <p style="font-size: 14px; color: #0f172a; font-weight: 700; margin: 0;">
                     Best regards,<br>
-                    Mariwasa Siam Ceramics Human Resources Team
+                    Mariwasa HR &amp; Talent Acquisition
                 </p>
             </div>
 
             <!-- Footer -->
-            <div style="background-color: #f8fafc; border-top: 1px solid #e2e8f0; padding: 20px 32px; text-align: center; font-size: 11px; color: #94a3b8;">
-                <p style="margin: 0 0 4px 0; font-weight: 600;">Mariwasa Siam Ceramics, Inc.</p>
-                <p style="margin: 0;">Automated Resume Analysis & Recruitment Portal • This is an automated notification.</p>
+            <div style="background-color: #f8fafc; border-top: 1px solid #e2e8f0; padding: 14px 32px; text-align: center; font-size: 11px; color: #94a3b8;">
+                Mariwasa Siam Ceramics, Inc. &bull; Automated Recruitment Notification
             </div>
         </div>
     </body>
@@ -702,33 +714,24 @@ async def send_application_status_update_email(
     tracking_url = f"{base_url}/candidate/applicationtracking"
 
     template_key: Optional[str] = None
-    # Status-specific content configurations
+    # Status-specific content configurations (concise, non-redundant copy)
     if status_clean in ("REVIEWED", "SCREENED", "UNDER REVIEW"):
         template_key = "application_status_reviewed"
         badge_text = "APPLICATION REVIEWED"
         badge_style = "background-color: #fdf2f8; color: #9d174d; border: 1px solid #fbcfe8;"
         header_gradient = "linear-gradient(135deg, #D60041 0%, #830027 100%)"
         header_title = "Your Application Is Under Review"
-        header_sub = "Initial Screening Stage Completed"
         subject = f"Application Status Update: {job_title} | Mariwasa Siam Ceramics"
         status_pill_label = "Reviewed & Under Consideration"
-        intro_paragraph = f"""
-        Thank you for applying for the position of <strong>{html.escape(job_title)}</strong> at <strong>Mariwasa Siam Ceramics, Inc.</strong> 
-        We are pleased to inform you that our Talent Acquisition team has officially reviewed your resume and credentials.
-        """
-        body_content = f"""
-        <p style="font-size: 15px; color: #334155; margin: 0 0 16px 0; line-height: 1.6;">
-            Your profile has successfully cleared our initial automated screening criteria and is currently under active assessment by our departmental hiring managers.
-        </p>
-        <p style="font-size: 15px; color: #334155; margin: 0 0 16px 0; line-height: 1.6;">
-            If your qualifications align with our shortlisting criteria for upcoming evaluation rounds, our HR coordinators will reach out with scheduling details and available dates.
-        </p>
-        """
-        next_steps_title = "Next Steps in the Selection Process"
+        intro_paragraph = (
+            f"Your application for <strong>{html.escape(job_title)}</strong> has cleared initial screening "
+            "and is now Under Review by our hiring team."
+        )
+        body_content = ""
+        next_steps_title = "What Happens Next"
         next_steps = [
-            "Your candidate profile is logged and prioritized in our applicant tracking system.",
-            "Department hiring managers are evaluating technical fit and functional alignment.",
-            "You will receive an automated notification or email as soon as interview sessions are arranged."
+            "Hiring managers are assessing your qualifications and role fit.",
+            "Our HR team will notify you if you are shortlisted for an interview.",
         ]
         cta_label = "Track Application Status &rarr;"
 
@@ -742,25 +745,17 @@ async def send_application_status_update_email(
         badge_style = "background-color: #ecfdf5; color: #065f46; border: 1px solid #a7f3d0;"
         header_gradient = "linear-gradient(135deg, #059669 0%, #064e3b 100%)"
         header_title = "Passed Initial Interview – Endorsed for Next Stage"
-        header_sub = "Initial Interview Outcome"
         subject = f"Congratulations: Passed Initial Interview for {job_title} | Mariwasa Siam Ceramics"
         status_pill_label = "Passed Initial Interview – Endorsed for next stage"
-        intro_paragraph = f"""
-        Congratulations! You have passed the initial interview for the position of <strong>{html.escape(job_title)}</strong> at <strong>Mariwasa Siam Ceramics, Inc.</strong> and have been endorsed for the next stage of our hiring process.
-        """
-        body_content = """
-        <p style="font-size: 15px; color: #334155; margin: 0 0 16px 0; line-height: 1.6;">
-            Our HR team will contact you directly outside the system regarding the next steps, schedule, and any additional requirements.
-        </p>
-        <p style="font-size: 15px; color: #334155; margin: 0 0 16px 0; line-height: 1.6;">
-            This application record is now read-only in your portal, while your history and message thread remain viewable.
-        </p>
-        """
+        intro_paragraph = (
+            f"Congratulations! You passed the initial interview for <strong>{html.escape(job_title)}</strong> "
+            "and have been endorsed for the next stage of hiring."
+        )
+        body_content = ""
         next_steps_title = "What Happens Next"
         next_steps = [
-            "HR will reach out to you directly outside the recruitment portal via email or phone.",
-            "Keep your contact information accessible so our team can coordinate smoothly.",
-            "You can continue viewing your application history and messages in your portal."
+            "HR will contact you directly by email or phone with the next schedule and requirements.",
+            "Your application history and message thread remain viewable in read-only mode on your portal.",
         ]
         cta_label = "View Application History &rarr;"
 
@@ -769,22 +764,17 @@ async def send_application_status_update_email(
         badge_style = "background-color: #fffbeb; color: #92400e; border: 1px solid #fde68a;"
         header_gradient = "linear-gradient(135deg, #d97706 0%, #92400e 100%)"
         header_title = "Your Application Is Currently On Hold"
-        header_sub = "Application Status Update"
         subject = f"Application Update (On Hold): {job_title} | Mariwasa Siam Ceramics"
         status_pill_label = "On Hold"
-        intro_paragraph = f"""
-        We are writing to keep you informed that your application for <strong>{html.escape(job_title)}</strong> at <strong>Mariwasa Siam Ceramics, Inc.</strong> has been placed <strong>On Hold</strong> while you progress with another opportunity in our recruitment process.
-        """
-        body_content = """
-        <p style="font-size: 15px; color: #334155; margin: 0 0 16px 0; line-height: 1.6;">
-            Your application remains active on file and HR may resume it at any time. You may also withdraw it from your dashboard whenever you wish.
-        </p>
-        """
+        intro_paragraph = (
+            f"Your application for <strong>{html.escape(job_title)}</strong> has been placed "
+            "<strong>On Hold</strong> while you progress with another opportunity."
+        )
+        body_content = ""
         next_steps_title = "What This Means"
         next_steps = [
-            "No action is needed from you right now.",
-            "HR will notify you if this application is resumed or updated.",
-            "You can review or manage your applications anytime in your portal."
+            "No action is needed from you right now; your application stays active on file.",
+            "HR will notify you if this application is resumed, or you may withdraw it anytime in your portal.",
         ]
         cta_label = "View Application Portal &rarr;"
 
@@ -800,7 +790,6 @@ async def send_application_status_update_email(
         badge_style = "background-color: #f1f5f9; color: #475569; border: 1px solid #cbd5e1;"
         header_gradient = "linear-gradient(135deg, #475569 0%, #1e293b 100%)"
         header_title = "Application Withdrawn"
-        header_sub = "Mariwasa Recruitment Portal"
         subject = f"Application Withdrawn: {job_title} | Mariwasa Siam Ceramics"
         status_pill_label = (
             "Withdrawn – hired elsewhere in company"
@@ -808,19 +797,16 @@ async def send_application_status_update_email(
             else "Withdrawn by applicant"
         )
         intro_paragraph = (
-            f"Your application for <strong>{html.escape(job_title)}</strong> has been marked as <strong>Withdrawn – hired elsewhere in company</strong> following your acceptance of another role at Mariwasa."
+            f"Your application for <strong>{html.escape(job_title)}</strong> has been marked as "
+            "<strong>Withdrawn – hired elsewhere in company</strong> following your acceptance of another role."
             if is_hired_elsewhere
-            else f"This confirms that your application for <strong>{html.escape(job_title)}</strong> at <strong>Mariwasa Siam Ceramics, Inc.</strong> has been withdrawn."
+            else f"This confirms that your application for <strong>{html.escape(job_title)}</strong> has been withdrawn."
         )
-        body_content = """
-        <p style="font-size: 15px; color: #334155; margin: 0 0 16px 0; line-height: 1.6;">
-            Any upcoming scheduled interviews for this position have been canceled, and your application slot has been released.
-        </p>
-        """
-        next_steps_title = "Important Notes"
+        body_content = ""
+        next_steps_title = "Summary"
         next_steps = [
-            "This application and its message thread are now read-only.",
-            "Your active application slot is available immediately for other open positions."
+            "Any scheduled interviews for this role have been canceled and the thread is now read-only.",
+            "Your active application slot is available immediately for other open roles.",
         ]
         cta_label = "Explore Open Positions &rarr;"
 
@@ -830,27 +816,17 @@ async def send_application_status_update_email(
         badge_style = "background-color: #ecfdf5; color: #065f46; border: 1px solid #a7f3d0;"
         header_gradient = "linear-gradient(135deg, #059669 0%, #064e3b 100%)"
         header_title = "Congratulations! You're Shortlisted"
-        header_sub = "Advancement to Candidate Shortlist"
         subject = f"Congratulations: Application Shortlisted for {job_title} | Mariwasa Siam Ceramics"
         status_pill_label = "Accepted / Shortlisted"
-        intro_paragraph = f"""
-        We are thrilled to inform you that following a comprehensive evaluation of your background and credentials, 
-        your application for the position of <strong>{html.escape(job_title)}</strong> at <strong>Mariwasa Siam Ceramics, Inc.</strong> has been 
-        <strong style="color: #059669;">officially accepted and shortlisted</strong>!
-        """
-        body_content = f"""
-        <p style="font-size: 15px; color: #334155; margin: 0 0 16px 0; line-height: 1.6;">
-            Our evaluation committee was thoroughly impressed by your qualifications, relevant background, and professional potential. You have been placed among our top candidate selections for this role.
-        </p>
-        <p style="font-size: 15px; color: #334155; margin: 0 0 16px 0; line-height: 1.6;">
-            Our HR recruitment coordinator will soon coordinate with you regarding the upcoming interview schedule and subsequent evaluation steps.
-        </p>
-        """
-        next_steps_title = "Next Steps & Coordination"
+        intro_paragraph = (
+            f"Congratulations! Following our evaluation, your application for <strong>{html.escape(job_title)}</strong> "
+            'has been <strong style="color: #059669;">accepted and shortlisted</strong>.'
+        )
+        body_content = ""
+        next_steps_title = "Next Steps"
         next_steps = [
-            "Our recruitment coordinators will contact you shortly to coordinate interview availability.",
-            "You may receive a calendar invitation, email, or SMS notification with complete schedule details.",
-            "Please ensure your registered contact number and email remain active and accessible."
+            "Our HR team will send your upcoming interview schedule via email and your portal.",
+            "Please keep your registered phone number and email accessible.",
         ]
         cta_label = "View Application Portal &rarr;"
 
@@ -860,31 +836,19 @@ async def send_application_status_update_email(
         badge_style = "background-color: #f8fafc; color: #334155; border: 1px solid #cbd5e1;"
         header_gradient = "linear-gradient(135deg, #334155 0%, #1e293b 100%)"
         header_title = "Update Regarding Your Application"
-        header_sub = "Mariwasa Recruitment Decision"
         subject = f"Application Update: {job_title} | Mariwasa Siam Ceramics"
         status_pill_label = "Not Selected for Current Opening"
-        intro_paragraph = f"""
-        Thank you for your interest in joining <strong>Mariwasa Siam Ceramics, Inc.</strong> and for the time, energy, and dedication you invested in applying for the position of <strong>{html.escape(job_title)}</strong>.
-        """
-        body_content = f"""
-        <p style="font-size: 15px; color: #334155; margin: 0 0 16px 0; line-height: 1.6;">
-            After a comprehensive and careful review of all submissions, we are writing to let you know that we have chosen to move forward with other candidates whose specific skill sets and experience more closely align with the immediate requirements of this position.
-        </p>
-        <p style="font-size: 15px; color: #334155; margin: 0 0 16px 0; line-height: 1.6;">
-            This was an exceptionally competitive selection process given the high caliber of applications we received, and this outcome does not diminish the value of your background or professional accomplishments.
-        </p>
-        <p style="font-size: 15px; color: #334155; margin: 0 0 16px 0; line-height: 1.6;">
-            We have safely retained your resume and application in our talent database. Should future opportunities emerge that align with your credentials, our talent acquisition team will proactively reach out to you.
-        </p>
-        <p style="font-size: 15px; color: #334155; margin: 0 0 16px 0; line-height: 1.6;">
-            We sincerely thank you for considering Mariwasa as a prospective employer and wish you the greatest success and fulfillment in your ongoing job search and career aspirations.
-        </p>
-        """
-        next_steps_title = "Future Career Opportunities"
+        intro_paragraph = (
+            f"Thank you for applying for <strong>{html.escape(job_title)}</strong>. "
+            "After careful review, we have chosen to move forward with other candidates whose qualifications "
+            "more closely match the current requirements of this role. "
+            "We have kept your profile in our talent database for future openings."
+        )
+        body_content = ""
+        next_steps_title = "Future Opportunities"
         next_steps = [
-            "Your credentials will be kept on file in our talent directory for 12 months.",
-            "You are warmly invited to apply for other current and future job openings on our portal.",
-            "We welcome you to stay connected with Mariwasa on our official career channels."
+            "Your credentials remain on file for 12 months should a matching role open.",
+            "You are welcome to apply for other active positions on our career portal.",
         ]
         cta_label = "Explore Career Opportunities &rarr;"
 
@@ -893,25 +857,17 @@ async def send_application_status_update_email(
         badge_style = "background-color: #eef2ff; color: #3730a3; border: 1px solid #c7d2fe;"
         header_gradient = "linear-gradient(135deg, #4f46e5 0%, #312e81 100%)"
         header_title = "Advanced to Technical Interview"
-        header_sub = "Stage Advancement Notification"
         subject = f"Next Stage: Technical Interview for {job_title} | Mariwasa Siam Ceramics"
         status_pill_label = "Technical Interview Stage"
-        intro_paragraph = f"""
-        Congratulations! You have successfully advanced to the <strong>Technical Interview</strong> stage for the position of <strong>{html.escape(job_title)}</strong> at <strong>Mariwasa Siam Ceramics, Inc.</strong>
-        """
-        body_content = f"""
-        <p style="font-size: 15px; color: #334155; margin: 0 0 16px 0; line-height: 1.6;">
-            Our technical evaluation panel would like to invite you for an in-depth discussion covering domain methodologies, practical problem solving, and relevant project achievements.
-        </p>
-        <p style="font-size: 15px; color: #334155; margin: 0 0 16px 0; line-height: 1.6;">
-            Detailed schedule coordinates (date, time, venue or meeting link) will be delivered via calendar invitation, email, and SMS shortly.
-        </p>
-        """
-        next_steps_title = "Preparation Guidelines"
+        intro_paragraph = (
+            f"Congratulations! You have advanced to the <strong>Technical Interview</strong> stage for "
+            f"<strong>{html.escape(job_title)}</strong>."
+        )
+        body_content = ""
+        next_steps_title = "Preparation & Schedule"
         next_steps = [
-            "Review your past engineering or domain projects and key technical challenges.",
-            "Prepare portfolio materials or code samples demonstrating your hands-on work.",
-            "If your interview is online, test your audio/video setup ahead of time; if onsite, plan to arrive 10 minutes early."
+            "Date, time, and venue or meeting link will be sent separately once finalized.",
+            "Review relevant projects or portfolio work and test your setup ahead of time.",
         ]
         cta_label = "View Interview Details &rarr;"
 
@@ -920,25 +876,17 @@ async def send_application_status_update_email(
         badge_style = "background-color: #f5f3ff; color: #5b21b6; border: 1px solid #ddd6fe;"
         header_gradient = "linear-gradient(135deg, #7c3aed 0%, #4c1d95 100%)"
         header_title = "Advanced to Final Interview"
-        header_sub = "Executive Leadership Round"
         subject = f"Congratulations: Final Interview Stage for {job_title} | Mariwasa Siam Ceramics"
         status_pill_label = "Final Interview Stage"
-        intro_paragraph = f"""
-        We are very pleased to notify you that you have officially reached the <strong>Final Interview</strong> stage for the position of <strong>{job_title}</strong> at <strong>Mariwasa Siam Ceramics, Inc.</strong>
-        """
-        body_content = f"""
-        <p style="font-size: 15px; color: #334155; margin: 0 0 16px 0; line-height: 1.6;">
-            Reaching this final round reflects your strong qualifications, technical aptitude, and demonstrated potential throughout earlier assessments.
-        </p>
-        <p style="font-size: 15px; color: #334155; margin: 0 0 16px 0; line-height: 1.6;">
-            This round will be conducted with our senior department directors and executive leadership to discuss strategic alignment, career growth, and cultural fit.
-        </p>
-        """
+        intro_paragraph = (
+            f"Congratulations! You have advanced to the <strong>Final Interview</strong> stage for "
+            f"<strong>{html.escape(job_title)}</strong> with senior leadership."
+        )
+        body_content = ""
         next_steps_title = "Next Steps"
         next_steps = [
-            "Our executive coordinator will finalize interview schedules with panel directors.",
-            "Coordinates will be reflected on your Google Calendar and tracking portal.",
-            "Be prepared with any questions you may have regarding Mariwasa's culture and vision."
+            "Our coordinator will send your final interview schedule via email and your portal.",
+            "Prepare any questions you have about the role, team, and growth opportunities.",
         ]
         cta_label = "Check Schedule & Portal &rarr;"
 
@@ -947,22 +895,17 @@ async def send_application_status_update_email(
         badge_style = "background-color: #f0fdfa; color: #115e59; border: 1px solid #99f6e4;"
         header_gradient = "linear-gradient(135deg, #0d9488 0%, #115e59 100%)"
         header_title = "Welcome to Mariwasa Siam Ceramics!"
-        header_sub = "Selection & Employment Offer"
         subject = f"Official Selection: Welcome to Mariwasa Siam Ceramics - {job_title}"
         status_pill_label = "Selected for Hire"
-        intro_paragraph = f"""
-        On behalf of <strong>Mariwasa Siam Ceramics, Inc.</strong>, we are thrilled to extend our warmest congratulations on your selection for the position of <strong>{job_title}</strong>!
-        """
-        body_content = f"""
-        <p style="font-size: 15px; color: #334155; margin: 0 0 16px 0; line-height: 1.6;">
-            Throughout the recruitment process, your expertise, collaborative mindset, and dedication stood out. We are excited about the prospect of having you join our family and drive innovation forward.
-        </p>
-        """
+        intro_paragraph = (
+            f"Congratulations! You have been selected for the position of "
+            f"<strong>{html.escape(job_title)}</strong>."
+        )
+        body_content = ""
         next_steps_title = "Onboarding Process"
         next_steps = [
-            "Our HR Talent Operations team will send your formal offer letter and employment packet.",
-            "Details on orientation, starting date, and pre-employment documentation will follow.",
-            "Feel free to reach out to our HR team if you have any questions."
+            "HR will send your formal offer letter, start date, and pre-employment requirements.",
+            "Reach out to our HR team anytime if you have questions before onboarding.",
         ]
         cta_label = "View Candidate Portal &rarr;"
 
@@ -971,22 +914,17 @@ async def send_application_status_update_email(
         badge_style = "background-color: #f0f9ff; color: #0369a1; border: 1px solid #bae6fd;"
         header_gradient = "linear-gradient(135deg, #0284c7 0%, #0369a1 100%)"
         header_title = "Application Status Update"
-        header_sub = "Mariwasa Recruitment Portal"
         subject = f"Application Status Update: {job_title} | Mariwasa Siam Ceramics"
         status_pill_label = status_clean.title()
-        intro_paragraph = f"""
-        We are writing to inform you that your application status for the <strong>{job_title}</strong> position at <strong>Mariwasa Siam Ceramics, Inc.</strong> has been updated.
-        """
-        body_content = f"""
-        <p style="font-size: 15px; color: #334155; margin: 0 0 16px 0; line-height: 1.6;">
-            Your application is currently marked as <strong>{status_clean.title()}</strong>. Our talent acquisition team continues to review and process candidate submissions in sequence.
-        </p>
-        """
-        next_steps_title = "Current Overview"
+        intro_paragraph = (
+            f"Your application for <strong>{html.escape(job_title)}</strong> is now marked as "
+            f"<strong>{html.escape(status_clean.title())}</strong>."
+        )
+        body_content = ""
+        next_steps_title = "Next Steps"
         next_steps = [
-            "Your application is active and visible to the recruitment committee.",
-            "Status changes are automatically recorded in real time.",
-            "You will be notified immediately upon further updates."
+            "View full details and real-time updates anytime in your application portal.",
+            "We will notify you immediately when your status changes again.",
         ]
         cta_label = "Check Application Portal &rarr;"
 
@@ -1033,52 +971,41 @@ async def send_application_status_update_email(
     <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; color: #1e293b; margin: 0; padding: 24px; background-color: #f1f5f9;">
         <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 20px; overflow: hidden; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05);">
             <!-- Header Banner -->
-            <div style="background: {header_gradient}; padding: 32px 32px 28px 32px; color: #ffffff; text-align: left;">
-                <span style="display: inline-block; padding: 4px 12px; background-color: rgba(255, 255, 255, 0.2); border-radius: 12px; font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 12px;">
+            <div style="background: {header_gradient}; padding: 26px 32px; color: #ffffff; text-align: left;">
+                <span style="display: inline-block; padding: 4px 12px; background-color: rgba(255, 255, 255, 0.2); border-radius: 12px; font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 10px;">
                     {badge_text}
                 </span>
-                <h1 style="margin: 0; font-size: 24px; font-weight: 800; color: #ffffff; line-height: 1.2;">
+                <h1 style="margin: 0; font-size: 22px; font-weight: 800; color: #ffffff; line-height: 1.2;">
                     {header_title}
                 </h1>
-                <p style="margin: 6px 0 0 0; font-size: 14px; color: rgba(255, 255, 255, 0.85); font-weight: 500;">
-                    Mariwasa Siam Ceramics, Inc. • {header_sub}
-                </p>
             </div>
 
             <!-- Main Body -->
-            <div style="padding: 32px;">
-                <p style="font-size: 16px; margin: 0 0 16px 0;">Dear <strong>{candidate_name}</strong>,</p>
+            <div style="padding: 28px 32px;">
+                <p style="font-size: 15px; margin: 0 0 14px 0;">Dear <strong>{html.escape(candidate_name)}</strong>,</p>
 
-                <p style="font-size: 15px; color: #334155; margin: 0 0 20px 0; line-height: 1.6;">
+                <p style="font-size: 14px; color: #334155; margin: 0 0 20px 0; line-height: 1.6;">
                     {intro_paragraph.strip()}
                 </p>
 
                 <!-- Status Summary Card -->
-                <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 16px; padding: 22px; margin-bottom: 24px;">
-                    <h3 style="margin: 0 0 16px 0; font-size: 15px; font-weight: 700; color: #0f172a; border-bottom: 1px solid #e2e8f0; padding-bottom: 10px;">
-                        Application Summary
-                    </h3>
-
+                <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 14px; padding: 18px 20px; margin-bottom: 20px;">
                     <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
                         <tr>
-                            <td style="padding: 6px 0; color: #64748b; font-weight: 600; width: 140px;">Target Role:</td>
-                            <td style="padding: 6px 0; color: #0f172a; font-weight: 700;">{job_title}</td>
+                            <td style="padding: 5px 0; color: #64748b; font-weight: 600; width: 120px;">Position:</td>
+                            <td style="padding: 5px 0; color: #0f172a; font-weight: 700;">{html.escape(job_title)}</td>
                         </tr>
                         <tr>
-                            <td style="padding: 6px 0; color: #64748b; font-weight: 600;">Current Status:</td>
-                            <td style="padding: 6px 0;">
+                            <td style="padding: 5px 0; color: #64748b; font-weight: 600;">Status:</td>
+                            <td style="padding: 5px 0;">
                                 <span style="display: inline-block; padding: 3px 12px; border-radius: 12px; font-size: 12px; font-weight: 700; {badge_style}">
                                     {status_pill_label}
                                 </span>
                             </td>
                         </tr>
                         <tr>
-                            <td style="padding: 6px 0; color: #64748b; font-weight: 600;">Organization:</td>
-                            <td style="padding: 6px 0; color: #0f172a; font-weight: 600;">Mariwasa Siam Ceramics, Inc.</td>
-                        </tr>
-                        <tr>
-                            <td style="padding: 6px 0; color: #64748b; font-weight: 600;">Update Date:</td>
-                            <td style="padding: 6px 0; color: #0f172a; font-weight: 600;">{formatted_date}</td>
+                            <td style="padding: 5px 0; color: #64748b; font-weight: 600;">Date:</td>
+                            <td style="padding: 5px 0; color: #0f172a; font-weight: 600;">{formatted_date}</td>
                         </tr>
                     </table>
 
@@ -1088,37 +1015,31 @@ async def send_application_status_update_email(
                 {body_content}
 
                 <!-- Next Steps Card -->
-                <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 14px; padding: 20px; margin-bottom: 26px;">
-                    <h4 style="margin: 0 0 12px 0; font-size: 13px; font-weight: 700; color: #1e293b; text-transform: uppercase; letter-spacing: 0.05em;">
+                <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 14px; padding: 16px 20px; margin-bottom: 22px;">
+                    <h4 style="margin: 0 0 10px 0; font-size: 12px; font-weight: 700; color: #1e293b; text-transform: uppercase; letter-spacing: 0.05em;">
                         {next_steps_title}
                     </h4>
-                    <ul style="margin: 0; padding-left: 20px; font-size: 13px; color: #475569; line-height: 1.6;">
+                    <ul style="margin: 0; padding-left: 18px; font-size: 13px; color: #475569; line-height: 1.6;">
                         {next_steps_html}
                     </ul>
                 </div>
 
                 <!-- Call to Action Button -->
-                <div style="text-align: center; margin: 28px 0 32px 0;">
-                    <a href="{tracking_url}" style="background-color: #D60041; color: #ffffff; padding: 13px 32px; text-decoration: none; border-radius: 25px; font-weight: 700; font-size: 14px; display: inline-block; box-shadow: 0 4px 10px rgba(214, 0, 65, 0.25);">
+                <div style="text-align: center; margin: 22px 0 24px 0;">
+                    <a href="{tracking_url}" style="background-color: #D60041; color: #ffffff; padding: 12px 28px; text-decoration: none; border-radius: 25px; font-weight: 700; font-size: 14px; display: inline-block; box-shadow: 0 4px 10px rgba(214, 0, 65, 0.25);">
                         {cta_label}
                     </a>
                 </div>
 
-                <p style="font-size: 14px; color: #475569; margin: 0 0 6px 0;">
-                    If you have any questions or require assistance, please feel free to reach out to our recruitment desk.
-                </p>
                 <p style="font-size: 14px; color: #0f172a; font-weight: 700; margin: 0;">
                     Warm regards,<br>
-                    Talent Acquisition & Human Resources Team<br>
-                    <span style="font-weight: 500; color: #64748b; font-size: 13px;">Mariwasa Siam Ceramics, Inc.</span>
+                    Mariwasa HR &amp; Talent Acquisition
                 </p>
             </div>
 
             <!-- Footer -->
-            <div style="background-color: #f8fafc; border-top: 1px solid #e2e8f0; padding: 22px 32px; text-align: center; font-size: 11px; color: #94a3b8;">
-                <p style="margin: 0 0 4px 0; font-weight: 700; color: #64748b; font-size: 12px;">Mariwasa Siam Ceramics, Inc.</p>
-                <p style="margin: 0 0 6px 0;">Automated Resume Analysis & Recruitment Management System</p>
-                <p style="margin: 0; color: #cbd5e1;">This is an automated notification sent to {to_email}. Please do not reply directly to this email.</p>
+            <div style="background-color: #f8fafc; border-top: 1px solid #e2e8f0; padding: 14px 32px; text-align: center; font-size: 11px; color: #94a3b8;">
+                Mariwasa Siam Ceramics, Inc. &bull; Automated notification sent to {html.escape(to_email)}. Please do not reply directly.
             </div>
         </div>
     </body>

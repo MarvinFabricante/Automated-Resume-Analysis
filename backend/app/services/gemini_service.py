@@ -456,7 +456,7 @@ METADATA:
 Return ONLY valid JSON with this exact schema:
 {{
   "is_resume": <true or false>,
-  "document_type": "<resume | cv | biodata | thesis_manuscript | academic_paper | manual_or_guide | financial_document | certificate_or_official_record | legal_or_correspondence | job_posting | cover_letter | misc_non_resume>",
+  "document_type": "<resume | cv | biodata | thesis_manuscript | academic_paper | manual_or_guide | financial_document | certificate_or_official_record | legal_or_correspondence | job_posting | cover_letter | presentation_or_slides | school_or_course_document | misc_non_resume>",
   "confidence": <number 0.0-1.0>,
   "reason": "<1 concise sentence explaining why it is or is not a resume>",
   "ai_summary": "<if is_resume: concise 2-sentence HR summary of candidate strengths & background; else empty string>",
@@ -491,21 +491,37 @@ _HARD_LOCAL_REJECTION_REASONS = frozenset({
 })
 
 
-def _build_compact_document_excerpt(raw_text: str, max_chars: int = 2200) -> str:
+def _build_compact_document_excerpt(raw_text: str, max_chars: int = 3600) -> str:
     """
-    Compress document text to <= max_chars (~500 tokens) while preserving the top header/title
-    region AND a middle/tail slice (so embedded appendices, chapters, or later skills/education
-    are visible to Gemini without sending entire multi-page payloads).
+    Compress multi-page document text to <= max_chars (~800 tokens) while preserving
+    the beginning (page 1 header/summary/recent roles), middle pages (earlier experience/skills),
+    AND tail (final pages: education, certifications, appendices) so multi-page resumes and
+    embedded thesis appendices are all visible to Gemini without sending entire payloads.
     """
     cleaned = re.sub(r"[ \t]+", " ", (raw_text or "").strip())
     cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
     if len(cleaned) <= max_chars:
         return cleaned
 
-    head_len = int(max_chars * 0.62)
-    tail_len = max_chars - head_len - 40
+    head_len = int(max_chars * 0.44)
+    mid_len = int(max_chars * 0.24)
+    tail_len = max(200, max_chars - head_len - mid_len - 110)
+
     head = cleaned[:head_len].rstrip()
+    mid_center = len(cleaned) // 2
+    mid_start = max(head_len, mid_center - (mid_len // 2))
+    mid_end = min(len(cleaned) - tail_len, mid_start + mid_len)
+    mid = cleaned[mid_start:mid_end].strip()
     tail = cleaned[-tail_len:].lstrip()
+
+    if mid:
+        return (
+            f"{head}\n\n"
+            f"[... page continuation excerpt ({len(cleaned)} chars total) ...]\n\n"
+            f"{mid}\n\n"
+            f"[... later pages excerpt ...]\n\n"
+            f"{tail}"
+        )
     return f"{head}\n\n[... middle excerpt omitted ({len(cleaned)} chars total) ...]\n\n{tail}"
 
 
@@ -571,7 +587,7 @@ def should_invoke_gemini_for_resume(
     )
     is_borderline = (
         (not local_is_resume and local_conf < 0.85)
-        or (local_is_resume and (local_conf < 0.85 or neg_score >= 1.5 or len(core_headings) == 0 or pillar_count <= 2))
+        or (local_is_resume and (local_conf < 0.85 or neg_score >= 1.5 or len(core_headings) < 2 or pillar_count <= 2))
     )
 
     if effective_mode == "borderline":
@@ -607,7 +623,8 @@ def _normalize_resume_verify_result(
     allowed_types = {
         "resume", "cv", "biodata", "thesis_manuscript", "academic_paper",
         "manual_or_guide", "financial_document", "certificate_or_official_record",
-        "legal_or_correspondence", "job_posting", "cover_letter", "misc_non_resume",
+        "legal_or_correspondence", "job_posting", "cover_letter",
+        "presentation_or_slides", "school_or_course_document", "misc_non_resume",
     }
     if doc_type not in allowed_types:
         doc_type = "resume" if is_resume else "misc_non_resume"
@@ -657,7 +674,7 @@ def gemini_verify_and_enhance_resume(
         return None
 
     # 1. Check SHA-256 content-hash cache BEFORE counting against budget or calling Gemini
-    normalized_for_hash = re.sub(r"\s+", " ", text[:12000]).strip().lower()
+    normalized_for_hash = re.sub(r"\s+", " ", text[:50000]).strip().lower()
     cache_key = _content_hash("resume_verify:v1", {"text": normalized_for_hash, "pages": page_count})
     cached = _cache_get(cache_key)
     if cached is not None:

@@ -12,6 +12,17 @@ import { useAppSelector } from '../../../redux/store';
 import { JobScoringWeights, DEFAULT_JOB_SCORING_WEIGHTS } from '../../../types';
 import { cleanRequirementInput } from '../../../utils/criterionStatus';
 import JobScoringWeightsEditor, { isWeightsBalanced } from './JobScoringWeightsEditor';
+import { SelectWithOther, MultiSelectDropdownWithOther } from '../../common/SelectWithOther';
+import {
+  COMMON_JOB_TITLES,
+  JOB_DEPARTMENTS,
+  JOB_WORK_LOCATIONS,
+  SALARY_RANGE_OPTIONS,
+  SKILL_OPTIONS,
+  JOB_EDUCATION_REQUIREMENTS,
+  JOB_EXPERIENCE_REQUIREMENTS,
+  CERTIFICATION_OPTIONS,
+} from '../../../data/formOptions';
 
 interface CreateJobModalProps {
   isOpen: boolean;
@@ -315,21 +326,22 @@ const CreateJobModal: React.FC<CreateJobModalProps> = ({ isOpen, onClose, onSucc
               <div className="space-y-4 sm:space-y-6 animate-in slide-in-from-right-4 duration-500">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
                   <div className="md:col-span-2">
-                    <label className={labelClasses}><Briefcase size={12} /> Job Title</label>
-                    <input
-                      autoFocus
-                      required
-                      type="text"
-                      placeholder="e.g. Senior Full-Stack Engineer"
-                      className={inputClasses(errors.job_title)}
+                    <SelectWithOther
+                      id="create-job-title"
+                      label={<span className="inline-flex items-center gap-2"><Briefcase size={12} /> Job Title</span>}
+                      labelClassName={labelClasses}
+                      selectClassName={`${inputClasses(errors.job_title)} appearance-none pr-10 cursor-pointer`}
                       value={formData.job_title}
-                      onChange={(e) => {
-                        const val = e.target.value;
+                      onChange={(val) => {
                         setFormData(prev => ({ ...prev, job_title: val }));
                         setErrors(prev => (prev.job_title ? { ...prev, job_title: null } : prev));
                       }}
+                      options={COMMON_JOB_TITLES}
+                      placeholder="Select a job title..."
+                      otherPlaceholder="Enter custom job title..."
+                      required
+                      error={errors.job_title}
                     />
-                    {errors.job_title && <p className="text-[10px] text-red-500 mt-1.5 ml-1 font-bold">{errors.job_title}</p>}
                   </div>
 
                   <div>
@@ -348,25 +360,17 @@ const CreateJobModal: React.FC<CreateJobModalProps> = ({ isOpen, onClose, onSucc
                   </div>
 
                   <div>
-                    <label className={labelClasses}><Building2 size={12} /> Department</label>
-                    <select
-                      className={inputClasses()}
+                    <SelectWithOther
+                      id="create-job-department"
+                      label={<span className="inline-flex items-center gap-2"><Building2 size={12} /> Department</span>}
+                      labelClassName={labelClasses}
+                      selectClassName={`${inputClasses()} appearance-none pr-10 cursor-pointer`}
                       value={formData.department}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        setFormData(prev => ({ ...prev, department: val }));
-                      }}
-                    >
-                      <option>Human Resources</option>
-                      <option>Engineering</option>
-                      <option>Information Technology</option>
-                      <option>Marketing</option>
-                      <option>Finance</option>
-                      <option>Operations</option>
-                      <option>Quality Assurance</option>
-                      <option>Maintenance</option>
-                      <option>Environmental</option>
-                    </select>
+                      onChange={(val) => setFormData(prev => ({ ...prev, department: val }))}
+                      options={JOB_DEPARTMENTS}
+                      allowEmpty={false}
+                      otherPlaceholder="Enter custom department..."
+                    />
                   </div>
 
                   <div className="md:col-span-2">
@@ -397,41 +401,41 @@ const CreateJobModal: React.FC<CreateJobModalProps> = ({ isOpen, onClose, onSucc
               <div className="space-y-4 sm:space-y-6 animate-in slide-in-from-right-4 duration-500">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
                   <div className="md:col-span-2">
-                    <label className={labelClasses}><MapPin size={12} /> Work Location</label>
-                    <input
-                      autoFocus
-                      required
-                      type="text"
-                      placeholder="e.g. BGC, Taguig City (On-site)"
-                      className={inputClasses(errors.location)}
+                    <SelectWithOther
+                      id="create-job-location"
+                      label={<span className="inline-flex items-center gap-2"><MapPin size={12} /> Work Location</span>}
+                      labelClassName={labelClasses}
+                      selectClassName={`${inputClasses(errors.location)} appearance-none pr-10 cursor-pointer`}
                       value={formData.location}
-                      onChange={(e) => {
-                        const val = e.target.value;
+                      onChange={(val) => {
                         setFormData(prev => ({ ...prev, location: val }));
                         setErrors(prev => (prev.location ? { ...prev, location: null } : prev));
                       }}
+                      options={JOB_WORK_LOCATIONS}
+                      placeholder="Select work location..."
+                      otherPlaceholder="e.g. Sto. Tomas, Batangas (On-site)"
+                      required
+                      error={errors.location}
                     />
-                    {errors.location && <p className="text-[10px] text-red-500 mt-1.5 ml-1 font-bold">{errors.location}</p>}
                   </div>
 
                   <div className="md:col-span-2">
-                    <label className={labelClasses}><DollarSign size={12} /> Salary Range (Monthly)</label>
-                    <div className="relative">
-                      <input
-                        required
-                        type="text"
-                        placeholder="e.g. 50,000 - 80,000"
-                        className={inputClasses(errors.salary_range)}
-                        value={formData.salary_range}
-                        onChange={handleSalaryChange}
-                      />
-                      <div className="absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-1.5 pointer-events-none">
-                        <span className="text-[10px] font-black text-gray-300 uppercase">PHP</span>
-                      </div>
-                    </div>
-                    <p className="mt-2 text-[10px] text-gray-400 flex items-center gap-1.5 ml-1">
-                      <Info size={10} /> Enter as "Min - Max" for range
-                    </p>
+                    <SelectWithOther
+                      id="create-job-salary"
+                      label={<span className="inline-flex items-center gap-2"><DollarSign size={12} /> Salary Range (Monthly PHP)</span>}
+                      labelClassName={labelClasses}
+                      selectClassName={`${inputClasses(errors.salary_range)} appearance-none pr-10 cursor-pointer`}
+                      value={formData.salary_range}
+                      onChange={(val) => {
+                        setFormData(prev => ({ ...prev, salary_range: val }));
+                        setErrors(prev => (prev.salary_range ? { ...prev, salary_range: null } : prev));
+                      }}
+                      options={SALARY_RANGE_OPTIONS}
+                      placeholder="Select monthly salary bracket..."
+                      otherPlaceholder="e.g. ₱50,000 - ₱80,000"
+                      required
+                      error={errors.salary_range}
+                    />
                   </div>
 
                   <div className="md:col-span-2 mt-2 sm:mt-4">
@@ -478,77 +482,77 @@ const CreateJobModal: React.FC<CreateJobModalProps> = ({ isOpen, onClose, onSucc
                 </div>
 
                 <div>
-                  <label className={labelClasses}><ListChecks size={12} /> Key Skills & Requirements</label>
-                  <input
-                    required
-                    type="text"
-                    placeholder="e.g. React, Node.js, AWS, System Design (Comma separated)"
-                    className={inputClasses(errors.skills_requirements)}
-                    value={formData.skills_requirements}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      setFormData(prev => ({ ...prev, skills_requirements: val }));
+                  <MultiSelectDropdownWithOther
+                    id="create-job-skills"
+                    label={<span className="inline-flex items-center gap-2"><ListChecks size={12} /> Key Skills &amp; Requirements</span>}
+                    labelClassName={labelClasses}
+                    selectClassName={`${inputClasses(errors.skills_requirements)} appearance-none pr-10 cursor-pointer`}
+                    selectedItems={formData.skills_requirements.split(',').map((s) => s.trim()).filter(Boolean)}
+                    onChange={(items) => {
+                      setFormData(prev => ({ ...prev, skills_requirements: items.join(', ') }));
                       setErrors(prev => (prev.skills_requirements ? { ...prev, skills_requirements: null } : prev));
                     }}
+                    options={SKILL_OPTIONS}
+                    placeholder="Select required skills from dropdown..."
+                    otherPlaceholder="Enter custom required skill..."
+                    error={errors.skills_requirements}
+                    emptyStateText="Select at least one required skill from the dropdown above."
+                    chipClassName="inline-flex items-center gap-1.5 px-2.5 py-1 bg-pink-50 text-[#d81159] text-xs font-bold rounded-full border border-pink-100"
                   />
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {formData.skills_requirements.split(',').filter(s => s.trim()).slice(0, 5).map((skill, i) => (
-                      <span key={i} className="px-2.5 sm:px-3 py-1 bg-pink-50 text-[#d81159] text-[10px] font-bold rounded-full border border-pink-100">
-                        {skill.trim()}
-                      </span>
-                    ))}
-                    {formData.skills_requirements.split(',').filter(s => s.trim()).length > 5 && (
-                      <span className="px-2.5 sm:px-3 py-1 bg-gray-50 text-gray-400 text-[10px] font-bold rounded-full">
-                        +{formData.skills_requirements.split(',').filter(s => s.trim()).length - 5} more
-                      </span>
-                    )}
-                  </div>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 sm:gap-6">
                   <div>
-                    <label className={labelClasses}><GraduationCap size={12} /> Education Requirements</label>
-                    <input
-                      type="text"
-                      placeholder="e.g. Bachelor's Degree"
-                      className={inputClasses()}
+                    <SelectWithOther
+                      id="create-job-education"
+                      label={<span className="inline-flex items-center gap-2"><GraduationCap size={12} /> Education</span>}
+                      labelClassName={labelClasses}
+                      selectClassName={`${inputClasses()} appearance-none pr-10 cursor-pointer`}
                       value={formData.education_requirements}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        setFormData(prev => ({ ...prev, education_requirements: val }));
-                      }}
+                      onChange={(val) => setFormData(prev => ({ ...prev, education_requirements: val === 'None' ? '' : val }))}
+                      options={JOB_EDUCATION_REQUIREMENTS}
+                      placeholder="Select education..."
+                      otherPlaceholder="Specify required degree..."
+                      helperText="Select 'None' if not required."
                     />
-                    <p className="mt-1.5 ml-1 text-[11px] text-slate-500">Leave blank or type &apos;None&apos; if nothing is required.</p>
                   </div>
 
                   <div>
-                    <label className={labelClasses}><Trophy size={12} /> Experience Requirements</label>
-                    <input
-                      type="text"
-                      placeholder="e.g. 3+ years"
-                      className={inputClasses()}
+                    <SelectWithOther
+                      id="create-job-experience"
+                      label={<span className="inline-flex items-center gap-2"><Trophy size={12} /> Experience</span>}
+                      labelClassName={labelClasses}
+                      selectClassName={`${inputClasses()} appearance-none pr-10 cursor-pointer`}
                       value={formData.experience_requirements}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        setFormData(prev => ({ ...prev, experience_requirements: val }));
-                      }}
+                      onChange={(val) =>
+                        setFormData(prev => ({
+                          ...prev,
+                          experience_requirements: val.startsWith('None') ? '' : val,
+                        }))
+                      }
+                      options={JOB_EXPERIENCE_REQUIREMENTS}
+                      placeholder="Select experience..."
+                      otherPlaceholder="e.g. 4+ years in QA"
+                      helperText="Select 'None' if open to fresh grads."
                     />
-                    <p className="mt-1.5 ml-1 text-[11px] text-slate-500">Leave blank or type &apos;None&apos; if nothing is required.</p>
                   </div>
 
                   <div className="sm:col-span-2 md:col-span-1">
-                    <label className={labelClasses}><Award size={12} /> Certifications</label>
-                    <input
-                      type="text"
-                      placeholder="e.g. PMP, AWS"
-                      className={inputClasses()}
-                      value={formData.certifications_requirements}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        setFormData(prev => ({ ...prev, certifications_requirements: val }));
-                      }}
+                    <MultiSelectDropdownWithOther
+                      id="create-job-certifications"
+                      label={<span className="inline-flex items-center gap-2"><Award size={12} /> Certifications</span>}
+                      labelClassName={labelClasses}
+                      selectClassName={`${inputClasses()} appearance-none pr-10 cursor-pointer`}
+                      selectedItems={formData.certifications_requirements.split(',').map((s) => s.trim()).filter(Boolean)}
+                      onChange={(items) =>
+                        setFormData(prev => ({ ...prev, certifications_requirements: items.join(', ') }))
+                      }
+                      options={CERTIFICATION_OPTIONS}
+                      placeholder="Select certifications (optional)..."
+                      otherPlaceholder="Specify license/certification..."
+                      emptyStateText="None required."
+                      chipClassName="inline-flex items-center gap-1.5 px-2.5 py-1 bg-slate-100 text-slate-700 text-[11px] font-bold rounded-full border border-slate-200"
                     />
-                    <p className="mt-1.5 ml-1 text-[11px] text-slate-500">Leave blank or type &apos;None&apos; if nothing is required.</p>
                   </div>
                 </div>
 

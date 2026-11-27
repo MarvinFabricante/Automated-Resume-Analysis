@@ -82,7 +82,7 @@ def extract_advanced_experience(doc: Doc) -> list[str]:
         if entry and entry not in entries:
             entries.append(entry)
             
-    return entries[:10]
+    return entries[:30]
 
 
 def extract_advanced_education(doc: Doc) -> list[str]:
@@ -181,7 +181,7 @@ def extract_advanced_education(doc: Doc) -> list[str]:
         if entry and not any(e.lower() == entry.lower() for e in entries):
             entries.append(entry)
             
-    return entries[:8]
+    return entries[:15]
 
 
 def extract_advanced_certifications(doc: Doc) -> list[str]:

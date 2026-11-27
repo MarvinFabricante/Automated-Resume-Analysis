@@ -24,6 +24,7 @@ import RecruitmentTermsModal from '../../../components/modals/shared/Recruitment
 import ResumePreviewModal from '../../../components/modals/shared/ResumePreviewModal';
 import ApplicationProgressBar from '../../../components/common/ApplicationProgressBar';
 import ExperienceGapAlert from '../../../components/common/ExperienceGapAlert';
+import MinimumRequirementBlocker, { isBelowAcceptedRequirements } from '../../../components/common/MinimumRequirementBlocker';
 import ResumeTipsPanel, {
   ResumeReadabilityBanner,
   ApplySkillsReminder,
@@ -76,7 +77,8 @@ const ApplyForJobPage: React.FC = () => {
   const [showPreviewModal, setShowPreviewModal] = useState(false);
   const [extractedData, setExtractedData] = useState<any>(null);
   const [matchData, setMatchData] = useState<any>(null);
-  const [, setIsMatching] = useState(false);
+  const [isMatching, setIsMatching] = useState(false);
+  const belowRequirements = isBelowAcceptedRequirements(matchData);
   const [cooldown, setCooldown] = useState(0);
   const [savedDraft, setSavedDraft] = useState<any>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
@@ -208,7 +210,7 @@ const ApplyForJobPage: React.FC = () => {
   }, [location.state, extractedData]);
 
   const handleProceedToForm = () => {
-    if (!job?.job_id) return;
+    if (!job?.job_id || isMatching || belowRequirements) return;
     navigate(`/applicationform/${job.job_id}`, {
       state: {
         job,
@@ -659,7 +661,9 @@ const ApplyForJobPage: React.FC = () => {
                 <div className="flex items-start gap-3">
                   <AlertTriangle size={20} className="text-rose-600 shrink-0 mt-0.5" />
                   <div>
-                    <h4 className="text-xs sm:text-sm font-black text-rose-900">Resume Upload Error</h4>
+                    <h4 className="text-xs sm:text-sm font-black text-rose-900">
+                      {/wrong document detected/i.test(uploadError) ? 'Wrong Document Detected' : 'Resume Upload Error'}
+                    </h4>
                     <p className="text-xs sm:text-sm font-medium text-rose-700 mt-0.5">{uploadError}</p>
                   </div>
                 </div>
@@ -783,19 +787,42 @@ const ApplyForJobPage: React.FC = () => {
                 )}
                 {isComplete && (
                   <div className="space-y-6 animate-in fade-in zoom-in-95 duration-300">
-                    <div className="bg-emerald-50/80 border border-emerald-200 p-6 sm:p-8 rounded-[28px] flex items-center gap-5">
-                      <div className="bg-white text-emerald-600 p-3.5 rounded-2xl shadow-xs shrink-0 border border-emerald-100">
-                        <CheckCircle2 size={32} />
+                    {belowRequirements ? (
+                      <MinimumRequirementBlocker
+                        matchData={matchData}
+                        jobTitle={job ? (job.title || job.job_title) : undefined}
+                        onUploadDifferent={handleReplaceResumeClick}
+                        onBrowseJobs={() => navigate('/careerspage')}
+                      />
+                    ) : (
+                      <div className="bg-emerald-50/80 border border-emerald-200 p-6 sm:p-8 rounded-[28px] flex items-center gap-5">
+                        <div className="bg-white text-emerald-600 p-3.5 rounded-2xl shadow-xs shrink-0 border border-emerald-100">
+                          <CheckCircle2 size={32} />
+                        </div>
+                        <div className="flex-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <h4 className="text-lg font-black text-slate-900">
+                              Resume Attached Successfully
+                            </h4>
+                            {matchData?.match_percentage !== undefined && (
+                              <span className="px-2.5 py-0.5 rounded-full bg-emerald-600 text-white text-[11px] font-black">
+                                {Math.round(matchData.match_percentage)}% Match
+                              </span>
+                            )}
+                            {extractedData?.page_count > 1 && (
+                              <span className="px-2.5 py-0.5 rounded-full bg-white text-emerald-700 border border-emerald-200 text-[11px] font-bold">
+                                {extractedData.page_count} Pages Parsed
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-sm text-slate-600 font-medium mt-0.5">
+                            {isMatching
+                              ? `Checking your qualifications against ${job ? (job.title || job.job_title) : 'this position'}...`
+                              : `We've read your resume for ${job ? (job.title || job.job_title) : 'this position'}. Click the button below to review your details.`}
+                          </p>
+                        </div>
                       </div>
-                      <div>
-                        <h4 className="text-lg font-black text-slate-900">
-                          Resume Attached Successfully
-                        </h4>
-                        <p className="text-sm text-slate-600 font-medium mt-0.5">
-                          We've read your resume for <span className="font-bold text-slate-900">{job ? (job.title || job.job_title) : 'this position'}</span>. Click the button below to review your details.
-                        </p>
-                      </div>
-                    </div>
+                    )}
 
                     <div className="flex flex-col sm:flex-row gap-3 pt-2">
                       <button
@@ -821,10 +848,21 @@ const ApplyForJobPage: React.FC = () => {
                       <button
                         type="button"
                         onClick={handleProceedToForm}
-                        className="flex-[2] bg-[#D60041] hover:bg-slate-900 text-white py-4 rounded-2xl font-bold flex items-center justify-center gap-3 transition-all shadow-xl shadow-pink-100 active:scale-95 text-sm cursor-pointer"
+                        disabled={isMatching || belowRequirements}
+                        className={`flex-[2] py-4 rounded-2xl font-bold flex items-center justify-center gap-3 transition-all text-sm ${
+                          isMatching || belowRequirements
+                            ? 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'
+                            : 'bg-[#D60041] hover:bg-slate-900 text-white shadow-xl shadow-pink-100 active:scale-95 cursor-pointer'
+                        }`}
                       >
-                        <span>Next: Review your details</span>
-                        <ArrowRight size={18} />
+                        <span>
+                          {isMatching
+                            ? 'Evaluating Requirements...'
+                            : belowRequirements
+                            ? 'Below Accepted Requirements'
+                            : 'Next: Review your details'}
+                        </span>
+                        {!isMatching && !belowRequirements && <ArrowRight size={18} />}
                       </button>
                     </div>
                   </div>

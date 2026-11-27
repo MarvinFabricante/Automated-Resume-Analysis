@@ -43,6 +43,7 @@ import Sidebar from '../../components/layout/Sidebar';
 import HelpTooltip from '../../components/common/HelpTooltip';
 import CandidateRescheduleModal, { isInterviewMissed } from '../../components/modals/candidate/CandidateRescheduleModal';
 import ApplicationThreadPanel from '../../components/chat/ApplicationThreadPanel';
+import { getJoinButtonLabel, resolveMeetingPlatform } from '../../utils/meetingPlatform';
 import { ApplicationThreadItem } from '../../services/chatService';
 import { computeApplicationTracker } from '../../utils/applicationTracker';
 
@@ -955,6 +956,10 @@ const ApplicationTracking: React.FC = () => {
 
                                 <div className="text-xs text-slate-700 space-y-1">
                                   <p>Interview type: {latestInterview.interview_type || 'Not specified'}</p>
+                                  {(() => {
+                                    const ivPlatform = resolveMeetingPlatform(latestInterview.meeting_link, latestInterview.platform);
+                                    return ivPlatform ? <p>Platform: {ivPlatform}</p> : null;
+                                  })()}
                                   {latestInterview.location && <p>Location: {latestInterview.location}</p>}
                                   {latestInterview.instructions && <p>{latestInterview.instructions}</p>}
                                   <p>All interview times are Philippine time.</p>
@@ -982,7 +987,7 @@ const ApplicationTracking: React.FC = () => {
                                             className="px-3.5 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors shadow-2xs"
                                           >
                                             <Video size={13} />
-                                            <span>Join meeting</span>
+                                            <span>{getJoinButtonLabel(latestInterview.meeting_link, latestInterview.platform)}</span>
                                             <ExternalLink size={12} />
                                           </a>
                                         ) : (
@@ -1258,7 +1263,12 @@ const ApplicationTracking: React.FC = () => {
               <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200/60 flex items-start gap-3">
                 <CheckCircle2 size={16} className="text-emerald-600 shrink-0 mt-0.5" />
                 <div>
-                  <span className="font-bold text-slate-900 block">Network & Google Meet Access</span>
+                  <span className="font-bold text-slate-900 block">
+                    {(() => {
+                      const envPlatform = resolveMeetingPlatform(latestInterview?.meeting_link, latestInterview?.platform);
+                      return `Network & ${envPlatform && envPlatform !== 'Other' ? envPlatform : 'Online Meeting'} Access`;
+                    })()}
+                  </span>
                   <span>A stable broadband connection (minimum 5 Mbps) is recommended. Coordinates were sent to your Gmail.</span>
                 </div>
               </div>
@@ -1273,7 +1283,7 @@ const ApplicationTracking: React.FC = () => {
                   rel="noopener noreferrer"
                   className="px-3 py-1 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors flex items-center gap-1"
                 >
-                  <span>Join meeting</span>
+                  <span>{getJoinButtonLabel(latestInterview.meeting_link, latestInterview.platform)}</span>
                   <ExternalLink size={12} />
                 </a>
               </div>

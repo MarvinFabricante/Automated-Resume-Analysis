@@ -38,6 +38,7 @@ import RecruitmentTermsModal from '../../components/modals/shared/RecruitmentTer
 import ResumePreviewModal from '../../components/modals/shared/ResumePreviewModal';
 import ApplicationProgressBar from '../../components/common/ApplicationProgressBar';
 import ExperienceGapAlert from '../../components/common/ExperienceGapAlert';
+import MinimumRequirementBlocker, { isBelowAcceptedRequirements } from '../../components/common/MinimumRequirementBlocker';
 import ResumeTipsPanel, {
   ResumeReadabilityBanner,
   ApplySkillsReminder,
@@ -66,6 +67,7 @@ const CandidateSmartUpload: React.FC = () => {
   const [extractedData, setExtractedData] = useState<any>(null);
   const [matchData, setMatchData] = useState<any>(null);
   const [isMatching, setIsMatching] = useState<boolean>(false);
+  const belowRequirements = isBelowAcceptedRequirements(matchData);
   const [cooldown, setCooldown] = useState<number>(0);
   const [savedDraft, setSavedDraft] = useState<any>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
@@ -428,7 +430,7 @@ const CandidateSmartUpload: React.FC = () => {
   };
 
   const handleProceedToDetails = () => {
-    if (!file) return;
+    if (!file || isMatching || belowRequirements) return;
     navigate(`/candidate/update-profile/${jobId}`, {
       state: {
         fileName: file.name,
@@ -659,7 +661,9 @@ const CandidateSmartUpload: React.FC = () => {
                   <div className="flex items-start gap-3">
                     <AlertTriangle size={20} className="text-rose-600 shrink-0 mt-0.5" />
                     <div>
-                      <h4 className="text-xs sm:text-sm font-black text-rose-900">Resume Upload Error</h4>
+                      <h4 className="text-xs sm:text-sm font-black text-rose-900">
+                        {/wrong document detected/i.test(uploadError) ? 'Wrong Document Detected' : 'Resume Upload Error'}
+                      </h4>
                       <p className="text-xs sm:text-sm font-medium text-rose-700 mt-0.5">{uploadError}</p>
                     </div>
                   </div>
@@ -809,34 +813,48 @@ const CandidateSmartUpload: React.FC = () => {
                     </div>
                   )}
 
-                  {/* COMPLETED STATE: RESUME READY TO PROCEED */}
+                  {/* COMPLETED STATE: RESUME READY TO PROCEED OR BLOCKED BELOW REQUIREMENTS */}
                   {isComplete && (
                     <div className="space-y-6 animate-in fade-in zoom-in-95 duration-300">
-                      
-                      {/* Success Banner */}
-                      <div className="bg-emerald-50/80 border border-emerald-200 p-6 sm:p-8 rounded-[28px] flex items-center gap-5">
-                        <div className="bg-white text-emerald-600 p-3.5 rounded-2xl shadow-xs shrink-0 border border-emerald-100">
-                          <CheckCircle2 size={32} />
+                      {belowRequirements ? (
+                        <MinimumRequirementBlocker
+                          matchData={matchData}
+                          jobTitle={jobTitle}
+                          onUploadDifferent={handleReplaceResumeClick}
+                          onBrowseJobs={() => navigate('/candidate/findjobs')}
+                        />
+                      ) : (
+                        /* Success Banner */
+                        <div className="bg-emerald-50/80 border border-emerald-200 p-6 sm:p-8 rounded-[28px] flex items-center gap-5">
+                          <div className="bg-white text-emerald-600 p-3.5 rounded-2xl shadow-xs shrink-0 border border-emerald-100">
+                            <CheckCircle2 size={32} />
+                          </div>
+                          <div className="flex-1">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <h4 className="text-lg font-black text-slate-900">
+                                Resume Attached Successfully
+                              </h4>
+                              {matchData?.match_percentage !== undefined && (
+                                <span className="px-2.5 py-0.5 rounded-full bg-emerald-600 text-white text-[11px] font-black">
+                                  {Math.round(matchData.match_percentage)}% Match
+                                </span>
+                              )}
+                              {extractedData?.page_count > 1 && (
+                                <span className="px-2.5 py-0.5 rounded-full bg-white text-emerald-700 border border-emerald-200 text-[11px] font-bold">
+                                  {extractedData.page_count} Pages Parsed
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-sm text-slate-600 font-medium mt-0.5">
+                              {isMatching
+                                ? `Evaluating your qualifications against ${jobTitle}...`
+                                : `We've processed your resume for ${jobTitle}. Click the button below to review your auto-filled details.`}
+                            </p>
+                          </div>
                         </div>
-                        <div>
-                          <h4 className="text-lg font-black text-slate-900">
-                            Resume Attached Successfully
-                          </h4>
-                          <p className="text-sm text-slate-600 font-medium mt-0.5">
-                            We've processed your resume for <span className="font-bold text-slate-900">{jobTitle}</span>. Click the button below to review your auto-filled details.
-                          </p>
-                        </div>
-                      </div>
+                      )}
 
-
-
-
-
-
-
-
-
-                      {/* Action Buttons: 1 clear primary button */}
+                      {/* Action Buttons */}
                       <div className="flex flex-col sm:flex-row gap-3 pt-2">
                         <button
                           type="button"
@@ -850,14 +868,25 @@ const CandidateSmartUpload: React.FC = () => {
                         <button
                           type="button"
                           onClick={handleProceedToDetails}
-                          className="flex-[2] bg-[#D10043] hover:bg-slate-900 text-white py-4 px-6 rounded-2xl font-black text-sm flex items-center justify-center gap-2.5 transition-all shadow-xl shadow-[#D10043]/20 active:scale-[0.99] cursor-pointer group"
+                          disabled={isMatching || belowRequirements}
+                          className={`flex-[2] py-4 px-6 rounded-2xl font-black text-sm flex items-center justify-center gap-2.5 transition-all group ${
+                            isMatching || belowRequirements
+                              ? 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'
+                              : 'bg-[#D10043] hover:bg-slate-900 text-white shadow-xl shadow-[#D10043]/20 active:scale-[0.99] cursor-pointer'
+                          }`}
                         >
-                          <span>Next: Review your details</span>
-                          <ArrowRight size={18} className="group-hover:translate-x-1 transition-transform" />
+                          <span>
+                            {isMatching
+                              ? 'Evaluating Requirements...'
+                              : belowRequirements
+                              ? 'Below Accepted Requirements'
+                              : 'Next: Review your details'}
+                          </span>
+                          {!isMatching && !belowRequirements && (
+                            <ArrowRight size={18} className="group-hover:translate-x-1 transition-transform" />
+                          )}
                         </button>
                       </div>
-
-
                     </div>
                   )}
 

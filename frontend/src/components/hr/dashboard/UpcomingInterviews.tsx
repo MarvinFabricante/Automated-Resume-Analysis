@@ -9,6 +9,7 @@ import { Interview } from '../../../types';
 import {
   filterAndSortUpcomingInterviews,
 } from '../../../utils/interviewUtils';
+import { getJoinButtonLabel } from '../../../utils/meetingPlatform';
 
 interface UpcomingInterviewsProps {
   onScheduleClick?: () => void;
@@ -182,10 +183,10 @@ const UpcomingInterviews: React.FC<UpcomingInterviewsProps> = ({ onScheduleClick
                         rel="noopener noreferrer"
                         onClick={(e) => e.stopPropagation()}
                         className="px-3 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200/80 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors shadow-2xs"
-                        title="Join Virtual Room"
+                        title={getJoinButtonLabel(item.meeting_link, item.platform)}
                       >
                         <Video size={14} />
-                        <span>Join</span>
+                        <span>{getJoinButtonLabel(item.meeting_link, item.platform, { compact: true })}</span>
                       </a>
                     ) : (
                       <button

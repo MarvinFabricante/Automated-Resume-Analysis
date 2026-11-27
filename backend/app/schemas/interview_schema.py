@@ -33,10 +33,21 @@ class InterviewCreateSchema(BaseModel):
 
     @model_validator(mode="after")
     def validate_venue(self):
-        from app.services.interview_details import validate_interview_details
-        if self.interview_type is not None or self.location or self.meeting_link:
-            self.interview_type = self.interview_type or ("Online" if self.meeting_link else "Onsite")
-            validate_interview_details(self.interview_type, self.location, self.meeting_link)
+        from app.services.interview_details import resolve_meeting_platform, validate_interview_details
+        if self.interview_type is not None or self.location or self.meeting_link or self.platform:
+            self.interview_type = self.interview_type or (
+                "Online" if (self.meeting_link or self.platform) else "Onsite"
+            )
+            validate_interview_details(
+                self.interview_type,
+                self.location,
+                self.meeting_link,
+                self.platform,
+            )
+            if self.interview_type == "Online":
+                self.platform = resolve_meeting_platform(self.meeting_link, self.platform)
+            else:
+                self.platform = None
         return self
 
 

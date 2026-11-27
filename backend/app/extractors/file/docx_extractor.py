@@ -457,6 +457,10 @@ def extract_text_from_docx(file_path: str) -> str:
             pass
 
         # ── 4. Section Footers ────────────────────────────────────────────────
+        _page_num_re = re.compile(
+            r'^\s*(?:(?:page|pg\.?|p\.?)\s*\d+(?:\s*(?:of|/)\s*\d+)?|\d+\s*(?:of|/)\s*\d+|[-–—|•·]\s*\d+\s*[-–—|•·])\s*$',
+            re.IGNORECASE,
+        )
         for section in doc.sections:
             footers_to_check = []
             try:
@@ -470,12 +474,12 @@ def extract_text_from_docx(file_path: str) -> str:
                 try:
                     for fp in f.paragraphs:
                         t = _format_para_text(fp._element, doc)
-                        if t and t not in full_text:
+                        if t and not _page_num_re.match(t) and t not in full_text:
                             full_text.append(t)
                     for ft in f.tables:
                         tbl_lines = _extract_table_text(ft._element, doc)
                         for tl in tbl_lines:
-                            if tl and tl not in full_text:
+                            if tl and not _page_num_re.match(tl) and tl not in full_text:
                                 full_text.append(tl)
                 except Exception:
                     pass
@@ -507,7 +511,14 @@ def extract_text_from_docx(file_path: str) -> str:
         except Exception:
             pass
 
-        return '\n'.join(full_text)
+        # Remove form-feeds and standalone page-number lines across multi-page DOCX resumes
+        cleaned_lines: List[str] = []
+        for chunk in full_text:
+            for ln in chunk.replace('\f', '\n').splitlines():
+                if _page_num_re.match(ln.strip()):
+                    continue
+                cleaned_lines.append(ln)
+        return '\n'.join(cleaned_lines)
     except Exception as e:
         logger.error(f"Error reading DOCX file: {e}")
         return ""

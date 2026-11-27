@@ -299,7 +299,11 @@ def _match_header_text(normalised: str, allow_fuzzy: bool = True) -> Optional[st
             return res
 
     without_paren = _TRAILING_PAREN_RE.sub('', normalised).strip()
-    without_paren = re.sub(r'\s*[-–—]?\s*\b(?:CONTINUED|CONT\.?)\s*$', '', without_paren).strip()
+    without_paren = re.sub(
+        r'\s*[-–—|/]*\s*\b(?:CONTINUED|CONT\.?|CONT\'?D|PAGE\s*\d+(?:\s*(?:OF|/)\s*\d+)?|PART\s*\d+)\s*$',
+        '',
+        without_paren,
+    ).strip()
     if without_paren and without_paren != normalised:
         res = _HEADER_MAP.get(without_paren)
         if res:
@@ -558,7 +562,14 @@ def split_into_sections(text: str) -> dict[str, str]:
         if not cleaned_line:
             sections[current_label].append(line)
             continue
-        if re.match(r'^\(?\s*(?:CONTINUED|CONT\.?)\s*\)?$', cleaned_line, re.I):
+        if re.match(
+            r'^(?:\(?\s*(?:CONTINUED|CONT\.?|CONT\'?D)\s*\)?|'
+            r'(?:PAGE|PG\.?|P\.?)\s*\d+(?:\s*(?:OF|/)\s*\d+)?|'
+            r'\d+\s*(?:OF|/)\s*\d+|'
+            r'[-–—|•·]\s*\d+\s*[-–—|•·])$',
+            cleaned_line,
+            re.I,
+        ):
             continue
 
         label = detect_section_label(cleaned_line)

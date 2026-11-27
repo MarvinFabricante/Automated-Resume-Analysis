@@ -15,6 +15,7 @@ import CandidateJobDetailsModal from '../../components/modals/candidate/Candidat
 import DetailedAnalysisDrawer, { formatSecondPersonText } from '../../components/candidate/DetailedAnalysisDrawer';
 import jobService from '../../services/jobService';
 import HelpTooltip from '../../components/common/HelpTooltip';
+import { isBelowAcceptedRequirements } from '../../components/common/MinimumRequirementBlocker';
 
 const CandidateSmartMatchResult: React.FC = () => {
   const navigate = useNavigate();
@@ -70,6 +71,7 @@ const CandidateSmartMatchResult: React.FC = () => {
   };
 
   const handleStartApplication = (match: any) => {
+    if (isBelowAcceptedRequirements(match)) return;
     const effectiveJobId = match.job_id || match.id;
     if (typeof window !== 'undefined') {
       const draftData = {
@@ -337,14 +339,21 @@ const CandidateSmartMatchResult: React.FC = () => {
                       </button>
                       <button
                         type="button"
+                        disabled={isBelowAcceptedRequirements(match)}
                         onClick={(e) => {
                           e.stopPropagation();
                           handleStartApplication(match);
                         }}
-                        className="flex-[1.5] sm:flex-[2] py-3.5 sm:py-4 px-4 rounded-2xl bg-slate-900 text-white font-bold text-xs sm:text-sm flex items-center justify-center gap-2 hover:bg-[#D60041] transition-all shadow-xl shadow-slate-200 hover:shadow-pink-200 active:scale-95 group/btn cursor-pointer"
+                        className={`flex-[1.5] sm:flex-[2] py-3.5 sm:py-4 px-4 rounded-2xl font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition-all group/btn ${
+                          isBelowAcceptedRequirements(match)
+                            ? 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'
+                            : 'bg-slate-900 text-white hover:bg-[#D60041] shadow-xl shadow-slate-200 hover:shadow-pink-200 active:scale-95 cursor-pointer'
+                        }`}
                       >
-                        <span>Start Application</span>
-                        <ArrowRight size={16} className="group-hover/btn:translate-x-1 transition-transform" />
+                        <span>{isBelowAcceptedRequirements(match) ? 'Below Requirements' : 'Start Application'}</span>
+                        {!isBelowAcceptedRequirements(match) && (
+                          <ArrowRight size={16} className="group-hover/btn:translate-x-1 transition-transform" />
+                        )}
                       </button>
                     </div>
                   </div>
