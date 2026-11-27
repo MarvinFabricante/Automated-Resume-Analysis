@@ -221,6 +221,7 @@ def _resume_data_from_application(app: JobApplication) -> dict:
         "education_entries": getattr(app, "education_entries", []) or [],
         "certifications": certs,
         "candidate_certifications": certs,
+        "ai_summary": getattr(app, "ai_summary", None) or "",
         "completeness_score": getattr(app, "completeness_score", None),
     }
 

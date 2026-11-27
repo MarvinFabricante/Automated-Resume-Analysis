@@ -173,7 +173,7 @@ async def async_compare_candidates(job_id: int):
             if len(all_apps) > 1:
                 logger.info(f"Multiple candidates ({len(all_apps)}) found for job {job_id}. Running comparison analysis...")
                 from app.services.ai_analysis_service import compare_candidates_with_fallback
-                from app.utils.cache import set_cache
+                from app.utils.cache import get_cache, set_cache
                 
                 job_data = {
                     "job_title": job.job_title,
@@ -186,8 +186,25 @@ async def async_compare_candidates(job_id: int):
                     "scoring_weights": get_job_scoring_weights(job),
                 }
                 candidates_data = [_resume_data_from_application(a) for a in all_apps]
-                comparison_result = compare_candidates_with_fallback(job_data, candidates_data)
-                
+
+                # Content-hash cache prevents redundant Gemini comparison calls when applicant pool is unchanged
+                comp_hash_payload = json.dumps(
+                    {"job": job_data, "candidates": candidates_data},
+                    sort_keys=True,
+                    default=str,
+                ).encode("utf-8")
+                comp_hash = hashlib.sha256(comp_hash_payload).hexdigest()
+                comp_hash_key = f"job_comparison:v2:{job_id}:{comp_hash}"
+                comparison_result = await get_cache(comp_hash_key)
+
+                if comparison_result:
+                    logger.info(f"Found cached candidate comparison for job {job_id} (0 API calls).")
+                else:
+                    comparison_result = compare_candidates_with_fallback(job_data, candidates_data)
+                    if comparison_result:
+                        comparison_ttl = 300 if comparison_result.get("fallback_used") else 2592000
+                        await set_cache(comp_hash_key, comparison_result, ttl=comparison_ttl)
+
                 if comparison_result:
                     comparison_cache_key = f"job_comparison:{job_id}"
                     comparison_ttl = 300 if comparison_result.get("fallback_used") else 2592000
