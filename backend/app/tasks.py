@@ -82,7 +82,7 @@ async def async_analyze_application(application_id: int):
         hash_resume = {k: v for k, v in resume_data.items() if k not in ("id", "application_id")}
         hash_payload = json.dumps({"resume": hash_resume, "job": job_data}, sort_keys=True).encode("utf-8")
         content_hash = hashlib.sha256(hash_payload).hexdigest()
-        cache_key = f"ai_analysis:v8:{content_hash}"
+        cache_key = f"ai_analysis:v9:{content_hash}"
         
         cached_result = await get_cache(cache_key)
         
@@ -94,8 +94,10 @@ async def async_analyze_application(application_id: int):
             ai_result = analyze_match_with_fallback(resume_data, job_data)
             
             if ai_result:
-                # Store the result in cache (e.g., 30 days TTL)
-                await set_cache(cache_key, ai_result, ttl=2592000)
+                # Cache Gemini AI results for 30 days; use a short TTL when degraded to fallback
+                # so automatic recovery happens once key cooldowns expire.
+                cache_ttl = 300 if ai_result.get("fallback_used") else 2592000
+                await set_cache(cache_key, ai_result, ttl=cache_ttl)
         
         if ai_result:
             app.match_score = ai_result.get("ai_match_score")
@@ -129,7 +131,7 @@ async def async_analyze_application(application_id: int):
                 app.candidate_certifications = ai_result.get("candidate_certifications")
             if "experience_gaps" in ai_result:
                 app.experience_gaps = ai_result.get("experience_gaps")
-            app.ai_powered = False
+            app.ai_powered = bool(ai_result.get("ai_powered", ai_result.get("model_used") == "gemini"))
             
             await JobApplicationRepository.update(db, app)
             logger.info(f"Successfully saved AI analysis for application {application_id}.")
@@ -188,7 +190,8 @@ async def async_compare_candidates(job_id: int):
                 
                 if comparison_result:
                     comparison_cache_key = f"job_comparison:{job_id}"
-                    await set_cache(comparison_cache_key, comparison_result, ttl=2592000)
+                    comparison_ttl = 300 if comparison_result.get("fallback_used") else 2592000
+                    await set_cache(comparison_cache_key, comparison_result, ttl=comparison_ttl)
                     logger.info(f"Successfully saved candidate comparison for job {job_id}.")
         except Exception as e:
             logger.error(f"Error during candidate comparison task for job {job_id}: {e}")

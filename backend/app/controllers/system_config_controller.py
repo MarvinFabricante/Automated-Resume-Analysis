@@ -476,3 +476,19 @@ async def get_redis_transactions(limit: int = 50):
         "transactions": transactions,
     }
 
+
+# ─── Gemini API Key Pool Observability (Admin Only) ──────────────────────────
+
+@router.get("/gemini/status")
+async def get_gemini_pool_status(
+    current_user: dict = Depends(require_role("ADMIN")),
+):
+    """
+    Return safe, non-sensitive health and usage metrics for the Gemini API key pool
+    (active primary/failover key fingerprint, cooldowns, rotation & retry counters).
+    Never exposes raw API credentials.
+    """
+    from app.services.gemini_service import get_gemini_status
+
+    return get_gemini_status()
+

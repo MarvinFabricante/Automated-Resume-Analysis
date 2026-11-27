@@ -9,6 +9,8 @@ app/utils/
 ├── auth.py                 # Password hashing (bcrypt), JWT creation, and decode verification
 ├── cache.py                # In-memory and Redis response cache wrappers
 ├── database.py             # Async SQLAlchemy engine, session maker, and Base declarative class
+├── gemini_client.py        # Thread-safe sync/async Gemini REST client with failover & backoff
+├── gemini_key_manager.py   # Primary-first Gemini API key pool, cooldowns & project quota state
 ├── google_auth.py          # Google OAuth 2.0 client credential helper
 ├── limiter.py              # Rate limiting middleware configuration (slowapi)
 ├── supabase_storage.py     # Supabase Storage bucket upload and URL retrieval client

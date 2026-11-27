@@ -2910,7 +2910,7 @@ def calculate_match_score(
         (completeness_score_val * w_completeness)
     ) / total_w * 100
 
-    # ── NLP-powered scoring (no external AI) ──────────────────────────────────
+    # ── NLP baseline + optional Gemini AI semantic blending ──────────────────
     blended_skills_score = round(skills_result["score"] * 100, 1)
     blended_exp_score = round(combined_exp_score * 100, 1)
     blended_edu_score = round(education_result["score"] * 100, 1)
@@ -2937,7 +2937,69 @@ def calculate_match_score(
     pct_certs = round((w_certs / total_w) * 100)
     pct_completeness = round((w_completeness / total_w) * 100)
 
-    # ── Generate NLP-based insights ──────────────────────────────────────────
+    # ── Optional Gemini semantic scoring (gracefully falls back to NLP) ───────
+    ai_powered = False
+    gemini_model_used: Optional[str] = None
+    gemini_result: Optional[dict] = None
+    if use_ai:
+        try:
+            from app.services.gemini_service import gemini_analyze_match, is_gemini_enabled
+
+            if is_gemini_enabled():
+                job_payload = {
+                    "job_title": getattr(job, "job_title", ""),
+                    "department": getattr(job, "department", ""),
+                    "description": getattr(job, "description", "") or "",
+                    "skills_requirements": getattr(job, "skills_requirements", "") or "",
+                    "experience_requirements": getattr(job, "experience_requirements", "") or "",
+                    "education_requirements": getattr(job, "education_requirements", "") or "",
+                    "certifications_requirements": getattr(job, "certifications_requirements", "") or "",
+                }
+                gemini_result = gemini_analyze_match(resume_data, job_payload)
+        except Exception as ai_err:
+            logger.warning(f"Gemini match analysis skipped (falling back to NLP): {ai_err}")
+            gemini_result = None
+
+    if gemini_result:
+        try:
+            raw_ai_w = max(0.0, float(thresholds.get("ai_score_weight", 0.8)))
+            raw_rule_w = max(0.0, float(thresholds.get("rule_score_weight", 0.2)))
+            blend_total = raw_ai_w + raw_rule_w
+            ai_w = (raw_ai_w / blend_total) if blend_total > 0 else 0.8
+            rule_w = (raw_rule_w / blend_total) if blend_total > 0 else 0.2
+
+            def _blend_dim(rule_v: float, ai_v: Optional[float]) -> float:
+                if ai_v is None:
+                    return round(rule_v, 1)
+                return round(max(0.0, min(100.0, rule_v * rule_w + float(ai_v) * ai_w)), 1)
+
+            final_match_pct = _blend_dim(final_match_pct, gemini_result.get("ai_match_score"))
+            if skills_status != STATUS_NOT_REQUIRED:
+                blended_skills_score = _blend_dim(blended_skills_score, gemini_result.get("ai_skills_score"))
+            if exp_status != STATUS_NOT_REQUIRED:
+                blended_exp_score = _blend_dim(blended_exp_score, gemini_result.get("ai_experience_score"))
+            if edu_status != STATUS_NOT_REQUIRED:
+                blended_edu_score = _blend_dim(blended_edu_score, gemini_result.get("ai_education_score"))
+            if certs_status != STATUS_NOT_REQUIRED and gemini_result.get("ai_certifications_score") is not None:
+                blended_certs_score = _blend_dim(blended_certs_score, gemini_result.get("ai_certifications_score"))
+
+            all_matched = _merge_unique(all_matched, gemini_result.get("matched_skills") or [])
+            matched_keys = {_normalize_skill(s) for s in all_matched}
+            all_missing = [
+                s for s in _merge_unique(all_missing, gemini_result.get("missing_skills") or [])
+                if _normalize_skill(s) not in matched_keys
+            ]
+            if gemini_result.get("recommendations"):
+                final_recommendations = list(gemini_result["recommendations"])
+
+            ai_powered = True
+            gemini_model_used = gemini_result.get("gemini_model")
+        except Exception as blend_err:
+            logger.warning(f"Failed blending Gemini result; using NLP baseline: {blend_err}")
+            gemini_result = None
+            ai_powered = False
+
+    # ── Generate insights ────────────────────────────────────────────────────
     if final_match_pct >= 80:
         match_level = "High Match"
     elif final_match_pct >= 50:
@@ -2949,29 +3011,67 @@ def calculate_match_score(
 
     relevance_level = relevance_result.get("relevance_level", "Unknown")
     transferable_skills = relevance_result.get("transferable_skills", [])
-    strengths = _generate_nlp_strengths(skills_result, experience_result, education_result, relevance_result, certs_result)
-    weaknesses = _generate_nlp_weaknesses(skills_result, experience_result, education_result, relevance_result, certs_result)
-    ai_summary = _generate_nlp_summary(resume_data, job.job_title, final_match_pct, skills_result, relevance_result)
+    if gemini_result and gemini_result.get("transferable_skills"):
+        transferable_skills = _merge_unique(transferable_skills, gemini_result.get("transferable_skills") or [])
+
+    strengths = (
+        list(gemini_result["strengths"])
+        if (gemini_result and gemini_result.get("strengths"))
+        else _generate_nlp_strengths(skills_result, experience_result, education_result, relevance_result, certs_result)
+    )
+    weaknesses = (
+        list(gemini_result["weaknesses"])
+        if (gemini_result and gemini_result.get("weaknesses"))
+        else _generate_nlp_weaknesses(skills_result, experience_result, education_result, relevance_result, certs_result)
+    )
+    ai_summary = (
+        gemini_result["ai_summary"]
+        if (gemini_result and gemini_result.get("ai_summary"))
+        else _generate_nlp_summary(resume_data, job.job_title, final_match_pct, skills_result, relevance_result)
+    )
     if any(r["status"] in ("Not confirmed", "Possible match") for r in requirement_evaluations):
         ai_summary += " Score reflects confirmed evidence; unconfirmed requirements are pending, not failures."
-    skills_explanation = _generate_nlp_skills_explanation(skills_result)
-    experience_explanation = (
-        experience_result.get("reason", "")
-        if not exp_has_requirement
-        else (relevance_result.get("detailed_breakdown", "") or experience_result.get("reason", ""))
+    skills_explanation = (
+        gemini_result["skills_explanation"]
+        if (gemini_result and gemini_result.get("skills_explanation"))
+        else _generate_nlp_skills_explanation(skills_result)
     )
-    education_explanation = education_result.get("reason", "")
-    certification_explanation = certs_result.get("reason", "")
+    experience_explanation = (
+        gemini_result["experience_explanation"]
+        if (gemini_result and gemini_result.get("experience_explanation"))
+        else (
+            experience_result.get("reason", "")
+            if not exp_has_requirement
+            else (relevance_result.get("detailed_breakdown", "") or experience_result.get("reason", ""))
+        )
+    )
+    education_explanation = (
+        gemini_result["education_explanation"]
+        if (gemini_result and gemini_result.get("education_explanation"))
+        else education_result.get("reason", "")
+    )
+    certification_explanation = (
+        gemini_result["certification_explanation"]
+        if (gemini_result and gemini_result.get("certification_explanation"))
+        else certs_result.get("reason", "")
+    )
     location_explanation = location_result.get("reason", "")
     completeness_explanation = f"Candidate resume completeness assessed at {blended_completeness_score}%."
 
-    score_explanation = (
-        f"NLP Analysis: Skills {blended_skills_score}% (weight {pct_skills}%) + "
-        f"Experience {blended_exp_score}% (weight {pct_exp}%) + "
-        f"Education {blended_edu_score}% (weight {pct_edu}%) + "
-        f"Certifications {blended_certs_score}% (weight {pct_certs}%) + "
-        f"Resume Completeness {blended_completeness_score}% (weight {pct_completeness}%) = {final_match_pct}%"
-    )
+    if ai_powered and gemini_result:
+        score_explanation = (
+            f"Gemini AI Semantic Fit ({round(ai_w * 100)}%) + ATS Rule Validation ({round(rule_w * 100)}%): "
+            f"Overall {final_match_pct}% (Gemini {gemini_result.get('ai_match_score', final_match_pct)}%, "
+            f"ATS Rule {min(100.0, round(rule_match_pct, 1))}%)"
+        )
+    else:
+        score_explanation = (
+            f"NLP Analysis: Skills {blended_skills_score}% (weight {pct_skills}%) + "
+            f"Experience {blended_exp_score}% (weight {pct_exp}%) + "
+            f"Education {blended_edu_score}% (weight {pct_edu}%) + "
+            f"Certifications {blended_certs_score}% (weight {pct_certs}%) + "
+            f"Resume Completeness {blended_completeness_score}% (weight {pct_completeness}%) = {final_match_pct}%"
+        )
 
     # ── Build reason strings ──────────────────────────────────────────────────
     skills_reason = skills_result.get("reason", "")
@@ -3196,12 +3296,14 @@ def calculate_match_score(
         "candidate_degree": education_result.get("candidate_education", "Not specified"),
         "required_certifications": certs_result.get("required_certifications", "None"),
         "candidate_certifications": certs_result.get("candidate_certifications", "None"),
-        # ── NLP Insights ──
+        # ── AI / NLP Insights ──
         "recommendations": final_recommendations,
         "ai_summary": ai_summary,
         "strengths": strengths,
         "weaknesses": weaknesses,
-        "ai_powered": False,
+        "ai_powered": ai_powered,
+        "model_used": "gemini" if ai_powered else "nlp",
+        "gemini_model": gemini_model_used,
         "relevance_level": relevance_level,
         "score_explanation": score_explanation,
         "meets_threshold": meets_threshold,

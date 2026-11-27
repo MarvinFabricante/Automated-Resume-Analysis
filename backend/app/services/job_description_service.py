@@ -68,7 +68,7 @@ def apply_match_result_to_application(app, scores: dict) -> None:
     app.ai_summary = scores.get("ai_summary")
     app.strengths = scores.get("strengths")
     app.weaknesses = scores.get("weaknesses")
-    app.ai_powered = False
+    app.ai_powered = bool(scores.get("ai_powered", False))
 
 
 async def rescore_job_applications(db: AsyncSession, db_job, progress_cb=None) -> int:
