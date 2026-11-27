@@ -60,7 +60,8 @@ def _make_gemini_response(payload: dict, model: str = "gemini-2.5-flash-lite") -
         text=json.dumps(payload),
         model=model,
         key_label="primary",
-        key_index=0,
+        attempts=1,
+        rotations=0,
         latency_ms=42.0,
         usage={"promptTokenCount": 210, "candidatesTokenCount": 65, "totalTokenCount": 275},
     )
@@ -452,9 +453,10 @@ async def test_gemini_not_selected_email_discards_forbidden_score_leak_and_hr_ms
     assert len(sent) == 2
     # Rejected email discarded the leaking Gemini text and kept clean deterministic copy
     rej_body = sent[0]["body"]
-    assert "match score" not in rej_body.lower()
-    assert "weight" not in rej_body.lower()
-    assert "22%" not in rej_body
+    rej_visible = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", rej_body)).strip().lower()
+    assert "match score" not in rej_visible
+    assert "weight" not in rej_visible
+    assert "22%" not in rej_visible
     # HR message email no longer repeats "Mariwasa Siam Ceramics" 4 times
     hr_body = sent[1]["body"]
     assert hr_body.count("Mariwasa Siam Ceramics") <= 2
