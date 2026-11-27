@@ -8,6 +8,170 @@ from .resume_validator import fast_precheck_non_resume, validate_resume_document
 logger = logging.getLogger(__name__)
 
 
+def _apply_gemini_verification_and_enrichment(
+    raw_text: str,
+    extracted_data: dict,
+    validation: dict,
+    file_signals: dict,
+    file_path: str,
+) -> dict:
+    """
+    Quota-efficient Gemini verification + semantic extraction enhancement.
+    - Obvious non-resumes (hard vetoes) are skipped locally with 0 API calls.
+    - Repeat uploads / Step 1 -> Step 4 HR imports hit SHA-256 cache with 0 API calls.
+    - Uses 1 single combined Flash-Lite call (thinking_budget=0) to verify is_resume AND
+      enrich ai_summary, inferred_skills, career_domain, seniority_level, and missing fields.
+    - Gracefully preserves local deterministic results whenever Gemini is disabled, budgeted out,
+      or temporarily unavailable.
+    """
+    try:
+        from app.services.gemini_service import (
+            gemini_verify_and_enhance_resume,
+            should_invoke_gemini_for_resume,
+        )
+        from .resume_validator import _build_rejection_message
+    except Exception:
+        return validation
+
+    should_call, decision_reason = should_invoke_gemini_for_resume(validation, extracted_data)
+    validation["verified_by"] = "local_deterministic"
+    validation["gemini_decision"] = decision_reason
+
+    if not should_call:
+        return validation
+
+    gemini_res = gemini_verify_and_enhance_resume(
+        raw_text=raw_text,
+        local_validation=validation,
+        extracted_data=extracted_data,
+        page_count=file_signals.get("page_count"),
+        filename=os.path.basename(file_path),
+    )
+    if not gemini_res:
+        validation["gemini_decision"] = "fallback_local_unavailable"
+        return validation
+
+    g_is_resume = bool(gemini_res.get("is_resume"))
+    g_conf = float(gemini_res.get("confidence") or 0.0)
+    g_doc_type = str(gemini_res.get("document_type") or "misc_non_resume")
+    g_reason = str(gemini_res.get("reason") or "").strip()
+
+    # Map Gemini document_type onto canonical local rejection labels
+    type_map = {
+        "thesis_manuscript": ("academic_paper", "detected_thesis_manuscript"),
+        "academic_paper": ("academic_paper", "detected_academic_paper"),
+        "manual_or_guide": ("manual_or_guide", "detected_manual_or_guide"),
+        "financial_document": ("financial_document", "detected_financial_document"),
+        "certificate_or_official_record": ("certificate_or_official_record", "detected_certificate_or_official_record"),
+        "legal_or_correspondence": ("legal_or_correspondence", "detected_legal_or_correspondence"),
+        "cover_letter": ("legal_or_correspondence", "detected_legal_or_correspondence"),
+        "job_posting": ("job_posting", "detected_job_posting"),
+        "misc_non_resume": ("misc_non_resume", "detected_misc_non_resume"),
+    }
+
+    # Case 1: Gemini rejects a disguised/tricky non-resume that slipped past local heuristics
+    if not g_is_resume and g_conf >= 0.70:
+        mapped_type, mapped_reason = type_map.get(g_doc_type, ("misc_non_resume", "gemini_rejected_non_resume"))
+        validation["is_resume"] = False
+        validation["verified_by"] = "gemini"
+        validation["gemini_cached"] = bool(gemini_res.get("cached"))
+        validation["gemini_model"] = gemini_res.get("gemini_model")
+        validation["detected_document_type"] = mapped_type
+        validation["reason_code"] = mapped_reason
+        validation["confidence"] = round(max(float(validation.get("confidence") or 0.0), g_conf), 2)
+        base_msg = _build_rejection_message(mapped_type, mapped_reason)
+        validation["message"] = base_msg
+        validation["gemini_reason"] = g_reason
+        neg_sigs = list(validation.get("negative_signals") or [])
+        neg_sigs.append(f"gemini_rejected:{g_doc_type}(conf={g_conf:.2f})")
+        validation["negative_signals"] = neg_sigs
+        return validation
+
+    # Case 2: Local rejected only softly (low-confidence insufficient evidence) & Gemini strongly confirms valid resume
+    local_is_resume = bool(validation.get("is_resume"))
+    if (
+        not local_is_resume
+        and g_is_resume
+        and g_conf >= 0.85
+        and validation.get("reason_code") == "insufficient_resume_evidence"
+        and float(validation.get("negative_score") or 0.0) < 3.0
+    ):
+        validation["is_resume"] = True
+        validation["verified_by"] = "gemini_rescue"
+        validation["gemini_cached"] = bool(gemini_res.get("cached"))
+        validation["gemini_model"] = gemini_res.get("gemini_model")
+        validation["detected_document_type"] = "resume"
+        validation["reason_code"] = "gemini_verified_resume"
+        validation["confidence"] = round(g_conf, 2)
+        validation["message"] = "Valid resume document verified."
+        pos_sigs = list(validation.get("positive_signals") or [])
+        pos_sigs.append(f"gemini_verified:{g_doc_type}(conf={g_conf:.2f})")
+        validation["positive_signals"] = pos_sigs
+
+    # Case 3: Document is a confirmed resume -> merge Gemini semantic enhancements
+    if validation.get("is_resume"):
+        if validation.get("verified_by") == "local_deterministic":
+            validation["verified_by"] = "local+gemini"
+        validation["gemini_cached"] = bool(gemini_res.get("cached"))
+        validation["gemini_model"] = gemini_res.get("gemini_model")
+
+        extracted_data["ai_extraction_enhanced"] = True
+        extracted_data["ai_gemini_model"] = gemini_res.get("gemini_model")
+        extracted_data["ai_extraction_cached"] = bool(gemini_res.get("cached"))
+
+        if gemini_res.get("career_domain"):
+            extracted_data["career_domain"] = gemini_res["career_domain"]
+        if gemini_res.get("seniority_level"):
+            extracted_data["seniority_level"] = gemini_res["seniority_level"]
+
+        if gemini_res.get("ai_summary"):
+            extracted_data["ai_summary"] = gemini_res["ai_summary"]
+            if not (extracted_data.get("summary") or "").strip():
+                extracted_data["summary"] = gemini_res["ai_summary"]
+
+        # Merge inferred skills without duplicating existing extracted skills
+        inferred_skills = gemini_res.get("inferred_skills") or []
+        extracted_data["ai_inferred_skills"] = list(inferred_skills)
+        if inferred_skills:
+            existing_list = list(extracted_data.get("skills_list") or [])
+            seen_lower = {str(s).strip().lower() for s in existing_list if str(s).strip()}
+            added_skills = []
+            for sk in inferred_skills:
+                clean_sk = str(sk).strip()
+                if clean_sk and clean_sk.lower() not in seen_lower:
+                    seen_lower.add(clean_sk.lower())
+                    existing_list.append(clean_sk)
+                    added_skills.append(clean_sk)
+            if added_skills:
+                extracted_data["skills_list"] = existing_list
+                extracted_data["skills_array"] = existing_list
+                if isinstance(extracted_data.get("skills"), list):
+                    extracted_data["skills"] = existing_list
+                else:
+                    extracted_data["skills"] = " | ".join(existing_list)
+
+        # Gap-fill ONLY missing core fields (never overwrite valid local extractions)
+        if not (extracted_data.get("fullname") or "").strip() and gemini_res.get("corrected_fullname"):
+            corr_name = gemini_res["corrected_fullname"]
+            extracted_data["fullname"] = corr_name
+            extracted_data["name"] = corr_name
+            extracted_data["candidate_name"] = corr_name
+
+        if not (extracted_data.get("job_title") or "").strip() and gemini_res.get("corrected_job_title"):
+            corr_title = gemini_res["corrected_job_title"]
+            extracted_data["job_title"] = corr_title
+            extracted_data["candidate_job_title"] = corr_title
+
+        if not (extracted_data.get("degree") or "").strip() and gemini_res.get("corrected_degree"):
+            corr_deg = gemini_res["corrected_degree"]
+            extracted_data["degree"] = corr_deg
+            extracted_data["candidate_degree"] = corr_deg
+            if not (extracted_data.get("highest_degree") or "").strip():
+                extracted_data["highest_degree"] = corr_deg
+
+    return validation
+
+
 def process_resume(file_path: str, file_extension: str) -> dict:
     """
     Main entry point for resume processing.
@@ -94,6 +258,13 @@ def process_resume(file_path: str, file_extension: str) -> dict:
             is_partial_sample=True,
         )
         if early_rejection is not None:
+            early_rejection["verified_by"] = "local_fast_prefilter"
+            early_rejection["gemini_decision"] = "skipped_local_fast_prefilter"
+            try:
+                from app.services.gemini_service import record_local_prefilter_skip
+                record_local_prefilter_skip()
+            except Exception:
+                pass
             logger.warning(
                 f"Pre-extraction fast-rejected non-resume document ({early_rejection['detected_document_type']}, "
                 f"reason={early_rejection['reason_code']}, pages={pre_page_count}, score={early_rejection['score']}): {file_path}"
@@ -183,6 +354,13 @@ def process_resume(file_path: str, file_extension: str) -> dict:
         filename=os.path.basename(file_path),
     )
     if fast_rejection is not None:
+        fast_rejection["verified_by"] = "local_fast_prefilter"
+        fast_rejection["gemini_decision"] = "skipped_local_fast_prefilter"
+        try:
+            from app.services.gemini_service import record_local_prefilter_skip
+            record_local_prefilter_skip()
+        except Exception:
+            pass
         logger.warning(
             f"Fast-rejected non-resume document ({fast_rejection['detected_document_type']}, "
             f"reason={fast_rejection['reason_code']}, score={fast_rejection['score']}): {file_path}"
@@ -272,7 +450,7 @@ def process_resume(file_path: str, file_extension: str) -> dict:
         # Keep string for string consumers, but ensure array is accessible
         extracted_data["skills_array"] = extracted_data["skills_list"]
 
-    # ── Step 2.5: Strict Resume-Only Document Gatekeeper ─────────────────────
+    # ── Step 2.5: Strict Resume-Only Document Gatekeeper (Local + Quota-Gated Gemini) ──
     validation = validate_resume_document(
         raw_text=text,
         extracted_data=extracted_data,
@@ -280,14 +458,23 @@ def process_resume(file_path: str, file_extension: str) -> dict:
         page_count=file_signals.get("page_count"),
         filename=os.path.basename(file_path),
     )
+    validation = _apply_gemini_verification_and_enrichment(
+        raw_text=text,
+        extracted_data=extracted_data,
+        validation=validation,
+        file_signals=file_signals,
+        file_path=file_path,
+    )
     extracted_data["is_valid_resume"] = validation["is_resume"]
     extracted_data["resume_validation"] = validation
+    # Refresh local display alias in case Gemini gap-filled fullname
+    fullname = extracted_data.get("fullname", "")
 
     if not validation["is_resume"]:
         logger.warning(
             f"Document rejected as non-resume ({validation['detected_document_type']}, "
-            f"reason={validation['reason_code']}, score={validation['score']}, "
-            f"pos={validation['positive_score']}, neg={validation['negative_score']}): {file_path}"
+            f"reason={validation['reason_code']}, verified_by={validation.get('verified_by', 'local')}, "
+            f"score={validation['score']}, pos={validation['positive_score']}, neg={validation['negative_score']}): {file_path}"
         )
 
     # ── Step 3: Extract profile image ONLY for validated resumes ─────────────
