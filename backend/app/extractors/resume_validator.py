@@ -235,15 +235,15 @@ _BIODATA_FIELD_PATTERNS: List[re.Pattern] = [
 ]
 
 _DEGREE_RE = re.compile(
-    r"\b(?:bachelor(?:'?s)?\s+(?:of|in)\s+[a-z]|master(?:'?s)?\s+(?:of|in)\s+[a-z]|"
-    r"doctor\s+of\s+[a-z]|ph\.?d\.?|m\.?b\.?a\.?|associate\s+(?:of|in|degree)|"
+    r"\b(?:bachelor(?:'?s)?\s+(?:of|in)\s+[a-z]+|master(?:'?s)?\s+(?:of|in)\s+[a-z]+|"
+    r"doctor\s+of\s+[a-z]+|ph\.?d\.?|m\.?b\.?a\.?|associate\s+(?:of|in|degree)|"
     r"b\.?s\.?\s+(?:in\s+)?(?:computer|information|civil|mechanical|electrical|industrial|"
     r"chemical|electronics|materials|accountancy|business|nursing|psychology|education|"
     r"hospitality|tourism|architecture|engineering|biology|mathematics|management|economics|finance)|"
     r"bsit|bscs|bscpe|bsce|bsis|bsme|bsee|bsie|bsba|bsa|bsn|bshm|bstm|bsed|beed|abm|humss|stem|tvl|"
     r"senior\s+high\s+school|high\s+school\s+(?:diploma|graduate)|secondary\s+education|"
     r"vocational(?:\s+diploma|\s+course|\s*/\s*technical)?|technical[\s\-]vocational|"
-    r"diploma\s+in\s+[a-z]|tesda\s+(?:nc\s*[i1-4]+|national\s+certificate|training)|"
+    r"diploma\s+in\s+[a-z]+|tesda\s+(?:nc\s*[i1-4]+|national\s+certificate|training)|"
     r"undergraduate|college\s+graduate|fresh\s+graduate)\b",
     re.IGNORECASE,
 )
@@ -1102,7 +1102,6 @@ def _has_verified_education(
     or thesis cover-page boilerplate like "In Partial Fulfillment of the Requirements for the Degree...").
     """
     # Strip thesis cover-page boilerplate lines before scanning raw text for degree/school
-    clean_lines = [ln for ln in text.splitlines() if not _THESIS_DEGREE_BOILERPLATE_RE.search(ln)]
     filtered_lines: List[str] = []
     skip_next_degree = False
     for ln in text.splitlines():
@@ -1660,10 +1659,12 @@ def validate_resume_document(
         and not has_biodata_fields
         and (
             negative_score >= 2.0
-            or not has_identity_pillar
-            or core_qualification_pillars < 2
             or word_count > 1200
             or positive_score < 7.0
+            or not (
+                (has_identity_pillar and core_qualification_pillars >= 2)
+                or (valid_name and core_qualification_pillars == 3)
+            )
         )
     ):
         is_resume = False
