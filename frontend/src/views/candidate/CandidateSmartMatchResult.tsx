@@ -197,15 +197,38 @@ const CandidateSmartMatchResult: React.FC = () => {
           {sortedMatches.length > 0 && (
             <div className="bg-white p-8 md:p-10 rounded-[40px] border border-slate-100 shadow-xl shadow-slate-200/40 mb-12 relative overflow-hidden group animate-in fade-in slide-in-from-bottom-4 duration-700 delay-100">
               <div className="absolute top-0 right-0 w-64 h-64 bg-red-50 rounded-bl-[200px] opacity-20 group-hover:opacity-40 transition-opacity duration-700 pointer-events-none"></div>
-              <h2 className="text-2xl font-black text-slate-900 mb-6 flex items-center gap-3 relative z-10">
-                <Zap className="text-[#D60041] p-2 bg-pink-50 rounded-xl" size={40} />
-                Your Top Match
-              </h2>
+              <div className="flex flex-wrap items-center justify-between gap-3 mb-6 relative z-10">
+                <h2 className="text-2xl font-black text-slate-900 flex items-center gap-3">
+                  <Zap className="text-[#D60041] p-2 bg-pink-50 rounded-xl" size={40} />
+                  Your Top Match
+                </h2>
+                {sortedMatches[0].ai_powered && (
+                  <span className="px-3 py-1 rounded-full text-[11px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                    Hybrid NLP + Gemini AI Analysis
+                  </span>
+                )}
+              </div>
               <div className="text-slate-600 space-y-6 relative z-10">
                 <p className="text-lg leading-relaxed">
                   <strong className="text-slate-900">Why "{sortedMatches[0].job_title}" is your top match ({Math.round(sortedMatches[0].match_percentage)}%):</strong>{' '}
                   {formatSecondPersonText(sortedMatches[0].ai_summary, candidateFullName) || "Your background and skills closely match what this role asks for."}
                 </p>
+
+                {Array.isArray(sortedMatches[0].why_this_score) && sortedMatches[0].why_this_score.length > 0 && (
+                  <div className="p-5 bg-rose-50/40 rounded-2xl border border-rose-100 space-y-2">
+                    <p className="text-xs font-black uppercase tracking-wider text-slate-900">
+                      Key reasons behind this match result
+                    </p>
+                    <ul className="space-y-1.5">
+                      {sortedMatches[0].why_this_score.slice(0, 4).map((reason: string, idx: number) => (
+                        <li key={idx} className="text-sm text-slate-700 leading-relaxed flex items-start gap-2">
+                          <span className="w-1.5 h-1.5 rounded-full bg-[#D60041] shrink-0 mt-2" />
+                          <span>{formatSecondPersonText(reason, candidateFullName)}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
 
                 {sortedMatches.length > 1 && (
                   <p className="text-base leading-relaxed p-5 bg-slate-50 rounded-2xl border border-slate-100">

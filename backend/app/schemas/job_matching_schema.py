@@ -41,13 +41,24 @@ class JobMatchResult(BaseModel):
     recommendations: Optional[list[str]] = None
     # ── Insights & Dynamic Matching Explanation ──────────────────────────────
     ai_summary: Optional[str] = None
+    why_this_score: Optional[list[str]] = None
+    skills_explanation: Optional[str] = None
+    experience_explanation: Optional[str] = None
+    education_explanation: Optional[str] = None
+    certification_explanation: Optional[str] = None
     strengths: Optional[list[str]] = None
     weaknesses: Optional[list[str]] = None
     ai_powered: Optional[bool] = False
+    model_used: Optional[str] = None
+    gemini_model: Optional[str] = None
+    nlp_baseline_score: Optional[float] = None
+    gemini_semantic_score: Optional[float] = None
     score_explanation: Optional[str] = None
     match_level: Optional[str] = None
     meets_threshold: Optional[bool] = None
     minimum_match_score: Optional[float] = None
+    eligible_to_apply: Optional[bool] = None
+    eligibility_reasons: Optional[list[str]] = None
     transferable_skills: Optional[list[str]] = None
     followup_questions: Optional[list[dict]] = None
     clarification_questions: Optional[list[dict]] = None

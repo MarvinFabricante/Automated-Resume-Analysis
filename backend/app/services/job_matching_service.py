@@ -2613,6 +2613,8 @@ def calculate_match_score(
     use_ai: bool = False,
     matching_config: Optional[dict] = None,
     log_prediction: bool = True,
+    use_lightweight_ai: bool = False,
+    ai_priority: str = "application",
 ) -> dict:
     """
     Calculate the overall match score between a parsed resume and a job.
@@ -2937,10 +2939,14 @@ def calculate_match_score(
     pct_certs = round((w_certs / total_w) * 100)
     pct_completeness = round((w_completeness / total_w) * 100)
 
-    # ── Optional Gemini semantic scoring (gracefully falls back to NLP) ───────
+    # ── Optional Grounded Gemini semantic scoring (gracefully falls back to NLP) ─
+    nlp_baseline_pct = min(100.0, round(rule_match_pct, 1))
     ai_powered = False
     gemini_model_used: Optional[str] = None
     gemini_result: Optional[dict] = None
+    gemini_semantic_pct: Optional[float] = None
+    ai_w = 0.40
+    rule_w = 0.60
     if use_ai:
         try:
             from app.services.gemini_service import gemini_analyze_match, is_gemini_enabled
@@ -2955,35 +2961,89 @@ def calculate_match_score(
                     "education_requirements": getattr(job, "education_requirements", "") or "",
                     "certifications_requirements": getattr(job, "certifications_requirements", "") or "",
                 }
-                gemini_result = gemini_analyze_match(resume_data, job_payload)
+                nlp_snapshot = {
+                    "match_percentage": nlp_baseline_pct,
+                    "skills_score": round(blended_skills_score, 1),
+                    "skills_status": skills_status,
+                    "experience_score": round(blended_exp_score, 1),
+                    "experience_status": exp_status,
+                    "relevance_level": relevance_result.get("relevance_level", "Unknown"),
+                    "education_score": round(blended_edu_score, 1),
+                    "education_status": edu_status,
+                    "certifications_score": round(blended_certs_score, 1),
+                    "certifications_status": certs_status,
+                    "completeness_score": round(blended_completeness_score, 1),
+                    "matched_skills": list(all_matched),
+                    "missing_skills": list(all_missing),
+                    "requirement_evaluations": requirement_evaluations,
+                    "applied_weights": {
+                        "skills": pct_skills,
+                        "experience": pct_exp,
+                        "education": pct_edu,
+                        "certifications": pct_certs,
+                        "completeness": pct_completeness,
+                    },
+                }
+                gemini_result = gemini_analyze_match(
+                    resume_data,
+                    job_payload,
+                    nlp_baseline=nlp_snapshot,
+                    priority=ai_priority,
+                    use_lightweight_model=use_lightweight_ai,
+                )
         except Exception as ai_err:
             logger.warning(f"Gemini match analysis skipped (falling back to NLP): {ai_err}")
             gemini_result = None
 
     if gemini_result:
         try:
-            raw_ai_w = max(0.0, float(thresholds.get("ai_score_weight", 0.8)))
-            raw_rule_w = max(0.0, float(thresholds.get("rule_score_weight", 0.2)))
-            blend_total = raw_ai_w + raw_rule_w
-            ai_w = (raw_ai_w / blend_total) if blend_total > 0 else 0.8
-            rule_w = (raw_rule_w / blend_total) if blend_total > 0 else 0.2
+            if "ai_score_weight" in thresholds or "rule_score_weight" in thresholds:
+                raw_ai_w = max(0.0, float(thresholds.get("ai_score_weight", 0.40)))
+                raw_rule_w = max(0.0, float(thresholds.get("rule_score_weight", 0.60)))
+                blend_total = raw_ai_w + raw_rule_w
+                ai_w = (raw_ai_w / blend_total) if blend_total > 0 else 0.40
+                rule_w = (raw_rule_w / blend_total) if blend_total > 0 else 0.60
+            else:
+                ai_w, rule_w = 0.40, 0.60
 
             def _blend_dim(rule_v: float, ai_v: Optional[float]) -> float:
                 if ai_v is None:
                     return round(rule_v, 1)
                 return round(max(0.0, min(100.0, rule_v * rule_w + float(ai_v) * ai_w)), 1)
 
-            final_match_pct = _blend_dim(final_match_pct, gemini_result.get("ai_match_score"))
+            raw_gemini_overall = gemini_result.get("ai_match_score")
+            gemini_semantic_pct = round(float(raw_gemini_overall), 1) if raw_gemini_overall is not None else None
+            final_match_pct = _blend_dim(final_match_pct, raw_gemini_overall)
             if skills_status != STATUS_NOT_REQUIRED:
                 blended_skills_score = _blend_dim(blended_skills_score, gemini_result.get("ai_skills_score"))
             if exp_status != STATUS_NOT_REQUIRED:
-                blended_exp_score = _blend_dim(blended_exp_score, gemini_result.get("ai_experience_score"))
+                next_exp = _blend_dim(blended_exp_score, gemini_result.get("ai_experience_score"))
+                # Strict guardrail: prevent unrelated roles from being inflated to high experience scores
+                if (
+                    exp_status == STATUS_DOES_NOT_MEET
+                    and str(relevance_result.get("relevance_level", "")).lower() == "irrelevant"
+                    and blended_exp_score <= 10.0
+                    and str(gemini_result.get("relevance_level", "")).lower() != "highly relevant"
+                ):
+                    next_exp = min(35.0, next_exp)
+                blended_exp_score = next_exp
             if edu_status != STATUS_NOT_REQUIRED:
                 blended_edu_score = _blend_dim(blended_edu_score, gemini_result.get("ai_education_score"))
             if certs_status != STATUS_NOT_REQUIRED and gemini_result.get("ai_certifications_score") is not None:
                 blended_certs_score = _blend_dim(blended_certs_score, gemini_result.get("ai_certifications_score"))
 
-            all_matched = _merge_unique(all_matched, gemini_result.get("matched_skills") or [])
+            # Never re-add explicitly applicant-denied ("No") skills
+            denied_req_keys = {
+                _normalize_skill(str(r.get("requirement") or ""))
+                for r in requirement_evaluations
+                if isinstance(r, dict) and str(r.get("answer") or "").strip().lower() == "no"
+            }
+            gemini_skill_hits = _merge_unique(
+                gemini_result.get("matched_skills") or [],
+                gemini_result.get("semantic_matched_skills") or [],
+            )
+            safe_gemini_hits = [s for s in gemini_skill_hits if _normalize_skill(s) not in denied_req_keys]
+            all_matched = _merge_unique(all_matched, safe_gemini_hits)
             matched_keys = {_normalize_skill(s) for s in all_matched}
             all_missing = [
                 s for s in _merge_unique(all_missing, gemini_result.get("missing_skills") or [])
@@ -2997,6 +3057,7 @@ def calculate_match_score(
         except Exception as blend_err:
             logger.warning(f"Failed blending Gemini result; using NLP baseline: {blend_err}")
             gemini_result = None
+            gemini_semantic_pct = None
             ai_powered = False
 
     # ── Generate insights ────────────────────────────────────────────────────
@@ -3060,9 +3121,9 @@ def calculate_match_score(
 
     if ai_powered and gemini_result:
         score_explanation = (
-            f"Gemini AI Semantic Fit ({round(ai_w * 100)}%) + ATS Rule Validation ({round(rule_w * 100)}%): "
-            f"Overall {final_match_pct}% (Gemini {gemini_result.get('ai_match_score', final_match_pct)}%, "
-            f"ATS Rule {min(100.0, round(rule_match_pct, 1))}%)"
+            f"Hybrid ATS Rules ({round(rule_w * 100)}%) + Gemini Semantic AI ({round(ai_w * 100)}%): "
+            f"Overall {final_match_pct}% (ATS Rule {nlp_baseline_pct}%, "
+            f"Gemini Semantic {gemini_result.get('ai_match_score', final_match_pct)}%)"
         )
     else:
         score_explanation = (
@@ -3274,6 +3335,26 @@ def calculate_match_score(
 
     eligible_to_apply = (not job_has_any_requirement) or (meets_threshold and len(eligibility_reasons) == 0)
 
+    from app.services.ai_analysis_service import build_deterministic_why_this_score
+    why_this_score = (
+        list(gemini_result["why_this_score"])
+        if (gemini_result and gemini_result.get("why_this_score"))
+        else build_deterministic_why_this_score(
+            {
+                "matched_skills": all_matched,
+                "missing_skills": all_missing,
+                "skills_score": round(blended_skills_score, 1),
+                "experience_score": round(blended_exp_score, 1),
+                "experience_reason": experience_reason_strict,
+                "experience_gaps": experience_gaps_text,
+                "relevance_level": relevance_level,
+                "education_reason": education_result.get("reason", ""),
+                "certifications_reason": certs_result.get("reason", ""),
+                "certifications_status": certs_status,
+            }
+        )
+    )
+
     return {
         "job_id": job.get("job_id") if isinstance(job, dict) else getattr(job, "job_id", None),
         "job_title": job.get("job_title", "Unknown Job") if isinstance(job, dict) else getattr(job, "job_title", "Unknown Job"),
@@ -3282,6 +3363,8 @@ def calculate_match_score(
         "job_type": job.get("job_type", None) if isinstance(job, dict) else (getattr(job.job_type, "value", None) if getattr(job, "job_type", None) else None),
         # ── Scores ──
         "match_percentage": final_match_pct,
+        "nlp_baseline_score": nlp_baseline_pct,
+        "gemini_semantic_score": gemini_semantic_pct,
         "match_level": match_level,
         "ml_fit_percentage": ml_eval["fit_percentage"] if ml_eval else None,
         "ml_fit_probability": ml_eval["fit_probability"] if ml_eval else None,
@@ -3331,6 +3414,7 @@ def calculate_match_score(
         # ── AI / NLP Insights ──
         "recommendations": final_recommendations,
         "ai_summary": ai_summary,
+        "why_this_score": why_this_score,
         "strengths": strengths,
         "weaknesses": weaknesses,
         "ai_powered": ai_powered,
@@ -3397,6 +3481,7 @@ def nlp_analyze_match(resume_data: dict, job_data: dict, matching_config: Option
         "required_degree": result.get("required_degree"),
         "candidate_degree": result.get("candidate_degree"),
         "ai_summary": result["ai_summary"],
+        "why_this_score": result.get("why_this_score", []),
         "strengths": result["strengths"],
         "weaknesses": result["weaknesses"],
         "recommendations": result["recommendations"],
@@ -3515,11 +3600,160 @@ def nlp_compare_candidates(job_data: dict, candidates_data: list[dict]) -> dict:
     }
 
 
+def apply_gemini_enrichment_to_match_result(
+    match_result: dict,
+    gemini_result: dict,
+    matching_config: Optional[dict] = None,
+) -> dict:
+    """
+    Fuse a grounded Gemini semantic evaluation (single or batched Top-K) onto a
+    deterministic `calculate_match_score()` result while preserving all strict ATS
+    guardrails (NOT_REQUIRED protection, applicant 'No' denials, unrelated-experience
+    cap, and eligibility thresholds).
+    """
+    if not isinstance(match_result, dict) or not isinstance(gemini_result, dict):
+        return match_result
+
+    from app.services.ai_analysis_service import (
+        _resolve_blend_weights,
+        build_deterministic_why_this_score,
+    )
+
+    ai_w, rule_w = _resolve_blend_weights(matching_config)
+    enriched = dict(match_result)
+
+    def _blend_dim(rule_v: Any, ai_v: Any) -> float:
+        r = float(rule_v or 0.0)
+        if ai_v is None:
+            return round(r, 1)
+        return round(max(0.0, min(100.0, r * rule_w + float(ai_v) * ai_w)), 1)
+
+    nlp_overall = float(enriched.get("nlp_baseline_score") or enriched.get("match_percentage") or 0.0)
+    raw_gemini_overall = gemini_result.get("ai_match_score")
+    final_match_pct = _blend_dim(nlp_overall, raw_gemini_overall)
+
+    enriched["nlp_baseline_score"] = round(nlp_overall, 1)
+    enriched["gemini_semantic_score"] = round(float(raw_gemini_overall), 1) if raw_gemini_overall is not None else None
+    enriched["match_percentage"] = final_match_pct
+    enriched["match_level"] = (
+        "High Match" if final_match_pct >= 80 else ("Medium Match" if final_match_pct >= 50 else "Low Match")
+    )
+
+    if enriched.get("skills_status") != STATUS_NOT_REQUIRED:
+        enriched["skills_score"] = _blend_dim(enriched.get("skills_score"), gemini_result.get("ai_skills_score"))
+    if enriched.get("experience_status") != STATUS_NOT_REQUIRED:
+        next_exp = _blend_dim(enriched.get("experience_score"), gemini_result.get("ai_experience_score"))
+        if (
+            enriched.get("experience_status") == STATUS_DOES_NOT_MEET
+            and str(enriched.get("relevance_level") or "").lower() == "irrelevant"
+            and float(enriched.get("experience_score") or 0.0) <= 10.0
+            and str(gemini_result.get("relevance_level") or "").lower() != "highly relevant"
+        ):
+            next_exp = min(35.0, next_exp)
+        enriched["experience_score"] = next_exp
+    if enriched.get("education_status") != STATUS_NOT_REQUIRED:
+        enriched["education_score"] = _blend_dim(
+            enriched.get("education_score"), gemini_result.get("ai_education_score")
+        )
+    if (
+        enriched.get("certifications_status") != STATUS_NOT_REQUIRED
+        and gemini_result.get("ai_certifications_score") is not None
+    ):
+        enriched["certifications_score"] = _blend_dim(
+            enriched.get("certifications_score"), gemini_result.get("ai_certifications_score")
+        )
+
+    # Merge genuine semantic skill matches without overriding explicit applicant "No" denials
+    denied_keys = {
+        _normalize_skill(str(r.get("requirement") or ""))
+        for r in (enriched.get("requirement_evaluations") or [])
+        if isinstance(r, dict) and str(r.get("answer") or "").strip().lower() == "no"
+    }
+    gemini_hits = _merge_unique(
+        gemini_result.get("matched_skills") or [],
+        gemini_result.get("semantic_matched_skills") or [],
+    )
+    safe_hits = [s for s in gemini_hits if _normalize_skill(s) not in denied_keys]
+    all_matched = _merge_unique(enriched.get("matched_skills") or [], safe_hits)
+    matched_keys = {_normalize_skill(s) for s in all_matched}
+    all_missing = [
+        s for s in _merge_unique(enriched.get("missing_skills") or [], gemini_result.get("missing_skills") or [])
+        if _normalize_skill(s) not in matched_keys
+    ]
+    enriched["matched_skills"] = all_matched
+    enriched["missing_skills"] = all_missing
+    if gemini_result.get("transferable_skills"):
+        enriched["transferable_skills"] = _merge_unique(
+            enriched.get("transferable_skills") or [],
+            gemini_result.get("transferable_skills") or [],
+        )
+
+    if gemini_result.get("ai_summary"):
+        summary_text = str(gemini_result["ai_summary"]).strip()
+        exp_gap = enriched.get("experience_gaps")
+        if exp_gap and exp_gap not in summary_text:
+            summary_text = f"{summary_text} {exp_gap}."
+        enriched["ai_summary"] = summary_text
+
+    if gemini_result.get("why_this_score"):
+        enriched["why_this_score"] = list(gemini_result["why_this_score"])
+    elif not enriched.get("why_this_score"):
+        enriched["why_this_score"] = build_deterministic_why_this_score(enriched)
+
+    if gemini_result.get("strengths"):
+        enriched["strengths"] = list(gemini_result["strengths"])
+    if gemini_result.get("weaknesses"):
+        enriched["weaknesses"] = list(gemini_result["weaknesses"])
+    if gemini_result.get("recommendations"):
+        enriched["recommendations"] = list(gemini_result["recommendations"])
+    if gemini_result.get("skills_explanation"):
+        enriched["skills_explanation"] = gemini_result["skills_explanation"]
+    if gemini_result.get("experience_explanation"):
+        enriched["experience_explanation"] = gemini_result["experience_explanation"]
+    if gemini_result.get("education_explanation"):
+        enriched["education_explanation"] = gemini_result["education_explanation"]
+    if gemini_result.get("certification_explanation"):
+        enriched["certification_explanation"] = gemini_result["certification_explanation"]
+
+    min_score = float(enriched.get("minimum_match_score") or 30.0)
+    meets_threshold = final_match_pct >= min_score
+    enriched["meets_threshold"] = meets_threshold
+    if meets_threshold and enriched.get("eligibility_reasons"):
+        # Re-evaluate threshold-dependent eligibility reasons cleanly
+        updated_reasons = [
+            r for r in enriched["eligibility_reasons"]
+            if "below the accepted minimum requirement" not in str(r).lower()
+            and "experience is below minimum requirement" not in str(r).lower()
+            and "education does not meet" not in str(r).lower()
+            and "missing required certification" not in str(r).lower()
+        ]
+        if float(enriched.get("skills_score") or 0.0) > 0:
+            updated_reasons = [
+                r for r in updated_reasons if "none of the required skills were matched" not in str(r).lower()
+            ]
+        enriched["eligibility_reasons"] = updated_reasons
+        enriched["eligible_to_apply"] = len(updated_reasons) == 0
+
+    enriched["score_explanation"] = (
+        f"Hybrid ATS Rules ({round(rule_w * 100)}%) + Gemini Semantic AI ({round(ai_w * 100)}%): "
+        f"Overall {final_match_pct}% (ATS Rule {round(nlp_overall, 1)}%, "
+        f"Gemini Semantic {gemini_result.get('ai_match_score', final_match_pct)}%)"
+    )
+    enriched["ai_powered"] = True
+    enriched["model_used"] = "gemini"
+    enriched["gemini_model"] = gemini_result.get("gemini_model")
+    return enriched
+
+
 async def match_resume_to_all_jobs(db, resume_data: dict, use_ai: bool = False) -> list[dict]:
     """
-    Match parsed resume data against all active jobs in the database.
-    Leverages Celery background tasks to process all jobs in parallel,
-    significantly speeding up the NLP analysis process.
+    Match parsed resume data against all active jobs in the database using a two-stage
+    token-efficient Hybrid NLP + Gemini pipeline:
+      Stage 1: Deterministic NLP + ATS Rules run across ALL active jobs in parallel (0 API tokens).
+      Stage 2 (when `use_ai=True`): ONE single batched Gemini Flash-Lite call evaluates ONLY
+               the Top-K NLP-shortlisted jobs (default top 3), passing the candidate profile once
+               plus compact NLP scorecards (~95%+ token reduction vs per-job calls) and SHA-256
+               caching for 24h. Falls back seamlessly to pure NLP on exhaustion or budget cap.
     """
     from app.repositories.job_description_repository import JobDescriptionRepository
     from celery import group
@@ -3532,8 +3766,9 @@ async def match_resume_to_all_jobs(db, resume_data: dict, use_ai: bool = False) 
         return []
         
     job_dicts = []
+    job_dict_by_id: dict[str, dict] = {}
     for job in jobs:
-        job_dicts.append({
+        jd = {
             "job_id": job.job_id,
             "job_title": job.job_title,
             "department": job.department,
@@ -3544,10 +3779,12 @@ async def match_resume_to_all_jobs(db, resume_data: dict, use_ai: bool = False) 
             "education_requirements": getattr(job, "education_requirements", ""),
             "certifications_requirements": getattr(job, "certifications_requirements", ""),
             "scoring_weights": get_job_scoring_weights(job),
-        })
+        }
+        job_dicts.append(jd)
+        job_dict_by_id[str(job.job_id)] = jd
         
-    # Fan out to celery workers for parallel processing
-    task_group = group([match_single_job_task.s(resume_data, jd, use_ai) for jd in job_dicts])
+    # Stage 1: Always run fast deterministic NLP across all active jobs (use_ai=False -> 0 Gemini calls!)
+    task_group = group([match_single_job_task.s(resume_data, jd, False) for jd in job_dicts])
     
     def _wait_for_group():
         result = task_group.apply_async()
@@ -3561,20 +3798,70 @@ async def match_resume_to_all_jobs(db, resume_data: dict, use_ai: bool = False) 
         logger.error(f"Celery group matching failed or timed out: {e}. Falling back to sequential execution.")
         matches = []
         for job in jobs:
-            match_result = calculate_match_score(resume_data, job, use_ai=use_ai)
+            match_result = calculate_match_score(resume_data, job, use_ai=False)
             matches.append(match_result)
     
-    # Sort by match percentage descending
+    # Sort deterministic NLP matches descending before picking Top-K for batched Gemini enrichment
     matches.sort(key=lambda x: x["match_percentage"], reverse=True)
+
+    # Stage 2: Single batched Gemini Flash-Lite call for Top-K shortlisted jobs only
+    if use_ai and matches:
+        try:
+            from app.services.gemini_service import (
+                _get_smart_match_min_score,
+                _get_smart_match_top_k,
+                gemini_analyze_top_job_matches,
+                should_invoke_gemini_for_match,
+            )
+
+            allowed, _ = should_invoke_gemini_for_match(priority="smart_match", respect_pytest_guard=True)
+            if allowed:
+                top_k = _get_smart_match_top_k()
+                min_score_gate = _get_smart_match_min_score()
+                shortlisted = [m for m in matches if float(m.get("match_percentage") or 0.0) >= min_score_gate][:top_k]
+                if not shortlisted:
+                    # Explain at least the #1 closest job so candidate understands why scores were low
+                    shortlisted = matches[:1]
+
+                batch_inputs = [
+                    {
+                        "job": job_dict_by_id.get(str(m.get("job_id")), {"job_id": m.get("job_id"), "job_title": m.get("job_title")}),
+                        "nlp_result": m,
+                    }
+                    for m in shortlisted
+                ]
+                gemini_by_job_id = await asyncio.to_thread(
+                    gemini_analyze_top_job_matches,
+                    resume_data,
+                    batch_inputs,
+                )
+                if gemini_by_job_id:
+                    cfg = get_current_matching_config()
+                    enriched_matches = []
+                    for m in matches:
+                        jid = str(m.get("job_id") or "")
+                        gem = gemini_by_job_id.get(jid)
+                        if gem:
+                            enriched_matches.append(
+                                apply_gemini_enrichment_to_match_result(m, gem, matching_config=cfg)
+                            )
+                        else:
+                            enriched_matches.append(m)
+                    matches = enriched_matches
+                    matches.sort(key=lambda x: x["match_percentage"], reverse=True)
+        except Exception as batch_err:
+            logger.warning(f"Batched Top-K Gemini enrichment skipped (using NLP results): {batch_err}")
     
     return matches
 
 
 async def match_resume_to_job(db, resume_data: dict, job_id: str, use_ai: bool = False) -> dict | None:
     """
-    Match parsed resume data against a single specific job.
+    Match parsed resume data against a single specific job using deterministic NLP
+    plus optional low-token grounded Gemini Flash-Lite semantic analysis.
     """
     from app.repositories.job_description_repository import JobDescriptionRepository
+    import asyncio
     
     job = await JobDescriptionRepository.get_by_job_id(db, job_id)
     
@@ -3587,8 +3874,31 @@ async def match_resume_to_job(db, resume_data: dict, job_id: str, use_ai: bool =
 
     if not job or not getattr(job, "is_active", True):
         return None
-    
-    return calculate_match_score(resume_data, job, use_ai=use_ai)
+
+    effective_use_ai = False
+    if use_ai:
+        try:
+            from app.services.gemini_service import should_invoke_gemini_for_match
+
+            effective_use_ai, _ = should_invoke_gemini_for_match(
+                priority="smart_match",
+                respect_pytest_guard=True,
+            )
+        except Exception:
+            effective_use_ai = False
+
+    if effective_use_ai:
+        return await asyncio.to_thread(
+            calculate_match_score,
+            resume_data,
+            job,
+            True,
+            None,
+            True,
+            True,
+            "smart_match",
+        )
+    return calculate_match_score(resume_data, job, use_ai=False)
 
 
 import sys
