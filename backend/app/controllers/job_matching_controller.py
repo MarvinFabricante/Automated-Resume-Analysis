@@ -80,13 +80,15 @@ async def match_resume_data(
 async def match_resume_to_single_job(
     job_id: str,
     resume_data: ResumeMatchRequest,
+    use_ai: bool = False,
     db: AsyncSession = Depends(get_db)
 ):
     """
     Match already-parsed resume data against a single specific job.
+    Set `use_ai=true` to enrich deterministic ATS scoring with Gemini AI semantic analysis.
     """
     data_dict = resume_data.model_dump()
-    result = await job_matching_service.match_resume_to_job(db, data_dict, job_id)
+    result = await job_matching_service.match_resume_to_job(db, data_dict, job_id, use_ai=use_ai)
     if not result:
         raise HTTPException(status_code=404, detail="Job not found.")
     return _sanitize_for_applicant(result)

@@ -455,10 +455,31 @@ async def lifespan(app_instance: FastAPI):
     else:
         logger.warning("[Redis-First] Redis unreachable at startup. Operating with direct source-of-truth fallback.")
 
+    # Initialize Gemini API key pool and log non-sensitive readiness summary
+    try:
+        from app.services.gemini_service import get_gemini_status
+        gemini_status = get_gemini_status()
+        logger.info(
+            "[Startup] Gemini AI status: enabled=%s health=%s total_keys=%d primary=%s models=%s",
+            gemini_status.get("enabled"),
+            gemini_status.get("health"),
+            gemini_status.get("total_keys", 0),
+            gemini_status.get("active_key_label"),
+            gemini_status.get("models"),
+        )
+    except Exception as gemini_err:
+        logger.warning(f"[Startup] Could not initialize Gemini client: {gemini_err}")
+
     try:
         yield
     finally:
-        logger.info("[Shutdown] Cleaning up Redis listeners and connection pools...")
+        logger.info("[Shutdown] Cleaning up Gemini client, Redis listeners, and connection pools...")
+        try:
+            from app.utils.gemini_client import close_gemini_client
+            await close_gemini_client()
+        except Exception as e:
+            logger.debug(f"Error closing Gemini client: {e}")
+
         try:
             await ws_manager.stop_redis_listener()
         except Exception as e:
