@@ -43,10 +43,13 @@ def _make_pdf_bytes(text: str, pages: int = 1, encrypt: bool = False) -> bytes:
     return pdf_bytes
 
 
-def _make_docx_bytes(lines: list[str]) -> bytes:
+def _make_docx_bytes(lines: list[str], page_breaks: int = 0) -> bytes:
     d = docx.Document()
     for ln in lines:
         d.add_paragraph(ln)
+    for i in range(page_breaks):
+        d.add_page_break()
+        d.add_paragraph(f"Continuation page {i + 2}")
     buf = io.BytesIO()
     d.save(buf)
     return buf.getvalue()
@@ -618,7 +621,61 @@ async def test_all_resume_upload_endpoints_reject_random_pdf_and_accept_resume(c
         assert "resume" in r_bad_phys.json()["detail"].lower()
         assert fake_sb.await_count == 0
 
-        # 5. Valid resume succeeds on /candidate/parse-resume and /resumes/upload
+        # 5. Thesis Manuscript (with CV Appendix, even renamed to resume.docx) rejected across ALL endpoints
+        thesis_manuscript_docx = _make_docx_bytes([
+            "REPUBLIC OF THE PHILIPPINES",
+            "COMMISSION ON HIGHER EDUCATION",
+            "BATANGAS STATE UNIVERSITY",
+            "COLLEGE OF INFORMATICS AND COMPUTING SCIENCES",
+            "DEPARTMENT OF INFORMATION TECHNOLOGY",
+            "S.Y. 2025 - 2026",
+            "SMART INVENTORY AND SALES FORECASTING PLATFORM FOR LOCAL RETAIL ENTERPRISES",
+            "A Thesis Manuscript",
+            "Presented to the Faculty of the College of Informatics and Computing Sciences",
+            "In Partial Fulfillment of the Requirements for the Degree",
+            "Bachelor of Science in Information Technology",
+            "By: Mark Anthony Villanueva, Angela Mae Mendoza",
+            "Adviser: Engr. Roberto D. Castillo, MIT",
+            "CHAPTER 1: THE PROBLEM AND ITS BACKGROUND",
+            "Background of the Study: Local retail stores struggle with inventory tracking.",
+            "Objectives of the Study: To automate stock monitoring and demand forecasting.",
+            "Scope and Limitations: Covers retail stores in Batangas.",
+            "CHAPTER 2: REVIEW OF RELATED LITERATURE",
+            "According to Santos (2023), computerized systems reduce shrinkage by 35%.",
+            "CHAPTER 3: METHODOLOGY",
+            "Research Design: Developmental research design with 45 respondents.",
+            "CHAPTER 4: RESULTS AND DISCUSSION",
+            "Table 1. Weighted Mean of System Acceptability",
+            "APPENDIX A: CURRICULUM VITAE OF THE RESEARCHERS",
+            "CURRICULUM VITAE",
+            "MARK ANTHONY VILLANUEVA",
+            "mark.villanueva@gmail.com | 0917-888-1122 | Batangas City",
+            "EDUCATION",
+            "Bachelor of Science in Information Technology, Batangas State University (2022 - 2026)",
+            "WORK EXPERIENCE",
+            "IT Intern | ABC Retail Corp. | June 2025 - August 2025",
+            "- Assisted with database maintenance and POS troubleshooting.",
+            "SKILLS",
+            "Python, FastAPI, React, PostgreSQL, Git",
+        ])
+        docx_mime = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+
+        for ep, extra_data in [
+            ("/candidate/parse-resume", None),
+            ("/matching/match-resume", None),
+            ("/resumes/upload", None),
+            ("/hr/physical-resumes/upload", {"candidate_name": "Panelist Upload"}),
+        ]:
+            kwargs = {"files": {"file": ("Juan_Dela_Cruz_Resume.docx", thesis_manuscript_docx, docx_mime)}}
+            if extra_data:
+                kwargs["data"] = extra_data
+            r_thesis = await client.post(ep, **kwargs)
+            assert r_thesis.status_code == 400, f"Endpoint {ep} must reject Thesis Manuscript DOCX, got {r_thesis.status_code}"
+            detail_low = r_thesis.json()["detail"].lower()
+            assert "resume" in detail_low and ("thesis" in detail_low or "manuscript" in detail_low or "academic" in detail_low)
+            assert fake_sb.await_count == 0, f"Rejected thesis manuscript on {ep} must NOT be uploaded to Supabase"
+
+        # 6. Valid resume succeeds on /candidate/parse-resume and /resumes/upload
         r_ok_parse = await client.post(
             "/candidate/parse-resume",
             files={"file": ("ana_reyes_resume.pdf", valid_resume_pdf, "application/pdf")},
@@ -633,3 +690,365 @@ async def test_all_resume_upload_endpoints_reject_random_pdf_and_accept_resume(c
         )
         assert r_ok_upload.status_code == 200
         assert "public_url" in r_ok_upload.json()
+
+
+# ─── 5. Hardened Thesis Manuscript Variants & Tricky Legitimate Resumes ──────
+
+THESIS_AND_EXTRA_NON_RESUME_SAMPLES = [
+    (
+        "Juan_Dela_Cruz_Resume.pdf",  # Disguised filename: Thesis Manuscript with CV Appendix
+        """
+        REPUBLIC OF THE PHILIPPINES
+        COMMISSION ON HIGHER EDUCATION
+        REGION IV-A CALABARZON
+        BATANGAS STATE UNIVERSITY
+        THE NATIONAL ENGINEERING UNIVERSITY
+        ARASOF-NASUGBU CAMPUS
+        COLLEGE OF INFORMATICS AND COMPUTING SCIENCES
+        DEPARTMENT OF INFORMATION TECHNOLOGY
+        S.Y. 2025 - 2026
+
+        SMART INVENTORY AND SALES FORECASTING PLATFORM
+        FOR LOCAL RETAIL ENTERPRISES
+
+        A Thesis Manuscript
+        Presented to the Faculty of the
+        College of Informatics and Computing Sciences
+        Batangas State University
+
+        In Partial Fulfillment of the Requirements for the Degree
+        Bachelor of Science in Information Technology
+
+        By:
+        Mark Anthony Villanueva
+        Angela Mae Mendoza
+        Carlo Joseph Bautista
+
+        Adviser: Engr. Roberto D. Castillo, MIT
+
+        CHAPTER 1: THE PROBLEM AND ITS BACKGROUND
+        Background of the Study
+        Small retail businesses in Batangas struggle with manual stock tracking.
+        Objectives of the Study
+        - Developed a centralized inventory database using PostgreSQL and FastAPI.
+        - Implemented demand forecasting algorithms using Python and Scikit-learn.
+        Scope and Limitations
+        This study covers point-of-sale and inventory modules for retail stores in Batangas.
+
+        CHAPTER 2: REVIEW OF RELATED LITERATURE
+        According to Santos (2023), computerized inventory systems reduce shrinkage by 35%.
+
+        CHAPTER 3: METHODOLOGY
+        Research Design: The researchers used developmental research design and Agile Scrum methodology.
+        Respondents of the Study: 45 store managers and staff participated in the evaluation survey.
+
+        CHAPTER 4: RESULTS AND DISCUSSION
+        Table 1. Weighted Mean of System Acceptability
+        Figure 2. Forecasting Accuracy Comparison
+
+        CHAPTER 5: SUMMARY, CONCLUSION AND RECOMMENDATIONS
+        Based on the findings, the system is highly acceptable.
+
+        APPENDIX A: CURRICULUM VITAE OF THE RESEARCHERS
+        CURRICULUM VITAE
+        MARK ANTHONY VILLANUEVA
+        mark.villanueva@gmail.com | 0917-888-1122 | Batangas City
+        PERSONAL INFORMATION
+        Date of Birth: March 10, 2003
+        Place of Birth: Batangas City
+        Civil Status: Single
+        Nationality: Filipino
+        EDUCATION
+        Bachelor of Science in Information Technology
+        Batangas State University (2022 - 2026)
+        WORK EXPERIENCE
+        IT Intern | ABC Retail Corp. | June 2025 - August 2025
+        - Assisted in database maintenance and POS troubleshooting.
+        SKILLS
+        Python, FastAPI, React, PostgreSQL, Git, Microsoft Excel
+        """,
+    ),
+    (
+        "candidate_cv.pdf",  # Disguised filename: Thesis Proposal Chapters I-III (no CV appendix)
+        """
+        BATANGAS STATE UNIVERSITY
+        College of Computer Studies
+
+        THESIS MANUSCRIPT
+        WEB-BASED CLINIC APPOINTMENT AND PATIENT RECORDS MANAGEMENT SYSTEM
+
+        Submitted by:
+        Kevin Paul Reyes (kevin.reyes@gmail.com, 0918-444-5566)
+        Sarah Jane Lim
+
+        CHAPTER I: INTRODUCTION
+        Background of the Study
+        Medical clinics rely heavily on paper logbooks for scheduling and storing patient charts.
+        Objectives of the Study
+        1. To design an online booking portal for patients and clinic staff.
+        2. To implement automated SMS reminders for scheduled visits.
+        3. To evaluate the system based on ISO 25010 software quality characteristics.
+
+        CHAPTER II: REVIEW OF RELATED STUDIES
+        Prior studies by Dela Cruz (2022) and Reyes (2023) demonstrate that digital health records cut waiting time by half.
+
+        CHAPTER III: RESEARCH METHODOLOGY
+        Software Development Life Cycle (SDLC)
+        The team followed the Iterative Waterfall model from August 2025 - February 2026.
+        - Designed entity-relationship diagrams and system wireframes using Figma.
+        - Developed backend REST APIs in Python, Django, and MySQL.
+        - Conducted Alpha and Beta testing with clinic nurses and administrative staff at St. Luke Medical Clinic Inc.
+        """,
+    ),
+    (
+        "resume.pdf",  # Disguised filename: IMRaD Thesis Manuscript
+        """
+        DESIGN AND DEVELOPMENT OF AN IOT-BASED GREENHOUSE MONITORING SYSTEM
+        Juan Dela Cruz, Maria Clara Santos, Pedro Reyes
+        College of Engineering and Architecture, Batangas State University
+        juan.delacruz@g.batstate-u.edu.ph | 0917-555-1234
+
+        Abstract
+        This study presents the design and implementation of an IoT-based greenhouse monitoring system for smallholder farmers in Batangas.
+        Keywords: Internet of Things, Greenhouse, Agriculture, Sensor Network, Python
+
+        1. Introduction
+        Agriculture remains a vital pillar of the Philippine economy. Farmers face unpredictable weather conditions.
+
+        2. Methodology
+        The researchers utilized agile software development and hardware prototyping from January 2025 - November 2025.
+        - Developed sensor nodes using ESP32 and DHT22 modules.
+        - Built a web dashboard using React, FastAPI, and PostgreSQL.
+
+        3. Results and Discussion
+        Table 1. Usability and Functionality Evaluation Summary
+        Figure 1. System Architecture of the Greenhouse Monitoring Platform
+
+        4. Conclusion and Recommendations
+        The IoT-based system effectively automates greenhouse monitoring.
+
+        References
+        [1] Garcia, M., & Cruz, L. (2024). Smart Agriculture Systems. Journal of Engineering, vol. 8, pp. 12-20.
+        """,
+    ),
+    (
+        "ieee_paper.pdf",
+        """
+        Deep Learning Approaches for Ceramic Tile Surface Defect Detection
+        Miguel Angelo Torres, Patricia Ann Cruz
+        Department of Computer Engineering, Mapua University, Manila, Philippines
+        matorres@mapua.edu.ph
+
+        Abstract—Automated visual inspection is critical in ceramic tile manufacturing. We propose a convolutional neural network trained on 12,000 labeled tile images achieving 98.4% accuracy.
+        Index Terms—Computer Vision, Ceramic Tiles, Deep Learning, Defect Detection, PyTorch.
+
+        I. INTRODUCTION
+        Manual quality inspection in ceramic factories suffers from human fatigue and inconsistent defect classification.
+
+        II. RELATED WORK
+        Previous approaches used hand-crafted texture features (Lee et al., 2021) and support vector machines.
+
+        III. PROPOSED METHODOLOGY
+        We trained ResNet-50 and YOLOv8 models using Python, PyTorch, OpenCV, and Docker on an NVIDIA GPU cluster.
+
+        IV. EXPERIMENTAL RESULTS
+        Table I shows precision and recall metrics across five defect classes. Fig. 1 illustrates the confusion matrix.
+
+        V. CONCLUSION
+        Our automated defect inspection model significantly outperforms manual screening in speed and consistency.
+
+        REFERENCES
+        [1] K. Lee et al., "Tile defect detection," IEEE Trans. Ind. Electron., vol. 68, pp. 102-110, 2021.
+        """,
+    ),
+    (
+        "tagalog_thesis.pdf",
+        """
+        KABANATA 1: ANG SULIRANIN AT KALIGIRAN NITO
+        Kaligiran ng Pag-aaral
+        Ang pananaliksik na ito ay naglalayong suriin ang epekto ng makabagong teknolohiya sa mga mag-aaral.
+        Paglalahad ng Suliranin
+        1. Ano ang antas ng kahusayan ng mga mag-aaral sa paggamit ng digital learning tools?
+        Saklaw at Limitasyon
+        Ang pag-aaral na ito ay nakatuon sa mga mag-aaral sa kolehiyo sa Batangas.
+        Kahalagahan ng Pag-aaral
+        Makakatulong ito sa mga guro at tagapamahala ng paaralan.
+
+        KABANATA 2: MGA KAUGNAY NA LITERATURA AT PAG-AARAL
+        Ayon kay Cruz (2023), malaki ang naitutulong ng teknolohiya sa edukasyon.
+
+        KABANATA 3: DISENYO NG PANANALIKSIK
+        Ginamit ng mga mananaliksik ang deskriptibong disenyo ng pananaliksik.
+        Buod, Konklusyon at Rekomendasyon
+        """,
+    ),
+    (
+        "chapter_2_rrl_only.pdf",
+        """
+        CHAPTER 2: REVIEW OF RELATED LITERATURE AND STUDIES
+        This chapter presents the conceptual framework, theoretical framework, and related literature and studies
+        that guided the researchers in designing the system architecture.
+        According to Reyes et al. (2023), automated document classification improves precision by 31%.
+        Figure 2.1: Conceptual Framework (Input-Process-Output Model)
+        Table 2.1: Summary of Related Studies Reviewed
+        """,
+    ),
+    (
+        "ojt_narrative_report.pdf",
+        """
+        OJT NARRATIVE REPORT
+        Submitted by: Paolo Santos (paolo.santos@gmail.com, 0917-222-3333)
+        Bachelor of Science in Information Technology
+        Batangas State University
+
+        CHAPTER 1: COMPANY PROFILE
+        Mariwasa Siam Ceramics Inc. is a leading ceramic tile manufacturer in the Philippines.
+        CHAPTER 2: WEEKLY ACCOMPLISHMENT REPORT
+        Week 1: Assisted IT department with network cable crimping and inventory.
+        CHAPTER 3: CONCLUSION AND RECOMMENDATIONS
+        Based on the findings, the internship provided valuable industry exposure.
+        """,
+    ),
+    (
+        "srs_specification.pdf",
+        """
+        SOFTWARE REQUIREMENTS SPECIFICATION
+        Automated Recruitment Tracking System v2.0
+        Prepared by: Engineering Team (eng.lead@gmail.com, 0917-111-2222)
+        Table of Contents
+        1. Introduction
+        2. Overall Description
+        3. System Features and Functional Requirements
+        4. Non-Functional Requirements
+        Figure 1. Context Diagram
+        """,
+    ),
+    (
+        "midterm_exam.pdf",
+        """
+        MIDTERM EXAMINATION PAPER
+        Name: _____________________ Score: _______
+        Directions: Choose the letter of the best answer. Multiple Choice.
+        1. Which protocol operates at the transport layer?
+           a) HTTP  b) TCP  c) DNS  d) ARP
+        2. What does SQL stand for?
+           a) Structured Query Language  b) Simple Query Language
+        """,
+    ),
+]
+
+
+@pytest.mark.parametrize("filename,content", THESIS_AND_EXTRA_NON_RESUME_SAMPLES)
+def test_thesis_manuscripts_and_extra_non_resumes_rejected(filename, content):
+    pdf_bytes = _make_pdf_bytes(content)
+    is_resume, result = validate_resume_file_bytes(pdf_bytes, filename)
+    assert is_resume is False, f"Expected non-resume '{filename}' to be REJECTED, got: {result}"
+    assert result["message"]
+
+
+def test_oversized_pdf_and_docx_manuscripts_rejected_fast():
+    # 20-page image/empty-text PDF (e.g. scanned thesis manuscript) rejected immediately without OCR hang
+    scanned_20p = _make_pdf_bytes("", pages=20)
+    ok_scan, res_scan = validate_resume_file_bytes(scanned_20p, "scanned_manuscript.pdf")
+    assert ok_scan is False
+    assert res_scan["reason_code"] == "document_too_long"
+
+    # 16-page DOCX with explicit page breaks rejected as document_too_long
+    long_docx = _make_docx_bytes(
+        ["Generic industrial report discussing tile manufacturing operations across facilities."] * 25,
+        page_breaks=15,
+    )
+    ok_docx, res_docx = validate_resume_file_bytes(long_docx, "long_report.docx")
+    assert ok_docx is False
+    assert res_docx["reason_code"] in ("document_too_long", "insufficient_resume_evidence")
+
+    # Source code file disguised as .txt rejected
+    code_bytes = (
+        b"import os\nimport sys\nfrom fastapi import FastAPI\n\napp = FastAPI()\n\n"
+        b"def parse_doc(text):\n    result = {}\n    return result\n\n"
+        b"class DocumentScanner:\n    def run(self):\n        return True\n"
+    )
+    ok_code, res_code = validate_resume_file_bytes(code_bytes, "script.txt")
+    assert ok_code is False
+
+
+TRICKY_VALID_RESUMES = [
+    (
+        "fresh_grad_with_thesis_project.pdf",
+        """
+        MARVIN FABRICANTE
+        marvin.fabricante@gmail.com | 0917-555-0123 | Sto. Tomas, Batangas
+
+        OBJECTIVE
+        Motivated BS Information Technology graduate seeking a junior full-stack developer role.
+
+        EDUCATION
+        Bachelor of Science in Information Technology
+        Batangas State University | 2022 - 2026 | Cum Laude
+        Thesis: Automated Resume Analysis and Job Matching System
+
+        PROJECTS
+        Automated Resume Analysis System (Capstone Project, 2025 - 2026)
+        - Developed a FastAPI backend and React TypeScript frontend for automated resume parsing.
+        - Implemented deterministic NLP extraction for skills, education, and work history.
+
+        SKILLS
+        Python, FastAPI, React, TypeScript, PostgreSQL, Docker, Git
+        """,
+    ),
+    (
+        "academic_cv_with_publications.pdf",
+        """
+        CURRICULUM VITAE
+        DR. MARIA ELENA SANTOS, PhD
+        maria.santos@up.edu.ph | 0917-999-8888 | Quezon City, Metro Manila
+
+        EDUCATION
+        Ph.D. in Materials Science and Engineering, University of the Philippines Diliman (2018 - 2022)
+        M.S. in Chemical Engineering, University of the Philippines Diliman (2015 - 2017)
+
+        RESEARCH EXPERIENCE
+        Senior Research Scientist | Ceramics R&D Lab Corp. | 2022 - Present
+        - Led ceramic glaze formulation experiments and thermal shock testing.
+        - Managed analytical lab instruments and mentored junior researchers.
+
+        PUBLICATIONS
+        1. Santos, M. E., et al. (2023). Thermal stability of ceramic glazes. Journal of Materials, vol. 14, pp. 101-115. doi: 10.1000/abc
+        2. Santos, M. E., & Reyes, J. (2022). High-strength clay composites. Proceedings of ASEAN Ceramics, pp. 45-52.
+
+        SKILLS
+        Materials Characterization, XRD, SEM, Statistical Analysis, Python, MATLAB
+        """,
+    ),
+    (
+        "resume_with_clearances_and_certs.pdf",
+        """
+        JOSELITO RAMOS
+        joselito.ramos@gmail.com | 0919-555-7777 | Calamba, Laguna
+
+        WORK EXPERIENCE
+        Warehouse Staff | Southern Logistics Inc. | Jan 2021 - Present
+        - Handled incoming shipments, palletizing, and daily inventory audits.
+        - Operated electric forklift safely in compliance with warehouse SOPs.
+
+        EDUCATION
+        High School Graduate | Calamba National High School | 2014 - 2018
+
+        CERTIFICATIONS & LICENSES
+        - Certificate of Completion: Basic Occupational Safety and Health (BOSH)
+        - TESDA Forklift Operation NC II
+        - Valid NBI Clearance and Barangay Clearance
+
+        SKILLS
+        Inventory Management, Forklift Operation, Packing, Safety Compliance
+        """,
+    ),
+]
+
+
+@pytest.mark.parametrize("filename,content", TRICKY_VALID_RESUMES)
+def test_tricky_legitimate_resumes_are_still_accepted(filename, content):
+    pdf_bytes = _make_pdf_bytes(content)
+    is_resume, result = validate_resume_file_bytes(pdf_bytes, filename)
+    assert is_resume is True, f"Legitimate resume '{filename}' was wrongly rejected: {result}"
+    assert result["detected_document_type"] == "resume"
