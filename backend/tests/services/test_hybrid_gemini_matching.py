@@ -116,7 +116,11 @@ def test_grounded_hybrid_match_passes_nlp_audit_and_enforces_guardrails():
     mock_client.generate_content.return_value = _fake_response(gemini_payload, model="gemini-2.5-flash", total_tokens=810)
 
     with patch("app.services.gemini_service.get_gemini_client", return_value=mock_client):
-        result = ai_analysis_service.analyze_match_with_fallback(resume_data, job_data)
+        result = ai_analysis_service.analyze_match_with_fallback(
+            resume_data,
+            job_data,
+            matching_config={"weights": dict(job_matching_service.THESIS_DEFAULT_WEIGHTS), "thresholds": {}},
+        )
 
     assert result is not None
     assert result["ai_powered"] is True

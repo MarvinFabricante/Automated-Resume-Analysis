@@ -3343,6 +3343,7 @@ def calculate_match_score(
             {
                 "matched_skills": all_matched,
                 "missing_skills": all_missing,
+                "not_confirmed_skills": skills_result.get("not_confirmed", []),
                 "skills_score": round(blended_skills_score, 1),
                 "experience_score": round(blended_exp_score, 1),
                 "experience_reason": experience_reason_strict,
@@ -3784,14 +3785,14 @@ async def match_resume_to_all_jobs(db, resume_data: dict, use_ai: bool = False) 
         job_dict_by_id[str(job.job_id)] = jd
         
     # Stage 1: Always run fast deterministic NLP across all active jobs (use_ai=False -> 0 Gemini calls!)
-    task_group = group([match_single_job_task.s(resume_data, jd, False) for jd in job_dicts])
-    
-    def _wait_for_group():
-        result = task_group.apply_async()
-        # Wait up to 30 seconds for all parallel workers to finish their NLP tasks
-        return result.get(timeout=30)
-        
     try:
+        task_group = group([match_single_job_task.s(resume_data, jd, False) for jd in job_dicts])
+
+        def _wait_for_group():
+            result = task_group.apply_async()
+            # Wait up to 30 seconds for all parallel workers to finish their NLP tasks
+            return result.get(timeout=30)
+
         # Offload the blocking wait to a thread so we don't freeze the FastAPI event loop
         matches = await asyncio.to_thread(_wait_for_group)
     except Exception as e:
