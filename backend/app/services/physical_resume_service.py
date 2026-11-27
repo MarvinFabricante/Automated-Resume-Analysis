@@ -68,6 +68,12 @@ async def store_physical_resume(
     file_bytes = await file.read()
     file_size = len(file_bytes)
 
+    if file_size > 10 * 1024 * 1024:
+        raise HTTPException(
+            status_code=413,
+            detail="File size exceeds the 10MB maximum limit. Please upload a smaller resume document."
+        )
+
     # Security: Content check (magic bytes) to reject disguised executables (.exe renamed to .pdf, etc.)
     from app.utils.file_validator import validate_file_content
     is_valid, validation_err = validate_file_content(file_bytes, orig_filename)
@@ -77,6 +83,51 @@ async def store_physical_resume(
     mime_type = _get_mime_type(orig_filename)
     timestamp = int(time.time())
     safe_name = f"{timestamp}_{orig_filename.replace(' ', '_')}"
+
+    # Strict Resume-Only Gate & Auto-Parse BEFORE saving to disk/Supabase/database
+    parsed_data = None
+    if ext in {".pdf", ".docx", ".doc", ".txt"}:
+        tmp_dir = tempfile.mkdtemp()
+        tmp_path = os.path.join(tmp_dir, safe_name)
+        try:
+            with open(tmp_path, "wb") as tmp_f:
+                tmp_f.write(file_bytes)
+            from app.extractors.resume_processor import process_resume
+            extracted = process_resume(tmp_path, ext.strip("."))
+            if not extracted:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Only resume or CV documents are accepted. We could not read this file as a valid resume."
+                )
+            if extracted.get("is_valid_resume") is False:
+                validation = extracted.get("resume_validation") or {}
+                raise HTTPException(
+                    status_code=400,
+                    detail=validation.get("message") or (
+                        "Only resume or CV documents are accepted. The uploaded file does not appear to be a valid resume."
+                    )
+                )
+            parsed_data = extracted
+            logger.info(f"Auto-extracted data from physical resume: {list(extracted.keys())}")
+        finally:
+            try:
+                if os.path.exists(tmp_path):
+                    os.unlink(tmp_path)
+                if os.path.isdir(tmp_dir):
+                    os.rmdir(tmp_dir)
+            except OSError:
+                pass
+    else:
+        # Image scan (.png/.jpg/.jpeg/.webp): verify via OCR that the scan is actually a resume
+        from app.extractors.resume_validator import validate_resume_file_bytes
+        is_resume_img, img_check = validate_resume_file_bytes(file_bytes, orig_filename)
+        if not is_resume_img:
+            raise HTTPException(
+                status_code=400,
+                detail=img_check.get("message") or (
+                    "Only resume or CV documents are accepted. The uploaded image does not appear to be a readable resume."
+                )
+            )
 
     # 1. Save locally to uploads/physical_resumes/
     upload_dir = "uploads/physical_resumes"
@@ -102,22 +153,6 @@ async def store_physical_resume(
             logger.info(f"Physical resume uploaded to Supabase Storage: {file_url}")
     except Exception as sb_err:
         logger.warning(f"Supabase upload skipped/failed for physical resume, using local storage: {sb_err}")
-
-    # 3. Optional auto-parse for text & skills extraction
-    parsed_data = None
-    if ext in {".pdf", ".docx", ".doc", ".txt"}:
-        try:
-            from app.extractors.resume_processor import process_resume
-            tmp_dir = tempfile.mkdtemp()
-            tmp_path = os.path.join(tmp_dir, safe_name)
-            with open(tmp_path, "wb") as tmp_f:
-                tmp_f.write(file_bytes)
-            extracted = process_resume(tmp_path, ext.strip("."))
-            if extracted:
-                parsed_data = extracted
-                logger.info(f"Auto-extracted data from physical resume: {list(extracted.keys())}")
-        except Exception as parse_err:
-            logger.debug(f"Auto-parsing physical resume skipped: {parse_err}")
 
     # Resolve target job title if job_id provided
     target_job_id = data.get("target_job_id")

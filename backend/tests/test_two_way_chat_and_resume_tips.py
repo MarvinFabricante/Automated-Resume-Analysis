@@ -483,11 +483,20 @@ async def test_resume_tips_config_ats_template_and_readability_checks(client, db
     assert rc_clean["summary"] == "Looks readable"
     assert rc_clean["warnings"] == []
 
-    # 4. Readability check: multi-column table + missing contact/dates/headings -> specific non-blocking warnings
+    # 4. Readability check: multi-column table resume missing headings/contact/dates -> accepted as resume with specific non-blocking warnings
     messy_doc = docx.Document()
     tbl = messy_doc.add_table(rows=1, cols=2)
-    tbl.cell(0, 0).text = "Left column bio line one\nLeft column bio line two with more words here\nAnd a third line"
-    tbl.cell(0, 1).text = "Right column summary line one\nRight column summary line two with more words here\nAnd a third line"
+    tbl.cell(0, 0).text = (
+        "Marco Villanueva\n"
+        "Production Operator at Acme Manufacturing Corp.\n"
+        "Operated industrial ceramic press machines and performed daily quality control checks.\n"
+        "Assisted supervisors with preventive maintenance and workplace safety inspections."
+    )
+    tbl.cell(0, 1).text = (
+        "Bachelor of Science in Industrial Technology\n"
+        "Batangas State University\n"
+        "Proficient in Machine Operation, Quality Control, AutoCAD, Microsoft Excel, Forklift Operation, and ISO 9001 standards."
+    )
     messy_buf = io.BytesIO()
     messy_doc.save(messy_buf)
 
@@ -511,7 +520,8 @@ async def test_resume_tips_config_ats_template_and_readability_checks(client, db
     assert "missing_contact" in codes
     assert "missing_dates" in codes
 
-    # 5. Readability check: password-protected PDF -> non-blocking warning (200, not 400 crash)
+    # 5. Password-protected PDF cannot be verified as a resume -> rejected with 400
+    #    (while readability_checker itself still reports the password_protected warning directly)
     pdf_doc = fitz.open()
     page = pdf_doc.new_page()
     page.insert_text((72, 72), "Protected Resume Content")
@@ -523,7 +533,5 @@ async def test_resume_tips_config_ats_template_and_readability_checks(client, db
             "/candidate/parse-resume",
             files={"file": ("locked.pdf", enc_bytes, "application/pdf")},
         )
-    assert enc_res.status_code == 200
-    rc_enc = enc_res.json().get("readability_check")
-    assert rc_enc["status"] == "warning"
-    assert any(w["code"] == "password_protected" for w in rc_enc["warnings"])
+    assert enc_res.status_code == 400
+    assert "password" in enc_res.json()["detail"].lower()

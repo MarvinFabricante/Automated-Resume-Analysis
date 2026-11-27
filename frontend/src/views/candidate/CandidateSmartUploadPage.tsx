@@ -317,11 +317,19 @@ const CandidateSmartUploadPage: React.FC = () => {
       console.error('Candidate Smart Upload error:', error);
       const formattedMsg = formatUploadOrParseError(
         error,
-        'Failed to analyze resume. Please ensure your document contains readable text.'
+        'Only resume or CV documents are accepted. Please upload a valid resume file (PDF, DOCX, DOC, or TXT).'
       );
       setUploadError(formattedMsg);
       alert(formattedMsg);
-      if (error?.response?.status === 429) {
+      const status = error?.response?.status;
+      if (status === 400 || status === 415 || status === 422) {
+        setFile(null);
+        setExtractedData(null);
+        setMatchResults([]);
+        setIsComplete(false);
+        setUploadProgress(0);
+        setCooldown(0);
+      } else if (status === 429) {
         setCooldown(30);
       } else {
         setCooldown(10);

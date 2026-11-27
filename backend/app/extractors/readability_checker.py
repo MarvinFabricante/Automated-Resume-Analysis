@@ -46,6 +46,7 @@ def inspect_file_readability_signals(file_path: str, file_extension: str) -> Dic
         "native_text_chars": None,
         "is_multi_column": False,
         "has_images_only": False,
+        "page_count": None,
     }
 
     if not file_path or not os.path.isfile(file_path):
@@ -63,6 +64,7 @@ def inspect_file_readability_signals(file_path: str, file_extension: str) -> Dic
                         signals["password_protected"] = True
                         return signals
 
+                signals["page_count"] = len(doc)
                 native_chars = 0
                 total_images = 0
                 two_col_pages = 0

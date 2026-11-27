@@ -480,11 +480,19 @@ const ApplyForJobPage: React.FC = () => {
       console.error("Error parsing resume:", error);
       const formattedMsg = formatUploadOrParseError(
         error,
-        "Failed to parse resume. Please ensure you uploaded a valid PDF, Word document, or text file."
+        "Only resume or CV documents are accepted. Please upload a valid resume file (PDF, DOCX, DOC, or TXT)."
       );
       setUploadError(formattedMsg);
       alert(formattedMsg);
-      if (error?.response?.status === 429) {
+      const status = error?.response?.status;
+      if (status === 400 || status === 415 || status === 422) {
+        setFile(null);
+        setExtractedData(null);
+        setMatchData(null);
+        setIsComplete(false);
+        setUploadProgress(0);
+        setCooldown(0);
+      } else if (status === 429) {
         setCooldown(30); // Force a longer cooldown if backend rejected them
       } else {
         setCooldown(10); // 10s cooldown for retries

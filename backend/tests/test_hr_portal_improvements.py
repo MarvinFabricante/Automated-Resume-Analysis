@@ -272,7 +272,23 @@ async def run_tests():
         import io
         from fastapi import UploadFile
 
-        dummy_pdf = io.BytesIO(b"%PDF-1.4\n1 0 obj\n<<>>\nendobj\ntrailer\n<<>>\n%%EOF")
+        import fitz
+        _doc = fitz.open()
+        _page = _doc.new_page()
+        _page.insert_text(
+            (50, 50),
+            "JUAN DELA CRUZ\n"
+            "juan.delacruz@gmail.com | +63 917 123 4567 | Sto. Tomas, Batangas\n\n"
+            "WORK EXPERIENCE\n"
+            "Machine Operator | Mariwasa Ceramics Plant | 2022 - Present\n"
+            "- Operated ceramic press machines and performed quality control inspections.\n\n"
+            "EDUCATION\n"
+            "BS Industrial Technology | Batangas State University | 2018 - 2022\n\n"
+            "SKILLS\n"
+            "Machine Operation, Quality Control, Packaging, Safety Protocols\n",
+        )
+        dummy_pdf = io.BytesIO(_doc.tobytes())
+        _doc.close()
         mock_upload = UploadFile(filename="juan_delacruz_resume.pdf", file=dummy_pdf)
 
         import_data = {
