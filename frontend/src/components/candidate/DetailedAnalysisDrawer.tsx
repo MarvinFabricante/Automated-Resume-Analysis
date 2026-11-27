@@ -174,7 +174,7 @@ const DetailedAnalysisDrawer: React.FC<DetailedAnalysisDrawerProps> = ({
   const score = Math.round(match.match_percentage || 0);
   const scoreColor = score >= 70 ? 'text-emerald-700 bg-emerald-50 border-emerald-200'
     : score >= 40 ? 'text-amber-700 bg-amber-50 border-amber-200'
-    : 'text-rose-700 bg-rose-50 border-rose-200';
+      : 'text-rose-700 bg-rose-50 border-rose-200';
 
   const skillsReason = formatSecondPersonText(match.skills_reason, candidateName);
   const expReason = formatSecondPersonText(match.experience_reason || match.experience_explanation, candidateName);
@@ -446,11 +446,10 @@ const DetailedAnalysisDrawer: React.FC<DetailedAnalysisDrawerProps> = ({
                 onClose();
                 onStartApplication();
               }}
-              className={`flex-[1.5] py-3 px-5 rounded-xl font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition-all ${
-                isBelowAcceptedRequirements(match)
-                  ? 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'
-                  : 'bg-[#D10043] hover:bg-slate-900 text-white shadow-sm shadow-[#D10043]/20 active:scale-[0.98] cursor-pointer'
-              }`}
+              className={`flex-[1.5] py-3 px-5 rounded-xl font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition-all ${isBelowAcceptedRequirements(match)
+                ? 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'
+                : 'bg-[#D10043] hover:bg-slate-900 text-white shadow-sm shadow-[#D10043]/20 active:scale-[0.98] cursor-pointer'
+                }`}
             >
               <span>{isBelowAcceptedRequirements(match) ? 'Below Requirements' : 'Start Application'}</span>
               {!isBelowAcceptedRequirements(match) && <ArrowRight size={14} />}

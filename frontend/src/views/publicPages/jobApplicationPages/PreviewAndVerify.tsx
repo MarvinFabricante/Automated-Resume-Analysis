@@ -431,10 +431,10 @@ const PreviewAndVerifyPage: React.FC = () => {
       const rawClarificationResponses = activeData?.clarification_responses || data?.clarification_responses || [];
       const stampedClarificationResponses = Array.isArray(rawClarificationResponses)
         ? rawClarificationResponses.map((item: any) =>
-            item && typeof item === 'object'
-              ? { ...item, confirmed_at: item.confirmed_at || confirmationTimestamp }
-              : item
-          )
+          item && typeof item === 'object'
+            ? { ...item, confirmed_at: item.confirmed_at || confirmationTimestamp }
+            : item
+        )
         : [];
 
       const payload = {
@@ -993,11 +993,10 @@ const PreviewAndVerifyPage: React.FC = () => {
                 type="button"
                 disabled={isSubmitting || belowRequirements}
                 onClick={handleFinalSubmit}
-                className={`flex-[2] py-5 rounded-[24px] font-bold flex items-center justify-center gap-3 transition-all ${
-                  belowRequirements
-                    ? 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'
-                    : 'bg-[#D60041] hover:bg-slate-900 text-white shadow-xl shadow-pink-100 active:scale-95 disabled:opacity-75 disabled:cursor-not-allowed cursor-pointer'
-                }`}
+                className={`flex-[2] py-5 rounded-[24px] font-bold flex items-center justify-center gap-3 transition-all ${belowRequirements
+                  ? 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'
+                  : 'bg-[#D60041] hover:bg-slate-900 text-white shadow-xl shadow-pink-100 active:scale-95 disabled:opacity-75 disabled:cursor-not-allowed cursor-pointer'
+                  }`}
               >
                 {isSubmitting ? (
                   <div className="flex items-center gap-2">

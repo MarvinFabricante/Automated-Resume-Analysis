@@ -1,4 +1,5 @@
-import InterviewVenueFields, { emptyInterviewVenue, validInterviewVenue, venuePayload } from './InterviewVenueFields';
+import InterviewVenueFields, { emptyInterviewVenue, getInterviewVenueError, validInterviewVenue, venuePayload } from './InterviewVenueFields';
+import { resolveMeetingPlatform } from '../../../utils/meetingPlatform';
 import { useGetInterviewDefaultsQuery } from '../../../redux/api/apiSlice';
 import React, { useState, useEffect } from 'react';
 import {
@@ -129,8 +130,13 @@ const InterviewDetailsModal: React.FC<InterviewDetailsModalProps> = ({ isOpen, o
 
       setVenue({
         interviewType: ['Onsite', 'Online'].includes(interview.interview_type) ? interview.interview_type : '',
-        location: interview.location || '', meetingLink: interview.meeting_link || '',
-        instructions: interview.instructions || '', platform: interview.platform || '',
+        location: interview.location || '',
+        meetingLink: interview.meeting_link || '',
+        instructions: interview.instructions || '',
+        platform:
+          interview.platform ||
+          resolveMeetingPlatform(interview.meeting_link, interview.platform) ||
+          '',
       });
       setFormData({
         title: interview.title || '',
@@ -184,7 +190,7 @@ const InterviewDetailsModal: React.FC<InterviewDetailsModalProps> = ({ isOpen, o
   const handleSaveEdit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!validInterviewVenue(venue)) {
-      setErrorMsg('Choose an interview type and complete the required location or meeting link.');
+      setErrorMsg(getInterviewVenueError(venue) || 'Choose an interview type and complete the required location or meeting link.');
       return;
     }
 
@@ -631,12 +637,17 @@ const InterviewDetailsModal: React.FC<InterviewDetailsModalProps> = ({ isOpen, o
               )}
 
               {/* Description / Notes & Venue / Meeting Link */}
-              <div className="text-sm text-gray-700 space-y-1">
-                <p>Interview type: {interview.interview_type || 'Not specified'}</p>
-                {interview.platform && <p>Platform: {interview.platform}</p>}
-                {interview.instructions && <p>Instructions: {interview.instructions}</p>}
-                {interview.interview_type === 'Online' && <p>Please join a few minutes early and test your camera and microphone.</p>}
-              </div>
+              {(() => {
+                const resolvedPlatform = resolveMeetingPlatform(interview.meeting_link, interview.platform);
+                return (
+                  <div className="text-sm text-gray-700 space-y-1">
+                    <p>Interview type: {interview.interview_type || 'Not specified'}</p>
+                    {resolvedPlatform && <p>Platform: {resolvedPlatform}</p>}
+                    {interview.instructions && <p>Instructions: {interview.instructions}</p>}
+                    {interview.interview_type === 'Online' && <p>Please join a few minutes early and test your camera and microphone.</p>}
+                  </div>
+                );
+              })()}
               {(interview.location || interview.meeting_link || interview.description || interview.notes) && (
                 <div className="space-y-3">
                   {(interview.location || interview.meeting_link) && (
@@ -652,7 +663,13 @@ const InterviewDetailsModal: React.FC<InterviewDetailsModalProps> = ({ isOpen, o
                       {interview.meeting_link && (
                         <div className="bg-gray-50/80 border border-gray-100 rounded-2xl p-3.5">
                           <p className="text-[10px] font-black uppercase text-gray-400 tracking-wider mb-1 flex items-center gap-1">
-                            <Video size={11} className="text-[#D60041]" /> Meeting Link
+                            <Video size={11} className="text-[#D60041]" />{' '}
+                            {(() => {
+                              const resolvedPlatform = resolveMeetingPlatform(interview.meeting_link, interview.platform);
+                              return resolvedPlatform && resolvedPlatform !== 'Other'
+                                ? `${resolvedPlatform} Link`
+                                : 'Meeting Link';
+                            })()}
                           </p>
                           <a
                             href={interview.meeting_link}

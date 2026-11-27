@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { Helmet } from 'react-helmet-async';
-import { 
-  X, Briefcase, MapPin, Building2, DollarSign, 
-  ListChecks, FileText, Loader2, CheckCircle2, 
+import {
+  X, Briefcase, MapPin, Building2, DollarSign,
+  ListChecks, FileText, Loader2, CheckCircle2,
   AlertCircle, ChevronRight, ChevronLeft, Info,
   Trophy, Target, Sparkles, GraduationCap, Award
 } from 'lucide-react';
@@ -102,8 +102,8 @@ const EditJobModal: React.FC<EditJobModalProps> = ({ isOpen, onClose, onSuccess,
         job_type: jobData.job_type || 'Full-Time',
         salary_range: jobData.salary_range || '',
         description: jobData.description || '',
-        skills_requirements: Array.isArray(jobData.skills_requirements) 
-          ? jobData.skills_requirements.join(', ') 
+        skills_requirements: Array.isArray(jobData.skills_requirements)
+          ? jobData.skills_requirements.join(', ')
           : cleanRequirementInput(jobData.skills_requirements),
         education_requirements: cleanRequirementInput(jobData.education_requirements),
         experience_requirements: cleanRequirementInput(jobData.experience_requirements),
@@ -286,19 +286,18 @@ const EditJobModal: React.FC<EditJobModalProps> = ({ isOpen, onClose, onSuccess,
       <div className="px-4 sm:px-8 pt-4 sm:pt-6 pb-2">
         <div className="flex items-center justify-between relative">
           <div className="absolute top-1/2 left-0 w-full h-0.5 bg-gray-100 -translate-y-1/2 z-0" />
-          <div 
-            className="absolute top-1/2 left-0 h-0.5 bg-gradient-to-r from-[#d81159] to-pink-400 -translate-y-1/2 z-0 transition-all duration-500 ease-out" 
+          <div
+            className="absolute top-1/2 left-0 h-0.5 bg-gradient-to-r from-[#d81159] to-pink-400 -translate-y-1/2 z-0 transition-all duration-500 ease-out"
             style={{ width: `${((currentStep - 1) / (totalSteps - 1)) * 100}%` }}
           />
-          
+
           {steps.map((step) => (
             <div key={step} className="relative z-10 flex flex-col items-center">
-              <div 
-                className={`w-8 h-8 sm:w-10 sm:h-10 rounded-full flex items-center justify-center border-2 sm:border-4 transition-all duration-300 ${
-                  currentStep >= step 
-                    ? 'bg-white border-[#d81159] text-[#d81159] shadow-md sm:shadow-lg shadow-pink-100' 
-                    : 'bg-white border-gray-100 text-gray-300'
-                }`}
+              <div
+                className={`w-8 h-8 sm:w-10 sm:h-10 rounded-full flex items-center justify-center border-2 sm:border-4 transition-all duration-300 ${currentStep >= step
+                  ? 'bg-white border-[#d81159] text-[#d81159] shadow-md sm:shadow-lg shadow-pink-100'
+                  : 'bg-white border-gray-100 text-gray-300'
+                  }`}
               >
                 {currentStep > step ? <CheckCircle2 size={16} className="sm:w-5 sm:h-5 fill-[#d81159] text-white" /> : <span className="font-bold text-xs sm:text-sm">{step}</span>}
               </div>
@@ -318,7 +317,7 @@ const EditJobModal: React.FC<EditJobModalProps> = ({ isOpen, onClose, onSuccess,
         <title>Editing: {formData.job_title || 'Position'} | HR Portal</title>
       </Helmet>
       <div className="bg-white w-full max-w-2xl rounded-2xl sm:rounded-3xl shadow-[0_20px_50px_rgba(0,0,0,0.1)] overflow-hidden animate-in fade-in zoom-in duration-300 max-h-[92vh] sm:max-h-[90vh] flex flex-col relative border border-white/20">
-        
+
         {showRescoreConfirm && (
           <div
             role="dialog"
@@ -431,8 +430,8 @@ const EditJobModal: React.FC<EditJobModalProps> = ({ isOpen, onClose, onSuccess,
             </div>
             <h2 className="text-xl sm:text-2xl font-black text-gray-900 tracking-tight">Edit Position</h2>
           </div>
-          <button 
-            onClick={onClose} 
+          <button
+            onClick={onClose}
             className="group p-2 sm:p-3 hover:bg-red-50 rounded-xl sm:rounded-2xl transition-all duration-300 text-gray-400 hover:text-red-500 cursor-pointer"
           >
             <X size={20} className="group-hover:rotate-90 transition-transform duration-300" />
@@ -441,8 +440,8 @@ const EditJobModal: React.FC<EditJobModalProps> = ({ isOpen, onClose, onSuccess,
 
         {renderStepIndicator()}
 
-        <form 
-          onSubmit={handleSubmit} 
+        <form
+          onSubmit={handleSubmit}
           onKeyDown={(e) => {
             if (e.key === 'Enter' && (e.target as HTMLElement).tagName !== 'TEXTAREA') {
               e.preventDefault();
@@ -508,11 +507,10 @@ const EditJobModal: React.FC<EditJobModalProps> = ({ isOpen, onClose, onSuccess,
                           key={type}
                           type="button"
                           onClick={() => setFormData(prev => ({ ...prev, job_type: type }))}
-                          className={`py-2.5 sm:py-3 px-3 sm:px-4 rounded-xl text-xs font-bold transition-all border ${
-                            formData.job_type === type 
-                              ? 'bg-[#d81159] border-[#d81159] text-white shadow-lg shadow-pink-100' 
-                              : 'bg-white border-gray-100 text-gray-500 hover:border-pink-200'
-                          }`}
+                          className={`py-2.5 sm:py-3 px-3 sm:px-4 rounded-xl text-xs font-bold transition-all border ${formData.job_type === type
+                            ? 'bg-[#d81159] border-[#d81159] text-white shadow-lg shadow-pink-100'
+                            : 'bg-white border-gray-100 text-gray-500 hover:border-pink-200'
+                            }`}
                         >
                           {type}
                         </button>
@@ -573,13 +571,11 @@ const EditJobModal: React.FC<EditJobModalProps> = ({ isOpen, onClose, onSuccess,
                       <button
                         type="button"
                         onClick={() => setFormData(prev => ({ ...prev, is_active: !prev.is_active }))}
-                        className={`relative inline-flex h-6 sm:h-7 w-11 sm:w-12 items-center rounded-full transition-all duration-300 ${
-                          formData.is_active ? 'bg-emerald-500 shadow-lg shadow-emerald-100' : 'bg-gray-200'
-                        }`}
+                        className={`relative inline-flex h-6 sm:h-7 w-11 sm:w-12 items-center rounded-full transition-all duration-300 ${formData.is_active ? 'bg-emerald-500 shadow-lg shadow-emerald-100' : 'bg-gray-200'
+                          }`}
                       >
-                        <span className={`inline-block h-4 sm:h-5 w-4 sm:w-5 transform rounded-full bg-white shadow-sm transition-transform duration-300 ${
-                          formData.is_active ? 'translate-x-6 sm:translate-x-6' : 'translate-x-1'
-                        }`} />
+                        <span className={`inline-block h-4 sm:h-5 w-4 sm:w-5 transform rounded-full bg-white shadow-sm transition-transform duration-300 ${formData.is_active ? 'translate-x-6 sm:translate-x-6' : 'translate-x-1'
+                          }`} />
                       </button>
                     </div>
                   </div>
@@ -763,7 +759,7 @@ const EditJobModal: React.FC<EditJobModalProps> = ({ isOpen, onClose, onSuccess,
           </div>
         </form>
       </div>
-      
+
       <style>{`
         .custom-scrollbar::-webkit-scrollbar {
           width: 6px;

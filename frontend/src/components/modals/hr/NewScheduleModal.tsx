@@ -1,4 +1,4 @@
-import InterviewVenueFields, { emptyInterviewVenue, validInterviewVenue, venuePayload } from './InterviewVenueFields';
+import InterviewVenueFields, { emptyInterviewVenue, getInterviewVenueError, validInterviewVenue, venuePayload } from './InterviewVenueFields';
 import { useGetInterviewDefaultsQuery } from '../../../redux/api/apiSlice';
 import React, { useState, useEffect } from 'react';
 import {
@@ -233,7 +233,7 @@ const NewScheduleModal: React.FC<NewScheduleModalProps> = ({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!validInterviewVenue(venue)) {
-      setErrorMsg('Choose an interview type and complete the required location or meeting link.');
+      setErrorMsg(getInterviewVenueError(venue) || 'Choose an interview type and complete the required location or meeting link.');
       return;
     }
 

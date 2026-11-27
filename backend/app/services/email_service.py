@@ -1,4 +1,4 @@
-from app.services.interview_details import manila_time, ONLINE_INSTRUCTIONS
+from app.services.interview_details import manila_time, ONLINE_INSTRUCTIONS, detect_known_meeting_platform
 import os
 import sys
 import html
@@ -258,10 +258,20 @@ def _build_interview_venue_rows(
     meeting_cta = ""
     if clean_link:
         safe_link = html.escape(clean_link, quote=True)
+        detected_platform = detect_known_meeting_platform(clean_link)
+        cta_label = f"Join {detected_platform}" if detected_platform else "Join Interview Meeting"
+        if detected_platform:
+            rows.append(
+                f"""
+                        <tr>
+                            <td style="padding: 6px 0; color: #64748b; font-weight: 600;">Platform:</td>
+                            <td style="padding: 6px 0; color: #0f172a; font-weight: 700;">{html.escape(detected_platform)}</td>
+                        </tr>"""
+            )
         meeting_cta = f"""
                 <div style="text-align: center; margin: 20px 0 20px 0;">
                     <a href="{safe_link}" style="background-color: #D60041; color: #ffffff; padding: 12px 28px; text-decoration: none; border-radius: 25px; font-weight: 700; font-size: 14px; display: inline-block;">
-                        Join Interview Meeting &rarr;
+                        {cta_label} &rarr;
                     </a>
                     <p style="margin: 10px 0 0 0; font-size: 12px; color: #64748b;">{ONLINE_INSTRUCTIONS}</p>
                 </div>

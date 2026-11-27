@@ -183,6 +183,9 @@ export interface Interview {
   stage?: string;
   round?: string;
   status?: string;
+  interview_type?: string;
+  platform?: string;
+  instructions?: string;
   meeting_link?: string;
   location?: string;
   notes?: string;

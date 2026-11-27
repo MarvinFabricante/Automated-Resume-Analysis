@@ -212,8 +212,8 @@ const UploadPhysicalResumeModal: React.FC<UploadPhysicalResumeModalProps> = ({
       const extractedSkills = Array.isArray(parsed.skills_list)
         ? parsed.skills_list.join(', ')
         : Array.isArray(parsed.skills)
-        ? parsed.skills.join(', ')
-        : parsed.skills || '';
+          ? parsed.skills.join(', ')
+          : parsed.skills || '';
       const extractedCerts = parsed.certifications || parsed.candidate_certifications || '';
 
       setFormData((prev) => ({
@@ -375,7 +375,7 @@ const UploadPhysicalResumeModal: React.FC<UploadPhysicalResumeModalProps> = ({
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/75 backdrop-blur-xs flex items-center justify-center p-2.5 sm:p-4 animate-in fade-in duration-200">
       <div className="bg-white rounded-2xl sm:rounded-3xl shadow-2xl max-w-2xl w-full max-h-[92vh] flex flex-col overflow-hidden border border-slate-200 animate-in zoom-in-95 duration-200">
-        
+
         {/* MODAL HEADER */}
         <div className="px-5 sm:px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-gradient-to-r from-slate-50 to-white shrink-0">
           <div className="flex items-center space-x-3 min-w-0">
@@ -414,13 +414,12 @@ const UploadPhysicalResumeModal: React.FC<UploadPhysicalResumeModalProps> = ({
                 <React.Fragment key={s.step}>
                   <div className="flex items-center gap-2">
                     <div
-                      className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-black transition-all ${
-                        isPassed
-                          ? 'bg-emerald-500 text-white shadow-xs'
-                          : isCurrent
+                      className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-black transition-all ${isPassed
+                        ? 'bg-emerald-500 text-white shadow-xs'
+                        : isCurrent
                           ? 'bg-[#D60041] text-white ring-4 ring-[#D60041]/20 shadow-xs'
                           : 'bg-slate-200 text-slate-500'
-                      }`}
+                        }`}
                     >
                       {isPassed ? <Check size={14} strokeWidth={3} /> : s.step}
                     </div>
@@ -433,9 +432,8 @@ const UploadPhysicalResumeModal: React.FC<UploadPhysicalResumeModalProps> = ({
                   </div>
                   {idx < STEPS.length - 1 && (
                     <div
-                      className={`flex-1 mx-2 sm:mx-3 h-0.5 rounded transition-all ${
-                        currentStep > s.step ? 'bg-emerald-500' : 'bg-slate-200'
-                      }`}
+                      className={`flex-1 mx-2 sm:mx-3 h-0.5 rounded transition-all ${currentStep > s.step ? 'bg-emerald-500' : 'bg-slate-200'
+                        }`}
                     />
                   )}
                 </React.Fragment>
@@ -475,13 +473,12 @@ const UploadPhysicalResumeModal: React.FC<UploadPhysicalResumeModalProps> = ({
                 onDragOver={handleDrag}
                 onDrop={handleDrop}
                 onClick={() => fileInputRef.current?.click()}
-                className={`border-2 border-dashed rounded-3xl p-6 sm:p-8 text-center transition-all cursor-pointer relative ${
-                  dragActive
-                    ? 'border-[#D60041] bg-pink-50/50 scale-[0.99]'
-                    : selectedFile
+                className={`border-2 border-dashed rounded-3xl p-6 sm:p-8 text-center transition-all cursor-pointer relative ${dragActive
+                  ? 'border-[#D60041] bg-pink-50/50 scale-[0.99]'
+                  : selectedFile
                     ? 'border-emerald-300 bg-emerald-50/30'
                     : 'border-slate-200 hover:border-slate-300 bg-slate-50/50 hover:bg-slate-50'
-                }`}
+                  }`}
               >
                 <input
                   ref={fileInputRef}

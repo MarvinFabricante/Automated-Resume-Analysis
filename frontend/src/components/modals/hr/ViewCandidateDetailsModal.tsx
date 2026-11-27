@@ -37,6 +37,7 @@ import {
 } from '../../../utils/applicationTracker';
 import ApplicationStageTracker from '../../common/ApplicationStageTracker';
 import MessageApplicantModal from './MessageApplicantModal';
+import { getJoinButtonLabel } from '../../../utils/meetingPlatform';
 
 /* ─── Types & Interfaces ─── */
 export interface ViewCandidateDetailsModalProps {
@@ -947,7 +948,7 @@ const ViewCandidateDetailsModal: React.FC<ViewCandidateDetailsModalProps> = ({
                       className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-xl text-[11px] font-bold shrink-0"
                     >
                       <Video size={12} />
-                      <span>Join Meeting</span>
+                      <span>{getJoinButtonLabel(iv.meeting_link, iv.platform)}</span>
                     </a>
                   )}
                 </div>

@@ -31,7 +31,14 @@ from app.services.google_calendar_service import (
     _is_timeout_error,
 )
 from app.services import email_service
-from app.services.interview_details import validate_interview_details, details_for_interview, interview_details_text, manila_time
+from app.services.interview_details import (
+    validate_interview_details,
+    details_for_interview,
+    interview_details_text,
+    manila_time,
+    detect_meeting_platform,
+    resolve_meeting_platform,
+)
 
 def _populate_candidate_info(interview, app_override=None, interviewer_override=None):
     """Helper to attach candidate details and interviewer info to the interview model."""
@@ -1333,6 +1340,11 @@ async def schedule_interview(db: AsyncSession, data: InterviewCreateSchema, user
                 else positions_bullet
             )
 
+        resolved_platform = (
+            resolve_meeting_platform(interview_meeting_link, data.platform)
+            if data.interview_type == "Online"
+            else None
+        )
         interview_data = {
             "job_application_id": data.job_application_id,
             "interviewer_id": interviewer_id,
@@ -1342,7 +1354,7 @@ async def schedule_interview(db: AsyncSession, data: InterviewCreateSchema, user
             "end_time": end,
             "interview_type": data.interview_type or "Not specified",
             "instructions": data.instructions,
-            "platform": data.platform if data.interview_type == "Online" else None,
+            "platform": resolved_platform,
             "location": interview_location if data.interview_type != "Online" else None,
             "meeting_link": interview_meeting_link if data.interview_type != "Onsite" else None,
             "is_combined": is_combined_interview,
@@ -1702,11 +1714,19 @@ async def update_interview(db: AsyncSession, interview_id: int, data: InterviewU
     if venue_fields.intersection(changes):
         kind = merged["interview_type"]
         if kind not in ("Onsite", "Online"):
-            kind = "Online" if merged["meeting_link"] else "Onsite"
-        validate_interview_details(kind, merged["location"], merged["meeting_link"])
+            kind = "Online" if (merged["meeting_link"] or merged["platform"]) else "Onsite"
+        if kind == "Online" and "meeting_link" in changes and "platform" not in changes:
+            merged["platform"] = detect_meeting_platform(merged["meeting_link"])
+        validate_interview_details(
+            kind,
+            merged["location"],
+            merged["meeting_link"],
+            merged["platform"] if kind == "Online" else None,
+        )
         merged["interview_type"] = kind
         if kind == "Online":
             merged["location"] = None
+            merged["platform"] = resolve_meeting_platform(merged["meeting_link"], merged["platform"])
         else:
             merged["meeting_link"] = None
             merged["platform"] = None

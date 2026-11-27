@@ -150,10 +150,10 @@ const CandidateProfileForm: React.FC = () => {
     skills: (Array.isArray(location.state?.skills) && location.state.skills.length > 0)
       ? location.state.skills
       : (Array.isArray(ext?.skills_list) && ext.skills_list.length > 0)
-      ? ext.skills_list
-      : (Array.isArray(savedDraft?.formData?.skills) && savedDraft.formData.skills.length > 0)
-      ? savedDraft.formData.skills
-      : []
+        ? ext.skills_list
+        : (Array.isArray(savedDraft?.formData?.skills) && savedDraft.formData.skills.length > 0)
+          ? savedDraft.formData.skills
+          : []
   };
 
   const [formData, setFormData] = useState<ProfileFormData>(initialFormData);
@@ -274,7 +274,7 @@ const CandidateProfileForm: React.FC = () => {
 
       try {
         const payload = {
-            clarification_responses: collectClarificationResponses(clarificationQuestions, clarificationAnswers),
+          clarification_responses: collectClarificationResponses(clarificationQuestions, clarificationAnswers),
           skills: finalForm.skills.join(', '),
           skills_list: finalForm.skills,
           experience: finalForm.relevance,
@@ -349,7 +349,7 @@ const CandidateProfileForm: React.FC = () => {
           skills_list: finalForm.skills,
           clarification_questions: clarificationQuestions,
           clarification_answers: clarificationAnswers,
-        clarification_responses: collectClarificationResponses(clarificationQuestions, clarificationAnswers),
+          clarification_responses: collectClarificationResponses(clarificationQuestions, clarificationAnswers),
           resumeUrl: location.state?.resumeUrl || location.state?.extractedData?.file_url || null,
           raw_text: location.state?.rawText || location.state?.extractedData?.raw_text || null
         },
@@ -505,11 +505,10 @@ const CandidateProfileForm: React.FC = () => {
                   <button
                     type="submit"
                     disabled={isBelowRequirements}
-                    className={`w-full sm:w-auto px-10 py-4 rounded-[20px] font-bold flex items-center justify-center gap-3 transition-all ${
-                      isBelowRequirements
-                        ? 'bg-slate-200 text-slate-500 cursor-not-allowed shadow-none'
-                        : 'bg-[#D10043] hover:bg-slate-900 text-white shadow-xl shadow-pink-100 active:scale-[0.98] cursor-pointer'
-                    }`}
+                    className={`w-full sm:w-auto px-10 py-4 rounded-[20px] font-bold flex items-center justify-center gap-3 transition-all ${isBelowRequirements
+                      ? 'bg-slate-200 text-slate-500 cursor-not-allowed shadow-none'
+                      : 'bg-[#D10043] hover:bg-slate-900 text-white shadow-xl shadow-pink-100 active:scale-[0.98] cursor-pointer'
+                      }`}
                   >
                     <span>{isBelowRequirements ? 'Below Accepted Requirements' : 'Next: Review & Submit'}</span>
                     {!isBelowRequirements && <ArrowRight size={20} />}
@@ -787,11 +786,10 @@ const CandidateProfileForm: React.FC = () => {
                         window.scrollTo({ top: 0, behavior: 'smooth' });
                       }
                     }}
-                    className={`w-full sm:w-auto px-10 py-4 rounded-[20px] font-bold flex items-center justify-center gap-3 transition-all ${
-                      isBelowRequirements
-                        ? 'bg-slate-200 text-slate-500 cursor-not-allowed shadow-none'
-                        : 'bg-[#D10043] hover:bg-slate-900 text-white shadow-xl shadow-pink-100 active:scale-[0.98] cursor-pointer'
-                    }`}
+                    className={`w-full sm:w-auto px-10 py-4 rounded-[20px] font-bold flex items-center justify-center gap-3 transition-all ${isBelowRequirements
+                      ? 'bg-slate-200 text-slate-500 cursor-not-allowed shadow-none'
+                      : 'bg-[#D10043] hover:bg-slate-900 text-white shadow-xl shadow-pink-100 active:scale-[0.98] cursor-pointer'
+                      }`}
                   >
                     <span>{isBelowRequirements ? 'Below Accepted Requirements' : 'Next: Answer a few questions'}</span>
                     {!isBelowRequirements && <ArrowRight size={20} />}
