@@ -34,8 +34,8 @@ DEFAULT_WEIGHTS = dict(THESIS_DEFAULT_WEIGHTS)
 DEFAULT_THRESHOLDS = {
     "fuzzy_match_threshold": 0.75,
     "minimum_match_score": 30.0,
-    "ai_score_weight": 0.8,
-    "rule_score_weight": 0.2,
+    "ai_score_weight": 0.4,
+    "rule_score_weight": 0.6,
     "transferable_skills_cap": 2
 }
 

@@ -103,6 +103,7 @@ def build_deterministic_why_this_score(result: Dict[str, Any]) -> List[str]:
     reasons: List[str] = []
     matched = result.get("matched_skills") or []
     missing = result.get("missing_skills") or []
+    not_confirmed = result.get("not_confirmed_skills") or []
     skills_sc = result.get("skills_score", result.get("ai_skills_score"))
     exp_sc = result.get("experience_score", result.get("ai_experience_score"))
     edu_reason = str(result.get("education_reason") or "").strip()
@@ -118,6 +119,8 @@ def build_deterministic_why_this_score(result: Dict[str, Any]) -> List[str]:
 
     if missing and matched:
         reasons.append(f"Skill gaps lowering the score: {', '.join(str(s) for s in missing[:4])}.")
+    elif not_confirmed:
+        reasons.append(f"Unconfirmed required skills not found on resume: {', '.join(str(s) for s in not_confirmed[:4])}.")
 
     exp_gap = str(result.get("experience_gaps") or "").strip()
     exp_rel = str(result.get("relevance_level") or "").strip()
