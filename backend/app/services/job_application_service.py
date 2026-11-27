@@ -701,18 +701,74 @@ async def create_job_application(
                     matching_config=matching_config,
                     log_prediction=False,
                 )
-                if not elig_res.get("eligible_to_apply", elig_res.get("meets_threshold", True)):
+
+                # Hybrid ATS + Redis-cached Gemini Flash-Lite Eligibility Verification:
+                # Uses 0 Gemini calls for unmistakable passes/failures; invokes cached Flash-Lite
+                # ONLY for borderline or padded/suspect applications to block unqualified applicants
+                # who slipped past literal keyword padding and rescue genuine semantic equivalents.
+                is_eligible = bool(elig_res.get("eligible_to_apply", elig_res.get("meets_threshold", True)))
+                reasons = list(elig_res.get("eligibility_reasons") or [])
+                ai_tips: list[str] = []
+                try:
+                    from app.services.gemini_service import (
+                        gemini_verify_application_eligibility,
+                        should_invoke_gemini_for_eligibility,
+                    )
+                    should_ai_elig, _ = should_invoke_gemini_for_eligibility(elig_res)
+                    if should_ai_elig:
+                        job_payload = {
+                            "job_id": getattr(job_desc, "job_id", db_job_id),
+                            "job_title": getattr(job_desc, "job_title", ""),
+                            "department": getattr(job_desc, "department", ""),
+                            "description": getattr(job_desc, "description", ""),
+                            "skills_requirements": getattr(job_desc, "skills_requirements", ""),
+                            "experience_requirements": getattr(job_desc, "experience_requirements", ""),
+                            "education_requirements": getattr(job_desc, "education_requirements", ""),
+                            "certifications_requirements": getattr(job_desc, "certifications_requirements", ""),
+                        }
+                        ai_elig = gemini_verify_application_eligibility(eval_resume, job_payload, elig_res)
+                        if ai_elig:
+                            ai_conf = float(ai_elig.get("confidence") or 0.0)
+                            ai_tips = list(ai_elig.get("improvement_tips") or [])
+                            if not ai_elig.get("eligible") and ai_conf >= 0.65:
+                                is_eligible = False
+                                ai_block_reasons = list(ai_elig.get("blocking_reasons") or [])
+                                if ai_block_reasons:
+                                    for r_item in ai_block_reasons:
+                                        if r_item not in reasons:
+                                            reasons.append(r_item)
+                                elif ai_elig.get("summary"):
+                                    reasons.append(ai_elig["summary"])
+                            elif (
+                                not is_eligible
+                                and ai_elig.get("eligible") is True
+                                and ai_conf >= 0.85
+                                and float(elig_res.get("match_percentage") or 0.0) >= max(15.0, float(elig_res.get("minimum_match_score") or 30.0) - 10.0)
+                                and not any(
+                                    isinstance(ev, dict) and str(ev.get("answer") or "").lower() == "no"
+                                    for ev in (elig_res.get("requirement_evaluations") or [])
+                                )
+                            ):
+                                is_eligible = True
+                                reasons = []
+                except Exception as ai_elig_err:
+                    logger.debug(f"AI eligibility check fell back to deterministic ATS gate: {ai_elig_err}")
+
+                if not is_eligible:
                     from fastapi import HTTPException, status as http_status
                     score_val = float(elig_res.get("match_percentage") or 0.0)
                     min_req = float(elig_res.get("minimum_match_score") or 30.0)
-                    reasons = elig_res.get("eligibility_reasons") or [
-                        f"Your profile match score ({score_val:.1f}%) is below the minimum accepted requirement ({min_req:.1f}%)."
-                    ]
+                    if not reasons:
+                        reasons = [
+                            f"Your profile match score ({score_val:.1f}%) is below the minimum accepted requirement ({min_req:.1f}%)."
+                        ]
+                    tips_suffix = f" Suggestion: {ai_tips[0]}" if ai_tips else ""
                     raise HTTPException(
                         status_code=http_status.HTTP_400_BAD_REQUEST,
                         detail=(
                             f"Application blocked — below accepted requirements for {getattr(job_desc, 'job_title', 'this position')}. "
                             + " ".join(reasons)
+                            + tips_suffix
                             + " Please update your resume/qualifications or apply for a better-matched position."
                         ),
                     )

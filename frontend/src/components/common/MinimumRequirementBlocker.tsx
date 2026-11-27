@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { ShieldAlert, FileUp, Briefcase, AlertCircle } from 'lucide-react';
+import { ShieldAlert, FileUp, Briefcase, AlertCircle, Sparkles, Lightbulb } from 'lucide-react';
 
 export function isBelowAcceptedRequirements(matchData: any): boolean {
   if (!matchData || typeof matchData !== 'object') return false;
@@ -61,6 +61,10 @@ const MinimumRequirementBlocker: React.FC<MinimumRequirementBlockerProps> = ({
   const score = Math.round(Number(matchData?.match_percentage ?? 0));
   const minScore = Math.round(Number(matchData?.minimum_match_score ?? 30));
   const reasons = getEligibilityBlockReasons(matchData);
+  const aiVerified = Boolean(matchData?.ai_eligibility_verified || matchData?.ai_powered);
+  const tips: string[] = Array.isArray(matchData?.recommendations)
+    ? matchData.recommendations.filter(Boolean).map(String).slice(0, 2)
+    : [];
 
   return (
     <div
@@ -82,6 +86,12 @@ const MinimumRequirementBlocker: React.FC<MinimumRequirementBlockerProps> = ({
               <span className="px-2.5 py-0.5 rounded-full bg-white text-rose-700 border border-rose-200 text-[11px] font-black">
                 Match: {score}% / Required: {minScore}%+
               </span>
+              {aiVerified && (
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200 text-[10px] font-black uppercase tracking-wider">
+                  <Sparkles size={11} />
+                  AI Verified
+                </span>
+              )}
             </div>
           </div>
 
@@ -103,6 +113,20 @@ const MinimumRequirementBlocker: React.FC<MinimumRequirementBlockerProps> = ({
                 </li>
               ))}
             </ul>
+          )}
+
+          {tips.length > 0 && (
+            <div className="bg-amber-50/80 border border-amber-200/80 rounded-xl p-3 space-y-1">
+              <div className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider text-amber-800">
+                <Lightbulb size={12} className="text-amber-600" />
+                <span>How to Qualify</span>
+              </div>
+              {tips.map((tip, idx) => (
+                <p key={idx} className="text-xs text-amber-950 font-medium leading-relaxed">
+                  • {tip}
+                </p>
+              ))}
+            </div>
           )}
 
           {(onUploadDifferent || onBrowseJobs) && (

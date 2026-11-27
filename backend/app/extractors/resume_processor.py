@@ -26,6 +26,7 @@ def _apply_gemini_verification_and_enrichment(
     """
     try:
         from app.services.gemini_service import (
+            gemini_classify_wrong_document,
             gemini_verify_and_enhance_resume,
             should_invoke_gemini_for_resume,
         )
@@ -36,25 +37,6 @@ def _apply_gemini_verification_and_enrichment(
     should_call, decision_reason = should_invoke_gemini_for_resume(validation, extracted_data)
     validation["verified_by"] = "local_deterministic"
     validation["gemini_decision"] = decision_reason
-
-    if not should_call:
-        return validation
-
-    gemini_res = gemini_verify_and_enhance_resume(
-        raw_text=raw_text,
-        local_validation=validation,
-        extracted_data=extracted_data,
-        page_count=file_signals.get("page_count"),
-        filename=os.path.basename(file_path),
-    )
-    if not gemini_res:
-        validation["gemini_decision"] = "fallback_local_unavailable"
-        return validation
-
-    g_is_resume = bool(gemini_res.get("is_resume"))
-    g_conf = float(gemini_res.get("confidence") or 0.0)
-    g_doc_type = str(gemini_res.get("document_type") or "misc_non_resume")
-    g_reason = str(gemini_res.get("reason") or "").strip()
 
     # Map Gemini document_type onto canonical local rejection labels
     type_map = {
@@ -71,6 +53,61 @@ def _apply_gemini_verification_and_enrichment(
         "misc_non_resume": ("misc_non_resume", "detected_misc_non_resume"),
     }
 
+    if not should_call:
+        # For generic catch-all rejections (not obvious theses/manuals/invoices), use the ultra-compact
+        # Redis-cached wrong-document classifier so the user sees an accurate AI-predicted document type.
+        if not validation.get("is_resume") and validation.get("reason_code") in (
+            "detected_misc_non_resume",
+            "insufficient_resume_evidence",
+            "non_resume_signals_misc_non_resume",
+            "non_resume_signals_non_resume_document",
+        ):
+            wrong_doc_res = gemini_classify_wrong_document(
+                raw_text=raw_text,
+                local_validation=validation,
+                page_count=file_signals.get("page_count"),
+                filename=os.path.basename(file_path),
+            )
+            if wrong_doc_res and not wrong_doc_res.get("is_resume"):
+                g_doc_type = str(wrong_doc_res.get("document_type") or "misc_non_resume")
+                g_pred_label = str(wrong_doc_res.get("predicted_label") or "").strip()
+                g_reason = str(wrong_doc_res.get("reason") or "").strip()
+                mapped_type, mapped_reason = type_map.get(g_doc_type, ("misc_non_resume", "detected_misc_non_resume"))
+                validation["verified_by"] = "gemini"
+                validation["gemini_decision"] = "wrong_doc_classified"
+                validation["gemini_cached"] = bool(wrong_doc_res.get("cached"))
+                validation["gemini_model"] = wrong_doc_res.get("gemini_model")
+                validation["detected_document_type"] = mapped_type
+                validation["reason_code"] = mapped_reason
+                if g_pred_label:
+                    validation["predicted_document_label"] = g_pred_label
+                validation["gemini_reason"] = g_reason
+                validation["message"] = _build_rejection_message(
+                    mapped_type,
+                    mapped_reason,
+                    ai_reason=g_reason,
+                    verified_by="AI",
+                    predicted_label=g_pred_label or None,
+                )
+        return validation
+
+    gemini_res = gemini_verify_and_enhance_resume(
+        raw_text=raw_text,
+        local_validation=validation,
+        extracted_data=extracted_data,
+        page_count=file_signals.get("page_count"),
+        filename=os.path.basename(file_path),
+    )
+    if not gemini_res:
+        validation["gemini_decision"] = "fallback_local_unavailable"
+        return validation
+
+    g_is_resume = bool(gemini_res.get("is_resume"))
+    g_conf = float(gemini_res.get("confidence") or 0.0)
+    g_doc_type = str(gemini_res.get("document_type") or "misc_non_resume")
+    g_pred_label = str(gemini_res.get("predicted_label") or "").strip()
+    g_reason = str(gemini_res.get("reason") or "").strip()
+
     local_conf = float(validation.get("confidence") or 0.0)
     local_neg = float(validation.get("negative_score") or 0.0)
     local_core_headings = (validation.get("metrics") or {}).get("core_headings") or []
@@ -86,11 +123,14 @@ def _apply_gemini_verification_and_enrichment(
         validation["detected_document_type"] = mapped_type
         validation["reason_code"] = mapped_reason
         validation["confidence"] = round(max(local_conf, g_conf), 2)
+        if g_pred_label:
+            validation["predicted_document_label"] = g_pred_label
         base_msg = _build_rejection_message(
             mapped_type,
             mapped_reason,
             ai_reason=g_reason,
             verified_by="AI",
+            predicted_label=g_pred_label or None,
         )
         validation["message"] = base_msg
         validation["gemini_reason"] = g_reason
@@ -272,11 +312,43 @@ def process_resume(file_path: str, file_extension: str) -> dict:
         if early_rejection is not None:
             early_rejection["verified_by"] = "local_fast_prefilter"
             early_rejection["gemini_decision"] = "skipped_local_fast_prefilter"
-            try:
-                from app.services.gemini_service import record_local_prefilter_skip
-                record_local_prefilter_skip()
-            except Exception:
-                pass
+            if early_rejection.get("reason_code") == "detected_misc_non_resume" and len(pre_sample_text) >= 40:
+                try:
+                    from app.services.gemini_service import gemini_classify_wrong_document
+                    from .resume_validator import _build_rejection_message
+                    wrong_doc_res = gemini_classify_wrong_document(
+                        raw_text=pre_sample_text,
+                        local_validation=early_rejection,
+                        page_count=pre_page_count,
+                        filename=os.path.basename(file_path),
+                    )
+                    if wrong_doc_res and not wrong_doc_res.get("is_resume"):
+                        g_pred_label = str(wrong_doc_res.get("predicted_label") or "").strip()
+                        g_reason = str(wrong_doc_res.get("reason") or "").strip()
+                        g_doc_type = str(wrong_doc_res.get("document_type") or "misc_non_resume")
+                        early_rejection["verified_by"] = "gemini"
+                        early_rejection["gemini_decision"] = "wrong_doc_classified"
+                        early_rejection["gemini_cached"] = bool(wrong_doc_res.get("cached"))
+                        early_rejection["gemini_model"] = wrong_doc_res.get("gemini_model")
+                        early_rejection["detected_document_type"] = g_doc_type
+                        if g_pred_label:
+                            early_rejection["predicted_document_label"] = g_pred_label
+                        early_rejection["gemini_reason"] = g_reason
+                        early_rejection["message"] = _build_rejection_message(
+                            g_doc_type,
+                            f"detected_{g_doc_type}",
+                            ai_reason=g_reason,
+                            verified_by="AI",
+                            predicted_label=g_pred_label or None,
+                        )
+                except Exception:
+                    pass
+            if early_rejection.get("verified_by") == "local_fast_prefilter":
+                try:
+                    from app.services.gemini_service import record_local_prefilter_skip
+                    record_local_prefilter_skip()
+                except Exception:
+                    pass
             logger.warning(
                 f"Pre-extraction fast-rejected non-resume document ({early_rejection['detected_document_type']}, "
                 f"reason={early_rejection['reason_code']}, pages={pre_page_count}, score={early_rejection['score']}): {file_path}"
@@ -368,11 +440,43 @@ def process_resume(file_path: str, file_extension: str) -> dict:
     if fast_rejection is not None:
         fast_rejection["verified_by"] = "local_fast_prefilter"
         fast_rejection["gemini_decision"] = "skipped_local_fast_prefilter"
-        try:
-            from app.services.gemini_service import record_local_prefilter_skip
-            record_local_prefilter_skip()
-        except Exception:
-            pass
+        if fast_rejection.get("reason_code") == "detected_misc_non_resume":
+            try:
+                from app.services.gemini_service import gemini_classify_wrong_document
+                from .resume_validator import _build_rejection_message
+                wrong_doc_res = gemini_classify_wrong_document(
+                    raw_text=text,
+                    local_validation=fast_rejection,
+                    page_count=file_signals.get("page_count"),
+                    filename=os.path.basename(file_path),
+                )
+                if wrong_doc_res and not wrong_doc_res.get("is_resume"):
+                    g_pred_label = str(wrong_doc_res.get("predicted_label") or "").strip()
+                    g_reason = str(wrong_doc_res.get("reason") or "").strip()
+                    g_doc_type = str(wrong_doc_res.get("document_type") or "misc_non_resume")
+                    fast_rejection["verified_by"] = "gemini"
+                    fast_rejection["gemini_decision"] = "wrong_doc_classified"
+                    fast_rejection["gemini_cached"] = bool(wrong_doc_res.get("cached"))
+                    fast_rejection["gemini_model"] = wrong_doc_res.get("gemini_model")
+                    fast_rejection["detected_document_type"] = g_doc_type
+                    if g_pred_label:
+                        fast_rejection["predicted_document_label"] = g_pred_label
+                    fast_rejection["gemini_reason"] = g_reason
+                    fast_rejection["message"] = _build_rejection_message(
+                        g_doc_type,
+                        f"detected_{g_doc_type}",
+                        ai_reason=g_reason,
+                        verified_by="AI",
+                        predicted_label=g_pred_label or None,
+                    )
+            except Exception:
+                pass
+        if fast_rejection.get("verified_by") == "local_fast_prefilter":
+            try:
+                from app.services.gemini_service import record_local_prefilter_skip
+                record_local_prefilter_skip()
+            except Exception:
+                pass
         logger.warning(
             f"Fast-rejected non-resume document ({fast_rejection['detected_document_type']}, "
             f"reason={fast_rejection['reason_code']}, score={fast_rejection['score']}): {file_path}"
