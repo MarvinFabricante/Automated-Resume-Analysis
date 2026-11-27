@@ -1654,10 +1654,13 @@ const ViewCandidateDetailsModal: React.FC<ViewCandidateDetailsModalProps> = ({
                     {candidate.ai_powered ? (
                       <div className="space-y-2 pt-2 border-t border-white/10 text-xs">
                         <p className="font-mono text-slate-200">
-                          Overall = Gemini Semantic Fit <span className="text-emerald-400 font-bold">80%</span> + ATS Rule Validation <span className="text-blue-400 font-bold">20%</span>
+                          Hybrid Analysis = ATS Rules &amp; NLP Grounding <span className="text-blue-400 font-bold">60%</span> + Gemini Semantic AI <span className="text-emerald-400 font-bold">40%</span>
+                        </p>
+                        <p className="text-slate-300 text-[11px]">
+                          Criterion Weights: Skills {wSkillsPct}%, Experience {wExpPct}%, Education {wEduPct}%, Certifications {wCertsPct}%, Completeness {wCompPct}%
                         </p>
                         <p className="text-slate-400 text-[11px]">
-                          Evaluates semantic relevance across required skills, verified experience tenure, academic qualification, and certifications.
+                          Combines deterministic ATS rule validation (strict tenure, degree hierarchy, applicant confirmations) with Gemini semantic skill discovery and reasoning.
                         </p>
                       </div>
                     ) : (

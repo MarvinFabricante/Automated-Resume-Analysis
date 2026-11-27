@@ -223,6 +223,75 @@ async def compare_candidates_service(
             "profile_image_url": app.profile_image_url,
         })
 
+    # 7. Optional grounded Gemini comparative summary (single cached Flash-Lite call)
+    ai_comparison: Dict[str, Any] = {
+        "ai_powered": False,
+        "model_used": "nlp",
+        "gemini_model": None,
+        "overall_summary": "",
+        "comparative_insights": [],
+        "rankings": [],
+    }
+    try:
+        from app.services.gemini_service import (
+            async_gemini_compare_candidates,
+            should_invoke_gemini_for_match,
+        )
+
+        allowed, _ = should_invoke_gemini_for_match(priority="comparison", respect_pytest_guard=True)
+        if allowed and len(candidates_result) >= 2:
+            job_payload = {
+                "job_title": ref_job.job_title,
+                "department": getattr(ref_job, "department", "") or "",
+                "description": getattr(ref_job, "description", "") or "",
+                "skills_requirements": getattr(ref_job, "skills_requirements", "") or "",
+                "experience_requirements": getattr(ref_job, "experience_requirements", "") or "",
+                "education_requirements": getattr(ref_job, "education_requirements", "") or "",
+                "certifications_requirements": getattr(ref_job, "certifications_requirements", "") or "",
+            }
+            compact_cands = [
+                {
+                    "candidate_name": c["name"],
+                    "skills": c.get("matched_skills", []) + c.get("missing_skills", []),
+                    "years_experience": c.get("experience_years", 0),
+                    "degree": c.get("degree") or c.get("highest_educational_attainment"),
+                    "match_score": c.get("match_score", 0),
+                    "skills_score": c.get("skills_score", 0),
+                    "experience_score": c.get("experience_score", 0),
+                    "education_score": c.get("education_score", 0),
+                    "certifications_score": c.get("certifications_score", 0),
+                    "experience": c.get("experience_reason") or c.get("relevance") or "",
+                }
+                for c in candidates_result
+            ]
+            gemini_cmp = await async_gemini_compare_candidates(
+                job_payload,
+                compact_cands,
+                nlp_baseline={"ranked_candidates": compact_cands},
+            )
+            if gemini_cmp:
+                ai_comparison = {
+                    "ai_powered": True,
+                    "model_used": "gemini",
+                    "gemini_model": gemini_cmp.get("gemini_model"),
+                    "overall_summary": gemini_cmp.get("overall_summary") or "",
+                    "comparative_insights": gemini_cmp.get("comparative_insights") or [],
+                    "rankings": gemini_cmp.get("rankings") or [],
+                }
+                by_name = {
+                    str(r.get("candidate_name") or "").strip().lower(): r
+                    for r in (gemini_cmp.get("rankings") or [])
+                }
+                for c in candidates_result:
+                    r_match = by_name.get(str(c.get("name") or "").strip().lower())
+                    if r_match:
+                        c["ai_reasoning"] = r_match.get("reasoning") or ""
+                        c["key_differentiator"] = r_match.get("key_differentiator") or ""
+                        c["score_breakdown_explanation"] = r_match.get("score_breakdown_explanation") or ""
+                        c["ai_powered"] = True
+    except Exception:
+        pass
+
     # Return result
     return {
         "reference_job": {
@@ -238,5 +307,6 @@ async def compare_candidates_service(
         },
         "is_cross_job": is_cross_job,
         "note": note,
+        "ai_comparison": ai_comparison,
         "candidates": candidates_result,
     }

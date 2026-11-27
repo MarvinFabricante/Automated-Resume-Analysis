@@ -176,11 +176,25 @@ const DetailedAnalysisDrawer: React.FC<DetailedAnalysisDrawerProps> = ({
     : score >= 40 ? 'text-amber-700 bg-amber-50 border-amber-200'
       : 'text-rose-700 bg-rose-50 border-rose-200';
 
-  const skillsReason = formatSecondPersonText(match.skills_reason, candidateName);
-  const expReason = formatSecondPersonText(match.experience_reason || match.experience_explanation, candidateName);
-  const eduReason = formatSecondPersonText(match.education_reason, candidateName);
-  const certsReason = formatSecondPersonText(match.certifications_reason || match.certification_explanation, candidateName);
+  const skillsReason = formatSecondPersonText(match.skills_explanation || match.skills_reason, candidateName);
+  const expReason = formatSecondPersonText(match.experience_explanation || match.experience_reason, candidateName);
+  const eduReason = formatSecondPersonText(match.education_explanation || match.education_reason, candidateName);
+  const certsReason = formatSecondPersonText(match.certification_explanation || match.certifications_reason, candidateName);
   const aiSummary = formatSecondPersonText(match.ai_summary, candidateName);
+  const whyThisScore: string[] = Array.isArray(match.why_this_score)
+    ? match.why_this_score
+        .map((item: any) => formatSecondPersonText(String(item || ''), candidateName))
+        .filter(Boolean)
+    : [];
+  const strengthsList: string[] = Array.isArray(match.strengths)
+    ? match.strengths.map((s: any) => formatSecondPersonText(String(s || ''), candidateName)).filter(Boolean)
+    : [];
+  const weaknessesList: string[] = Array.isArray(match.weaknesses)
+    ? match.weaknesses.map((w: any) => formatSecondPersonText(String(w || ''), candidateName)).filter(Boolean)
+    : [];
+  const recommendationsList: string[] = Array.isArray(match.recommendations)
+    ? match.recommendations.map((r: any) => formatSecondPersonText(String(r || ''), candidateName)).filter(Boolean)
+    : [];
 
   const skillsStatus = resolveCriterionStatus({
     explicitStatus: match.skills_status,
@@ -234,6 +248,12 @@ const DetailedAnalysisDrawer: React.FC<DetailedAnalysisDrawerProps> = ({
                 <span className={`text-[11px] font-black px-2.5 py-0.5 rounded-full border ${scoreColor}`}>
                   {score}% Match
                 </span>
+                {match.ai_powered && (
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200 inline-flex items-center gap-1">
+                    <Sparkles size={10} />
+                    Hybrid NLP + Gemini AI
+                  </span>
+                )}
               </div>
               <h2
                 id="drawer-title"
@@ -281,6 +301,24 @@ const DetailedAnalysisDrawer: React.FC<DetailedAnalysisDrawerProps> = ({
                   How well you fit this job
                 </p>
                 <p>{aiSummary}</p>
+              </div>
+            )}
+
+            {/* Why You Got This Score */}
+            {whyThisScore.length > 0 && (
+              <div className="p-4 bg-rose-50/40 rounded-2xl border border-rose-100 space-y-2">
+                <p className="text-xs font-black uppercase tracking-wider text-slate-900 flex items-center gap-1.5">
+                  <Target size={13} className="text-[#D10043]" />
+                  Why you got this match result
+                </p>
+                <ul className="space-y-1.5">
+                  {whyThisScore.map((reason, idx) => (
+                    <li key={idx} className="text-xs text-slate-700 leading-relaxed flex items-start gap-2">
+                      <span className="w-1.5 h-1.5 rounded-full bg-[#D10043] shrink-0 mt-1.5" />
+                      <span>{reason}</span>
+                    </li>
+                  ))}
+                </ul>
               </div>
             )}
 
@@ -423,6 +461,53 @@ const DetailedAnalysisDrawer: React.FC<DetailedAnalysisDrawerProps> = ({
                 </p>
               )}
             </section>
+
+            {/* Key Strengths & Areas to Improve */}
+            {(strengthsList.length > 0 || weaknessesList.length > 0) && (
+              <section className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {strengthsList.length > 0 && (
+                  <div className="p-3.5 bg-emerald-50/50 border border-emerald-100 rounded-xl space-y-1.5">
+                    <p className="text-[11px] font-black uppercase tracking-wider text-emerald-900 flex items-center gap-1">
+                      <CheckCircle2 size={12} className="text-emerald-600" />
+                      Key Strengths
+                    </p>
+                    <ul className="space-y-1">
+                      {strengthsList.slice(0, 4).map((item, idx) => (
+                        <li key={idx} className="text-xs text-slate-700 leading-relaxed">• {item}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {weaknessesList.length > 0 && (
+                  <div className="p-3.5 bg-amber-50/50 border border-amber-100 rounded-xl space-y-1.5">
+                    <p className="text-[11px] font-black uppercase tracking-wider text-amber-900 flex items-center gap-1">
+                      <XCircle size={12} className="text-amber-600" />
+                      Areas to Strengthen
+                    </p>
+                    <ul className="space-y-1">
+                      {weaknessesList.slice(0, 4).map((item, idx) => (
+                        <li key={idx} className="text-xs text-slate-700 leading-relaxed">• {item}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </section>
+            )}
+
+            {/* Actionable Recommendations */}
+            {recommendationsList.length > 0 && (
+              <section className="p-4 bg-slate-50 rounded-2xl border border-slate-100 space-y-1.5">
+                <p className="text-[11px] font-black uppercase tracking-wider text-slate-900 flex items-center gap-1.5">
+                  <Sparkles size={12} className="text-[#D10043]" />
+                  Recommendations
+                </p>
+                <ul className="space-y-1">
+                  {recommendationsList.slice(0, 3).map((tip, idx) => (
+                    <li key={idx} className="text-xs text-slate-700 leading-relaxed">• {tip}</li>
+                  ))}
+                </ul>
+              </section>
+            )}
 
           </div>
 

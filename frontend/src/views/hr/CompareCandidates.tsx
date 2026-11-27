@@ -838,6 +838,39 @@ const CompareCandidates: React.FC = () => {
             </div>
           )}
 
+          {/* Grounded Hybrid AI Comparison Verdict */}
+          {serverComparison?.ai_comparison?.overall_summary && (
+            <div className="mt-4 bg-indigo-50/70 border border-indigo-200 rounded-2xl p-4 flex items-start gap-3 shadow-2xs">
+              <div className="w-8 h-8 rounded-xl bg-indigo-100 text-indigo-700 flex items-center justify-center shrink-0 mt-0.5">
+                <Sparkles size={16} />
+              </div>
+              <div className="flex-1 min-w-0 space-y-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="text-xs font-black uppercase tracking-wider text-indigo-950">
+                    Hybrid NLP + Gemini AI Comparison Verdict
+                  </p>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-white text-indigo-700 border border-indigo-200">
+                    {serverComparison.ai_comparison.ai_powered ? 'Gemini AI Grounded' : 'ATS NLP Summary'}
+                  </span>
+                </div>
+                <p className="text-xs text-indigo-950 leading-relaxed font-medium">
+                  {serverComparison.ai_comparison.overall_summary}
+                </p>
+                {Array.isArray(serverComparison.ai_comparison.comparative_insights) &&
+                  serverComparison.ai_comparison.comparative_insights.length > 0 && (
+                    <ul className="space-y-1 pt-1">
+                      {serverComparison.ai_comparison.comparative_insights.slice(0, 4).map((insight: string, idx: number) => (
+                        <li key={idx} className="text-xs text-indigo-900 flex items-start gap-1.5">
+                          <span className="text-indigo-500 font-bold">•</span>
+                          <span>{insight}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+              </div>
+            </div>
+          )}
+
           {serverCompareError && (
             <div className="mt-4 bg-rose-50 border border-rose-200 rounded-2xl p-4 flex items-center gap-3 text-rose-800 text-xs font-bold">
               <AlertTriangle size={16} className="text-[#D60041] shrink-0" />

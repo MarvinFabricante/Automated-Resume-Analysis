@@ -118,14 +118,36 @@ const SmartMatchResult: React.FC = () => {
 
         {/* Top Match Hero */}
         {sortedMatches.length > 0 && (
-          <div className="bg-white p-8 md:p-10 rounded-[32px] border border-slate-100 shadow-sm mb-12">
-            <h2 className="text-xl font-black text-slate-900 mb-4 flex items-center gap-2">
-              <Zap className="text-[#D60041]" size={24} />
-              Your Top Match: {sortedMatches[0].job_title} ({Math.round(sortedMatches[0].match_percentage)}%)
-            </h2>
+          <div className="bg-white p-8 md:p-10 rounded-[32px] border border-slate-100 shadow-sm mb-12 space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h2 className="text-xl font-black text-slate-900 flex items-center gap-2">
+                <Zap className="text-[#D60041]" size={24} />
+                Your Top Match: {sortedMatches[0].job_title} ({Math.round(sortedMatches[0].match_percentage)}%)
+              </h2>
+              {sortedMatches[0].ai_powered && (
+                <span className="px-3 py-1 rounded-full text-[11px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                  Hybrid NLP + Gemini AI
+                </span>
+              )}
+            </div>
             <p className="text-slate-600 leading-relaxed text-sm">
               {formatSecondPersonText(sortedMatches[0].ai_summary, candidateFullName) || "Your background and skills closely match what this role asks for."}
             </p>
+            {Array.isArray(sortedMatches[0].why_this_score) && sortedMatches[0].why_this_score.length > 0 && (
+              <div className="p-4 bg-rose-50/40 rounded-2xl border border-rose-100 space-y-1.5">
+                <p className="text-[11px] font-black uppercase tracking-wider text-slate-900">
+                  Why you got this match result
+                </p>
+                <ul className="space-y-1">
+                  {sortedMatches[0].why_this_score.slice(0, 4).map((reason: string, idx: number) => (
+                    <li key={idx} className="text-xs text-slate-700 leading-relaxed flex items-start gap-2">
+                      <span className="w-1.5 h-1.5 rounded-full bg-[#D60041] shrink-0 mt-1.5" />
+                      <span>{formatSecondPersonText(reason, candidateFullName)}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </div>
         )}
 

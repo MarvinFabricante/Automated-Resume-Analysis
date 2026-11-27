@@ -19,6 +19,8 @@ def _sanitize_for_applicant(match: dict) -> dict:
     cleaned = dict(match)
     weights = cleaned.pop("applied_weights", None) or {}
     cleaned.pop("weights_source", None)
+    cleaned.pop("nlp_baseline_score", None)
+    cleaned.pop("gemini_semantic_score", None)
 
     if isinstance(cleaned.get("criteria_evaluations"), dict):
         sanitized_evals = {}
@@ -52,40 +54,44 @@ def _sanitize_for_applicant(match: dict) -> dict:
 @router.post("/match-resume", response_model=MatchResponse)
 async def match_resume_file(
     file: UploadFile = File(...),
+    use_ai: bool = True,
     db: AsyncSession = Depends(get_db)
 ):
     """
-    Upload a resume file, parse it, and match against all active jobs.
+    Upload a resume file, parse it, and match against all active jobs using
+    token-efficient Hybrid NLP + single-call Top-K Gemini semantic analysis.
     """
     extracted_data = await resume_service.parse_resume_file(db, file)
     if not extracted_data:
         raise HTTPException(status_code=400, detail="Failed to parse resume.")
     
-    results = await job_matching_service.match_resume_to_all_jobs(db, extracted_data)
+    results = await job_matching_service.match_resume_to_all_jobs(db, extracted_data, use_ai=use_ai)
     return MatchResponse(results=[_sanitize_for_applicant(r) for r in results])
 
 @router.post("/match-data", response_model=MatchResponse)
 async def match_resume_data(
     resume_data: ResumeMatchRequest,
+    use_ai: bool = True,
     db: AsyncSession = Depends(get_db)
 ):
     """
-    Match already-parsed resume data against all active jobs.
+    Match already-parsed resume data against all active jobs using
+    token-efficient Hybrid NLP + single-call Top-K Gemini semantic analysis.
     """
     data_dict = resume_data.model_dump()
-    results = await job_matching_service.match_resume_to_all_jobs(db, data_dict)
+    results = await job_matching_service.match_resume_to_all_jobs(db, data_dict, use_ai=use_ai)
     return MatchResponse(results=[_sanitize_for_applicant(r) for r in results])
 
 @router.post("/match-data/{job_id}", response_model=JobMatchResult)
 async def match_resume_to_single_job(
     job_id: str,
     resume_data: ResumeMatchRequest,
-    use_ai: bool = False,
+    use_ai: bool = True,
     db: AsyncSession = Depends(get_db)
 ):
     """
-    Match already-parsed resume data against a single specific job.
-    Set `use_ai=true` to enrich deterministic ATS scoring with Gemini AI semantic analysis.
+    Match already-parsed resume data against a single specific job using
+    grounded Hybrid NLP + Gemini Flash-Lite semantic analysis (set `use_ai=false` for pure NLP).
     """
     data_dict = resume_data.model_dump()
     result = await job_matching_service.match_resume_to_job(db, data_dict, job_id, use_ai=use_ai)
