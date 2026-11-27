@@ -80,6 +80,56 @@ def process_resume(file_path: str, file_extension: str) -> dict:
             "resume_validation": validation,
         }
 
+    # ── Ultra-fast pre-extraction gate (runs BEFORE expensive dual-engine PDF/OCR extraction) ──
+    # Immediately rejects huge thesis manuscripts, manuals, books, or unmistakable cover-page non-resumes
+    # in milliseconds so they never get scanned by pdfminer.six, 250-DPI OCR, or spaCy NER.
+    pre_sample_text = (file_signals.get("fast_sample_text") or "").strip()
+    pre_page_count = file_signals.get("page_count")
+    if pre_sample_text or (isinstance(pre_page_count, int) and pre_page_count >= 15):
+        early_rejection = fast_precheck_non_resume(
+            raw_text=pre_sample_text,
+            file_signals=file_signals,
+            page_count=pre_page_count,
+            filename=os.path.basename(file_path),
+            is_partial_sample=True,
+        )
+        if early_rejection is not None:
+            logger.warning(
+                f"Pre-extraction fast-rejected non-resume document ({early_rejection['detected_document_type']}, "
+                f"reason={early_rejection['reason_code']}, pages={pre_page_count}, score={early_rejection['score']}): {file_path}"
+            )
+            readability = evaluate_resume_readability(
+                file_path=file_path,
+                file_extension=file_extension,
+                raw_text=pre_sample_text,
+                extracted_data={},
+                file_signals=file_signals,
+            )
+            return {
+                "fullname": "",
+                "name": "",
+                "candidate_name": "",
+                "email": "",
+                "candidate_email": "",
+                "phone": "",
+                "candidate_phone": "",
+                "location": "",
+                "skills": [],
+                "skills_list": [],
+                "skills_array": [],
+                "work_experiences": [],
+                "education_entries": [],
+                "certifications": "",
+                "certifications_list": [],
+                "raw_text": pre_sample_text,
+                "is_incomplete": True,
+                "is_complete": False,
+                "completeness_status": "Incomplete",
+                "readability_check": readability,
+                "is_valid_resume": False,
+                "resume_validation": early_rejection,
+            }
+
     text = extract_file_content(file_path, file_extension)
     if not text or not text.strip():
         logger.warning(f"extract_file_content returned empty text for: {file_path}")

@@ -311,13 +311,40 @@ _EXPLICIT_SKILLS_LIST_RE = re.compile(
 
 _GARBAGE_EXP_ORG_RE = re.compile(
     r"^(?:chapter|section|part|step|module|unit|lesson|week|figure|table|appendix|"
-    r"manual|guide|system|portal|page|slide|item|article|clause)\b",
+    r"manual|guide|system|portal|page|slide|item|article|clause|thesis|capstone|"
+    r"manuscript|abstract|methodology|literature|study|research|respondent|adviser|advisor)\b",
     re.IGNORECASE,
 )
 
 _GARBAGE_EXP_TITLE_RE = re.compile(
     r"\b(?:user\s+manual|recruiter\s+guide|quick\s+start|operations\s+manual|"
-    r"admin\s+guide|step[\s\-]by[\s\-]step|table\s+of\s+contents|chapter\s+\d+)\b",
+    r"admin\s+guide|step[\s\-]by[\s\-]step|table\s+of\s+contents|chapter\s+\d+|"
+    r"thesis\s+(?:adviser|advisor|manuscript|committee|proposal|defense)|"
+    r"capstone\s+(?:adviser|advisor|manuscript|project|documentation)|"
+    r"panel\s+of\s+examiners|research\s+methodology|statement\s+of\s+the\s+problem|"
+    r"review\s+of\s+related\s+(?:literature|studies))\b",
+    re.IGNORECASE,
+)
+
+_ACADEMIC_YEAR_PREFIX_RE = re.compile(
+    r"\b(?:s\.?\s*y\.?|a\.?\s*y\.?|school\s+year|academic\s+year|semester|term|batch)\s*[:\-]?\s*$",
+    re.IGNORECASE,
+)
+
+_ACADEMIC_PROSE_LINE_RE = re.compile(
+    r"\b(?:the\s+researchers?|respondents?|proponents?|adviser|advisor|panelist|"
+    r"panel\s+member|critic\s+reader|this\s+study|this\s+research|this\s+thesis|"
+    r"this\s+paper|likert\s+scale|weighted\s+mean|iso(?:/iec)?\s*25010|"
+    r"alpha\s+and\s+beta\s+testing|survey\s+questionnaire|data\s+gathering|"
+    r"partial\s+fulfillment|presented\s+to\s+the\s+faculty|submitted\s+to\s+the\s+faculty|"
+    r"waterfall\s+model|agile\s+scrum\s+methodology|developmental\s+research)\b",
+    re.IGNORECASE,
+)
+
+_THESIS_DEGREE_BOILERPLATE_RE = re.compile(
+    r"\b(?:partial\s+fulfillment|requirements?\s+for\s+the\s+degree|"
+    r"presented\s+to\s+the\s+faculty|submitted\s+to\s+the\s+faculty|"
+    r"approval\s+sheet|degree\s+of\s+bachelor|degree\s+of\s+master)\b",
     re.IGNORECASE,
 )
 
@@ -357,6 +384,9 @@ _NON_RESUME_RULES: Dict[str, Dict[str, Any]] = {
                         r"administrator\s+guide|developer\s+(?:&|and)\s+system\s+administrator\s+manual|"
                         r"standard\s+operating\s+procedure|employee\s+handbook|student\s+handbook|"
                         r"troubleshooting\s+guide|api\s+documentation|system\s+documentation|"
+                        r"software\s+requirements?\s+specification|software\s+design\s+document|"
+                        r"system\s+architecture\s+document|functional\s+specification|"
+                        r"technical\s+specification|deployment\s+guide|configuration\s+guide|"
                         r"release\s+notes|enterprise\s+user\s+manual)\b", re.IGNORECASE), 8.5),
         ],
         "body_patterns": [
@@ -374,30 +404,41 @@ _NON_RESUME_RULES: Dict[str, Dict[str, Any]] = {
         ],
     },
     "academic_paper": {
-        "label": "Academic Paper / Thesis / Report",
+        "label": "Thesis Manuscript / Academic Paper / Report",
         "title_patterns": [
             (re.compile(r"\b(?:submitted\s+in\s+partial\s+fulfillment|"
                         r"in\s+partial\s+fulfillment\s+of\s+the\s+requirements|"
-                        r"bachelor'?s\s+thesis|master'?s\s+thesis|doctoral\s+dissertation|"
-                        r"capstone\s+project\s+(?:documentation|manuscript|paper|report)|"
+                        r"partial\s+fulfillment\s+of\s+the\s+requirements|"
+                        r"presented\s+to\s+the\s+faculty\s+of|submitted\s+to\s+the\s+faculty\s+of|"
+                        r"thesis\s+manuscript|capstone\s+manuscript|research\s+manuscript|"
+                        r"project\s+manuscript|final\s+manuscript|"
+                        r"bachelor'?s\s+thesis|master'?s\s+thesis|undergraduate\s+thesis|"
+                        r"graduate\s+thesis|doctoral\s+dissertation|dissertation\s+manuscript|"
+                        r"capstone\s+project\s+(?:documentation|manuscript|paper|report|proposal)|"
+                        r"thesis\s+proposal|capstone\s+proposal|research\s+proposal|"
                         r"research\s+paper|term\s+paper|laboratory\s+report|lab\s+report|"
                         r"feasibility\s+study|business\s+plan|project\s+proposal|"
                         r"annual\s+report|financial\s+report|incident\s+report|"
+                        r"ojt\s+narrative\s+report|practicum\s+(?:narrative\s+)?report|"
                         r"narrative\s+report|accomplishment\s+report|progress\s+report|"
                         r"case\s+study\s+report|book\s+report|reflection\s+paper|"
-                        r"approval\s+sheet)\b", re.IGNORECASE), 8.0),
+                        r"reaction\s+paper|position\s+paper|approval\s+sheet|"
+                        r"certificate\s+of\s+originality|certification\s+of\s+originality)\b", re.IGNORECASE), 8.5),
         ],
         "body_patterns": [
             (re.compile(r"\b(?:statement\s+of\s+the\s+problem|review\s+of\s+related\s+literature|"
                         r"related\s+literature\s+and\s+studies|conceptual\s+framework|"
-                        r"theoretical\s+framework|scope\s+and\s+delimitation|significance\s+of\s+the\s+study|"
-                        r"definition\s+of\s+terms|research\s+methodology|research\s+design|"
-                        r"results\s+and\s+discussion|summary\s+of\s+findings|"
-                        r"conclusions?\s+and\s+recommendations?)\b", re.IGNORECASE), 3.5),
-            (re.compile(r"^\s*(?:chapter\s+(?:[1-9]|i|ii|iii|iv|v)\b|abstract|introduction|"
-                        r"methodology|bibliography|works\s+cited|list\s+of\s+tables|list\s+of\s+figures|"
-                        r"acknowledgements?|dedication)\s*$", re.IGNORECASE | re.MULTILINE), 2.5),
-            (re.compile(r"\b(?:figure\s+\d+[\.:]|table\s+\d+[\.:]|et\s+al\.|doi\s*:\s*10\.)", re.IGNORECASE), 2.0),
+                        r"theoretical\s+framework|scope\s+and\s+(?:delimitation|limitation)s?|"
+                        r"significance\s+of\s+the\s+study|background\s+of\s+the\s+study|"
+                        r"objectives\s+of\s+the\s+study|definition\s+of\s+terms|"
+                        r"research\s+methodology|research\s+design|results?\s+and\s+discussion|"
+                        r"summary\s+of\s+findings|conclusions?\s+and\s+recommendations?)\b", re.IGNORECASE), 3.5),
+            (re.compile(r"^\s*(?:chapter\s+(?:[1-9]|1[0-5]|i{1,3}|iv|v|vi{0,3}|ix|x)\b.*|"
+                        r"abstract|introduction|methodology|bibliography|works\s+cited|"
+                        r"list\s+of\s+tables|list\s+of\s+figures|acknowledgements?|dedication)\s*$",
+                        re.IGNORECASE | re.MULTILINE), 3.0),
+            (re.compile(r"\b(?:figure\s+\d+[\.:\-]|fig\.\s*\d+[\.:\-]|table\s+(?:\d+|[ivx]+)[\.:\-]|"
+                        r"et\s+al\.|doi\s*:\s*10\.)", re.IGNORECASE), 2.0),
         ],
     },
     "financial_document": {
@@ -409,6 +450,8 @@ _NON_RESUME_RULES: Dict[str, Dict[str, Any]] = {
                         r"proforma\s+invoice|price\s+quotation|bank\s+statement|"
                         r"credit\s+card\s+statement|pay\s*slip|payroll\s+summary|"
                         r"check\s+voucher|disbursement\s+voucher|income\s+tax\s+return|"
+                        r"balance\s+sheet|income\s+statement|cash\s+flow\s+statement|"
+                        r"trial\s+balance|budget\s+proposal|liquidation\s+report|expense\s+report|"
                         r"bir\s+form\s+(?:2316|1700|1701|2307)|certificate\s+of\s+compensation)\b", re.IGNORECASE), 8.5),
         ],
         "body_patterns": [
@@ -427,7 +470,7 @@ _NON_RESUME_RULES: Dict[str, Dict[str, Any]] = {
         "title_patterns": [
             (re.compile(r"\b(?:certificate\s+of\s+(?:completion|appreciation|recognition|attendance|"
                         r"participation|achievement|employment|graduation|good\s+moral|indigency|"
-                        r"residency|live\s+birth|marriage|registration|matriculation|grades)|"
+                        r"residency|live\s+birth|marriage|registration|matriculation|grades|enrollment)|"
                         r"barangay\s+clearance|police\s+clearance|nbi\s+clearance|medical\s+certificate|"
                         r"birth\s+certificate|marriage\s+certificate|death\s+certificate|"
                         r"transcript\s+of\s+records|official\s+transcript|report\s+card|"
@@ -454,7 +497,10 @@ _NON_RESUME_RULES: Dict[str, Dict[str, Any]] = {
                         r"terms\s+and\s+conditions|terms\s+of\s+(?:service|use)|privacy\s+policy|"
                         r"data\s+privacy\s+(?:policy|notice)|company\s+policy|deed\s+of\s+sale|"
                         r"affidavit\s+of|special\s+power\s+of\s+attorney|office\s+memorandum|"
-                        r"inter[\s\-]?office\s+memorandum)\b", re.IGNORECASE), 8.5),
+                        r"inter[\s\-]?office\s+memorandum|memorandum\s+order|office\s+order|"
+                        r"board\s+resolution|letter\s+of\s+intent|permission\s+letter|"
+                        r"transmittal\s+letter|endorsement\s+letter|recommendation\s+letter|"
+                        r"resignation\s+letter|notice\s+to\s+explain)\b", re.IGNORECASE), 8.5),
         ],
         "body_patterns": [
             (re.compile(r"\b(?:know\s+all\s+men\s+by\s+these\s+presents|witnesseth|"
@@ -488,13 +534,15 @@ _NON_RESUME_RULES: Dict[str, Dict[str, Any]] = {
             (re.compile(r"\b(?:course\s+syllabus|course\s+outline|class\s+schedule|"
                         r"exam\s+schedule|survey\s+questionnaire|product\s+catalog(?:ue)?|"
                         r"price\s+list|restaurant\s+menu|event\s+program|minutes\s+of\s+the\s+meeting|"
-                        r"meeting\s+agenda|from\s+wikipedia,\s+the\s+free\s+encyclopedia)\b", re.IGNORECASE), 8.5),
+                        r"meeting\s+agenda|answer\s+key|examination\s+paper|quiz\s+paper|"
+                        r"lecture\s+notes|study\s+guide|from\s+wikipedia,\s+the\s+free\s+encyclopedia)\b", re.IGNORECASE), 8.5),
         ],
         "body_patterns": [
             (re.compile(r"\b(?:course\s+description|learning\s+outcomes|grading\s+criteria|"
                         r"midterm\s+exam|final\s+exam|credit\s+units|pre[\s\-]?requisite)\b", re.IGNORECASE), 2.5),
             (re.compile(r"\b(?:for\s+office\s+use\s+only|do\s+not\s+write\s+below\s+this\s+line|"
-                        r"please\s+check\s+the\s+appropriate\s+box|strongly\s+agree.*strongly\s+disagree)\b", re.IGNORECASE), 4.0),
+                        r"please\s+check\s+the\s+appropriate\s+box|strongly\s+agree.*strongly\s+disagree|"
+                        r"directions\s*:\s*(?:choose|encircle|select|write|read)|multiple\s+choice)\b", re.IGNORECASE), 4.0),
             (re.compile(r"\b(?:preheat\s+oven|tablespoons?|teaspoons?|nutrition\s+facts|"
                         r"once\s+upon\s+a\s+time|lorem\s+ipsum|this\s+page\s+was\s+last\s+edited|"
                         r"citation\s+needed|thank\s+you\s+for\s+listening)\b", re.IGNORECASE), 4.5),
@@ -518,6 +566,299 @@ _ACADEMIC_CITATION_RE = re.compile(
     r"\bjournal\s+of\b|\bproceedings\s+of\b|\(\d{4}\)\.)",
     re.IGNORECASE,
 )
+
+# ─── Dedicated Thesis / Academic Manuscript Structural Patterns ──────────────
+
+_THESIS_UNMISTAKABLE_BOILERPLATE_RE = re.compile(
+    r"\b(?:submitted\s+in\s+partial\s+fulfillment|"
+    r"in\s+partial\s+fulfillment\s+of\s+the\s+requirements|"
+    r"partial\s+fulfillment\s+of\s+the\s+requirements|"
+    r"presented\s+to\s+the\s+faculty\s+of|submitted\s+to\s+the\s+faculty\s+of|"
+    r"thesis\s+manuscript|capstone\s+manuscript|research\s+manuscript|"
+    r"project\s+manuscript|final\s+manuscript|"
+    r"approval\s+sheet|certificate\s+of\s+originality|certification\s+of\s+originality|"
+    r"endorsement\s+for\s+(?:oral\s+)?defense|recommendation\s+for\s+oral\s+examination|"
+    r"panel\s+of\s+examiners|board\s+of\s+examiners|thesis\s+committee|"
+    r"curriculum\s+vitae\s+of\s+the\s+researchers?|researchers?'?\s+curriculum\s+vitae|"
+    r"researchers?'?\s+profiles?|proponents?'?\s+profiles?|"
+    r"about\s+the\s+researchers?|biographical\s+sketch\s+of\s+the\s+researchers?)\b",
+    re.IGNORECASE,
+)
+
+_THESIS_COVER_LINE_RE = re.compile(
+    r"^(?:a\s+thesis(?:\s+(?:manuscript|proposal|paper|study|presented|submitted|entitled).*)?|"
+    r"(?:an\s+)?undergraduate\s+thesis(?:\s+(?:manuscript|proposal|paper|presented|submitted).*)?|"
+    r"(?:a\s+)?(?:bachelor'?s|master'?s|graduate)\s+thesis(?:\s+(?:manuscript|proposal|paper|presented|submitted).*)?|"
+    r"(?:a\s+)?(?:doctoral\s+)?dissertation(?:\s+(?:manuscript|proposal|presented|submitted).*)?|"
+    r"(?:a\s+)?capstone\s+project(?:\s+(?:documentation|manuscript|paper|report|proposal|presented|submitted).*)?|"
+    r"(?:a\s+)?(?:research\s+paper|research\s+study|thesis\s+proposal|capstone\s+proposal|"
+    r"research\s+proposal|feasibility\s+study|case\s+study\s+report|ojt\s+narrative\s+report|"
+    r"practicum\s+narrative\s+report|narrative\s+report))$",
+    re.IGNORECASE,
+)
+
+_CHAPTER_HEADING_RE = re.compile(
+    r"^\s*(?:chapter|kabanata)\s+(?P<num>1[0-5]|[1-9]|i{1,3}|iv|v|vi{0,3}|ix|x|"
+    r"one|two|three|four|five|six|seven|eight|nine|ten)\b"
+    r"(?:\s*[:\-–—\.]\s*.*|\s+[A-Z0-9].*|\s*)$",
+    re.IGNORECASE,
+)
+
+_CHAPTER_NUM_MAP: Dict[str, str] = {
+    "i": "1", "one": "1", "ii": "2", "two": "2", "iii": "3", "three": "3",
+    "iv": "4", "four": "4", "v": "5", "five": "5", "vi": "6", "six": "6",
+    "vii": "7", "seven": "7", "viii": "8", "eight": "8", "ix": "9", "nine": "9",
+    "x": "10", "ten": "10",
+}
+
+_DISTINCT_THESIS_SECTION_CUES: List[Tuple[str, re.Pattern]] = [
+    ("statement_of_the_problem", re.compile(r"\b(?:statement\s+of\s+the\s+problem|paglalahad\s+ng\s+suliranin)\b", re.IGNORECASE)),
+    ("background_of_the_study", re.compile(r"\b(?:background\s+of\s+the\s+study|the\s+problem\s+and\s+its\s+(?:background|setting)|kaligiran\s+ng\s+pag[\s\-]aaral)\b", re.IGNORECASE)),
+    ("objectives_of_the_study", re.compile(r"\b(?:general\s+and\s+specific\s+objectives|objectives\s+of\s+the\s+study|research\s+objectives|layunin\s+ng\s+pag[\s\-]aaral)\b", re.IGNORECASE)),
+    ("review_of_related_literature", re.compile(r"\b(?:review\s+of\s+related\s+(?:literature|studies)|related\s+literature\s+and\s+studies|review\s+of\s+literature|kaugnay\s+na\s+literatura(?:\s+at\s+pag[\s\-]aaral)?)\b", re.IGNORECASE)),
+    ("conceptual_theoretical_framework", re.compile(r"\b(?:conceptual\s+framework|theoretical\s+framework|research\s+paradigm|input[\s\-]process[\s\-]output\s+(?:model|framework|diagram)|balangkas\s+(?:konseptwal|teoretikal))\b", re.IGNORECASE)),
+    ("scope_and_delimitation", re.compile(r"\b(?:scope\s+and\s+(?:delimitation|limitation)s?|limitations?\s+of\s+the\s+study|saklaw\s+at\s+(?:limitasyon|delimitasyon))\b", re.IGNORECASE)),
+    ("significance_of_the_study", re.compile(r"\b(?:significance\s+of\s+the\s+study|kahalagahan\s+ng\s+pag[\s\-]aaral)\b", re.IGNORECASE)),
+    ("definition_of_terms", re.compile(r"\b(?:(?:operational\s+)?definition\s+of\s+terms|katuturan\s+ng\s+mga\s+talakay)\b", re.IGNORECASE)),
+    ("hypothesis_of_the_study", re.compile(r"\b(?:null\s+hypothesis|alternative\s+hypothesis|hypothes(?:is|es)\s+of\s+the\s+study|research\s+hypothes(?:is|es))\b", re.IGNORECASE)),
+    ("research_methodology", re.compile(r"\b(?:research\s+methodology|research\s+design|research\s+locale|locale\s+of\s+the\s+study|research\s+instrument|data\s+gathering\s+procedure|sampling\s+(?:technique|method|design)|population\s+and\s+sampling|respondents?\s+of\s+the\s+study|statistical\s+treatment\s+of\s+data|materials\s+and\s+methods|disenyo\s+ng\s+pananaliksik|metodolohiya\s+ng\s+pananaliksik)\b", re.IGNORECASE)),
+    ("results_and_discussion", re.compile(r"\b(?:results?\s+and\s+discussion|presentation,?\s+analysis,?\s+and\s+interpretation\s+of\s+data|findings\s+and\s+discussion|experimental\s+results?|evaluation\s+results?|resulta\s+at\s+diskusyon)\b", re.IGNORECASE)),
+    ("summary_conclusions_recommendations", re.compile(r"\b(?:summary\s+of\s+findings|summary,?\s+conclusions?,?\s+and\s+recommendations?|conclusions?\s+and\s+recommendations?|buod,?\s+konklusyon\s+at\s+rekomendasyon|konklusyon\s+at\s+rekomendasyon)\b", re.IGNORECASE)),
+    ("thesis_evaluation_metrics", re.compile(r"\b(?:likert\s+scale|weighted\s+mean|slovins?\s+formula|cronbach'?s?\s+alpha|iso(?:/iec)?\s*25010|system\s+usability\s+scale)\b", re.IGNORECASE)),
+    ("academic_front_back_matter", re.compile(r"^\s*(?:list\s+of\s+tables|list\s+of\s+figures|list\s+of\s+appendices|dedication|acknowledgements?|pasasalamat|paghahandog|bibliography|talasanggunian|works\s+cited|appendices|appendix\s+[a-z](?:\s*[:\-–—].*)?)\s*$", re.IGNORECASE | re.MULTILINE)),
+]
+
+_IMRAD_SECTION_PATTERNS: Dict[str, re.Pattern] = {
+    "abstract": re.compile(r"^\s*abstract(?:\s*[:\-–—]\s*\S.*|\s*)$", re.IGNORECASE),
+    "keywords": re.compile(r"^\s*(?:keywords?|index\s+terms)\s*[:\-–—]\s*\S+", re.IGNORECASE),
+    "introduction": re.compile(r"^\s*(?:(?:[1-9]|i{1,3})[\.\)]\s*)?introduction\s*$", re.IGNORECASE),
+    "related_work": re.compile(r"^\s*(?:(?:[1-9]|i{1,3}|iv|v)[\.\)]\s*)?(?:related\s+works?|literature\s+review|review\s+of\s+related\s+(?:literature|studies))\s*$", re.IGNORECASE),
+    "methodology": re.compile(r"^\s*(?:(?:[1-9]|i{1,3}|iv|v)[\.\)]\s*)?(?:proposed\s+)?(?:methodology|methods?|materials\s+and\s+methods|research\s+methodology|system\s+architecture)\s*$", re.IGNORECASE),
+    "results": re.compile(r"^\s*(?:(?:[1-9]|i{1,3}|iv|v)[\.\)]\s*)?(?:experimental\s+|evaluation\s+)?results?(?:\s+and\s+discussion)?\s*$", re.IGNORECASE),
+    "conclusion": re.compile(r"^\s*(?:(?:[1-9]|i{1,3}|iv|v)[\.\)]\s*)?conclusions?(?:\s+and\s+(?:recommendations?|future\s+work))?\s*$", re.IGNORECASE),
+}
+
+_ACADEMIC_PROSE_RE = re.compile(
+    r"\b(?:this\s+(?:study|research|paper|thesis|capstone)\s+"
+    r"(?:aims?|seeks?|presents?|investigates?|examines?|focuses?|proposes?|evaluates?|explores?|addresses?|describes?)|"
+    r"the\s+researchers?\s+(?:used|utilized|conducted|developed|designed|aimed|found|concluded|recommended|gathered|surveyed|interviewed|implemented|evaluated)|"
+    r"based\s+on\s+the\s+findings|"
+    r"in\s+this\s+(?:paper|study|research|thesis),?\s+we\s+(?:propose|present|introduce|evaluate|investigate|develop|analyze))\b",
+    re.IGNORECASE,
+)
+
+_FIGURE_TABLE_CAPTION_RE = re.compile(
+    r"\b(?:figure|fig\.?|table)\s+(?:\d+(?:\.\d+)?|[ivx]+)\s*[\.:\-–—]",
+    re.IGNORECASE,
+)
+
+_ADVISER_OR_PROPONENT_RE = re.compile(
+    r"\b(?:thesis\s+adviser|capstone\s+adviser|research\s+adviser|technical\s+adviser|"
+    r"subject\s+adviser|project\s+adviser|critic\s+reader|panel\s+of\s+examiners|"
+    r"oral\s+defense|thesis\s+defense|capstone\s+defense)\b|"
+    r"^\s*(?:adviser|advisor|panelist|submitted\s+by|prepared\s+by|proponents?|researchers?)\s*:\s*",
+    re.IGNORECASE | re.MULTILINE,
+)
+
+_APPENDIX_HEADING_RE = re.compile(
+    r"^\s*(?:appendices|appendix\s+[a-z0-9](?:\s*[:\-–—].*)?)\s*$",
+    re.IGNORECASE,
+)
+
+_NON_RESUME_FILENAME_HINTS: List[Tuple[str, re.Pattern]] = [
+    ("academic_paper", re.compile(r"\b(?:thesis|manuscript|dissertation|capstone|research[\s_\-]?paper|term[\s_\-]?paper|chapter[\s_\-]?\d|imrad|feasibility)\b", re.IGNORECASE)),
+    ("manual_or_guide", re.compile(r"\b(?:user[\s_\-]?manual|manual|handbook|playbook|srs|sdd|documentation|specification)\b", re.IGNORECASE)),
+    ("financial_document", re.compile(r"\b(?:invoice|receipt|payslip|payroll|quotation|billing|statement[\s_\-]?of[\s_\-]?account)\b", re.IGNORECASE)),
+    ("certificate_or_official_record", re.compile(r"\b(?:clearance|transcript|diploma|grade[\s_\-]?slip|birth[\s_\-]?cert)\b", re.IGNORECASE)),
+    ("legal_or_correspondence", re.compile(r"\b(?:contract|memorandum|affidavit|agreement|moa|mou|nda|resignation)\b", re.IGNORECASE)),
+    ("misc_non_resume", re.compile(r"\b(?:syllabus|questionnaire|survey|exam|quiz|recipe|menu|minutes)\b", re.IGNORECASE)),
+]
+
+_RESUME_FILENAME_HINT_RE = re.compile(r"\b(?:resume|cv|curriculum|biodata|bio[\s_\-]?data|pds)\b", re.IGNORECASE)
+
+
+def _analyze_academic_manuscript_signals(
+    text: str,
+    lines: List[str],
+    has_academic_refs: bool,
+) -> Dict[str, Any]:
+    """
+    Deterministic, zero-LLM structural detector specifically tuned to catch Thesis Manuscripts,
+    Capstone Documentation, IMRaD / IEEE Papers, Research Proposals, and Academic Reports —
+    including manuscripts that embed Researchers' Curriculum Vitae in an Appendix — while
+    never falsely rejecting legitimate resumes that mention a student's thesis title or an
+    academic CV with a Publications list.
+    """
+    score = 0.0
+    hard_veto = False
+    is_thesis_specific = False
+    has_embedded_cv_appendix = False
+    signals: List[str] = []
+
+    # 1. Unmistakable thesis / dissertation / defense boilerplate anywhere in document
+    boilerplate_matches = _THESIS_UNMISTAKABLE_BOILERPLATE_RE.findall(text)
+    if boilerplate_matches:
+        unique_bp = sorted({m.lower().strip() for m in boilerplate_matches})
+        score += 12.0
+        hard_veto = True
+        is_thesis_specific = True
+        signals.append(f"academic_paper:thesis_boilerplate({','.join(unique_bp[:3])})(+12.0)")
+
+    # 2. Cover / front-matter explicit thesis/manuscript line BEFORE any core resume heading
+    first_core_line_idx: Optional[int] = None
+    first_appendix_line_idx: Optional[int] = None
+    cv_title_occurrences = 0
+    for idx, ln in enumerate(lines):
+        norm = _normalise_heading_candidate(ln)
+        if first_core_line_idx is None and norm and len(norm.split()) <= 6:
+            if any(pat.match(norm) for pat in _CORE_HEADING_PATTERNS.values()):
+                first_core_line_idx = idx
+        if first_appendix_line_idx is None and _APPENDIX_HEADING_RE.match(ln):
+            first_appendix_line_idx = idx
+        if re.match(r"^(?:curriculum\s+vitae|researchers?'?\s+(?:curriculum\s+vitae|profile))$", norm, re.IGNORECASE):
+            cv_title_occurrences += 1
+
+    cover_limit = min(len(lines), 45)
+    if first_core_line_idx is not None and first_core_line_idx < cover_limit:
+        cover_scan_end = first_core_line_idx
+    else:
+        cover_scan_end = cover_limit
+
+    for ln in lines[:cover_scan_end]:
+        norm = _normalise_heading_candidate(ln)
+        if norm and len(norm) <= 100 and _THESIS_COVER_LINE_RE.match(norm):
+            score += 9.5
+            hard_veto = True
+            is_thesis_specific = True
+            signals.append(f"academic_paper:cover_title({norm[:45]})(+9.5)")
+            break
+
+    # 3. Chapter headings (e.g. "CHAPTER 1: THE PROBLEM AND ITS BACKGROUND", "Chapter II - RRL")
+    distinct_chapters: Set[str] = set()
+    for ln in lines:
+        if len(ln) > 130:
+            continue
+        m_ch = _CHAPTER_HEADING_RE.match(ln)
+        if m_ch:
+            raw_num = m_ch.group("num").lower()
+            distinct_chapters.add(_CHAPTER_NUM_MAP.get(raw_num, raw_num))
+
+    if len(distinct_chapters) >= 2:
+        score += 10.5
+        hard_veto = True
+        is_thesis_specific = True
+        signals.append(f"academic_paper:multiple_chapters({len(distinct_chapters)})(+10.5)")
+    elif len(distinct_chapters) == 1:
+        score += 4.5
+        signals.append("academic_paper:chapter_heading(+4.5)")
+
+    # 4. Distinct thesis/academic structural sections (scored individually, not lumped into 1 cap)
+    matched_thesis_cues: List[str] = []
+    for cue_name, cue_pat in _DISTINCT_THESIS_SECTION_CUES:
+        if cue_pat.search(text):
+            matched_thesis_cues.append(cue_name)
+
+    if matched_thesis_cues:
+        cue_pts = min(16.0, 3.5 * len(matched_thesis_cues))
+        score += cue_pts
+        signals.append(f"academic_paper:thesis_sections({','.join(matched_thesis_cues[:4])})(+{cue_pts:.1f})")
+        if len(matched_thesis_cues) >= 2:
+            hard_veto = True
+            is_thesis_specific = True
+        elif len(matched_thesis_cues) == 1 and len(distinct_chapters) >= 1:
+            hard_veto = True
+            is_thesis_specific = True
+
+    # 5. IMRaD / IEEE / Conference academic paper headings
+    imrad_found: Set[str] = set()
+    for ln in lines:
+        if len(ln) > 160:
+            continue
+        for sec_key, sec_pat in _IMRAD_SECTION_PATTERNS.items():
+            if sec_pat.match(ln):
+                # Guard bare "Abstract" / "Introduction" against long non-abstract lines
+                if sec_key == "abstract" and ":" not in ln and "—" not in ln and "-" not in ln and len(ln.split()) > 2:
+                    continue
+                imrad_found.add(sec_key)
+                break
+
+    if len(imrad_found) >= 3:
+        score += 10.0
+        hard_veto = True
+        signals.append(f"academic_paper:imrad_structure({','.join(sorted(imrad_found))})(+10.0)")
+    elif len(imrad_found) == 2:
+        score += 5.5
+        signals.append(f"academic_paper:imrad_partial({','.join(sorted(imrad_found))})(+5.5)")
+    elif len(imrad_found) == 1:
+        score += 2.5
+        signals.append(f"academic_paper:imrad_single({','.join(sorted(imrad_found))})(+2.5)")
+
+    # 6. Academic prose, figure/table captions, adviser/proponent cues
+    prose_hits = _ACADEMIC_PROSE_RE.findall(text)
+    if len(prose_hits) >= 2:
+        score += 5.5
+        signals.append(f"academic_paper:academic_prose({len(prose_hits)})(+5.5)")
+    elif len(prose_hits) == 1:
+        score += 3.0
+        signals.append("academic_paper:academic_prose(1)(+3.0)")
+
+    caption_hits = _FIGURE_TABLE_CAPTION_RE.findall(text)
+    if len(caption_hits) >= 2:
+        score += 4.5
+        signals.append(f"academic_paper:figure_table_captions({len(caption_hits)})(+4.5)")
+    elif len(caption_hits) == 1:
+        score += 2.0
+        signals.append("academic_paper:figure_table_caption(1)(+2.0)")
+
+    adviser_hits = _ADVISER_OR_PROPONENT_RE.findall(text)
+    if adviser_hits:
+        score += 3.5
+        signals.append(f"academic_paper:adviser_or_proponent({len(adviser_hits)})(+3.5)")
+
+    # Cross-signal hard vetos for IMRaD / partial thesis / proposal manuscripts
+    has_strong_corroborator = bool(
+        has_academic_refs
+        or len(caption_hits) >= 1
+        or len(prose_hits) >= 1
+        or len(adviser_hits) >= 1
+        or len(matched_thesis_cues) >= 1
+        or len(distinct_chapters) >= 1
+    )
+    if len(imrad_found) >= 2 and has_strong_corroborator:
+        hard_veto = True
+    if len(prose_hits) >= 1 and (len(distinct_chapters) >= 1 or len(matched_thesis_cues) >= 1 or len(adviser_hits) >= 1 or len(caption_hits) >= 1):
+        hard_veto = True
+        if len(distinct_chapters) >= 1 or len(matched_thesis_cues) >= 1 or len(adviser_hits) >= 1:
+            is_thesis_specific = True
+    if len(adviser_hits) >= 1 and (len(distinct_chapters) >= 1 or len(matched_thesis_cues) >= 1 or len(imrad_found) >= 1):
+        hard_veto = True
+        if len(distinct_chapters) >= 1 or len(matched_thesis_cues) >= 1:
+            is_thesis_specific = True
+
+    # 7. Detect embedded Curriculum Vitae in a Thesis Appendix (e.g. "APPENDIX A: CURRICULUM VITAE")
+    if (
+        (first_appendix_line_idx is not None and first_core_line_idx is not None and first_appendix_line_idx < first_core_line_idx)
+        or cv_title_occurrences >= 2
+        or (
+            first_core_line_idx is not None
+            and len(lines) >= 35
+            and first_core_line_idx > len(lines) * 0.45
+            and (len(distinct_chapters) >= 1 or len(matched_thesis_cues) >= 1 or len(imrad_found) >= 1 or bool(prose_hits))
+        )
+    ):
+        has_embedded_cv_appendix = True
+        hard_veto = True
+        is_thesis_specific = True
+        score += 12.0
+        signals.append("academic_paper:embedded_cv_in_appendix(+12.0)")
+
+    return {
+        "score": score,
+        "hard_veto": hard_veto,
+        "is_thesis_specific": is_thesis_specific,
+        "has_embedded_cv_appendix": has_embedded_cv_appendix,
+        "signals": signals,
+    }
 
 
 def _normalise_heading_candidate(line: str) -> str:
@@ -690,26 +1031,62 @@ def _has_verified_work_experience(
         if exp_body and _DATE_RANGE_RE.search(exp_body):
             valid_dated = True
         elif _DATE_RANGE_RE.search(text) and _ROLE_KEYWORD_RE.search(text):
-            # Check if a date range appears near a role keyword (within 120 chars)
-            for dm in _DATE_RANGE_RE.finditer(text):
-                window = text[max(0, dm.start() - 120) : min(len(text), dm.end() + 120)]
-                if _ROLE_KEYWORD_RE.search(window):
-                    valid_dated = True
+            # Check if a genuine employment date range appears on the same or adjacent non-prose line as a role keyword
+            text_lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
+            for idx, ln in enumerate(text_lines):
+                if len(ln) > 140 or _ACADEMIC_PROSE_LINE_RE.search(ln):
+                    continue
+                for dm in _DATE_RANGE_RE.finditer(ln):
+                    before_dm = ln[:dm.start()]
+                    if _ACADEMIC_YEAR_PREFIX_RE.search(before_dm):
+                        continue
+                    # Ignore prose ranges like "from August 2025 - February 2026" inside long sentences
+                    if re.search(r"\bfrom\s*$", before_dm, re.IGNORECASE) and len(ln.split()) >= 10:
+                        continue
+                    neighbor_lines = [ln]
+                    if idx > 0 and len(text_lines[idx - 1]) <= 120 and not _ACADEMIC_PROSE_LINE_RE.search(text_lines[idx - 1]):
+                        neighbor_lines.append(text_lines[idx - 1])
+                    if idx + 1 < len(text_lines) and len(text_lines[idx + 1]) <= 120 and not _ACADEMIC_PROSE_LINE_RE.search(text_lines[idx + 1]):
+                        neighbor_lines.append(text_lines[idx + 1])
+                    if any(
+                        _ROLE_KEYWORD_RE.search(nl)
+                        and not re.match(r"^\s*(?:adviser|advisor|panelist|dean|chairperson|submitted\s+by|respondents?)\b", nl, re.IGNORECASE)
+                        for nl in neighbor_lines
+                    ):
+                        valid_dated = True
+                        break
+                if valid_dated:
                     break
 
     if not valid_undated:
-        # Check for "<Role> at <Company>" or role line + org line in text (supports undated/messy resumes)
-        if re.search(
+        # Check line-by-line (or adjacent short lines) for "<Role> at/@/- <Company>" — never match unrelated words pages apart
+        text_lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
+        role_at_org_re = re.compile(
             r"\b(?:engineer|developer|operator|technician|supervisor|manager|analyst|specialist|"
             r"assistant|coordinator|accountant|nurse|teacher|crew|driver|rider|clerk|cashier|"
             r"attendant|inspector|welder|electrician|mechanic|intern|designer|representative)"
             r"\s+(?:at|@|-|\||,)\s+[A-Z][A-Za-z0-9&.,'\-\s]{2,45}",
-            text,
             re.IGNORECASE,
-        ):
-            valid_undated = True
-        elif _ROLE_KEYWORD_RE.search(text) and _ORG_SUFFIX_RE.search(text):
-            valid_undated = True
+        )
+        for idx, ln in enumerate(text_lines):
+            if len(ln) > 130 or _ACADEMIC_PROSE_LINE_RE.search(ln):
+                continue
+            if role_at_org_re.search(ln):
+                valid_undated = True
+                break
+            if (
+                len(ln) <= 100
+                and _ROLE_KEYWORD_RE.search(ln)
+                and not re.match(r"^\s*(?:adviser|advisor|panelist|dean|submitted\s+by|respondents?)\b", ln, re.IGNORECASE)
+            ):
+                if _ORG_SUFFIX_RE.search(ln):
+                    valid_undated = True
+                    break
+                if idx + 1 < len(text_lines):
+                    nxt = text_lines[idx + 1]
+                    if len(nxt) <= 90 and not _ACADEMIC_PROSE_LINE_RE.search(nxt) and _ORG_SUFFIX_RE.search(nxt):
+                        valid_undated = True
+                        break
 
     return valid_dated, valid_undated
 
@@ -721,10 +1098,27 @@ def _has_verified_education(
 ) -> Tuple[bool, bool]:
     """
     Returns (has_strong_education, has_partial_education).
-    Requires genuine academic degree or educational institution keywords (never hallucinated manual titles).
+    Requires genuine academic degree or educational institution keywords (never hallucinated manual titles
+    or thesis cover-page boilerplate like "In Partial Fulfillment of the Requirements for the Degree...").
     """
-    has_degree = bool(_DEGREE_RE.search(text))
-    has_school = bool(_SCHOOL_RE.search(text))
+    # Strip thesis cover-page boilerplate lines before scanning raw text for degree/school
+    clean_lines = [ln for ln in text.splitlines() if not _THESIS_DEGREE_BOILERPLATE_RE.search(ln)]
+    filtered_lines: List[str] = []
+    skip_next_degree = False
+    for ln in text.splitlines():
+        if _THESIS_DEGREE_BOILERPLATE_RE.search(ln):
+            skip_next_degree = True
+            continue
+        if skip_next_degree and ln.strip():
+            # Line immediately following "In Partial Fulfillment of the Requirements for the Degree"
+            skip_next_degree = False
+            if _DEGREE_RE.search(ln):
+                continue
+        filtered_lines.append(ln)
+    edu_scan_text = "\n".join(filtered_lines)
+
+    has_degree = bool(_DEGREE_RE.search(edu_scan_text))
+    has_school = bool(_SCHOOL_RE.search(edu_scan_text))
 
     if has_degree and has_school:
         return True, True
@@ -739,6 +1133,8 @@ def _has_verified_education(
             continue
         deg = (edu.get("degree_or_course") or "").strip()
         inst = (edu.get("institution_name") or "").strip()
+        if _THESIS_DEGREE_BOILERPLATE_RE.search(deg) or _THESIS_DEGREE_BOILERPLATE_RE.search(inst):
+            continue
         deg_ok = bool(deg and _DEGREE_RE.search(deg))
         inst_ok = bool(inst and _SCHOOL_RE.search(inst))
         if deg_ok and inst_ok:
@@ -768,10 +1164,16 @@ def _build_rejection_message(detected_type: str, reason_code: str) -> str:
             "This file appears to be a blank form or template with no candidate details filled in. "
             "Please upload your completed resume or CV."
         )
+    if reason_code == "detected_thesis_manuscript":
+        return (
+            "Only resume or CV documents are accepted. The uploaded file appears to be a thesis or "
+            "capstone manuscript, not a resume. Please upload a valid resume containing your personal "
+            "details, education, skills, or work experience."
+        )
 
     type_labels = {
         "manual_or_guide": "a user manual or guide",
-        "academic_paper": "an academic paper, thesis, or report",
+        "academic_paper": "a thesis manuscript, academic paper, or report",
         "financial_document": "an invoice, receipt, or financial document",
         "certificate_or_official_record": "a certificate, clearance, or official record",
         "legal_or_correspondence": "a contract, policy, or standalone letter",
@@ -845,7 +1247,26 @@ def validate_resume_document(
     if page_count is None and isinstance(signals.get("page_count"), int):
         page_count = signals["page_count"]
 
-    # ── Hard Gate 2: Empty / unreadable / far too short ──────────────────────
+    # ── Hard Gate 2: Extreme page count even before text length check (e.g. 50-page scanned thesis) ──
+    if isinstance(page_count, int) and page_count >= 15:
+        return {
+            "is_resume": False,
+            "confidence": 0.99,
+            "score": -12.0,
+            "positive_score": 0.0,
+            "negative_score": 12.0,
+            "detected_document_type": "academic_paper" if _THESIS_UNMISTAKABLE_BOILERPLATE_RE.search(text) or _CHAPTER_HEADING_RE.search(text) else "manual_or_guide",
+            "reason_code": "detected_thesis_manuscript" if _THESIS_UNMISTAKABLE_BOILERPLATE_RE.search(text) else "document_too_long",
+            "message": _build_rejection_message(
+                "academic_paper" if _THESIS_UNMISTAKABLE_BOILERPLATE_RE.search(text) else "manual_or_guide",
+                "detected_thesis_manuscript" if _THESIS_UNMISTAKABLE_BOILERPLATE_RE.search(text) else "document_too_long",
+            ),
+            "positive_signals": [],
+            "negative_signals": [f"excessive_pages_hard_limit({page_count})(+12.0)"],
+            "metrics": {"word_count": word_count, "alpha_word_count": alpha_word_count, "page_count": page_count},
+        }
+
+    # ── Hard Gate 3: Empty / unreadable / far too short ──────────────────────
     if alpha_word_count < 18 or len(text) < 90:
         return {
             "is_resume": False,
@@ -868,7 +1289,7 @@ def validate_resume_document(
         except Exception:
             sections = {}
 
-    top_lines = lines[:15]
+    top_lines = lines[:18]
     top_title_block = "\n".join(top_lines)
     top_region = "\n".join(lines[:35])[:1800]
     personal_block = (sections.get("PERSONAL") or "") + "\n" + (sections.get("HEADER") or "")
@@ -882,12 +1303,16 @@ def validate_resume_document(
     # ── 1. Strict Standalone Resume Section Headings ─────────────────────────
     core_headings, supporting_headings, has_academic_refs = _detect_strict_resume_headings(text)
 
-    if core_headings:
+    # Run dedicated Thesis / Academic Manuscript structural analyzer BEFORE positive scoring
+    # so embedded Researchers' CVs in a thesis appendix cannot spoof resume signals.
+    academic_analysis = _analyze_academic_manuscript_signals(text, lines, has_academic_refs)
+
+    if core_headings and not academic_analysis["has_embedded_cv_appendix"]:
         pts = 3.0 * len(core_headings)
         positive_score += pts
         positive_signals.append(f"core_headings:{','.join(sorted(core_headings))}(+{pts:.1f})")
 
-    if supporting_headings:
+    if supporting_headings and not academic_analysis["has_embedded_cv_appendix"]:
         pts = min(6.0, 1.5 * len(supporting_headings))
         positive_score += pts
         positive_signals.append(f"supporting_headings:{','.join(sorted(supporting_headings))}(+{pts:.1f})")
@@ -902,7 +1327,7 @@ def validate_resume_document(
             positive_signals.append("explicit_resume_title(+3.5)")
             break
 
-    is_explicit_cv = bool(re.search(r"\bcurriculum\s+vitae\b", top_title_block, re.IGNORECASE))
+    is_explicit_cv = bool(re.search(r"\bcurriculum\s+vitae\b", top_title_block, re.IGNORECASE)) and not academic_analysis["has_embedded_cv_appendix"]
 
     # ── 3. Top-Anchored Candidate Identity & Contact Signals ─────────────────
     fullname = (data.get("fullname") or data.get("candidate_name") or "").strip()
@@ -939,31 +1364,44 @@ def validate_resume_document(
         positive_signals.append("profile_url(+1.5)")
 
     biodata_hits = sum(1 for pat in _BIODATA_FIELD_PATTERNS if pat.search(text))
-    has_biodata_fields = biodata_hits >= 3
+    has_biodata_fields = biodata_hits >= 3 and not academic_analysis["has_embedded_cv_appendix"]
     if has_biodata_fields:
         positive_score += 3.0
         positive_signals.append(f"biodata_personal_fields({biodata_hits})(+3.0)")
 
     # ── 4. Verified Education Evidence ───────────────────────────────────────
     strong_edu, partial_edu = _has_verified_education(text, data, sections)
-    if strong_edu:
+    if strong_edu and not academic_analysis["has_embedded_cv_appendix"]:
         positive_score += 2.5
         positive_signals.append("verified_education_degree_and_school(+2.5)")
-    elif partial_edu:
+    elif partial_edu and not academic_analysis["has_embedded_cv_appendix"]:
         positive_score += 1.5
         positive_signals.append("verified_education_partial(+1.5)")
 
     # ── 5. Verified Work Experience & Action-Bullet Evidence ─────────────────
     dated_exp, undated_exp = _has_verified_work_experience(text, data, sections)
-    action_bullet_count = sum(1 for ln in lines if _RESUME_ACTION_BULLET_RE.match(ln))
-    if dated_exp:
+    exp_proj_lines: Set[str] = set()
+    for sec_k in ("EXPERIENCE", "PROJECTS", "VOLUNTEER"):
+        for sln in (sections.get(sec_k) or "").splitlines():
+            if sln.strip():
+                exp_proj_lines.add(sln.strip())
+
+    action_bullet_count = sum(
+        1
+        for ln in lines
+        if len(ln) <= 220
+        and not _ACADEMIC_PROSE_LINE_RE.search(ln)
+        and (ln.startswith(("•", "-", "*", "▪", "►", "✓", "·")) or ln in exp_proj_lines)
+        and _RESUME_ACTION_BULLET_RE.match(ln)
+    )
+    if dated_exp and not academic_analysis["has_embedded_cv_appendix"]:
         positive_score += 3.0
         positive_signals.append("verified_dated_work_experience(+3.0)")
-    elif undated_exp:
+    elif undated_exp and not academic_analysis["has_embedded_cv_appendix"]:
         positive_score += 2.0
         positive_signals.append("verified_role_and_employer(+2.0)")
 
-    if action_bullet_count >= 2:
+    if action_bullet_count >= 2 and not academic_analysis["has_embedded_cv_appendix"]:
         positive_score += 1.5
         positive_signals.append(f"resume_action_bullets({action_bullet_count})(+1.5)")
 
@@ -974,58 +1412,111 @@ def validate_resume_document(
     has_skills_in_section = ("SKILLS" in core_headings) and (len(skills_sec_body) >= 5 or len(skills_list) >= 1)
 
     has_verified_skills = False
-    if has_skills_in_section or (has_explicit_skills and len(skills_list) >= 2):
-        has_verified_skills = True
-        positive_score += 2.0
-        positive_signals.append("verified_skills_section_or_list(+2.0)")
-    elif has_explicit_skills:
-        has_verified_skills = True
-        positive_score += 1.5
-        positive_signals.append("explicit_skills_statement(+1.5)")
-    elif len(skills_list) >= 3 and word_count <= 1500 and not _META_RESUME_SYSTEM_RE.search(text):
-        has_verified_skills = True
-        positive_score += 1.0
-        positive_signals.append(f"concise_doc_skills({len(skills_list)})(+1.0)")
+    if not academic_analysis["has_embedded_cv_appendix"]:
+        if has_skills_in_section or (has_explicit_skills and len(skills_list) >= 2):
+            has_verified_skills = True
+            positive_score += 2.0
+            positive_signals.append("verified_skills_section_or_list(+2.0)")
+        elif has_explicit_skills:
+            has_verified_skills = True
+            positive_score += 1.5
+            positive_signals.append("explicit_skills_statement(+1.5)")
+        elif (
+            len(skills_list) >= 3
+            and word_count <= 1500
+            and (len(core_headings) >= 1 or has_explicit_cv_title or has_biodata_fields)
+            and academic_analysis["score"] < 2.0
+            and not _META_RESUME_SYSTEM_RE.search(text)
+        ):
+            has_verified_skills = True
+            positive_score += 1.0
+            positive_signals.append(f"concise_doc_skills({len(skills_list)})(+1.0)")
 
     # ── 7. Career Objective / Summary / Certifications Signals ───────────────
-    if _CAREER_OBJECTIVE_RE.search(text):
+    if _CAREER_OBJECTIVE_RE.search(text) and not academic_analysis["has_embedded_cv_appendix"]:
         positive_score += 1.5
         positive_signals.append("career_objective_phrase(+1.5)")
 
-    if _RESUME_CERT_RE.search(text):
+    if _RESUME_CERT_RE.search(text) and not academic_analysis["has_embedded_cv_appendix"]:
         positive_score += 1.0
         positive_signals.append("professional_credentials(+1.0)")
 
     # ── 8. Negative Document-Type Scoring ────────────────────────────────────
     category_scores: Dict[str, float] = {}
+
+    # Determine safe top block BEFORE the first core/certifications resume heading
+    # (prevents penalizing a resume that mentions "Certificate of Completion" inside its own Certifications section)
+    cert_safe_end = len(top_lines)
+    for idx, ln in enumerate(top_lines):
+        norm_ln = _normalise_heading_candidate(ln)
+        if norm_ln and len(norm_ln.split()) <= 5 and (
+            any(p.match(norm_ln) for p in _CORE_HEADING_PATTERNS.values())
+            or _SUPPORTING_HEADING_PATTERNS["CERTIFICATIONS"].match(norm_ln)
+        ):
+            cert_safe_end = idx
+            break
+    cert_top_block = "\n".join(top_lines[:cert_safe_end])
+
     for cat_key, cfg in _NON_RESUME_RULES.items():
         cat_pts = 0.0
+        title_region = cert_top_block if cat_key == "certificate_or_official_record" else top_title_block
         for pat, weight in cfg["title_patterns"]:
-            if pat.search(top_title_block):
+            if pat.search(title_region):
                 cat_pts += weight
                 negative_signals.append(f"{cat_key}:title_match(+{weight:.1f})")
-            elif cat_key in ("manual_or_guide", "financial_document", "legal_or_correspondence") and pat.search(text[:2500]):
-                sub_w = round(weight * 0.75, 1)
+            elif cat_key in ("manual_or_guide", "academic_paper", "financial_document", "legal_or_correspondence", "misc_non_resume") and pat.search(text[:3500]):
+                sub_w = round(weight * 0.85, 1)
                 cat_pts += sub_w
                 negative_signals.append(f"{cat_key}:early_match(+{sub_w:.1f})")
 
         for pat, weight in cfg["body_patterns"]:
             if pat.search(text):
-                # Avoid penalizing a real resume that only mentions "NBI Clearance" inside its Certifications section
                 cat_pts += weight
                 negative_signals.append(f"{cat_key}:body_match(+{weight:.1f})")
 
         if cat_pts > 0:
             category_scores[cat_key] = cat_pts
 
+    # Merge dedicated Thesis / Academic Manuscript structural analyzer signals
+    if academic_analysis["score"] > 0:
+        category_scores["academic_paper"] = max(
+            category_scores.get("academic_paper", 0.0),
+            academic_analysis["score"],
+        )
+        negative_signals.extend(academic_analysis["signals"])
+
     # Academic bibliography references boost academic_paper negative score
     if has_academic_refs:
         category_scores["academic_paper"] = category_scores.get("academic_paper", 0.0) + 3.5
         negative_signals.append("academic_paper:academic_references(+3.5)")
 
+    # Soft filename corroboration (ONLY when filename lacks resume/cv/biodata keywords;
+    # never enough alone to reject a real resume, never required to reject a renamed non-resume)
+    if filename:
+        base_stem = os.path.splitext(os.path.basename(filename))[0]
+        base_stem = re.sub(r"^\d{9,13}_", "", base_stem)
+        clean_stem = re.sub(r"[_\-]+", " ", base_stem)
+        if clean_stem and not _RESUME_FILENAME_HINT_RE.search(clean_stem):
+            for fn_cat, fn_pat in _NON_RESUME_FILENAME_HINTS:
+                if fn_pat.search(clean_stem):
+                    category_scores[fn_cat] = category_scores.get(fn_cat, 0.0) + 2.5
+                    negative_signals.append(f"{fn_cat}:filename_hint(+2.5)")
+                    break
+
     # Meta-system mentions (e.g. a document ABOUT a resume analysis system)
+    # Do not penalize a genuine candidate's resume (2+ core resume headings + contact info +
+    # zero manual/guide cues) that simply lists an "Automated Resume Analysis" project they built.
     meta_resume_hits = len(_META_RESUME_SYSTEM_RE.findall(text))
-    if meta_resume_hits >= 2:
+    has_manual_structural_cues = category_scores.get("manual_or_guide", 0.0) > 0
+    is_likely_student_resume_listing_project = (
+        len(core_headings) >= 2
+        and (has_personal_email or has_phone)
+        and not has_manual_structural_cues
+        and meta_resume_hits <= 5
+    )
+    if not is_likely_student_resume_listing_project and (
+        meta_resume_hits >= 3 or (meta_resume_hits >= 2 and len(core_headings) < 2)
+    ):
         pts = min(8.0, meta_resume_hits * 2.5)
         category_scores["manual_or_guide"] = category_scores.get("manual_or_guide", 0.0) + pts
         negative_signals.append(f"manual_or_guide:meta_resume_system_mentions({meta_resume_hits})(+{pts:.1f})")
@@ -1058,20 +1549,35 @@ def validate_resume_document(
         category_scores["misc_non_resume"] = category_scores.get("misc_non_resume", 0.0) + 8.0
         negative_signals.append(f"blank_form:underscores({blank_underscore_lines})(+8.0)")
 
+    # Source code / JSON / SQL / raw log file check
+    if len(core_headings) == 0 and not has_explicit_cv_title and len(lines) >= 6:
+        code_line_re = re.compile(
+            r"^\s*(?:import\s+\w+|from\s+\w+\s+import|def\s+\w+\(|class\s+\w+|"
+            r"const\s+\w+\s*=|let\s+\w+\s*=|function\s+\w+\(|public\s+(?:class|static)|"
+            r"SELECT\s+.+\s+FROM|INSERT\s+INTO|CREATE\s+TABLE|<!DOCTYPE|<html|<div|"
+            r"[\{\}\[\]],?$|\"[^\"]+\"\s*:\s*|"
+            r"(?:INFO|DEBUG|WARNING|ERROR|CRITICAL)\s*[:\-\[])",
+            re.IGNORECASE,
+        )
+        code_lines = sum(1 for ln in lines if code_line_re.match(ln))
+        if code_lines >= 5 and (code_lines / len(lines)) >= 0.30:
+            category_scores["misc_non_resume"] = category_scores.get("misc_non_resume", 0.0) + 7.5
+            negative_signals.append(f"misc_non_resume:source_code_or_data({code_lines}/{len(lines)})(+7.5)")
+
     # Excessive length / page count penalty
     length_penalty = 0.0
     if page_count is not None:
-        if page_count >= 12:
+        if page_count >= 12 or (page_count >= 10 and not is_explicit_cv):
             length_penalty += 8.0
             negative_signals.append(f"excessive_pages({page_count})(+8.0)")
-        elif page_count >= 8 and not is_explicit_cv:
+        elif page_count >= 7 and not is_explicit_cv:
             length_penalty += 4.0
             negative_signals.append(f"many_pages({page_count})(+4.0)")
 
     if word_count >= 4500:
         length_penalty += 8.0
         negative_signals.append(f"excessive_words({word_count})(+8.0)")
-    elif word_count >= 3000 and not is_explicit_cv:
+    elif word_count >= 2800 and not is_explicit_cv:
         length_penalty += 3.5
         negative_signals.append(f"high_word_count({word_count})(+3.5)")
 
@@ -1098,10 +1604,10 @@ def validate_resume_document(
 
     # ── 9. Five-Pillar Verification & Final Decision ─────────────────────────
     has_identity_pillar = (valid_name and (has_personal_email or has_phone or has_profile_url)) or has_biodata_fields
-    has_experience_pillar = ("EXPERIENCE" in core_headings) or dated_exp or undated_exp
-    has_education_pillar = ("EDUCATION" in core_headings) or strong_edu
-    has_skills_pillar = ("SKILLS" in core_headings) or has_verified_skills
-    has_meta_pillar = has_explicit_cv_title or len(supporting_headings) >= 2
+    has_experience_pillar = (not academic_analysis["has_embedded_cv_appendix"]) and (("EXPERIENCE" in core_headings) or dated_exp or undated_exp)
+    has_education_pillar = (not academic_analysis["has_embedded_cv_appendix"]) and (("EDUCATION" in core_headings) or strong_edu)
+    has_skills_pillar = (not academic_analysis["has_embedded_cv_appendix"]) and (("SKILLS" in core_headings) or has_verified_skills)
+    has_meta_pillar = has_explicit_cv_title or (len(supporting_headings) >= 2 and not academic_analysis["has_embedded_cv_appendix"])
 
     pillars = {
         "identity_contact": has_identity_pillar,
@@ -1117,7 +1623,7 @@ def validate_resume_document(
 
     net_score = round(positive_score - negative_score, 2)
 
-    # Decision Rules
+    # Decision Rules (Strict Resume-Only Gate)
     is_resume = True
     detected_type = "resume"
     reason_code = "valid_resume"
@@ -1126,21 +1632,50 @@ def validate_resume_document(
         is_resume = False
         detected_type = "misc_non_resume"
         reason_code = "blank_form"
-    elif top_neg_cat_score >= 7.0:
+    elif academic_analysis["hard_veto"]:
+        is_resume = False
+        # Preserve more specific manual/spec label when a Software Requirements Spec / User Manual
+        # explicitly matched a manual title without thesis-specific markers.
+        if not academic_analysis["is_thesis_specific"] and category_scores.get("manual_or_guide", 0.0) >= 8.0:
+            detected_type = "manual_or_guide"
+            reason_code = "detected_manual_or_guide"
+        else:
+            detected_type = "academic_paper"
+            reason_code = "detected_thesis_manuscript" if academic_analysis["is_thesis_specific"] else "detected_academic_paper"
+    elif top_neg_cat_score >= 6.5:
         is_resume = False
         detected_type = top_neg_cat
         reason_code = f"detected_{top_neg_cat}"
-    elif length_penalty >= 8.0 and not (is_explicit_cv and len(core_headings) >= 3 and top_neg_cat_score < 4.0):
+    elif (isinstance(page_count, int) and page_count >= 15) or word_count >= 6000:
         is_resume = False
-        detected_type = top_neg_cat if top_neg_cat_score >= 3.0 else "manual_or_guide"
+        detected_type = top_neg_cat if top_neg_cat_score >= 2.5 else "academic_paper"
         reason_code = "document_too_long"
-    elif negative_score >= 5.0 and negative_score >= positive_score * 0.65:
+    elif length_penalty >= 8.0 and not (is_explicit_cv and len(core_headings) >= 3 and top_neg_cat_score < 2.0):
         is_resume = False
-        detected_type = top_neg_cat if top_neg_cat_score >= 2.5 else "non_resume_document"
+        detected_type = top_neg_cat if top_neg_cat_score >= 2.5 else "manual_or_guide"
+        reason_code = "document_too_long"
+    elif (
+        len(core_headings) == 0
+        and not has_explicit_cv_title
+        and not has_biodata_fields
+        and (
+            negative_score >= 2.0
+            or not has_identity_pillar
+            or core_qualification_pillars < 2
+            or word_count > 1200
+            or positive_score < 7.0
+        )
+    ):
+        is_resume = False
+        detected_type = top_neg_cat if top_neg_cat_score >= 2.0 else "non_resume_document"
+        reason_code = "insufficient_resume_evidence"
+    elif negative_score >= 4.5 and negative_score >= positive_score * 0.55:
+        is_resume = False
+        detected_type = top_neg_cat if top_neg_cat_score >= 2.0 else "non_resume_document"
         reason_code = f"non_resume_signals_{detected_type}"
     elif core_qualification_pillars < 1 or pillar_count < 2 or positive_score < 5.5 or net_score < 4.0:
         is_resume = False
-        detected_type = top_neg_cat if top_neg_cat_score >= 2.5 else "non_resume_document"
+        detected_type = top_neg_cat if top_neg_cat_score >= 2.0 else "non_resume_document"
         reason_code = "insufficient_resume_evidence"
 
     # Compute bounded confidence [0.0, 1.0]
@@ -1180,29 +1715,44 @@ def fast_precheck_non_resume(
     file_signals: Optional[Dict[str, Any]] = None,
     page_count: Optional[int] = None,
     filename: Optional[str] = None,
+    is_partial_sample: bool = False,
 ) -> Optional[Dict[str, Any]]:
     """
-    Millisecond-speed pre-screen run BEFORE expensive spaCy / NLP extraction.
+    Millisecond-speed pre-screen run BEFORE expensive PDF/OCR or spaCy NLP extraction.
     Returns a rejection validation dict ONLY when a document is unmistakably
-    NOT a resume (e.g. password-protected, blank/unreadable, huge manual/thesis,
-    or explicit high-confidence non-resume type like User Manual / Invoice / Certificate).
+    NOT a resume (e.g. password-protected, oversized manuscript/manual, thesis/academic paper,
+    or explicit high-confidence non-resume type like User Manual / Invoice / Certificate / Contract).
     Returns None when full extraction + validation should proceed.
     """
     signals = file_signals or {}
+    p_cnt = page_count if page_count is not None else signals.get("page_count")
+
     if signals.get("password_protected"):
         return validate_resume_document(
             raw_text="",
             extracted_data={},
             file_signals=signals,
-            page_count=page_count,
+            page_count=p_cnt,
             filename=filename,
         )
 
     text = (raw_text or "").strip()
+
+    # Immediate rejection for extremely long files (e.g. 15+ page scanned/text thesis manuscript or manual)
+    # even before running OCR/pdfminer across dozens of pages.
+    if isinstance(p_cnt, int) and p_cnt >= 15:
+        return validate_resume_document(
+            raw_text=text,
+            extracted_data={},
+            sections={},
+            file_signals=signals,
+            page_count=p_cnt,
+            filename=filename,
+        )
+
     if len(text) < 250:
         return None
 
-    p_cnt = page_count if page_count is not None else signals.get("page_count")
     word_count = len(re.findall(r"[A-Za-zÀ-ÿ0-9]+", text))
 
     # Fast check for huge documents or clear high-confidence non-resume types
@@ -1218,15 +1768,17 @@ def fast_precheck_non_resume(
         quick["reason_code"] in (
             "blank_form",
             "document_too_long",
+            "detected_thesis_manuscript",
             "detected_manual_or_guide",
             "detected_academic_paper",
             "detected_financial_document",
             "detected_certificate_or_official_record",
             "detected_legal_or_correspondence",
+            "detected_job_posting",
             "detected_misc_non_resume",
         )
         or (isinstance(p_cnt, int) and p_cnt >= 12)
-        or word_count >= 4500
+        or (not is_partial_sample and word_count >= 4500)
     ):
         return quick
 

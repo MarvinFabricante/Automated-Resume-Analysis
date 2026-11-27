@@ -47,6 +47,7 @@ def inspect_file_readability_signals(file_path: str, file_extension: str) -> Dic
         "is_multi_column": False,
         "has_images_only": False,
         "page_count": None,
+        "fast_sample_text": "",
     }
 
     if not file_path or not os.path.isfile(file_path):
@@ -64,32 +65,48 @@ def inspect_file_readability_signals(file_path: str, file_extension: str) -> Dic
                         signals["password_protected"] = True
                         return signals
 
-                signals["page_count"] = len(doc)
+                page_count = len(doc)
+                signals["page_count"] = page_count
                 native_chars = 0
                 total_images = 0
                 two_col_pages = 0
+                fast_sample_parts: List[str] = []
 
                 from app.extractors.file.pdf_extractor import _extract_page_layout_parts
 
+                # For oversized documents (>10 pages, e.g. 80-page thesis manuscripts or manuals),
+                # avoid running heavy layout geometry on every page — inspect first 5 + last 2 pages only.
+                layout_page_limit = page_count if page_count <= 10 else 5
+                sample_indices = set(range(min(5, page_count)))
+                if page_count > 5:
+                    sample_indices.update(range(max(5, page_count - 2), page_count))
+
                 prev_split = None
-                for page in doc:
+                for idx in range(page_count):
+                    if page_count > 10 and idx not in sample_indices:
+                        continue
+                    page = doc[idx]
                     raw_page_txt = (page.get_text("text") or "").strip()
                     native_chars += len(re.sub(r"\s+", "", raw_page_txt))
+                    if idx in sample_indices and raw_page_txt:
+                        fast_sample_parts.append(raw_page_txt)
                     try:
                         total_images += len(page.get_images(full=False) or [])
                     except Exception:
                         pass
-                    try:
-                        parts = _extract_page_layout_parts(page, prev_split_x=prev_split)
-                        if parts.get("is_two_col"):
-                            two_col_pages += 1
-                            prev_split = parts.get("split_x")
-                        else:
-                            prev_split = None
-                    except Exception:
-                        pass
+                    if idx < layout_page_limit:
+                        try:
+                            parts = _extract_page_layout_parts(page, prev_split_x=prev_split)
+                            if parts.get("is_two_col"):
+                                two_col_pages += 1
+                                prev_split = parts.get("split_x")
+                            else:
+                                prev_split = None
+                        except Exception:
+                            pass
 
                 signals["native_text_chars"] = native_chars
+                signals["fast_sample_text"] = "\n\n".join(fast_sample_parts).strip()
                 if two_col_pages > 0:
                     signals["is_multi_column"] = True
                 if native_chars < 120 and total_images > 0:
@@ -114,8 +131,60 @@ def inspect_file_readability_signals(file_path: str, file_extension: str) -> Dic
                 return signals
 
             if zipfile.is_zipfile(file_path):
+                # Extract page/word metadata & explicit page breaks from OOXML package
+                xml_pages: Optional[int] = None
+                xml_words: Optional[int] = None
+                explicit_pages: Optional[int] = None
+                try:
+                    import xml.etree.ElementTree as ET
+                    with zipfile.ZipFile(file_path, "r") as zf:
+                        names = set(zf.namelist())
+                        if "docProps/app.xml" in names:
+                            app_xml = zf.read("docProps/app.xml")
+                            root = ET.fromstring(app_xml)
+                            for elem in root.iter():
+                                tag = elem.tag.split("}")[-1]
+                                if tag == "Pages" and elem.text and elem.text.strip().isdigit():
+                                    val = int(elem.text.strip())
+                                    if val > 0:
+                                        xml_pages = val
+                                elif tag == "Words" and elem.text and elem.text.strip().isdigit():
+                                    val = int(elem.text.strip())
+                                    if val >= 0:
+                                        xml_words = val
+                        if "word/document.xml" in names:
+                            doc_xml_bytes = zf.read("word/document.xml")
+                            # Count explicit hard page breaks and Word-rendered page breaks
+                            hard_breaks = len(re.findall(rb"<w:br\b[^>]*w:type=[\"']page[\"']", doc_xml_bytes))
+                            rendered_breaks = len(re.findall(rb"<w:lastRenderedPageBreak\b", doc_xml_bytes))
+                            break_cnt = max(hard_breaks, rendered_breaks)
+                            if break_cnt >= 1:
+                                explicit_pages = break_cnt + 1
+                except Exception as xml_exc:
+                    logger.debug(f"DOCX XML page metadata check notice: {xml_exc}")
+
                 import docx
                 doc = docx.Document(file_path)
+
+                # Trust docProps/app.xml <Pages> only when corroborated by word/paragraph count
+                # (avoids stale metadata when an applicant edits a multi-page template down to 1 page)
+                trusted_xml_pages: Optional[int] = None
+                if xml_pages is not None and xml_pages >= 2:
+                    para_count = len(doc.paragraphs)
+                    if (
+                        (xml_words is not None and xml_words >= xml_pages * 50)
+                        or (explicit_pages is not None and explicit_pages >= 2)
+                        or para_count >= xml_pages * 4
+                    ):
+                        trusted_xml_pages = xml_pages
+
+                candidate_pages = [p for p in (explicit_pages, trusted_xml_pages) if p is not None]
+                if candidate_pages:
+                    signals["page_count"] = max(candidate_pages)
+                signals["docx_xml_pages"] = xml_pages
+                signals["docx_xml_words"] = xml_words
+                signals["docx_explicit_pages"] = explicit_pages
+
                 # Check section multi-column settings (<w:cols w:num="2">)
                 for sect in doc.sections:
                     try:
@@ -128,10 +197,10 @@ def inspect_file_readability_signals(file_path: str, file_extension: str) -> Dic
                     except Exception:
                         pass
 
-                # Check for multi-column layout tables (rows with 2+ cells having multi-line or long text)
+                # Check for multi-column layout tables (cap scan on huge non-resume DOCX files)
                 if not signals["is_multi_column"]:
-                    for tbl in doc.tables:
-                        for row in tbl.rows:
+                    for tbl in doc.tables[:25]:
+                        for row in tbl.rows[:40]:
                             unique_cells = []
                             for c in row.cells:
                                 if not unique_cells or c._tc != unique_cells[-1]._tc:
