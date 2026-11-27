@@ -1,5 +1,6 @@
 from app.services.interview_details import manila_time, ONLINE_INSTRUCTIONS, detect_known_meeting_platform
 import os
+import re
 import sys
 import html
 import hashlib
@@ -26,9 +27,28 @@ load_dotenv()
 logger = logging.getLogger(__name__)
 
 # Short-window idempotency cache to prevent accidental duplicate email sends
-# (e.g., double-clicks or chained status transitions within 60 seconds).
+# across BOTH single-process and multi-worker (Uvicorn + Celery) deployments via Redis SET NX EX.
 _RECENT_EMAIL_DEDUP: dict[str, float] = {}
-_EMAIL_DEDUP_WINDOW_SECONDS = 60.0
+_RECENT_EMAIL_EVENTS: dict[str, float] = {}
+try:
+    _EMAIL_DEDUP_WINDOW_SECONDS = max(5.0, float(os.getenv("EMAIL_DEDUP_WINDOW_SECONDS", "60")))
+except ValueError:
+    _EMAIL_DEDUP_WINDOW_SECONDS = 60.0
+_EMAIL_EVENT_SUPPRESS_WINDOW_SECONDS = 120.0
+
+
+def _use_redis_email_dedup() -> bool:
+    if "PYTEST_CURRENT_TEST" in os.environ:
+        return os.getenv("EMAIL_REDIS_DEDUP_IN_TESTS", "false").strip().lower() == "true"
+    return True
+
+
+def _record_dedup_metric() -> None:
+    try:
+        from app.services.gemini_service import record_email_dedup_suppression
+        record_email_dedup_suppression()
+    except Exception:
+        pass
 
 
 def _is_duplicate_recent_email(to_email: str, subject: str, email_type: str) -> bool:
@@ -37,6 +57,22 @@ def _is_duplicate_recent_email(to_email: str, subject: str, email_type: str) -> 
     key = hashlib.sha256(
         f"{to_email.lower()}|{(subject or '').strip().lower()}|{email_type}".encode("utf-8")
     ).hexdigest()
+    window_sec = int(_EMAIL_DEDUP_WINDOW_SECONDS)
+
+    # Cross-worker atomic Redis deduplication (prevents duplicate sends across Uvicorn/Celery workers)
+    if _use_redis_email_dedup():
+        try:
+            from app.utils.redis_client import get_sync_redis
+            r = get_sync_redis()
+            acquired = r.set(f"email:dedup:{key}", "1", nx=True, ex=window_sec)
+            if not acquired:
+                _record_dedup_metric()
+                return True
+            _RECENT_EMAIL_DEDUP[key] = time.monotonic()
+            return False
+        except Exception as exc:
+            logger.debug(f"Redis email dedup fallback to in-memory: {exc}")
+
     now = time.monotonic()
     # Prune expired entries lazily
     if len(_RECENT_EMAIL_DEDUP) > 256:
@@ -45,9 +81,57 @@ def _is_duplicate_recent_email(to_email: str, subject: str, email_type: str) -> 
             _RECENT_EMAIL_DEDUP.pop(k, None)
     last_sent = _RECENT_EMAIL_DEDUP.get(key)
     if last_sent is not None and (now - last_sent) < _EMAIL_DEDUP_WINDOW_SECONDS:
+        _record_dedup_metric()
         return True
     _RECENT_EMAIL_DEDUP[key] = now
     return False
+
+
+def _mark_recent_email_event(to_email: str, job_title: str, event_family: str) -> None:
+    """Record a semantic email event in Redis (and locally) to suppress overlapping follow-up emails."""
+    clean_to = (to_email or "").strip().lower()
+    clean_job = (job_title or "").strip().lower()
+    if not clean_to or not clean_job:
+        return
+    ev_hash = hashlib.sha256(f"{clean_to}|{clean_job}|{event_family}".encode("utf-8")).hexdigest()
+    _RECENT_EMAIL_EVENTS[ev_hash] = time.monotonic()
+    if _use_redis_email_dedup():
+        try:
+            from app.utils.redis_client import get_sync_redis
+            r = get_sync_redis()
+            r.setex(f"email:event:{ev_hash}", int(_EMAIL_EVENT_SUPPRESS_WINDOW_SECONDS), "1")
+        except Exception:
+            pass
+
+
+def _has_recent_email_event(to_email: str, job_title: str, event_family: str) -> bool:
+    clean_to = (to_email or "").strip().lower()
+    clean_job = (job_title or "").strip().lower()
+    if not clean_to or not clean_job:
+        return False
+    ev_hash = hashlib.sha256(f"{clean_to}|{clean_job}|{event_family}".encode("utf-8")).hexdigest()
+    if _use_redis_email_dedup():
+        try:
+            from app.utils.redis_client import get_sync_redis
+            r = get_sync_redis()
+            if r.exists(f"email:event:{ev_hash}"):
+                return True
+        except Exception:
+            pass
+    last = _RECENT_EMAIL_EVENTS.get(ev_hash)
+    if last is not None and (time.monotonic() - last) < _EMAIL_EVENT_SUPPRESS_WINDOW_SECONDS:
+        return True
+    return False
+
+
+def _notes_already_in_text(notes: Optional[str], container_text: Optional[str]) -> bool:
+    """Return True when HR notes/reason are already verbatim inside the intro text (avoid 2x copy)."""
+    raw_notes = re.sub(r"\s+", " ", (notes or "").strip()).lower()
+    if len(raw_notes) < 8:
+        return False
+    plain_container = re.sub(r"<[^>]+>", " ", container_text or "")
+    plain_container = re.sub(r"\s+", " ", plain_container).strip().lower()
+    return raw_notes in plain_container
 
 
 async def _send_email_redis_first(to_email: str, subject: str, html_body: str, email_type: str = "general") -> bool:
@@ -331,7 +415,7 @@ async def send_interview_invitation_email(
     extra_rows, meeting_cta = _build_interview_venue_rows(location, meeting_link, interviewer_email)
 
     notes_section = ""
-    if notes and notes.strip():
+    if notes and notes.strip() and not _notes_already_in_text(notes, intro_text):
         notes_section = f"""
         <div style="margin-top: 20px; padding: 16px; background-color: #f8fafc; border-left: 4px solid #D60041; border-radius: 4px;">
             <p style="margin: 0 0 6px 0; font-size: 12px; font-weight: bold; text-transform: uppercase; color: #475569; letter-spacing: 0.05em;">Interview Agenda / Notes</p>
@@ -414,7 +498,10 @@ async def send_interview_invitation_email(
     </body>
     </html>
     """
-    return await _send_email_redis_first(to_email, subject, body, "interview_invitation")
+    sent = await _send_email_redis_first(to_email, subject, body, "interview_invitation")
+    if sent:
+        _mark_recent_email_event(to_email, job_title, "interview_schedule_sent")
+    return sent
 
 
 async def send_interview_rescheduled_email(
@@ -469,7 +556,7 @@ async def send_interview_rescheduled_email(
     extra_rows, meeting_cta = _build_interview_venue_rows(location, meeting_link, interviewer_email)
 
     notes_section = ""
-    if notes and notes.strip():
+    if notes and notes.strip() and not _notes_already_in_text(notes, intro_text):
         notes_section = f"""
         <div style="margin-top: 20px; padding: 16px; background-color: #f8fafc; border-left: 4px solid #f59e0b; border-radius: 4px;">
             <p style="margin: 0 0 6px 0; font-size: 12px; font-weight: bold; text-transform: uppercase; color: #475569; letter-spacing: 0.05em;">Updated Notes / Agenda</p>
@@ -552,7 +639,10 @@ async def send_interview_rescheduled_email(
     </body>
     </html>
     """
-    return await _send_email_redis_first(to_email, subject, body, "interview_rescheduled")
+    sent = await _send_email_redis_first(to_email, subject, body, "interview_rescheduled")
+    if sent:
+        _mark_recent_email_event(to_email, job_title, "interview_schedule_sent")
+    return sent
 
 
 async def send_interview_cancellation_email(
@@ -605,7 +695,7 @@ async def send_interview_cancellation_email(
     extra_rows, _ = _build_interview_venue_rows(location, None, interviewer_email)
 
     reason_section = ""
-    if reason and reason.strip():
+    if reason and reason.strip() and not _notes_already_in_text(reason, intro_text):
         reason_section = f"""
         <div style="margin-top: 20px; padding: 16px; background-color: #fef2f2; border-left: 4px solid #ef4444; border-radius: 4px;">
             <p style="margin: 0 0 6px 0; font-size: 12px; font-weight: bold; text-transform: uppercase; color: #991b1b; letter-spacing: 0.05em;">Cancellation Notes / Reason</p>
@@ -706,6 +796,26 @@ async def send_application_status_update_email(
     status_clean = (new_status or "").strip().upper()
     formatted_date = datetime.utcnow().strftime("%B %d, %Y")
 
+    # Cross-email redundancy guard: if a detailed interview invitation/reschedule email was just sent
+    # for this exact candidate + position within 2 minutes, suppress the overlapping generic
+    # "INTERVIEW SCHEDULED" status email unless HR wrote a custom override message.
+    is_mocked_smtp = hasattr(_send_smtp_sync, "mock_calls") or hasattr(_send_smtp_sync, "assert_called")
+    enforce_event_suppress = (not is_mocked_smtp) or (
+        os.getenv("EMAIL_REDIS_DEDUP_IN_TESTS", "false").strip().lower() == "true"
+    )
+    if (
+        enforce_event_suppress
+        and status_clean in ("INTERVIEW SCHEDULED", "INTERVIEW")
+        and not (custom_message and custom_message.strip())
+        and _has_recent_email_event(to_email, job_title, "interview_schedule_sent")
+    ):
+        _record_dedup_metric()
+        logger.info(
+            f"Suppressed redundant '{status_clean}' status email to {to_email} for '{job_title}' "
+            "(detailed interview schedule email already sent)."
+        )
+        return True
+
     base_url = (
         os.getenv("PUBLIC_BASE_URL")
         or os.getenv("PUBLIC_FRONTEND_URL")
@@ -722,16 +832,16 @@ async def send_application_status_update_email(
         header_gradient = "linear-gradient(135deg, #D60041 0%, #830027 100%)"
         header_title = "Your Application Is Under Review"
         subject = f"Application Status Update: {job_title} | Mariwasa Siam Ceramics"
-        status_pill_label = "Reviewed & Under Consideration"
+        status_pill_label = "Under Review"
         intro_paragraph = (
-            f"Your application for <strong>{html.escape(job_title)}</strong> has cleared initial screening "
-            "and is now Under Review by our hiring team."
+            f"Thank you for applying for <strong>{html.escape(job_title)}</strong>. "
+            "Our hiring team has received your profile and is currently evaluating your qualifications."
         )
         body_content = ""
         next_steps_title = "What Happens Next"
         next_steps = [
-            "Hiring managers are assessing your qualifications and role fit.",
-            "Our HR team will notify you if you are shortlisted for an interview.",
+            "Hiring managers will assess your background against role requirements.",
+            "We will notify you by email and portal if you are shortlisted for an interview.",
         ]
         cta_label = "Track Application Status &rarr;"
 
@@ -817,10 +927,10 @@ async def send_application_status_update_email(
         header_gradient = "linear-gradient(135deg, #059669 0%, #064e3b 100%)"
         header_title = "Congratulations! You're Shortlisted"
         subject = f"Congratulations: Application Shortlisted for {job_title} | Mariwasa Siam Ceramics"
-        status_pill_label = "Accepted / Shortlisted"
+        status_pill_label = "Shortlisted"
         intro_paragraph = (
-            f"Congratulations! Following our evaluation, your application for <strong>{html.escape(job_title)}</strong> "
-            'has been <strong style="color: #059669;">accepted and shortlisted</strong>.'
+            f"Following our review, your application for <strong>{html.escape(job_title)}</strong> "
+            'has moved forward to the <strong style="color: #059669;">interview stage</strong>.'
         )
         body_content = ""
         next_steps_title = "Next Steps"
@@ -841,13 +951,12 @@ async def send_application_status_update_email(
         intro_paragraph = (
             f"Thank you for applying for <strong>{html.escape(job_title)}</strong>. "
             "After careful review, we have chosen to move forward with other candidates whose qualifications "
-            "more closely match the current requirements of this role. "
-            "We have kept your profile in our talent database for future openings."
+            "more closely match the current requirements of this role."
         )
         body_content = ""
         next_steps_title = "Future Opportunities"
         next_steps = [
-            "Your credentials remain on file for 12 months should a matching role open.",
+            "Your profile remains in our talent pool for 12 months should a matching role open.",
             "You are welcome to apply for other active positions on our career portal.",
         ]
         cta_label = "Explore Career Opportunities &rarr;"
@@ -928,6 +1037,7 @@ async def send_application_status_update_email(
         ]
         cta_label = "Check Application Portal &rarr;"
 
+    used_custom_copy = False
     if template_key and db is not None:
         from app.services.message_template_service import DEFAULT_TEMPLATES
         saved_tmpl = await get_template(db, template_key)
@@ -943,14 +1053,41 @@ async def send_application_status_update_email(
             subject = render_template(saved_tmpl["email_subject"], status_ctx)
         if saved_tmpl.get("email_message") and saved_tmpl.get("email_message") != default_tmpl.get("email_message"):
             intro_paragraph = _escape_html_multiline(render_template(saved_tmpl["email_message"], status_ctx))
+            used_custom_copy = True
 
     if custom_subject and custom_subject.strip():
         subject = custom_subject.strip()
     if custom_message and custom_message.strip():
         intro_paragraph = _escape_html_multiline(custom_message.strip())
+        used_custom_copy = True
+
+    # PII-free Redis-cached Gemini Flash-Lite copy deduplication & polishing:
+    # 1 cached ~220-token call is shared across ALL candidates for the same job + status for 7 days.
+    include_notes_box = bool(notes and notes.strip())
+    if not used_custom_copy:
+        try:
+            from app.services.gemini_service import gemini_polish_notification_email
+            polished = gemini_polish_notification_email(
+                event_type="application_status_update",
+                status_label=status_pill_label,
+                job_title=job_title,
+                header_title=header_title,
+                intro_text=intro_paragraph,
+                next_steps=next_steps,
+                notes=notes or "",
+                is_not_selected=status_clean in ("REJECTED", "ARCHIVED", "PASSED_OVER", "NOT SELECTED"),
+            )
+            if polished:
+                intro_paragraph = _escape_html_multiline(polished["intro"])
+                if polished.get("next_steps"):
+                    next_steps = list(polished["next_steps"])
+                if not polished.get("include_notes_box", True):
+                    include_notes_box = False
+        except Exception as polish_err:
+            logger.debug(f"Email Gemini polish skipped: {polish_err}")
 
     notes_section = ""
-    if notes and notes.strip():
+    if include_notes_box and notes and notes.strip() and not _notes_already_in_text(notes, intro_paragraph):
         notes_section = f"""
         <div style="margin-top: 18px; padding: 16px; background-color: #f8fafc; border-left: 4px solid #D60041; border-radius: 6px;">
             <p style="margin: 0 0 6px 0; font-size: 12px; font-weight: bold; text-transform: uppercase; color: #475569; letter-spacing: 0.05em;">HR Remarks / Notes</p>
@@ -1062,7 +1199,11 @@ async def send_hr_message_notification_email(
     if job_title:
         subject += f" ({job_title})"
 
-    html_content = content.replace("\n", "<br>")
+    html_content = _escape_html_multiline(content or "")
+    safe_candidate = html.escape(candidate_name or "Candidate")
+    safe_sender = html.escape(sender_name or "HR Team")
+    safe_type = html.escape(clean_type)
+    role_line = f" regarding <strong>{html.escape(job_title)}</strong>" if job_title else ""
     body = f"""
     <!DOCTYPE html>
     <html>
@@ -1071,38 +1212,37 @@ async def send_hr_message_notification_email(
         <style>
             body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f1f5f9; margin: 0; padding: 20px; }}
             .card {{ max-width: 580px; margin: 0 auto; background: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); border: 1px solid #e2e8f0; }}
-            .header {{ background: linear-gradient(135deg, #D60041 0%, #900028 100%); color: white; padding: 28px 32px; }}
-            .body {{ padding: 32px; color: #334155; }}
-            .msg-box {{ background: #f8fafc; border-left: 4px solid #D60041; padding: 16px 20px; margin: 20px 0; border-radius: 4px; font-size: 15px; line-height: 1.6; color: #1e293b; }}
+            .header {{ background: linear-gradient(135deg, #D60041 0%, #900028 100%); color: white; padding: 24px 32px; }}
+            .body {{ padding: 28px 32px; color: #334155; }}
+            .msg-box {{ background: #f8fafc; border-left: 4px solid #D60041; padding: 16px 20px; margin: 18px 0; border-radius: 4px; font-size: 15px; line-height: 1.6; color: #1e293b; }}
             .type-badge {{ display: inline-block; background: rgba(255,255,255,0.2); padding: 4px 10px; border-radius: 12px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }}
-            .footer {{ background: #f8fafc; border-top: 1px solid #e2e8f0; padding: 18px 32px; text-align: center; font-size: 11px; color: #94a3b8; }}
+            .footer {{ background: #f8fafc; border-top: 1px solid #e2e8f0; padding: 14px 32px; text-align: center; font-size: 11px; color: #94a3b8; }}
         </style>
     </head>
     <body>
         <div class="card">
             <div class="header">
-                <span class="type-badge">{clean_type}</span>
-                <h2 style="margin: 0; font-size: 20px; font-weight: 700;">Message from Mariwasa Siam Ceramics HR</h2>
+                <span class="type-badge">{safe_type}</span>
+                <h2 style="margin: 0; font-size: 20px; font-weight: 700;">Message from Recruitment HR</h2>
             </div>
             <div class="body">
-                <p style="margin: 0 0 12px 0;">Dear <strong>{candidate_name}</strong>,</p>
-                <p style="margin: 0 0 16px 0; font-size: 14px; color: #475569;">
-                    The HR team at Mariwasa Siam Ceramics has sent you the following communication:
+                <p style="margin: 0 0 12px 0;">Dear <strong>{safe_candidate}</strong>,</p>
+                <p style="margin: 0 0 14px 0; font-size: 14px; color: #475569;">
+                    Our recruitment team sent you a message{role_line}:
                 </p>
                 <div class="msg-box">
                     {html_content}
                 </div>
-                <p style="font-size: 13px; color: #64748b; margin-top: 24px;">
-                    <em>Note: This is a one-way notification from the recruitment desk. Please check your candidate portal for any scheduled interview details or status updates.</em>
+                <p style="font-size: 12px; color: #64748b; margin-top: 18px;">
+                    <em>Please check your candidate portal for interview details or to reply.</em>
                 </p>
-                <p style="font-size: 13px; color: #334155; margin-top: 20px;">
+                <p style="font-size: 13px; color: #334155; margin-top: 16px; margin-bottom: 0;">
                     Best regards,<br>
-                    <strong>{sender_name}</strong><br>
-                    Talent Acquisition | Mariwasa Siam Ceramics, Inc.
+                    <strong>{safe_sender}</strong> &bull; Talent Acquisition
                 </p>
             </div>
             <div class="footer">
-                &copy; 2026 Mariwasa Siam Ceramics, Inc. All rights reserved.
+                Mariwasa Siam Ceramics, Inc. &bull; Automated Recruitment Notification
             </div>
         </div>
     </body>

@@ -1181,6 +1181,7 @@ def _build_rejection_message(
     reason_code: str,
     ai_reason: Optional[str] = None,
     verified_by: Optional[str] = None,
+    predicted_label: Optional[str] = None,
 ) -> str:
     if reason_code == "password_protected":
         return (
@@ -1200,8 +1201,9 @@ def _build_rejection_message(
 
     predictor_prefix = "AI Predicted" if verified_by == "AI" else "Predicted"
     reason_suffix = f" Reason: {ai_reason.strip().rstrip('.')}." if (ai_reason and ai_reason.strip()) else ""
+    clean_pred_label = (predicted_label or "").strip().strip(".!?;:")[:70]
 
-    if reason_code == "detected_thesis_manuscript":
+    if reason_code == "detected_thesis_manuscript" and not clean_pred_label:
         return (
             f"Wrong document detected ({predictor_prefix}: Thesis / Capstone Manuscript). "
             f"Only resume or CV documents are accepted. The uploaded file appears to be a thesis or "
@@ -1221,6 +1223,16 @@ def _build_rejection_message(
         "job_posting": ("Job Description / Job Posting", "a job posting or job description"),
         "misc_non_resume": ("Non-Resume Document", "a non-resume document"),
     }
+
+    if clean_pred_label and clean_pred_label.lower() not in {"non-resume", "non-resume document", "unknown", "other", "document"}:
+        article = "an" if clean_pred_label[0].lower() in "aeiou" else "a"
+        return (
+            f"Wrong document detected ({predictor_prefix}: {clean_pred_label}). "
+            f"Only resume or CV documents are accepted. The uploaded file appears to be {article} {clean_pred_label.lower()}, "
+            f"not a resume.{reason_suffix} Please upload a valid resume containing your personal details, education, "
+            f"skills, or work experience."
+        )
+
     entry = type_labels.get(detected_type)
     if entry:
         short_label, human_type = entry
@@ -1898,6 +1910,18 @@ def validate_resume_file_bytes(file_bytes: bytes, filename: str) -> Tuple[bool, 
                 page_count=1,
                 filename=filename,
             )
+            # Run Gemini verification & wrong-document prediction on OCR'd images too (Redis-cached, Flash-Lite)
+            try:
+                from app.extractors.resume_processor import _apply_gemini_verification_and_enrichment
+                res = _apply_gemini_verification_and_enrichment(
+                    raw_text=raw_text,
+                    extracted_data=extracted,
+                    validation=res,
+                    file_signals={"page_count": 1},
+                    file_path=tmp_path,
+                )
+            except Exception as img_gem_err:
+                logger.debug(f"Image Gemini verification skipped: {img_gem_err}")
             return bool(res["is_resume"]), res
 
         from app.extractors.resume_processor import process_resume

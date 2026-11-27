@@ -59,6 +59,8 @@ class JobMatchResult(BaseModel):
     minimum_match_score: Optional[float] = None
     eligible_to_apply: Optional[bool] = None
     eligibility_reasons: Optional[list[str]] = None
+    ai_eligibility_verified: Optional[bool] = None
+    ai_eligibility_summary: Optional[str] = None
     transferable_skills: Optional[list[str]] = None
     followup_questions: Optional[list[dict]] = None
     clarification_questions: Optional[list[dict]] = None

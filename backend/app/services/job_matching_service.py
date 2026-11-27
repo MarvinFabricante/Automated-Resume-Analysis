@@ -3315,25 +3315,67 @@ def calculate_match_score(
             eligibility_reasons.append(
                 f"Overall match score ({final_match_pct:.1f}%) is below the accepted minimum requirement ({min_score:.1f}%)."
             )
-        if job_has_skills_req and blended_skills_score <= 0 and final_match_pct < max(min_score, 45.0):
+        if job_has_skills_req and blended_skills_score <= 0 and final_match_pct < max(min_score + 20.0, 55.0):
             missing_preview = ", ".join(all_missing[:4]) if all_missing else "required role skills"
             eligibility_reasons.append(
                 f"None of the required skills were matched (missing: {missing_preview})."
             )
-        if below_min_exp and not meets_threshold:
+        # Prevent unqualified applicants from slipping past minimum score via 'Not required' / completeness padding
+        # when both core skills AND required experience/education are critically below standard.
+        padded_core_failure = (
+            job_has_skills_req
+            and blended_skills_score < 25.0
+            and final_match_pct < max(min_score + 15.0, 50.0)
+            and (
+                (job_has_exp_req and (below_min_exp or relevance_level == "Irrelevant"))
+                or (job_has_edu_req and edu_status == STATUS_DOES_NOT_MEET)
+            )
+        )
+        if padded_core_failure and blended_skills_score > 0:
+            missing_preview = ", ".join(all_missing[:4]) if all_missing else "core role skills"
+            eligibility_reasons.append(
+                f"Skills match ({round(blended_skills_score, 1)}%) is critically below accepted role requirements (missing: {missing_preview})."
+            )
+        if below_min_exp and (not meets_threshold or padded_core_failure):
             eligibility_reasons.append(
                 f"Experience is below minimum requirement ({cand_yrs_gap} yr{'s' if cand_yrs_gap != 1 else ''} vs {req_yrs_gap} yr{'s' if req_yrs_gap != 1 else ''} required)."
             )
-        if job_has_edu_req and edu_status == STATUS_DOES_NOT_MEET and not meets_threshold:
+        elif job_has_exp_req and relevance_level == "Irrelevant" and padded_core_failure:
+            eligibility_reasons.append(
+                "Prior work experience is unrelated to the target role requirements."
+            )
+        if job_has_edu_req and edu_status == STATUS_DOES_NOT_MEET and (not meets_threshold or padded_core_failure):
             eligibility_reasons.append(
                 f"Education does not meet the required qualification ({education_result.get('required_education', 'specified degree')})."
             )
-        if job_has_certs_req and certs_status == STATUS_DOES_NOT_MEET and not meets_threshold:
+        if job_has_certs_req and certs_status == STATUS_DOES_NOT_MEET and (
+            not meets_threshold or final_match_pct < max(min_score + 15.0, 50.0)
+        ):
             eligibility_reasons.append(
                 f"Missing required certification(s) ({certs_result.get('required_certifications', 'specified certification')})."
             )
 
     eligible_to_apply = (not job_has_any_requirement) or (meets_threshold and len(eligibility_reasons) == 0)
+    ai_eligibility_verified = bool(ai_powered)
+    ai_eligibility_summary = ""
+    if gemini_result and job_has_any_requirement:
+        g_rel = str(gemini_result.get("relevance_level") or "")
+        g_sk = float(gemini_result.get("ai_skills_score") or 0.0)
+        g_exp = float(gemini_result.get("ai_experience_score") or 0.0)
+        if (
+            eligible_to_apply
+            and g_rel == "Irrelevant"
+            and g_sk < 25.0
+            and g_exp < 25.0
+            and final_match_pct < max(min_score + 18.0, 55.0)
+        ):
+            eligible_to_apply = False
+            ai_reason = (
+                "AI qualification review found your skills and work experience are not aligned with the core requirements of this position."
+            )
+            if ai_reason not in eligibility_reasons:
+                eligibility_reasons.append(ai_reason)
+            ai_eligibility_summary = ai_reason
 
     from app.services.ai_analysis_service import build_deterministic_why_this_score
     why_this_score = (
@@ -3427,6 +3469,8 @@ def calculate_match_score(
         "minimum_match_score": min_score,
         "eligible_to_apply": eligible_to_apply,
         "eligibility_reasons": eligibility_reasons,
+        "ai_eligibility_verified": ai_eligibility_verified,
+        "ai_eligibility_summary": ai_eligibility_summary or None,
         "followup_questions": followup_questions,
         "clarification_questions": followup_questions,
         "applied_weights": {
@@ -3719,10 +3763,12 @@ def apply_gemini_enrichment_to_match_result(
     min_score = float(enriched.get("minimum_match_score") or 30.0)
     meets_threshold = final_match_pct >= min_score
     enriched["meets_threshold"] = meets_threshold
-    if meets_threshold and enriched.get("eligibility_reasons"):
+    enriched["ai_eligibility_verified"] = True
+    updated_reasons = list(enriched.get("eligibility_reasons") or [])
+    if meets_threshold and updated_reasons:
         # Re-evaluate threshold-dependent eligibility reasons cleanly
         updated_reasons = [
-            r for r in enriched["eligibility_reasons"]
+            r for r in updated_reasons
             if "below the accepted minimum requirement" not in str(r).lower()
             and "experience is below minimum requirement" not in str(r).lower()
             and "education does not meet" not in str(r).lower()
@@ -3732,8 +3778,27 @@ def apply_gemini_enrichment_to_match_result(
             updated_reasons = [
                 r for r in updated_reasons if "none of the required skills were matched" not in str(r).lower()
             ]
-        enriched["eligibility_reasons"] = updated_reasons
-        enriched["eligible_to_apply"] = len(updated_reasons) == 0
+    # Also enforce Gemini semantic irrelevance block if padded score barely passed with irrelevant background
+    g_rel = str(gemini_result.get("relevance_level") or "")
+    g_sk = float(gemini_result.get("ai_skills_score") or 0.0)
+    g_exp = float(gemini_result.get("ai_experience_score") or 0.0)
+    if (
+        not updated_reasons
+        and g_rel == "Irrelevant"
+        and g_sk < 25.0
+        and g_exp < 25.0
+        and final_match_pct < max(min_score + 18.0, 55.0)
+    ):
+        ai_reason = "AI qualification review found your skills and work experience are not aligned with the core requirements of this position."
+        updated_reasons.append(ai_reason)
+        enriched["ai_eligibility_summary"] = ai_reason
+    elif not meets_threshold and not any("below the accepted minimum requirement" in str(r).lower() for r in updated_reasons):
+        updated_reasons.insert(
+            0,
+            f"Overall match score ({final_match_pct:.1f}%) is below the accepted minimum requirement ({min_score:.1f}%).",
+        )
+    enriched["eligibility_reasons"] = updated_reasons
+    enriched["eligible_to_apply"] = meets_threshold and len(updated_reasons) == 0
 
     enriched["score_explanation"] = (
         f"Hybrid ATS Rules ({round(rule_w * 100)}%) + Gemini Semantic AI ({round(ai_w * 100)}%): "
